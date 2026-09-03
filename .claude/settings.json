@@ -1,0 +1,122 @@
+{
+  "env": {
+    "ENABLE_TOOL_SEARCH": "auto:5"
+  },
+  "permissions": {
+    "allow": [
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:executing-plans)",
+      "Skill(superpowers:subagent-driven-development)",
+      "Skill(superpowers:test-driven-development)",
+      "Bash(rtk proxy grep *)",
+      "Bash(rtk proxy --version)",
+      "Bash(rtk proxy --help)",
+      "Bash(rtk hook *)",
+      "Bash(rtk gain)",
+      "Bash(rtk gain *)",
+      "Bash(rtk discover)",
+      "Bash(rtk --version)",
+      "Bash(rtk git *)",
+      "Bash(rtk npm *)",
+      "Bash(rtk gh *)",
+      "Bash(rtk ls *)",
+      "Bash(rtk read *)",
+      "Bash(rtk find *)",
+      "Bash(rtk grep *)",
+      "Bash(rtk diff *)",
+      "Bash(rtk tsc *)",
+      "Bash(rtk pre-commit run *)",
+      "Bash(rtk mkdir *)",
+      "Bash(rtk proxy git *)",
+      "Bash(rtk proxy ls *)",
+      "Bash(rtk proxy read *)",
+      "Bash(rtk proxy npm *)",
+      "Bash(rtk proxy gh *)",
+      "Bash(rtk proxy find *)",
+      "Bash(rtk proxy diff *)",
+      "Bash(pre-commit run *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(git checkout *)",
+      "Bash(git restore *)",
+      "Bash(git worktree *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr edit *)",
+      "Bash(gh pr comment *)",
+      "Bash(rip *)",
+      "Bash(mkdir *)",
+      "Bash(rtk proxy pre-commit run *)",
+      "Bash(rtk proxy git add *)",
+      "Bash(rtk proxy git commit *)",
+      "Bash(rtk proxy git push *)",
+      "Bash(rtk proxy git fetch *)",
+      "Bash(rtk proxy git pull *)",
+      "Bash(rtk proxy git checkout *)",
+      "Bash(rtk proxy git restore *)",
+      "Bash(rtk proxy git worktree *)",
+      "Bash(rtk proxy gh pr create *)",
+      "Bash(rtk proxy gh pr edit *)",
+      "Bash(rtk proxy gh pr comment *)",
+      "Bash(rtk proxy mkdir *)"
+    ],
+    "deny": [
+      "Bash(rm)",
+      "Bash(rm *)",
+      "Bash(git commit --no-verify *)",
+      "Bash(git commit --amend --no-verify *)",
+      "Bash(git push --no-verify *)",
+      "Bash(rtk git commit --no-verify *)",
+      "Bash(rtk git commit --amend --no-verify *)",
+      "Bash(rtk git push --no-verify *)",
+      "Bash(rtk proxy git commit --no-verify *)",
+      "Bash(rtk proxy git commit --amend --no-verify *)",
+      "Bash(rtk proxy git push --no-verify *)",
+      "Skill(git-guardrails-claude-code)",
+      "Skill(setup-pre-commit)"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true,
+    "elements-of-style@superpowers-marketplace": true,
+    "superpowers-lab@superpowers-marketplace": true,
+    "osgrep@osgrep": true,
+    "typescript-lsp@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": true,
+    "pr-review-toolkit@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "commit-commands@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "mattpocock-skills@mattpocock": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers-marketplace"
+      }
+    },
+    "anthropics-claude-code": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-code"
+      }
+    },
+    "osgrep": {
+      "source": {
+        "source": "github",
+        "repo": "Ryandonofrio3/osgrep"
+      }
+    },
+    "mattpocock": {
+      "source": {
+        "source": "github",
+        "repo": "mattpocock/skills"
+      }
+    }
+  },
+  "alwaysThinkingEnabled": true
+}
