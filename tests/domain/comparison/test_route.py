@@ -72,6 +72,15 @@ def test_a_boss_is_never_reported_as_a_skipped_pack() -> None:
     assert findings_by_prefix(findings, "compare.route.skipped.") == []
 
 
+def test_a_boss_is_never_reported_as_an_extra_pack() -> None:
+    ours = a_run((a_pull(0, (1,)),))
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (99,), boss=True)))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+
+    assert findings_by_prefix(findings, "compare.route.extra.") == []
+
+
 def test_a_pack_only_they_killed_carries_no_seconds() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
