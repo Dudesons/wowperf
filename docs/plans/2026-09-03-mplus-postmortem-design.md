@@ -59,10 +59,11 @@ marked otherwise.
 - **Client credentials read public reports only.** Unlisted reports work through
   `reportData.report(code:, allowUnlisted: true)` when the code is known. Private reports
   require the authorization-code flow, which this slice does not implement.
-- **Rate limit:** points per hour, per client, on fixed one-hour cycles. The unsubscribed
-  tier is documented as 3,600 points per hour, but that figure comes from an archived page.
-  Treat it as unconfirmed and read the real value from
-  `rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }` at runtime.
+- **Rate limit:** points per hour, per client, on fixed one-hour cycles. Live introspection
+  on 2026-09-04 read `limitPerHour: 3600` for the unsubscribed tier, confirming the figure
+  that was previously known only from an archived page. Still read the real value from
+  `rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }` at runtime rather than
+  hardcoding it, because it is per-client and can change.
 - **The point cost formula is undocumented.** No published table, no response headers. The
   `pointsSpentThisHour` field is a Float, implying fractional per-query costs. We measure
   rather than predict.
@@ -73,6 +74,10 @@ A complete Mythic+ run is one `ReportFight` with `keystoneLevel != null` and `ki
 It carries `keystoneAffixes`, `keystoneTime` (Blizzard's official penalty-inclusive time),
 `keystoneBonus` (1, 2, or 3 chests), `rating`, `countReached`, `countRequired`, and
 `npcCountMap`.
+
+The roster comes from three index-aligned arrays on the same fight: `friendlyPlayers` (actor
+IDs, joined against `masterData.actors`), `friendlySpecs`, and `friendlyItemLevels`. All
+three were confirmed present on `ReportFight` by live schema introspection on 2026-09-04.
 
 Segmentation hangs off `dungeonPulls: [ReportDungeonPull]`, each with `startTime`,
 `endTime`, `encounterID` (0 means trash), `enemyNPCs[].gameID`, and `x`/`y` giving the map
@@ -521,7 +526,9 @@ guild names are anonymized, and large event dumps are never committed.
 
 ## 11. Open items for the implementation plan
 
-- Confirm the real hourly point limit from a live `rateLimitData` call.
+- ~~Confirm the real hourly point limit from a live `rateLimitData` call.~~ Confirmed on
+  2026-09-04 by live introspection: `limitPerHour` reads **3600**. The cost of a full report
+  fetch remains unmeasured, pending a run against a real report.
 - Confirm whether Warcraft Logs exposes a CSV export worth using, or whether JSON is the only
   practical surface.
 - Measure the point cost of a full run analysis, and decide from the measurement whether §5.5
