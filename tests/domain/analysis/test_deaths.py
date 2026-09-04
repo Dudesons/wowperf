@@ -53,6 +53,16 @@ def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
     assert any("1 death" in item and "not measured" in item for item in total.evidence)
 
 
+def test_a_wholly_unmeasured_run_of_deaths_reports_no_total_cost_rather_than_zero() -> None:
+    findings = analyse_deaths(
+        a_run(), (a_death("Uglymage", 11, 1_000, None), a_death("Sublime", 12, 40_000, None))
+    )
+    total = next(f for f in findings if f.id == "deaths.total")
+    assert total.seconds_lost is None
+    assert "cannot be measured" in total.detail
+    assert any("2 deaths" in item and "not measured" in item for item in total.evidence)
+
+
 def test_no_deaths_produces_no_findings() -> None:
     assert analyse_deaths(a_run(), ()) == []
 

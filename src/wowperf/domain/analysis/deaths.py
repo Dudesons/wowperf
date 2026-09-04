@@ -11,17 +11,6 @@ CHAIN_WINDOW_MS = 10_000
 """Deaths closer together than this are one event, not two independent ones."""
 
 
-def _cost(deaths: tuple[Death, ...]) -> float:
-    """Sum of measured cost, treating an unmeasured death as contributing nothing.
-
-    Used only for deaths.total, whose own evidence already discloses how many of
-    the summed deaths were unmeasured. Every other finding family uses
-    `_measured_cost` instead, which refuses to paper over an unmeasured death with
-    a fabricated zero.
-    """
-    return sum(death.seconds_until_next_action or 0.0 for death in deaths)
-
-
 def _measured_cost(deaths: tuple[Death, ...]) -> tuple[float | None, int]:
     """The measured cost of a group of deaths, and how many members were unmeasured.
 
@@ -83,27 +72,34 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
     if not deaths:
         return []
 
-    unmeasured = [death for death in deaths if death.seconds_until_next_action is None]
+    total_cost, unmeasured_count = _measured_cost(deaths)
     evidence = [f"{len(deaths)} deaths across {len(run.pulls)} pulls"]
-    if unmeasured:
-        evidence.append(
-            f"{len(unmeasured)} death{'s' if len(unmeasured) > 1 else ''} not measured: "
-            "the player never acted again"
+    if unmeasured_count:
+        evidence.append(_unmeasured_evidence(unmeasured_count))
+
+    if total_cost is None:
+        title = f"{len(deaths)} death{'s' if len(deaths) > 1 else ''}, cost not measured"
+        detail = (
+            f"None of these {len(deaths)} deaths were followed by another action, so the "
+            "cost cannot be measured."
+        )
+    else:
+        title = (
+            f"{len(deaths)} death{'s' if len(deaths) > 1 else ''} cost "
+            f"{total_cost:.0f}s of play"
+        )
+        detail = (
+            "Measured from each death to that player's next cast, which is longer than "
+            "the timer penalty and is the time the group actually lost."
         )
 
     findings = [
         Finding(
             id="deaths.total",
-            title=(
-                f"{len(deaths)} death{'s' if len(deaths) > 1 else ''} cost "
-                f"{_cost(deaths):.0f}s of play"
-            ),
-            detail=(
-                "Measured from each death to that player's next cast, which is longer than "
-                "the timer penalty and is the time the group actually lost."
-            ),
+            title=title,
+            detail=detail,
             confidence=Confidence.MEASURED,
-            seconds_lost=_cost(deaths),
+            seconds_lost=total_cost,
             evidence=tuple(evidence),
         )
     ]
