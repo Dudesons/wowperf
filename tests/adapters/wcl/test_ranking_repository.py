@@ -1,0 +1,126 @@
+# ABOUTME: Behaviour tests for fetching leaderboards, against a mock transport and a real cache.
+# ABOUTME: Covers the level fallback, the bracket assertion, and that a page is fetched once.
+
+import json
+from pathlib import Path
+
+import httpx
+import pytest
+
+from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.errors import BracketMismatch
+from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
+
+TOKEN = {"access_token": "t", "expires_in": 86400}
+
+
+def speed_row(level: int, code: str = "aaa111") -> dict[str, object]:
+    return {
+        "duration": 1379452,
+        "report": {"code": code, "fightID": 28, "startTime": 1},
+        "deaths": 0,
+        "bracketData": level,
+        "affixes": [9, 10, 147],
+        "team": [{"class": "Warrior", "spec": "Protection"}],
+        "medal": "silver",
+        "score": 435.5,
+    }
+
+
+def parse_row(level: int) -> dict[str, object]:
+    return {
+        "name": "Críms",
+        "class": "Mage",
+        "spec": "Arcane",
+        "duration": 1399143,
+        "report": {"code": "bbb222", "fightID": 16, "startTime": 1},
+        "bracketData": level,
+        "affixes": [9, 10, 147],
+        "medal": "silver",
+        "score": 435.1,
+    }
+
+
+def repository(
+    tmp_path: Path, by_bracket: dict[int, list[dict[str, object]]], calls: list[int]
+) -> WclRankingRepository:
+    """A repository whose transport answers from `by_bracket` and records each bracket asked."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        bracket = body["variables"]["bracket"]
+        calls.append(bracket)
+        rows = by_bracket.get(bracket, [])
+        field = "characterRankings" if "className" in body["variables"] else "fightRankings"
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "worldData": {
+                        "encounter": {
+                            "id": 12825,
+                            "name": "Den of Nalorakk",
+                            field: {"page": 1, "hasMorePages": False, "rankings": rows},
+                        }
+                    }
+                }
+            },
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(handle), base_url="https://x")
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return WclRankingRepository(client, DiskCache(tmp_path))
+
+
+def test_the_fastest_runs_come_back_as_speed_rows(tmp_path: Path) -> None:
+    calls: list[int] = []
+    rows = repository(tmp_path, {15: [speed_row(16)]}, calls).fastest_runs(12825, 16)
+
+    assert calls == [15]
+    assert len(rows) == 1
+    assert rows[0].report_code == "aaa111"
+    assert rows[0].keystone_level == 16
+
+
+def test_an_empty_bracket_falls_back_one_level_down_then_up(tmp_path: Path) -> None:
+    calls: list[int] = []
+    rows = repository(tmp_path, {16: [speed_row(17)]}, calls).fastest_runs(12825, 16)
+
+    # 15 is +16, 14 is +15, 16 is +17: our level first, then one below, then one above.
+    assert calls == [15, 14, 16]
+    assert rows[0].keystone_level == 17
+
+
+def test_no_reference_at_any_accepted_level_returns_nothing(tmp_path: Path) -> None:
+    calls: list[int] = []
+    assert repository(tmp_path, {}, calls).fastest_runs(12825, 16) == ()
+    assert calls == [15, 14, 16]
+
+
+def test_a_bracket_that_lies_stops_the_run(tmp_path: Path) -> None:
+    with pytest.raises(BracketMismatch):
+        repository(tmp_path, {15: [speed_row(11)]}, []).fastest_runs(12825, 16)
+
+
+def test_top_parses_pass_the_class_and_spec_through(tmp_path: Path) -> None:
+    calls: list[int] = []
+    rows = repository(tmp_path, {15: [parse_row(16)]}, calls).top_parses(
+        12825, 16, "Mage", "Arcane"
+    )
+
+    assert calls == [15]
+    assert rows[0].character_name == "Críms"
+    assert rows[0].spec == "Arcane"
+
+
+def test_a_repeated_lookup_is_served_from_the_cache(tmp_path: Path) -> None:
+    calls: list[int] = []
+    subject = repository(tmp_path, {15: [speed_row(16)]}, calls)
+    subject.fastest_runs(12825, 16)
+    subject.fastest_runs(12825, 16)
+
+    assert calls == [15]

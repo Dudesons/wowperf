@@ -4,17 +4,8 @@
 from pathlib import Path
 from typing import Protocol
 
-from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.reference import ParseRow, SpeedRow
 from wowperf.domain.model import Run
-
-
-class RunRef(Frozen):
-    """Enough to fetch a run later, without holding the run itself."""
-
-    report_code: str
-    fight_id: int
-    keystone_level: int
-    duration_ms: int
 
 
 class RunRepository(Protocol):
@@ -22,9 +13,11 @@ class RunRepository(Protocol):
 
 
 class RankingRepository(Protocol):
-    def fastest_runs(
-        self, encounter_id: int, keystone_level: int, limit: int
-    ) -> list[RunRef]: ...
+    def fastest_runs(self, encounter_id: int, keystone_level: int) -> tuple[SpeedRow, ...]: ...
+
+    def top_parses(
+        self, encounter_id: int, keystone_level: int, class_name: str, spec: str
+    ) -> tuple[ParseRow, ...]: ...
 
 
 class ReportRenderer(Protocol):
