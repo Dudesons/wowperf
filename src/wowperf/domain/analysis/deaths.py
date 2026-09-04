@@ -1,7 +1,7 @@
 # ABOUTME: What deaths cost in seconds actually not played, and which ones caused others.
 # ABOUTME: The timer penalty understates a death; this measures the real thing instead.
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
@@ -146,14 +146,23 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
             )
             single_rank += 1
 
-    counts = Counter(death.player_name for death in deaths)
-    by_player: dict[str, list[Death]] = defaultdict(list)
+    # Two players can share a display name; group by actor id so their deaths are
+    # never mixed into one finding, and disambiguate the id with the actor id only
+    # when that happens, so the common case stays readable.
+    name_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        name_counts[player.name] += 1
+
+    by_actor: dict[int, list[Death]] = defaultdict(list)
     for death in deaths:
-        by_player[death.player_name].append(death)
-    for name, count in counts.items():
+        by_actor[death.actor_id].append(death)
+
+    for actor_id, theirs_list in by_actor.items():
+        theirs = tuple(theirs_list)
+        count = len(theirs)
         if count < 2:
             continue
-        theirs = tuple(by_player[name])
+        name = theirs[0].player_name
         seconds_lost, unmeasured_count = _measured_cost(theirs)
         detail = f"{count} of the run's {len(deaths)} deaths were {name}."
         player_evidence = tuple(
@@ -166,9 +175,14 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
             )
         elif unmeasured_count:
             player_evidence = player_evidence + (_unmeasured_evidence(unmeasured_count),)
+        finding_id = (
+            f"deaths.repeat.{name}"
+            if name_counts[name] == 1
+            else f"deaths.repeat.{name}.{actor_id}"
+        )
         findings.append(
             Finding(
-                id=f"deaths.repeat.{name}",
+                id=finding_id,
                 title=f"{name} died {count} times",
                 detail=detail,
                 confidence=Confidence.MEASURED,

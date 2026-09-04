@@ -125,6 +125,52 @@ def test_a_chain_of_wholly_unmeasured_deaths_reports_no_seconds_lost() -> None:
     assert "cannot be measured" in chain.detail
 
 
+def a_run_with_duplicate_names() -> Run:
+    """Two players sharing a display name, as cross-realm groups ordinarily produce."""
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=60_000,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+    )
+    return Run(
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
+        count_reached=744, count_required=729, npc_counts=(),
+        players=(
+            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+                   item_level=318),
+            Player(actor_id=12, name="Uglymage", class_name="Shaman", spec="Elemental",
+                   item_level=311),
+        ),
+        pulls=pulls,
+    )
+
+
+def test_repeat_dying_players_sharing_a_name_are_kept_separate() -> None:
+    findings = analyse_deaths(
+        a_run_with_duplicate_names(),
+        (
+            a_death("Uglymage", 11, 1_000, 10.0),
+            a_death("Uglymage", 12, 100_000, 5.0),
+            a_death("Uglymage", 11, 200_000, 8.0),
+            a_death("Uglymage", 12, 300_000, 3.0),
+        ),
+    )
+    repeats = [f for f in findings if f.id.startswith("deaths.repeat.")]
+    assert len(repeats) == 2
+
+    actor_11 = next(f for f in repeats if f.id == "deaths.repeat.Uglymage.11")
+    actor_12 = next(f for f in repeats if f.id == "deaths.repeat.Uglymage.12")
+    assert actor_11.id != actor_12.id
+
+    assert "2" in actor_11.detail
+    assert actor_11.seconds_lost == 18.0
+    assert all("100000ms" not in item and "300000ms" not in item for item in actor_11.evidence)
+
+    assert "2" in actor_12.detail
+    assert actor_12.seconds_lost == 8.0
+    assert all("1000ms" not in item and "200000ms" not in item for item in actor_12.evidence)
+
+
 def test_a_transitive_chain_groups_all_three_deaths() -> None:
     # A-B within CHAIN_WINDOW_MS, B-C within CHAIN_WINDOW_MS, A-C outside it: the
     # module groups each death against the last one already in its group, so all
