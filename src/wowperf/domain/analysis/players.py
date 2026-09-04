@@ -41,7 +41,10 @@ def summarise_players(
     deaths: tuple[Death, ...],
     interrupts: tuple[InterruptEvent, ...],
 ) -> tuple[PlayerSummary, ...]:
-    """One row per player, counting only what happened inside a pull."""
+    """One row per player: `casts_in_pulls` counts only casts inside a pull window;
+    `interrupt_counts` and `death_counts` count every interrupt and death in the
+    run, in or out of a pull, since a death outside a pull still killed the player.
+    """
     in_pull_seconds = sum(pull.duration_seconds for pull in run.pulls)
 
     cast_counts: dict[int, int] = defaultdict(int)
@@ -83,8 +86,13 @@ def summarise_players(
 
 def _damage_outliers(
     run: Run, damage_taken: tuple[DamageTakenEvent, ...]
-) -> list[tuple[str, str, int, float]]:
-    """(player name, ability name, amount, multiple of the median), worst first."""
+) -> list[tuple[int, str, str, int, float]]:
+    """(actor id, player name, ability name, amount, multiple of the median), worst first.
+
+    Keyed by actor id throughout, not display name, so two players sharing a
+    name are never conflated. The caller disambiguates the title with the
+    actor id only when a collision is possible, matching the other analysers.
+    """
     names = {player.actor_id: player.name for player in run.players}
     totals: dict[tuple[int, int], int] = defaultdict(int)
     ability_names: dict[int, str] = {}
@@ -102,20 +110,19 @@ def _damage_outliers(
         if len(took) < MIN_PLAYERS_FOR_MEDIAN:
             continue
         baseline = median(took)
-        if baseline <= 0:
-            continue
         for actor_id, amount in per_player.items():
             multiple = amount / baseline
             if multiple >= MEDIAN_MULTIPLE:
                 outliers.append(
                     (
+                        actor_id,
                         names.get(actor_id, f"Actor {actor_id}"),
                         ability_names[ability_id],
                         amount,
                         multiple,
                     )
                 )
-    return sorted(outliers, key=lambda row: -row[3])
+    return sorted(outliers, key=lambda row: -row[4])
 
 
 def analyse_players(
@@ -131,6 +138,7 @@ def analyse_players(
     name_counts: dict[str, int] = defaultdict(int)
     for player in run.players:
         name_counts[player.name] += 1
+    players_by_id = {player.actor_id: player for player in run.players}
 
     for summary in summarise_players(run, casts, deaths, interrupts):
         if summary.activity_percent >= LOW_ACTIVITY_PERCENT:
@@ -161,23 +169,33 @@ def analyse_players(
             )
         )
 
-    for rank, (name, ability, amount, multiple) in enumerate(
+    for rank, (actor_id, name, ability, amount, multiple) in enumerate(
         _damage_outliers(run, damage_taken)[:MAX_OUTLIERS_REPORTED]
     ):
+        # Two players can share a display name; disambiguate the title with the
+        # actor id only when that happens, so the common case stays readable.
+        display_name = name if name_counts[name] == 1 else f"{name} (actor {actor_id})"
+        taker = players_by_id.get(actor_id)
+        # Melee damage on a tank is the job, not a mistake; naming the class and
+        # spec here lets a reader discount an outlier like that on sight, without
+        # this analyser having to know which specs are tanks.
+        class_and_spec = f"{taker.class_name} {taker.spec}" if taker else "unknown class"
         findings.append(
             Finding(
                 id=f"players.damage.{rank}",
-                title=f"{name} took {multiple:.1f}x the group median from {ability}",
+                title=f"{display_name} took {multiple:.1f}x the group median from {ability}",
                 detail=(
-                    f"{amount} damage from {ability}. This states a difference, not a "
-                    "mistake: whether any single hit was avoidable is not something the "
-                    "log records."
+                    f"{amount} unmitigated damage from {ability}. This states a difference, "
+                    "not a mistake: whether any single hit was avoidable is not something "
+                    "the log records."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
                     f"{multiple:.1f}x the median",
                     "median is over the players who took at least one hit of this ability",
+                    "unmitigated: before absorbs and mitigation",
+                    class_and_spec,
                 ),
             )
         )
