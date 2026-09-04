@@ -44,32 +44,34 @@ def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Findin
             )
         )
 
-    forces_by_pull: dict[int, int] = defaultdict(int)
-    for death in enemy_deaths:
-        if death.pull_index is not None:
-            forces_by_pull[death.pull_index] += death.forces
+        # The per-pull ranking says where the overkill went, so it has nothing to
+        # explain unless trash.overage actually fired.
+        forces_by_pull: dict[int, int] = defaultdict(int)
+        for death in enemy_deaths:
+            if death.pull_index is not None:
+                forces_by_pull[death.pull_index] += death.forces
 
-    rates = [
-        (pull.index, forces_by_pull.get(pull.index, 0) / pull.duration_seconds)
-        for pull in run.trash_pulls
-        if pull.duration_seconds > 0
-    ]
-    for rank, (pull_index, rate) in enumerate(sorted(rates, key=lambda item: item[1])):
-        if rank >= MAX_PULLS_REPORTED:
-            break
-        pull = run.pulls[pull_index]
-        findings.append(
-            Finding(
-                id=f"trash.pull.{rank}",
-                title=f"Pull {pull_index} bought {rate:.1f} forces per second",
-                detail=(
-                    f"{forces_by_pull.get(pull_index, 0)} forces over "
-                    f"{pull.duration_seconds:.0f}s."
-                ),
-                confidence=Confidence.MEASURED,
-                seconds_lost=None,
-                evidence=(f"map position x={pull.x}, y={pull.y}",),
-                pull_index=pull_index,
+        rates = [
+            (pull.index, forces_by_pull.get(pull.index, 0) / pull.duration_seconds)
+            for pull in run.trash_pulls
+            if pull.duration_seconds > 0
+        ]
+        for rank, (pull_index, rate) in enumerate(sorted(rates, key=lambda item: item[1])):
+            if rank >= MAX_PULLS_REPORTED:
+                break
+            pull = run.pulls[pull_index]
+            findings.append(
+                Finding(
+                    id=f"trash.pull.{rank}",
+                    title=f"Pull {pull_index} bought {rate:.1f} forces per second",
+                    detail=(
+                        f"{forces_by_pull.get(pull_index, 0)} forces over "
+                        f"{pull.duration_seconds:.0f}s."
+                    ),
+                    confidence=Confidence.MEASURED,
+                    seconds_lost=None,
+                    evidence=(f"map position x={pull.x}, y={pull.y}",),
+                    pull_index=pull_index,
+                )
             )
-        )
     return findings
