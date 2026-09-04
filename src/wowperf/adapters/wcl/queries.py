@@ -55,3 +55,54 @@ query Fights($code: String!) {
   }
 }
 """
+
+DEATHS_QUERY = """
+query Deaths($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code) {
+      events(
+        dataType: Deaths
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+CASTS_QUERY = """
+query Casts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code) {
+      events(
+        dataType: Casts
+        hostilityType: Friendlies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+ABILITIES_QUERY = """
+query Abilities($code: String!) {
+  reportData {
+    report(code: $code) {
+      masterData(translate: true) {
+        abilities { gameID name }
+      }
+    }
+  }
+}
+"""

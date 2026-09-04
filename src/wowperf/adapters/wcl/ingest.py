@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 
@@ -105,3 +106,73 @@ def build_run(report: dict[str, Any], fight: dict[str, Any]) -> Run:
         players=_build_players(fight, actors),
         pulls=_build_pulls(fight),
     )
+
+
+def pull_index_at(run: Run, timestamp_ms: int) -> int | None:
+    """Which pull was underway at this moment, or None if the group was between pulls."""
+    for pull in run.pulls:
+        if pull.start_ms <= timestamp_ms <= pull.end_ms:
+            return pull.index
+    return None
+
+
+def _ability_name(ability_names: dict[int, str], ability_id: int) -> str:
+    return ability_names.get(ability_id, f"Unknown ability {ability_id}")
+
+
+def build_casts(
+    events: list[dict[str, Any]], run: Run, ability_names: dict[int, str]
+) -> tuple[CastEvent, ...]:
+    return tuple(
+        CastEvent(
+            actor_id=event["sourceID"],
+            ability_id=event["abilityGameID"],
+            ability_name=_ability_name(ability_names, event["abilityGameID"]),
+            timestamp_ms=event["timestamp"],
+            pull_index=pull_index_at(run, event["timestamp"]),
+        )
+        for event in events
+        if event.get("type") == "cast" and "sourceID" in event
+    )
+
+
+def build_deaths(
+    events: list[dict[str, Any]],
+    run: Run,
+    casts: tuple[CastEvent, ...],
+    ability_names: dict[int, str],
+) -> tuple[Death, ...]:
+    """Build deaths, measuring the real cost as time until the player acted again.
+
+    The timer penalty understates a death. The seconds a player spent unable to
+    contribute is observable, so we measure that instead of estimating a run-back.
+    """
+    names = {player.actor_id: player.name for player in run.players}
+    casts_by_actor: dict[int, list[int]] = {}
+    for cast in casts:
+        casts_by_actor.setdefault(cast.actor_id, []).append(cast.timestamp_ms)
+
+    deaths = []
+    for event in events:
+        if event.get("type") != "death":
+            continue
+
+        actor_id = event["targetID"]
+        timestamp = event["timestamp"]
+        later = [stamp for stamp in casts_by_actor.get(actor_id, []) if stamp > timestamp]
+        killing_blow = event.get("killingBlow") or {}
+
+        deaths.append(
+            Death(
+                player_name=names.get(actor_id, f"Actor {actor_id}"),
+                actor_id=actor_id,
+                timestamp_ms=timestamp,
+                killing_blow=_ability_name(
+                    ability_names, killing_blow.get("abilityGameID", 0)
+                ),
+                overkill=event.get("overkill") or 0,
+                pull_index=pull_index_at(run, timestamp),
+                seconds_until_next_action=(min(later) - timestamp) / 1000 if later else None,
+            )
+        )
+    return tuple(deaths)
