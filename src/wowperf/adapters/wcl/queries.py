@@ -14,7 +14,7 @@ query RateLimit {
 FIGHTS_QUERY = """
 query Fights($code: String!) {
   reportData {
-    report(code: $code) {
+    report(code: $code, allowUnlisted: true) {
       code
       title
       startTime
@@ -59,7 +59,7 @@ query Fights($code: String!) {
 DEATHS_QUERY = """
 query Deaths($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
   reportData {
-    report(code: $code) {
+    report(code: $code, allowUnlisted: true) {
       events(
         dataType: Deaths
         fightIDs: [$fightId]
@@ -78,7 +78,7 @@ query Deaths($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float
 CASTS_QUERY = """
 query Casts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
   reportData {
-    report(code: $code) {
+    report(code: $code, allowUnlisted: true) {
       events(
         dataType: Casts
         hostilityType: Friendlies
@@ -98,7 +98,7 @@ query Casts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!
 ABILITIES_QUERY = """
 query Abilities($code: String!) {
   reportData {
-    report(code: $code) {
+    report(code: $code, allowUnlisted: true) {
       masterData(translate: true) {
         abilities { gameID name }
       }
