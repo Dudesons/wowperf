@@ -9,6 +9,7 @@ from wowperf.domain.comparison.reference import (
     SpeedRow,
 )
 from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 
@@ -28,6 +29,15 @@ THEIRS = Player(
     item_level=330,
     talent_import_string="CoPAAAAA",
 )
+# The speed leaderboard's own roster: a different composition and a wide enough
+# item-level gap from OURS that declare_confounds has something to say about it.
+SPEED_TEAM_MEMBER = Player(
+    actor_id=44,
+    name="Fastclear",
+    class_name="Rogue",
+    spec="Outlaw",
+    item_level=333,
+)
 
 
 def a_pull(index: int, game_ids: tuple[int, ...], boss: bool = False) -> Pull:
@@ -45,7 +55,12 @@ def a_pull(index: int, game_ids: tuple[int, ...], boss: bool = False) -> Pull:
     )
 
 
-def a_loaded(players: tuple[Player, ...], pulls: tuple[Pull, ...], level: int = 16) -> LoadedRun:
+def a_loaded(
+    players: tuple[Player, ...],
+    pulls: tuple[Pull, ...],
+    level: int = 16,
+    casts: tuple[CastEvent, ...] = (),
+) -> LoadedRun:
     return LoadedRun(
         run=Run(
             report_code="abc123",
@@ -62,7 +77,8 @@ def a_loaded(players: tuple[Player, ...], pulls: tuple[Pull, ...], level: int = 
             players=players,
             pulls=pulls,
             owner_name="uglymage",
-        )
+        ),
+        casts=casts,
     )
 
 
@@ -80,7 +96,11 @@ def a_speed_reference(level: int = 16) -> SpeedReference:
             deaths=0,
             medal="silver",
         ),
-        loaded=a_loaded((OURS,), (a_pull(0, (1,)), a_pull(1, (9,), boss=True)), level=level),
+        loaded=a_loaded(
+            (SPEED_TEAM_MEMBER,),
+            (a_pull(0, (1,)), a_pull(1, (9,), boss=True)),
+            level=level,
+        ),
     )
 
 
@@ -95,7 +115,22 @@ def a_parse_reference() -> ParseReference:
             class_name="Mage",
             spec="Arcane",
         ),
-        loaded=a_loaded((THEIRS,), (a_pull(0, (9,), boss=True),)),
+        loaded=a_loaded(
+            (THEIRS,),
+            (a_pull(0, (9,), boss=True),),
+            casts=(
+                # Cast on a boss pull, by an ability id OURS never casts anywhere in
+                # our_run() — the set-difference branch of compare_spells needs no
+                # minimum count, unlike the rate-gap branch.
+                CastEvent(
+                    actor_id=THEIRS.actor_id,
+                    ability_id=190319,
+                    ability_name="Combustion",
+                    timestamp_ms=10_000,
+                    pull_index=0,
+                ),
+            ),
+        ),
     )
 
 
@@ -109,7 +144,14 @@ def test_every_comparison_contributes() -> None:
     findings = compare(our_run(), OURS, a_speed_reference(), a_parse_reference())
     prefixes = {".".join(finding.id.split(".")[:2]) for finding in findings}
 
-    assert {"compare.route", "compare.downtime", "compare.deaths", "compare.talents"} <= prefixes
+    assert {
+        "compare.route",
+        "compare.downtime",
+        "compare.deaths",
+        "compare.talents",
+        "compare.confound",
+        "compare.spells",
+    } <= prefixes
 
 
 def test_findings_come_back_ranked() -> None:
