@@ -51,17 +51,44 @@ def test_an_unknown_ability_id_falls_back_to_its_number() -> None:
 
 
 def test_a_death_records_its_killing_blow_and_pull() -> None:
+    # Real death events carry no killingBlow object: the killing ability lives in
+    # killingAbilityGameID, sitting alongside abilityGameID (always 0 on a death),
+    # sourceID (always -1), fight, killerID, killerInstance, targetID and timestamp.
     events: list[dict[str, Any]] = [
-        {"type": "death", "targetID": 11, "timestamp": 12000, "killingBlow": {"abilityGameID": 900},
-         "overkill": 4200}
+        {
+            "abilityGameID": 0,
+            "fight": 2,
+            "killerID": 999,
+            "killingAbilityGameID": 900,
+            "sourceID": -1,
+            "targetID": 11,
+            "timestamp": 12000,
+            "type": "death",
+        }
     ]
     death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
-    assert (death.player_name, death.killing_blow, death.overkill, death.pull_index) == (
+    assert (death.player_name, death.killing_blow, death.pull_index) == (
         "Frostie",
         "Void Bolt",
-        4200,
         1,
     )
+
+
+def test_a_death_with_no_killing_ability_falls_back_to_unknown() -> None:
+    events: list[dict[str, Any]] = [
+        {
+            "abilityGameID": 0,
+            "fight": 2,
+            "killerID": 999,
+            "killingAbilityGameID": 54321,
+            "sourceID": -1,
+            "targetID": 11,
+            "timestamp": 12000,
+            "type": "death",
+        }
+    ]
+    death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
+    assert death.killing_blow == "Unknown ability 54321"
 
 
 def test_the_cost_of_a_death_is_measured_to_the_players_next_cast() -> None:
@@ -74,8 +101,16 @@ def test_the_cost_of_a_death_is_measured_to_the_players_next_cast() -> None:
         ABILITY_NAMES,
     )
     events: list[dict[str, Any]] = [
-        {"type": "death", "targetID": 11, "timestamp": 12000, "killingBlow": {"abilityGameID": 900},
-         "overkill": 0}
+        {
+            "abilityGameID": 0,
+            "fight": 2,
+            "killerID": 999,
+            "killingAbilityGameID": 900,
+            "sourceID": -1,
+            "targetID": 11,
+            "timestamp": 12000,
+            "type": "death",
+        }
     ]
     death = build_deaths(events, a_run(), casts, ABILITY_NAMES)[0]
     assert death.seconds_until_next_action == 33.0
@@ -83,7 +118,15 @@ def test_the_cost_of_a_death_is_measured_to_the_players_next_cast() -> None:
 
 def test_a_death_with_no_later_cast_has_no_measured_cost() -> None:
     events: list[dict[str, Any]] = [
-        {"type": "death", "targetID": 11, "timestamp": 12000, "killingBlow": {"abilityGameID": 900},
-         "overkill": 0}
+        {
+            "abilityGameID": 0,
+            "fight": 2,
+            "killerID": 999,
+            "killingAbilityGameID": 900,
+            "sourceID": -1,
+            "targetID": 11,
+            "timestamp": 12000,
+            "type": "death",
+        }
     ]
     assert build_deaths(events, a_run(), (), ABILITY_NAMES)[0].seconds_until_next_action is None

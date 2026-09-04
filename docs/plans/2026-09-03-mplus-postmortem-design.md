@@ -257,8 +257,10 @@ Pydantic models, free of any Warcraft Logs vocabulary.
 - **`Pull`** — index, start, end, boss flag, enemy NPCs with counts, map position,
   enemy-forces contribution.
 - **`Player`** — name, class, specialization, item level, talent import string.
-- **`Death`** — player, timestamp, pull, killing blow ability, overkill, seconds until the
-  player's next action.
+- **`Death`** — player, timestamp, pull, killing blow ability, seconds until the player's
+  next action. No `overkill` field: a Warcraft Logs death event carries no such data
+  (confirmed 2026-09-04 against a real report — see §11), and computing it would need a
+  join against damage events. Deferred until a plan needs it enough to pay for that query.
 - **`CastEvent`** — actor, ability, timestamp, pull, success or interrupted.
 - **`Finding`** — the analysis output type: `id`, `severity`, `title`, `detail`,
   `seconds_lost`, `confidence`, `evidence[]`, `pull_ref`.
@@ -533,3 +535,10 @@ guild names are anonymized, and large event dumps are never committed.
   practical surface.
 - Measure the point cost of a full run analysis, and decide from the measurement whether §5.5
   ships enabled or behind `--deep`.
+- Confirmed on 2026-09-04 against a real death event (report `6Kx1P9GbNXrcLdHa`, fight 36): a
+  Warcraft Logs death event's complete key set is `abilityGameID` (always `0`), `fight`,
+  `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always `-1`), `targetID`,
+  `timestamp`, `type`. There is no `killingBlow` object and no `overkill` field — both were
+  invented in the original design and have been corrected (§4): the killing blow resolves
+  from `killingAbilityGameID`, and `overkill` is dropped from `Death` until a plan pays for
+  the damage-event join it would need.

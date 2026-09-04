@@ -10,7 +10,6 @@ def test_a_death_outside_any_pull_has_no_pull_index() -> None:
         actor_id=1,
         timestamp_ms=5000,
         killing_blow="Void Bolt",
-        overkill=120,
     )
     assert death.pull_index is None
     assert death.seconds_until_next_action is None

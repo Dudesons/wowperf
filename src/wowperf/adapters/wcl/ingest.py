@@ -180,7 +180,6 @@ def build_deaths(
         actor_id = event["targetID"]
         timestamp = event["timestamp"]
         later = [stamp for stamp in casts_by_actor.get(actor_id, []) if stamp > timestamp]
-        killing_blow = event.get("killingBlow") or {}
 
         deaths.append(
             Death(
@@ -188,9 +187,8 @@ def build_deaths(
                 actor_id=actor_id,
                 timestamp_ms=timestamp,
                 killing_blow=_ability_name(
-                    ability_names, killing_blow.get("abilityGameID", 0)
+                    ability_names, event.get("killingAbilityGameID", 0)
                 ),
-                overkill=event.get("overkill") or 0,
                 pull_index=pull_index_at(run, timestamp),
                 seconds_until_next_action=(min(later) - timestamp) / 1000 if later else None,
             )

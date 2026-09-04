@@ -9,7 +9,6 @@ class Death(Frozen):
     actor_id: int
     timestamp_ms: int
     killing_blow: str
-    overkill: int
     pull_index: int | None = None
     seconds_until_next_action: float | None = None
 
