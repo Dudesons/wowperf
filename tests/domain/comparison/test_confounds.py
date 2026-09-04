@@ -89,6 +89,15 @@ def test_a_material_item_level_gap_is_declared() -> None:
     assert "Catalyst" in banner.detail or "secondary" in banner.detail.lower()
 
 
+def test_an_item_level_gap_at_the_exact_threshold_is_declared() -> None:
+    """Pins the boundary as inclusive: flipping `>=` to `>` must fail this test."""
+    at_threshold = tuple(p.model_copy(update={"item_level": 318 + ITEM_LEVEL_GAP}) for p in ROSTER)
+
+    findings = declare_confounds(a_loaded(ROSTER), a_loaded(at_threshold), SAME_LEVEL)
+
+    assert "compare.confound.item_level" in ids(findings)
+
+
 def test_a_small_item_level_gap_is_not_worth_a_banner() -> None:
     close = tuple(p.model_copy(update={"item_level": 318 + ITEM_LEVEL_GAP - 1}) for p in ROSTER)
 

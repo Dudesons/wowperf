@@ -29,19 +29,25 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
         Finding(
             id="compare.route.summary",
             title=(
-                f"We pulled {len(ours.pulls)} packs, the reference pulled {len(theirs.pulls)}"
+                f"We pulled {len(ours.pulls)} "
+                f"pack{'s' if len(ours.pulls) != 1 else ''}, "
+                f"the reference pulled {len(theirs.pulls)}"
             ),
             detail=(
-                f"{len(alignment.matched)} packs matched on composition. Packs are matched by "
+                f"{len(alignment.matched)} "
+                f"pack{'s' if len(alignment.matched) != 1 else ''} matched on composition. "
+                "Packs are matched by "
                 "which enemies they contain, not by when either group fought them, so this "
                 "comparison holds across a keystone-level difference."
             ),
             confidence=Confidence.MEASURED,
             seconds_lost=None,
             evidence=(
-                f"{len(alignment.matched)} packs in common",
+                f"{len(alignment.matched)} pack{'s' if len(alignment.matched) != 1 else ''} "
+                "in common",
                 f"{len(alignment.only_ours)} only ours",
                 f"{len(alignment.only_theirs)} only theirs",
+                f"{len(alignment.out_of_order)} reordered",
             ),
         )
     ]
@@ -71,7 +77,7 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
                 evidence=(
                     pull.name,
                     f"{forces} enemy forces",
-                    f"{len(pull.enemies)} enemies",
+                    f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
                     f"map position x={pull.x}, y={pull.y}",
                 ),
                 pull_index=pull.index,
@@ -100,8 +106,7 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
                 seconds_lost=None,
                 evidence=(
                     pull.name,
-                    f"{len(pull.enemies)} enemies",
-                    f"their pull lasted {pull.duration_seconds:.0f}s",
+                    f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
                 ),
             )
         )
@@ -111,7 +116,10 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
         findings.append(
             Finding(
                 id="compare.route.order",
-                title=f"{len(drifted)} packs were taken in a different order",
+                title=(
+                    f"{len(drifted)} pack{'s' if len(drifted) != 1 else ''} "
+                    f"{'was' if len(drifted) == 1 else 'were'} taken in a different order"
+                ),
                 detail=(
                     "The same packs appear on both routes but in a different sequence. That is "
                     "usually a different path through the dungeon rather than a mistake, and it "

@@ -235,11 +235,44 @@ def _parse_row(bracket_data: int) -> dict[str, Any]:
     }
 
 
+def _broken_speed_row(code: str, fight_id: int) -> dict[str, Any]:
+    """A speed-leaderboard row pointing at a report code the Fights handler does
+    not recognise, so `WclRunRepository.load` raises `IngestError` for it."""
+    return {
+        "duration": 999999,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "deaths": 0,
+        "bracketData": 16,
+        "affixes": [9, 10, 147],
+        "team": [{"class": "Warrior", "spec": "Protection"}],
+        "medal": "silver",
+        "score": 100.0,
+    }
+
+
+def _broken_parse_row(code: str, fight_id: int) -> dict[str, Any]:
+    """A parse-leaderboard row pointing at a report code the Fights handler does
+    not recognise, so `WclRunRepository.load` raises `IngestError` for it."""
+    return {
+        "name": "Nobody",
+        "class": "Mage",
+        "spec": "Arcane",
+        "duration": 999999,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "bracketData": 16,
+        "affixes": [9, 10, 147],
+        "medal": "silver",
+        "score": 100.0,
+    }
+
+
 def build_analyze_transport(
     player_name: str = "Uglymage",
     *,
     bracket_data: int = 16,
     rankings: list[dict[str, Any]] | None = None,
+    speed_rows: list[dict[str, Any]] | None = None,
+    parse_rows: list[dict[str, Any]] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -255,7 +288,12 @@ def build_analyze_transport(
     answers with no rows at all (an unavailable comparison, at every bracket the
     repository falls back through). `bracket_data` is the `bracketData` the rows
     claim, so a value other than the run's own keystone level exercises the
-    bracket assertion.
+    bracket assertion. `speed_rows`/`parse_rows` override `rankings` for one
+    leaderboard only — a caller wanting the two leaderboards to answer
+    differently (e.g. a broken row ahead of a working one) passes those instead.
+    A Fights query for a report code this transport does not recognise answers
+    "report not found", so a reference row can point at a code that will fail
+    to load without any extra wiring.
     """
     fights_by_code = {
         code: _fights_payload_for(code, fight_id, player_name)
@@ -275,8 +313,10 @@ def build_analyze_transport(
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
     }
-    speed_rows = [_speed_row(bracket_data)] if rankings is None else rankings
-    parse_rows = [_parse_row(bracket_data)] if rankings is None else rankings
+    if speed_rows is None:
+        speed_rows = [_speed_row(bracket_data)] if rankings is None else rankings
+    if parse_rows is None:
+        parse_rows = [_parse_row(bracket_data)] if rankings is None else rankings
 
     def rankings_response(field: str, rows: list[dict[str, Any]]) -> httpx.Response:
         return httpx.Response(
@@ -302,7 +342,8 @@ def build_analyze_transport(
         name = query.split("query ")[1].split("(")[0].strip()
         if name == "Fights":
             code = body["variables"]["code"]
-            return httpx.Response(200, json={"data": fights_by_code[code]})
+            payload = fights_by_code.get(code, {"reportData": {"report": None}})
+            return httpx.Response(200, json={"data": payload})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities_payload})
         if name == "Actors":
@@ -407,9 +448,15 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
         "findings_are_ranked_not_additive": payload["findings_are_ranked_not_additive"],
         "findings": payload["findings"],
     }
-    assert "not additive" in payload["findings_are_ranked_not_additive"]
-    assert "time.gap" in payload["findings_are_ranked_not_additive"]
-    assert "deaths.total" in payload["findings_are_ranked_not_additive"]
+    sentence = payload["findings_are_ranked_not_additive"]
+    assert "not additive" in sentence
+    assert "compare.duration" in sentence
+    assert "time.gap" in sentence
+    assert "compare.downtime" in sentence
+    assert "time.residual" in sentence
+    assert "deaths.total" in sentence
+    assert "compare.route.skipped" in sentence
+    assert "trash.overage" in sentence
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
@@ -546,6 +593,46 @@ def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "bracket" in result.output.lower()
+
+
+def test_a_reference_that_fails_to_load_falls_through_to_the_next_row(tmp_path: Path) -> None:
+    """Reproduces a reference fight whose report cannot be loaded (deleted, private,
+    an unfinished fight, or a roster gap): the first leaderboard row is unusable, so
+    `analyze` must fall through to the next row rather than aborting the command."""
+    transport = build_analyze_transport(
+        speed_rows=[_broken_speed_row("brokenspeed1", 901), _speed_row(16)],
+        parse_rows=[_broken_parse_row("brokenparse1", 902), _parse_row(16)],
+    )
+    result = _invoke(tmp_path, ["--player", "Uglymage"], transport)
+
+    assert result.exit_code == 0, result.output
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is True
+    assert payload["comparison"]["speed_reference"]["report_code"] == SPEED_REFERENCE_CODE
+    assert payload["comparison"]["parse_reference"]["report_code"] == PARSE_REFERENCE_CODE
+
+
+def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -> None:
+    """Every row on both leaderboards fails to load: the command must still write
+    the findings already computed for the run under analysis, with no reference."""
+    transport = build_analyze_transport(
+        speed_rows=[
+            _broken_speed_row("brokenspeed1", 901),
+            _broken_speed_row("brokenspeed2", 902),
+        ],
+        parse_rows=[
+            _broken_parse_row("brokenparse1", 903),
+            _broken_parse_row("brokenparse2", 904),
+        ],
+    )
+    result = _invoke(tmp_path, [], transport)
+
+    assert result.exit_code == 0, result.output
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is False
+    assert payload["comparison"]["speed_reference"] is None
+    assert payload["comparison"]["parse_reference"] is None
+    assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
 
 
 def test_an_empty_leaderboard_degrades_to_no_comparison(tmp_path: Path) -> None:

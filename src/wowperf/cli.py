@@ -14,6 +14,7 @@ from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
+from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.service import analyse
@@ -117,14 +118,28 @@ def _references(
     run: Run,
     subject: Player,
 ) -> tuple[SpeedReference | None, ParseReference | None]:
-    """The two reference runs, or None where the leaderboard had nothing to offer."""
+    """The two reference runs, or None where the leaderboard had nothing to offer.
+
+    A candidate row whose report fails to load — deleted, private, an
+    unfinished fight, or a roster gap in its master data — is skipped rather
+    than fatal: falling through to the next row (and to None once the
+    leaderboard is exhausted) keeps a broken reference from discarding the
+    findings already computed for the run under analysis. The leaderboard
+    query itself is not guarded here: a `BracketMismatch` there means the
+    bracket convention this tool relies on has changed, and that must still
+    stop the command.
+    """
     speed = None
     for row in rankings.fastest_runs(run.encounter_id, run.keystone_level):
         # Comparing a run against itself would report a perfect route and teach
         # the reader nothing.
         if row.report_code == run.report_code and row.fight_id == run.fight_id:
             continue
-        speed = SpeedReference(row=row, loaded=runs.load(row.report_code, row.fight_id))
+        try:
+            loaded = runs.load(row.report_code, row.fight_id)
+        except (IngestError, WclError):
+            continue
+        speed = SpeedReference(row=row, loaded=loaded)
         break
 
     parse = None
@@ -133,9 +148,11 @@ def _references(
     ):
         if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
             continue
-        parse = ParseReference(
-            row=parse_row, loaded=runs.load(parse_row.report_code, parse_row.fight_id)
-        )
+        try:
+            loaded = runs.load(parse_row.report_code, parse_row.fight_id)
+        except (IngestError, WclError):
+            continue
+        parse = ParseReference(row=parse_row, loaded=loaded)
         break
 
     return speed, parse
@@ -215,8 +232,11 @@ def analyze(
             ),
         },
         "findings_are_ranked_not_additive": (
-            "findings are ranked by seconds_lost, not additive: time.gap.* nest inside "
-            "time.residual and deaths.single/chain/repeat.* nest inside deaths.total"
+            "findings are ranked by seconds_lost, not additive: compare.duration is the "
+            "total gap against the reference and already contains every other seconds_lost "
+            "figure in this report; time.gap.* and compare.downtime both nest inside "
+            "time.residual; deaths.single/chain/repeat.* nest inside deaths.total; and "
+            "compare.route.skipped.* overlaps the waste trash.overage already reports"
         ),
         "findings": [finding.model_dump(mode="json") for finding in findings],
     }
