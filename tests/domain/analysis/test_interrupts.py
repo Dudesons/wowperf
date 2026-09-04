@@ -159,6 +159,10 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.confidence is Confidence.DERIVED
     assert summary.seconds_lost is None
+    # The title must never claim a landed cast was interruptible: the log carries
+    # no such flag, so all the analyser knows is that the cast completed unkicked.
+    assert summary.title == "2 casts landed, 1 were kicked"
+    assert "interruptible" not in summary.title
     joined = " ".join(summary.evidence)
     assert "2 landed" in joined
     assert "1 kicked" in joined

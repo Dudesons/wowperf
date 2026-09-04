@@ -26,9 +26,11 @@ def a_run() -> Run:
     )
 
 
-def a_death(name: str, actor_id: int, at: int, cost: float | None) -> Death:
+def a_death(
+    name: str, actor_id: int, at: int, cost: float | None, pull_index: int | None = 0
+) -> Death:
     return Death(player_name=name, actor_id=actor_id, timestamp_ms=at,
-                 killing_blow="Molten Scar", pull_index=0,
+                 killing_blow="Molten Scar", pull_index=pull_index,
                  seconds_until_next_action=cost)
 
 
@@ -67,6 +69,11 @@ def test_deaths_close_together_are_reported_as_one_chain() -> None:
     assert chain.seconds_lost == 18.0
     assert "Uglymage" in chain.detail
     assert chain.confidence is Confidence.MEASURED
+    # Pull 0 starts at 0ms: 30_000ms and 33_000ms are 30s and 33s into it.
+    assert chain.evidence == (
+        "Uglymage at pull 0, 30s in to Molten Scar",
+        "Sublime at pull 0, 33s in to Molten Scar",
+    )
 
 
 def test_deaths_far_apart_are_reported_separately() -> None:
@@ -100,6 +107,9 @@ def test_a_single_death_is_reported_alone_with_correct_grammar() -> None:
     assert [f.id for f in findings if f.id.startswith("deaths.repeat.")] == []
     singles = [f for f in findings if f.id.startswith("deaths.single.")]
     assert [f.id for f in singles] == ["deaths.single.0"]
+    # Pull 0 starts at 0ms, so a death at 1_000ms is 1s into it: the evidence
+    # must read as time within the pull, never as a raw report-wide offset.
+    assert singles[0].evidence == ("pull 0, 1s in",)
 
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.title.startswith("1 death cost"), total.title
@@ -164,11 +174,15 @@ def test_repeat_dying_players_sharing_a_name_are_kept_separate() -> None:
 
     assert "2" in actor_11.detail
     assert actor_11.seconds_lost == 18.0
-    assert all("100000ms" not in item and "300000ms" not in item for item in actor_11.evidence)
+    # Pull 0 starts at 0ms: the pull-relative offsets below are unambiguous, and
+    # the other actor's deaths (at 100_000ms and 300_000ms) must not leak in.
+    assert actor_11.evidence == ("Molten Scar at pull 0, 1s in", "Molten Scar at pull 0, 200s in")
 
     assert "2" in actor_12.detail
     assert actor_12.seconds_lost == 8.0
-    assert all("1000ms" not in item and "200000ms" not in item for item in actor_12.evidence)
+    assert actor_12.evidence == (
+        "Molten Scar at pull 0, 100s in", "Molten Scar at pull 0, 300s in"
+    )
 
 
 def test_a_transitive_chain_groups_all_three_deaths() -> None:
@@ -187,3 +201,16 @@ def test_a_transitive_chain_groups_all_three_deaths() -> None:
     assert len(chains) == 1
     assert chains[0].title == "3 deaths within 10s"
     assert chains[0].seconds_lost == 23.0
+
+
+def test_a_death_outside_every_pull_is_reported_without_inventing_one() -> None:
+    """A death whose `pull_index` is None fell outside every pull window.
+
+    The evidence must say so rather than reporting a raw report-wide millisecond
+    offset (meaningless across an evening-long log) or attributing the death to
+    a pull it did not happen in.
+    """
+    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 10.0, pull_index=None),))
+    single = next(f for f in findings if f.id == "deaths.single.0")
+    assert single.evidence == ("outside any pull",)
+    assert single.pull_index is None

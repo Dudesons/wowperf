@@ -49,6 +49,23 @@ def _unmeasured_evidence(unmeasured_count: int) -> str:
     )
 
 
+def _pull_offset(run: Run, death: Death) -> str:
+    """Where a death happened, in terms a reader can act on.
+
+    A raw report-wide millisecond offset is useless: it is milliseconds since
+    the report started, and a logging session can run all evening. Time since
+    the death's own pull started is meaningful instead. `pull_index` is None
+    when a death falls outside every pull window; report that rather than
+    inventing a pull for it.
+    """
+    if death.pull_index is not None:
+        pull = next((p for p in run.pulls if p.index == death.pull_index), None)
+        if pull is not None:
+            seconds_in = (death.timestamp_ms - pull.start_ms) / 1000
+            return f"pull {death.pull_index}, {seconds_in:.0f}s in"
+    return "outside any pull"
+
+
 def _chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
     """Group deaths into runs of deaths separated by less than the chain window."""
     ordered = sorted(deaths, key=lambda death: death.timestamp_ms)
@@ -102,7 +119,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                 f"{names}. In a chain the first death usually causes the rest."
             )
             group_evidence = tuple(
-                f"{death.player_name} at {death.timestamp_ms}ms to "
+                f"{death.player_name} at {_pull_offset(run, death)} to "
                 f"{death.killing_blow}"
                 for death in group
             )
@@ -140,7 +157,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                     detail=detail,
                     confidence=Confidence.MEASURED,
                     seconds_lost=seconds_lost,
-                    evidence=(f"pull {first.pull_index}, at {first.timestamp_ms}ms",),
+                    evidence=(_pull_offset(run, first),),
                     pull_index=first.pull_index,
                 )
             )
@@ -166,7 +183,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
         seconds_lost, unmeasured_count = _measured_cost(theirs)
         detail = f"{count} of the run's {len(deaths)} deaths were {name}."
         player_evidence = tuple(
-            f"{death.killing_blow} at {death.timestamp_ms}ms" for death in theirs
+            f"{death.killing_blow} at {_pull_offset(run, death)}" for death in theirs
         )
         if seconds_lost is None:
             detail += (

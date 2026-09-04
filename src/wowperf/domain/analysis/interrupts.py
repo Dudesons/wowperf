@@ -138,7 +138,7 @@ def analyse_interrupts(
     findings = [
         Finding(
             id="interrupts.summary",
-            title=f"{len(landed)} interruptible casts landed, {len(kicked)} were kicked",
+            title=f"{len(landed)} casts landed, {len(kicked)} were kicked",
             detail=(
                 "Outcomes are reconstructed: the log records no interruptible flag. Casts "
                 "whose outcome the log does not resolve are excluded rather than counted "
