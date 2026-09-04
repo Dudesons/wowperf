@@ -39,6 +39,7 @@ class TokenProvider:
         response.raise_for_status()
         payload = response.json()
 
-        self._token = str(payload["access_token"])
-        self._expires_at = self._now() + float(payload["expires_in"])
+        access_token = str(payload["access_token"])
+        expires_at = self._now() + float(payload["expires_in"])
+        self._token, self._expires_at = access_token, expires_at
         return self._token

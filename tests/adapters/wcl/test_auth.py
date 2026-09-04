@@ -4,6 +4,7 @@
 import base64
 
 import httpx
+import pytest
 
 from wowperf.adapters.wcl.auth import TokenProvider
 
@@ -45,3 +46,51 @@ def test_a_valid_token_is_reused_and_refetched_only_near_expiry() -> None:
     clock["now"] = 3550.0  # inside the 60-second refresh margin
     assert provider.token() == "t2"
     assert len(issued) == 2
+
+
+def test_a_non_200_token_response_leaves_a_valid_cached_token_intact() -> None:
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(200, json={"access_token": "old-token", "expires_in": 3600})
+        return httpx.Response(500, json={"error": "server_error"})
+
+    clock = {"now": 0.0}
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = TokenProvider("id", "secret", http, now=lambda: clock["now"])
+
+    assert provider.token() == "old-token"
+
+    clock["now"] = 3550.0  # inside the refresh margin, forces a refetch attempt
+    with pytest.raises(httpx.HTTPStatusError):
+        provider.token()
+
+    clock["now"] = 100.0  # back inside the original token's valid window
+    assert provider.token() == "old-token"
+    assert calls["count"] == 2  # the third call was served from cache, not the network
+
+
+def test_a_200_response_missing_expires_in_does_not_corrupt_a_valid_cached_token() -> None:
+    calls = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return httpx.Response(200, json={"access_token": "old-token", "expires_in": 3600})
+        return httpx.Response(200, json={"access_token": "new-token"})
+
+    clock = {"now": 0.0}
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    provider = TokenProvider("id", "secret", http, now=lambda: clock["now"])
+
+    assert provider.token() == "old-token"
+
+    clock["now"] = 3550.0  # inside the refresh margin, forces a refetch attempt
+    with pytest.raises(KeyError):
+        provider.token()
+
+    clock["now"] = 100.0  # back inside the original token's valid window
+    assert provider.token() == "old-token"
+    assert calls["count"] == 2  # the third call was served from cache, not the network
