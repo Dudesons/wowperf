@@ -8,12 +8,16 @@ from wowperf.domain.model import EnemyNpc, Pull, Run
 
 
 def a_pull(
-    index: int, game_ids: tuple[int, ...], seconds: float = 60.0, boss: bool = False
+    index: int,
+    game_ids: tuple[int, ...],
+    seconds: float = 60.0,
+    boss: bool = False,
+    name: str | None = None,
 ) -> Pull:
     return Pull(
         index=index,
         pull_id=index + 1,
-        name="Boss" if boss else "Pack",
+        name=name if name is not None else ("Boss" if boss else "Pack"),
         encounter_id=2607 if boss else 0,
         start_ms=index * 200_000,
         end_ms=index * 200_000 + int(seconds * 1000),
@@ -90,6 +94,32 @@ def test_a_pack_only_they_killed_carries_no_seconds() -> None:
 
     assert len(extra) == 1
     assert extra[0].seconds_lost is None
+
+
+def test_the_extra_pack_detail_makes_no_claim_about_keystone_levels() -> None:
+    ours = a_run((a_pull(0, (1,)),))
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    extra = findings_by_prefix(findings, "compare.route.extra.")[0]
+
+    assert "keystone" not in extra.detail.lower()
+    assert "level" not in extra.detail.lower()
+
+
+def test_the_evidence_names_the_pack_for_both_skipped_and_extra_findings() -> None:
+    ours = a_run(
+        (a_pull(0, (1,)), a_pull(1, (2,), name="Thornclaw Gatherer")),
+        counts=((2, 12),),
+    )
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,), name="Spirit of Hunger")))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    skipped = findings_by_prefix(findings, "compare.route.skipped.")
+    extra = findings_by_prefix(findings, "compare.route.extra.")
+
+    assert skipped[0].evidence[0] == "Thornclaw Gatherer"
+    assert extra[0].evidence[0] == "Spirit of Hunger"
 
 
 def test_the_summary_counts_both_routes() -> None:

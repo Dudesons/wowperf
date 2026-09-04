@@ -69,6 +69,7 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
                 confidence=Confidence.MEASURED,
                 seconds_lost=pull.duration_seconds,
                 evidence=(
+                    pull.name,
                     f"{forces} enemy forces",
                     f"{len(pull.enemies)} enemies",
                     f"map position x={pull.x}, y={pull.y}",
@@ -93,12 +94,12 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
                 title=f"The reference pulled a pack we did not, at their pull {pull.index}",
                 detail=(
                     "They killed a pack that is not on our route. No seconds are attached: we "
-                    "have no clock for a pull we never did, and theirs was run at a different "
-                    "keystone level."
+                    "have no clock for a pull we never did."
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
                 evidence=(
+                    pull.name,
                     f"{len(pull.enemies)} enemies",
                     f"their pull lasted {pull.duration_seconds:.0f}s",
                 ),
