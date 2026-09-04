@@ -3,7 +3,6 @@
 
 import json
 import tempfile
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +15,6 @@ from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.queries import FIGHTS_QUERY
 from wowperf.adapters.wcl.repository import WclRunRepository
-from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.ports import RunRepository
 
 # The same "Den of Nalorakk" run test_ingest_streams.py builds by hand, so the
@@ -82,32 +80,19 @@ FIGHTS_PAYLOAD: dict[str, Any] = {
 }
 
 
-class _RecordingRepository:
-    """Rebuilds a fresh `WclRunRepository` for every call.
+def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
+    """Build one repository whose mock transport records every GraphQL operation name.
 
-    Rebuilding does not lose real caching: `DiskCache` persists to files on
-    disk, so a repeated query against the same directory is still served
-    from disk rather than the network. It only matters when the caller has
-    not pinned a directory with `tmp_path` — then every call gets its own
-    throwaway directory, so `load` and `get` in the same test never share a
-    cache by accident.
-    """
+    The repository is backed by one cache directory that persists for its whole
+    lifetime, as a real caller's would — so a `get` issued after a `load` on the
+    same repository sees whatever `load` already cached, rather than starting cold.
+    `tmp_path` is optional: the whole-load tests do not need a fresh directory
+    injected by pytest, so one is created on demand.
 
-    def __init__(self, build: Callable[[], WclRunRepository]) -> None:
-        self._build = build
-
-    def get(self, report_code: str, fight_id: int | None) -> Run:
-        return self._build().get(report_code, fight_id)
-
-    def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
-        return self._build().load(report_code, fight_id)
-
-
-def recording_repository(calls: list[str], tmp_path: Path | None = None) -> _RecordingRepository:
-    """Build a repository whose mock transport records every GraphQL operation name.
-
-    `tmp_path` is optional: the two new whole-load tests do not need a fresh
-    directory per test case injected by pytest, so one is created on demand.
+    Each of the six event streams gets its own small, distinguishable payload —
+    a real field swap in `repository.py` (e.g. assigning `interrupts` the
+    `enemy_cast_rows` builder's result, or `damage_taken` the `deaths` builder's)
+    must make a test built on this fixture fail.
     """
     abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
     npc_actors: dict[str, Any] = {
@@ -122,8 +107,35 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> _Rec
             }
         }
     }
-    empty_events: dict[str, Any] = {
-        "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+
+    def events_payload(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"reportData": {"report": {"events": {"data": rows, "nextPageTimestamp": None}}}}
+
+    event_payloads: dict[str, dict[str, Any]] = {
+        "Casts": events_payload(
+            [{"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000}]
+        ),
+        "Deaths": events_payload(
+            [{"type": "death", "sourceID": -1, "targetID": 693, "timestamp": 5000}]
+        ),
+        "EnemyCasts": events_payload(
+            [{"type": "cast", "sourceID": 699, "abilityGameID": 200, "timestamp": 3000}]
+        ),
+        "Interrupts": events_payload(
+            [
+                {
+                    "type": "interrupt", "abilityGameID": 300, "extraAbilityGameID": 400,
+                    "sourceID": 693, "targetID": 702, "targetInstance": 1, "timestamp": 6000,
+                }
+            ]
+        ),
+        "EnemyDeaths": events_payload(
+            [{"type": "death", "targetID": 702, "timestamp": 15000}]
+        ),
+        "DamageTaken": events_payload(
+            [{"type": "damage", "abilityGameID": 500, "targetID": 693, "amount": 1000,
+              "timestamp": 4000}]
+        ),
     }
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -138,15 +150,12 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> _Rec
             return httpx.Response(200, json={"data": abilities})
         if name == "NpcActors":
             return httpx.Response(200, json={"data": npc_actors})
-        return httpx.Response(200, json={"data": empty_events})
+        return httpx.Response(200, json={"data": event_payloads[name]})
 
-    def build() -> WclRunRepository:
-        http = httpx.Client(transport=httpx.MockTransport(handler))
-        client = WclClient(TokenProvider("id", "secret", http), http)
-        cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
-        return WclRunRepository(client, DiskCache(cache_dir))
-
-    return _RecordingRepository(build)
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
+    return WclRunRepository(client, DiskCache(cache_dir))
 
 
 def test_the_repository_builds_a_run_from_the_api(tmp_path: Path) -> None:
@@ -179,7 +188,8 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     }
 
 
-def test_load_fetches_every_stream_and_get_still_fetches_one() -> None:
+def test_a_get_after_a_load_costs_nothing() -> None:
+    """FIGHTS_QUERY is keyed on the report code alone, so a get sees load's cache entry."""
     calls: list[str] = []
     repository = recording_repository(calls)
 
@@ -191,17 +201,18 @@ def test_load_fetches_every_stream_and_get_still_fetches_one() -> None:
 
     calls.clear()
     repository.get("abc123", 36)
-    assert calls == ["Fights"]
+    assert calls == []
 
 
 def test_a_loaded_run_carries_every_stream() -> None:
     loaded = recording_repository([]).load("abc123", 36)
     assert loaded.run.keystone_level == 16
-    for stream in (
-        loaded.casts, loaded.deaths, loaded.enemy_cast_rows,
-        loaded.interrupts, loaded.enemy_deaths, loaded.damage_taken,
-    ):
-        assert isinstance(stream, tuple)
+    assert [cast.ability_id for cast in loaded.casts] == [100]
+    assert [death.actor_id for death in loaded.deaths] == [693]
+    assert [row.ability_id for row in loaded.enemy_cast_rows] == [200]
+    assert [interrupt.interrupted_ability_id for interrupt in loaded.interrupts] == [400]
+    assert [death.actor_id for death in loaded.enemy_deaths] == [702]
+    assert [taken.amount for taken in loaded.damage_taken] == [1000]
 
 
 def build_null_report_repository(tmp_path: Path, calls: list[str]) -> WclRunRepository:

@@ -129,7 +129,7 @@ class WclRunRepository:
         interrupts = build_interrupts(interrupt_events, run, player_names)
         npc_game_ids = self._npc_game_ids(report_code)
         enemy_deaths = build_enemy_deaths(
-            enemy_death_events, run, npc_game_ids, dict(run.npc_counts)
+            enemy_death_events, run, npc_game_ids, dict(run.npc_count_map)
         )
         damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
 
