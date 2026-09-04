@@ -238,6 +238,26 @@ query CharacterRankings(
 """
 
 
+# Two aliased selections of `table`, so one cached query covers both halves of
+# "on self and on target". `Buffs` with targetID is what the player carried;
+# `Debuffs` with sourceID and Enemies is what they kept up on the enemy.
+AURA_TABLE_QUERY = """
+query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
+  reportData {
+    report(code: $code) {
+      onSelf: table(fightIDs: [$fightId], dataType: Buffs, targetID: $actorId)
+      onTargets: table(
+        fightIDs: [$fightId]
+        dataType: Debuffs
+        sourceID: $actorId
+        hostilityType: Enemies
+      )
+    }
+  }
+}
+"""
+
+
 def talents_query(actor_ids: Sequence[int]) -> str:
     """One aliased `talentImportCode` per player.
 
