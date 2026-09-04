@@ -6,14 +6,11 @@ from typing import Any, cast
 import httpx
 
 from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.queries import RATE_LIMIT_QUERY
 from wowperf.domain.base import Frozen
 
 CLIENT_ENDPOINT = "https://www.warcraftlogs.com/api/v2/client"
-
-
-class WclError(RuntimeError):
-    """The API answered, but not with data we can use."""
 
 
 class RateLimitExceeded(WclError):
@@ -55,6 +52,10 @@ class WclClient:
                 str(error.get("message", "unknown error")) for error in payload["errors"]
             )
             raise WclError(messages)
+        if "data" not in payload:
+            raise WclError(
+                "Warcraft Logs returned a 200 response carrying neither 'data' nor 'errors'"
+            )
         return cast(dict[str, Any], payload["data"])
 
     def rate_limit(self) -> RateLimit:

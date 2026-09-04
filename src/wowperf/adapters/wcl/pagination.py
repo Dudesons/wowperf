@@ -4,6 +4,8 @@
 from collections.abc import Callable
 from typing import Any
 
+from wowperf.adapters.wcl.errors import WclError
+
 Execute = Callable[[str, dict[str, Any]], dict[str, Any]]
 
 
@@ -15,8 +17,13 @@ def fetch_all_events(
 
     while True:
         payload = execute(query, page_variables)
-        page = payload["reportData"]["report"]["events"]
-        events.extend(page["data"])
+        try:
+            page = payload["reportData"]["report"]["events"]
+            events.extend(page["data"])
+        except (KeyError, TypeError) as error:
+            raise WclError(
+                "An events page did not carry reportData.report.events.data as expected"
+            ) from error
 
         cursor = page.get("nextPageTimestamp")
         if cursor is None:

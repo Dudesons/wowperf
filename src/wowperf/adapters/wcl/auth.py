@@ -6,6 +6,8 @@ from collections.abc import Callable
 
 import httpx
 
+from wowperf.adapters.wcl.errors import WclError
+
 TOKEN_URI = "https://www.warcraftlogs.com/oauth/token"
 REFRESH_MARGIN_SECONDS = 60
 
@@ -38,6 +40,14 @@ class TokenProvider:
         )
         response.raise_for_status()
         payload = response.json()
+
+        missing = [field for field in ("access_token", "expires_in") if field not in payload]
+        if missing:
+            # Assigned only once both fields are in hand, so a malformed response
+            # leaves any still-valid cached token and its expiry untouched.
+            raise WclError(
+                f"The Warcraft Logs token response is missing {', '.join(missing)}"
+            )
 
         access_token = str(payload["access_token"])
         expires_at = self._now() + float(payload["expires_in"])

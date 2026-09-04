@@ -5,7 +5,8 @@ import httpx
 import pytest
 
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import RateLimitExceeded, WclClient, WclError
+from wowperf.adapters.wcl.client import RateLimitExceeded, WclClient
+from wowperf.adapters.wcl.errors import WclError
 
 
 def build_client(graphql: httpx.Response) -> WclClient:
@@ -42,6 +43,12 @@ def test_graphql_errors_are_raised_with_their_messages() -> None:
     )
     with pytest.raises(WclError, match="Cannot query field dungeonPulls"):
         client.execute("query { bad }")
+
+
+def test_a_200_response_with_neither_data_nor_errors_raises_a_wcl_error() -> None:
+    client = build_client(httpx.Response(200, json={"extensions": {}}))
+    with pytest.raises(WclError, match="neither 'data' nor 'errors'"):
+        client.execute("query { hello }")
 
 
 def test_an_exhausted_point_budget_raises_a_named_error() -> None:

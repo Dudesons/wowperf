@@ -7,6 +7,7 @@ import httpx
 import pytest
 
 from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.errors import WclError
 
 
 def test_the_token_request_uses_basic_auth_and_the_client_credentials_grant() -> None:
@@ -72,6 +73,15 @@ def test_a_non_200_token_response_leaves_a_valid_cached_token_intact() -> None:
     assert calls["count"] == 2  # the third call was served from cache, not the network
 
 
+def test_a_token_response_missing_the_access_token_names_the_missing_field() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"expires_in": 3600})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    with pytest.raises(WclError, match="access_token"):
+        TokenProvider("id", "secret", http).token()
+
+
 def test_a_200_response_missing_expires_in_does_not_corrupt_a_valid_cached_token() -> None:
     calls = {"count": 0}
 
@@ -88,7 +98,7 @@ def test_a_200_response_missing_expires_in_does_not_corrupt_a_valid_cached_token
     assert provider.token() == "old-token"
 
     clock["now"] = 3550.0  # inside the refresh margin, forces a refetch attempt
-    with pytest.raises(KeyError):
+    with pytest.raises(WclError, match="expires_in"):
         provider.token()
 
     clock["now"] = 100.0  # back inside the original token's valid window
