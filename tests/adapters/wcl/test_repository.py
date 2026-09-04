@@ -150,6 +150,15 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
             return httpx.Response(200, json={"data": abilities})
         if name == "Actors":
             return httpx.Response(200, json={"data": all_actors})
+        if name == "Talents":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {"report": {"fights": [{"id": 36, "a693": "C4DAAAAA"}]}}
+                    }
+                },
+            )
         return httpx.Response(200, json={"data": event_payloads[name]})
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
@@ -184,7 +193,7 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert load_calls[0] == "Fights"
     assert set(load_calls) == {
         "Fights", "Abilities", "Casts", "Deaths",
-        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors",
+        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors", "Talents",
     }
 
 
@@ -196,7 +205,7 @@ def test_a_get_after_a_load_costs_nothing() -> None:
     repository.load("abc123", 36)
     assert sorted(set(calls)) == [
         "Abilities", "Actors", "Casts", "DamageTaken", "Deaths",
-        "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts",
+        "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts", "Talents",
     ]
 
     calls.clear()
@@ -265,6 +274,18 @@ def test_a_null_report_cached_by_an_older_build_reports_the_problem(tmp_path: Pa
     repository = build_null_report_repository(cache_dir, [])
     with pytest.raises(IngestError, match="Report abc123 was not found"):
         repository.get("abc123", None)
+
+
+def test_load_fetches_talents_and_get_does_not() -> None:
+    calls: list[str] = []
+    subject = recording_repository(calls)
+
+    subject.load("abc123", 36)
+    assert "Talents" in calls
+
+    calls.clear()
+    subject.get("abc123", 36)
+    assert "Talents" not in calls
 
 
 def test_actors_query_carries_no_type_filter() -> None:

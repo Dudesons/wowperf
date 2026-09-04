@@ -23,7 +23,7 @@ def a_loaded_run() -> LoadedRun:
              enemies=(EnemyNpc(actor_id=2, game_id=200),)),
     )
     run = Run(
-        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=120, count_required=100, npc_counts=((100, 60),),
         players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",

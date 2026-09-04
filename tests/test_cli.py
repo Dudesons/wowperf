@@ -3,7 +3,7 @@
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -181,7 +181,99 @@ ANALYZE_FIGHTS_PAYLOAD: dict[str, Any] = {
 }
 
 
-def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTransport:
+SPEED_REFERENCE_CODE = "71cv4MRdNCp8ZFjG"
+SPEED_REFERENCE_FIGHT = 28
+PARSE_REFERENCE_CODE = "37FzMg9pVPH6fnJT"
+PARSE_REFERENCE_FIGHT = 16
+
+
+def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str, Any]:
+    """A copy of the shared fixture, addressed at one report code and fight id.
+
+    The rankings tests need `WclRunRepository.load` to succeed for the two
+    reference report codes as well as the main one, and the Fights query only
+    carries `code` — `select_keystone_fight` picks the fight id afterwards, in
+    Python — so the fixture returned for a code must already carry the fight id
+    that code's caller is going to ask for.
+    """
+    payload: dict[str, Any] = json.loads(json.dumps(ANALYZE_FIGHTS_PAYLOAD))
+    report = payload["reportData"]["report"]
+    report["code"] = code
+    # The API lowercases the report owner's name; the roster keeps the
+    # character's own capitalisation, which is what the default-player test
+    # relies on `find_player`'s case-folding to bridge.
+    report["owner"] = {"name": player_name.lower()}
+    report["fights"][0]["id"] = fight_id
+    report["masterData"]["actors"][0]["name"] = player_name
+    return payload
+
+
+def _speed_row(bracket_data: int) -> dict[str, Any]:
+    return {
+        "duration": 1379452,
+        "report": {"code": SPEED_REFERENCE_CODE, "fightID": SPEED_REFERENCE_FIGHT, "startTime": 1},
+        "deaths": 0,
+        "bracketData": bracket_data,
+        "affixes": [9, 10, 147],
+        "team": [{"class": "Warrior", "spec": "Protection"}],
+        "medal": "silver",
+        "score": 435.5,
+    }
+
+
+def _parse_row(bracket_data: int) -> dict[str, Any]:
+    return {
+        "name": "Críms",
+        "class": "Mage",
+        "spec": "Arcane",
+        "duration": 1399143,
+        "report": {"code": PARSE_REFERENCE_CODE, "fightID": PARSE_REFERENCE_FIGHT, "startTime": 1},
+        "bracketData": bracket_data,
+        "affixes": [9, 10, 147],
+        "medal": "silver",
+        "score": 435.1,
+    }
+
+
+def _broken_speed_row(code: str, fight_id: int) -> dict[str, Any]:
+    """A speed-leaderboard row pointing at a report code the Fights handler does
+    not recognise, so `WclRunRepository.load` raises `IngestError` for it."""
+    return {
+        "duration": 999999,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "deaths": 0,
+        "bracketData": 16,
+        "affixes": [9, 10, 147],
+        "team": [{"class": "Warrior", "spec": "Protection"}],
+        "medal": "silver",
+        "score": 100.0,
+    }
+
+
+def _broken_parse_row(code: str, fight_id: int) -> dict[str, Any]:
+    """A parse-leaderboard row pointing at a report code the Fights handler does
+    not recognise, so `WclRunRepository.load` raises `IngestError` for it."""
+    return {
+        "name": "Nobody",
+        "class": "Mage",
+        "spec": "Arcane",
+        "duration": 999999,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "bracketData": 16,
+        "affixes": [9, 10, 147],
+        "medal": "silver",
+        "score": 100.0,
+    }
+
+
+def build_analyze_transport(
+    player_name: str = "Uglymage",
+    *,
+    bracket_data: int = 16,
+    rankings: list[dict[str, Any]] | None = None,
+    speed_rows: list[dict[str, Any]] | None = None,
+    parse_rows: list[dict[str, Any]] | None = None,
+) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
     Extends the `fetch` tests' single-fixture transport with the operation names
@@ -189,9 +281,28 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
     event streams. Every stream answers with no rows, which is enough for
     `analyse` to run without raising (see `test_an_empty_run_analyses_without_raising`
     in `tests/domain/analysis/test_service.py`) while still exercising a real run.
+
+    Also answers `FightRankings` and `CharacterRankings`, so `analyze` can run its
+    comparison unless `--no-compare` is passed. `rankings=None` answers with one
+    row on each leaderboard (a working comparison by default); `rankings=[]`
+    answers with no rows at all (an unavailable comparison, at every bracket the
+    repository falls back through). `bracket_data` is the `bracketData` the rows
+    claim, so a value other than the run's own keystone level exercises the
+    bracket assertion. `speed_rows`/`parse_rows` override `rankings` for one
+    leaderboard only — a caller wanting the two leaderboards to answer
+    differently (e.g. a broken row ahead of a working one) passes those instead.
+    A Fights query for a report code this transport does not recognise answers
+    "report not found", so a reference row can point at a code that will fail
+    to load without any extra wiring.
     """
-    fights_payload = json.loads(json.dumps(ANALYZE_FIGHTS_PAYLOAD))
-    fights_payload["reportData"]["report"]["masterData"]["actors"][0]["name"] = player_name
+    fights_by_code = {
+        code: _fights_payload_for(code, fight_id, player_name)
+        for code, fight_id in (
+            ("abc123", 36),
+            (SPEED_REFERENCE_CODE, SPEED_REFERENCE_FIGHT),
+            (PARSE_REFERENCE_CODE, PARSE_REFERENCE_FIGHT),
+        )
+    }
 
     abilities_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"abilities": []}}}
@@ -202,26 +313,60 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
     }
+    if speed_rows is None:
+        speed_rows = [_speed_row(bracket_data)] if rankings is None else rankings
+    if parse_rows is None:
+        parse_rows = [_parse_row(bracket_data)] if rankings is None else rankings
+
+    def rankings_response(field: str, rows: list[dict[str, Any]]) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "worldData": {
+                        "encounter": {
+                            "id": 12660,
+                            "name": "Den of Nalorakk",
+                            field: {"page": 1, "hasMorePages": False, "rankings": rows},
+                        }
+                    }
+                }
+            },
+        )
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        query = json.loads(request.content)["query"]
+        body = json.loads(request.content)
+        query = body["query"]
         name = query.split("query ")[1].split("(")[0].strip()
         if name == "Fights":
-            return httpx.Response(200, json={"data": fights_payload})
+            code = body["variables"]["code"]
+            payload = fights_by_code.get(code, {"reportData": {"report": None}})
+            return httpx.Response(200, json={"data": payload})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities_payload})
         if name == "Actors":
             return httpx.Response(200, json={"data": actors_payload})
+        if name == "Talents":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {"report": {"fights": [{"id": 36, "a693": "C4DAAAAA"}]}}
+                    }
+                },
+            )
+        if name == "FightRankings":
+            return rankings_response("fightRankings", speed_rows)
+        if name == "CharacterRankings":
+            return rankings_response("characterRankings", parse_rows)
         return httpx.Response(200, json={"data": empty_events})
 
     return httpx.MockTransport(handler)
 
 
-def invoke_analyze(tmp_path: Path, player_name: str = "Uglymage", *extra_args: str) -> Any:
-    """Invoke `analyze abc123` against the mock transport, writing into tmp_path/out."""
-    transport = build_analyze_transport(player_name)
+def _invoke(tmp_path: Path, extra_args: list[str], transport: httpx.MockTransport) -> Any:
     real_client = httpx.Client
 
     def fake_client(*args: Any, **kwargs: Any) -> httpx.Client:
@@ -240,6 +385,29 @@ def invoke_analyze(tmp_path: Path, player_name: str = "Uglymage", *extra_args: s
                 *extra_args,
             ],
         )
+
+
+def invoke_analyze(tmp_path: Path, player_name: str = "Uglymage", *extra_args: str) -> Any:
+    """Invoke `analyze abc123` against the mock transport, writing into tmp_path/out."""
+    return _invoke(tmp_path, list(extra_args), build_analyze_transport(player_name))
+
+
+def run_analyze(
+    tmp_path: Path,
+    extra_args: list[str],
+    *,
+    bracket_data: int = 16,
+    rankings: list[dict[str, Any]] | None = None,
+) -> Any:
+    """Invoke `analyze abc123`, mocking the report queries and both leaderboards."""
+    transport = build_analyze_transport(bracket_data=bracket_data, rankings=rankings)
+    return _invoke(tmp_path, extra_args, transport)
+
+
+def written_payload(tmp_path: Path) -> dict[str, Any]:
+    """Read back the single findings file `analyze` wrote under `tmp_path/out`."""
+    [written] = (tmp_path / "out").glob("*.findings.json")
+    return cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
 
 
 def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
@@ -275,12 +443,20 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
         "keystone_level": 16,
         "keystone_time_seconds": 1909.0,
         "in_time": True,
+        "player": "Uglymage",
+        "comparison": payload["comparison"],
         "findings_are_ranked_not_additive": payload["findings_are_ranked_not_additive"],
         "findings": payload["findings"],
     }
-    assert "not additive" in payload["findings_are_ranked_not_additive"]
-    assert "time.gap" in payload["findings_are_ranked_not_additive"]
-    assert "deaths.total" in payload["findings_are_ranked_not_additive"]
+    sentence = payload["findings_are_ranked_not_additive"]
+    assert "not additive" in sentence
+    assert "compare.duration" in sentence
+    assert "time.gap" in sentence
+    assert "compare.downtime" in sentence
+    assert "time.residual" in sentence
+    assert "deaths.total" in sentence
+    assert "compare.route.skipped" in sentence
+    assert "trash.overage" in sentence
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
@@ -374,3 +550,124 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     payload = json.loads(result.stdout_bytes.decode("utf-8"))
     assert payload["dungeon_name"] == "Подземелье"
     assert payload["players"][0]["name"] == "Бубатурбина"
+
+
+def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+
+    assert result.exit_code == 0
+    payload = written_payload(tmp_path)
+    assert payload["player"] == "Uglymage"
+    assert payload["comparison"]["compared"] is True
+    assert payload["comparison"]["speed_reference"]["report_code"]
+    assert any(f["id"].startswith("compare.") for f in payload["findings"])
+
+
+def test_no_compare_skips_both_references(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, ["--no-compare"])
+
+    assert result.exit_code == 0
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is False
+    assert payload["comparison"]["speed_reference"] is None
+    assert not any(f["id"].startswith("compare.") for f in payload["findings"])
+
+
+def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, ["--player", "Nobody"])
+
+    assert result.exit_code == 1
+    assert "Uglymage" in result.output
+
+
+def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
+    # The API lowercases the owner's name; the roster does not.
+    result = run_analyze(tmp_path, [])
+
+    assert result.exit_code == 0
+    assert written_payload(tmp_path)["player"] == "Uglymage"
+
+
+def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, [], bracket_data=11)
+
+    assert result.exit_code == 1
+    assert "bracket" in result.output.lower()
+
+
+def test_a_reference_that_fails_to_load_falls_through_to_the_next_row(tmp_path: Path) -> None:
+    """Reproduces a reference fight whose report cannot be loaded (deleted, private,
+    an unfinished fight, or a roster gap): the first leaderboard row is unusable, so
+    `analyze` must fall through to the next row rather than aborting the command."""
+    transport = build_analyze_transport(
+        speed_rows=[_broken_speed_row("brokenspeed1", 901), _speed_row(16)],
+        parse_rows=[_broken_parse_row("brokenparse1", 902), _parse_row(16)],
+    )
+    result = _invoke(tmp_path, ["--player", "Uglymage"], transport)
+
+    assert result.exit_code == 0, result.output
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is True
+    assert payload["comparison"]["speed_reference"]["report_code"] == SPEED_REFERENCE_CODE
+    assert payload["comparison"]["parse_reference"]["report_code"] == PARSE_REFERENCE_CODE
+
+
+def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -> None:
+    """Every row on both leaderboards fails to load: the command must still write
+    the findings already computed for the run under analysis, with no reference."""
+    transport = build_analyze_transport(
+        speed_rows=[
+            _broken_speed_row("brokenspeed1", 901),
+            _broken_speed_row("brokenspeed2", 902),
+        ],
+        parse_rows=[
+            _broken_parse_row("brokenparse1", 903),
+            _broken_parse_row("brokenparse2", 904),
+        ],
+    )
+    result = _invoke(tmp_path, [], transport)
+
+    assert result.exit_code == 0, result.output
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is False
+    assert payload["comparison"]["speed_reference"] is None
+    assert payload["comparison"]["parse_reference"] is None
+    assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
+
+
+def test_an_empty_leaderboard_degrades_to_no_comparison(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, [], rankings=[])
+
+    assert result.exit_code == 0
+    payload = written_payload(tmp_path)
+    assert payload["comparison"]["compared"] is False
+    assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
+
+
+def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
+    """Asserts the values in speed_reference and parse_reference, not just their keys.
+
+    The fixture's mock data is chosen to match the task brief's specimen values.
+    This test pins the contract to fixed literals so a future swap (e.g. class_name
+    and spec) would fail, not silently produce wrong output on screen.
+    """
+    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+
+    assert result.exit_code == 0
+    payload = written_payload(tmp_path)
+
+    # speed_reference fields
+    assert payload["comparison"]["speed_reference"]["report_code"] == "71cv4MRdNCp8ZFjG"
+    assert payload["comparison"]["speed_reference"]["fight_id"] == 28
+    assert payload["comparison"]["speed_reference"]["keystone_level"] == 16
+    assert payload["comparison"]["speed_reference"]["duration_seconds"] == 1379.452
+    assert payload["comparison"]["speed_reference"]["medal"] == "silver"
+
+    # parse_reference fields
+    assert payload["comparison"]["parse_reference"]["report_code"] == "37FzMg9pVPH6fnJT"
+    assert payload["comparison"]["parse_reference"]["fight_id"] == 16
+    assert payload["comparison"]["parse_reference"]["keystone_level"] == 16
+    assert payload["comparison"]["parse_reference"]["character_name"] == "Críms"
+    assert payload["comparison"]["parse_reference"]["class_name"] == "Mage"
+    assert payload["comparison"]["parse_reference"]["spec"] == "Arcane"
+    assert payload["comparison"]["parse_reference"]["medal"] == "silver"

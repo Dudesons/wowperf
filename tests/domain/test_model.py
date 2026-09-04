@@ -25,6 +25,7 @@ def a_run(pulls: tuple[Pull, ...]) -> Run:
         report_code="abc123",
         fight_id=1,
         dungeon_name="Murder Row",
+        encounter_id=12825,
         keystone_level=12,
         affix_ids=(9, 10),
         keystone_time_ms=1_800_000,
@@ -92,3 +93,11 @@ def test_a_run_is_hashable_so_later_plans_can_put_it_in_a_set() -> None:
     run = a_run((a_pull(0, 0, 1000),))
     assert hash(run) == hash(a_run((a_pull(0, 0, 1000),)))
     assert len({run, a_run((a_pull(0, 0, 1000),))}) == 1
+
+
+def test_a_run_carries_the_encounter_it_can_be_compared_against() -> None:
+    assert a_run(pulls=()).encounter_id == 12825
+
+
+def test_a_run_without_an_owner_says_so_rather_than_guessing() -> None:
+    assert a_run(pulls=()).owner_name is None

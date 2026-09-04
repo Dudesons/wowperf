@@ -14,8 +14,14 @@ from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
+from wowperf.adapters.wcl.ingest import IngestError
+from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.service import analyse
+from wowperf.domain.comparison.reference import ParseReference, SpeedReference
+from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.findings import rank_findings
+from wowperf.domain.model import Player, Run
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -88,10 +94,80 @@ def fetch(
     typer.echo(run.model_dump_json(indent=2))
 
 
+def _resolve_player(run: Run, requested: str | None) -> Player:
+    """Whose run this is, for the individual comparison.
+
+    The report owner is the default because it is the only name the log itself
+    volunteers. Warcraft Logs lowercases it, so the match folds case.
+    """
+    name = requested or run.owner_name
+    if name is not None:
+        found = find_player(run, name)
+        if found is not None:
+            return found
+
+    roster = ", ".join(sorted(player.name for player in run.players)) or "nobody"
+    raise ValueError(
+        f"{name!r} is not in this run's roster. Pass --player with one of: {roster}"
+    )
+
+
+def _references(
+    rankings: WclRankingRepository,
+    runs: WclRunRepository,
+    run: Run,
+    subject: Player,
+) -> tuple[SpeedReference | None, ParseReference | None]:
+    """The two reference runs, or None where the leaderboard had nothing to offer.
+
+    A candidate row whose report fails to load — deleted, private, an
+    unfinished fight, or a roster gap in its master data — is skipped rather
+    than fatal: falling through to the next row (and to None once the
+    leaderboard is exhausted) keeps a broken reference from discarding the
+    findings already computed for the run under analysis. The leaderboard
+    query itself is not guarded here: a `BracketMismatch` there means the
+    bracket convention this tool relies on has changed, and that must still
+    stop the command.
+    """
+    speed = None
+    for row in rankings.fastest_runs(run.encounter_id, run.keystone_level):
+        # Comparing a run against itself would report a perfect route and teach
+        # the reader nothing.
+        if row.report_code == run.report_code and row.fight_id == run.fight_id:
+            continue
+        try:
+            loaded = runs.load(row.report_code, row.fight_id)
+        except (IngestError, WclError):
+            continue
+        speed = SpeedReference(row=row, loaded=loaded)
+        break
+
+    parse = None
+    for parse_row in rankings.top_parses(
+        run.encounter_id, run.keystone_level, subject.class_name, subject.spec
+    ):
+        if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+            continue
+        try:
+            loaded = runs.load(parse_row.report_code, parse_row.fight_id)
+        except (IngestError, WclError):
+            continue
+        parse = ParseReference(row=parse_row, loaded=loaded)
+        break
+
+    return speed, parse
+
+
 @app.command()
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
     fight: int | None = typer.Option(None, help="Fight ID; defaults to the only keystone run"),
+    player: str | None = typer.Option(
+        None, help="Subject of the individual comparison; defaults to the report owner"
+    ),
+    no_compare: bool = typer.Option(
+        False, "--no-compare", help="Skip both reference runs and analyse in isolation"
+    ),
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
     out: Path = typer.Option(Path("out"), help="Where to write the findings file"),
 ) -> None:
@@ -106,6 +182,15 @@ def analyze(
         repository = build_repository(cache_dir)
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
         findings = analyse(loaded, load_season_data(), load_defensives())
+
+        subject = _resolve_player(loaded.run, player)
+        speed: SpeedReference | None = None
+        parse: ParseReference | None = None
+        if not no_compare:
+            rankings = WclRankingRepository(repository.client, repository.cache)
+            speed, parse = _references(rankings, repository, loaded.run, subject)
+            findings += compare(loaded, subject, speed, parse)
+            findings = rank_findings(findings)
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
@@ -118,9 +203,40 @@ def analyze(
         "keystone_level": run.keystone_level,
         "keystone_time_seconds": run.keystone_time_seconds,
         "in_time": run.keystone_bonus >= 1,
+        "player": subject.name,
+        "comparison": {
+            "compared": speed is not None or parse is not None,
+            "speed_reference": (
+                {
+                    "report_code": speed.row.report_code,
+                    "fight_id": speed.row.fight_id,
+                    "keystone_level": speed.row.keystone_level,
+                    "duration_seconds": speed.row.duration_seconds,
+                    "medal": speed.row.medal,
+                }
+                if speed
+                else None
+            ),
+            "parse_reference": (
+                {
+                    "report_code": parse.row.report_code,
+                    "fight_id": parse.row.fight_id,
+                    "keystone_level": parse.row.keystone_level,
+                    "character_name": parse.row.character_name,
+                    "class_name": parse.row.class_name,
+                    "spec": parse.row.spec,
+                    "medal": parse.row.medal,
+                }
+                if parse
+                else None
+            ),
+        },
         "findings_are_ranked_not_additive": (
-            "findings are ranked by seconds_lost, not additive: time.gap.* nest inside "
-            "time.residual and deaths.single/chain/repeat.* nest inside deaths.total"
+            "findings are ranked by seconds_lost, not additive: compare.duration is the "
+            "total gap against the reference and already contains every other seconds_lost "
+            "figure in this report; time.gap.* and compare.downtime both nest inside "
+            "time.residual; deaths.single/chain/repeat.* nest inside deaths.total; and "
+            "compare.route.skipped.* overlaps the waste trash.overage already reports"
         ),
         "findings": [finding.model_dump(mode="json") for finding in findings],
     }

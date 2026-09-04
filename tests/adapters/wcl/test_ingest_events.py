@@ -17,7 +17,8 @@ def a_run() -> Run:
              killed=True, x=0, y=0, enemies=(EnemyNpc(actor_id=2, game_id=6001),)),
     )
     return Run(
-        report_code="abc123", fight_id=2, dungeon_name="Murder Row", keystone_level=12,
+        report_code="abc123", fight_id=2, dungeon_name="Murder Row", encounter_id=12825,
+        keystone_level=12,
         affix_ids=(), keystone_time_ms=1_800_000, keystone_bonus=1,
         count_reached=800, count_required=800, npc_counts=(),
         players=(Player(actor_id=11, name="Frostie", class_name="Mage", spec="Frost",

@@ -15,7 +15,7 @@ def a_run() -> Run:
              killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
     )
     return Run(
-        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=tuple(
@@ -117,7 +117,7 @@ def a_run_with_duplicate_names() -> Run:
              killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
     )
     return Run(
-        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=(

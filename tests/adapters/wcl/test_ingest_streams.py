@@ -27,7 +27,7 @@ def a_run() -> Run:
              enemies=(EnemyNpc(actor_id=702, game_id=244889),)),
     )
     return Run(
-        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(9, 10, 147), keystone_time_ms=1_909_000,
         keystone_bonus=1, count_reached=744, count_required=729,
         npc_counts=((241874, 5), (244889, 35)),

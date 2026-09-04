@@ -8,6 +8,7 @@ from typing import Any, cast
 import pytest
 
 from wowperf.adapters.wcl.ingest import IngestError, build_run, select_keystone_fight
+from wowperf.adapters.wcl.queries import talents_query
 
 FIXTURE = Path(__file__).parent / "fixtures" / "report_fights.json"
 
@@ -121,3 +122,104 @@ def test_a_roster_member_with_no_matching_actor_is_rejected_not_dropped() -> Non
     assert str(exc_info.value) == (
         "Fight 2 lists player actor 99, which is absent from the report's master data"
     )
+
+
+def a_minimal_fight() -> dict[str, object]:
+    return {
+        "id": 36,
+        "name": "Den of Nalorakk",
+        "encounterID": 12825,
+        "keystoneLevel": 16,
+        "keystoneAffixes": [9, 10, 147],
+        "keystoneTime": 1_909_000,
+        "keystoneBonus": 1,
+        "countReached": 744,
+        "countRequired": 729,
+        "npcCountMap": {},
+        "friendlyPlayers": [],
+        "friendlySpecs": [],
+        "friendlyItemLevels": [],
+        "dungeonPulls": [],
+    }
+
+
+def test_build_run_reads_the_encounter_and_the_owner_off_the_report() -> None:
+    report = {
+        "code": "abc123",
+        "owner": {"name": "dudesons"},
+        "masterData": {"actors": []},
+    }
+
+    run = build_run(report, a_minimal_fight())
+
+    assert run.encounter_id == 12825
+    assert run.owner_name == "dudesons"
+
+
+def test_build_run_survives_a_report_with_no_owner() -> None:
+    report = {"code": "abc123", "masterData": {"actors": []}}
+
+    assert build_run(report, a_minimal_fight()).owner_name is None
+
+
+def test_a_fight_with_no_encounter_id_fails_loudly() -> None:
+    fight = a_minimal_fight()
+    del fight["encounterID"]
+
+    with pytest.raises(IngestError, match="encounterID"):
+        build_run({"code": "abc123", "masterData": {"actors": []}}, fight)
+
+
+def test_a_player_has_no_talent_string_until_one_is_fetched() -> None:
+    report = {
+        "code": "abc123",
+        "masterData": {"actors": [{"id": 693, "name": "Uglymage", "subType": "Mage"}]},
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693]
+    fight["friendlySpecs"] = ["Arcane"]
+    fight["friendlyItemLevels"] = [318]
+
+    assert build_run(report, fight).players[0].talent_import_string is None
+
+
+def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
+    report = {
+        "code": "abc123",
+        "masterData": {
+            "actors": [
+                {"id": 693, "name": "Uglymage", "subType": "Mage"},
+                {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
+            ]
+        },
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693, 7]
+    fight["friendlySpecs"] = ["Arcane", "Blood"]
+    fight["friendlyItemLevels"] = [318, 320]
+
+    run = build_run(report, fight, talents={693: "C4DAAAAA", 7: "CoPAAAAA"})
+
+    by_name = {player.name: player for player in run.players}
+    assert by_name["Uglymage"].talent_import_string == "C4DAAAAA"
+    assert by_name["Dudesons"].talent_import_string == "CoPAAAAA"
+
+
+def test_the_talents_query_asks_for_one_alias_per_actor() -> None:
+    query = talents_query([693, 7])
+
+    assert "a693: talentImportCode(actorID: 693)" in query
+    assert "a7: talentImportCode(actorID: 7)" in query
+    assert "allowUnlisted: true" in query
+
+
+def test_the_talents_query_coerces_its_actor_ids() -> None:
+    # The ids come from the API as integers; coercing makes that explicit rather
+    # than interpolating whatever a caller happened to hold.
+    assert "a693: talentImportCode(actorID: 693)" in talents_query(["693"])  # type: ignore[list-item]
+
+
+def test_the_talents_query_is_deterministic_regardless_of_input_order() -> None:
+    # The cache key is derived from the query text, so a document whose field
+    # order tracked the caller's order would miss the cache on every run.
+    assert talents_query([693, 7, 42]) == talents_query([42, 693, 7]) == talents_query([7, 42, 693])

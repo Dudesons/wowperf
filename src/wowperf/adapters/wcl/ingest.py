@@ -48,7 +48,9 @@ def select_keystone_fight(fights: list[dict[str, Any]], fight_id: int | None) ->
     return completed_fights[0]
 
 
-def _build_players(fight: dict[str, Any], actors: list[dict[str, Any]]) -> tuple[Player, ...]:
+def _build_players(
+    fight: dict[str, Any], actors: list[dict[str, Any]], talents: dict[int, str]
+) -> tuple[Player, ...]:
     by_id = {actor["id"]: actor for actor in actors}
     ids = fight.get("friendlyPlayers") or []
     specs = fight.get("friendlySpecs") or []
@@ -71,6 +73,7 @@ def _build_players(fight: dict[str, Any], actors: list[dict[str, Any]]) -> tuple
                 class_name=actor["subType"],
                 spec=specs[position] if position < len(specs) else "",
                 item_level=item_levels[position] if position < len(item_levels) else 0,
+                talent_import_string=talents.get(actor_id),
             )
         )
     return tuple(players)
@@ -114,7 +117,9 @@ def _required(fight: dict[str, Any], field: str) -> int:
     return int(value)
 
 
-def build_run(report: dict[str, Any], fight: dict[str, Any]) -> Run:
+def build_run(
+    report: dict[str, Any], fight: dict[str, Any], talents: dict[int, str] | None = None
+) -> Run:
     actors = report.get("masterData", {}).get("actors") or []
     raw_counts = fight.get("npcCountMap") or {}
 
@@ -122,15 +127,17 @@ def build_run(report: dict[str, Any], fight: dict[str, Any]) -> Run:
         report_code=report["code"],
         fight_id=fight["id"],
         dungeon_name=fight["name"],
+        encounter_id=_required(fight, "encounterID"),
         keystone_level=fight["keystoneLevel"],
         affix_ids=tuple(fight.get("keystoneAffixes") or ()),
         keystone_time_ms=_required(fight, "keystoneTime"),
         keystone_bonus=fight.get("keystoneBonus") or 0,
         count_reached=_required(fight, "countReached"),
         count_required=_required(fight, "countRequired"),
+        owner_name=(report.get("owner") or {}).get("name"),
         # npcCountMap arrives as a JSON object, so its keys are strings.
         npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
-        players=_build_players(fight, actors),
+        players=_build_players(fight, actors, talents or {}),
         pulls=_build_pulls(fight),
     )
 
