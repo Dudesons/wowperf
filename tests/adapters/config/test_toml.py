@@ -31,3 +31,12 @@ def test_the_committed_season_file_parses() -> None:
 def test_a_missing_file_says_which_one(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="nope.toml"):
         load_season_data(tmp_path / "nope.toml")
+
+
+def test_the_committed_defensives_file_parses() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_DEFENSIVES_PATH, load_defensives
+
+    defensives = load_defensives(DEFAULT_DEFENSIVES_PATH)
+    arcane = defensives.for_spec("Mage", "Arcane")
+    assert any(ability.name == "Ice Block" for ability in arcane)
+    assert defensives.for_spec("Druid", "Feral") == ()
