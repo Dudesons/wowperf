@@ -57,6 +57,12 @@ def test_an_exhausted_point_budget_raises_a_named_error() -> None:
         client.execute("query { hello }")
 
 
+def test_a_rate_limit_response_missing_ratelimitdata_names_the_missing_field() -> None:
+    client = build_client(httpx.Response(200, json={"data": {}}))
+    with pytest.raises(WclError, match="rateLimitData"):
+        client.rate_limit()
+
+
 def test_the_rate_limit_is_read_from_the_api_not_assumed() -> None:
     client = build_client(
         httpx.Response(

@@ -347,8 +347,9 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
   verified-on date.
 - **Cache every Warcraft Logs response, and instrument `rateLimitData`.** Point cost per
   query is undocumented and the hourly budget is small.
-- **Never invent an API field name.** The `wcl-api` skill holds the verified schema
-  reference. If a field is not in it, verify against the live schema before using it.
+- **Never invent an API field name.** The verified schema reference lives today in
+  `docs/plans/2026-09-03-mplus-postmortem-design.md` §2; a `wcl-api` skill is planned to
+  hold it later. If a field is not there, verify against the live schema before using it.
 
 ## Commands
 

@@ -52,7 +52,6 @@ def wired_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     real_client = httpx.Client
 
     def fake_client(*args: Any, **kwargs: Any) -> httpx.Client:
-        kwargs.pop("timeout", None)
         return real_client(transport=transport)
 
     monkeypatch.setattr(httpx, "Client", fake_client)
@@ -133,5 +132,5 @@ def test_fetch_prints_the_run_on_stdout_and_the_quota_on_stderr(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["dungeon_name"] == "Murder Row"
-    assert "this fetch spent 12.50 points" in result.stderr
+    assert "12.50 points spent, including the cost of these two quota reads" in result.stderr
     assert "3487.50 of 3600 remain" in result.stderr

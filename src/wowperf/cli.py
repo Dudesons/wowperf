@@ -55,8 +55,9 @@ def fetch(
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
 
-        # Point cost per query is undocumented, so the only honest figure is the
-        # difference the API itself reports across the fetch.
+        # Point cost per query is undocumented, so this reads the quota before and
+        # after the fetch. The reading itself is a query too, so the difference
+        # also counts the cost of these two quota reads, not only the fetch.
         before = repository.rate_limit()
         run = repository.get(code, fight if fight is not None else fight_from_url)
         after = repository.rate_limit()
@@ -69,8 +70,8 @@ def fetch(
     spent = after.points_spent_this_hour - before.points_spent_this_hour
     remaining = after.limit_per_hour - after.points_spent_this_hour
     typer.echo(
-        f"Rate limit: this fetch spent {spent:.2f} points; "
-        f"{remaining:.2f} of {after.limit_per_hour} remain this hour.",
+        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
+        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour.",
         err=True,
     )
     typer.echo(run.model_dump_json(indent=2))

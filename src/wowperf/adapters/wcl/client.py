@@ -59,7 +59,18 @@ class WclClient:
         return cast(dict[str, Any], payload["data"])
 
     def rate_limit(self) -> RateLimit:
-        data = self.execute(RATE_LIMIT_QUERY)["rateLimitData"]
+        data = self.execute(RATE_LIMIT_QUERY).get("rateLimitData")
+        if not isinstance(data, dict):
+            raise WclError("The rate limit response is missing rateLimitData")
+
+        missing = [
+            field
+            for field in ("limitPerHour", "pointsSpentThisHour", "pointsResetIn")
+            if field not in data
+        ]
+        if missing:
+            raise WclError(f"The rate limit response is missing {', '.join(missing)}")
+
         return RateLimit(
             limit_per_hour=data["limitPerHour"],
             points_spent_this_hour=data["pointsSpentThisHour"],
