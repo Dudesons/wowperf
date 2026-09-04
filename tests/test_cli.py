@@ -275,8 +275,12 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
         "keystone_level": 16,
         "keystone_time_seconds": 1909.0,
         "in_time": True,
+        "findings_are_ranked_not_additive": payload["findings_are_ranked_not_additive"],
         "findings": payload["findings"],
     }
+    assert "not additive" in payload["findings_are_ranked_not_additive"]
+    assert "time.gap" in payload["findings_are_ranked_not_additive"]
+    assert "deaths.total" in payload["findings_are_ranked_not_additive"]
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
@@ -294,6 +298,26 @@ def test_analyze_reports_a_bad_url_as_a_message_not_a_traceback() -> None:
     assert result.exit_code != 0
     assert not isinstance(result.exception, ValueError)
     assert "is not a Warcraft Logs report code or URL" in result.stderr
+
+
+def test_analyze_reports_a_missing_data_file_as_a_message_not_a_traceback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A missing data/*.toml file raises FileNotFoundError, an OSError subclass.
+
+    load_season_data runs after the report has already been fetched, so this is
+    also a case where the user has already spent quota by the time it fails;
+    it must still be reported as a message, not a traceback.
+    """
+    def raise_missing_file() -> None:
+        raise FileNotFoundError("No data file at data/season.toml")
+
+    monkeypatch.setattr("wowperf.cli.load_season_data", raise_missing_file)
+    result = invoke_analyze(tmp_path)
+
+    assert result.exit_code == 1
+    assert "No data file at data/season.toml" in result.stderr
+    assert "Traceback" not in result.output
 
 
 def test_analyze_writes_non_ascii_player_names_intact(tmp_path: Path) -> None:

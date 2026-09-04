@@ -72,7 +72,7 @@ def fetch(
         before = repository.rate_limit()
         run = repository.get(code, fight if fight is not None else fight_from_url)
         after = repository.rate_limit()
-    except (ValueError, WclError, httpx.HTTPError) as error:
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         # IngestError subclasses ValueError. Anything else keeps its traceback,
         # because an unexpected failure is a bug and should look like one.
         typer.echo(str(error), err=True)
@@ -106,7 +106,7 @@ def analyze(
         repository = build_repository(cache_dir)
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
         findings = analyse(loaded, load_season_data(), load_defensives())
-    except (ValueError, WclError, httpx.HTTPError) as error:
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
 
@@ -118,6 +118,10 @@ def analyze(
         "keystone_level": run.keystone_level,
         "keystone_time_seconds": run.keystone_time_seconds,
         "in_time": run.keystone_bonus >= 1,
+        "findings_are_ranked_not_additive": (
+            "findings are ranked by seconds_lost, not additive: time.gap.* nest inside "
+            "time.residual and deaths.single/chain/repeat.* nest inside deaths.total"
+        ),
         "findings": [finding.model_dump(mode="json") for finding in findings],
     }
 
