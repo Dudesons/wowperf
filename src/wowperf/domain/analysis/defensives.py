@@ -15,19 +15,25 @@ MIN_CEILING_USES = 3.0
 """Below this the ceiling itself is too small to argue from."""
 
 
-def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float:
+def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:
     """Combat time this player could actually have pressed a button in.
 
-    Approximate on purpose, and one of the reasons the finding is `inferred`: a
-    run-back can extend past the pull it started in, so the subtraction can
-    overshoot. Overshooting lowers the ceiling, which makes the claim weaker
-    rather than louder.
+    Returns `None` when any of this player's deaths has `seconds_until_next_action`
+    of `None` — that death's cost cannot be measured because the player's last
+    recorded action in the run was dying, so nothing follows it to measure to.
+    There is no honest dead-time figure to subtract in that case, so there is no
+    honest alive-time figure either; the caller must report no ceiling finding
+    for this player rather than treat the unmeasured death as zero seconds dead.
+
+    Otherwise approximate on purpose, and one of the reasons the finding is
+    `inferred`: a run-back can extend past the pull it started in, so the
+    subtraction can overshoot. Overshooting lowers the ceiling, which makes the
+    claim weaker rather than louder.
     """
-    dead = sum(
-        death.seconds_until_next_action or 0.0
-        for death in deaths
-        if death.actor_id == actor_id
-    )
+    theirs = [death for death in deaths if death.actor_id == actor_id]
+    if any(death.seconds_until_next_action is None for death in theirs):
+        return None
+    dead = sum(death.seconds_until_next_action or 0.0 for death in theirs)
     return max(run.total_pull_seconds - dead, 0.0)
 
 
@@ -69,6 +75,8 @@ def analyse_defensives(
 
             if uses:
                 alive = _alive_combat_seconds(run, deaths, player.actor_id)
+                if alive is None:
+                    continue
                 ceiling = _ceiling(alive, ability)
                 if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
                     continue

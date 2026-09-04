@@ -100,7 +100,10 @@ def test_a_defensive_never_cast_is_reported_as_inferred() -> None:
     assert never_cast[0].seconds_lost is None
 
 
-def test_a_defensive_cast_once_is_not_reported() -> None:
+def test_a_defensive_cast_once_is_not_reported_as_never_cast() -> None:
+    # Both abilities are cast here, so neither qualifies for the never-cast claim;
+    # Prismatic Barrier's single press also qualifies for a ceiling finding (§5.7),
+    # so this assertion is scoped to the never-cast claim it was written to check.
     findings = analyse_defensives(
         a_run(), (cast(11, 235450), cast(11, 45438)), DEFENSIVES, ()
     )
@@ -127,6 +130,8 @@ def test_another_players_cast_does_not_excuse_this_player() -> None:
 def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
     # pull_index=None means the cast landed outside any pull window (e.g. between
     # packs). The player still pressed the button, so it is not "never cast".
+    # Prismatic Barrier's single press here also qualifies for a ceiling finding
+    # (§5.7); scope this assertion to the never-cast claim it was written to check.
     outside_pull = CastEvent(actor_id=11, ability_id=45438, ability_name="Ice Block",
                               timestamp_ms=1_000, pull_index=None)
     findings = analyse_defensives(a_run(), (cast(11, 235450), outside_pull), DEFENSIVES, ())
@@ -135,6 +140,9 @@ def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
 
 
 def test_two_players_of_the_same_spec_are_reported_independently() -> None:
+    # Uglymage's Prismatic Barrier press also qualifies for a ceiling finding
+    # (§5.7); scope this assertion to the never-cast claims it was written to
+    # check, both of which belong to Othermage, who cast nothing at all.
     run = a_run()
     other_mage = Player(actor_id=13, name="Othermage", class_name="Mage", spec="Arcane",
                          item_level=300)
@@ -232,3 +240,55 @@ def test_the_ceiling_detail_says_defensives_are_situational() -> None:
     )[0]
 
     assert "incoming damage" in finding.detail
+
+
+def test_a_death_with_unmeasured_cost_disables_the_ceiling_but_not_never_cast() -> None:
+    # seconds_until_next_action=None means the player's last recorded action in
+    # the run was dying, so there is no honest dead-time figure for them and
+    # therefore no honest alive-time figure either. That must withhold every
+    # ceiling finding for this player, not just the one for the ability they
+    # actually pressed — but the never-cast finding for an untouched ability is
+    # unaffected and must still fire.
+    run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
+    defensives = Defensives(
+        entries=(
+            (
+                "DeathKnight/Blood",
+                (
+                    DefensiveAbility(
+                        ability_id=48792, name="Icebound Fortitude", cooldown_seconds=180.0
+                    ),
+                    DefensiveAbility(
+                        ability_id=194679, name="Rune Tap", cooldown_seconds=30.0
+                    ),
+                ),
+            ),
+        )
+    )
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensives(run, casts, defensives, (a_death(1, None),))
+
+    assert findings_by_prefix(findings, "defensives.ceiling.") == []
+    never_cast = findings_by_prefix(findings, "defensives.Tank.")
+    assert any("Rune Tap" in finding.title for finding in never_cast)
+
+
+def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
+    run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
+    twin = Player(actor_id=2, name="Tank", class_name="DeathKnight", spec="Blood",
+                  item_level=320)
+    run = run.model_copy(update={"players": run.players + (twin,)})
+    casts = (
+        a_cast(actor_id=1, ability_id=48792),
+        a_cast(actor_id=2, ability_id=48792),
+    )
+
+    findings = analyse_defensives(run, casts, BLOOD_DEFENSIVES, ())
+    ceiling = findings_by_prefix(findings, "defensives.ceiling.")
+
+    assert len(ceiling) == 2
+    assert {finding.id for finding in ceiling} == {
+        "defensives.ceiling.Tank.1.48792",
+        "defensives.ceiling.Tank.2.48792",
+    }
