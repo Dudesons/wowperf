@@ -2,6 +2,7 @@
 # ABOUTME: Holds no analysis logic, only construction, argument handling and output.
 
 import os
+import sys
 from pathlib import Path
 
 import httpx
@@ -51,6 +52,13 @@ def fetch(
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
 ) -> None:
     """Fetch a Mythic+ run and print it as JSON."""
+    # Windows gives the process a locale-dependent stdout encoding (commonly cp1252),
+    # which cannot hold the non-ASCII player names and dungeon names real reports
+    # contain. Reconfigure to UTF-8 so the JSON reaches stdout intact instead of
+    # crashing with a UnicodeEncodeError after the API quota has already been spent.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     try:
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
