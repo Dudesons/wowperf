@@ -42,16 +42,27 @@ def decompose_time(run: Run, deaths: tuple[Death, ...], season: SeasonData) -> l
     penalty_total = penalty_each * len(deaths)
     residual = run.keystone_time_seconds - run.total_pull_seconds - penalty_total
 
+    if residual < 0:
+        residual_detail = (
+            f"Fighting ({run.total_pull_seconds:.0f}s) and the death penalty "
+            f"({penalty_total:.0f}s) together exceed the {run.keystone_time_seconds:.0f}s "
+            f"timer, so there is no measurable residual."
+        )
+        residual_seconds_lost = None
+    else:
+        residual_detail = (
+            f"{residual:.0f}s of the {run.keystone_time_seconds:.0f}s timer was neither "
+            f"fighting nor the death penalty. That is travel, run-backs and waiting."
+        )
+        residual_seconds_lost = residual
+
     findings = [
         Finding(
             id="time.residual",
             title="Time spent outside pulls",
-            detail=(
-                f"{residual:.0f}s of the {run.keystone_time_seconds:.0f}s timer was neither "
-                f"fighting nor the death penalty. That is travel, run-backs and waiting."
-            ),
+            detail=residual_detail,
             confidence=Confidence.MEASURED,
-            seconds_lost=residual,
+            seconds_lost=residual_seconds_lost,
             evidence=(
                 f"keystone time {run.keystone_time_seconds:.0f}s",
                 f"pull time {run.total_pull_seconds:.0f}s across {len(run.pulls)} pulls",

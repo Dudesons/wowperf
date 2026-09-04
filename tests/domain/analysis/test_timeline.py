@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for splitting a keystone time into pulls, deaths and travel.
 # ABOUTME: The residual is the number a reader acts on, so its arithmetic is pinned exactly.
 
-from wowperf.domain.analysis.timeline import decompose_time, gaps_between_pulls
+from wowperf.domain.analysis.timeline import MAX_GAPS_REPORTED, decompose_time, gaps_between_pulls
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -90,3 +90,40 @@ def test_every_finding_carries_a_confidence() -> None:
     findings = decompose_time(a_run(), (a_death(5_000),), SEASON)
     assert findings
     assert all(finding.confidence is Confidence.MEASURED for finding in findings)
+
+
+def test_a_negative_residual_reports_no_seconds_lost() -> None:
+    # 300s keystone, 180s of pulls, ten deaths at 15s each on a +16 -> -150s of
+    # residual. Fighting and the death penalty alone already exceed the timer,
+    # so there is nothing honest to report as seconds lost.
+    deaths = tuple(a_death(1_000 * i) for i in range(10))
+    findings = decompose_time(a_run(), deaths, SEASON)
+    summary = next(f for f in findings if f.id == "time.residual")
+    assert summary.seconds_lost is None
+    assert "no measurable residual" in summary.detail.lower()
+
+
+def many_gaps_run() -> Run:
+    """Eight pulls with seven above-floor gaps, so the report cap can be exercised."""
+    gap_seconds = (100, 90, 80, 70, 60, 50, 40)
+    pulls = []
+    cursor_ms = 0
+    for index, gap in enumerate((0, *gap_seconds)):
+        start_ms = cursor_ms + gap * 1000
+        end_ms = start_ms + 30_000
+        pulls.append(
+            Pull(
+                index=index, pull_id=index + 1, name="Trash", encounter_id=0,
+                start_ms=start_ms, end_ms=end_ms, killed=True, x=index, y=index,
+                enemies=(EnemyNpc(actor_id=index, game_id=100 + index),),
+            )
+        )
+        cursor_ms = end_ms
+    return a_run().model_copy(update={"pulls": tuple(pulls)})
+
+
+def test_gap_findings_are_capped_at_the_worst_ones() -> None:
+    findings = decompose_time(many_gaps_run(), (), SEASON)
+    gap_findings = [f for f in findings if f.id.startswith("time.gap.")]
+    assert len(gap_findings) == MAX_GAPS_REPORTED
+    assert [f.seconds_lost for f in gap_findings] == [100.0, 90.0, 80.0, 70.0, 60.0]
