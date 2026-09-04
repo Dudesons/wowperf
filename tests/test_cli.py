@@ -555,3 +555,32 @@ def test_an_empty_leaderboard_degrades_to_no_comparison(tmp_path: Path) -> None:
     payload = written_payload(tmp_path)
     assert payload["comparison"]["compared"] is False
     assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
+
+
+def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
+    """Asserts the values in speed_reference and parse_reference, not just their keys.
+
+    The fixture's mock data is chosen to match the task brief's specimen values.
+    This test pins the contract to fixed literals so a future swap (e.g. class_name
+    and spec) would fail, not silently produce wrong output on screen.
+    """
+    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+
+    assert result.exit_code == 0
+    payload = written_payload(tmp_path)
+
+    # speed_reference fields
+    assert payload["comparison"]["speed_reference"]["report_code"] == "71cv4MRdNCp8ZFjG"
+    assert payload["comparison"]["speed_reference"]["fight_id"] == 28
+    assert payload["comparison"]["speed_reference"]["keystone_level"] == 16
+    assert payload["comparison"]["speed_reference"]["duration_seconds"] == 1379.452
+    assert payload["comparison"]["speed_reference"]["medal"] == "silver"
+
+    # parse_reference fields
+    assert payload["comparison"]["parse_reference"]["report_code"] == "37FzMg9pVPH6fnJT"
+    assert payload["comparison"]["parse_reference"]["fight_id"] == 16
+    assert payload["comparison"]["parse_reference"]["keystone_level"] == 16
+    assert payload["comparison"]["parse_reference"]["character_name"] == "Críms"
+    assert payload["comparison"]["parse_reference"]["class_name"] == "Mage"
+    assert payload["comparison"]["parse_reference"]["spec"] == "Arcane"
+    assert payload["comparison"]["parse_reference"]["medal"] == "silver"
