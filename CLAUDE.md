@@ -322,15 +322,20 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis.
 
-**Current state: designed, not yet built.** No Python package exists. The approved design
-lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and is the authority on
-architecture, analyzers, and comparison rules. Read it before writing code.
+**Current state: the foundation of slice 1 is built.** Plan A shipped the `wowperf` package
+under `src/`: the domain model and ports, the Warcraft Logs adapter (OAuth client
+credentials, GraphQL client, disk cache, event pagination, and ingest into the domain
+model), and a `fetch` command that prints a run as JSON. Plans B, C and D — the analysers,
+run comparison, and the HTML report — are not written yet.
+
+The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
+the authority on architecture, analyzers, and comparison rules. Read it before writing code.
 
 ## Invariants not to break
 
-- **The domain layer performs no I/O.** Nothing under `wowperf/domain/` imports `httpx`,
+- **The domain layer performs no I/O.** Nothing under `src/wowperf/domain/` imports `httpx`,
   `jinja2`, or anything else that touches the network, the disk, or a template. Adapters do
-  that, behind the ports in `domain/ports.py`.
+  that, behind the ports in `src/wowperf/domain/ports.py`.
 - **The LLM never computes a number.** Every metric comes from tested Python. Claude reads
   the findings JSON and interprets it; it does not calculate, and it does not parse the HTML.
 - **Every finding carries a confidence badge** — `measured`, `derived`, or `inferred`. A
@@ -342,13 +347,13 @@ architecture, analyzers, and comparison rules. Read it before writing code.
   verified-on date.
 - **Cache every Warcraft Logs response, and instrument `rateLimitData`.** Point cost per
   query is undocumented and the hourly budget is small.
-- **Never invent an API field name.** The `wcl-api` skill holds the verified schema
-  reference. If a field is not in it, verify against the live schema before using it.
+- **Never invent an API field name.** The verified schema reference lives today in
+  `docs/plans/2026-09-03-mplus-postmortem-design.md` §2; a `wcl-api` skill is planned to
+  hold it later. If a field is not there, verify against the live schema before using it.
 
 ## Commands
 
-The package does not exist yet; these are the commands the design commits to. `uv` is the
-only Python toolchain used here — no pip, no poetry, no hand-managed virtualenv.
+`uv` is the only Python toolchain used here — no pip, no poetry, no hand-managed virtualenv.
 
 | Command | Role |
 | --- | --- |
@@ -356,8 +361,9 @@ only Python toolchain used here — no pip, no poetry, no hand-managed virtualen
 | `uv run pytest` | Unit and integration tests; offline, no credentials needed |
 | `uv run pytest -m e2e` | End-to-end tests against the real API; needs credentials, spends quota |
 | `uv run ruff check .` | Lint |
-| `uv run mypy wowperf` | Type check |
-| `uv run wowperf analyze <url>` | Analyse a run and write the report |
+| `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
+| `uv run wowperf fetch <url>` | Fetch a Mythic+ run and print it as JSON |
+| `uv run wowperf analyze <url>` | *Planned.* Analyse a run and write the report; needs plans B to D |
 
 ---
 

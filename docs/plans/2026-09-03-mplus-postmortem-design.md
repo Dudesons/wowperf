@@ -59,10 +59,11 @@ marked otherwise.
 - **Client credentials read public reports only.** Unlisted reports work through
   `reportData.report(code:, allowUnlisted: true)` when the code is known. Private reports
   require the authorization-code flow, which this slice does not implement.
-- **Rate limit:** points per hour, per client, on fixed one-hour cycles. The unsubscribed
-  tier is documented as 3,600 points per hour, but that figure comes from an archived page.
-  Treat it as unconfirmed and read the real value from
-  `rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }` at runtime.
+- **Rate limit:** points per hour, per client, on fixed one-hour cycles. Live introspection
+  on 2026-09-04 read `limitPerHour: 3600` for the unsubscribed tier, confirming the figure
+  that was previously known only from an archived page. Still read the real value from
+  `rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }` at runtime rather than
+  hardcoding it, because it is per-client and can change.
 - **The point cost formula is undocumented.** No published table, no response headers. The
   `pointsSpentThisHour` field is a Float, implying fractional per-query costs. We measure
   rather than predict.
@@ -73,6 +74,10 @@ A complete Mythic+ run is one `ReportFight` with `keystoneLevel != null` and `ki
 It carries `keystoneAffixes`, `keystoneTime` (Blizzard's official penalty-inclusive time),
 `keystoneBonus` (1, 2, or 3 chests), `rating`, `countReached`, `countRequired`, and
 `npcCountMap`.
+
+The roster comes from three index-aligned arrays on the same fight: `friendlyPlayers` (actor
+IDs, joined against `masterData.actors`), `friendlySpecs`, and `friendlyItemLevels`. All
+three were confirmed present on `ReportFight` by live schema introspection on 2026-09-04.
 
 Segmentation hangs off `dungeonPulls: [ReportDungeonPull]`, each with `startTime`,
 `endTime`, `encounterID` (0 means trash), `enemyNPCs[].gameID`, and `x`/`y` giving the map
@@ -252,8 +257,10 @@ Pydantic models, free of any Warcraft Logs vocabulary.
 - **`Pull`** — index, start, end, boss flag, enemy NPCs with counts, map position,
   enemy-forces contribution.
 - **`Player`** — name, class, specialization, item level, talent import string.
-- **`Death`** — player, timestamp, pull, killing blow ability, overkill, seconds until the
-  player's next action.
+- **`Death`** — player, timestamp, pull, killing blow ability, seconds until the player's
+  next action. No `overkill` field: a Warcraft Logs death event carries no such data
+  (confirmed 2026-09-04 against a real report — see §11), and computing it would need a
+  join against damage events. Deferred until a plan needs it enough to pay for that query.
 - **`CastEvent`** — actor, ability, timestamp, pull, success or interrupted.
 - **`Finding`** — the analysis output type: `id`, `severity`, `title`, `detail`,
   `seconds_lost`, `confidence`, `evidence[]`, `pull_ref`.
@@ -521,8 +528,34 @@ guild names are anonymized, and large event dumps are never committed.
 
 ## 11. Open items for the implementation plan
 
-- Confirm the real hourly point limit from a live `rateLimitData` call.
+- ~~Confirm the real hourly point limit from a live `rateLimitData` call.~~ Confirmed on
+  2026-09-04 by live introspection: `limitPerHour` reads **3600**.
+- ~~Measure the point cost of a full run analysis, and decide from the measurement whether
+  §5.5 ships enabled or behind `--deep`.~~ Measured on 2026-09-04 against report
+  `6Kx1P9GbNXrcLdHa` fight 36, a +16 Den of Nalorakk of 31.8 minutes with 5 players, 12
+  pulls, 9,259 casts and 4 deaths. Every figure below includes the two `rateLimitData` reads
+  the CLI makes, which cost about 0.5 each:
+
+  | Operation | Cold | Warm |
+  | --- | --- | --- |
+  | `get` — fights query only, enough to build a `Run` | 3.00 | 1.00 |
+  | `load` — fights, abilities, casts (2 pages), deaths | 7.04 | — |
+  | `load` with fights and abilities already cached | — | 5.00 |
+
+  So a fights query costs about 2 points and a complete event fetch about 6. Against 3,600
+  per hour that is roughly **600 full run analyses an hour**, which settles the question:
+  **§5.5 ships enabled, not behind `--deep`.** The budget is not the constraint the design
+  feared. The disk cache stays load-bearing anyway — it makes iterating on analysis code free
+  rather than merely cheap, and a warm `get` costs only the quota reads themselves.
+
+  Caveat: one dungeon, one key level, one group. A longer key or a cast-heavier composition
+  pages more; the shape of the cost, not its exact value, is what this measures.
 - Confirm whether Warcraft Logs exposes a CSV export worth using, or whether JSON is the only
   practical surface.
-- Measure the point cost of a full run analysis, and decide from the measurement whether §5.5
-  ships enabled or behind `--deep`.
+- Confirmed on 2026-09-04 against a real death event (report `6Kx1P9GbNXrcLdHa`, fight 36): a
+  Warcraft Logs death event's complete key set is `abilityGameID` (always `0`), `fight`,
+  `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always `-1`), `targetID`,
+  `timestamp`, `type`. There is no `killingBlow` object and no `overkill` field — both were
+  invented in the original design and have been corrected (§4): the killing blow resolves
+  from `killingAbilityGameID`, and `overkill` is dropped from `Death` until a plan pays for
+  the damage-event join it would need.
