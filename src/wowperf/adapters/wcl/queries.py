@@ -187,12 +187,12 @@ query DamageTaken($code: String!, $fightId: Int!, $startTime: Float!, $endTime: 
 }
 """
 
-NPC_ACTORS_QUERY = """
-query NpcActors($code: String!) {
+ACTORS_QUERY = """
+query Actors($code: String!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       masterData(translate: true) {
-        actors(type: "NPC") { id gameID }
+        actors { id gameID }
       }
     }
   }

@@ -196,7 +196,7 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
     abilities_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"abilities": []}}}
     }
-    npc_actors_payload: dict[str, Any] = {
+    actors_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"actors": [{"id": 699, "gameID": 241874}]}}}
     }
     empty_events: dict[str, Any] = {
@@ -212,8 +212,8 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
             return httpx.Response(200, json={"data": fights_payload})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities_payload})
-        if name == "NpcActors":
-            return httpx.Response(200, json={"data": npc_actors_payload})
+        if name == "Actors":
+            return httpx.Response(200, json={"data": actors_payload})
         return httpx.Response(200, json={"data": empty_events})
 
     return httpx.MockTransport(handler)

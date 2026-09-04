@@ -95,7 +95,7 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
     must make a test built on this fixture fail.
     """
     abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
-    npc_actors: dict[str, Any] = {
+    all_actors: dict[str, Any] = {
         "reportData": {
             "report": {
                 "masterData": {
@@ -148,8 +148,8 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
             return httpx.Response(200, json={"data": FIGHTS_PAYLOAD})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities})
-        if name == "NpcActors":
-            return httpx.Response(200, json={"data": npc_actors})
+        if name == "Actors":
+            return httpx.Response(200, json={"data": all_actors})
         return httpx.Response(200, json={"data": event_payloads[name]})
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
@@ -184,7 +184,7 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert load_calls[0] == "Fights"
     assert set(load_calls) == {
         "Fights", "Abilities", "Casts", "Deaths",
-        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "NpcActors",
+        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors",
     }
 
 
@@ -195,8 +195,8 @@ def test_a_get_after_a_load_costs_nothing() -> None:
 
     repository.load("abc123", 36)
     assert sorted(set(calls)) == [
-        "Abilities", "Casts", "DamageTaken", "Deaths",
-        "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts", "NpcActors",
+        "Abilities", "Actors", "Casts", "DamageTaken", "Deaths",
+        "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts",
     ]
 
     calls.clear()

@@ -20,6 +20,7 @@ from wowperf.adapters.wcl.ingest import (
 from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
+    ACTORS_QUERY,
     CASTS_QUERY,
     DAMAGE_TAKEN_QUERY,
     DEATHS_QUERY,
@@ -27,7 +28,6 @@ from wowperf.adapters.wcl.queries import (
     ENEMY_DEATHS_QUERY,
     FIGHTS_QUERY,
     INTERRUPTS_QUERY,
-    NPC_ACTORS_QUERY,
 )
 from wowperf.domain.model import LoadedRun, Run
 
@@ -84,8 +84,14 @@ class WclRunRepository:
         report = self._report(report_code)
         return build_run(report, select_keystone_fight(report["fights"], fight_id))
 
-    def _npc_game_ids(self, report_code: str) -> dict[int, int]:
-        payload = self._query(NPC_ACTORS_QUERY, {"code": report_code})
+    def _actor_game_ids(self, report_code: str) -> dict[int, int]:
+        """Map every actor in the report to its game id, so an enemy death always resolves.
+
+        A death can target a Pet actor as well as an NPC one: a dungeon mechanic
+        that encases a player is modelled as a hostile pet owned by that player.
+        Fetching every actor, not only type "NPC", is what makes that resolve.
+        """
+        payload = self._query(ACTORS_QUERY, {"code": report_code})
         report = payload["reportData"]["report"]
         master = report.get("masterData") or {}
         actors = master.get("actors")
@@ -127,9 +133,9 @@ class WclRunRepository:
         player_names = {player.actor_id: player.name for player in run.players}
         enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run, ability_names)
         interrupts = build_interrupts(interrupt_events, run, player_names)
-        npc_game_ids = self._npc_game_ids(report_code)
+        actor_game_ids = self._actor_game_ids(report_code)
         enemy_deaths = build_enemy_deaths(
-            enemy_death_events, run, npc_game_ids, dict(run.npc_count_map)
+            enemy_death_events, run, actor_game_ids, dict(run.npc_count_map)
         )
         damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
 

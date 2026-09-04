@@ -257,30 +257,32 @@ def build_interrupts(
 def build_enemy_deaths(
     events: list[dict[str, Any]],
     run: Run,
-    npc_game_ids: dict[int, int],
+    actor_game_ids: dict[int, int],
     npc_count_map: dict[int, int],
 ) -> tuple[EnemyDeath, ...]:
     """Attach the enemy-forces value each kill awarded.
 
-    An enemy absent from npcCountMap awards nothing; that is normal for bosses
-    and for mobs that do not count, so it is zero rather than an error.
+    An enemy absent from npcCountMap awards nothing; that is normal for bosses,
+    for mobs that do not count, and for a pet like Glacial Tomb — a dungeon
+    mechanic that encases a player, which Warcraft Logs models as a hostile pet
+    owned by that player — so it is zero rather than an error.
 
-    An enemy absent from npc_game_ids is different: NPC_ACTORS_QUERY returns
-    every NPC actor in the report, so a report actor id missing there means
-    our own fetch is wrong, not that the log is odd. Defaulting that case to
-    game_id 0 would silently attach the wrong forces count to a real death.
+    An enemy absent from actor_game_ids is different: ACTORS_QUERY returns
+    every actor in the report, so a report actor id missing there means our own
+    fetch is wrong, not that the log is odd. Defaulting that case to game_id 0
+    would silently attach the wrong forces count to a real death.
     """
     deaths = []
     for event in events:
         if event.get("type") != "death":
             continue
         actor_id = event["targetID"]
-        if actor_id not in npc_game_ids:
+        if actor_id not in actor_game_ids:
             raise IngestError(
                 f"Enemy death targets actor {actor_id}, which is absent from "
-                "the report's NPC actors"
+                "the report's actors"
             )
-        game_id = npc_game_ids[actor_id]
+        game_id = actor_game_ids[actor_id]
         deaths.append(
             EnemyDeath(
                 game_id=game_id,

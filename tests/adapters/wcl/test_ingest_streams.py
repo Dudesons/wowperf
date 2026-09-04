@@ -91,10 +91,22 @@ def test_an_enemy_with_no_forces_entry_counts_zero() -> None:
     assert deaths[0].forces == 0
 
 
-def test_an_actor_id_absent_from_npc_game_ids_raises() -> None:
+def test_an_actor_id_absent_from_actor_game_ids_raises() -> None:
     events: list[dict[str, Any]] = [{"type": "death", "targetID": 999, "timestamp": 4000}]
     with pytest.raises(IngestError, match="999"):
         build_enemy_deaths(events, a_run(), {}, {241874: 5})
+
+
+def test_a_pet_death_with_no_forces_entry_awards_zero_instead_of_raising() -> None:
+    """Glacial Tomb (game id 246591) is a dungeon mechanic that encases a player;
+    Warcraft Logs models it as a hostile pet owned by that player. It resolves
+    through the actor map like any other enemy, and simply carries no forces
+    entry of its own, so the honest answer is zero forces, not an IngestError.
+    """
+    events: list[dict[str, Any]] = [{"type": "death", "targetID": 730, "timestamp": 4000}]
+    deaths = build_enemy_deaths(events, a_run(), {730: 246591}, {241874: 5, 244889: 35})
+    assert deaths[0].game_id == 246591
+    assert deaths[0].forces == 0
 
 
 def test_damage_taken_uses_the_unmitigated_amount() -> None:
