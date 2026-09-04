@@ -21,6 +21,18 @@ class CastEvent(Frozen):
     pull_index: int | None = None
 
 
+class EnemyCastRow(Frozen):
+    """One raw enemy cast event, translated but not yet resolved."""
+
+    source_id: int
+    source_instance: int
+    ability_id: int
+    ability_name: str
+    timestamp_ms: int
+    is_start: bool
+    pull_index: int | None = None
+
+
 class EnemyCast(Frozen):
     """One enemy cast start, resolved to an outcome.
 
