@@ -38,6 +38,14 @@ class WclRunRepository:
         self._client = client
         self._cache = cache
 
+    @property
+    def client(self) -> WclClient:
+        return self._client
+
+    @property
+    def cache(self) -> DiskCache:
+        return self._cache
+
     def _query(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
         payload = self._cache.get_or_fetch(
             cache_key(query, variables),
