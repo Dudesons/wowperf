@@ -322,11 +322,14 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis.
 
-**Current state: the foundation of slice 1 is built.** Plan A shipped the `wowperf` package
-under `src/`: the domain model and ports, the Warcraft Logs adapter (OAuth client
+**Current state: a run goes in and ranked findings come out.** Plan A shipped the `wowperf`
+package under `src/`: the domain model and ports, the Warcraft Logs adapter (OAuth client
 credentials, GraphQL client, disk cache, event pagination, and ingest into the domain
-model), and a `fetch` command that prints a run as JSON. Plans B, C and D — the analysers,
-run comparison, and the HTML report — are not written yet.
+model), and a `fetch` command that prints a run as JSON. Plan B added the six analysers
+under `src/wowperf/domain/analysis/` — time decomposition, deaths, missed interrupts, trash
+efficiency, per-player facts, and defensives never pressed — the service that runs and ranks
+them, the season and defensive data under `data/`, and an `analyze` command that writes the
+findings as JSON. Plans C and D — run comparison and the HTML report — are not written yet.
 
 The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
 the authority on architecture, analyzers, and comparison rules. Read it before writing code.
@@ -363,7 +366,7 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
 | `uv run ruff check .` | Lint |
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
 | `uv run wowperf fetch <url>` | Fetch a Mythic+ run and print it as JSON |
-| `uv run wowperf analyze <url>` | *Planned.* Analyse a run and write the report; needs plans B to D |
+| `uv run wowperf analyze <url>` | Analyse a run and write `<code>-<fight>.findings.json`; the HTML report is Plan D |
 
 ---
 

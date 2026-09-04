@@ -3,7 +3,14 @@
 
 from typing import Any
 
-from wowperf.domain.events import CastEvent, Death
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    EnemyCastRow,
+    EnemyDeath,
+    InterruptEvent,
+)
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 
@@ -194,3 +201,122 @@ def build_deaths(
             )
         )
     return tuple(deaths)
+
+
+def build_enemy_cast_rows(
+    events: list[dict[str, Any]],
+    run: Run,
+    ability_names: dict[int, str],
+) -> tuple[EnemyCastRow, ...]:
+    """Translate raw enemy cast events; resolving their outcome is the analyser's job."""
+    rows = []
+    for event in events:
+        kind = event.get("type")
+        if kind not in ("begincast", "cast"):
+            continue
+        ability_id = event["abilityGameID"]
+        rows.append(
+            EnemyCastRow(
+                source_id=event["sourceID"],
+                source_instance=event.get("sourceInstance") or 0,
+                ability_id=ability_id,
+                ability_name=_ability_name(ability_names, ability_id),
+                timestamp_ms=event["timestamp"],
+                is_start=kind == "begincast",
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(rows)
+
+
+def build_interrupts(
+    events: list[dict[str, Any]],
+    run: Run,
+    players: dict[int, str],
+) -> tuple[InterruptEvent, ...]:
+    """Keep only real interrupts; the stream also carries debuff applications."""
+    interrupts = []
+    for event in events:
+        if event.get("type") != "interrupt":
+            continue
+        actor_id = event["sourceID"]
+        interrupts.append(
+            InterruptEvent(
+                player_name=players.get(actor_id, f"Actor {actor_id}"),
+                actor_id=actor_id,
+                interrupted_ability_id=event["extraAbilityGameID"],
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                timestamp_ms=event["timestamp"],
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(interrupts)
+
+
+def build_enemy_deaths(
+    events: list[dict[str, Any]],
+    run: Run,
+    actor_game_ids: dict[int, int],
+    npc_count_map: dict[int, int],
+) -> tuple[EnemyDeath, ...]:
+    """Attach the enemy-forces value each kill awarded.
+
+    An enemy absent from npcCountMap awards nothing; that is normal for bosses,
+    for mobs that do not count, and for a pet like Glacial Tomb — a dungeon
+    mechanic that encases a player, which Warcraft Logs models as a hostile pet
+    owned by that player — so it is zero rather than an error.
+
+    An enemy absent from actor_game_ids is different: ACTORS_QUERY returns
+    every actor in the report, so a report actor id missing there means our own
+    fetch is wrong, not that the log is odd. Defaulting that case to game_id 0
+    would silently attach the wrong forces count to a real death.
+    """
+    deaths = []
+    for event in events:
+        if event.get("type") != "death":
+            continue
+        actor_id = event["targetID"]
+        if actor_id not in actor_game_ids:
+            raise IngestError(
+                f"Enemy death targets actor {actor_id}, which is absent from "
+                "the report's actors"
+            )
+        game_id = actor_game_ids[actor_id]
+        deaths.append(
+            EnemyDeath(
+                game_id=game_id,
+                actor_id=actor_id,
+                timestamp_ms=event["timestamp"],
+                forces=npc_count_map.get(game_id, 0),
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(deaths)
+
+
+def build_damage_taken(
+    events: list[dict[str, Any]],
+    run: Run,
+    ability_names: dict[int, str],
+) -> tuple[DamageTakenEvent, ...]:
+    """Record the unmitigated figure: `amount` alone reads zero on an absorbed hit."""
+    taken = []
+    for event in events:
+        if event.get("type") != "damage":
+            continue
+        ability_id = event["abilityGameID"]
+        amount = event.get("unmitigatedAmount")
+        if amount is None:
+            amount = event.get("amount") or 0
+        taken.append(
+            DamageTakenEvent(
+                actor_id=event["targetID"],
+                ability_id=ability_id,
+                ability_name=_ability_name(ability_names, ability_id),
+                amount=int(amount),
+                timestamp_ms=event["timestamp"],
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(taken)

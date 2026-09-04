@@ -1,0 +1,36 @@
+# Personal damage-reduction cooldowns, by class and specialisation.
+# No API exposes this list, so it is maintained by hand and dated.
+# A spec absent from this file simply produces no defensive findings.
+verified = "2026-09-04"
+
+["Mage/Arcane"]
+abilities = [
+  { ability_id = 235450, name = "Prismatic Barrier" },
+  { ability_id = 45438, name = "Ice Block" },
+  { ability_id = 55342, name = "Mirror Image" },
+]
+
+["Shaman/Elemental"]
+abilities = [
+  { ability_id = 108271, name = "Astral Shift" },
+  { ability_id = 198103, name = "Earth Elemental" },
+]
+
+["Priest/Shadow"]
+abilities = [
+  { ability_id = 47585, name = "Dispersion" },
+  { ability_id = 19236, name = "Desperate Prayer" },
+]
+
+["Paladin/Holy"]
+abilities = [
+  { ability_id = 498, name = "Divine Protection" },
+  { ability_id = 642, name = "Divine Shield" },
+]
+
+["DeathKnight/Blood"]
+abilities = [
+  { ability_id = 55233, name = "Vampiric Blood" },
+  { ability_id = 48792, name = "Icebound Fortitude" },
+  { ability_id = 49028, name = "Dancing Rune Weapon" },
+]

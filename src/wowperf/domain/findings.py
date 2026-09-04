@@ -10,8 +10,10 @@ from wowperf.domain.base import Frozen
 class Confidence(StrEnum):
     """How much the log actually supports a claim.
 
-    MEASURED  read straight from the log
-    DERIVED   computed by a documented formula over logged facts
+    MEASURED  read from the log, or plain arithmetic over logged facts and dated
+              constants, needing no assumption that could be wrong
+    DERIVED   reconstructed by a documented rule, or computed with a modelling
+              choice that could be wrong
     INFERRED  requires an assumption the log cannot confirm
     """
 

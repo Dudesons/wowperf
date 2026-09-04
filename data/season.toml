@@ -1,0 +1,12 @@
+# Constants Blizzard retunes between seasons and the API does not expose.
+# Every value carries the date it was last verified against a live source.
+
+[death_penalty]
+# Seconds added to the keystone timer per death.
+seconds = 5.0
+verified = "2026-09-03"
+
+# At keystone 12 and above the penalty rises.
+seconds_high_key = 15.0
+high_key_threshold = 12
+verified_high_key = "2026-09-03"

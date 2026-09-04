@@ -9,28 +9,27 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
     build_casts,
+    build_damage_taken,
     build_deaths,
+    build_enemy_cast_rows,
+    build_enemy_deaths,
+    build_interrupts,
     build_run,
     select_keystone_fight,
 )
 from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
+    ACTORS_QUERY,
     CASTS_QUERY,
+    DAMAGE_TAKEN_QUERY,
     DEATHS_QUERY,
+    ENEMY_CASTS_QUERY,
+    ENEMY_DEATHS_QUERY,
     FIGHTS_QUERY,
+    INTERRUPTS_QUERY,
 )
-from wowperf.domain.events import CastEvent, Death
-from wowperf.domain.model import Run
-
-
-class LoadedRun:
-    """A run together with the event streams the analysers need."""
-
-    def __init__(self, run: Run, casts: tuple[CastEvent, ...], deaths: tuple[Death, ...]) -> None:
-        self.run = run
-        self.casts = casts
-        self.deaths = deaths
+from wowperf.domain.model import LoadedRun, Run
 
 
 class WclRunRepository:
@@ -85,6 +84,21 @@ class WclRunRepository:
         report = self._report(report_code)
         return build_run(report, select_keystone_fight(report["fights"], fight_id))
 
+    def _actor_game_ids(self, report_code: str) -> dict[int, int]:
+        """Map every actor in the report to its game id, so an enemy death always resolves.
+
+        A death can target a Pet actor as well as an NPC one: a dungeon mechanic
+        that encases a player is modelled as a hostile pet owned by that player.
+        Fetching every actor, not only type "NPC", is what makes that resolve.
+        """
+        payload = self._query(ACTORS_QUERY, {"code": report_code})
+        report = payload["reportData"]["report"]
+        master = report.get("masterData") or {}
+        actors = master.get("actors")
+        if actors is None:
+            raise WclError(f"Report {report_code} returned no masterData.actors block")
+        return {actor["id"]: actor["gameID"] for actor in actors}
+
     def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
@@ -109,7 +123,28 @@ class WclRunRepository:
         }
         cast_events = fetch_all_events(self._query, CASTS_QUERY, event_variables)
         death_events = fetch_all_events(self._query, DEATHS_QUERY, event_variables)
+        enemy_cast_events = fetch_all_events(self._query, ENEMY_CASTS_QUERY, event_variables)
+        interrupt_events = fetch_all_events(self._query, INTERRUPTS_QUERY, event_variables)
+        enemy_death_events = fetch_all_events(self._query, ENEMY_DEATHS_QUERY, event_variables)
+        damage_taken_events = fetch_all_events(self._query, DAMAGE_TAKEN_QUERY, event_variables)
 
         casts = build_casts(cast_events, run, ability_names)
         deaths = build_deaths(death_events, run, casts, ability_names)
-        return LoadedRun(run, casts, deaths)
+        player_names = {player.actor_id: player.name for player in run.players}
+        enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run, ability_names)
+        interrupts = build_interrupts(interrupt_events, run, player_names)
+        actor_game_ids = self._actor_game_ids(report_code)
+        enemy_deaths = build_enemy_deaths(
+            enemy_death_events, run, actor_game_ids, dict(run.npc_count_map)
+        )
+        damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
+
+        return LoadedRun(
+            run=run,
+            casts=casts,
+            deaths=deaths,
+            enemy_cast_rows=enemy_cast_rows,
+            interrupts=interrupts,
+            enemy_deaths=enemy_deaths,
+            damage_taken=damage_taken,
+        )

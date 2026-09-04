@@ -1,6 +1,7 @@
 # ABOUTME: Command-line entry point; the driving adapter that wires ports to implementations.
 # ABOUTME: Holds no analysis logic, only construction, argument handling and output.
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -9,10 +10,12 @@ import httpx
 import typer
 
 from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.analysis.service import analyse
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -69,7 +72,7 @@ def fetch(
         before = repository.rate_limit()
         run = repository.get(code, fight if fight is not None else fight_from_url)
         after = repository.rate_limit()
-    except (ValueError, WclError, httpx.HTTPError) as error:
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         # IngestError subclasses ValueError. Anything else keeps its traceback,
         # because an unexpected failure is a bug and should look like one.
         typer.echo(str(error), err=True)
@@ -83,6 +86,51 @@ def fetch(
         err=True,
     )
     typer.echo(run.model_dump_json(indent=2))
+
+
+@app.command()
+def analyze(
+    report: str = typer.Argument(..., help="Report URL or code"),
+    fight: int | None = typer.Option(None, help="Fight ID; defaults to the only keystone run"),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings file"),
+) -> None:
+    """Analyse a Mythic+ run and write its findings as JSON."""
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    try:
+        code, fight_from_url = parse_report_url(report)
+        repository = build_repository(cache_dir)
+        loaded = repository.load(code, fight if fight is not None else fight_from_url)
+        findings = analyse(loaded, load_season_data(), load_defensives())
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    run = loaded.run
+    payload = {
+        "report_code": run.report_code,
+        "fight_id": run.fight_id,
+        "dungeon_name": run.dungeon_name,
+        "keystone_level": run.keystone_level,
+        "keystone_time_seconds": run.keystone_time_seconds,
+        "in_time": run.keystone_bonus >= 1,
+        "findings_are_ranked_not_additive": (
+            "findings are ranked by seconds_lost, not additive: time.gap.* nest inside "
+            "time.residual and deaths.single/chain/repeat.* nest inside deaths.total"
+        ),
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+    }
+
+    out.mkdir(parents=True, exist_ok=True)
+    written = out / f"{run.report_code}-{run.fight_id}.findings.json"
+    # Real rosters contain non-ASCII names; write_text's default encoding is
+    # locale-dependent (commonly cp1252 on Windows) and would raise on them.
+    written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    typer.echo(f"{len(findings)} findings written to {written}")
 
 
 if __name__ == "__main__":

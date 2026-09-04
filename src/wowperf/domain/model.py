@@ -5,6 +5,14 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from wowperf.domain.base import Frozen
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    EnemyCastRow,
+    EnemyDeath,
+    InterruptEvent,
+)
 
 
 class Player(Frozen):
@@ -88,3 +96,15 @@ class Run(Frozen):
     @property
     def trash_pulls(self) -> tuple[Pull, ...]:
         return tuple(pull for pull in self.pulls if not pull.is_boss)
+
+
+class LoadedRun(Frozen):
+    """Everything fetched about one run. Pure data — no adapter may leak into it."""
+
+    run: Run
+    casts: tuple[CastEvent, ...] = ()
+    deaths: tuple[Death, ...] = ()
+    enemy_cast_rows: tuple[EnemyCastRow, ...] = ()
+    interrupts: tuple[InterruptEvent, ...] = ()
+    enemy_deaths: tuple[EnemyDeath, ...] = ()
+    damage_taken: tuple[DamageTakenEvent, ...] = ()
