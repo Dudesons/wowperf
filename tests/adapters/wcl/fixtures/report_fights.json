@@ -1,0 +1,82 @@
+{
+  "reportData": {
+    "report": {
+      "code": "abc123",
+      "title": "Keys",
+      "startTime": 1700000000000,
+      "endTime": 1700000600000,
+      "fights": [
+        {
+          "id": 1,
+          "name": "Trash",
+          "encounterID": 0,
+          "startTime": 0,
+          "endTime": 5000,
+          "kill": null,
+          "keystoneLevel": null,
+          "keystoneAffixes": null,
+          "keystoneTime": null,
+          "keystoneBonus": null,
+          "countReached": null,
+          "countRequired": null,
+          "npcCountMap": null,
+          "friendlyPlayers": [],
+          "friendlySpecs": [],
+          "friendlyItemLevels": [],
+          "dungeonPulls": []
+        },
+        {
+          "id": 2,
+          "name": "Murder Row",
+          "encounterID": 12813,
+          "startTime": 10000,
+          "endTime": 1810000,
+          "kill": true,
+          "keystoneLevel": 12,
+          "keystoneAffixes": [9, 10],
+          "keystoneTime": 1800000,
+          "keystoneBonus": 1,
+          "countReached": 820,
+          "countRequired": 800,
+          "npcCountMap": {"5001": 4, "5002": 12},
+          "friendlyPlayers": [11, 12],
+          "friendlySpecs": ["Frost", "Holy"],
+          "friendlyItemLevels": [301, 299],
+          "dungeonPulls": [
+            {
+              "id": 1,
+              "name": "Row Thug",
+              "encounterID": 0,
+              "startTime": 20000,
+              "endTime": 50000,
+              "kill": true,
+              "x": 1200,
+              "y": 3400,
+              "enemyNPCs": [
+                {"id": 201, "gameID": 5001},
+                {"id": 202, "gameID": 5002}
+              ]
+            },
+            {
+              "id": 2,
+              "name": "Boss One",
+              "encounterID": 99001,
+              "startTime": 120000,
+              "endTime": 240000,
+              "kill": true,
+              "x": 1500,
+              "y": 3600,
+              "enemyNPCs": [{"id": 210, "gameID": 6001}]
+            }
+          ]
+        }
+      ],
+      "masterData": {
+        "actors": [
+          {"id": 11, "name": "Frostie", "subType": "Mage", "server": "Hyjal"},
+          {"id": 12, "name": "Healbot", "subType": "Priest", "server": "Hyjal"}
+        ]
+      }
+    }
+  }
+}

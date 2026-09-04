@@ -10,3 +10,48 @@ query RateLimit {
   }
 }
 """
+
+FIGHTS_QUERY = """
+query Fights($code: String!) {
+  reportData {
+    report(code: $code) {
+      code
+      title
+      startTime
+      endTime
+      fights(translate: true) {
+        id
+        name
+        encounterID
+        startTime
+        endTime
+        kill
+        keystoneLevel
+        keystoneAffixes
+        keystoneTime
+        keystoneBonus
+        countReached
+        countRequired
+        npcCountMap
+        friendlyPlayers
+        friendlySpecs
+        friendlyItemLevels
+        dungeonPulls {
+          id
+          name
+          encounterID
+          startTime
+          endTime
+          kill
+          x
+          y
+          enemyNPCs { id gameID }
+        }
+      }
+      masterData(translate: true) {
+        actors(type: "Player") { id name subType server }
+      }
+    }
+  }
+}
+"""
