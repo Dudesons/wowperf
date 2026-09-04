@@ -3,6 +3,8 @@
 
 import hashlib
 import json
+import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -24,5 +26,22 @@ class DiskCache:
             return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
 
         value = fetch()
-        path.write_text(json.dumps(value), encoding="utf-8")
+        self._write_atomically(path, json.dumps(value))
         return value
+
+    def _write_atomically(self, path: Path, text: str) -> None:
+        """Write through a temporary neighbour and rename it into place.
+
+        Entries never expire, so a file truncated by a process dying mid-write
+        would poison its key for good. os.replace is atomic on POSIX and on
+        Windows, and the temporary file shares the directory so the rename
+        stays within one filesystem.
+        """
+        handle, temporary = tempfile.mkstemp(dir=self._directory, suffix=".tmp")
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                stream.write(text)
+            os.replace(temporary, path)
+        except BaseException:
+            Path(temporary).unlink(missing_ok=True)
+            raise
