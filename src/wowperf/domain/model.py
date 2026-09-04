@@ -1,6 +1,9 @@
 # ABOUTME: The run as a structure: who was there, which packs were pulled, and when.
 # ABOUTME: Pure data with derived properties; imports nothing that performs I/O.
 
+from collections.abc import Mapping
+from types import MappingProxyType
+
 from wowperf.domain.base import Frozen
 
 
@@ -40,7 +43,11 @@ class Pull(Frozen):
 
     @property
     def signature(self) -> tuple[int, ...]:
-        """Canonical identity of a pull, used to align two runs of the same dungeon."""
+        """The sorted multiset of enemy game IDs, used to align two runs of the same dungeon.
+
+        Duplicates are kept: a pack of three casters and one of one caster are
+        different packs, and pull alignment compares composition including repeats.
+        """
         return tuple(sorted(enemy.game_id for enemy in self.enemies))
 
 
@@ -54,9 +61,17 @@ class Run(Frozen):
     keystone_bonus: int
     count_reached: int
     count_required: int
-    npc_count_map: dict[int, int]
+    # Enemy-forces awarded per NPC game ID, as (game_id, count) pairs. A tuple, not
+    # a dict, so that a Run is genuinely immutable and hashable; read it through
+    # npc_count_map.
+    npc_counts: tuple[tuple[int, int], ...]
     players: tuple[Player, ...]
     pulls: tuple[Pull, ...]
+
+    @property
+    def npc_count_map(self) -> Mapping[int, int]:
+        """Enemy forces awarded per NPC game ID, as a read-only mapping."""
+        return MappingProxyType(dict(self.npc_counts))
 
     @property
     def keystone_time_seconds(self) -> float:

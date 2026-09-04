@@ -31,7 +31,7 @@ def a_run(pulls: tuple[Pull, ...]) -> Run:
         keystone_bonus=1,
         count_reached=820,
         count_required=800,
-        npc_count_map={100: 5},
+        npc_counts=((100, 5),),
         players=(Player(actor_id=1, name="Someone", class_name="Mage",
                         spec="Frost", item_level=300),),
         pulls=pulls,
@@ -72,3 +72,23 @@ def test_the_model_is_frozen() -> None:
     pull = a_pull(0, 0, 1000)
     with pytest.raises(ValidationError):
         pull.index = 5
+
+
+def test_the_npc_count_map_reads_as_a_mapping() -> None:
+    assert a_run(()).npc_count_map == {100: 5}
+    assert a_run(()).npc_count_map[100] == 5
+
+
+def test_the_npc_count_map_cannot_be_mutated_through() -> None:
+    import pytest
+
+    run = a_run(())
+    with pytest.raises(TypeError):
+        run.npc_count_map[999] = 7  # type: ignore[index]
+    assert run.npc_count_map == {100: 5}
+
+
+def test_a_run_is_hashable_so_later_plans_can_put_it_in_a_set() -> None:
+    run = a_run((a_pull(0, 0, 1000),))
+    assert hash(run) == hash(a_run((a_pull(0, 0, 1000),)))
+    assert len({run, a_run((a_pull(0, 0, 1000),))}) == 1
