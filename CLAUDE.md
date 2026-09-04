@@ -356,7 +356,7 @@ only Python toolchain used here — no pip, no poetry, no hand-managed virtualen
 | `uv run pytest` | Unit and integration tests; offline, no credentials needed |
 | `uv run pytest -m e2e` | End-to-end tests against the real API; needs credentials, spends quota |
 | `uv run ruff check .` | Lint |
-| `uv run mypy wowperf` | Type check |
+| `uv run mypy` | Type check |
 | `uv run wowperf analyze <url>` | Analyse a run and write the report |
 
 ---

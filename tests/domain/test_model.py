@@ -71,4 +71,4 @@ def test_the_model_is_frozen() -> None:
 
     pull = a_pull(0, 0, 1000)
     with pytest.raises(ValidationError):
-        pull.index = 5  # type: ignore[misc]
+        pull.index = 5
