@@ -161,7 +161,7 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
     assert summary.seconds_lost is None
     # The title must never claim a landed cast was interruptible: the log carries
     # no such flag, so all the analyser knows is that the cast completed unkicked.
-    assert summary.title == "2 casts landed, 1 were kicked"
+    assert summary.title == "2 casts landed, 1 was kicked"
     assert "interruptible" not in summary.title
     joined = " ".join(summary.evidence)
     assert "2 landed" in joined
@@ -171,3 +171,10 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
 
 def test_no_casts_produces_no_findings() -> None:
     assert analyse_interrupts((), ()) == []
+
+
+def test_the_summary_title_pluralises_a_single_landed_cast_correctly() -> None:
+    casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
+    findings = analyse_interrupts(casts, ())
+    summary = next(f for f in findings if f.id == "interrupts.summary")
+    assert summary.title == "1 cast landed, 0 were kicked"

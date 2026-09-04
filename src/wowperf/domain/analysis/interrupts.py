@@ -138,7 +138,10 @@ def analyse_interrupts(
     findings = [
         Finding(
             id="interrupts.summary",
-            title=f"{len(landed)} casts landed, {len(kicked)} were kicked",
+            title=(
+                f"{len(landed)} cast{'s' if len(landed) != 1 else ''} landed, "
+                f"{len(kicked)} {'was' if len(kicked) == 1 else 'were'} kicked"
+            ),
             detail=(
                 "Outcomes are reconstructed: the log records no interruptible flag. Casts "
                 "whose outcome the log does not resolve are excluded rather than counted "
@@ -172,13 +175,14 @@ def analyse_interrupts(
                 title=f"{names[ability_id]} landed {counts[ability_id]} times",
                 detail=(
                     f"{names[ability_id]} was cast to completion {counts[ability_id]} times "
-                    f"and did {damage} damage to the group within "
+                    f"and did {damage} unmitigated damage to the group within "
                     f"{FOLLOW_WINDOW_MS // 1000}s of each cast."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"{damage} damage attributed",
+                    f"{damage} unmitigated damage attributed",
+                    "unmitigated: before absorbs and mitigation",
                     f"ability {ability_id}",
                 ),
             )
