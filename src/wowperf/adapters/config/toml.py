@@ -41,7 +41,12 @@ def load_defensives(path: Path = DEFAULT_DEFENSIVES_PATH) -> Defensives:
             (
                 key,
                 tuple(
-                    DefensiveAbility(ability_id=int(item["ability_id"]), name=str(item["name"]))
+                    DefensiveAbility(
+                        ability_id=int(item["ability_id"]),
+                        name=str(item["name"]),
+                        cooldown_seconds=float(item["cooldown_seconds"]),
+                        charges=int(item.get("charges", 1)),
+                    )
                     for item in abilities
                 ),
             )

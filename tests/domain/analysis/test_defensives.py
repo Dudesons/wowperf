@@ -12,8 +12,12 @@ DEFENSIVES = Defensives(
         (
             "Mage/Arcane",
             (
-                DefensiveAbility(ability_id=235450, name="Prismatic Barrier"),
-                DefensiveAbility(ability_id=45438, name="Ice Block"),
+                DefensiveAbility(
+                    ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0
+                ),
+                DefensiveAbility(
+                    ability_id=45438, name="Ice Block", cooldown_seconds=240.0
+                ),
             ),
         ),
     )
