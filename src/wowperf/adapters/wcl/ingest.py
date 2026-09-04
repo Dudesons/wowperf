@@ -264,13 +264,23 @@ def build_enemy_deaths(
 
     An enemy absent from npcCountMap awards nothing; that is normal for bosses
     and for mobs that do not count, so it is zero rather than an error.
+
+    An enemy absent from npc_game_ids is different: NPC_ACTORS_QUERY returns
+    every NPC actor in the report, so a report actor id missing there means
+    our own fetch is wrong, not that the log is odd. Defaulting that case to
+    game_id 0 would silently attach the wrong forces count to a real death.
     """
     deaths = []
     for event in events:
         if event.get("type") != "death":
             continue
         actor_id = event["targetID"]
-        game_id = npc_game_ids.get(actor_id, 0)
+        if actor_id not in npc_game_ids:
+            raise IngestError(
+                f"Enemy death targets actor {actor_id}, which is absent from "
+                "the report's NPC actors"
+            )
+        game_id = npc_game_ids[actor_id]
         deaths.append(
             EnemyDeath(
                 game_id=game_id,

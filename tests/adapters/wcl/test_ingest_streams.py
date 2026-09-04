@@ -3,7 +3,10 @@
 
 from typing import Any
 
+import pytest
+
 from wowperf.adapters.wcl.ingest import (
+    IngestError,
     build_damage_taken,
     build_enemy_cast_rows,
     build_enemy_deaths,
@@ -86,6 +89,12 @@ def test_an_enemy_with_no_forces_entry_counts_zero() -> None:
     events: list[dict[str, Any]] = [{"type": "death", "targetID": 999, "timestamp": 4000}]
     deaths = build_enemy_deaths(events, a_run(), {999: 555}, {241874: 5})
     assert deaths[0].forces == 0
+
+
+def test_an_actor_id_absent_from_npc_game_ids_raises() -> None:
+    events: list[dict[str, Any]] = [{"type": "death", "targetID": 999, "timestamp": 4000}]
+    with pytest.raises(IngestError, match="999"):
+        build_enemy_deaths(events, a_run(), {}, {241874: 5})
 
 
 def test_damage_taken_uses_the_unmitigated_amount() -> None:
