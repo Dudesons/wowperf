@@ -18,6 +18,15 @@ app = typer.Typer(help="Analyse World of Warcraft logs and report what to improv
 DEFAULT_CACHE_DIR = Path("cache")
 
 
+@app.callback()
+def main() -> None:
+    """Analyse World of Warcraft logs and report what to improve.
+
+    Typer collapses a single-command app into a bare invocation; this callback
+    keeps `fetch` addressable as a subcommand even before later plans add more.
+    """
+
+
 def build_repository(cache_dir: Path) -> WclRunRepository:
     client_id = os.environ.get("WCL_CLIENT_ID")
     client_secret = os.environ.get("WCL_CLIENT_SECRET")
