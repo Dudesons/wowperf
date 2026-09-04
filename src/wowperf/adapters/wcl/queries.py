@@ -199,3 +199,38 @@ query Actors($code: String!) {
   }
 }
 """
+
+# Rankings take `bracket`, not a keystone level: bracket 15 returns +16 runs.
+# `size` is the group size and not a page size — only 5 is valid for a dungeon,
+# and omitting it returns the same rows — so neither query passes it.
+FIGHT_RANKINGS_QUERY = """
+query FightRankings($encounterId: Int!, $bracket: Int!, $page: Int!) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      fightRankings(metric: speed, bracket: $bracket, page: $page)
+    }
+  }
+}
+"""
+
+CHARACTER_RANKINGS_QUERY = """
+query CharacterRankings(
+  $encounterId: Int!, $bracket: Int!, $page: Int!, $className: String!, $specName: String!
+) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      characterRankings(
+        metric: playerscore
+        bracket: $bracket
+        page: $page
+        className: $className
+        specName: $specName
+      )
+    }
+  }
+}
+"""
