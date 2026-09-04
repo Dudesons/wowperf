@@ -26,7 +26,7 @@ def a_run(keystone_level: int = 16) -> Run:
              enemies=(EnemyNpc(actor_id=3, game_id=300),)),
     )
     return Run(
-        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=keystone_level, affix_ids=(), keystone_time_ms=300_000,
         keystone_bonus=1, count_reached=744, count_required=729, npc_counts=(),
         players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",

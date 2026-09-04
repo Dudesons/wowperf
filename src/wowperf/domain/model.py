@@ -63,12 +63,18 @@ class Run(Frozen):
     report_code: str
     fight_id: int
     dungeon_name: str
+    # The rankings API keys on this, and the fight carries it, so no leaderboard
+    # lookup in this project ever needs a hardcoded encounter or zone ID.
+    encounter_id: int
     keystone_level: int
     affix_ids: tuple[int, ...]
     keystone_time_ms: int
     keystone_bonus: int
     count_reached: int
     count_required: int
+    # Warcraft Logs lowercases the owner's name relative to the character's, so
+    # anything matching against it must fold case.
+    owner_name: str | None = None
     # Enemy-forces awarded per NPC game ID, as (game_id, count) pairs. A tuple, not
     # a dict, so that a Run is genuinely immutable and hashable; read it through
     # npc_count_map.

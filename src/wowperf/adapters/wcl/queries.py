@@ -19,6 +19,7 @@ query Fights($code: String!) {
       title
       startTime
       endTime
+      owner { name }
       fights(translate: true) {
         id
         name

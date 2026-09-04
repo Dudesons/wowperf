@@ -121,3 +121,49 @@ def test_a_roster_member_with_no_matching_actor_is_rejected_not_dropped() -> Non
     assert str(exc_info.value) == (
         "Fight 2 lists player actor 99, which is absent from the report's master data"
     )
+
+
+def a_minimal_fight() -> dict[str, object]:
+    return {
+        "id": 36,
+        "name": "Den of Nalorakk",
+        "encounterID": 12825,
+        "keystoneLevel": 16,
+        "keystoneAffixes": [9, 10, 147],
+        "keystoneTime": 1_909_000,
+        "keystoneBonus": 1,
+        "countReached": 744,
+        "countRequired": 729,
+        "npcCountMap": {},
+        "friendlyPlayers": [],
+        "friendlySpecs": [],
+        "friendlyItemLevels": [],
+        "dungeonPulls": [],
+    }
+
+
+def test_build_run_reads_the_encounter_and_the_owner_off_the_report() -> None:
+    report = {
+        "code": "abc123",
+        "owner": {"name": "dudesons"},
+        "masterData": {"actors": []},
+    }
+
+    run = build_run(report, a_minimal_fight())
+
+    assert run.encounter_id == 12825
+    assert run.owner_name == "dudesons"
+
+
+def test_build_run_survives_a_report_with_no_owner() -> None:
+    report = {"code": "abc123", "masterData": {"actors": []}}
+
+    assert build_run(report, a_minimal_fight()).owner_name is None
+
+
+def test_a_fight_with_no_encounter_id_fails_loudly() -> None:
+    fight = a_minimal_fight()
+    del fight["encounterID"]
+
+    with pytest.raises(IngestError, match="encounterID"):
+        build_run({"code": "abc123", "masterData": {"actors": []}}, fight)
