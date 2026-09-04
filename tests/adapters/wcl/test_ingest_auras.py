@@ -78,3 +78,9 @@ def test_a_missing_table_block_is_an_error_not_an_empty_result() -> None:
 
     with pytest.raises(IngestError, match="onSelf"):
         build_player_auras(payload, actor_id=7)
+
+
+def test_the_aura_table_query_allows_unlisted_reports() -> None:
+    from wowperf.adapters.wcl.queries import AURA_TABLE_QUERY
+
+    assert "allowUnlisted: true" in AURA_TABLE_QUERY

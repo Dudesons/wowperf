@@ -244,7 +244,7 @@ query CharacterRankings(
 AURA_TABLE_QUERY = """
 query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
   reportData {
-    report(code: $code) {
+    report(code: $code, allowUnlisted: true) {
       onSelf: table(fightIDs: [$fightId], dataType: Buffs, targetID: $actorId)
       onTargets: table(
         fightIDs: [$fightId]
