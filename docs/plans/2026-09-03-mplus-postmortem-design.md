@@ -1,7 +1,7 @@
 # Mythic+ Run Post-Mortem — Design
 
 - **Date:** 2026-09-03
-- **Status:** Approved design, awaiting implementation plan
+- **Status:** Approved. Plans A, B and C implemented; §6.5 amended 2026-09-05 (see §6.5)
 - **Scope:** First vertical slice of the `wow_perf` project
 
 ---
@@ -89,6 +89,31 @@ without any external data source.
 
 Timestamps on fights and pulls are relative to report start. `Report.startTime` is absolute
 epoch milliseconds.
+
+`ReportFight.friendlyPlayers` is the roster of **that fight**. `masterData.actors` lists every
+actor in the **report**, across all its fights, so filtering a fight's roster from `masterData`
+alone silently includes players who were never there.
+
+**Aura uptime comes from the table endpoint, not the event stream.** Verified 2026-09-05 against
+report `6Kx1P9GbNXrcLdHa` fight 36:
+
+```
+table(fightIDs: [Int], dataType: Buffs | Debuffs, targetID: Int, sourceID: Int,
+      hostilityType: HostilityType, startTime: Float, endTime: Float)
+```
+
+returns `{data: {auras: [...], totalTime, useTargets, startTime, endTime, logVersion,
+gameVersion}}`, where each aura carries `name`, `guid`, `type`, `abilityIcon`, `totalUptime`
+in milliseconds, `totalUses`, and `bands: [{startTime, endTime}]`. `totalTime` is the queried
+window in milliseconds.
+
+Two consequences. The uptime is pre-aggregated, so no event pagination is needed. And `bands`
+carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls, say — is an
+intersection rather than a second query. Confirmed by recomputing one aura's uptime over
+fight 36's three boss pulls and matching the boss window the analyzers already derive.
+
+Cost, measured the same day: a roster query, four aura tables and a `rateLimitData` read
+together spent **12.02 points of 3600**.
 
 ### 2.3 Leaderboards return report codes
 
@@ -337,6 +362,33 @@ cooldown-reset or cooldown-reduction events, so a defensive may genuinely have b
 It ships labelled `inferred` and only for the unambiguous case: never cast at any point in the
 run.
 
+### 5.7 Defensive uses against the cooldown ceiling — `inferred`
+
+*Added 2026-09-05. This began as §6.5 item 4 and moved here; see §6.5.*
+
+§5.6 reports a binary: pressed, or never pressed. This deepens it to a rate. The ceiling is
+
+```
+alive_combat_seconds / cooldown_seconds * charges
+```
+
+using the death spans §5.2 already computes, because a defensive cannot be pressed by a corpse
+and charging a player for time they spent dead penalises the same death twice.
+
+`cooldown_seconds` and `charges` have **no API source**. A schema-wide search for `cooldown` and
+`charges` on 2026-09-05 returned nothing. They join `data/defensives.toml` beside the ability IDs
+already there — roughly forty values, dated and hand-maintained, on the same terms as §3.5 allows
+for constants the API does not expose.
+
+The badge is `inferred`, and the reason is not the arithmetic. **A defensive is pressed into
+incoming damage, not on cooldown.** A tank who used Icebound Fortitude twice in a clean run did
+nothing wrong, and "the cooldown allowed eight" is true and useless. Two constraints keep the
+finding honest: it fires only far below the ceiling rather than at any shortfall, and the detail
+states the situational caveat outright rather than leaving the reader to supply it.
+
+This needs no reference run and appears under `--no-compare`. It measures a player against the
+game's rules, which is why it is an analyzer and not a comparison.
+
 ---
 
 ## 6. Comparison
@@ -400,10 +452,30 @@ Compared, in descending order of signal:
 2. **Talent build difference.** `ReportFight.talentImportCode(actorID)` returns the import
    string. We diff and print an importable result.
 3. **Casts per minute of active time**, ability by ability. Integer gaps are unarguable.
-4. **Cooldown uses against theoretical maximum** (`duration / cooldown * charges`), labelled
-   `inferred`, because the log records no cooldown resets and specializations with reset
-   mechanics will be wrong.
-5. **Buff and debuff uptime**, on self and on target.
+4. ~~**Cooldown uses against theoretical maximum**~~ — **moved to §5.7 and narrowed, 2026-09-05.**
+   As written this needed cooldown seconds and charge counts for every rotational ability of
+   every specialization, none of which the API publishes, all of which go stale each patch, and
+   the result would be wrong wherever a proc resets a cooldown — which in current WoW is most
+   specializations. Narrowed to the defensives already listed in `data/defensives.toml`, whose
+   cooldowns rarely reset, it survives every one of those objections. It also stopped being a
+   spell *comparison*: a cooldown ceiling is the game's own limit, so it needs no reference run
+   and belongs beside §5.6.
+5. **Buff and debuff uptime**, on self and on target. *Specified 2026-09-05.* Two `table` calls
+   per side, which "on self and on target" resolves to exactly:
+
+   - **on self** — `dataType: Buffs, targetID: <subject>`, the auras the player carried;
+   - **on target** — `dataType: Debuffs, sourceID: <subject>, hostilityType: Enemies`, the
+     debuffs the player kept up on enemies.
+
+   Both are restricted to boss pulls by intersecting each aura's `bands` with the boss windows
+   (§2.2), and compared against the same specialization's top parse. Badge `derived`: the
+   arithmetic over bands is exact, but comparing two players in two different fights rests on
+   an assumption that can be wrong. The reference player is found by name in their own roster,
+   and their absence from it is a finding, not a failure — as in §6.1.
+
+   Plan C deferred this on the grounds that it "doubles the event fetch on both sides". That
+   reasoning does not survive measurement — the table endpoint is pre-aggregated and needs no
+   event stream at all, and four aura tables cost about four points of an hourly 3600 (§2.2).
 
 ### 6.6 Confounds we declare rather than correct
 
@@ -559,3 +631,8 @@ guild names are anonymized, and large event dumps are never committed.
   invented in the original design and have been corrected (§4): the killing blow resolves
   from `killingAbilityGameID`, and `overkill` is dropped from `Death` until a plan pays for
   the damage-event join it would need.
+- ~~Decide the fate of §6.5 items 4 and 5, deferred by Plan C.~~ Settled 2026-09-05. Item 4
+  moved to §5.7 and narrowed to defensives, because the API publishes neither cooldown
+  durations nor charge counts and the unnarrowed version would be wrong for most
+  specializations. Item 5 is specified in §6.5 and built on the `table` endpoint verified in
+  §2.2, which is cheaper than the event stream Plan C priced it against. Both are Plan D's.
