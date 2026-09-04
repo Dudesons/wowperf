@@ -529,12 +529,29 @@ guild names are anonymized, and large event dumps are never committed.
 ## 11. Open items for the implementation plan
 
 - ~~Confirm the real hourly point limit from a live `rateLimitData` call.~~ Confirmed on
-  2026-09-04 by live introspection: `limitPerHour` reads **3600**. The cost of a full report
-  fetch remains unmeasured, pending a run against a real report.
+  2026-09-04 by live introspection: `limitPerHour` reads **3600**.
+- ~~Measure the point cost of a full run analysis, and decide from the measurement whether
+  §5.5 ships enabled or behind `--deep`.~~ Measured on 2026-09-04 against report
+  `6Kx1P9GbNXrcLdHa` fight 36, a +16 Den of Nalorakk of 31.8 minutes with 5 players, 12
+  pulls, 9,259 casts and 4 deaths. Every figure below includes the two `rateLimitData` reads
+  the CLI makes, which cost about 0.5 each:
+
+  | Operation | Cold | Warm |
+  | --- | --- | --- |
+  | `get` — fights query only, enough to build a `Run` | 3.00 | 1.00 |
+  | `load` — fights, abilities, casts (2 pages), deaths | 7.04 | — |
+  | `load` with fights and abilities already cached | — | 5.00 |
+
+  So a fights query costs about 2 points and a complete event fetch about 6. Against 3,600
+  per hour that is roughly **600 full run analyses an hour**, which settles the question:
+  **§5.5 ships enabled, not behind `--deep`.** The budget is not the constraint the design
+  feared. The disk cache stays load-bearing anyway — it makes iterating on analysis code free
+  rather than merely cheap, and a warm `get` costs only the quota reads themselves.
+
+  Caveat: one dungeon, one key level, one group. A longer key or a cast-heavier composition
+  pages more; the shape of the cost, not its exact value, is what this measures.
 - Confirm whether Warcraft Logs exposes a CSV export worth using, or whether JSON is the only
   practical surface.
-- Measure the point cost of a full run analysis, and decide from the measurement whether §5.5
-  ships enabled or behind `--deep`.
 - Confirmed on 2026-09-04 against a real death event (report `6Kx1P9GbNXrcLdHa`, fight 36): a
   Warcraft Logs death event's complete key set is `abilityGameID` (always `0`), `fight`,
   `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always `-1`), `targetID`,
