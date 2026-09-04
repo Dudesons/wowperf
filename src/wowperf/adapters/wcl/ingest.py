@@ -51,7 +51,12 @@ def _build_players(fight: dict[str, Any], actors: list[dict[str, Any]]) -> tuple
     for position, actor_id in enumerate(ids):
         actor = by_id.get(actor_id)
         if actor is None:
-            continue
+            # Dropping the player silently would shrink the roster and skew every
+            # per-player metric computed from it.
+            raise IngestError(
+                f"Fight {fight.get('id')} lists player actor {actor_id}, "
+                "which is absent from the report's master data"
+            )
         players.append(
             Player(
                 actor_id=actor_id,
@@ -87,6 +92,21 @@ def _build_pulls(fight: dict[str, Any]) -> tuple[Pull, ...]:
     return tuple(pulls)
 
 
+def _required(fight: dict[str, Any], field: str) -> int:
+    """Read a field a completed keystone fight must carry, rather than defaulting it.
+
+    keystoneTime anchors the whole time decomposition and countRequired is a
+    divisor in trash efficiency. A missing one is schema drift, and defaulting it
+    to zero would turn that into a confident wrong number.
+    """
+    value = fight.get(field)
+    if value is None:
+        raise IngestError(
+            f"Fight {fight.get('id')} is a completed Mythic+ run but carries no {field}"
+        )
+    return int(value)
+
+
 def build_run(report: dict[str, Any], fight: dict[str, Any]) -> Run:
     actors = report.get("masterData", {}).get("actors") or []
     raw_counts = fight.get("npcCountMap") or {}
@@ -97,12 +117,12 @@ def build_run(report: dict[str, Any], fight: dict[str, Any]) -> Run:
         dungeon_name=fight["name"],
         keystone_level=fight["keystoneLevel"],
         affix_ids=tuple(fight.get("keystoneAffixes") or ()),
-        keystone_time_ms=fight.get("keystoneTime") or 0,
+        keystone_time_ms=_required(fight, "keystoneTime"),
         keystone_bonus=fight.get("keystoneBonus") or 0,
-        count_reached=fight.get("countReached") or 0,
-        count_required=fight.get("countRequired") or 0,
+        count_reached=_required(fight, "countReached"),
+        count_required=_required(fight, "countRequired"),
         # npcCountMap arrives as a JSON object, so its keys are strings.
-        npc_count_map={int(game_id): count for game_id, count in raw_counts.items()},
+        npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
         players=_build_players(fight, actors),
         pulls=_build_pulls(fight),
     )

@@ -96,3 +96,28 @@ def test_pulls_keep_their_order_and_classify_bosses() -> None:
 def test_pull_enemies_carry_their_game_ids() -> None:
     run = build_run(report(), select_keystone_fight(report()["fights"], None))
     assert run.pulls[0].signature == (5001, 5002)
+
+
+@pytest.mark.parametrize("field", ["keystoneTime", "countReached", "countRequired"])
+def test_a_missing_load_bearing_keystone_number_is_rejected_not_defaulted(field: str) -> None:
+    payload = report()
+    fight = select_keystone_fight(payload["fights"], None)
+    fight[field] = None
+
+    with pytest.raises(IngestError) as exc_info:
+        build_run(payload, fight)
+    assert str(exc_info.value) == f"Fight 2 is a completed Mythic+ run but carries no {field}"
+
+
+def test_a_roster_member_with_no_matching_actor_is_rejected_not_dropped() -> None:
+    payload = report()
+    fight = select_keystone_fight(payload["fights"], None)
+    fight["friendlyPlayers"] = [11, 12, 99]
+    fight["friendlySpecs"] = ["Frost", "Holy", "Fury"]
+    fight["friendlyItemLevels"] = [301, 299, 300]
+
+    with pytest.raises(IngestError) as exc_info:
+        build_run(payload, fight)
+    assert str(exc_info.value) == (
+        "Fight 2 lists player actor 99, which is absent from the report's master data"
+    )
