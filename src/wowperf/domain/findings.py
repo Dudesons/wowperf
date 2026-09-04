@@ -4,7 +4,7 @@
 from collections.abc import Iterable
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from wowperf.domain.base import Frozen
 
 
 class Confidence(StrEnum):
@@ -20,9 +20,7 @@ class Confidence(StrEnum):
     INFERRED = "inferred"
 
 
-class Finding(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
+class Finding(Frozen):
     id: str
     title: str
     detail: str

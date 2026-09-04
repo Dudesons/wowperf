@@ -1,11 +1,7 @@
 # ABOUTME: The run as a structure: who was there, which packs were pulled, and when.
 # ABOUTME: Pure data with derived properties; imports nothing that performs I/O.
 
-from pydantic import BaseModel, ConfigDict
-
-
-class Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True)
+from wowperf.domain.base import Frozen
 
 
 class Player(Frozen):

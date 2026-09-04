@@ -28,5 +28,11 @@ def test_findings_rank_by_seconds_lost_descending() -> None:
 
 
 def test_findings_without_a_time_cost_rank_last_in_stable_order() -> None:
-    ranked = rank_findings([a_finding("untimed", None), a_finding("timed", 1.0)])
-    assert [finding.id for finding in ranked] == ["timed", "untimed"]
+    ranked = rank_findings(
+        [
+            a_finding("untimed_first", None),
+            a_finding("timed", 1.0),
+            a_finding("untimed_second", None),
+        ]
+    )
+    assert [finding.id for finding in ranked] == ["timed", "untimed_first", "untimed_second"]

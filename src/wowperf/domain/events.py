@@ -1,11 +1,7 @@
 # ABOUTME: The run as a sequence: deaths and casts, each located in time and in a pull.
 # ABOUTME: Pure data; analysers derive meaning from these, adapters produce them.
 
-from pydantic import BaseModel, ConfigDict
-
-
-class Frozen(BaseModel):
-    model_config = ConfigDict(frozen=True)
+from wowperf.domain.base import Frozen
 
 
 class Death(Frozen):
