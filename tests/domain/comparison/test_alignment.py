@@ -104,3 +104,40 @@ def test_two_empty_routes_align_without_raising() -> None:
     alignment = align_pulls(a_run(), a_run())
 
     assert alignment.matched == ()
+
+
+def test_a_skipped_pack_is_not_reported_as_reordering() -> None:
+    """Index drift from an unequal-length route is not the same as reordering.
+
+    Skipping pack 2 pushes every later match one slot back in their route
+    (our pull 2 lines up with their pull 1, our pull 3 with their pull 2) but
+    nothing was fought out of sequence.
+    """
+    alignment = align_pulls(a_run((1,), (2,), (3,), (4,)), a_run((1,), (3,), (4,)))
+
+    assert alignment.out_of_order == ()
+    assert alignment.only_ours == (1,)
+    assert alignment.only_theirs == ()
+
+
+def test_a_genuine_swap_is_reported_as_reordering_and_leaves_no_leftovers() -> None:
+    """An adjacent swap is a pack signature stranded on both sides of the split.
+
+    Pack 1 gets absorbed into a normal match (with drifted indices, same as a
+    skip would cause), but pack 2 is left over on both sides and that is what
+    `out_of_order` surfaces.
+    """
+    alignment = align_pulls(a_run((1,), (2,), (3,)), a_run((2,), (1,), (3,)))
+
+    assert [(m.ours_index, m.theirs_index) for m in alignment.out_of_order] == [(1, 0)]
+    assert alignment.only_ours == ()
+    assert alignment.only_theirs == ()
+
+
+def test_leftover_multiplicity_pairs_only_as_many_as_both_sides_share() -> None:
+    """A signature left over twice on our side and once on theirs pairs once."""
+    alignment = align_pulls(a_run((1,), (2,), (2,)), a_run((2,), (1,)))
+
+    assert [(m.ours_index, m.theirs_index) for m in alignment.out_of_order] == [(1, 0)]
+    assert alignment.only_ours == (2,)
+    assert alignment.only_theirs == ()
