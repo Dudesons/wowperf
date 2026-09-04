@@ -37,15 +37,37 @@ class PlayerAuras(Frozen):
 
 
 def uptime_seconds_in(aura: Aura, windows: tuple[tuple[int, int], ...]) -> float:
-    """Seconds this aura was up inside the given millisecond windows.
+    """Seconds this aura was up, on at least one target, inside the given windows.
 
     Bands are clipped to each window rather than counted whole, which is what
-    makes a boss-pull-only figure exact rather than an approximation.
+    makes a boss-pull-only figure exact rather than an approximation. The
+    clipped intervals are then merged before summing, so overlap contributes
+    once rather than once per overlapping band or window: a debuff table
+    aggregates every enemy the player hit, and a damage-over-time effect
+    ticking on several targets at once produces bands that overlap in
+    wall-clock time. Summing the union rather than the parts is also the only
+    reading that cannot exceed the window length.
     """
-    total_ms = 0
+    clipped: list[tuple[int, int]] = []
     for band in aura.bands:
         for start, end in windows:
-            overlap = min(band.end_ms, end) - max(band.start_ms, start)
-            if overlap > 0:
-                total_ms += overlap
+            lo = max(band.start_ms, start)
+            hi = min(band.end_ms, end)
+            if hi > lo:
+                clipped.append((lo, hi))
+
+    if not clipped:
+        return 0.0
+
+    clipped.sort()
+    total_ms = 0
+    merged_start, merged_end = clipped[0]
+    for lo, hi in clipped[1:]:
+        if lo <= merged_end:
+            merged_end = max(merged_end, hi)
+        else:
+            total_ms += merged_end - merged_start
+            merged_start, merged_end = lo, hi
+    total_ms += merged_end - merged_start
+
     return total_ms / 1000

@@ -45,3 +45,28 @@ def test_player_auras_default_to_empty_on_both_sides() -> None:
 
     assert auras.on_self == ()
     assert auras.on_targets == ()
+
+
+def test_two_overlapping_bands_count_the_union_not_the_sum() -> None:
+    # A debuff table aggregates every enemy the player hit, so a DoT ticking on
+    # two targets at once produces two bands that overlap in wall-clock time.
+    # The aura was up, without interruption, from 1000 to 7000: six seconds.
+    aura = an_aura((1000, 5000), (3000, 7000))
+
+    assert uptime_seconds_in(aura, ((0, 10000),)) == 6.0
+
+
+def test_two_bands_that_touch_end_to_start_sum_without_gap_or_double_count() -> None:
+    aura = an_aura((1000, 3000), (3000, 5000))
+
+    assert uptime_seconds_in(aura, ((0, 10000),)) == 4.0
+
+
+def test_a_band_spanning_two_overlapping_windows_counts_the_union() -> None:
+    aura = an_aura((0, 10000))
+
+    assert uptime_seconds_in(aura, ((0, 6000), (4000, 10000))) == 10.0
+
+
+def test_a_band_with_end_before_start_contributes_nothing() -> None:
+    assert uptime_seconds_in(an_aura((5000, 1000)), ((0, 10000),)) == 0.0
