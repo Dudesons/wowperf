@@ -175,22 +175,11 @@ For the full methodology, use the `superpowers:test-driven-development` skill.
 ## Language
 
 **Write in English**: commit messages, code comments, developer-facing error strings, this
-file, and the skills under `.claude/skills/`. The repository is public and may take
-contributions from people who do not read French.
+file, documentation, and the skills under `.claude/skills/`.
 
-The first five commits are in French. They predate this rule and are already published —
-leave them alone.
-
-Two things are deliberately not English-only: the codex content under `content/**.md` and the
-user interface. Both are translated through the i18n layer, per locale, rather than written
-in a single language.
-
-`CONTRIBUTING.md` and `CONTRIBUTING.fr.md` are a translated pair: **both land in the same commit
-or neither does.** Nothing tests a document, so that rule is the only thing keeping them in step.
-
-Commit style, taken from the existing history: imperative mood, no `feat:` / `fix:` prefix, a
-subject line saying what the commit does to the repository. The body explains **why**, not
-what — the diff already says what.
+Commit style: imperative mood, no `feat:` / `fix:` prefix, a subject line saying what the
+commit does to the repository. The body explains **why**, not what — the diff already says
+what.
 
 ## The Golden Rule
 
@@ -325,16 +314,50 @@ See skills: `superpowers:brainstorming`, `superpowers:writing-plans`, `superpowe
 
 # Repository Overview
 
-TODO
+`wow_perf` analyses World of Warcraft combat logs from Warcraft Logs and reports what a
+player or group could improve. It runs locally: a command-line tool fetches a log, computes
+findings, and renders one self-contained HTML report.
+
+The project is cut into four slices, each with its own design, plan, and implementation
+cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
+analysis, and healer analysis.
+
+**Current state: designed, not yet built.** No Python package exists. The approved design
+lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and is the authority on
+architecture, analyzers, and comparison rules. Read it before writing code.
 
 ## Invariants not to break
 
-
+- **The domain layer performs no I/O.** Nothing under `wowperf/domain/` imports `httpx`,
+  `jinja2`, or anything else that touches the network, the disk, or a template. Adapters do
+  that, behind the ports in `domain/ports.py`.
+- **The LLM never computes a number.** Every metric comes from tested Python. Claude reads
+  the findings JSON and interprets it; it does not calculate, and it does not parse the HTML.
+- **Every finding carries a confidence badge** — `measured`, `derived`, or `inferred`. A
+  finding without one is a bug. This is what keeps the tool from confidently lying.
+- **Never accumulate a corpus of other players' logs.** RPGLogs terms §5d prohibit it.
+  Reference runs are fetched for one comparison and cached locally, never warehoused.
+- **No hardcoded season data.** Zone, encounter, and affix IDs resolve from `worldData` and
+  `gameData` at runtime. Constants with no API source live in `data/season.toml` with a
+  verified-on date.
+- **Cache every Warcraft Logs response, and instrument `rateLimitData`.** Point cost per
+  query is undocumented and the hourly budget is small.
+- **Never invent an API field name.** The `wcl-api` skill holds the verified schema
+  reference. If a field is not in it, verify against the live schema before using it.
 
 ## Commands
 
+The package does not exist yet; these are the commands the design commits to. `uv` is the
+only Python toolchain used here — no pip, no poetry, no hand-managed virtualenv.
+
 | Command | Role |
 | --- | --- |
+| `uv sync` | Install dependencies from `pyproject.toml` |
+| `uv run pytest` | Unit and integration tests; offline, no credentials needed |
+| `uv run pytest -m e2e` | End-to-end tests against the real API; needs credentials, spends quota |
+| `uv run ruff check .` | Lint |
+| `uv run mypy wowperf` | Type check |
+| `uv run wowperf analyze <url>` | Analyse a run and write the report |
 
 ---
 
@@ -387,10 +410,15 @@ directly** with the Read tool before touching the area they cover:
 
 | Skill | Read before… |
 | --- | --- |
+| `testing/test-driven-development` | Writing any test in this repository |
+
+Three more land during slice 1, per the design: `wcl-api` (the verified Warcraft Logs schema
+reference), `mplus-analysis` (domain knowledge for interpreting findings), and
+`analyzing-a-run` (the end-to-end workflow). Add them to this table as they appear.
 
 Everything else — TDD, plans, code review, brainstorming — comes from plugins; see
 `superpowers:*` and `mattpocock-skills`. Only add a repo skill when an area is both specific
-to keystone-codex and too long to fit in CLAUDE.md.
+to this project and too long to fit in CLAUDE.md.
 
 ---
 
