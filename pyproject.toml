@@ -40,6 +40,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 
+[tool.ruff.lint.flake8-bugbear]
+# typer.Argument()/typer.Option() calls as parameter defaults are how typer
+# declares CLI parameters; they are not the mutable-default bug B008 flags.
+extend-immutable-calls = ["typer.Argument", "typer.Option"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
