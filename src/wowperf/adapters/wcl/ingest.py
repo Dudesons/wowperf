@@ -13,23 +13,31 @@ class IngestError(ValueError):
 def select_keystone_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dict[str, Any]:
     """Find the fight holding the Mythic+ run.
 
-    A complete run is one fight carrying a keystoneLevel; its trash and bosses
-    hang off it as dungeonPulls rather than appearing as sibling fights.
+    A complete run is one fight carrying a keystoneLevel and kill == true; its
+    trash and bosses hang off it as dungeonPulls rather than appearing as
+    sibling fights. A keystone fight that was not completed (a depleted or
+    abandoned key) is rejected rather than analysed as a finished run.
     """
     keystone_fights = [fight for fight in fights if fight.get("keystoneLevel") is not None]
 
     if fight_id is not None:
         for fight in keystone_fights:
             if fight["id"] == fight_id:
+                if not fight.get("kill"):
+                    raise IngestError(f"Fight {fight_id} is a Mythic+ run that was not completed")
                 return fight
         raise IngestError(f"Fight {fight_id} is not a Mythic+ run in this report")
 
     if not keystone_fights:
         raise IngestError("This report contains no Mythic+ run")
-    if len(keystone_fights) > 1:
-        ids = ", ".join(str(fight["id"]) for fight in keystone_fights)
+
+    completed_fights = [fight for fight in keystone_fights if fight.get("kill")]
+    if not completed_fights:
+        raise IngestError("This report contains no completed Mythic+ run")
+    if len(completed_fights) > 1:
+        ids = ", ".join(str(fight["id"]) for fight in completed_fights)
         raise IngestError(f"This report holds several Mythic+ runs ({ids}); pass --fight")
-    return keystone_fights[0]
+    return completed_fights[0]
 
 
 def _build_players(fight: dict[str, Any], actors: list[dict[str, Any]]) -> tuple[Player, ...]:

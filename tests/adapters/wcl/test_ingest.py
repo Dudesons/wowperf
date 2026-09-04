@@ -17,6 +17,11 @@ def report() -> dict[str, Any]:
     return cast(dict[str, Any], payload["reportData"]["report"])
 
 
+def _fight(fight_id: int, keystone_level: int | None, kill: bool | None) -> dict[str, Any]:
+    """A minimal fight dict carrying only the fields select_keystone_fight reads."""
+    return {"id": fight_id, "keystoneLevel": keystone_level, "kill": kill}
+
+
 def test_the_keystone_fight_is_the_one_with_a_keystone_level() -> None:
     fight = select_keystone_fight(report()["fights"], None)
     assert fight["id"] == 2
@@ -35,6 +40,27 @@ def test_a_fight_id_that_is_not_a_keystone_run_is_rejected() -> None:
 def test_a_report_with_no_keystone_fight_is_rejected() -> None:
     with pytest.raises(IngestError, match="no Mythic\\+ run"):
         select_keystone_fight([{"id": 1, "keystoneLevel": None}], None)
+
+
+def test_keystone_fights_with_none_completed_are_rejected() -> None:
+    fights = [_fight(1, 10, False), _fight(2, 12, None)]
+    with pytest.raises(IngestError) as exc_info:
+        select_keystone_fight(fights, None)
+    assert str(exc_info.value) == "This report contains no completed Mythic+ run"
+
+
+def test_several_completed_keystone_fights_without_fight_id_are_rejected() -> None:
+    fights = [_fight(1, 10, True), _fight(2, 12, True)]
+    with pytest.raises(IngestError) as exc_info:
+        select_keystone_fight(fights, None)
+    assert str(exc_info.value) == "This report holds several Mythic+ runs (1, 2); pass --fight"
+
+
+def test_a_fight_id_naming_an_uncompleted_keystone_fight_is_rejected() -> None:
+    fights = [_fight(1, 10, False)]
+    with pytest.raises(IngestError) as exc_info:
+        select_keystone_fight(fights, 1)
+    assert str(exc_info.value) == "Fight 1 is a Mythic+ run that was not completed"
 
 
 def test_keystone_facts_are_carried_into_the_run() -> None:
