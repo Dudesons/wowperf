@@ -214,6 +214,15 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
             return httpx.Response(200, json={"data": abilities_payload})
         if name == "Actors":
             return httpx.Response(200, json={"data": actors_payload})
+        if name == "Talents":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {"report": {"fights": [{"id": 36, "a693": "C4DAAAAA"}]}}
+                    }
+                },
+            )
         return httpx.Response(200, json={"data": empty_events})
 
     return httpx.MockTransport(handler)

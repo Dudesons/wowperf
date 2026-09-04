@@ -21,6 +21,8 @@ class Player(Frozen):
     class_name: str
     spec: str
     item_level: int
+    # Absent until a talent query runs; `get` never pays for one.
+    talent_import_string: str | None = None
 
 
 class EnemyNpc(Frozen):

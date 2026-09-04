@@ -1,6 +1,8 @@
 # ABOUTME: GraphQL query text for the Warcraft Logs v2 client API, one constant per query.
 # ABOUTME: Every field here is verified against the published schema; do not add unverified ones.
 
+from collections.abc import Sequence
+
 RATE_LIMIT_QUERY = """
 query RateLimit {
   rateLimitData {
@@ -233,4 +235,32 @@ query CharacterRankings(
     }
   }
 }
+"""
+
+
+def talents_query(actor_ids: Sequence[int]) -> str:
+    """One aliased `talentImportCode` per player.
+
+    `ReportFight.talentImportCode(actorID: Int!)` takes a single actor, so a
+    roster needs an alias each. This is the only generated query here; the ids
+    are coerced to `int` so nothing but a number ever reaches the string, and
+    sorted so the document is byte-identical for a given set of ids regardless
+    of the order the caller happened to hold them in — the cache key is
+    derived from the query text, so an unstable order would miss the cache.
+    """
+    fields = "\n".join(
+        f"        a{actor_id}: talentImportCode(actorID: {actor_id})"
+        for actor_id in sorted(int(actor_id) for actor_id in actor_ids)
+    )
+    return f"""
+query Talents($code: String!, $fightId: Int!) {{
+  reportData {{
+    report(code: $code, allowUnlisted: true) {{
+      fights(fightIDs: [$fightId]) {{
+        id
+{fields}
+      }}
+    }}
+  }}
+}}
 """

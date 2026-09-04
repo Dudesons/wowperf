@@ -28,6 +28,7 @@ from wowperf.adapters.wcl.queries import (
     ENEMY_DEATHS_QUERY,
     FIGHTS_QUERY,
     INTERRUPTS_QUERY,
+    talents_query,
 )
 from wowperf.domain.model import LoadedRun, Run
 
@@ -99,10 +100,31 @@ class WclRunRepository:
             raise WclError(f"Report {report_code} returned no masterData.actors block")
         return {actor["id"]: actor["gameID"] for actor in actors}
 
+    def _talents(self, report_code: str, fight: dict[str, Any]) -> dict[int, str]:
+        """The talent import string per player, keyed by actor id.
+
+        A player with no recorded build is left out rather than given an empty
+        string: absent and "took no talents" are different claims.
+        """
+        actor_ids = [int(actor_id) for actor_id in fight.get("friendlyPlayers") or []]
+        if not actor_ids:
+            return {}
+
+        payload = self._query(
+            talents_query(actor_ids), {"code": report_code, "fightId": fight["id"]}
+        )
+        fights = payload["reportData"]["report"]["fights"] or [{}]
+        codes = fights[0]
+        return {
+            actor_id: codes[f"a{actor_id}"]
+            for actor_id in actor_ids
+            if codes.get(f"a{actor_id}")
+        }
+
     def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
-        run = build_run(report, fight)
+        run = build_run(report, fight, self._talents(report_code, fight))
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code})
         try:
