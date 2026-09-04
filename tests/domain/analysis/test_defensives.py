@@ -1,5 +1,5 @@
-# ABOUTME: Behaviour tests for the one defensive claim the log can support.
-# ABOUTME: Never cast at all is a fact; not cast at the right time is not, and is not claimed.
+# ABOUTME: Behaviour tests for the defensive claims a combat log can support.
+# ABOUTME: Never cast at all is a fact; pressed far below the cooldown ceiling is a caveated one.
 
 from wowperf.domain.analysis.defensives import analyse_defensives
 from wowperf.domain.events import CastEvent, Death
