@@ -92,3 +92,52 @@ def test_a_repeat_dier_is_named() -> None:
     repeat = next(f for f in findings if f.id == "deaths.repeat.Uglymage")
     assert repeat.seconds_lost == 18.0
     assert "2" in repeat.detail
+
+
+def test_a_single_death_is_reported_alone_with_correct_grammar() -> None:
+    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 10.0),))
+    assert [f.id for f in findings if f.id.startswith("deaths.chain.")] == []
+    assert [f.id for f in findings if f.id.startswith("deaths.repeat.")] == []
+    singles = [f for f in findings if f.id.startswith("deaths.single.")]
+    assert [f.id for f in singles] == ["deaths.single.0"]
+
+    total = next(f for f in findings if f.id == "deaths.total")
+    assert total.title.startswith("1 death cost"), total.title
+
+
+def test_a_wholly_unmeasured_death_reports_no_seconds_lost_rather_than_zero() -> None:
+    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, None),))
+    single = next(f for f in findings if f.id == "deaths.single.0")
+    assert single.seconds_lost is None
+    assert "cannot be measured" in single.detail
+
+
+def test_a_chain_of_wholly_unmeasured_deaths_reports_no_seconds_lost() -> None:
+    findings = analyse_deaths(
+        a_run(),
+        (
+            a_death("Uglymage", 11, 30_000, None),
+            a_death("Sublime", 12, 33_000, None),
+        ),
+    )
+    chain = next(f for f in findings if f.id.startswith("deaths.chain."))
+    assert chain.seconds_lost is None
+    assert "cannot be measured" in chain.detail
+
+
+def test_a_transitive_chain_groups_all_three_deaths() -> None:
+    # A-B within CHAIN_WINDOW_MS, B-C within CHAIN_WINDOW_MS, A-C outside it: the
+    # module groups each death against the last one already in its group, so all
+    # three belong to a single chain rather than A splitting off from C.
+    findings = analyse_deaths(
+        a_run(),
+        (
+            a_death("Uglymage", 11, 0, 10.0),
+            a_death("Sublime", 12, 9_000, 8.0),
+            a_death("Uglymage", 11, 17_000, 5.0),
+        ),
+    )
+    chains = [f for f in findings if f.id.startswith("deaths.chain.")]
+    assert len(chains) == 1
+    assert chains[0].title == "3 deaths within 10s"
+    assert chains[0].seconds_lost == 23.0
