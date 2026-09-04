@@ -7,6 +7,7 @@ from wowperf.domain.findings import Confidence
 
 SPELL = 1241214
 OTHER = 1238440
+THIRD = 1249001
 
 
 def row(at: int, is_start: bool, instance: int = 0, ability: int = SPELL) -> EnemyCastRow:
@@ -80,6 +81,52 @@ def test_an_instant_cast_with_no_start_is_ignored() -> None:
 def test_the_earlier_of_a_kick_and_a_completion_wins() -> None:
     casts = reconstruct_enemy_casts((row(1000, True), row(3000, False)), (kick(1800),))
     assert casts[0].was_kicked is True
+
+
+def test_a_cast_never_carries_both_a_completion_and_a_kick() -> None:
+    """Pin `EnemyCast`'s core invariant: a cast either landed or was kicked, never both.
+
+    `landed` and `was_kicked` are derived properties that both go False/True
+    correctly even if a broken reconstruction set both `completed_ms` and
+    `interrupted_by` at once — `landed` requires `interrupted_by is None`, so a
+    regression that wrongly stamps a completion onto a kicked cast is invisible
+    to those properties. Assert on the two raw fields directly instead, across
+    the three ways a kick and a completion can compete for the same cast: the
+    kick strictly first, the completion strictly first, and an exact tie.
+    """
+    casts = reconstruct_enemy_casts(
+        (
+            row(1000, True, ability=SPELL),
+            row(3000, False, ability=SPELL),
+            row(10000, True, ability=OTHER),
+            row(10800, False, ability=OTHER),
+            row(20000, True, ability=THIRD),
+            row(22500, False, ability=THIRD),
+        ),
+        (
+            kick(1800, ability=SPELL),  # kick strictly before the completion
+            kick(13000, ability=OTHER),  # kick strictly after the completion
+            kick(22500, ability=THIRD),  # kick exactly at the completion
+        ),
+    )
+
+    assert len(casts) == 3
+    for cast in casts:
+        assert not (cast.completed_ms is not None and cast.interrupted_by is not None)
+
+    by_ability = {cast.ability_id: cast for cast in casts}
+
+    kick_first = by_ability[SPELL]
+    assert kick_first.interrupted_by == "Uglymage"
+    assert kick_first.completed_ms is None
+
+    completion_first = by_ability[OTHER]
+    assert completion_first.completed_ms == 10800
+    assert completion_first.interrupted_by is None
+
+    tie = by_ability[THIRD]
+    assert tie.interrupted_by == "Uglymage"
+    assert tie.completed_ms is None
 
 
 def test_landed_casts_are_ranked_by_the_damage_that_followed() -> None:
