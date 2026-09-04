@@ -106,3 +106,95 @@ query Abilities($code: String!) {
   }
 }
 """
+
+ENEMY_CASTS_QUERY = """
+query EnemyCasts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Casts
+        hostilityType: Enemies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+INTERRUPTS_QUERY = """
+query Interrupts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Interrupts
+        hostilityType: Friendlies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+ENEMY_DEATHS_QUERY = """
+query EnemyDeaths($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Deaths
+        hostilityType: Enemies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+DAMAGE_TAKEN_QUERY = """
+query DamageTaken($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: DamageTaken
+        hostilityType: Friendlies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+NPC_ACTORS_QUERY = """
+query NpcActors($code: String!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      masterData(translate: true) {
+        actors(type: "NPC") { id gameID }
+      }
+    }
+  }
+}
+"""

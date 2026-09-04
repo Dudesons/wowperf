@@ -3,7 +3,14 @@
 
 from typing import Any
 
-from wowperf.domain.events import CastEvent, Death
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    EnemyCastRow,
+    EnemyDeath,
+    InterruptEvent,
+)
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 
@@ -194,3 +201,110 @@ def build_deaths(
             )
         )
     return tuple(deaths)
+
+
+def build_enemy_cast_rows(
+    events: list[dict[str, Any]],
+    run: Run,
+    ability_names: dict[int, str],
+) -> tuple[EnemyCastRow, ...]:
+    """Translate raw enemy cast events; resolving their outcome is the analyser's job."""
+    rows = []
+    for event in events:
+        kind = event.get("type")
+        if kind not in ("begincast", "cast"):
+            continue
+        ability_id = event["abilityGameID"]
+        rows.append(
+            EnemyCastRow(
+                source_id=event["sourceID"],
+                source_instance=event.get("sourceInstance") or 0,
+                ability_id=ability_id,
+                ability_name=_ability_name(ability_names, ability_id),
+                timestamp_ms=event["timestamp"],
+                is_start=kind == "begincast",
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(rows)
+
+
+def build_interrupts(
+    events: list[dict[str, Any]],
+    run: Run,
+    players: dict[int, str],
+) -> tuple[InterruptEvent, ...]:
+    """Keep only real interrupts; the stream also carries debuff applications."""
+    interrupts = []
+    for event in events:
+        if event.get("type") != "interrupt":
+            continue
+        actor_id = event["sourceID"]
+        interrupts.append(
+            InterruptEvent(
+                player_name=players.get(actor_id, f"Actor {actor_id}"),
+                actor_id=actor_id,
+                interrupted_ability_id=event["extraAbilityGameID"],
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                timestamp_ms=event["timestamp"],
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(interrupts)
+
+
+def build_enemy_deaths(
+    events: list[dict[str, Any]],
+    run: Run,
+    npc_game_ids: dict[int, int],
+    npc_count_map: dict[int, int],
+) -> tuple[EnemyDeath, ...]:
+    """Attach the enemy-forces value each kill awarded.
+
+    An enemy absent from npcCountMap awards nothing; that is normal for bosses
+    and for mobs that do not count, so it is zero rather than an error.
+    """
+    deaths = []
+    for event in events:
+        if event.get("type") != "death":
+            continue
+        actor_id = event["targetID"]
+        game_id = npc_game_ids.get(actor_id, 0)
+        deaths.append(
+            EnemyDeath(
+                game_id=game_id,
+                actor_id=actor_id,
+                timestamp_ms=event["timestamp"],
+                forces=npc_count_map.get(game_id, 0),
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(deaths)
+
+
+def build_damage_taken(
+    events: list[dict[str, Any]],
+    run: Run,
+    ability_names: dict[int, str],
+) -> tuple[DamageTakenEvent, ...]:
+    """Record the unmitigated figure: `amount` alone reads zero on an absorbed hit."""
+    taken = []
+    for event in events:
+        if event.get("type") != "damage":
+            continue
+        ability_id = event["abilityGameID"]
+        amount = event.get("unmitigatedAmount")
+        if amount is None:
+            amount = event.get("amount") or 0
+        taken.append(
+            DamageTakenEvent(
+                actor_id=event["targetID"],
+                ability_id=ability_id,
+                ability_name=_ability_name(ability_names, ability_id),
+                amount=int(amount),
+                timestamp_ms=event["timestamp"],
+                pull_index=pull_index_at(run, event["timestamp"]),
+            )
+        )
+    return tuple(taken)
