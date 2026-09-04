@@ -185,7 +185,7 @@ def build_analyze_transport(player_name: str = "Uglymage") -> httpx.MockTranspor
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
     Extends the `fetch` tests' single-fixture transport with the operation names
-    `load` also fetches: abilities, the NPC actor lookup, and the six paginated
+    `load` also fetches: abilities, the actor lookup, and the six paginated
     event streams. Every stream answers with no rows, which is enough for
     `analyse` to run without raising (see `test_an_empty_run_analyses_without_raising`
     in `tests/domain/analysis/test_service.py`) while still exercising a real run.

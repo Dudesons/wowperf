@@ -13,7 +13,7 @@ from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.ingest import IngestError
-from wowperf.adapters.wcl.queries import FIGHTS_QUERY
+from wowperf.adapters.wcl.queries import ACTORS_QUERY, FIGHTS_QUERY
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.ports import RunRepository
 
@@ -265,3 +265,15 @@ def test_a_null_report_cached_by_an_older_build_reports_the_problem(tmp_path: Pa
     repository = build_null_report_repository(cache_dir, [])
     with pytest.raises(IngestError, match="Report abc123 was not found"):
         repository.get("abc123", None)
+
+
+def test_actors_query_carries_no_type_filter() -> None:
+    """Verify ACTORS_QUERY has no type argument on actors selection.
+
+    A report's death stream contains pets, dungeon mechanics, and other non-NPC actors
+    that Warcraft Logs models as hostile. If ACTORS_QUERY filters to `actors(type: "NPC")`
+    only, those actors cannot resolve: the ingest fails with a missing actor error.
+    This test catches any reintroduction of the type filter and prevents silent regression.
+    """
+    assert 'actors(type:' not in ACTORS_QUERY
+    assert 'actors { id gameID }' in ACTORS_QUERY
