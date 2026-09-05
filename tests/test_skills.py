@@ -1,0 +1,42 @@
+# ABOUTME: The skills make mechanical claims about the code; these keep the two in step.
+# ABOUTME: A reference that has quietly drifted from the code is worse than no reference.
+
+import re
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+WCL_API_SKILL = REPO_ROOT / ".claude" / "skills" / "wcl-api" / "SKILL.md"
+QUERIES = REPO_ROOT / "src" / "wowperf" / "adapters" / "wcl" / "queries.py"
+
+FIELD_ROW = re.compile(
+    r"^\|\s*`(?P<field>[^`]+)`\s*\|[^|]*\|\s*(?P<verified>\d{4}-\d{2}-\d{2})\s*\|"
+    r"\s*(?P<used>yes|no)\s*\|"
+)
+
+
+def field_rows() -> list[tuple[str, str]]:
+    """(field name, "yes" or "no") for every row of the skill's field table."""
+    rows = []
+    for line in WCL_API_SKILL.read_text(encoding="utf-8").splitlines():
+        match = FIELD_ROW.match(line.strip())
+        if match:
+            rows.append((match.group("field"), match.group("used")))
+    return rows
+
+
+def test_the_field_table_is_not_empty() -> None:
+    # Guards the parser itself: a table this test cannot read would make every
+    # assertion below pass vacuously.
+    assert len(field_rows()) >= 20
+
+
+def test_every_field_the_table_says_we_query_is_in_the_queries() -> None:
+    queries = QUERIES.read_text(encoding="utf-8")
+    missing = [field for field, used in field_rows() if used == "yes" and field not in queries]
+    assert missing == [], f"documented as queried but absent from queries.py: {missing}"
+
+
+def test_every_field_the_table_says_we_do_not_query_is_absent() -> None:
+    queries = QUERIES.read_text(encoding="utf-8")
+    present = [field for field, used in field_rows() if used == "no" and field in queries]
+    assert present == [], f"documented as unused but present in queries.py: {present}"
