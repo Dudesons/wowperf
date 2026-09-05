@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for the report's catch-all section: every finding no other
 # ABOUTME: section claims, computed structurally rather than by another id-prefix whitelist.
 
-from tests.domain.report.test_build_frame import FETCHED, a_run
+from tests.domain.report.test_build_frame import FETCHED, NO_DEFENSIVES, a_run
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_observations, build_report
@@ -32,7 +32,7 @@ def test_a_finding_no_section_claims_reaches_observations() -> None:
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
         a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
     )
-    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES)
     assert [row.finding_id for row in report.observations] == [
         "trash.pull.0",
         "defensives.Uglymage.45438",
@@ -41,19 +41,19 @@ def test_a_finding_no_section_claims_reaches_observations() -> None:
 
 def test_a_finding_claimed_by_the_ledger_does_not_also_reach_observations() -> None:
     findings = (a_finding("time.residual", seconds=300.0),)
-    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES)
     assert report.observations == ()
 
 
 def test_a_finding_claimed_by_interrupts_does_not_also_reach_observations() -> None:
     findings = (a_finding("interrupts.summary"),)
-    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES)
     assert report.observations == ()
 
 
 def test_a_finding_claimed_by_a_players_damage_row_does_not_also_reach_observations() -> None:
     findings = (a_finding("players.damage.0", title="Uglymage took 2.3x the group median"),)
-    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES)
     assert report.observations == ()
 
 
@@ -71,7 +71,7 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
         a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
     )
-    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES)
 
     placed_ids: list[str] = []
     placed_ids += [row.finding_id for row in report.ledger_decomposition]

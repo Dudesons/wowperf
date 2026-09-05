@@ -32,7 +32,8 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     code, fight = parse_report_url(REPORT)
     repository = build_repository(tmp_path)
     loaded = repository.load(code, fight)
-    findings = analyse(loaded, load_season_data(), load_defensives())
+    defensives = load_defensives()
+    findings = analyse(loaded, load_season_data(), defensives)
 
     # Mirrors `analyze`'s own resolution (cli.py), so this is the only place
     # `--compare`'s default path -- both reference runs, spell/talent/uptime
@@ -70,7 +71,9 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # and pass vacuously.
     assert findings, "The analysis produced no findings at all"
 
-    report = build_report(loaded, findings, speed, parse, subject, None, "2026-09-05 00:00")
+    report = build_report(
+        loaded, findings, speed, parse, subject, None, "2026-09-05 00:00", defensives
+    )
     html = render(report)
 
     # The report's one hard promise: it opens from disk, offline, forever. Checked by

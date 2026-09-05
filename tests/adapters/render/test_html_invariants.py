@@ -9,7 +9,7 @@ from typing import Union, get_args, get_origin
 import pytest
 from markupsafe import escape
 
-from tests.domain.report.test_build_frame import FETCHED, a_pull, a_run
+from tests.domain.report.test_build_frame import FETCHED, NO_DEFENSIVES, a_pull, a_run
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
@@ -18,6 +18,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import Header, Provenance, Timeline, TimelineBlock, TimelineTrack
+from wowperf.domain.season import DefensiveAbility, Defensives
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
@@ -84,7 +85,10 @@ def minimal_findings() -> tuple[Finding, ...]:
 
 def minimal_html() -> str:
     return render(
-        build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
+        build_report(
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+            NO_DEFENSIVES,
+        )
     )
 
 
@@ -152,7 +156,7 @@ def rich_html() -> str:
     return render(
         build_report(
             rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED
-        )
+        , NO_DEFENSIVES)
     )
 
 
@@ -212,7 +216,7 @@ def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
-        )
+        , NO_DEFENSIVES)
     )
     assert 'id="narrative"' in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER) + 1
@@ -279,7 +283,9 @@ def test_the_report_carries_no_total_row() -> None:
     # It does NOT prove no total is computed anywhere in the codebase -- only
     # that the report's own view model and template have nowhere to hold or
     # build one.
-    report = build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
+    report = build_report(
+        minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES
+    )
     assert not any(field.startswith("total") for field in type(report).model_fields)
 
     for model_type in view_model_types():
@@ -318,3 +324,56 @@ def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) 
         "The rendered report changed. Read the diff, then regenerate with "
         "`uv run pytest tests/adapters/render/test_html_invariants.py --golden-update`."
     )
+
+
+ARCANE = Defensives(
+    entries=(
+        (
+            "Mage/Arcane",
+            (DefensiveAbility(ability_id=45438, name="Ice Block", cooldown_seconds=240.0),),
+        ),
+    )
+)
+
+
+def a_page(defensives: Defensives) -> str:
+    return render(
+        build_report(
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED, defensives
+        )
+    )
+
+
+def deaths_section(html: str) -> str:
+    """Just the deaths section. Ability names recur across sections — the fixture's
+    own interrupt findings name Ice Block — so an unscoped search proves nothing."""
+    start = html.index('<h2 id="deaths">')
+    return html[start : html.index('<h2 id="interrupts">', start)]
+
+
+def test_a_death_card_names_the_defensives_that_were_available() -> None:
+    assert "Ice Block" in deaths_section(a_page(ARCANE))
+
+
+def test_a_death_card_says_so_when_nothing_was_off_cooldown() -> None:
+    loaded = minimal_loaded()
+    used = loaded.casts + (
+        CastEvent(actor_id=1, ability_id=45438, ability_name="Ice Block",
+                  timestamp_ms=45_000, pull_index=0),
+    )
+    html = render(
+        build_report(
+            loaded.model_copy(update={"casts": used}), minimal_findings(), None, None,
+            SUBJECT, None, FETCHED, ARCANE,
+        )
+    )
+    section = deaths_section(html)
+    assert "Defensives off cooldown: none" in section
+    assert "Ice Block" not in section
+
+
+def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
+    # The silence a reader must not mistake for "nothing was up".
+    section = deaths_section(a_page(NO_DEFENSIVES))
+    assert "Defensives off cooldown" not in section
+    assert "off cooldown" not in section
