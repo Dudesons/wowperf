@@ -44,22 +44,37 @@ class LedgerRow(Frozen):
 
 
 class TimelineBlock(Frozen):
-    """One pull, positioned in viewBox units. All arithmetic happened in build.py."""
+    """One pull, positioned in viewBox units. All arithmetic happened in build.py.
+
+    `css_class` is the whole class attribute the template emits: `kind` and
+    `is_boss` stay alongside it because tests key off them, not because the
+    template still branches on them.
+    """
 
     label: str
     x: float
     width: float
     is_boss: bool
     kind: str
+    css_class: str = ""
 
 
 class TimelineTrack(Frozen):
+    """One run's blocks, and the y at which they and their caption sit."""
+
     caption: str
+    baseline_y: float = 0.0
     blocks: tuple[TimelineBlock, ...] = ()
 
 
 class Timeline(Frozen):
-    """Both runs on one elapsed-time axis. Empty tracks when the section is withheld."""
+    """Both runs on one elapsed-time axis. Empty tracks when the section is withheld.
+
+    Every coordinate the SVG needs lives here or on `TimelineTrack.baseline_y`
+    so the template never computes one: `tick_y1`/`tick_y2` bound the tick
+    lines, `tick_label_y` positions their text, `caption_x`/`caption_dy` place
+    each track's caption, and `block_height` is shared by every block.
+    """
 
     section: Section
     ours: TimelineTrack | None = None
@@ -67,6 +82,12 @@ class Timeline(Frozen):
     ticks: tuple[tuple[float, str], ...] = ()
     width: float = 0.0
     height: float = 0.0
+    tick_y1: float = 0.0
+    tick_y2: float = 0.0
+    tick_label_y: float = 0.0
+    caption_x: float = 0.0
+    caption_dy: float = 0.0
+    block_height: float = 0.0
 
 
 class DamageRow(Frozen):

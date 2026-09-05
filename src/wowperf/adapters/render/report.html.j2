@@ -1,5 +1,5 @@
-{# ABOUTME: Document skeleton for the Mythic+ post-mortem report: header, ledger, and provenance. #}
-{# ABOUTME: One self-contained file: no script, no network fetch, no external font or stylesheet. #}
+{# ABOUTME: Document skeleton for the Mythic+ post-mortem report: header, ledger, timeline, #}
+{# ABOUTME: deaths, interrupts, players and provenance — one self-contained file, no script or fetch. #}
 <!doctype html>
 <html lang="en">
 <head>
@@ -49,13 +49,13 @@ p { margin: 0 0 10px; }
   white-space: pre-wrap; margin: 0 0 10px; }
 .legend { color: var(--ink-faint); font-size: 13px; }
 .track-label { fill: var(--ink-dim); font-size: 12px; }
-.tick { stroke: var(--line); stroke-width: 0.5; }
+.tick { stroke: var(--ink-faint); stroke-width: 1; }
 .tick-label { fill: var(--ink-faint); font-size: 11px; }
 .block { fill: var(--ours); }
 .block-theirs { fill: var(--theirs); }
-.block-extra { fill: var(--extra); }
-.block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
 .block-boss { stroke: var(--ink); stroke-width: 1; }
+.block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
+.block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
 .death-when { color: var(--ink-dim); font-size: 13px; }
 .runup { width: 100%; border-collapse: collapse; margin: 8px 0 0; font-size: 13px; }
 .runup td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim); }
@@ -113,18 +113,24 @@ p { margin: 0 0 10px; }
 <p class="withheld">{{ report.timeline.section.reason }}</p>
 {% else %}
 <p class="sub">Blocks are pulls. The space between them is travel.</p>
+<p class="legend">A thin outline marks a boss pull. A heavier outline marks a pack we pulled
+that the reference run skipped. A dashed, unfilled block is a pack the reference run pulled
+that we skipped.</p>
 <svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}"
      role="img" aria-label="Both runs on one elapsed-time axis">
   {% for x, label in report.timeline.ticks %}
-  <line class="tick" x1="{{ x }}" y1="46" x2="{{ x }}" y2="176"></line>
-  <text class="tick-label" x="{{ x }}" y="192" text-anchor="middle">{{ label }}</text>
+  <line class="tick" x1="{{ x }}" y1="{{ report.timeline.tick_y1 }}" x2="{{ x }}"
+        y2="{{ report.timeline.tick_y2 }}"></line>
+  <text class="tick-label" x="{{ x }}" y="{{ report.timeline.tick_label_y }}"
+        text-anchor="middle">{{ label }}</text>
   {% endfor %}
-  {% for track, y, extra_class in [(report.timeline.ours, 58, ""), (report.timeline.theirs, 132, "block-theirs")] %}
+  {% for track in [report.timeline.ours, report.timeline.theirs] %}
   {% if track %}
-  <text class="track-label" x="46" y="{{ y }}" dy="-10">{{ track.caption }}</text>
+  <text class="track-label" x="{{ report.timeline.caption_x }}" y="{{ track.baseline_y }}"
+        dy="{{ report.timeline.caption_dy }}">{{ track.caption }}</text>
   {% for block in track.blocks %}
-  <rect x="{{ block.x }}" y="{{ y }}" width="{{ block.width }}" height="26" rx="2"
-        class="{% if block.kind == 'extra' %}block-extra{% elif block.kind == 'skipped' %}block-skipped{% else %}block {{ extra_class }}{% endif %}{% if block.is_boss %} block-boss{% endif %}">
+  <rect x="{{ block.x }}" y="{{ track.baseline_y }}" width="{{ block.width }}"
+        height="{{ report.timeline.block_height }}" rx="2" class="{{ block.css_class }}">
     <title>{{ block.label }}</title>
   </rect>
   {% endfor %}
@@ -163,6 +169,9 @@ p { margin: 0 0 10px; }
 {% endfor %}
 
 <h2 id="players">Players</h2>
+{% if not report.players %}
+<p class="sub">No players.</p>
+{% endif %}
 {% for player in report.players %}
 <div class="card">
   <div class="player-head">

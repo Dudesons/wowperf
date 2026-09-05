@@ -67,6 +67,27 @@ MIN_BLOCK_WIDTH = 2.0
 TICK_SECONDS = 600
 """One axis label every ten minutes: enough to place a pull, few enough to stay legible."""
 
+AXIS_TOP = 46.0
+"""Where the tick lines start: just above the top track's caption."""
+
+AXIS_BOTTOM_MARGIN = 32.0
+"""Gap between the tick lines' foot and the viewBox's bottom edge."""
+
+TICK_LABEL_MARGIN = 16.0
+"""Gap between the tick labels' baseline and the viewBox's bottom edge."""
+
+CAPTION_DY = -10.0
+"""How far above its track's baseline a caption's text sits."""
+
+BLOCK_HEIGHT = 26.0
+"""Every block's height, shared by both tracks."""
+
+OURS_BASELINE_Y = 58.0
+"""The y at which our track's blocks and caption sit."""
+
+THEIRS_BASELINE_Y = 132.0
+"""The y at which the reference track's blocks and caption sit."""
+
 
 def badge_for(confidence: Confidence) -> Badge:
     """A word and a palette token. The word is what a reader without colour sees."""
@@ -115,19 +136,42 @@ def _run_seconds(run: Run) -> float:
     return (max(p.end_ms for p in run.pulls) - min(p.start_ms for p in run.pulls)) / 1000
 
 
+def _block_css_class(kind: str, is_boss: bool, track_class: str) -> str:
+    """The whole class attribute for one block.
+
+    `extra` gets its own tan fill but also a heavier outline, so the mark
+    that matters most on this chart survives a colour-blind or greyscale
+    reading rather than resting on hue alone. `skipped` is already
+    unfilled and dashed, which is a shape difference and needs no help.
+    """
+    if kind == "extra":
+        classes = ["block-extra"]
+    elif kind == "skipped":
+        classes = ["block-skipped"]
+    else:
+        classes = ["block", track_class] if track_class else ["block"]
+    if is_boss:
+        classes.append("block-boss")
+    return " ".join(classes)
+
+
 def _blocks(
-    run: Run, kinds: dict[int, str], scale: float, origin_ms: int
+    run: Run, kinds: dict[int, str], scale: float, origin_ms: int, track_class: str = ""
 ) -> tuple[TimelineBlock, ...]:
-    return tuple(
-        TimelineBlock(
-            label=pull.name,
-            x=TRACK_X0 + (pull.start_ms - origin_ms) / 1000 * scale,
-            width=max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH),
-            is_boss=pull.is_boss,
-            kind=kinds.get(pull.index, "matched"),
+    blocks = []
+    for pull in run.pulls:
+        kind = kinds.get(pull.index, "matched")
+        blocks.append(
+            TimelineBlock(
+                label=pull.name,
+                x=TRACK_X0 + (pull.start_ms - origin_ms) / 1000 * scale,
+                width=max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH),
+                is_boss=pull.is_boss,
+                kind=kind,
+                css_class=_block_css_class(kind, pull.is_boss, track_class),
+            )
         )
-        for pull in run.pulls
-    )
+    return tuple(blocks)
 
 
 def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
@@ -172,19 +216,31 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
         section=section,
         ours=TimelineTrack(
             caption=_timeline_caption("Ours", ours),
+            baseline_y=OURS_BASELINE_Y,
             blocks=_blocks(
                 ours, our_kinds, scale, min((p.start_ms for p in ours.pulls), default=0)
             ),
         ),
         theirs=TimelineTrack(
             caption=_timeline_caption("Reference", theirs),
+            baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(
-                theirs, their_kinds, scale, min((p.start_ms for p in theirs.pulls), default=0)
+                theirs,
+                their_kinds,
+                scale,
+                min((p.start_ms for p in theirs.pulls), default=0),
+                track_class="block-theirs",
             ),
         ),
         ticks=_ticks(longest, scale),
         width=TIMELINE_WIDTH,
         height=TIMELINE_HEIGHT,
+        tick_y1=AXIS_TOP,
+        tick_y2=TIMELINE_HEIGHT - AXIS_BOTTOM_MARGIN,
+        tick_label_y=TIMELINE_HEIGHT - TICK_LABEL_MARGIN,
+        caption_x=TRACK_X0,
+        caption_dy=CAPTION_DY,
+        block_height=BLOCK_HEIGHT,
     )
 
 

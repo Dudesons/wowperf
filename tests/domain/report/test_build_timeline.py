@@ -72,6 +72,20 @@ def test_a_pack_only_they_pulled_is_marked_as_skipped() -> None:
     assert [block.kind for block in timeline.theirs.blocks] == ["matched", "skipped"]
 
 
+def test_an_extra_boss_pull_carries_both_marks() -> None:
+    # A pull can be both a boss and one only we pulled (an optional add-on boss
+    # the reference run skipped). Its css_class must carry both classes, so the
+    # stylesheet's rule order — not the template — decides which stroke wins.
+    ours = a_run(pulls=(a_pull(0, 0, 60_000, encounter_id=12825, enemies=(1,)),))
+    theirs = a_run(pulls=())
+    timeline = build_timeline(ours, theirs, PRESENT)
+    assert timeline.ours is not None
+    block = timeline.ours.blocks[0]
+    assert block.kind == "extra"
+    assert block.is_boss is True
+    assert block.css_class == "block-extra block-boss"
+
+
 def test_every_block_carries_its_pack_name_for_the_tooltip() -> None:
     ours = a_run(pulls=(a_pull(0, 0, 60_000),))
     timeline = build_timeline(ours, ours, PRESENT)
