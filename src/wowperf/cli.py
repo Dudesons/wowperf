@@ -15,6 +15,7 @@ from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
     load_season_data,
+    load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
@@ -212,6 +213,11 @@ def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
     fight: int | None = typer.Option(None, help="Fight ID; defaults to the only keystone run"),
+    throughput_ceiling: bool = typer.Option(
+        False,
+        "--throughput-ceiling",
+        help="Also report throughput cooldowns used far below what their cooldown allowed",
+    ),
     player: str | None = typer.Option(
         None, help="Subject of the individual comparison; defaults to the report owner"
     ),
@@ -254,7 +260,14 @@ def analyze(
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
         consumables = load_consumables()
-        findings = analyse(loaded, load_season_data(), defensives, consumables)
+        findings = analyse(
+            loaded,
+            load_season_data(),
+            defensives,
+            consumables,
+            load_throughput_cooldowns(),
+            include_cooldown_ceiling=throughput_ceiling,
+        )
 
         subject = _resolve_player(loaded.run, player)
         speed: SpeedReference | None = None

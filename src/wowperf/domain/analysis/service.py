@@ -9,11 +9,20 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.players import analyse_players
+from wowperf.domain.analysis.throughput import (
+    analyse_cooldown_alignment,
+    analyse_cooldown_ceiling,
+)
 from wowperf.domain.analysis.timeline import decompose_time
 from wowperf.domain.analysis.trash import analyse_trash
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun
-from wowperf.domain.season import Consumables, Defensives, SeasonData
+from wowperf.domain.season import (
+    Consumables,
+    Defensives,
+    SeasonData,
+    ThroughputCooldowns,
+)
 
 
 def analyse(
@@ -21,8 +30,18 @@ def analyse(
     season: SeasonData,
     defensives: Defensives,
     consumables: Consumables,
+    throughput: ThroughputCooldowns,
+    *,
+    include_cooldown_ceiling: bool = False,
 ) -> list[Finding]:
-    """Every analyser, one ranked list."""
+    """Every analyser, one ranked list.
+
+    `include_cooldown_ceiling` is off by default because that claim is the
+    noisiest one here: a keystone's route decides how many packs are worth a
+    burst cooldown, so pressing one far below its theoretical maximum is
+    often correct. The alignment claim beside it asks the same question of
+    the pulls where the answer means something, and needs no asking for.
+    """
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
 
     findings: list[Finding] = []
@@ -40,4 +59,11 @@ def analyse(
     findings += analyse_consumables_at_death(
         loaded.run, loaded.casts, consumables, loaded.deaths
     )
+    findings += analyse_cooldown_alignment(
+        loaded.run, loaded.casts, throughput, loaded.enemy_deaths, loaded.deaths
+    )
+    if include_cooldown_ceiling:
+        findings += analyse_cooldown_ceiling(
+            loaded.run, loaded.casts, throughput, loaded.deaths
+        )
     return rank_findings(findings)

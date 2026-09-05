@@ -7,15 +7,18 @@ from pathlib import Path
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
+    CooldownAbility,
     DefensiveAbility,
     Defensives,
     SeasonData,
+    ThroughputCooldowns,
 )
 
 DATA_DIR = Path(__file__).resolve().parents[3].parent / "data"
 DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
+DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -80,3 +83,21 @@ def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
             )
         )
     return Consumables(categories=tuple(categories))
+
+
+def load_throughput_cooldowns(path: Path = DEFAULT_THROUGHPUT_PATH) -> ThroughputCooldowns:
+    """Throughput cooldowns per class and specialisation, from the committed TOML file."""
+    raw = _read(path)
+    entries = []
+    for key, block in raw.items():
+        if not isinstance(block, dict):
+            continue
+        entries.append(
+            (
+                key,
+                tuple(
+                    CooldownAbility(**ability) for ability in block.get("abilities", ())
+                ),
+            )
+        )
+    return ThroughputCooldowns(entries=tuple(entries))

@@ -330,7 +330,7 @@ same answer beside the damage, and keeps **two facts apart that a blank line wou
 with nothing available has exonerated the player. The card says "none" for the second and stays
 silent for the first.
 
-The data file covers five specs at the time of writing. A spec absent from it produces no claim
+The data file covers every specialisation as of 2026-09-05. A spec absent from it produces no claim
 in either place, which is the correct behaviour and also the feature's main limit.
 
 ### 5.9 Healing consumables at a death — `inferred`
@@ -368,6 +368,45 @@ judged at all.
 **It fires on very nearly every death**, because most players drink neither consumable in most
 runs. That is the honest consequence of the design and not a defect, but it means the claim
 carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
+
+### 5.10 Throughput cooldowns — `inferred`
+
+*Added 2026-09-06.*
+
+§5.7 measures a defensive against its own ceiling and says outright that the ceiling is not a
+target. For a burst cooldown in a keystone the same claim is weaker still, because the **route**
+decides how many packs are worth spending on: a player who pressed four times on the four pulls
+that mattered has done nothing wrong against a ceiling of fifteen.
+
+So the default claim is placement rather than rate. On the run's boss pulls and its three largest
+trash packs — ranked by the forces they gave up, since a boss gives none — which cooldowns did the
+player own, have off cooldown when the pack was engaged, and never press? That needs no reference
+run, works under `--no-compare`, and asks about the pulls where the answer means something.
+
+The rate claim survives behind `--throughput-ceiling`, off by default. It is the same arithmetic as
+§5.7 against `data/throughput_cooldowns.toml`, and it is asked for rather than given because a low
+count is so often correct play.
+
+Both borrow §5.8's ownership rule — only abilities cast somewhere in the run count, so a talent
+never taken is never held against anyone — and its visibility guard, since a cooldown pressed
+before the timer began is invisible and calling it ready would be the accusing direction. The
+alignment claim adds one of its own: **a pull the player spent dead is not asked about**, because
+a corpse presses nothing and the selected pulls are exactly where dying happens.
+
+The file is throughput rather than damage. A healing spec's throughput cooldowns are in it —
+Tranquility, Divine Hymn — because "did you press it on the pull that mattered" is the same
+question for a healer. The naming follows the data rather than the other way round.
+
+**It fires on most runs, for most players**, and the design accepts that. A spec with five or six
+listed cooldowns will almost always have left one unpressed on one of the six selected pulls.
+That makes a single line weak evidence and a player named on every big pull strong evidence, and
+`mplus-analysis` says so where a reader will meet it.
+
+**What this data pass established about method.** A spell id resolving is not evidence the ability
+exists in the game. The spell record still serves abilities removed years ago, with plausible
+cooldowns attached: fourteen such were proposed for this file and dropped, and six more had become
+passives. Neither the name check nor a 404 catches either case. Availability has to be confirmed
+against live talent data, and `data/throughput_cooldowns.toml` says so in its own header.
 
 ---
 

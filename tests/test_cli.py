@@ -1041,3 +1041,18 @@ def test_the_warning_names_exactly_the_nestings_the_report_draws() -> None:
     # The decomposition ids head the ledger rather than nesting, so the warning
     # may name them without NESTS_INSIDE carrying an entry for them.
     assert named - set(DECOMPOSITION_IDS) == drawn - set(DECOMPOSITION_IDS)
+
+
+def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None:
+    """The noisier of the two throughput claims, so it is asked for rather than given.
+
+    Its behaviour is covered where the decision lives, in the analysis service.
+    What this pins is that only the command which runs analysers offers it — a
+    bulk edit once put it on `fetch`, which runs none and would have advertised
+    output it cannot produce.
+    """
+    from typer.testing import CliRunner
+
+    runner = CliRunner()
+    assert "--throughput-ceiling" in runner.invoke(app, ["analyze", "--help"]).output
+    assert "--throughput-ceiling" not in runner.invoke(app, ["fetch", "--help"]).output

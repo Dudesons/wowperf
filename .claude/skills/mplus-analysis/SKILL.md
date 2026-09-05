@@ -59,10 +59,35 @@ question rather than a verdict: a defensive held for a worse moment thirty secon
 ordinary play. Say "had it available", never "should have pressed it".
 
 Silence from any of the three means one of two things, and they are not the same: the player's
-spec is absent from `data/defensives.toml`, which covers five specs, or the tool checked and
+spec is absent from `data/defensives.toml`, which covers every specialisation, or it checked and
 found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
 check that came back empty, and no line at all is a spec nobody has entered. The findings file
 cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
+
+## Throughput cooldowns ask about placement, not rate
+
+`throughput.alignment.*` names cooldowns a player owned, had off cooldown when a big pack was
+engaged, and did not press. It is deliberately scoped to the run's boss pulls and its three
+largest trash packs, because pressing burst on cooldown is not what a keystone rewards — the
+route decides how many packs are worth it. Read it as "these were the pulls that mattered and
+the button was up", never as "they should press it more".
+
+**Expect it on most runs, for most players.** A spec with five or six listed cooldowns will
+almost always have left one of them unpressed on one of the six selected pulls, and several
+of them are situational buttons a player casts once and correctly never again. Two to four
+players named in a run is ordinary. Treat a single line as noise and a player named on every
+big pull as the signal.
+
+It also covers healing cooldowns for healing specs — Tranquility and Divine Hymn are in the
+same file — so for a healer read it as "a throughput cooldown was up", not as damage.
+
+The log records presses, not plans. A cooldown held through a big pack because a bigger one was
+thirty seconds away is good play and appears here as a gap. Say so when you repeat it.
+
+`throughput.ceiling.*` is the rate claim, and it appears **only when someone passed
+`--throughput-ceiling`**. Its absence therefore means nothing at all. When it is present, it carries
+the same caveat as the defensive ceiling and one more: a route, not a rotation, sets how many
+windows existed.
 
 ## `consumables.unused.*` is the weakest claim on the page
 

@@ -1,0 +1,297 @@
+# Throughput cooldowns a player presses for a burst of output, by class and spec.
+# No API exposes this list, so it is maintained by hand and dated.
+#
+# Throughput, not damage: a healing spec's cooldowns are here too, because
+# "was it pressed on the pull that mattered" is the same question for a healer.
+# Defensive cooldowns live in defensives.toml, and an ability must not appear in
+# both files for the same spec -- several are genuinely dual-purpose, and the
+# judgement of which file owns one is made here, once. A test enforces it.
+#
+# Only abilities on a cooldown of 45 seconds or longer are here. A shorter one is
+# rotational, and a tool asking why it was not pressed on a particular pack would
+# be asking about nothing.
+#
+# Cooldowns are base values, without talent reductions -- as in defensives.toml,
+# and for the same reason. A longer cooldown makes an ability read as unavailable
+# more often, and both claims built on this file are weaker for it, never louder.
+#
+# Every id and cooldown was read from the game's own spell data on the date below,
+# one spell at a time, and the name returned had to match the ability intended.
+# That check alone is not enough: the spell data still serves abilities removed
+# from the game years ago, so availability was confirmed separately against live
+# talent data and current spec guides. This pass dropped a dozen abilities that
+# resolved perfectly and no longer exist.
+verified = "2026-09-06"
+
+
+["DeathKnight/Blood"]
+abilities = [
+  { ability_id = 1263824, name = "Consumption", cooldown_seconds = 45.0 },
+]
+
+["DeathKnight/Frost"]
+abilities = [
+  { ability_id = 51271, name = "Pillar of Frost", cooldown_seconds = 45.0 },
+  { ability_id = 279302, name = "Frostwyrm's Fury", cooldown_seconds = 90.0 },
+  { ability_id = 152279, name = "Breath of Sindragosa", cooldown_seconds = 120.0 },
+]
+
+["DeathKnight/Unholy"]
+abilities = [
+  { ability_id = 42650, name = "Army of the Dead", cooldown_seconds = 90.0 },
+  { ability_id = 1233448, name = "Dark Transformation", cooldown_seconds = 45.0 },
+]
+
+["DemonHunter/Havoc"]
+abilities = [
+  { ability_id = 191427, name = "Metamorphosis", cooldown_seconds = 120.0 },
+  { ability_id = 323639, name = "The Hunt", cooldown_seconds = 90.0 },
+]
+
+["DemonHunter/Vengeance"]
+abilities = [
+  { ability_id = 207407, name = "Soul Carver", cooldown_seconds = 60.0 },
+  { ability_id = 390163, name = "Sigil of Spite", cooldown_seconds = 60.0 },
+]
+
+["Druid/Balance"]
+abilities = [
+  { ability_id = 194223, name = "Celestial Alignment", cooldown_seconds = 180.0 },
+  { ability_id = 102560, name = "Incarnation: Chosen of Elune", cooldown_seconds = 180.0 },
+  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0 },
+  { ability_id = 202770, name = "Fury of Elune", cooldown_seconds = 60.0 },
+  { ability_id = 205636, name = "Force of Nature", cooldown_seconds = 60.0 },
+]
+
+["Druid/Feral"]
+abilities = [
+  { ability_id = 106951, name = "Berserk", cooldown_seconds = 180.0 },
+  { ability_id = 102543, name = "Incarnation: Avatar of Ashamane", cooldown_seconds = 180.0 },
+  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0 },
+]
+
+["Druid/Guardian"]
+abilities = [
+  { ability_id = 50334, name = "Berserk", cooldown_seconds = 180.0 },
+  { ability_id = 102558, name = "Incarnation: Guardian of Ursoc", cooldown_seconds = 180.0 },
+  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0 },
+  { ability_id = 1253799, name = "Sundering Roar", cooldown_seconds = 60.0 },
+]
+
+["Druid/Restoration"]
+abilities = [
+  { ability_id = 33891, name = "Incarnation: Tree of Life", cooldown_seconds = 180.0 },
+  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0 },
+  { ability_id = 740, name = "Tranquility", cooldown_seconds = 180.0 },
+  { ability_id = 132158, name = "Nature's Swiftness", cooldown_seconds = 60.0 },
+]
+
+["Evoker/Augmentation"]
+abilities = [
+  { ability_id = 403631, name = "Breath of Eons", cooldown_seconds = 120.0 },
+  { ability_id = 370553, name = "Tip the Scales", cooldown_seconds = 120.0 },
+]
+
+["Evoker/Devastation"]
+abilities = [
+  { ability_id = 375087, name = "Dragonrage", cooldown_seconds = 120.0 },
+  { ability_id = 357210, name = "Deep Breath", cooldown_seconds = 120.0 },
+  { ability_id = 370553, name = "Tip the Scales", cooldown_seconds = 120.0 },
+]
+
+["Evoker/Preservation"]
+abilities = [
+  { ability_id = 363534, name = "Rewind", cooldown_seconds = 240.0 },
+  { ability_id = 370960, name = "Emerald Communion", cooldown_seconds = 180.0 },
+  { ability_id = 370537, name = "Stasis", cooldown_seconds = 90.0 },
+  { ability_id = 370553, name = "Tip the Scales", cooldown_seconds = 120.0 },
+]
+
+["Hunter/BeastMastery"]
+abilities = [
+  { ability_id = 19574, name = "Bestial Wrath", cooldown_seconds = 90.0 },
+]
+
+["Hunter/Marksmanship"]
+abilities = [
+  { ability_id = 288613, name = "Trueshot", cooldown_seconds = 120.0 },
+  { ability_id = 260243, name = "Volley", cooldown_seconds = 45.0 },
+]
+
+["Hunter/Survival"]
+abilities = [
+  { ability_id = 1250646, name = "Takedown", cooldown_seconds = 90.0 },
+  { ability_id = 1261193, name = "Boomstick", cooldown_seconds = 60.0 },
+]
+
+["Mage/Arcane"]
+abilities = [
+  { ability_id = 365350, name = "Arcane Surge", cooldown_seconds = 90.0 },
+  { ability_id = 321507, name = "Touch of the Magi", cooldown_seconds = 45.0 },
+]
+
+["Mage/Fire"]
+abilities = [
+  { ability_id = 190319, name = "Combustion", cooldown_seconds = 120.0 },
+  { ability_id = 153561, name = "Meteor", cooldown_seconds = 45.0 },
+]
+
+["Mage/Frost"]
+abilities = [
+  { ability_id = 12472, name = "Icy Veins", cooldown_seconds = 120.0 },
+  { ability_id = 205021, name = "Ray of Frost", cooldown_seconds = 60.0 },
+  { ability_id = 84714, name = "Frozen Orb", cooldown_seconds = 60.0 },
+]
+
+["Monk/Brewmaster"]
+abilities = [
+  { ability_id = 132578, name = "Invoke Niuzao, the Black Ox", cooldown_seconds = 120.0 },
+  { ability_id = 325153, name = "Exploding Keg", cooldown_seconds = 60.0 },
+  { ability_id = 115399, name = "Black Ox Brew", cooldown_seconds = 120.0 },
+  { ability_id = 322109, name = "Touch of Death", cooldown_seconds = 180.0 },
+]
+
+["Monk/Mistweaver"]
+abilities = [
+  { ability_id = 322118, name = "Invoke Yu'lon, the Jade Serpent", cooldown_seconds = 120.0 },
+  { ability_id = 325197, name = "Invoke Chi-Ji, the Red Crane", cooldown_seconds = 120.0 },
+  { ability_id = 115310, name = "Revival", cooldown_seconds = 180.0 },
+  { ability_id = 388615, name = "Restoral", cooldown_seconds = 180.0 },
+  { ability_id = 443028, name = "Celestial Conduit", cooldown_seconds = 90.0 },
+  { ability_id = 322109, name = "Touch of Death", cooldown_seconds = 180.0 },
+]
+
+["Monk/Windwalker"]
+abilities = [
+  { ability_id = 123904, name = "Invoke Xuen, the White Tiger", cooldown_seconds = 120.0 },
+  { ability_id = 1249625, name = "Zenith", cooldown_seconds = 90.0, charges = 2 },
+  { ability_id = 443028, name = "Celestial Conduit", cooldown_seconds = 90.0 },
+  { ability_id = 322109, name = "Touch of Death", cooldown_seconds = 180.0 },
+]
+
+["Paladin/Holy"]
+abilities = [
+  { ability_id = 31884, name = "Avenging Wrath", cooldown_seconds = 120.0 },
+  { ability_id = 216331, name = "Avenging Crusader", cooldown_seconds = 60.0 },
+  { ability_id = 375576, name = "Divine Toll", cooldown_seconds = 60.0 },
+]
+
+["Paladin/Protection"]
+abilities = [
+  { ability_id = 31884, name = "Avenging Wrath", cooldown_seconds = 120.0 },
+  { ability_id = 375576, name = "Divine Toll", cooldown_seconds = 60.0 },
+]
+
+["Paladin/Retribution"]
+abilities = [
+  { ability_id = 31884, name = "Avenging Wrath", cooldown_seconds = 120.0 },
+  { ability_id = 375576, name = "Divine Toll", cooldown_seconds = 60.0 },
+  { ability_id = 343527, name = "Execution Sentence", cooldown_seconds = 60.0 },
+]
+
+["Priest/Discipline"]
+abilities = [
+  { ability_id = 472433, name = "Evangelism", cooldown_seconds = 90.0 },
+  { ability_id = 10060, name = "Power Infusion", cooldown_seconds = 120.0 },
+]
+
+["Priest/Holy"]
+abilities = [
+  { ability_id = 200183, name = "Apotheosis", cooldown_seconds = 120.0 },
+  { ability_id = 64843, name = "Divine Hymn", cooldown_seconds = 180.0 },
+  { ability_id = 120517, name = "Halo", cooldown_seconds = 60.0 },
+  { ability_id = 88625, name = "Holy Word: Chastise", cooldown_seconds = 60.0 },
+  { ability_id = 10060, name = "Power Infusion", cooldown_seconds = 120.0 },
+]
+
+["Priest/Shadow"]
+abilities = [
+  { ability_id = 228260, name = "Voidform", cooldown_seconds = 120.0 },
+  { ability_id = 120644, name = "Halo", cooldown_seconds = 60.0 },
+  { ability_id = 10060, name = "Power Infusion", cooldown_seconds = 120.0 },
+]
+
+["Rogue/Assassination"]
+abilities = [
+  { ability_id = 360194, name = "Deathmark", cooldown_seconds = 120.0 },
+  { ability_id = 192759, name = "Kingsbane", cooldown_seconds = 45.0 },
+]
+
+["Rogue/Outlaw"]
+abilities = [
+  { ability_id = 13750, name = "Adrenaline Rush", cooldown_seconds = 180.0 },
+  { ability_id = 51690, name = "Killing Spree", cooldown_seconds = 180.0 },
+  { ability_id = 271877, name = "Blade Rush", cooldown_seconds = 60.0 },
+  { ability_id = 315341, name = "Between the Eyes", cooldown_seconds = 45.0 },
+]
+
+["Rogue/Subtlety"]
+abilities = [
+  { ability_id = 121471, name = "Shadow Blades", cooldown_seconds = 90.0 },
+]
+
+["Shaman/Elemental"]
+abilities = [
+  { ability_id = 191634, name = "Stormkeeper", cooldown_seconds = 60.0, charges = 2 },
+  { ability_id = 114050, name = "Ascendance", cooldown_seconds = 180.0 },
+]
+
+["Shaman/Enhancement"]
+abilities = [
+  { ability_id = 384352, name = "Doom Winds", cooldown_seconds = 60.0 },
+  { ability_id = 114051, name = "Ascendance", cooldown_seconds = 180.0 },
+]
+
+["Shaman/Restoration"]
+abilities = [
+  { ability_id = 108280, name = "Healing Tide Totem", cooldown_seconds = 180.0 },
+  { ability_id = 114052, name = "Ascendance", cooldown_seconds = 180.0 },
+]
+
+["Warlock/Affliction"]
+abilities = [
+  { ability_id = 205180, name = "Summon Darkglare", cooldown_seconds = 120.0 },
+  { ability_id = 1257052, name = "Dark Harvest", cooldown_seconds = 60.0 },
+  { ability_id = 442726, name = "Malevolence", cooldown_seconds = 60.0 },
+]
+
+["Warlock/Demonology"]
+abilities = [
+  { ability_id = 265187, name = "Summon Demonic Tyrant", cooldown_seconds = 60.0 },
+  { ability_id = 1276672, name = "Summon Doomguard", cooldown_seconds = 120.0 },
+]
+
+["Warlock/Destruction"]
+abilities = [
+  { ability_id = 1122, name = "Summon Infernal", cooldown_seconds = 120.0 },
+  { ability_id = 442726, name = "Malevolence", cooldown_seconds = 60.0 },
+]
+
+["Warrior/Arms"]
+abilities = [
+  { ability_id = 167105, name = "Colossus Smash", cooldown_seconds = 45.0 },
+  { ability_id = 107574, name = "Avatar", cooldown_seconds = 90.0 },
+  { ability_id = 227847, name = "Bladestorm", cooldown_seconds = 90.0 },
+  { ability_id = 228920, name = "Ravager", cooldown_seconds = 90.0 },
+  { ability_id = 376079, name = "Champion's Spear", cooldown_seconds = 90.0 },
+  { ability_id = 384110, name = "Wrecking Throw", cooldown_seconds = 45.0 },
+]
+
+["Warrior/Fury"]
+abilities = [
+  { ability_id = 1719, name = "Recklessness", cooldown_seconds = 90.0 },
+  { ability_id = 107574, name = "Avatar", cooldown_seconds = 90.0 },
+  { ability_id = 227847, name = "Bladestorm", cooldown_seconds = 90.0 },
+  { ability_id = 205545, name = "Odyn's Fury", cooldown_seconds = 45.0 },
+  { ability_id = 376079, name = "Champion's Spear", cooldown_seconds = 90.0 },
+  { ability_id = 384110, name = "Wrecking Throw", cooldown_seconds = 45.0 },
+]
+
+["Warrior/Protection"]
+abilities = [
+  { ability_id = 107574, name = "Avatar", cooldown_seconds = 90.0 },
+  { ability_id = 385952, name = "Shield Charge", cooldown_seconds = 45.0 },
+  { ability_id = 228920, name = "Ravager", cooldown_seconds = 90.0 },
+  { ability_id = 376079, name = "Champion's Spear", cooldown_seconds = 90.0 },
+  { ability_id = 384110, name = "Wrecking Throw", cooldown_seconds = 45.0 },
+]

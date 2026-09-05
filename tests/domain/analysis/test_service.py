@@ -8,9 +8,11 @@ from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
+    CooldownAbility,
     DefensiveAbility,
     Defensives,
     SeasonData,
+    ThroughputCooldowns,
 )
 
 SEASON = SeasonData(death_penalty_seconds=5.0, death_penalty_seconds_high_key=15.0,
@@ -71,14 +73,37 @@ def a_loaded_run() -> LoadedRun:
     )
 
 
+def a_loaded_run_owning_its_cooldown() -> LoadedRun:
+    """The shared run, plus one Arcane Surge cast so the player demonstrably has it.
+
+    Ownership is what the throughput analysers require before saying anything: a
+    talent never taken looks exactly like a button never pressed, and must not be
+    held against anyone.
+    """
+    loaded = a_loaded_run()
+    return loaded.model_copy(
+        update={
+            "casts": loaded.casts
+            + (
+                CastEvent(actor_id=11, ability_id=365350, ability_name="Arcane Surge",
+                          timestamp_ms=5_000, pull_index=0),
+            )
+        }
+    )
+
+
 def test_every_finding_carries_a_confidence_badge() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+    )
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
 def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+    )
     timed = [f.seconds_lost for f in findings if f.seconds_lost is not None]
     assert timed == sorted(timed, reverse=True)
     first_untimed = next(
@@ -88,24 +113,33 @@ def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
 
 
 def test_finding_ids_are_unique() -> None:
-    ids = [finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())]
+    ids = [
+        finding.id
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+        )
+    ]
     assert len(ids) == len(set(ids))
 
 
 def test_every_analyser_contributes() -> None:
     ids = {
         finding.id.split(".")[0]
-        for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+        for finding in analyse(
+            a_loaded_run_owning_its_cooldown(), SEASON, DEFENSIVES, CONSUMABLES, THROUGHPUT
+        )
     }
     assert {
-        "time", "deaths", "interrupts", "trash", "defensives", "consumables",
+        "time", "deaths", "interrupts", "trash", "defensives", "consumables", "throughput",
     } <= ids
 
 
 def test_an_empty_run_analyses_without_raising() -> None:
     loaded = a_loaded_run()
     bare = LoadedRun(run=loaded.run)
-    findings = analyse(bare, SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        bare, SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+    )
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
@@ -113,7 +147,12 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
     # Uglymage casts Ice Block at 40s, which proves it is talented, and dies at
     # 30s with it off cooldown. The availability analyser must contribute
     # alongside the never-pressed one it sits beside.
-    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())}
+    ids = {
+        finding.id
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+        )
+    }
     assert "defensives.unused.Uglymage" in ids
 
 
@@ -132,5 +171,66 @@ CONSUMABLES = Consumables(
 def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
     # Uglymage drinks nothing all run and dies, so the consumable analyser must
     # contribute alongside the defensive ones.
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns())
     assert "consumables.unused.Uglymage" in {finding.id for finding in findings}
+
+
+def test_the_alignment_analyser_reaches_the_ranked_list() -> None:
+    # The boss pull is judgeable and Arcane Surge is owned but never pressed on
+    # it, so the default half of the throughput pair must contribute.
+    findings = analyse(
+        a_loaded_run_owning_its_cooldown(), SEASON, DEFENSIVES, Consumables(), THROUGHPUT
+    )
+    assert any(f.id.startswith("throughput.alignment.") for f in findings)
+
+
+THROUGHPUT = ThroughputCooldowns(
+    entries=(
+        (
+            "Mage/Arcane",
+            (CooldownAbility(ability_id=365350, name="Arcane Surge", cooldown_seconds=90.0),),
+        ),
+    )
+)
+
+
+def a_run_the_ceiling_can_judge() -> LoadedRun:
+    """Long enough to have a ceiling, with the ability pressed once so it is owned.
+
+    Both matter. A short run makes the ceiling too small to argue from, and an
+    ability never cast is the talent-gated case no analyser here touches — so
+    without either, the ceiling returns nothing whatever the flag says and a test
+    of the flag proves nothing. An earlier version of these two tests did exactly
+    that.
+    """
+    loaded = a_loaded_run()
+    long_run = loaded.run.model_copy(
+        update={"pulls": (loaded.run.pulls[0].model_copy(update={"end_ms": 1_800_000}),)}
+    )
+    once = loaded.casts + (
+        CastEvent(actor_id=11, ability_id=365350, ability_name="Arcane Surge",
+                  timestamp_ms=5_000, pull_index=0),
+    )
+    return loaded.model_copy(update={"run": long_run, "casts": once})
+
+
+def test_the_throughput_ceiling_is_off_unless_it_is_asked_for() -> None:
+    # The noisier of the two throughput claims: a keystone's route decides how
+    # many packs are worth a burst cooldown, so a low count is often right. This
+    # is the same run the test below gets a ceiling finding out of.
+    findings = analyse(
+        a_run_the_ceiling_can_judge(), SEASON, DEFENSIVES, Consumables(), THROUGHPUT
+    )
+    assert not any(f.id.startswith("throughput.ceiling.") for f in findings)
+
+
+def test_asking_for_the_throughput_ceiling_turns_it_on() -> None:
+    findings = analyse(
+        a_run_the_ceiling_can_judge(),
+        SEASON,
+        DEFENSIVES,
+        Consumables(),
+        THROUGHPUT,
+        include_cooldown_ceiling=True,
+    )
+    assert any(f.id.startswith("throughput.ceiling.") for f in findings)

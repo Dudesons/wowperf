@@ -18,8 +18,12 @@ class SeasonData(Frozen):
         return self.death_penalty_seconds
 
 
-class DefensiveAbility(Frozen):
-    """One personal damage-reduction cooldown, identified by its spell id."""
+class CooldownAbility(Frozen):
+    """One ability on a cooldown, identified by its spell id.
+
+    Shared by the defensive and throughput lists, which differ in what they mean
+    rather than in what they hold.
+    """
 
     ability_id: int
     name: str
@@ -27,6 +31,10 @@ class DefensiveAbility(Frozen):
     # ceiling, and a default would let that travel silently into a printed number.
     cooldown_seconds: float
     charges: int = 1
+
+
+class DefensiveAbility(CooldownAbility):
+    """One personal damage-reduction cooldown."""
 
 
 class Defensives(Frozen):
@@ -66,3 +74,23 @@ class Consumables(Frozen):
     """Healing consumables by cooldown category."""
 
     categories: tuple[ConsumableCategory, ...] = ()
+
+
+class ThroughputCooldowns(Frozen):
+    """Throughput cooldowns per class and specialisation.
+
+    Held apart from the defensive list rather than merged into it: the two ask
+    opposite questions of the same shape of data. A defensive unpressed while
+    dying is a loss; a throughput cooldown unpressed on a trivial pack is
+    correct play, and only the pulls that mattered make it a question.
+    """
+
+    entries: tuple[tuple[str, tuple[CooldownAbility, ...]], ...] = ()
+
+    def for_spec(self, class_name: str, spec: str) -> tuple[CooldownAbility, ...]:
+        """The known throughput cooldowns for a class/spec, or `()` if none are listed."""
+        wanted = f"{class_name}/{spec}"
+        for key, abilities in self.entries:
+            if key == wanted:
+                return abilities
+        return ()
