@@ -56,7 +56,7 @@ can assert by name in both directions, which is why it stays short. The sections
 arguments, nested fields and response keys such as `kill`, `startTime`, `endTime`, `x`/`y`,
 `actors`, `bands`, `totalUptime`, `totalUses` and `totalTime` — each under its own verification
 date, and those dates bind exactly as the table's do. A field documented in prose is documented.
-`queries.py` also uses fields this reference names nowhere: `talents`, `talentImportCode`,
+`queries.py` also uses fields this reference names nowhere: `talentImportCode`,
 `abilities`, `subType`, `nextPageTimestamp` and `owner` (surveyed 2026-09-05 against `queries.py`;
 in use, but not verified against the live schema here).
 
