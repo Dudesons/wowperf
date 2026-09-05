@@ -88,10 +88,11 @@ def test_an_uptime_gap_on_self_is_reported() -> None:
 
 
 def test_the_inert_on_target_plumbing_still_reports_a_gap_if_ever_fed_data() -> None:
-    """`on_targets` is always empty against the live API (2026-09-05, design §2.2), so
-    this path never fires in production. It is kept — deliberately, by controller
-    ruling — as correct code for a query that returns nothing today, ready if a
-    working query is ever found. This test hand-builds `on_targets` data rather
+    """`on_targets` is always empty against the live API (2026-09-05,
+    `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+    caster"), so this path never fires in production. It is kept — deliberately, by
+    controller ruling — as correct code for a query that returns nothing today, ready
+    if a working query is ever found. This test hand-builds `on_targets` data rather
     than exercising the real query, so it covers the plumbing, not a working feature.
     """
     ours = a_run(BOSS)

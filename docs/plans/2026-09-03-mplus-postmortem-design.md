@@ -49,6 +49,8 @@ and skills layer. Later slices add analyzers and reuse everything else.
 The verified API reference now lives in `.claude/skills/wcl-api/SKILL.md`, where every claim
 carries the date it was checked and a field table that a test holds against the code. It moved
 there on 2026-09-05: two copies of a schema reference drift, and the drifted one is read as true.
+Older, dated implementation plans still cite §2.x by number, and that is deliberate: a dated plan
+records what was true when it was written, so its citations are left as they stand.
 
 ### 2.6 Existing tools
 
@@ -377,8 +379,9 @@ Compared, in descending order of signal:
    Both are restricted to boss pulls by intersecting each aura's `bands` with the boss windows
    (`.claude/skills/wcl-api/SKILL.md`, "Aura tables"), and compared against the same
    specialization's top parse. Badge `derived`: the arithmetic over bands is exact, but comparing
-   two players in two different fights rests on an assumption that can be wrong. The reference player is found by name in their own roster,
-   and their absence from it is a finding, not a failure — as in §6.1.
+   two players in two different fights rests on an assumption that can be wrong. The reference
+   player is found by name in their own roster, and their absence from it is a finding, not a
+   failure — as in §6.1.
 
    Plan C deferred this on the grounds that it "doubles the event fetch on both sides". That
    reasoning does not survive measurement — the table endpoint is pre-aggregated and needs no
