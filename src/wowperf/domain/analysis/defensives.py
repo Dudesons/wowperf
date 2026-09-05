@@ -8,8 +8,16 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
 from wowperf.domain.season import DefensiveAbility, Defensives
 
-CEILING_USE_FRACTION = 0.5
-"""How far below the ceiling a player must be before it is worth saying anything."""
+CEILING_USE_FRACTION = 0.2
+"""How far below the ceiling a player must be before it is worth saying anything.
+
+Measured, not chosen by taste: run against a realistic 28-minute dungeon run
+with realistic press counts, a 0.5 fraction fired on seven of eight pressed
+defensives, including "used Prismatic Barrier 12 of a possible 67 times" —
+escaping that finding would take 34 presses in one dungeon. Using a defensive
+at close to half its theoretical maximum is ordinary play, not neglect; 0.2
+fires only on genuine near-neglect instead of on almost everything pressed.
+"""
 
 MIN_CEILING_USES = 3.0
 """Below this the ceiling itself is too small to argue from."""

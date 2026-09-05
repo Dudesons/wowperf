@@ -200,6 +200,20 @@ def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
     assert findings_by_prefix(findings, "defensives.Tank.") != []
 
 
+def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> None:
+    # A whole-branch review ran this analyser against a realistic 28-minute run
+    # and realistic press counts: seven of eight pressed defensives produced a
+    # finding at the 0.5 threshold, because "used slightly under half of the
+    # theoretical maximum" is what most defensives look like in ordinary play,
+    # not neglect. Ceiling 10, 4 presses (40% of ceiling) must not be a story.
+    run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
+    casts = tuple(a_cast(actor_id=1, ability_id=48792) for _ in range(4))
+
+    findings = analyse_defensives(run, casts, BLOOD_DEFENSIVES, ())
+
+    assert findings_by_prefix(findings, "defensives.ceiling.") == []
+
+
 def test_a_defensive_pressed_close_to_its_ceiling_is_not_reported() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     # 1800s / 180s = a ceiling of 10; eight presses is not a story.
@@ -223,12 +237,13 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
 def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     casts = (a_cast(actor_id=1, ability_id=48792),)
-    # 1200s of the 1800s were spent dead, so the ceiling falls from 10 to 3.33.
-    findings = analyse_defensives(run, casts, BLOOD_DEFENSIVES, (a_death(1, 1200.0),))
+    # 720s of the 1800s were spent dead, so the ceiling falls from 10 to 6; one
+    # press against a ceiling of 6 still clears the 0.2 threshold (1 < 1.2).
+    findings = analyse_defensives(run, casts, BLOOD_DEFENSIVES, (a_death(1, 720.0),))
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
     assert len(ceiling) == 1
-    assert "3 times" in ceiling[0].title, ceiling[0].title
+    assert "6 times" in ceiling[0].title, ceiling[0].title
 
 
 def test_the_ceiling_detail_says_defensives_are_situational() -> None:
