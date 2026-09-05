@@ -160,9 +160,9 @@ def test_no_ability_belongs_to_two_categories() -> None:
 
 
 def test_the_committed_offensive_file_parses() -> None:
-    from wowperf.adapters.config.toml import DEFAULT_OFFENSIVE_PATH, load_offensive_cooldowns
+    from wowperf.adapters.config.toml import DEFAULT_THROUGHPUT_PATH, load_throughput_cooldowns
 
-    cooldowns = load_offensive_cooldowns(DEFAULT_OFFENSIVE_PATH)
+    cooldowns = load_throughput_cooldowns(DEFAULT_THROUGHPUT_PATH)
     assert cooldowns.for_spec("Mage", "Frost"), "Frost Mage has no offensive cooldowns listed"
     assert cooldowns.for_spec("Bard", "Jazz") == ()
 
@@ -171,18 +171,18 @@ def test_every_offensive_cooldown_is_long_enough_to_be_one() -> None:
     # The data file's own criterion. A 30s rotational ability is not a cooldown
     # anyone plans a pull around, and listing one would make the alignment claim
     # fire on abilities nobody holds.
-    from wowperf.adapters.config.toml import load_offensive_cooldowns
+    from wowperf.adapters.config.toml import load_throughput_cooldowns
 
-    for spec, abilities in load_offensive_cooldowns().entries:
+    for spec, abilities in load_throughput_cooldowns().entries:
         for ability in abilities:
             assert ability.cooldown_seconds >= 45.0, f"{spec}: {ability.name} is too short"
 
 
 def test_every_offensive_spec_key_names_a_class_the_log_api_reports() -> None:
-    from wowperf.adapters.config.toml import load_offensive_cooldowns
+    from wowperf.adapters.config.toml import load_throughput_cooldowns
 
     unknown = []
-    for key, _abilities in load_offensive_cooldowns().entries:
+    for key, _abilities in load_throughput_cooldowns().entries:
         class_name, _, spec = key.partition("/")
         if class_name not in WCL_CLASS_NAMES or not spec:
             unknown.append(key)
@@ -196,12 +196,12 @@ def test_no_ability_is_both_a_defensive_and_an_offensive_cooldown_for_one_spec()
     raises damage — and the judgement of which file owns one belongs in the data,
     made once, rather than being made twice and disagreeing.
     """
-    from wowperf.adapters.config.toml import load_defensives, load_offensive_cooldowns
+    from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldowns
 
     defensive = {key: {a.ability_id for a in abilities}
                  for key, abilities in load_defensives().entries}
     clashes = []
-    for key, abilities in load_offensive_cooldowns().entries:
+    for key, abilities in load_throughput_cooldowns().entries:
         overlap = defensive.get(key, set()) & {ability.ability_id for ability in abilities}
         if overlap:
             clashes.append((key, sorted(overlap)))

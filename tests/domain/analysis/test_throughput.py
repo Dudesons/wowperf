@@ -1,20 +1,20 @@
 # ABOUTME: Whether burst cooldowns landed on the pulls that were worth spending them on.
 # ABOUTME: A cooldown held for a trivial pack is correct play, so only the big pulls ask.
 
-from wowperf.domain.analysis.offensive import (
+from wowperf.domain.analysis.throughput import (
     analyse_cooldown_alignment,
     pulls_worth_a_cooldown,
     ready_at,
 )
-from wowperf.domain.events import CastEvent, EnemyDeath
+from wowperf.domain.events import CastEvent, Death, EnemyDeath
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
-from wowperf.domain.season import CooldownAbility, OffensiveCooldowns
+from wowperf.domain.season import CooldownAbility, ThroughputCooldowns
 
 BURST = CooldownAbility(ability_id=31884, name="Avenging Wrath", cooldown_seconds=120.0)
 SECOND = CooldownAbility(ability_id=343721, name="Final Reckoning", cooldown_seconds=60.0)
 ABILITIES = (BURST, SECOND)
-COOLDOWNS = OffensiveCooldowns(entries=(("Paladin/Retribution", ABILITIES),))
+COOLDOWNS = ThroughputCooldowns(entries=(("Paladin/Retribution", ABILITIES),))
 
 
 def a_cast(ability_id: int, at_ms: int, actor_id: int = 11) -> CastEvent:
@@ -25,7 +25,7 @@ def a_cast(ability_id: int, at_ms: int, actor_id: int = 11) -> CastEvent:
 
 def a_pull(index: int, start_ms: int, end_ms: int, encounter_id: int = 0) -> Pull:
     return Pull(
-        index=index, pull_id=index + 1, name="Pack", encounter_id=encounter_id,
+        index=index, pull_id=index + 1, name=f"Pack {index}", encounter_id=encounter_id,
         start_ms=start_ms, end_ms=end_ms, killed=True, x=0, y=0,
         enemies=(EnemyNpc(actor_id=1, game_id=100),),
     )
@@ -99,9 +99,9 @@ def test_a_cooldown_ready_and_unpressed_on_a_big_pull_is_a_finding() -> None:
     deaths = (a_death_of(100, 430_000, 40, 1),)
     # Owned early, so it is theirs, and long off cooldown by the big pull.
     casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
-    findings = analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, deaths)
+    findings = analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, deaths, ())
     assert len(findings) == 1
-    assert findings[0].id == "offensive.alignment.Bob"
+    assert findings[0].id == "throughput.alignment.Bob"
     assert findings[0].confidence is Confidence.INFERRED
     assert findings[0].seconds_lost is None
     assert "Avenging Wrath" in " ".join(findings[0].evidence)
@@ -116,19 +116,19 @@ def test_a_cooldown_pressed_during_the_pull_is_not_reported() -> None:
         a_cast(31884, 410_000),
         a_cast(343721, 410_000),
     )
-    assert analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, deaths) == []
+    assert analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, deaths, ()) == []
 
 
 def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
     pulls = (a_pull(0, 400_000, 460_000),)
     deaths = (a_death_of(100, 430_000, 40, 0),)
     casts = (a_cast(31884, 10_000),)
-    empty = OffensiveCooldowns(entries=())
-    assert analyse_cooldown_alignment(a_run(pulls), casts, empty, deaths) == []
+    empty = ThroughputCooldowns(entries=())
+    assert analyse_cooldown_alignment(a_run(pulls), casts, empty, deaths, ()) == []
 
 
 def test_the_ceiling_fires_only_on_near_total_neglect() -> None:
-    from wowperf.domain.analysis.offensive import analyse_cooldown_ceiling
+    from wowperf.domain.analysis.throughput import analyse_cooldown_ceiling
 
     # One 60s pull, so the ceiling for a 120s cooldown is well under the floor
     # below which the ceiling itself is too small to argue from.
@@ -138,7 +138,7 @@ def test_the_ceiling_fires_only_on_near_total_neglect() -> None:
 
 
 def test_a_cooldown_pressed_far_below_its_ceiling_is_a_finding() -> None:
-    from wowperf.domain.analysis.offensive import analyse_cooldown_ceiling
+    from wowperf.domain.analysis.throughput import analyse_cooldown_ceiling
 
     # Half an hour of pulls fits Avenging Wrath fifteen times; pressing it once
     # is the near-neglect case the fraction is set to catch.
@@ -146,13 +146,74 @@ def test_a_cooldown_pressed_far_below_its_ceiling_is_a_finding() -> None:
     casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
     findings = analyse_cooldown_ceiling(a_run(pulls), casts, COOLDOWNS, ())
     assert findings, "a single press against a ceiling of fifteen should be reported"
-    assert findings[0].id.startswith("offensive.ceiling.Bob")
+    assert findings[0].id.startswith("throughput.ceiling.Bob")
     assert findings[0].confidence is Confidence.INFERRED
 
 
 def test_an_ability_never_cast_has_no_ceiling_claim() -> None:
     # Never cast is the talent-gated case, which this analyser must not touch.
-    from wowperf.domain.analysis.offensive import analyse_cooldown_ceiling
+    from wowperf.domain.analysis.throughput import analyse_cooldown_ceiling
 
     pulls = (a_pull(0, 0, 1_800_000),)
     assert analyse_cooldown_ceiling(a_run(pulls), (), COOLDOWNS, ()) == []
+
+
+def a_player_death(at_ms: int, until_next: float | None = 20.0) -> Death:
+    return Death(
+        player_name="Bob", actor_id=11, timestamp_ms=at_ms, killing_blow="Shadow Bolt",
+        pull_index=1, seconds_until_next_action=until_next,
+    )
+
+
+def test_a_pull_the_player_spent_dead_is_not_asked_about() -> None:
+    # A corpse presses nothing. Reporting it would be telling someone they failed
+    # to use a cooldown they could not reach, which is the worst thing this tool
+    # can do — and big pulls are exactly where deaths happen.
+    pulls = (a_pull(0, 0, 60_000), a_pull(1, 400_000, 460_000))
+    enemies = (a_death_of(100, 430_000, 40, 1),)
+    casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
+    deaths = (a_player_death(405_000),)
+    assert analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, enemies, deaths) == []
+
+
+def test_a_death_whose_cost_cannot_be_measured_stops_the_claim_entirely() -> None:
+    # `seconds_until_next_action` of None means the player never acted again, so
+    # there is no honest dead span to subtract — and so no honest claim to make.
+    pulls = (a_pull(0, 0, 60_000), a_pull(1, 400_000, 460_000))
+    enemies = (a_death_of(100, 430_000, 40, 1),)
+    casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
+    deaths = (a_player_death(1_000_000, until_next=None),)
+    assert analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, enemies, deaths) == []
+
+
+def test_a_death_outside_the_pull_does_not_stop_the_claim() -> None:
+    pulls = (a_pull(0, 0, 60_000), a_pull(1, 400_000, 460_000))
+    enemies = (a_death_of(100, 430_000, 40, 1),)
+    casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
+    deaths = (a_player_death(20_000),)
+    assert analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, enemies, deaths)
+
+
+def test_a_pull_that_gave_up_no_forces_is_not_one_of_the_largest() -> None:
+    # With no forces recorded every pull ties at zero, and a stable sort would
+    # hand back the first three in log order while the finding calls them the
+    # largest. Silence is the honest answer.
+    pulls = (a_pull(0, 0, 60_000), a_pull(1, 100_000, 160_000))
+    assert pulls_worth_a_cooldown(a_run(pulls), (), most=2) == ()
+
+
+def test_the_evidence_names_each_pull_so_two_bosses_can_be_told_apart() -> None:
+    # Every other analyser names a pull by its name. Calling them all "the boss"
+    # produced three identical lines in a three-boss dungeon.
+    pulls = (
+        a_pull(0, 0, 60_000),
+        a_pull(1, 400_000, 460_000, encounter_id=12825),
+        a_pull(2, 500_000, 560_000, encounter_id=12826),
+    )
+    enemies = (a_death_of(100, 30_000, 40, 0),)
+    casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
+    evidence = analyse_cooldown_alignment(a_run(pulls), casts, COOLDOWNS, enemies, ())[0].evidence
+    named = [line for line in evidence if line.startswith("Pack ")]
+    assert len(named) == len(set(named)), f"indistinguishable lines: {named}"
+    assert any(line.startswith("Pack 1") for line in named)
+    assert any(line.startswith("Pack 2") for line in named)

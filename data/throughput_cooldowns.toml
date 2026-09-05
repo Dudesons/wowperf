@@ -1,5 +1,11 @@
-# Offensive cooldowns a player presses for a burst of damage, by class and spec.
+# Throughput cooldowns a player presses for a burst of output, by class and spec.
 # No API exposes this list, so it is maintained by hand and dated.
+#
+# Throughput, not damage: a healing spec's cooldowns are here too, because
+# "was it pressed on the pull that mattered" is the same question for a healer.
+# Defensive cooldowns live in defensives.toml, and an ability must not appear in
+# both files for the same spec -- several are genuinely dual-purpose, and the
+# judgement of which file owns one is made here, once. A test enforces it.
 #
 # Only abilities on a cooldown of 45 seconds or longer are here. A shorter one is
 # rotational, and a tool asking why it was not pressed on a particular pack would

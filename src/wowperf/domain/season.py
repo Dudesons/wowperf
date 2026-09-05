@@ -76,7 +76,7 @@ class Consumables(Frozen):
     categories: tuple[ConsumableCategory, ...] = ()
 
 
-class OffensiveCooldowns(Frozen):
+class ThroughputCooldowns(Frozen):
     """Throughput cooldowns per class and specialisation.
 
     Held apart from the defensive list rather than merged into it: the two ask

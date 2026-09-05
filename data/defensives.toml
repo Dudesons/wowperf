@@ -2,6 +2,11 @@
 # No API exposes this list or the cooldowns, so both are maintained by hand and dated.
 # A spec absent from this file simply produces no defensive findings.
 #
+# An ability must not appear both here and in throughput_cooldowns.toml for the
+# same spec: the two files ask opposite questions, so an ability in both answers
+# neither. Several are genuinely dual-purpose; the judgement is made once, in the
+# data, and a test enforces it.
+#
 # Cooldowns are base values in seconds, without talent reductions. That is
 # deliberate: a talented shorter cooldown makes the ceiling an underestimate,
 # and an underestimate cannot produce a false accusation.

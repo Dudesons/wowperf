@@ -12,7 +12,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.events import CastEvent, Death, EnemyDeath
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Pull, Run
-from wowperf.domain.season import CooldownAbility, OffensiveCooldowns
+from wowperf.domain.season import CooldownAbility, ThroughputCooldowns
 
 MOST_PULLS_CONSIDERED = 3
 """How many of the largest trash pulls to ask about.
@@ -44,6 +44,11 @@ def ready_at(
     A window reaching back before `visible_from_ms` is not judged. Casts are
     fetched per fight, so a cooldown pressed before the timer began is invisible,
     and calling it ready would be the one direction this project never guesses in.
+    One consequence worth expecting rather than filing as a bug: the run's first
+    pull begins at `visible_from_ms`, so no ability is ever ready on it.
+
+    Charges are ignored, so a second charge reads as unavailable. That is the
+    same understatement the sibling rules make, and the same safe direction.
     """
     ours = [cast for cast in casts if cast.actor_id == actor_id]
     owned = {cast.ability_id for cast in ours}
@@ -76,8 +81,16 @@ def pulls_worth_a_cooldown(
     for death in enemy_deaths:
         forces_by_pull[death.pull_index] += death.forces
 
+    # A pull that gave up no forces is not one of the largest, whatever a stable
+    # sort would hand back when every pull ties at zero — which is what an empty
+    # `enemy_deaths` produces. Saying nothing beats calling the first three pulls
+    # the biggest.
     trash = sorted(
-        (pull for pull in run.pulls if pull.encounter_id == 0),
+        (
+            pull
+            for pull in run.pulls
+            if pull.encounter_id == 0 and forces_by_pull[pull.index] > 0
+        ),
         key=lambda pull: forces_by_pull[pull.index],
         reverse=True,
     )
@@ -89,8 +102,9 @@ def pulls_worth_a_cooldown(
 def analyse_cooldown_alignment(
     run: Run,
     casts: tuple[CastEvent, ...],
-    cooldowns: OffensiveCooldowns,
+    cooldowns: ThroughputCooldowns,
     enemy_deaths: tuple[EnemyDeath, ...],
+    deaths: tuple[Death, ...],
 ) -> list[Finding]:
     """Cooldowns a player owned, had ready, and did not press on a pull worth it.
 
@@ -102,6 +116,11 @@ def analyse_cooldown_alignment(
     Only the run's boss pulls and its largest trash pulls are asked about, since
     that is the difference between this and a claim that a cooldown should be
     pressed on cooldown — which in a keystone it should not.
+
+    A pull the player spent dead is skipped: a corpse presses nothing, and those
+    are the pulls where dying is likeliest. Where a death's cost cannot be
+    measured at all the player is not judged, following the same refusal
+    `alive_combat_seconds` makes for the same reason.
     """
     if not cooldowns.entries:
         return []
@@ -121,8 +140,18 @@ def analyse_cooldown_alignment(
         if not abilities:
             continue
 
+        theirs = [death for death in deaths if death.actor_id == player.actor_id]
+        if any(death.seconds_until_next_action is None for death in theirs):
+            continue
+        dead_spans = [
+            (death.timestamp_ms, death.timestamp_ms + (death.seconds_until_next_action or 0) * 1000)
+            for death in theirs
+        ]
+
         lines = []
         for pull in worth:
+            if any(start < pull.end_ms and pull.start_ms < end for start, end in dead_spans):
+                continue
             ready = ready_at(
                 casts, abilities, player.actor_id, pull.start_ms, visible_from_ms
             )
@@ -137,7 +166,7 @@ def analyse_cooldown_alignment(
             held = [ability.name for ability in ready if ability.ability_id not in pressed]
             if not held:
                 continue
-            where = "the boss" if pull.encounter_id else f"pull {pull.index}"
+            where = pull.name
             lines.append(f"{where}: {', '.join(held)} ready and not pressed")
 
         if not lines:
@@ -151,7 +180,7 @@ def analyse_cooldown_alignment(
         pulls_word = "pull" if len(lines) == 1 else "pulls"
         findings.append(
             Finding(
-                id=f"offensive.alignment.{base_id}",
+                id=f"throughput.alignment.{base_id}",
                 title=(
                     f"{player.name} had a cooldown ready and unpressed on "
                     f"{len(lines)} big {pulls_word}"
@@ -176,7 +205,7 @@ def analyse_cooldown_alignment(
 def analyse_cooldown_ceiling(
     run: Run,
     casts: tuple[CastEvent, ...],
-    cooldowns: OffensiveCooldowns,
+    cooldowns: ThroughputCooldowns,
     deaths: tuple[Death, ...],
 ) -> list[Finding]:
     """Offensive cooldowns pressed far below what their cooldown allowed.
@@ -224,7 +253,7 @@ def analyse_cooldown_ceiling(
             )
             findings.append(
                 Finding(
-                    id=f"offensive.ceiling.{base_id}",
+                    id=f"throughput.ceiling.{base_id}",
                     title=(
                         f"{player.name} used {ability.name} {uses} "
                         f"of a possible {ceiling:.0f} times"

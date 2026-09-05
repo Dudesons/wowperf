@@ -9,8 +9,8 @@ import pytest
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
-    load_offensive_cooldowns,
     load_season_data,
+    load_throughput_cooldowns,
 )
 from wowperf.cli import build_repository
 from wowperf.domain.analysis.service import analyse
@@ -31,7 +31,7 @@ def test_a_real_run_produces_ranked_findings(tmp_path: Path) -> None:
     loaded = build_repository(tmp_path).load(code, fight)
     findings = analyse(
         loaded, load_season_data(), load_defensives(), load_consumables(),
-        load_offensive_cooldowns(),
+        load_throughput_cooldowns(),
     )
 
     assert findings, "a real run should produce at least one finding"

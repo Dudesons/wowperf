@@ -18,6 +18,9 @@ defensives, including "used Prismatic Barrier 12 of a possible 67 times" —
 escaping that finding would take 34 presses in one dungeon. Using a defensive
 at close to half its theoretical maximum is ordinary play, not neglect; 0.2
 fires only on genuine near-neglect instead of on almost everything pressed.
+
+The throughput ceiling borrows this fraction rather than having measured its
+own. That is one of the reasons that claim is asked for rather than given.
 """
 
 MIN_CEILING_USES = 3.0
