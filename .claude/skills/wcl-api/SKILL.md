@@ -9,10 +9,11 @@ This is the live reference. `docs/plans/2026-09-03-mplus-postmortem-design.md` �
 
 **Every claim carries how it was verified and when.** A field name with no date is a defect, not
 a shortcut. This project shipped a half-feature that does nothing because a line said "verified"
-and had never been run — see the debuff row below.
+and had never been run — see the debuff section below.
 
-**Never invent a field name.** If a field is not in the table, verify it against the live schema
-and add a row, with the date.
+**Never invent a field name.** Verify it against the live schema before using it, then record it
+here with the date: as a row in the table when the table covers it, in the prose section that
+covers it otherwise.
 
 ## Fields
 
@@ -49,6 +50,15 @@ and add a row, with the date.
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
 code wins.
+
+**The table is the machine-checked subset, not the whole vocabulary.** It holds the fields a test
+can assert by name in both directions, which is why it stays short. The sections below name more —
+arguments, nested fields and response keys such as `kill`, `startTime`, `endTime`, `x`/`y`,
+`actors`, `bands`, `totalUptime`, `totalUses` and `totalTime` — each under its own verification
+date, and those dates bind exactly as the table's do. A field documented in prose is documented.
+`queries.py` also uses fields this reference names nowhere: `talents`, `talentImportCode`,
+`abilities`, `subType`, `nextPageTimestamp` and `owner` (surveyed 2026-09-05 against `queries.py`;
+in use, but not verified against the live schema here).
 
 ## The endpoint and auth
 
@@ -105,9 +115,13 @@ Segmentation hangs off `dungeonPulls: [ReportDungeonPull]`, each with `startTime
 `endTime`, `encounterID` (0 means trash), `enemyNPCs[].gameID`, and `x`/`y` giving the map
 position of the first mob damaged.
 
-`npcCountMap` maps NPC IDs to the enemy-forces count each kill awards. Joined against
-`UNIT_DIED` events and divided by `countRequired`, it yields per-pull trash percentage
-without any external data source.
+`npcCountMap` maps NPC IDs to the enemy-forces count each kill awards. Joined against deaths and
+divided by `countRequired`, it yields per-pull trash percentage without any external data source,
+and this project reads those deaths from the API rather than from a raw combat log it never
+reads: `events(dataType: Deaths)`, keeping the events whose `type` is `"death"`. Checked
+2026-09-05 against `src/wowperf/adapters/wcl/queries.py` and
+`src/wowperf/adapters/wcl/ingest.py`. `UNIT_DIED` is the client-side combat-log line for the same
+moment; it is not in this schema and nothing here queries it.
 
 Timestamps on fights and pulls are relative to report start. `Report.startTime` is absolute
 epoch milliseconds.
@@ -135,8 +149,8 @@ fight 36's three boss pulls and matching the boss window the analyzers already d
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's
-per-source filter does not work the way the paragraph above once claimed. Measured, against the
-same report and fight:
+per-source filter does not work the way this project's original design assumed. Measured, against
+the same report and fight:
 
 | Arguments | Returns |
 | --- | --- |

@@ -472,12 +472,13 @@ The command-line tool emits **two artifacts**: HTML for people, and a structured
 Claude. Claude never parses the HTML.
 
 **The guardrail:** the skill instructs Claude to reason only over findings present in the JSON and
-to reference them by ID. ~~A number absent from the findings file may not appear in the
-narrative.~~ **Amended 2026-09-05:** the narrative states **no** numbers. Every figure already
-sits in a badged section directly below it, so a number repeated in the narrative is a second,
-unbadged claim competing with the first. `analyze --narrative` enforces it by refusing any digit,
-before fetching. The check is a tripwire rather than a proof — spelled-out quantities pass, and
-the instruction that forbids them lives in `analyzing-a-run`. See
+to ~~reference them by ID~~ **(amended 2026-09-05)** echo their titles — an id is a machine
+identifier and means nothing to a reader. ~~A number absent from the findings file may not appear
+in the narrative.~~ **Amended 2026-09-05:** the narrative states **no** numbers. Every figure
+already sits in a badged section directly below it, so a number repeated in the narrative is a
+second, unbadged claim competing with the first. `analyze --narrative` enforces it by refusing
+any digit, before fetching. The check is a tripwire rather than a proof — spelled-out quantities
+pass, and the instruction that forbids them lives in `analyzing-a-run`. See
 `docs/plans/2026-09-05-mplus-inference-layer-design.md` §3. Confidence badges let Claude hedge
 where the underlying claim is inferred instead of asserting everything with equal force.
 

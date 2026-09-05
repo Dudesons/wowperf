@@ -433,8 +433,12 @@ These habits keep commands auto-approvable and avoid blocked anti-patterns:
 
 # Skills Reference
 
-`.claude/skills/` holds documentation guides, not executable commands. **Read these files
-directly** with the Read tool before touching the area they cover:
+`.claude/skills/` holds four skills, each a `SKILL.md` carrying frontmatter. `wcl-api`,
+`mplus-analysis` and `analyzing-a-run` sit at the top level, so the harness surfaces them and
+triggers them from their `description` — invoke one with the Skill tool, or read it directly when
+you want it in hand before it would fire. `testing/test-driven-development` is nested a level
+deeper and is not surfaced; read that one with the Read tool. Either way, have the relevant skill
+in front of you before touching the area it covers:
 
 | Skill | Read before… |
 | --- | --- |
