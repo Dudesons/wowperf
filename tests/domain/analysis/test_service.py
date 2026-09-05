@@ -41,8 +41,14 @@ def a_loaded_run() -> LoadedRun:
     )
     return LoadedRun(
         run=run,
-        casts=(CastEvent(actor_id=11, ability_id=1, ability_name="Frostbolt",
-                         timestamp_ms=1_000, pull_index=0),),
+        casts=(
+            CastEvent(actor_id=11, ability_id=1, ability_name="Frostbolt",
+                      timestamp_ms=1_000, pull_index=0),
+            # After the death at 30s, so it proves the talent is taken without
+            # putting the ability on cooldown before it.
+            CastEvent(actor_id=11, ability_id=45438, ability_name="Ice Block",
+                      timestamp_ms=40_000, pull_index=0),
+        ),
         deaths=(Death(player_name="Uglymage", actor_id=11, timestamp_ms=30_000,
                       killing_blow="Molten Scar", pull_index=0,
                       seconds_until_next_action=22.0),),
@@ -90,3 +96,11 @@ def test_an_empty_run_analyses_without_raising() -> None:
     bare = LoadedRun(run=loaded.run)
     findings = analyse(bare, SEASON, DEFENSIVES)
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
+
+
+def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
+    # Uglymage casts Ice Block at 40s, which proves it is talented, and dies at
+    # 30s with it off cooldown. The availability analyser must contribute
+    # alongside the never-pressed one it sits beside.
+    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES)}
+    assert "defensives.unused.Uglymage" in ids

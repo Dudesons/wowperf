@@ -1,7 +1,14 @@
 # ABOUTME: Behaviour tests for timeline geometry: shared axis, marked packs, no leftover arithmetic.
 # ABOUTME: The gaps between blocks are travel, which is the reason this layout was chosen.
 
-from tests.domain.report.test_build_frame import FETCHED, a_loaded, a_player, a_pull, a_run
+from tests.domain.report.test_build_frame import (
+    FETCHED,
+    NO_DEFENSIVES,
+    a_loaded,
+    a_player,
+    a_pull,
+    a_run,
+)
 from wowperf.domain.report.build import TRACK_X0, TRACK_X1, build_report, build_timeline
 from wowperf.domain.report.model import Section, SectionState
 
@@ -129,5 +136,5 @@ def test_the_caption_names_the_run_and_the_span_it_measures() -> None:
 
 
 def test_without_a_speed_reference_build_report_leaves_the_tracks_empty() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
     assert report.timeline.ours is None

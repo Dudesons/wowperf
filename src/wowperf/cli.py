@@ -246,7 +246,10 @@ def analyze(
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
-        findings = analyse(loaded, load_season_data(), load_defensives())
+        # Loaded once and shared: the analysers and the death cards must read
+        # the same cooldowns, or the page and the findings disagree.
+        defensives = load_defensives()
+        findings = analyse(loaded, load_season_data(), defensives)
 
         subject = _resolve_player(loaded.run, player)
         speed: SpeedReference | None = None
@@ -344,6 +347,7 @@ def analyze(
                 subject,
                 narrative_text,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
+                defensives,
             )
         ),
         encoding="utf-8",

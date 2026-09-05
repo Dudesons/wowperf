@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.defensives import RUN_UP_SECONDS, defensives_up_at
 from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
@@ -24,6 +25,7 @@ from wowperf.domain.report.model import (
     TimelineBlock,
     TimelineTrack,
 )
+from wowperf.domain.season import Defensives
 
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
 PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
@@ -258,11 +260,6 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     )
 
 
-LAST_SECONDS_BEFORE_DEATH = 10.0
-"""How much of the run-up to a death to show. Long enough to see the sequence, short
-enough that the card stays a card."""
-
-
 def _when(death: Death, run: Run) -> str:
     """Elapsed time since the run's start, never the absolute report timestamp.
 
@@ -278,17 +275,20 @@ def _when(death: Death, run: Run) -> str:
     return f"{at}, pull {death.pull_index}"
 
 
-def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
+def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, ...]:
     """One card per death, oldest first, each expanded into its last ten seconds.
 
     Built from events rather than findings: no finding carries the damage
     run-up, which is the reason this section exists at all.
+
+    The same run-up window decides which defensives were available, so the card
+    shows the damage and the answer the player had to it side by side.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
     names_by_actor = display_names(loaded.run)
     cards = []
     for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
-        window_start = death.timestamp_ms - LAST_SECONDS_BEFORE_DEATH * 1000
+        window_start = death.timestamp_ms - RUN_UP_SECONDS * 1000
         hits = sorted(
             (
                 hit
@@ -299,6 +299,11 @@ def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
             key=lambda hit: hit.timestamp_ms,
         )
         player = players_by_id.get(death.actor_id)
+        # An actor missing from the roster has no spec to look up, so nothing is
+        # checked for them rather than nothing being available.
+        known = (
+            defensives.for_spec(player.class_name, player.spec) if player is not None else ()
+        )
         cards.append(
             DeathCard(
                 # Falls back to the raw event name only for an actor id that is not
@@ -307,6 +312,14 @@ def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
                 class_name=player.class_name if player else "unknown class",
                 when=_when(death, loaded.run),
                 killing_blow=death.killing_blow,
+                defensives_checked=bool(known),
+                defensives_available=defensives_up_at(
+                    loaded.casts, known, death.actor_id, death.timestamp_ms
+                ),
+                # Every other fact on this card is read straight from the log.
+                # This one is reconstructed, and says so in the same words the
+                # ledger uses.
+                defensives_badge=badge_for(Confidence.INFERRED) if known else None,
                 last_ten_seconds=tuple(
                     DamageRow(
                         seconds_before=(
@@ -519,13 +532,16 @@ def build_report(
     subject: Player,
     narrative: str | None,
     fetched_at: str,
+    defensives: Defensives,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
     `fetched_at` is a parameter rather than a clock read: the domain performs no
     I/O, and the same inputs must render the same report. `subject` is the
     player being analysed, from our own roster — it decides whose card carries
-    the spell-and-talent and uptime comparison rows.
+    the spell-and-talent and uptime comparison rows. `defensives` is passed in
+    rather than read here for the same reason the clock is: the data file is an
+    adapter's job to load.
     """
     timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
 
@@ -561,7 +577,7 @@ def build_report(
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
-        deaths=build_deaths(loaded),
+        deaths=build_deaths(loaded, defensives),
         interrupts=interrupts,
         players=players,
         observations=build_observations(findings, placed_ids, titles_by_id),

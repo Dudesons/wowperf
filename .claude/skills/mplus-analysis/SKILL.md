@@ -44,12 +44,25 @@ argued with.
 | `inferred` | requires an assumption the log cannot confirm | "suggests", "looks like", never a flat claim |
 
 Asserting an `inferred` finding as fact is the fastest way to lose a reader who knows the game
-better than the tool does. Every defensives finding is `inferred`, in two different ways. The log
-emits no cooldown-reset events, so a defensive that was never pressed may genuinely have been
+better than the tool does. Every defensives finding is `inferred`, in three different ways. The
+log emits no cooldown-reset events, so a defensive that was never pressed may genuinely have been
 unavailable. `defensives.ceiling.*` infers something else: a use count set against what the
 cooldown allowed over the seconds the player spent alive and in combat. That arithmetic is exact,
 but a defensive is pressed into incoming damage rather than on cooldown, so the ceiling is a
 ceiling and not a target — the finding says so itself, and the interpretation must keep saying it.
+
+`defensives.unused.*` is the third: the player died while an ability was, as far as cast
+timestamps and a base cooldown can tell, off cooldown. It is the strongest of the three, because
+it is anchored to a moment rather than to a whole run and because it only names abilities the
+player cast somewhere in the run — a talent they never took can never appear. It is still a
+question rather than a verdict: a defensive held for a worse moment thirty seconds later is
+ordinary play. Say "had it available", never "should have pressed it".
+
+Silence from any of the three means one of two things, and they are not the same: the player's
+spec is absent from `data/defensives.toml`, which covers five specs, or the tool checked and
+found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
+check that came back empty, and no line at all is a spec nobody has entered. The findings file
+cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
 
 ## Why damage goes unranked
 

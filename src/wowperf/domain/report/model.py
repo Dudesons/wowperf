@@ -97,11 +97,23 @@ class DamageRow(Frozen):
 
 
 class DeathCard(Frozen):
+    """One death, with the damage that caused it and what the player still had.
+
+    `defensives_checked` and `defensives_available` are two facts, not one.
+    An empty list under a checked spec says nothing was off cooldown, which
+    exonerates the player; an unchecked spec says the data file does not cover
+    them and the tool knows nothing. Rendering both as a blank would turn the
+    second into the first.
+    """
+
     player: str
     class_name: str
     when: str
     killing_blow: str
     last_ten_seconds: tuple[DamageRow, ...] = ()
+    defensives_checked: bool = False
+    defensives_available: tuple[str, ...] = ()
+    defensives_badge: Badge | None = None
 
 
 class PlayerCard(Frozen):

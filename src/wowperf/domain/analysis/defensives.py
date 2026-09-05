@@ -1,8 +1,9 @@
-# ABOUTME: Defensive claims a combat log can support: never cast at all, or cast far
-# ABOUTME: below the cooldown ceiling. Both are inferred, never measured or a target.
+# ABOUTME: Defensive claims a combat log can support: never cast at all, cast far below
+# ABOUTME: the cooldown ceiling, or off cooldown at a death. All three are inferred.
 
 from collections import defaultdict
 
+from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
@@ -21,6 +22,144 @@ fires only on genuine near-neglect instead of on almost everything pressed.
 
 MIN_CEILING_USES = 3.0
 """Below this the ceiling itself is too small to argue from."""
+
+RUN_UP_SECONDS = 10.0
+"""How much of the run-up to a death counts as the damage that killed the player.
+
+An ability that came off cooldown halfway through that run-up was never an
+option anyone had, so availability is judged from when the damage began rather
+than from the instant of death. The report's death card shows this same window,
+so a reader sees the damage a defensive could have answered — long enough to
+read the sequence, short enough that the card stays a card.
+"""
+
+
+def defensives_up_at(
+    casts: tuple[CastEvent, ...],
+    abilities: tuple[DefensiveAbility, ...],
+    actor_id: int,
+    death_ms: int,
+) -> tuple[str, ...]:
+    """Names of `abilities` this player had off cooldown when the killing damage began.
+
+    Two conditions, and the first is the one that keeps this honest.
+
+    **The player must have cast the ability somewhere in the run.** Several
+    entries in the data file are talent-gated, and a player who did not take the
+    talent casts it nowhere — which looks exactly like having it and never
+    pressing it. Reporting silence as availability would accuse someone of not
+    pressing a button they do not own. An ability never cast at all is the other
+    analyser's subject, and that one says outright that a missing talent explains
+    it just as well.
+
+    **And they must have cast it at no point in `[death - (cooldown + run-up),
+    death]`.** That one window does two jobs: it excludes an ability still on
+    cooldown, and it excludes one they pressed during the run-up and died anyway.
+
+    What remains resolves toward saying nothing. Base cooldowns are longer than
+    talented ones; charges are ignored, so a spare charge reads as unavailable;
+    the log emits no cooldown reset or reduction events, so a reset reads as
+    unavailable; and casts are fetched for the fight, so one pressed before the
+    timer started is invisible. Each understates what was up, and understating
+    cannot produce a false accusation.
+
+    Returned in the order the abilities were given, so a caller controls the
+    reading order rather than inheriting a set's.
+    """
+    ours = [cast for cast in casts if cast.actor_id == actor_id]
+    return tuple(
+        ability.name
+        for ability in abilities
+        if any(cast.ability_id == ability.ability_id for cast in ours)
+        and not any(
+            cast.ability_id == ability.ability_id
+            and death_ms - (ability.cooldown_seconds + RUN_UP_SECONDS) * 1000
+            <= cast.timestamp_ms
+            <= death_ms
+            for cast in ours
+        )
+    )
+
+
+def analyse_defensives_at_death(
+    run: Run,
+    casts: tuple[CastEvent, ...],
+    defensives: Defensives,
+    deaths: tuple[Death, ...],
+) -> list[Finding]:
+    """Players who died while a personal defensive was off cooldown.
+
+    One finding per player rather than per death, because the question a reader
+    asks is about the player, and the evidence carries each death separately.
+
+    `inferred`, like every other claim in this module: availability is
+    reconstructed from cast timestamps and a base cooldown, and the log records
+    no cooldown state to check it against. A defensive is also pressed into
+    incoming damage rather than on cooldown, so an unpressed one that was up is
+    a question worth asking, never a verdict.
+
+    Only abilities the player cast somewhere in the run are considered, so a
+    talent they never took cannot be held against them. That leaves the never-cast
+    case entirely to `analyse_defensives`, which discloses the ambiguity.
+
+    A spec absent from the data file produces nothing, which is not the same
+    claim as a spec that had nothing available. The caller must keep those apart.
+    """
+    name_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        name_counts[player.name] += 1
+
+    findings = []
+    for player in run.players:
+        abilities = defensives.for_spec(player.class_name, player.spec)
+        if not abilities:
+            continue
+
+        lines = []
+        first_pull: int | None = None
+        for death in sorted(
+            (death for death in deaths if death.actor_id == player.actor_id),
+            key=lambda death: death.timestamp_ms,
+        ):
+            up = defensives_up_at(casts, abilities, player.actor_id, death.timestamp_ms)
+            if not up:
+                continue
+            if first_pull is None:
+                first_pull = death.pull_index
+            lines.append(
+                f"{pull_offset(run, death)} to {death.killing_blow}, with "
+                f"{', '.join(up)} off cooldown"
+            )
+
+        if not lines:
+            continue
+
+        base_id = (
+            player.name
+            if name_counts[player.name] == 1
+            else f"{player.name}.{player.actor_id}"
+        )
+        times = "once" if len(lines) == 1 else f"{len(lines)} times"
+        findings.append(
+            Finding(
+                id=f"defensives.unused.{base_id}",
+                title=f"{player.name} died {times} with a defensive available",
+                detail=(
+                    "Availability is read from this player's own casts against the "
+                    "ability's base cooldown, judged from when the damage that killed "
+                    "them began. Only abilities they cast somewhere in the run count, so "
+                    "a talent they never took is never held against them, and spare "
+                    "charges and cooldown resets are ignored because the log does not "
+                    "record them. A defensive is pressed into damage rather than on "
+                    "cooldown, so this is a question to ask, not a mistake to fix."
+                ),
+                confidence=Confidence.INFERRED,
+                seconds_lost=None,
+                evidence=(f"{player.class_name} {player.spec}", *lines),
+                pull_index=first_pull,
+            )
+        )
+    return findings
 
 
 def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:

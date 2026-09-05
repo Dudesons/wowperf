@@ -9,7 +9,7 @@ from typing import Union, get_args, get_origin
 import pytest
 from markupsafe import escape
 
-from tests.domain.report.test_build_frame import FETCHED, a_pull, a_run
+from tests.domain.report.test_build_frame import FETCHED, NO_DEFENSIVES, a_pull, a_run
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
@@ -18,6 +18,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import Header, Provenance, Timeline, TimelineBlock, TimelineTrack
+from wowperf.domain.season import DefensiveAbility, Defensives
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
@@ -84,7 +85,10 @@ def minimal_findings() -> tuple[Finding, ...]:
 
 def minimal_html() -> str:
     return render(
-        build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
+        build_report(
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+            NO_DEFENSIVES,
+        )
     )
 
 
@@ -152,7 +156,7 @@ def rich_html() -> str:
     return render(
         build_report(
             rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED
-        )
+        , NO_DEFENSIVES)
     )
 
 
@@ -212,7 +216,7 @@ def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
-        )
+        , NO_DEFENSIVES)
     )
     assert 'id="narrative"' in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER) + 1
@@ -279,7 +283,10 @@ def test_the_report_carries_no_total_row() -> None:
     # It does NOT prove no total is computed anywhere in the codebase -- only
     # that the report's own view model and template have nowhere to hold or
     # build one.
-    report = build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
+    report = build_report(
+        minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+        NO_DEFENSIVES,
+    )
     assert not any(field.startswith("total") for field in type(report).model_fields)
 
     for model_type in view_model_types():
@@ -318,3 +325,75 @@ def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) 
         "The rendered report changed. Read the diff, then regenerate with "
         "`uv run pytest tests/adapters/render/test_html_invariants.py --golden-update`."
     )
+
+
+ARCANE = Defensives(
+    entries=(
+        (
+            "Mage/Arcane",
+            (
+                DefensiveAbility(
+                    ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0
+                ),
+            ),
+        ),
+    )
+)
+
+
+def a_page(defensives: Defensives) -> str:
+    return render(
+        build_report(
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED, defensives
+        )
+    )
+
+
+def deaths_section(html: str) -> str:
+    """Just the deaths section. Ability names recur across sections — the fixture's
+    own interrupt findings name Ice Block — so an unscoped search proves nothing."""
+    start = html.index('<h2 id="deaths">')
+    return html[start : html.index('<h2 id="interrupts">', start)]
+
+
+def owns_barrier(at_ms: int) -> CastEvent:
+    return CastEvent(actor_id=1, ability_id=235450, ability_name="Prismatic Barrier",
+                     timestamp_ms=at_ms, pull_index=0)
+
+
+def a_page_with(cast: CastEvent) -> str:
+    loaded = minimal_loaded()
+    return render(
+        build_report(
+            loaded.model_copy(update={"casts": loaded.casts + (cast,)}), minimal_findings(),
+            None, None, SUBJECT, None, FETCHED, ARCANE,
+        )
+    )
+
+
+def test_a_death_card_names_the_defensives_that_were_available() -> None:
+    # Cast at 10s, outside the window that opens at 15s for a 25s cooldown.
+    section = deaths_section(a_page_with(owns_barrier(10_000)))
+    assert "Defensives off cooldown: Prismatic Barrier" in section
+
+
+def test_a_death_card_says_so_when_nothing_was_off_cooldown() -> None:
+    # Cast at 45s, inside the window that ends at the death at 50s.
+    section = deaths_section(a_page_with(owns_barrier(45_000)))
+    assert "Defensives off cooldown: none" in section
+    assert "Prismatic Barrier" not in section
+
+
+def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
+    # The silence a reader must not mistake for "nothing was up".
+    section = deaths_section(a_page(NO_DEFENSIVES))
+    assert "Defensives off cooldown" not in section
+    assert "off cooldown" not in section
+
+
+def test_the_defensives_line_carries_its_confidence_badge() -> None:
+    # The only inferred claim on a card whose other facts are all measured. Without
+    # a badge a reader has no way to tell it is reconstructed rather than logged.
+    section = deaths_section(a_page_with(owns_barrier(10_000)))
+    assert "badge-inferred" in section
+    assert 'href="#provenance"' in section

@@ -149,6 +149,14 @@ that we skipped.</p>
     <span class="death-when">{{ death.when }}</span>
   </div>
   <p class="detail">{{ death.class_name }}</p>
+  {% if death.defensives_checked %}
+  <p class="detail">Defensives off cooldown:
+    {%- if death.defensives_available %} {{ death.defensives_available | join(", ") }}
+    {%- else %} none
+    {%- endif %}
+    <a class="badge {{ death.defensives_badge.tint }}"
+       href="#provenance">{{ death.defensives_badge.label }}</a></p>
+  {% endif %}
   {% if death.last_ten_seconds %}
   <table class="runup">
     {% for hit in death.last_ten_seconds %}
