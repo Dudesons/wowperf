@@ -58,7 +58,14 @@ player cast somewhere in the run — a talent they never took can never appear. 
 question rather than a verdict: a defensive held for a worse moment thirty seconds later is
 ordinary play. Say "had it available", never "should have pressed it".
 
-Silence from any of the three means one of two things, and they are not the same: the player's
+`consumables.unused.*` is a fourth claim of the same kind, about what the player carried rather
+than what their spec gives them. It is weaker than it looks and the detail says so: a consumable
+appears in the log only when it is drunk, so the finding means "nothing was on cooldown", never
+"a potion was in the bag". Say "no potion was used and none was on cooldown"; do not say they had
+one. The death cards distinguish a checked-and-empty result from an unchecked one, as they do for
+defensives.
+
+Silence from any of the three defensive claims means one of two things, and they are not the same: the player's
 spec is absent from `data/defensives.toml`, which covers five specs, or the tool checked and
 found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
 check that came back empty, and no line at all is a spec nobody has entered. The findings file
