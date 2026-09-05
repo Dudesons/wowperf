@@ -64,6 +64,22 @@ found nothing to say. The death cards distinguish them — "Defensives off coold
 check that came back empty, and no line at all is a spec nobody has entered. The findings file
 cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
 
+## Offensive cooldowns ask about placement, not rate
+
+`offensive.alignment.*` names cooldowns a player owned, had off cooldown when a big pack was
+engaged, and did not press. It is deliberately scoped to the run's boss pulls and its three
+largest trash packs, because pressing burst on cooldown is not what a keystone rewards — the
+route decides how many packs are worth it. Read it as "these were the pulls that mattered and
+the button was up", never as "they should press it more".
+
+The log records presses, not plans. A cooldown held through a big pack because a bigger one was
+thirty seconds away is good play and appears here as a gap. Say so when you repeat it.
+
+`offensive.ceiling.*` is the rate claim, and it appears **only when someone passed
+`--cooldown-ceiling`**. Its absence therefore means nothing at all. When it is present, it carries
+the same caveat as the defensive ceiling and one more: a route, not a rotation, sets how many
+windows existed.
+
 ## `consumables.unused.*` is the weakest claim on the page
 
 It is about what the player carried rather than what their spec gives them, and it is the one

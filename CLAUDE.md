@@ -385,7 +385,7 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
 | `uv run ruff check .` | Lint |
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
 | `uv run wowperf fetch <url>` | Fetch a Mythic+ run and print it as JSON |
-| `uv run wowperf analyze <url> [--player NAME] [--no-compare] [--narrative FILE]` | Analyse a run, compare it against two references, and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` |
+| `uv run wowperf analyze <url> [--player NAME] [--no-compare] [--narrative FILE] [--cooldown-ceiling]` | Analyse a run, compare it against two references, and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` |
 
 ---
 

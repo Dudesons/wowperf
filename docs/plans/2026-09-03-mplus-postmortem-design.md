@@ -369,6 +369,34 @@ judged at all.
 runs. That is the honest consequence of the design and not a defect, but it means the claim
 carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
 
+### 5.10 Offensive cooldowns — `inferred`
+
+*Added 2026-09-06.*
+
+§5.7 measures a defensive against its own ceiling and says outright that the ceiling is not a
+target. For a burst cooldown in a keystone the same claim is weaker still, because the **route**
+decides how many packs are worth spending on: a player who pressed four times on the four pulls
+that mattered has done nothing wrong against a ceiling of fifteen.
+
+So the default claim is placement rather than rate. On the run's boss pulls and its three largest
+trash packs — ranked by the forces they gave up, since a boss gives none — which cooldowns did the
+player own, have off cooldown when the pack was engaged, and never press? That needs no reference
+run, works under `--no-compare`, and asks about the pulls where the answer means something.
+
+The rate claim survives behind `--cooldown-ceiling`, off by default. It is the same arithmetic as
+§5.7 against `data/offensive_cooldowns.toml`, and it is asked for rather than given because a low
+count is so often correct play.
+
+Both borrow §5.8's ownership rule — only abilities cast somewhere in the run count, so a talent
+never taken is never held against anyone — and its visibility guard, since a cooldown pressed
+before the timer began is invisible and calling it ready would be the accusing direction.
+
+**What this data pass established about method.** A spell id resolving is not evidence the ability
+exists in the game. The spell record still serves abilities removed years ago, with plausible
+cooldowns attached: fourteen such were proposed for this file and dropped, and six more had become
+passives. Neither the name check nor a 404 catches either case. Availability has to be confirmed
+against live talent data, and `data/offensive_cooldowns.toml` says so in its own header.
+
 ---
 
 ## 6. Comparison
