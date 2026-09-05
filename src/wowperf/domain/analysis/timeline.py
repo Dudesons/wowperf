@@ -88,7 +88,7 @@ def decompose_time(run: Run, deaths: tuple[Death, ...], season: SeasonData) -> l
                 seconds_lost=gap.seconds,
                 evidence=(
                     next_pull.name,
-                    f"next pull begins at map position x={gap.x}, y={gap.y}",
+                    f"map position x={gap.x}, y={gap.y}",
                 ),
                 pull_index=gap.after_pull_index + 1,
             )

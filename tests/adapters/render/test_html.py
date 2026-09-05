@@ -94,6 +94,23 @@ def test_the_header_is_rendered() -> None:
     assert "Timed by 2:14" in html
 
 
+def test_affixes_are_labeled_since_no_name_source_exists() -> None:
+    # No affix-name source exists anywhere in this codebase, so the raw ids
+    # are still shown -- but labeled, so a reader knows what the bare
+    # integers are rather than reading "31:49 · 9, 10, 147".
+    html = render(
+        a_report(
+            header=Header(
+                dungeon="Den of Nalorakk",
+                keystone_level=16,
+                affixes=("9", "10", "147"),
+                result="Timed in 31:49",
+            )
+        )
+    )
+    assert "Affixes 9, 10, 147" in html
+
+
 def test_a_run_with_no_narrative_renders_no_narrative_section() -> None:
     assert "id=\"narrative\"" not in render(a_report())
 

@@ -69,7 +69,7 @@ p { margin: 0 0 10px; }
 <main>
 
 <h1>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</h1>
-<p class="sub">{{ report.header.result }}{% if report.header.affixes %} · {{ report.header.affixes|join(", ") }}{% endif %}</p>
+<p class="sub">{{ report.header.result }}{% if report.header.affixes %} · Affixes {{ report.header.affixes|join(", ") }}{% endif %}</p>
 {% for warning in report.header.warnings %}
 <p class="withheld">{{ warning }}</p>
 {% endfor %}
