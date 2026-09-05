@@ -74,6 +74,7 @@ def decompose_time(run: Run, deaths: tuple[Death, ...], season: SeasonData) -> l
     for rank, gap in enumerate(gaps_between_pulls(run)[:MAX_GAPS_REPORTED]):
         if gap.seconds < GAP_FLOOR_SECONDS:
             break
+        next_pull = run.pulls[gap.after_pull_index + 1]
         findings.append(
             Finding(
                 id=f"time.gap.{rank}",
@@ -85,7 +86,10 @@ def decompose_time(run: Run, deaths: tuple[Death, ...], season: SeasonData) -> l
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=gap.seconds,
-                evidence=(f"next pull begins at map position x={gap.x}, y={gap.y}",),
+                evidence=(
+                    next_pull.name,
+                    f"next pull begins at map position x={gap.x}, y={gap.y}",
+                ),
                 pull_index=gap.after_pull_index + 1,
             )
         )

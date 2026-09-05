@@ -28,6 +28,16 @@ def a_run(reached: int, required: int = 100) -> Run:
     )
 
 
+def a_pull(
+    index: int, start_ms: int, end_ms: int, name: str = "Pack"
+) -> Pull:
+    return Pull(
+        index=index, pull_id=index + 1, name=name, encounter_id=0,
+        start_ms=start_ms, end_ms=end_ms, killed=True, x=index, y=index,
+        enemies=(EnemyNpc(actor_id=index, game_id=100 + index),)
+    )
+
+
 def kill(pull_index: int, forces: int, at: int) -> EnemyDeath:
     return EnemyDeath(game_id=100 + pull_index, actor_id=pull_index, timestamp_ms=at,
                       forces=forces, pull_index=pull_index)
@@ -138,3 +148,11 @@ def test_max_pulls_reported_caps_the_ranking() -> None:
     findings = analyse_trash(a_run_with_pulls(pulls, reached=112), deaths)
     pull_findings = [f for f in findings if f.id.startswith("trash.pull.")]
     assert len(pull_findings) == MAX_PULLS_REPORTED
+
+
+def test_a_slow_pulls_evidence_names_the_pack() -> None:
+    run = a_run_with_pulls((a_pull(0, 0, 300_000, name="Shale Prowlers"),), reached=112)
+    findings = analyse_trash(run, (kill(0, 112, 10_000),))
+    slow = [f for f in findings if f.id.startswith("trash.pull.")]
+    assert slow
+    assert slow[0].evidence[0] == "Shale Prowlers"
