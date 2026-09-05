@@ -542,8 +542,11 @@ Sections, in order:
    marked.
 5. **Deaths** — ordered, expanding into the last ten seconds of damage taken.
 6. **Interrupts** — missed casts grouped by spell, ranked by the damage that followed.
-7. **Per-player cards** — in-pull active time, deaths, kicks, avoidable damage, and the spell and
-   talent difference.
+7. **Per-player cards** — in-pull active time, deaths, kicks, ~~avoidable damage~~, and the spell
+   and talent difference. *Amended 2026-09-05:* not "avoidable damage" — the log does not record
+   whether a hit could have been dodged, and §5.5's analyser already refuses that framing, stating
+   damage against the group median instead. The card follows the analyser. See the report design,
+   §3.1.
 8. **Provenance** — report code, fetch time, reference run links, and the confidence legend.
 
 Dark by default. Class colours identify players but never carry meaning alone, since several are

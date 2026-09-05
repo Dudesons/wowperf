@@ -56,22 +56,40 @@ It calls `align_pulls(loaded.run, speed.loaded.run)` itself when a speed referen
 `align_pulls` is already a pure function of two `Run`s, so `compare()` needs no change to expose
 its `Alignment`.
 
-## 3. One extraction this design requires first
+## 3. The per-player numbers already exist
 
-The per-player cards need active time, deaths, kicks and avoidable damage **as numbers**.
-`analyse_players` computes all four and renders them straight into finding prose; nothing exposes
-them.
+An earlier draft of this design called for extracting a `player_facts` function from
+`analyse_players`. **That was wrong: the function is already there.**
+`summarise_players(run, casts, deaths, interrupts) -> tuple[PlayerSummary, ...]` in
+`src/wowperf/domain/analysis/players.py` is public, pure, and returns exactly what the cards need:
 
-Parsing them back out of strings would be brittle, and recomputing them beside the analyser would
-give the report a second definition of the same facts. So:
+```python
+class PlayerSummary(Frozen):
+    name: str
+    actor_id: int
+    class_name: str
+    spec: str
+    casts_in_pulls: int
+    active_seconds: float
+    activity_percent: float
+    interrupts: int
+    deaths: int
+```
 
-- Extract `player_facts(run, casts, deaths, interrupts, damage_taken) -> tuple[PlayerFacts, ...]`
-  into `src/wowperf/domain/analysis/players.py`.
-- `analyse_players` renders its findings from that tuple rather than from its own locals.
-- `build_report` calls `player_facts` for the cards.
+`build_report` calls it directly. No refactor, no second definition, and one fewer task.
 
-Same numbers, one definition, two consumers. The analyser's existing tests cover the behaviour
-through `analyse_players`, so the extraction is a refactor with no behaviour change.
+### 3.1 There is no "avoidable damage", and the cards must not claim one
+
+Design §7 lists "avoidable damage" among the per-player card's fields. `players.py` refuses that
+framing on purpose — its own header reads "Damage taken is stated against the group median, never
+as 'avoidable damage'" — because **the log does not record whether a hit could have been dodged**.
+Its finding says "took 2.3x the group median from Frigid Roar" and states in the same breath that
+this is a difference, not a mistake.
+
+The card follows the analyser, not §7. It shows the player's damage outliers as
+`players.damage.*` already words them, with the same caveat. A card headed "avoidable damage" would
+be the tool asserting something it cannot know, about a named person, on a page they will read.
+§7 is amended to say so when this design is committed.
 
 ## 4. The view model
 
@@ -136,10 +154,12 @@ class PlayerCard(Frozen):
     class_name: str          # rendered as text, never colour alone
     spec: str
     colour: str              # palette token for the class
-    active_time: str
+    active_time: str         # "412s in pulls (38%)"
     deaths: int
     kicks: int
-    avoidable_damage: str
+    # Damage outliers as `players.damage.*` words them: a multiple of the group
+    # median, never "avoidable". See §3.1.
+    damage_rows: tuple[LedgerRow, ...] = ()
     spell_and_talent: Section          # WITHHELD without a parse reference
     spell_and_talent_rows: tuple[LedgerRow, ...] = ()
 
@@ -185,7 +205,7 @@ reported, never invented by the template.
 | 4 | Aligned timeline | `Alignment` from `align_pulls` | No speed reference. Reason from `compare.speed.unavailable` |
 | 5 | Deaths | `loaded.deaths` and `loaded.damage_taken` | Never |
 | 6 | Interrupts | `interrupts.ability.*`, `interrupts.summary` | Never |
-| 7 | Per-player cards | `player_facts`; comparison rows from `compare.spells.*`, `compare.talents`, `compare.uptime.*` | The comparison rows only, without a parse reference. Reason from `compare.parse.unavailable` |
+| 7 | Per-player cards | `summarise_players` and `players.damage.*`; comparison rows from `compare.spells.*`, `compare.talents`, `compare.uptime.*` | The comparison rows only, without a parse reference. Reason from `compare.parse.unavailable` |
 | 8 | Provenance | `Run`, both references, and the list of everything withheld | Never |
 
 Section 2 is the one exception to "always appears", and deliberately: a report generated without
