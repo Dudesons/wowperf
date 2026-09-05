@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.players import summarise_players
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.events import Death
@@ -14,6 +15,7 @@ from wowperf.domain.report.model import (
     DeathCard,
     Header,
     LedgerRow,
+    PlayerCard,
     Provenance,
     Report,
     Section,
@@ -239,6 +241,92 @@ def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
     return tuple(cards)
 
 
+CLASS_COLOURS = (
+    "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
+    "Paladin", "Priest", "Rogue", "Shaman", "Warlock", "Warrior",
+)
+"""Classes with a palette token. A class absent here still renders, in a neutral tone.
+
+The colour never carries meaning alone: every card prints the class name too,
+because several class colours are hard to tell apart and reports get
+screenshotted and recompressed.
+"""
+
+COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
+"""Finding families that belong on the subject player's card rather than in the ledger."""
+
+
+def class_colour(class_name: str) -> str:
+    return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
+
+
+def build_interrupts(findings: Sequence[Finding]) -> tuple[LedgerRow, ...]:
+    """Interrupt findings that carry no seconds. Anything timed went to the ledger."""
+    titles_by_id = {finding.id: finding.title for finding in findings}
+    return tuple(
+        _ledger_row(finding, titles_by_id)
+        for finding in findings
+        if finding.seconds_lost is None and finding.id.startswith("interrupts.")
+    )
+
+
+def build_players(
+    loaded: LoadedRun, findings: Sequence[Finding], parse: ParseReference | None
+) -> tuple[PlayerCard, ...]:
+    """One card per player.
+
+    Damage is stated as `players.damage.*` states it — a multiple of the group
+    median, with the analyser's own caveat that this is a difference and not a
+    mistake. The log does not record whether a hit could have been dodged, so
+    no card here claims damage was avoidable.
+    """
+    titles_by_id = {finding.id: finding.title for finding in findings}
+    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
+    subject_name = parse.row.character_name.casefold() if parse else ""
+
+    untimed = [finding for finding in findings if finding.seconds_lost is None]
+    damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
+    comparison = [
+        finding
+        for finding in untimed
+        if any(finding.id.startswith(prefix) for prefix in COMPARISON_PREFIXES)
+        and not finding.id.endswith(".unavailable")
+    ]
+
+    cards = []
+    for summary in summarise_players(
+        loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
+    ):
+        mine = tuple(
+            _ledger_row(finding, titles_by_id)
+            for finding in damage
+            if finding.title.startswith(summary.name)
+        )
+        is_subject = summary.name.casefold() == subject_name
+        cards.append(
+            PlayerCard(
+                name=summary.name,
+                class_name=summary.class_name,
+                spec=summary.spec,
+                colour=class_colour(summary.class_name),
+                active_time=(
+                    f"{summary.active_seconds:.0f}s in pulls "
+                    f"({summary.activity_percent:.0f}%)"
+                ),
+                deaths=summary.deaths,
+                kicks=summary.interrupts,
+                damage_rows=mine,
+                spell_and_talent=comparison_section,
+                spell_and_talent_rows=(
+                    tuple(_ledger_row(finding, titles_by_id) for finding in comparison)
+                    if is_subject
+                    else ()
+                ),
+            )
+        )
+    return tuple(cards)
+
+
 def _header(loaded: LoadedRun) -> Header:
     run = loaded.run
     verb = "Timed" if run.keystone_bonus >= 1 else "Depleted"
@@ -303,6 +391,10 @@ def build_report(
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 
+    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
+    if comparison_section.state is SectionState.WITHHELD:
+        withheld.append(f"Spell and talent comparison: {comparison_section.reason}")
+
     titles_by_id = {finding.id: finding.title for finding in findings}
 
     return Report(
@@ -322,8 +414,8 @@ def build_report(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
         deaths=build_deaths(loaded),
-        interrupts=(),
-        players=(),
+        interrupts=build_interrupts(findings),
+        players=build_players(loaded, findings, parse),
         provenance=Provenance(
             report_code=loaded.run.report_code,
             fight_id=loaded.run.fight_id,
