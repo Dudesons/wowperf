@@ -1,0 +1,118 @@
+{# The report: one self-contained file. No script, no network, no external font. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</title>
+<style>
+:root {
+  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #6f6a64;
+  --page: #16181c; --card: #1e2126; --line: #2c3038;
+  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c;
+  --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
+  --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
+  --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
+  --class-monk: #00ff96; --class-paladin: #f58cba; --class-priest: #ffffff;
+  --class-rogue: #fff569; --class-shaman: #0070de; --class-warlock: #9482c9;
+  --class-warrior: #c79c6e; --class-unknown: #a8a29b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 760px; margin: 0 auto; }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+p { margin: 0 0 10px; }
+.sub { color: var(--ink-dim); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; margin: 0 0 10px; }
+.row-head { display: flex; align-items: baseline; gap: 10px; }
+.row-head h3 { flex: 1; }
+.cost { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page); }
+.badge-measured { background: var(--badge-measured); }
+.badge-derived { background: var(--badge-derived); }
+.badge-inferred { background: var(--badge-inferred); }
+.detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+.evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
+.evidence li::before { content: "· "; }
+.nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
+.withheld { color: var(--ink-dim); font-style: italic; }
+.narrative { border-left: 3px solid var(--ours); padding: 2px 0 2px 14px;
+  white-space: pre-wrap; margin: 0 0 10px; }
+.legend { color: var(--ink-faint); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</h1>
+<p class="sub">{{ report.header.result }}{% if report.header.affixes %} · {{ report.header.affixes|join(", ") }}{% endif %}</p>
+{% for warning in report.header.warnings %}
+<p class="withheld">{{ warning }}</p>
+{% endfor %}
+
+{% if report.narrative %}
+<h2 id="narrative">What this run says</h2>
+<div class="narrative">{{ report.narrative }}</div>
+<p class="legend">Interpretation, written from the findings below.</p>
+{% endif %}
+
+{% macro ledger_row(row) %}
+<div class="card">
+  <div class="row-head">
+    <h3>{{ row.title }}</h3>
+    {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
+    <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
+  </div>
+  <p class="detail">{{ row.detail }}</p>
+  {% if row.nests_inside %}
+  <p class="nests">Already counted inside {{ row.nests_inside }}.</p>
+  {% endif %}
+  {% if row.evidence %}
+  <ul class="evidence">{% for item in row.evidence %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<h2 id="ledger">Where the time went</h2>
+{% for row in report.ledger_decomposition %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% if report.ledger_losses %}
+<p class="sub">Ranked losses. These are not additive — each says what already contains it.</p>
+{% for row in report.ledger_losses %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% endif %}
+
+<h2 id="timeline">Aligned timeline</h2>
+{% if report.timeline.section.state.value == "withheld" %}
+<p class="withheld">{{ report.timeline.section.reason }}</p>
+{% endif %}
+
+<h2 id="deaths">Deaths</h2>
+
+<h2 id="interrupts">Interrupts</h2>
+
+<h2 id="players">Players</h2>
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
+fetched {{ report.provenance.fetched_at }}.</p>
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</main>
+</body>
+</html>

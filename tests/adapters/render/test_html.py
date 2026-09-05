@@ -1,0 +1,129 @@
+# ABOUTME: Behaviour tests for the HTML adapter: self-contained, escaped, every section present.
+# ABOUTME: Self-containment is asserted rather than trusted — the file must work offline from disk.
+
+import re
+
+from wowperf.adapters.render.html import render
+from wowperf.domain.report.model import (
+    Badge,
+    Header,
+    LedgerRow,
+    Provenance,
+    Report,
+    Section,
+    SectionState,
+    Timeline,
+)
+
+PRESENT = Section(state=SectionState.PRESENT)
+
+
+def a_row(finding_id: str = "time.gap.0", **overrides: object) -> LedgerRow:
+    fields: dict[str, object] = {
+        "finding_id": finding_id,
+        "title": "A 41 second gap after pull 7",
+        "detail": "Travel, not combat.",
+        "badge": Badge(label="measured", tint="badge-measured"),
+        "seconds": "0:41",
+        "nests_inside": None,
+        "evidence": ("next pull begins at Loa Speaker Nanea",),
+    }
+    fields.update(overrides)
+    return LedgerRow(**fields)  # type: ignore[arg-type]
+
+
+def a_report(**overrides: object) -> Report:
+    fields: dict[str, object] = {
+        "header": Header(
+            dungeon="Den of Nalorakk",
+            keystone_level=16,
+            affixes=("Tyrannical",),
+            result="Timed by 2:14",
+        ),
+        "narrative": None,
+        "ledger_decomposition": (),
+        "ledger_losses": (),
+        "timeline": Timeline(section=Section(state=SectionState.WITHHELD, reason="no reference")),
+        "deaths": (),
+        "interrupts": (),
+        "players": (),
+        "provenance": Provenance(
+            report_code="abc123", fight_id=36, fetched_at="2026-09-05 14:02"
+        ),
+    }
+    fields.update(overrides)
+    return Report(**fields)  # type: ignore[arg-type]
+
+
+def test_the_document_is_html() -> None:
+    assert render(a_report()).lstrip().lower().startswith("<!doctype html>")
+
+
+def test_nothing_is_fetched_from_anywhere() -> None:
+    html = render(a_report())
+    assert "<script" not in html.lower()
+    assert "http://" not in html
+    assert "https://" not in html
+    assert "@import" not in html
+    assert "//fonts." not in html
+
+
+def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:
+    html = render(a_report())
+    for href in re.findall(r'href="([^"]*)"', html):
+        assert href.startswith("#"), href
+
+
+def test_the_header_is_rendered() -> None:
+    html = render(a_report())
+    assert "Den of Nalorakk" in html
+    assert "Timed by 2:14" in html
+
+
+def test_a_run_with_no_narrative_renders_no_narrative_section() -> None:
+    assert "id=\"narrative\"" not in render(a_report())
+
+
+def test_a_narrative_is_rendered_when_present() -> None:
+    html = render(a_report(narrative="Both losses were travel, not damage."))
+    assert "Both losses were travel, not damage." in html
+
+
+def test_a_narrative_cannot_smuggle_markup_into_the_page() -> None:
+    html = render(a_report(narrative="<script>alert(1)</script>"))
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_a_pack_name_from_the_api_cannot_smuggle_markup_either() -> None:
+    html = render(a_report(ledger_losses=(a_row(title="<img onerror=x>"),)))
+    assert "<img onerror=x>" not in html
+    assert "&lt;img" in html
+
+
+def test_a_ledger_row_shows_its_badge_as_a_word() -> None:
+    html = render(a_report(ledger_losses=(a_row(),)))
+    assert "measured" in html
+
+
+def test_a_nested_row_says_what_contains_it() -> None:
+    html = render(a_report(ledger_losses=(a_row(nests_inside="time.residual"),)))
+    assert "time.residual" in html
+
+
+def test_a_withheld_section_renders_its_heading_and_its_reason() -> None:
+    html = render(a_report())
+    assert "Aligned timeline" in html
+    assert "no reference" in html
+
+
+def test_provenance_names_the_report_and_when_it_was_fetched() -> None:
+    html = render(a_report())
+    assert "abc123" in html
+    assert "2026-09-05 14:02" in html
+
+
+def test_the_confidence_legend_explains_all_three_badges() -> None:
+    html = render(a_report())
+    for word in ("measured", "derived", "inferred"):
+        assert word in html
