@@ -197,7 +197,9 @@ class WclRunRepository:
 
         Scoped rather than folded into `load`: an aura table is per-actor, so
         loading them for a whole roster would pay for ten tables to answer a
-        question about two players.
+        question about two players. The debuff half of what comes back is
+        always empty against the live API — confirmed 2026-09-05, no query
+        argument narrows the enemy-debuff table to one caster (design §2.2).
         """
         payload = self._query(
             AURA_TABLE_QUERY,

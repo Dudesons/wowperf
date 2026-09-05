@@ -1,6 +1,10 @@
 # ABOUTME: Compares one player's buff and debuff uptime on boss pulls against a top parse.
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
+# The debuff half never fires in practice: `on_targets` is always empty against
+# the live API, confirmed 2026-09-05 (design §2.2) — no query argument narrows
+# the enemy-debuff table to one caster.
+
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.findings import Confidence, Finding

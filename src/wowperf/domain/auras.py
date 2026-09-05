@@ -27,8 +27,10 @@ class Aura(Frozen):
 class PlayerAuras(Frozen):
     """The two halves of one player's aura picture.
 
-    `on_self` is what the player carried; `on_targets` is what they kept up on
-    enemies. The design calls these "on self and on target".
+    `on_self` is what the player carried; `on_targets` is meant to be what they
+    kept up on enemies, but is always empty against the live API today —
+    confirmed 2026-09-05, no query argument narrows the enemy-debuff table to
+    one caster (design §2.2). The design calls these "on self and on target".
     """
 
     actor_id: int

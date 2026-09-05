@@ -87,7 +87,13 @@ def test_an_uptime_gap_on_self_is_reported() -> None:
     assert reported[0].seconds_lost is None
 
 
-def test_a_debuff_gap_on_the_target_is_reported_separately() -> None:
+def test_the_inert_on_target_plumbing_still_reports_a_gap_if_ever_fed_data() -> None:
+    """`on_targets` is always empty against the live API (2026-09-05, design §2.2), so
+    this path never fires in production. It is kept — deliberately, by controller
+    ruling — as correct code for a query that returns nothing today, ready if a
+    working query is ever found. This test hand-builds `on_targets` data rather
+    than exercising the real query, so it covers the plumbing, not a working feature.
+    """
     ours = a_run(BOSS)
     theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
     our_auras = PlayerAuras(actor_id=7, on_targets=(an_aura(55095, "Frost Fever", (0, 10_000)),))
