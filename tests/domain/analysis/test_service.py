@@ -8,8 +8,10 @@ from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
+    CooldownAbility,
     DefensiveAbility,
     Defensives,
+    OffensiveCooldowns,
     SeasonData,
 )
 
@@ -72,13 +74,17 @@ def a_loaded_run() -> LoadedRun:
 
 
 def test_every_finding_carries_a_confidence_badge() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        a_loaded_run(), SEASON, DEFENSIVES, Consumables(), OffensiveCooldowns()
+    )
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
 def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        a_loaded_run(), SEASON, DEFENSIVES, Consumables(), OffensiveCooldowns()
+    )
     timed = [f.seconds_lost for f in findings if f.seconds_lost is not None]
     assert timed == sorted(timed, reverse=True)
     first_untimed = next(
@@ -88,14 +94,21 @@ def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
 
 
 def test_finding_ids_are_unique() -> None:
-    ids = [finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())]
+    ids = [
+        finding.id
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), OffensiveCooldowns()
+        )
+    ]
     assert len(ids) == len(set(ids))
 
 
 def test_every_analyser_contributes() -> None:
     ids = {
         finding.id.split(".")[0]
-        for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES, OffensiveCooldowns()
+        )
     }
     assert {
         "time", "deaths", "interrupts", "trash", "defensives", "consumables",
@@ -105,7 +118,9 @@ def test_every_analyser_contributes() -> None:
 def test_an_empty_run_analyses_without_raising() -> None:
     loaded = a_loaded_run()
     bare = LoadedRun(run=loaded.run)
-    findings = analyse(bare, SEASON, DEFENSIVES, Consumables())
+    findings = analyse(
+        bare, SEASON, DEFENSIVES, Consumables(), OffensiveCooldowns()
+    )
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
@@ -113,7 +128,12 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
     # Uglymage casts Ice Block at 40s, which proves it is talented, and dies at
     # 30s with it off cooldown. The availability analyser must contribute
     # alongside the never-pressed one it sits beside.
-    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())}
+    ids = {
+        finding.id
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), OffensiveCooldowns()
+        )
+    }
     assert "defensives.unused.Uglymage" in ids
 
 
@@ -132,5 +152,55 @@ CONSUMABLES = Consumables(
 def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
     # Uglymage drinks nothing all run and dies, so the consumable analyser must
     # contribute alongside the defensive ones.
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES, OffensiveCooldowns())
     assert "consumables.unused.Uglymage" in {finding.id for finding in findings}
+
+
+OFFENSIVE = OffensiveCooldowns(
+    entries=(
+        (
+            "Mage/Arcane",
+            (CooldownAbility(ability_id=365350, name="Arcane Surge", cooldown_seconds=90.0),),
+        ),
+    )
+)
+
+
+def test_the_cooldown_ceiling_is_off_unless_it_is_asked_for() -> None:
+    # It is the noisier of the two offensive claims: a keystone's route decides
+    # how many packs are worth a burst cooldown, so a low count is often right.
+    ids = {
+        finding.id
+        for finding in analyse(
+            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), OFFENSIVE
+        )
+    }
+    assert not any(finding_id.startswith("offensive.ceiling.") for finding_id in ids)
+
+
+def test_asking_for_the_cooldown_ceiling_turns_it_on() -> None:
+    # Its own run: the shared fixture is a hundred seconds of pulls, and a
+    # ceiling that small is one the analyser deliberately refuses to argue from.
+    loaded = a_loaded_run()
+    long_run = loaded.run.model_copy(
+        update={
+            "pulls": (
+                loaded.run.pulls[0].model_copy(update={"end_ms": 1_800_000}),
+            )
+        }
+    )
+    # Pressed once, so it is demonstrably theirs; a talent never taken is a
+    # different claim and belongs to no analyser here.
+    once = loaded.casts + (
+        CastEvent(actor_id=11, ability_id=365350, ability_name="Arcane Surge",
+                  timestamp_ms=5_000, pull_index=0),
+    )
+    findings = analyse(
+        loaded.model_copy(update={"run": long_run, "casts": once}),
+        SEASON,
+        DEFENSIVES,
+        Consumables(),
+        OFFENSIVE,
+        include_cooldown_ceiling=True,
+    )
+    assert any(f.id.startswith("offensive.ceiling.") for f in findings)

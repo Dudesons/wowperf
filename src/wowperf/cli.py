@@ -14,6 +14,7 @@ from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_offensive_cooldowns,
     load_season_data,
 )
 from wowperf.adapters.render.html import render
@@ -82,6 +83,11 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
 def fetch(
     report: str = typer.Argument(..., help="Report URL or code"),
     fight: int | None = typer.Option(None, help="Fight ID; defaults to the only keystone run"),
+    cooldown_ceiling: bool = typer.Option(
+        False,
+        "--cooldown-ceiling",
+        help="Also report offensive cooldowns used far below what their cooldown allowed",
+    ),
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
 ) -> None:
     """Fetch a Mythic+ run and print it as JSON."""
@@ -212,6 +218,11 @@ def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
     fight: int | None = typer.Option(None, help="Fight ID; defaults to the only keystone run"),
+    cooldown_ceiling: bool = typer.Option(
+        False,
+        "--cooldown-ceiling",
+        help="Also report offensive cooldowns used far below what their cooldown allowed",
+    ),
     player: str | None = typer.Option(
         None, help="Subject of the individual comparison; defaults to the report owner"
     ),
@@ -254,7 +265,14 @@ def analyze(
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
         consumables = load_consumables()
-        findings = analyse(loaded, load_season_data(), defensives, consumables)
+        findings = analyse(
+            loaded,
+            load_season_data(),
+            defensives,
+            consumables,
+            load_offensive_cooldowns(),
+            include_cooldown_ceiling=cooldown_ceiling,
+        )
 
         subject = _resolve_player(loaded.run, player)
         speed: SpeedReference | None = None

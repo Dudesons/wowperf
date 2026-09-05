@@ -1041,3 +1041,17 @@ def test_the_warning_names_exactly_the_nestings_the_report_draws() -> None:
     # The decomposition ids head the ledger rather than nesting, so the warning
     # may name them without NESTS_INSIDE carrying an entry for them.
     assert named - set(DECOMPOSITION_IDS) == drawn - set(DECOMPOSITION_IDS)
+
+
+def test_the_cooldown_ceiling_is_an_option_that_is_off_by_default() -> None:
+    """The noisier of the two offensive claims, so it is asked for rather than given.
+
+    Its behaviour is covered where the decision lives, in the analysis service;
+    what this pins is that the command exposes the choice and does not make it.
+    """
+    from typer.testing import CliRunner
+
+    from wowperf.cli import app
+
+    help_text = CliRunner().invoke(app, ["analyze", "--help"]).output
+    assert "--cooldown-ceiling" in help_text

@@ -7,7 +7,7 @@ from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
-from wowperf.domain.season import DefensiveAbility, Defensives
+from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
 
 CEILING_USE_FRACTION = 0.2
 """How far below the ceiling a player must be before it is worth saying anything.
@@ -162,7 +162,7 @@ def analyse_defensives_at_death(
     return findings
 
 
-def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:
+def alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:
     """Combat time this player could actually have pressed a button in.
 
     Returns `None` when any of this player's deaths has `seconds_until_next_action`
@@ -184,7 +184,7 @@ def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) ->
     return max(run.total_pull_seconds - dead, 0.0)
 
 
-def _ceiling(alive_seconds: float, ability: DefensiveAbility) -> float:
+def cooldown_ceiling(alive_seconds: float, ability: CooldownAbility) -> float:
     """How many times the cooldown alone would have allowed this to be pressed."""
     return alive_seconds / ability.cooldown_seconds * ability.charges
 
@@ -221,10 +221,10 @@ def analyse_defensives(
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
 
             if uses:
-                alive = _alive_combat_seconds(run, deaths, player.actor_id)
+                alive = alive_combat_seconds(run, deaths, player.actor_id)
                 if alive is None:
                     continue
-                ceiling = _ceiling(alive, ability)
+                ceiling = cooldown_ceiling(alive, ability)
                 if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
                     continue
                 findings.append(

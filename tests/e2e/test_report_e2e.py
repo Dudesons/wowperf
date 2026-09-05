@@ -11,6 +11,7 @@ from markupsafe import escape
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_offensive_cooldowns,
     load_season_data,
 )
 from wowperf.adapters.render.html import render
@@ -37,7 +38,10 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     repository = build_repository(tmp_path)
     loaded = repository.load(code, fight)
     defensives = load_defensives()
-    findings = analyse(loaded, load_season_data(), defensives, load_consumables())
+    findings = analyse(
+        loaded, load_season_data(), defensives, load_consumables(),
+        load_offensive_cooldowns(),
+    )
 
     # Mirrors `analyze`'s own resolution (cli.py), so this is the only place
     # `--compare`'s default path -- both reference runs, spell/talent/uptime

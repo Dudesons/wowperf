@@ -157,3 +157,52 @@ def test_no_ability_belongs_to_two_categories() -> None:
         overlap = seen & set(category.ability_ids)
         assert not overlap, f"{category.name} repeats ids from another category: {overlap}"
         seen |= set(category.ability_ids)
+
+
+def test_the_committed_offensive_file_parses() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_OFFENSIVE_PATH, load_offensive_cooldowns
+
+    cooldowns = load_offensive_cooldowns(DEFAULT_OFFENSIVE_PATH)
+    assert cooldowns.for_spec("Mage", "Frost"), "Frost Mage has no offensive cooldowns listed"
+    assert cooldowns.for_spec("Bard", "Jazz") == ()
+
+
+def test_every_offensive_cooldown_is_long_enough_to_be_one() -> None:
+    # The data file's own criterion. A 30s rotational ability is not a cooldown
+    # anyone plans a pull around, and listing one would make the alignment claim
+    # fire on abilities nobody holds.
+    from wowperf.adapters.config.toml import load_offensive_cooldowns
+
+    for spec, abilities in load_offensive_cooldowns().entries:
+        for ability in abilities:
+            assert ability.cooldown_seconds >= 45.0, f"{spec}: {ability.name} is too short"
+
+
+def test_every_offensive_spec_key_names_a_class_the_log_api_reports() -> None:
+    from wowperf.adapters.config.toml import load_offensive_cooldowns
+
+    unknown = []
+    for key, _abilities in load_offensive_cooldowns().entries:
+        class_name, _, spec = key.partition("/")
+        if class_name not in WCL_CLASS_NAMES or not spec:
+            unknown.append(key)
+    assert unknown == [], f"spec keys that can never match a player: {unknown}"
+
+
+def test_no_ability_is_both_a_defensive_and_an_offensive_cooldown_for_one_spec() -> None:
+    """The two files ask opposite questions, so an ability in both answers neither.
+
+    Several abilities are genuinely dual-purpose — a tank cooldown that also
+    raises damage — and the judgement of which file owns one belongs in the data,
+    made once, rather than being made twice and disagreeing.
+    """
+    from wowperf.adapters.config.toml import load_defensives, load_offensive_cooldowns
+
+    defensive = {key: {a.ability_id for a in abilities}
+                 for key, abilities in load_defensives().entries}
+    clashes = []
+    for key, abilities in load_offensive_cooldowns().entries:
+        overlap = defensive.get(key, set()) & {ability.ability_id for ability in abilities}
+        if overlap:
+            clashes.append((key, sorted(overlap)))
+    assert clashes == [], f"listed as both defensive and offensive: {clashes}"
