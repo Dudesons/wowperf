@@ -3,6 +3,8 @@
 
 import re
 
+from markupsafe import escape
+
 from wowperf.adapters.render.html import render
 from wowperf.domain.report.model import (
     Badge,
@@ -89,8 +91,10 @@ def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> Non
 
 
 def test_the_header_is_rendered() -> None:
+    # Escaped on comparison: real dungeon names can carry an apostrophe
+    # (Atal'Dazar was a Mythic+ dungeon), and autoescape would turn it into `&#39;`.
     html = render(a_report())
-    assert "Den of Nalorakk" in html
+    assert str(escape("Den of Nalorakk")) in html
     assert "Timed by 2:14" in html
 
 
@@ -116,8 +120,11 @@ def test_a_run_with_no_narrative_renders_no_narrative_section() -> None:
 
 
 def test_a_narrative_is_rendered_when_present() -> None:
-    html = render(a_report(narrative="Both losses were travel, not damage."))
-    assert "Both losses were travel, not damage." in html
+    # Escaped on comparison: a hand-written narrative is free text and can
+    # carry an apostrophe or ampersand, which autoescape would transform.
+    narrative = "Both losses were travel, not damage."
+    html = render(a_report(narrative=narrative))
+    assert str(escape(narrative)) in html
 
 
 def test_a_narrative_cannot_smuggle_markup_into_the_page() -> None:

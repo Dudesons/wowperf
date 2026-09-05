@@ -8,6 +8,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
+from markupsafe import escape
 from typer.testing import CliRunner
 
 from wowperf.cli import app
@@ -919,12 +920,15 @@ def test_no_compare_still_writes_a_report(tmp_path: Path) -> None:
 
 
 def test_a_narrative_file_reaches_the_report(tmp_path: Path) -> None:
+    # Escaped on comparison: a hand-written narrative file is free text and
+    # can carry an apostrophe or ampersand, which autoescape would transform.
+    text = "Both of your largest losses were travel."
     notes = tmp_path / "notes.md"
-    notes.write_text("Both of your largest losses were travel.", encoding="utf-8")
+    notes.write_text(text, encoding="utf-8")
     result = run_analyze(tmp_path, "--narrative", str(notes))
     assert result.exit_code == 0, result.output
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert "Both of your largest losses were travel." in html
+    assert str(escape(text)) in html
 
 
 def test_a_missing_narrative_file_fails_before_anything_is_fetched(tmp_path: Path) -> None:

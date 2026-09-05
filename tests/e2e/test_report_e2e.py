@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 import pytest
+from markupsafe import escape
 
 from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.render.html import render
@@ -92,8 +93,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # Every finding the analysis produced reaches the page exactly once. Anchored to
     # the row heading: a nested row quotes its parent's title in "Already counted
     # inside ...", which is a cross-reference, not a second copy of the parent's row.
+    # Compared against the escaped title, since the template renders it through
+    # Jinja's autoescape (markupsafe.escape) and a real ability name commonly
+    # carries an apostrophe that autoescape turns into `&#39;`.
     for finding in findings:
-        assert html.count(f"<h3>{finding.title}</h3>") == 1, finding.id
+        assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
 
     # The timeline heading always renders, whether present or withheld.
     assert "Aligned timeline" in html

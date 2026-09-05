@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
+from markupsafe import escape
 
 from tests.domain.report.test_build_frame import FETCHED, a_pull, a_run
 from wowperf.adapters.render.html import render
@@ -67,7 +68,10 @@ def minimal_findings() -> tuple[Finding, ...]:
         ),
         Finding(
             id="interrupts.summary",
-            title="Three enemy casts went uninterrupted",
+            # Apostrophe and ampersand on purpose: a hand-written fixture that never
+            # carries the characters autoescape transforms is how this project's
+            # escaping bugs keep surviving the offline suite (see Ruling V).
+            title="Wipsdk let Death's Advance & Ice Block go uninterrupted",
             detail="Grouped by spell.",
             confidence=Confidence.DERIVED,
         ),
@@ -210,18 +214,21 @@ def test_a_report_with_a_narrative_renders_all_nine() -> None:
 
 
 def test_every_finding_reaches_the_page() -> None:
+    # Compared against the escaped title: the template renders it through Jinja's
+    # autoescape (markupsafe.escape), which turns an apostrophe into `&#39;`.
     html = minimal_html()
     for finding in minimal_findings():
-        assert finding.title in html, finding.id
+        assert str(escape(finding.title)) in html, finding.id
 
 
 def test_no_finding_reaches_the_page_twice() -> None:
     # Anchored to the row heading, not to the bare title text: a nested row
     # legitimately quotes its parent's title in "Already counted inside ...",
     # which is a cross-reference, not a second copy of the parent's own row.
+    # Compared against the escaped title for the same reason as the test above.
     html = minimal_html()
     for finding in minimal_findings():
-        assert html.count(f"<h3>{finding.title}</h3>") == 1, finding.id
+        assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
 
 
 def test_every_withheld_section_gives_a_reason() -> None:

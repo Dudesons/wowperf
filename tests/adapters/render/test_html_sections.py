@@ -2,6 +2,7 @@
 # ABOUTME: The template does no arithmetic: every coordinate here was computed in build_timeline.
 
 import pytest
+from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report, a_row
 from tests.domain.report.test_build_frame import a_pull, a_run
@@ -68,9 +69,11 @@ def test_a_withheld_timeline_emits_no_svg_at_all() -> None:
 
 
 def test_every_block_carries_its_pack_name_as_a_tooltip() -> None:
+    # Escaped on comparison: real pack names commonly carry an apostrophe
+    # (e.g. an NPC possessive), which autoescape would transform.
     html = render(a_report(timeline=a_timeline()))
-    assert "<title>Loa Speaker Nanea</title>" in html
-    assert "<title>Frostbound trio</title>" in html
+    assert f"<title>{escape('Loa Speaker Nanea')}</title>" in html
+    assert f"<title>{escape('Frostbound trio')}</title>" in html
 
 
 def test_an_svg_title_escapes_hostile_input() -> None:
@@ -177,9 +180,11 @@ def test_a_death_card_shows_the_run_up() -> None:
             DamageRow(seconds_before="5.8s before", ability="Snowdrift", amount="82,410"),
         ),
     )
+    # Escaped on comparison: real ability names commonly carry an apostrophe
+    # (e.g. "Nature's Wrath"), which autoescape would transform.
     html = render(a_report(deaths=(card,)))
-    assert "Frigid Roar" in html
-    assert "Snowdrift" in html
+    assert str(escape("Frigid Roar")) in html
+    assert str(escape("Snowdrift")) in html
     assert "5.8s before" in html
 
 
@@ -189,8 +194,11 @@ def test_a_run_with_no_deaths_says_so_rather_than_showing_an_empty_heading() -> 
 
 
 def test_the_interrupts_section_renders_its_rows() -> None:
-    html = render(a_report(interrupts=(a_row("interrupts.ability.0", title="Snowdrift, 3 casts"),)))
-    assert "Snowdrift, 3 casts" in html
+    # Escaped on comparison: the row title embeds a real ability name, which
+    # can carry an apostrophe that autoescape would transform.
+    title = "Snowdrift, 3 casts"
+    html = render(a_report(interrupts=(a_row("interrupts.ability.0", title=title),)))
+    assert str(escape(title)) in html
 
 
 def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
