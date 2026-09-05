@@ -39,7 +39,9 @@ def test_the_committed_defensives_file_parses() -> None:
     defensives = load_defensives(DEFAULT_DEFENSIVES_PATH)
     arcane = defensives.for_spec("Mage", "Arcane")
     assert any(ability.name == "Ice Block" for ability in arcane)
-    assert defensives.for_spec("Druid", "Feral") == ()
+    # A class that cannot exist, so this keeps testing the empty-result path
+    # however complete the file becomes.
+    assert defensives.for_spec("Bard", "Jazz") == ()
 
 
 def test_the_defensive_list_carries_cooldowns_and_charges() -> None:
@@ -61,3 +63,47 @@ def test_every_listed_defensive_has_a_positive_cooldown() -> None:
     for _spec, abilities in defensives.entries:
         for ability in abilities:
             assert ability.cooldown_seconds > 0, f"{ability.name} has no usable cooldown"
+
+
+# The class strings Warcraft Logs actually returns, read from `subType` on player
+# actors in cached responses on 2026-09-05. They carry no spaces: a key written
+# "Death Knight/Blood" or "Hunter/Beast Mastery" matches no player, silently, for
+# as long as it goes unnoticed.
+WCL_CLASS_NAMES = frozenset(
+    {
+        "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
+        "Paladin", "Priest", "Rogue", "Shaman", "Warlock", "Warrior",
+    }
+)
+
+
+def test_every_spec_key_names_a_class_the_log_api_reports() -> None:
+    from wowperf.adapters.config.toml import load_defensives
+
+    unknown = []
+    for key, _abilities in load_defensives().entries:
+        class_name, _, spec = key.partition("/")
+        if class_name not in WCL_CLASS_NAMES or not spec:
+            unknown.append(key)
+    assert unknown == [], f"spec keys that can never match a player: {unknown}"
+
+
+def test_no_spec_lists_the_same_ability_twice() -> None:
+    from wowperf.adapters.config.toml import load_defensives
+
+    duplicated = []
+    for key, abilities in load_defensives().entries:
+        ids = [ability.ability_id for ability in abilities]
+        if len(ids) != len(set(ids)):
+            duplicated.append(key)
+    assert duplicated == [], f"specs listing an ability more than once: {duplicated}"
+
+
+def test_no_spec_is_listed_twice() -> None:
+    # TOML itself rejects a duplicated table, but the entries are a tuple of pairs
+    # rather than a dict, so a future loader change could let one through and
+    # `for_spec` would silently return only the first.
+    from wowperf.adapters.config.toml import load_defensives
+
+    keys = [key for key, _ in load_defensives().entries]
+    assert len(keys) == len(set(keys)), "a spec appears more than once"
