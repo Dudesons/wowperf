@@ -19,10 +19,10 @@ from wowperf.domain.report.model import (
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
 PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
 
+# Said when `--no-compare` skipped the comparison entirely, so no finding explains the absence.
 NO_COMPARISON_RAN = (
     "No reference run was fetched for this analysis, so there is nothing to compare against."
 )
-"""Said when `--no-compare` skipped the comparison entirely, so no finding explains the absence."""
 
 REPORT_URL = "https://www.warcraftlogs.com/reports/{code}?fight={fight}"
 
@@ -76,14 +76,14 @@ def _run_seconds(run: Run) -> float:
 
 def _header(loaded: LoadedRun) -> Header:
     run = loaded.run
-    margin = run.keystone_time_seconds - _run_seconds(run)
     verb = "Timed" if run.keystone_bonus >= 1 else "Depleted"
-    by = format_seconds(abs(margin)) or "0:00"
+    duration = format_seconds(run.keystone_time_seconds)
+    assert duration is not None  # keystone_time_seconds is never None
     return Header(
         dungeon=run.dungeon_name,
         keystone_level=run.keystone_level,
         affixes=tuple(str(affix_id) for affix_id in run.affix_ids),
-        result=f"{verb} by {by}",
+        result=f"{verb} in {duration}",
     )
 
 
