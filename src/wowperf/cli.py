@@ -164,11 +164,15 @@ def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> P
 
     A failed aura fetch must not discard the whole report: everything else has
     already been fetched and paid for, and `compare.uptime.unavailable` states
-    the gap rather than hiding it.
+    the gap rather than hiding it. `httpx.HTTPError` covers a non-2xx aura
+    response that is not itself a rate limit: `WclClient.execute` raises
+    `RateLimitExceeded` (a `WclError`) for 429 before it ever calls
+    `raise_for_status`, so that deliberate handling still goes through the
+    `WclError` branch above and is untouched by the wider catch here.
     """
     try:
         return runs.auras(code, fight_id, actor_id)
-    except (IngestError, WclError):
+    except (IngestError, WclError, httpx.HTTPError):
         return None
 
 
