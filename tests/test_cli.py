@@ -900,9 +900,9 @@ def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> No
 
 
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
-    """Mirrors `test_nothing_is_fetched_from_anywhere` in `test_html.py`: an `href` to
-    the reference run on warcraftlogs.com is a link the reader may follow, not a
-    resource the page loads, so only `src=` and script/stylesheet tags are checked."""
+    """Mirrors `test_the_page_fetches_nothing_at_all` in `test_html_invariants.py`: an
+    `href` to the reference run on warcraftlogs.com is a link the reader may follow,
+    not a resource the page loads, so only `src=` and script/stylesheet tags are checked."""
     result = run_analyze(tmp_path)
     assert result.exit_code == 0, result.output
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")

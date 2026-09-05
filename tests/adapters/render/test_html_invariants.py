@@ -3,6 +3,8 @@
 
 import re
 from pathlib import Path
+from types import UnionType
+from typing import Union, get_args, get_origin
 
 import pytest
 from markupsafe import escape
@@ -282,9 +284,19 @@ def test_the_report_carries_no_total_row() -> None:
 
     for model_type in view_model_types():
         for field_name, field in model_type.model_fields.items():
-            if field.annotation in (int, float):
+            # Check bare numeric types (int, float) and optional variants (int | None, etc).
+            is_numeric = field.annotation in (int, float)
+            if not is_numeric:
+                origin = get_origin(field.annotation)
+                # Handle both typing.Union and types.UnionType (Python 3.10+ int | None).
+                if origin is Union or isinstance(field.annotation, UnionType):
+                    args = get_args(field.annotation)
+                    # Check if one arg is numeric and the other is None (optional type).
+                    numeric_args = [arg for arg in args if arg in (int, float)]
+                    is_numeric = len(numeric_args) == 1 and len(args) == 2
+            if is_numeric:
                 assert (model_type, field_name) in NUMBERS_THAT_ARE_NOT_TOTALS, (
-                    f"{model_type.__name__}.{field_name} is a bare number with no entry "
+                    f"{model_type.__name__}.{field_name} is a numeric field with no entry "
                     "on the allowlist explaining why it cannot hold a total"
                 )
 
