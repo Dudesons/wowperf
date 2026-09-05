@@ -187,21 +187,25 @@ def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
     marks = []
     second = 0
     while second <= longest:
-        marks.append((TRACK_X0 + second * scale, format_seconds(float(second)) or "0:00"))
+        label = format_seconds(float(second))
+        assert label is not None  # a float input always formats to a string
+        marks.append((TRACK_X0 + second * scale, label))
         second += TICK_SECONDS
     return tuple(marks)
 
 
-def _timeline_caption(label: str, run: Run) -> str:
+def _timeline_caption(label: str, seconds: float) -> str:
     """State which span this caption measures, not just its length.
 
-    `_run_seconds` spans the first pull's start to the last pull's end. The
+    `seconds` spans the first pull's start to the last pull's end. The
     header states a different, longer figure — `keystone_time_seconds`,
     which also counts the trip to the first pack and Blizzard's death
     penalties. Naming the span here keeps a reader from seeing two numbers
     for the same run and assuming one of them is wrong.
     """
-    return f"{label} — {format_seconds(_run_seconds(run))} from first pull to last"
+    formatted = format_seconds(seconds)
+    assert formatted is not None  # a float input always formats to a string
+    return f"{label} — {formatted} from first pull to last"
 
 
 def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
@@ -214,7 +218,9 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     if section.state is SectionState.WITHHELD or theirs is None:
         return Timeline(section=section, width=TIMELINE_WIDTH, height=TIMELINE_HEIGHT)
 
-    longest = max(_run_seconds(ours), _run_seconds(theirs))
+    our_seconds = _run_seconds(ours)
+    their_seconds = _run_seconds(theirs)
+    longest = max(our_seconds, their_seconds)
     scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
 
     alignment = align_pulls(ours, theirs)
@@ -224,20 +230,18 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     return Timeline(
         section=section,
         ours=TimelineTrack(
-            caption=_timeline_caption("Ours", ours),
+            caption=_timeline_caption("Ours", our_seconds),
             baseline_y=OURS_BASELINE_Y,
-            blocks=_blocks(
-                ours, our_kinds, scale, min((p.start_ms for p in ours.pulls), default=0)
-            ),
+            blocks=_blocks(ours, our_kinds, scale, _run_start_ms(ours)),
         ),
         theirs=TimelineTrack(
-            caption=_timeline_caption("Reference", theirs),
+            caption=_timeline_caption("Reference", their_seconds),
             baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(
                 theirs,
                 their_kinds,
                 scale,
-                min((p.start_ms for p in theirs.pulls), default=0),
+                _run_start_ms(theirs),
                 track_class="block-theirs",
             ),
         ),
@@ -266,7 +270,8 @@ def _when(death: Death, run: Run) -> str:
     start of the run rather than as a negative time.
     """
     elapsed = max(death.timestamp_ms - _run_start_ms(run), 0) / 1000
-    at = format_seconds(elapsed) or "0:00"
+    at = format_seconds(elapsed)
+    assert at is not None  # a float input always formats to a string
     if death.pull_index is None:
         return f"{at}, between pulls"
     return f"{at}, pull {death.pull_index}"
@@ -279,6 +284,7 @@ def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
     run-up, which is the reason this section exists at all.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
+    names_by_actor = display_names(loaded.run)
     cards = []
     for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
         window_start = death.timestamp_ms - LAST_SECONDS_BEFORE_DEATH * 1000
@@ -294,7 +300,9 @@ def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
         player = players_by_id.get(death.actor_id)
         cards.append(
             DeathCard(
-                player=death.player_name,
+                # Falls back to the raw event name only for an actor id that is not
+                # on the roster at all, which `display_names` cannot disambiguate.
+                player=names_by_actor.get(death.actor_id, death.player_name),
                 class_name=player.class_name if player else "unknown class",
                 when=_when(death, loaded.run),
                 killing_blow=death.killing_blow,
@@ -332,6 +340,11 @@ def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
 
 
+def _plural(count: int, singular: str) -> str:
+    """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
+    return singular if count == 1 else f"{singular}s"
+
+
 def build_interrupts(
     findings: Sequence[Finding], titles_by_id: dict[str, str]
 ) -> tuple[LedgerRow, ...]:
@@ -354,14 +367,17 @@ def build_players(
 
     Damage is stated as `players.damage.*` states it — a multiple of the group
     median, with the analyser's own caveat that this is a difference and not a
-    mistake. The log does not record whether a hit could have been dodged, so
-    no card here claims damage was avoidable.
+    mistake. The log does not record whether a hit could have been dodged;
+    this card carries the analyser's findings unchanged and adds no framing
+    of its own.
 
-    `subject` is the player being analysed, from our own roster — never
-    `parse.row.character_name`, which names the reference run's top parser, a
-    different character in a different log. Matching by `actor_id` rather than
-    name also keeps two players who share a display name from both receiving
-    the comparison rows.
+    `name` is the roster's disambiguated display name, not the raw one: two
+    players who share a display name must never render as two identical-
+    looking cards. `subject` is the player being analysed, from our own
+    roster — never `parse.row.character_name`, which names the reference
+    run's top parser, a different character in a different log. Matching by
+    `actor_id` rather than name also keeps two players who share a display
+    name from both receiving the comparison rows.
     """
     comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
     names_by_actor = display_names(loaded.run)
@@ -374,6 +390,9 @@ def build_players(
         if any(finding.id.startswith(prefix) for prefix in COMPARISON_PREFIXES)
     ]
 
+    total_pulls = format_seconds(loaded.run.total_pull_seconds)
+    assert total_pulls is not None  # a float input always formats to a string
+
     cards = []
     for summary in summarise_players(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
@@ -385,19 +404,19 @@ def build_players(
             if finding.title.startswith(f"{display_name} took ")
         )
         is_subject = summary.actor_id == subject.actor_id
-        noun = "cast" if summary.casts_in_pulls == 1 else "casts"
+        stats_line = (
+            f"{summary.casts_in_pulls} {_plural(summary.casts_in_pulls, 'cast')} "
+            f"in {total_pulls} of pulls · "
+            f"{summary.deaths} {_plural(summary.deaths, 'death')} · "
+            f"{summary.interrupts} {_plural(summary.interrupts, 'interrupt')}"
+        )
         cards.append(
             PlayerCard(
-                name=summary.name,
+                name=display_name,
                 class_name=summary.class_name,
                 spec=summary.spec,
                 colour=class_colour(summary.class_name),
-                casts_summary=(
-                    f"{summary.casts_in_pulls} {noun} in "
-                    f"{format_seconds(loaded.run.total_pull_seconds) or '0:00'} of pulls"
-                ),
-                deaths=summary.deaths,
-                kicks=summary.interrupts,
+                stats_line=stats_line,
                 damage_rows=mine,
                 spell_and_talent=comparison_section,
                 spell_and_talent_rows=(

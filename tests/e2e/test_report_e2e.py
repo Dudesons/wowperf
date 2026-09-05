@@ -12,6 +12,7 @@ from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.cli import _auras, _references, _resolve_player, build_repository
+from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
@@ -114,7 +115,10 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
             and any(finding.id.startswith(prefix) for prefix in COMPARISON_PREFIXES)
         }
         assert comparison_ids, "No compare.* findings were produced to test the routing"
-        subject_card = next(card for card in report.players if card.name == subject.name)
+        # A player card's `name` is the roster's disambiguated display name, which
+        # only differs from the raw `subject.name` when another player shares it.
+        subject_display_name = display_names(loaded.run)[subject.actor_id]
+        subject_card = next(card for card in report.players if card.name == subject_display_name)
         assert subject_card.spell_and_talent.state.value == "present"
         assert {row.finding_id for row in subject_card.spell_and_talent_rows} == comparison_ids
         for card in report.players:

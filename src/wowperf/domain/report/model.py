@@ -111,19 +111,19 @@ class PlayerCard(Frozen):
     the log does not record whether a hit could have been dodged, and this card
     follows the analyser that refuses that framing.
 
-    `casts_summary` states a cast count over the pull time it happened in, e.g.
-    "182 casts in 31:49 of pulls" — never a percentage. A player casting faster
-    than once a second exceeds the pull time itself under the model this is
-    measured with, so a share of it would read as more than 100% activity.
+    `stats_line` states a cast count over the pull time it happened in, e.g.
+    "182 casts in 31:49 of pulls · 1 death · 7 interrupts" — never a
+    percentage. A player casting faster than once a second exceeds the pull
+    time itself under the model this is measured with, so a share of it would
+    read as more than 100% activity. Its death and interrupt counts are
+    already pluralised, so nothing about this line is decided by the template.
     """
 
     name: str
     class_name: str
     spec: str
     colour: str
-    casts_summary: str
-    deaths: int
-    kicks: int
+    stats_line: str
     damage_rows: tuple[LedgerRow, ...] = ()
     spell_and_talent: Section
     spell_and_talent_rows: tuple[LedgerRow, ...] = ()
@@ -136,7 +136,6 @@ class Header(Frozen):
     keystone_level: int
     affixes: tuple[str, ...] = ()
     result: str = ""
-    warnings: tuple[str, ...] = ()
 
 
 class Provenance(Frozen):

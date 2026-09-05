@@ -76,6 +76,21 @@ def test_every_block_carries_its_pack_name_as_a_tooltip() -> None:
     assert f"<title>{escape('Frostbound trio')}</title>" in html
 
 
+def test_the_svg_carries_its_own_title_separate_from_a_blocks_title() -> None:
+    # No `role="img"`: that would flatten the whole chart into one image for
+    # assistive tech and hide every block's own <title> behind it, leaving pack
+    # names reachable on hover only. The SVG's own first-child <title> names
+    # the chart instead, as a distinct, earlier element from any block's own
+    # <title> -- so a future edit cannot collapse the two back into one.
+    html = render(a_report(timeline=a_timeline()))
+    assert 'role="img"' not in html
+    svg_open = html.index("<svg")
+    chart_title_at = html.index("<title>Both runs on one elapsed-time axis</title>", svg_open)
+    first_block_title_at = html.index("<title>", chart_title_at + 1)
+    assert svg_open < chart_title_at < first_block_title_at
+    assert html[first_block_title_at:].startswith("<title>Loa Speaker Nanea</title>")
+
+
 def test_an_svg_title_escapes_hostile_input() -> None:
     timeline = Timeline(
         section=PRESENT,
@@ -207,9 +222,7 @@ def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=1,
-        kicks=7,
+        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
         spell_and_talent=Section(state=SectionState.WITHHELD, reason="no ranked parse"),
     )
     html = render(a_report(players=(card,)))
@@ -224,9 +237,7 @@ def test_a_player_cards_withheld_comparison_states_its_reason() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=0,
-        kicks=0,
+        stats_line="182 casts in 31:49 of pulls · 0 deaths · 0 interrupts",
         spell_and_talent=Section(state=SectionState.WITHHELD, reason="no ranked parse was found"),
     )
     html = render(a_report(players=(card,)))

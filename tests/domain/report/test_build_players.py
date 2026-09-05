@@ -3,7 +3,7 @@
 
 from tests.domain.report.test_build_frame import a_pull, a_run
 from wowperf.domain.comparison.reference import ParseReference, ParseRow
-from wowperf.domain.events import CastEvent
+from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_interrupts, build_players, class_colour
@@ -78,6 +78,15 @@ def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None
 def test_one_card_per_player() -> None:
     cards = build_players(a_loaded(), (), None, a_player(), {})
     assert [card.name for card in cards] == ["Dudesons"]
+
+
+def test_two_players_sharing_a_name_get_disambiguated_card_names() -> None:
+    # Two visually identical cards for two different people is exactly what a
+    # shared display name must not produce; the actor id disambiguates both,
+    # the same way `display_names` disambiguates the finding titles that name them.
+    loaded = a_loaded(players=(a_player(1, "Sublime"), a_player(5, "Sublime")))
+    cards = build_players(loaded, (), None, a_player(1, "Sublime"), {})
+    assert [card.name for card in cards] == ["Sublime (actor 1)", "Sublime (actor 5)"]
 
 
 def test_a_card_names_the_class_in_text_beside_its_colour() -> None:
@@ -209,9 +218,9 @@ def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -
 
 
 def test_a_card_states_casts_over_the_pull_time_they_happened_in() -> None:
-    # a_loaded() carries one pull, 0 to 120_000ms, and no casts.
+    # a_loaded() carries one pull, 0 to 120_000ms, no casts, no deaths, no interrupts.
     card = build_players(a_loaded(), (), None, a_player(), {})[0]
-    assert card.casts_summary == "0 casts in 2:00 of pulls"
+    assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 0 interrupts"
 
 
 def test_a_cards_cast_count_cannot_read_as_a_percentage() -> None:
@@ -219,7 +228,7 @@ def test_a_cards_cast_count_cannot_read_as_a_percentage() -> None:
     # replacement states a plain count over a plain duration, with no "%" in
     # sight to imply a bound the underlying model does not respect.
     card = build_players(a_loaded(), (), None, a_player(), {})[0]
-    assert "%" not in card.casts_summary
+    assert "%" not in card.stats_line
 
 
 def test_a_single_cast_is_worded_in_the_singular() -> None:
@@ -231,4 +240,57 @@ def test_a_single_cast_is_worded_in_the_singular() -> None:
                           timestamp_ms=1_000, pull_index=0),),
     )
     card = build_players(loaded_with_cast, (), None, a_player(), {})[0]
-    assert card.casts_summary == "1 cast in 2:00 of pulls"
+    assert card.stats_line == "1 cast in 2:00 of pulls · 0 deaths · 0 interrupts"
+
+
+def test_a_single_death_is_worded_in_the_singular() -> None:
+    loaded = a_loaded()
+    loaded_with_death = LoadedRun(
+        run=loaded.run,
+        deaths=(Death(player_name="Dudesons", actor_id=1, timestamp_ms=1_000,
+                      killing_blow="Frigid Roar", pull_index=0),),
+    )
+    card = build_players(loaded_with_death, (), None, a_player(), {})[0]
+    assert card.stats_line == "0 casts in 2:00 of pulls · 1 death · 0 interrupts"
+
+
+def test_multiple_deaths_are_worded_in_the_plural() -> None:
+    loaded = a_loaded()
+    loaded_with_deaths = LoadedRun(
+        run=loaded.run,
+        deaths=(
+            Death(player_name="Dudesons", actor_id=1, timestamp_ms=1_000,
+                  killing_blow="Frigid Roar", pull_index=0),
+            Death(player_name="Dudesons", actor_id=1, timestamp_ms=2_000,
+                  killing_blow="Frigid Roar", pull_index=0),
+        ),
+    )
+    card = build_players(loaded_with_deaths, (), None, a_player(), {})[0]
+    assert card.stats_line == "0 casts in 2:00 of pulls · 2 deaths · 0 interrupts"
+
+
+def test_a_single_interrupt_is_worded_in_the_singular() -> None:
+    loaded = a_loaded()
+    loaded_with_interrupt = LoadedRun(
+        run=loaded.run,
+        interrupts=(InterruptEvent(player_name="Dudesons", actor_id=1,
+                                    interrupted_ability_id=1, target_id=1,
+                                    target_instance=0, timestamp_ms=1_000, pull_index=0),),
+    )
+    card = build_players(loaded_with_interrupt, (), None, a_player(), {})[0]
+    assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 1 interrupt"
+
+
+def test_multiple_interrupts_are_worded_in_the_plural() -> None:
+    loaded = a_loaded()
+    loaded_with_interrupts = LoadedRun(
+        run=loaded.run,
+        interrupts=(
+            InterruptEvent(player_name="Dudesons", actor_id=1, interrupted_ability_id=1,
+                            target_id=1, target_instance=0, timestamp_ms=1_000, pull_index=0),
+            InterruptEvent(player_name="Dudesons", actor_id=1, interrupted_ability_id=2,
+                            target_id=1, target_instance=0, timestamp_ms=2_000, pull_index=0),
+        ),
+    )
+    card = build_players(loaded_with_interrupts, (), None, a_player(), {})[0]
+    assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 2 interrupts"

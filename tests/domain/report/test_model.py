@@ -1,14 +1,15 @@
 # ABOUTME: Behaviour tests for the report view model — frozen, hashable, no judgement.
 # ABOUTME: The model is pure data; anything that decides something belongs in build.py.
 
-import pytest
-from pydantic import ValidationError
+import inspect
 
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from wowperf.domain.report import model as report_model
 from wowperf.domain.report.model import (
-    Badge,
     DeathCard,
     Header,
-    LedgerRow,
     PlayerCard,
     Provenance,
     Report,
@@ -34,17 +35,30 @@ def test_a_withheld_section_carries_its_reason() -> None:
     assert section.reason == "no faster run was available"
 
 
+def view_model_types() -> list[type[BaseModel]]:
+    """Every pydantic model `wowperf.domain.report.model` defines, `Frozen` or not.
+
+    Filtering on `BaseModel` rather than `Frozen` means a type someone adds
+    straight off `BaseModel` — skipping `Frozen` by mistake — still shows up
+    here and fails the assignment check below, instead of silently escaping
+    a hand-written list. Exported for `test_html_invariants.py`, which walks
+    the same types looking for a bare number rather than a broken freeze.
+    """
+    return [
+        obj
+        for _, obj in inspect.getmembers(report_model, inspect.isclass)
+        if issubclass(obj, BaseModel) and obj.__module__ == report_model.__name__
+    ]
+
+
 def test_every_view_model_type_is_frozen() -> None:
-    row = LedgerRow(
-        finding_id="time.residual",
-        title="Time outside pulls",
-        detail="Travel, waiting and run-backs.",
-        badge=Badge(label="measured", tint="measured"),
-        seconds="4:12",
-        nests_inside=None,
-    )
-    with pytest.raises(ValidationError):
-        row.title = "something else"
+    # `model_construct` skips required-field validation, so one call covers every
+    # type regardless of its fields; a frozen model rejects the assignment before
+    # it ever checks whether the field exists or the value is well-typed.
+    for model_type in view_model_types():
+        instance = model_type.model_construct()
+        with pytest.raises(ValidationError):
+            instance.a_field_that_need_not_exist = "something else"  # type: ignore[attr-defined]
 
 
 def test_a_timeline_block_is_hashable_so_a_report_can_be_compared() -> None:
@@ -82,19 +96,20 @@ def test_a_report_holds_every_section() -> None:
     assert report.timeline.section.state is SectionState.WITHHELD
 
 
-def test_a_player_card_names_the_class_in_text_not_only_in_colour() -> None:
-    card = PlayerCard(
-        name="Dudesons",
-        class_name="DeathKnight",
-        spec="Blood",
-        colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=1,
-        kicks=7,
-        spell_and_talent=a_section(SectionState.WITHHELD, "no ranked parse"),
-    )
-    assert card.class_name in ("DeathKnight",)
-    assert card.colour != card.class_name
+def test_a_player_card_declares_a_class_name_field_independent_of_colour() -> None:
+    # A field never declared here could never reach the template, so the
+    # guarantee that a reader sees the class as text -- not only as a colour
+    # swatch -- rests on the type itself carrying two separate string fields
+    # for it, rather than one field a caller is expected to derive the other
+    # from. What build.py actually puts in each field (a name and its matching
+    # CSS token, never the same string) is proven in
+    # `test_a_card_names_the_class_in_text_beside_its_colour` in
+    # `test_build_players.py`, and what the template does with them in
+    # `test_a_player_card_prints_the_class_name_beside_the_colour` in
+    # `test_html_sections.py`.
+    fields = PlayerCard.model_fields
+    assert fields["class_name"].annotation is str
+    assert fields["colour"].annotation is str
 
 
 def test_a_death_card_can_carry_no_damage_rows() -> None:

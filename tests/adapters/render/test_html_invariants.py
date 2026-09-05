@@ -3,17 +3,21 @@
 
 import re
 from pathlib import Path
+from types import UnionType
+from typing import Union, get_args, get_origin
 
 import pytest
 from markupsafe import escape
 
 from tests.domain.report.test_build_frame import FETCHED, a_pull, a_run
+from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
+from wowperf.domain.report.model import Header, Provenance, Timeline, TimelineBlock, TimelineTrack
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
@@ -203,7 +207,8 @@ def test_a_report_without_a_narrative_renders_eight_sections_not_nine() -> None:
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER)
 
 
-def test_a_report_with_a_narrative_renders_all_nine() -> None:
+def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
+    # Header (h1) plus the seven always-present h2 sections plus narrative.
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
@@ -239,14 +244,68 @@ def test_every_withheld_section_gives_a_reason() -> None:
     assert 'class="withheld"' in html[heading:deaths]
 
 
+# Every numeric field any view model type carries, together with why it is not
+# a duration a total could be built from: an id, a difficulty tier, or a
+# coordinate the SVG needs. A field added to this allowlist should not also be
+# a count of seconds -- if it is, it belongs on `LedgerRow.seconds` instead,
+# pre-formatted as a string, the way every other seconds-lost figure already is.
+NUMBERS_THAT_ARE_NOT_TOTALS = {
+    (Header, "keystone_level"),  # a difficulty tier, not a duration
+    (Provenance, "fight_id"),  # an id, not a duration
+    (Timeline, "width"),
+    (Timeline, "height"),
+    (Timeline, "tick_y1"),
+    (Timeline, "tick_y2"),
+    (Timeline, "tick_label_y"),
+    (Timeline, "caption_x"),
+    (Timeline, "caption_dy"),
+    (Timeline, "block_height"),
+    (TimelineBlock, "x"),
+    (TimelineBlock, "width"),
+    (TimelineTrack, "baseline_y"),
+}
+
+
 def test_the_report_carries_no_total_row() -> None:
+    # This proves two things, and no more than these two:
+    # (1) no field on `Report` or any view model it nests is a bare number that
+    #     could hold a total -- every seconds-lost figure reaches the page
+    #     already formatted as a string on `LedgerRow.seconds`, so the only
+    #     numeric fields left are an id, a difficulty tier and a handful of SVG
+    #     coordinates, all named on the allowlist above; and
+    # (2) the template holds no Jinja `{% set %}` accumulator that could total
+    #     figures on its own, whether spelled as an obvious `|sum`/`sum(` call
+    #     or a hand-rolled running total in a loop variable.
+    # It does NOT prove no total is computed anywhere in the codebase -- only
+    # that the report's own view model and template have nowhere to hold or
+    # build one.
     report = build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
     assert not any(field.startswith("total") for field in type(report).model_fields)
+
+    for model_type in view_model_types():
+        for field_name, field in model_type.model_fields.items():
+            # Check bare numeric types (int, float) and optional variants (int | None, etc).
+            is_numeric = field.annotation in (int, float)
+            if not is_numeric:
+                origin = get_origin(field.annotation)
+                # Handle both typing.Union and types.UnionType (Python 3.10+ int | None).
+                if origin is Union or isinstance(field.annotation, UnionType):
+                    args = get_args(field.annotation)
+                    # Check if one arg is numeric and the other is None (optional type).
+                    numeric_args = [arg for arg in args if arg in (int, float)]
+                    is_numeric = len(numeric_args) == 1 and len(args) == 2
+            if is_numeric:
+                assert (model_type, field_name) in NUMBERS_THAT_ARE_NOT_TOTALS, (
+                    f"{model_type.__name__}.{field_name} is a numeric field with no entry "
+                    "on the allowlist explaining why it cannot hold a total"
+                )
+
     template = (
         Path(__file__).parents[3] / "src" / "wowperf" / "adapters" / "render" / "report.html.j2"
     ).read_text(encoding="utf-8")
     assert "|sum" not in template
     assert "sum(" not in template
+    assert "{% set" not in template
 
 
 def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) -> None:
