@@ -9,7 +9,7 @@ import pytest
 
 from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.render.html import render
-from wowperf.cli import build_repository
+from wowperf.cli import _resolve_player, build_repository
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.report.build import build_report
 from wowperf.urls import parse_report_url
@@ -28,7 +28,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     loaded = build_repository(tmp_path).load(code, fight)
     findings = analyse(loaded, load_season_data(), load_defensives())
 
-    html = render(build_report(loaded, findings, None, None, None, "2026-09-05 00:00"))
+    # The player being analysed, from our own roster -- never a reference run's
+    # top parser. `build_report` needs it to route comparison rows onto the
+    # right player's card.
+    subject = _resolve_player(loaded.run, None)
+    html = render(build_report(loaded, findings, None, None, subject, None, "2026-09-05 00:00"))
 
     # The report's one hard promise: it opens from disk, offline, forever. Checked by
     # what the page can execute or load, not by whether a URL string appears at all —

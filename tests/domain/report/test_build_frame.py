@@ -2,11 +2,17 @@
 # ABOUTME: The withheld reason must come from the finding, never from a string in the template.
 
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import EnemyNpc, LoadedRun, Pull, Run
+from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import _run_seconds, badge_for, build_report, format_seconds
 from wowperf.domain.report.model import SectionState
 
 FETCHED = "2026-09-05 14:02"
+
+
+def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+    return Player(
+        actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
+    )
 
 
 def a_pull(
@@ -61,7 +67,7 @@ def unavailable(finding_id: str, detail: str) -> Finding:
 
 
 def test_the_header_states_the_dungeon_and_the_key() -> None:
-    report = build_report(a_loaded(), (), None, None, None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
     assert report.header.dungeon == "Den of Nalorakk"
     assert report.header.keystone_level == 16
 
@@ -69,31 +75,47 @@ def test_the_header_states_the_dungeon_and_the_key() -> None:
 def test_a_timed_run_states_the_verb_and_the_completion_time() -> None:
     # keystoneTime is Blizzard's penalty-inclusive completion time, not the key's
     # time limit: 1_908_000 ms is 31:48, whatever the dungeon's par time is.
-    report = build_report(a_loaded(keystone_time_ms=1_908_000), (), None, None, None, FETCHED)
+    report = build_report(
+        a_loaded(keystone_time_ms=1_908_000), (), None, None, a_player(), None, FETCHED
+    )
     assert report.header.result == "Timed in 31:48"
 
 
 def test_a_depleted_run_states_the_verb_and_the_completion_time() -> None:
     report = build_report(
-        a_loaded(keystone_bonus=0, keystone_time_ms=2_052_000), (), None, None, None, FETCHED
+        a_loaded(keystone_bonus=0, keystone_time_ms=2_052_000),
+        (),
+        None,
+        None,
+        a_player(),
+        None,
+        FETCHED,
     )
     assert report.header.result == "Depleted in 34:12"
 
 
 def test_no_narrative_leaves_the_section_absent_rather_than_withheld() -> None:
-    report = build_report(a_loaded(), (), None, None, None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
     assert report.narrative is None
 
 
 def test_a_narrative_is_carried_through_verbatim() -> None:
-    report = build_report(a_loaded(), (), None, None, "Both losses were travel.", FETCHED)
+    report = build_report(
+        a_loaded(), (), None, None, a_player(), "Both losses were travel.", FETCHED
+    )
     assert report.narrative == "Both losses were travel."
 
 
 def test_a_withheld_section_takes_its_reason_from_the_finding() -> None:
     detail = "The speed leaderboard returned nothing for this dungeon."
     report = build_report(
-        a_loaded(), (unavailable("compare.speed.unavailable", detail),), None, None, None, FETCHED
+        a_loaded(),
+        (unavailable("compare.speed.unavailable", detail),),
+        None,
+        None,
+        a_player(),
+        None,
+        FETCHED,
     )
     assert report.timeline.section.state is SectionState.WITHHELD
     assert report.timeline.section.reason == detail
@@ -101,18 +123,18 @@ def test_a_withheld_section_takes_its_reason_from_the_finding() -> None:
 
 def test_a_withheld_section_with_no_finding_still_says_something_true() -> None:
     # `--no-compare` emits no unavailable finding at all, because no comparison ran.
-    report = build_report(a_loaded(), (), None, None, None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
     assert report.timeline.section.state is SectionState.WITHHELD
     assert report.timeline.section.reason
 
 
 def test_provenance_lists_every_withheld_section() -> None:
-    report = build_report(a_loaded(), (), None, None, None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
     assert any("timeline" in line.lower() for line in report.provenance.withheld)
 
 
 def test_provenance_carries_the_report_code_and_the_fetch_time() -> None:
-    report = build_report(a_loaded(), (), None, None, None, FETCHED)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED)
     assert report.provenance.report_code == "abc123"
     assert report.provenance.fetched_at == FETCHED
 

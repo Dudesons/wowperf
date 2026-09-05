@@ -38,7 +38,7 @@ def a_loaded(players: tuple[Player, ...] | None = None) -> LoadedRun:
     )
 
 
-def a_parse(character_name: str = "Dudesons") -> ParseReference:
+def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseReference:
     return ParseReference(
         row=ParseRow(
             report_code="def456",
@@ -76,12 +76,12 @@ def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None
 
 
 def test_one_card_per_player() -> None:
-    cards = build_players(a_loaded(), (), None, {})
+    cards = build_players(a_loaded(), (), None, a_player(), {})
     assert [card.name for card in cards] == ["Dudesons"]
 
 
 def test_a_card_names_the_class_in_text_beside_its_colour() -> None:
-    card = build_players(a_loaded(), (), None, {})[0]
+    card = build_players(a_loaded(), (), None, a_player(), {})[0]
     assert card.class_name == "DeathKnight"
     assert card.colour == class_colour("DeathKnight")
     assert card.colour != card.class_name
@@ -93,7 +93,7 @@ def test_an_unknown_class_still_gets_a_colour_rather_than_an_empty_string() -> N
 
 def test_a_card_carries_its_players_damage_findings() -> None:
     findings = (a_finding("players.damage.0", title="Dudesons took 2.3x the group median"),)
-    card = build_players(a_loaded(), findings, None, titles(findings))[0]
+    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
     assert ids(card.damage_rows) == ["players.damage.0"]
 
 
@@ -112,7 +112,7 @@ def test_a_damage_rows_title_and_detail_are_the_findings_own_unchanged() -> None
         detail=detail,
     )
     findings = (finding,)
-    card = build_players(a_loaded(), findings, None, titles(findings))[0]
+    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
     row = card.damage_rows[0]
     assert row.title == finding.title
     assert row.detail == finding.detail
@@ -120,7 +120,7 @@ def test_a_damage_rows_title_and_detail_are_the_findings_own_unchanged() -> None
 
 def test_a_card_only_takes_damage_findings_naming_that_player() -> None:
     findings = (a_finding("players.damage.0", title="Someoneelse took 4.1x the group median"),)
-    card = build_players(a_loaded(), findings, None, titles(findings))[0]
+    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
     assert ids(card.damage_rows) == []
 
 
@@ -135,7 +135,7 @@ def test_two_players_sharing_a_name_each_get_their_own_damage_row() -> None:
             title="Bob (actor 5) took 3.2x the group median from Whirlwind",
         ),
     )
-    cards = build_players(loaded, findings, None, titles(findings))
+    cards = build_players(loaded, findings, None, a_player(1, "Bob"), titles(findings))
     assert ids(cards[0].damage_rows) == []
     assert ids(cards[1].damage_rows) == ["players.damage.0"]
 
@@ -148,7 +148,7 @@ def test_one_players_name_being_a_prefix_of_anothers_does_not_misattribute_damag
             title="Anna took 4.0x the group median from Frostbolt",
         ),
     )
-    cards = build_players(loaded, findings, None, titles(findings))
+    cards = build_players(loaded, findings, None, a_player(1, "Ann"), titles(findings))
     ann_card = next(card for card in cards if card.name == "Ann")
     anna_card = next(card for card in cards if card.name == "Anna")
     assert ids(ann_card.damage_rows) == []
@@ -156,15 +156,17 @@ def test_one_players_name_being_a_prefix_of_anothers_does_not_misattribute_damag
 
 
 def test_without_a_parse_reference_the_comparison_half_is_withheld() -> None:
-    card = build_players(a_loaded(), (), None, {})[0]
+    card = build_players(a_loaded(), (), None, a_player(), {})[0]
     assert card.spell_and_talent.state is SectionState.WITHHELD
     assert card.spell_and_talent.reason
     assert card.spell_and_talent_rows == ()
 
 
 def test_the_subjects_card_gets_the_comparison_rows_when_a_parse_reference_exists() -> None:
+    # `a_parse()`'s top parser is a name that is not on our roster at all --
+    # proof that the match is by actor id, never by the reference's own name.
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
-    card = build_players(a_loaded(), findings, a_parse(), titles(findings))[0]
+    card = build_players(a_loaded(), findings, a_parse(), a_player(), titles(findings))[0]
     assert card.spell_and_talent.state is SectionState.PRESENT
     assert ids(card.spell_and_talent_rows) == ["compare.spells.missing.0"]
 
@@ -172,9 +174,27 @@ def test_the_subjects_card_gets_the_comparison_rows_when_a_parse_reference_exist
 def test_a_non_subject_players_card_gets_no_comparison_rows() -> None:
     loaded = a_loaded(players=(a_player(1, "Dudesons"), a_player(2, "Other")))
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
-    cards = build_players(loaded, findings, a_parse("Dudesons"), titles(findings))
+    cards = build_players(
+        loaded, findings, a_parse("Dudesons"), a_player(1, "Dudesons"), titles(findings)
+    )
     other_card = next(card for card in cards if card.name == "Other")
     assert other_card.spell_and_talent_rows == ()
+
+
+def test_the_comparison_rows_land_on_the_subject_not_a_namesake() -> None:
+    # The reference run's top parser can share a display name with one of our
+    # own players -- a different character in a different log. Matching by
+    # actor id, not name, keeps the rows off that namesake and on the
+    # analysed player's own card.
+    loaded = a_loaded(players=(a_player(1, "Dudesons"), a_player(2, "Other")))
+    findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
+    cards = build_players(
+        loaded, findings, a_parse("Dudesons"), a_player(2, "Other"), titles(findings)
+    )
+    namesake_card = next(card for card in cards if card.name == "Dudesons")
+    subject_card = next(card for card in cards if card.name == "Other")
+    assert namesake_card.spell_and_talent_rows == ()
+    assert ids(subject_card.spell_and_talent_rows) == ["compare.spells.missing.0"]
 
 
 def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -> None:
@@ -184,13 +204,13 @@ def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -
     findings = (
         a_finding("compare.spells.unavailable", title="No boss pulls to compare"),
     )
-    card = build_players(a_loaded(), findings, a_parse(), titles(findings))[0]
+    card = build_players(a_loaded(), findings, a_parse(), a_player(), titles(findings))[0]
     assert ids(card.spell_and_talent_rows) == ["compare.spells.unavailable"]
 
 
 def test_a_card_states_casts_over_the_pull_time_they_happened_in() -> None:
     # a_loaded() carries one pull, 0 to 120_000ms, and no casts.
-    card = build_players(a_loaded(), (), None, {})[0]
+    card = build_players(a_loaded(), (), None, a_player(), {})[0]
     assert card.casts_summary == "0 casts in 2:00 of pulls"
 
 
@@ -198,7 +218,7 @@ def test_a_cards_cast_count_cannot_read_as_a_percentage() -> None:
     # The old field claimed a share of pull time and could exceed 100%; the
     # replacement states a plain count over a plain duration, with no "%" in
     # sight to imply a bound the underlying model does not respect.
-    card = build_players(a_loaded(), (), None, {})[0]
+    card = build_players(a_loaded(), (), None, a_player(), {})[0]
     assert "%" not in card.casts_summary
 
 
@@ -210,5 +230,5 @@ def test_a_single_cast_is_worded_in_the_singular() -> None:
         casts=(CastEvent(actor_id=1, ability_id=1, ability_name="Whirlwind",
                           timestamp_ms=1_000, pull_index=0),),
     )
-    card = build_players(loaded_with_cast, (), None, {})[0]
+    card = build_players(loaded_with_cast, (), None, a_player(), {})[0]
     assert card.casts_summary == "1 cast in 2:00 of pulls"

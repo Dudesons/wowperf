@@ -16,6 +16,10 @@ from wowperf.domain.report.build import build_report
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
+# The player being analysed, from our own roster -- never a reference run's top
+# parser, which names a different character in a different log (item 1).
+SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+
 SECTION_ORDER = [
     "ledger", "timeline", "deaths", "interrupts", "players", "observations", "provenance",
 ]
@@ -71,7 +75,9 @@ def minimal_findings() -> tuple[Finding, ...]:
 
 
 def minimal_html() -> str:
-    return render(build_report(minimal_loaded(), minimal_findings(), None, None, None, FETCHED))
+    return render(
+        build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
+    )
 
 
 # The golden fixture above deliberately has one player, no reference run, and so no
@@ -136,7 +142,9 @@ def rich_html() -> str:
     # No ParseReference is passed, so the spell-and-talent comparison on each
     # player card is withheld, giving the page a withheld section as well.
     return render(
-        build_report(rich_loaded(), rich_findings(), rich_speed_reference(), None, None, FETCHED)
+        build_report(
+            rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED
+        )
     )
 
 
@@ -193,7 +201,9 @@ def test_a_report_without_a_narrative_renders_eight_sections_not_nine() -> None:
 
 def test_a_report_with_a_narrative_renders_all_nine() -> None:
     html = render(
-        build_report(minimal_loaded(), minimal_findings(), None, None, "A sentence.", FETCHED)
+        build_report(
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
+        )
     )
     assert 'id="narrative"' in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER) + 1
@@ -223,7 +233,7 @@ def test_every_withheld_section_gives_a_reason() -> None:
 
 
 def test_the_report_carries_no_total_row() -> None:
-    report = build_report(minimal_loaded(), minimal_findings(), None, None, None, FETCHED)
+    report = build_report(minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED)
     assert not any(field.startswith("total") for field in type(report).model_fields)
     template = (
         Path(__file__).parents[3] / "src" / "wowperf" / "adapters" / "render" / "report.html.j2"

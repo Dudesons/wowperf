@@ -8,7 +8,7 @@ from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.model import (
     Badge,
     DamageRow,
@@ -347,6 +347,7 @@ def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
     parse: ParseReference | None,
+    subject: Player,
     titles_by_id: dict[str, str],
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
@@ -355,9 +356,14 @@ def build_players(
     median, with the analyser's own caveat that this is a difference and not a
     mistake. The log does not record whether a hit could have been dodged, so
     no card here claims damage was avoidable.
+
+    `subject` is the player being analysed, from our own roster — never
+    `parse.row.character_name`, which names the reference run's top parser, a
+    different character in a different log. Matching by `actor_id` rather than
+    name also keeps two players who share a display name from both receiving
+    the comparison rows.
     """
     comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
-    subject_name = parse.row.character_name.casefold() if parse else ""
     names_by_actor = display_names(loaded.run)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
@@ -378,7 +384,7 @@ def build_players(
             for finding in damage
             if finding.title.startswith(f"{display_name} took ")
         )
-        is_subject = summary.name.casefold() == subject_name
+        is_subject = summary.actor_id == subject.actor_id
         noun = "cast" if summary.casts_in_pulls == 1 else "casts"
         cards.append(
             PlayerCard(
@@ -490,13 +496,16 @@ def build_report(
     findings: Sequence[Finding],
     speed: SpeedReference | None,
     parse: ParseReference | None,
+    subject: Player,
     narrative: str | None,
     fetched_at: str,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
     `fetched_at` is a parameter rather than a clock read: the domain performs no
-    I/O, and the same inputs must render the same report.
+    I/O, and the same inputs must render the same report. `subject` is the
+    player being analysed, from our own roster — it decides whose card carries
+    the spell-and-talent and uptime comparison rows.
     """
     timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
 
@@ -521,7 +530,7 @@ def build_report(
         if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
     )
     interrupts = build_interrupts(findings, titles_by_id)
-    players = build_players(loaded, findings, parse, titles_by_id)
+    players = build_players(loaded, findings, parse, subject, titles_by_id)
     placed_ids = _placed_finding_ids(ledger_decomposition, ledger_losses, interrupts, players)
 
     return Report(

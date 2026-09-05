@@ -318,6 +318,7 @@ def analyze(
                 findings,
                 speed,
                 parse,
+                subject,
                 narrative_text,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
             )
