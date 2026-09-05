@@ -820,6 +820,23 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
     assert "compare.uptime.self.0" in ids
 
 
+def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_auras(
+    tmp_path: Path,
+) -> None:
+    """When the parse leaderboard names a player the reference's own roster does
+    not contain, `find_player` can never resolve the counterpart, and the
+    counterpart's aura fetch never fires — a state `cli.analyze` already handles.
+    Our own auras must be fetched only once that counterpart is known to resolve,
+    or this state pays for one `AuraTable` query it then has no use for."""
+    calls: list[str] = []
+    ghost_row = {**_parse_row(16), "name": "Ghost"}
+    transport = build_analyze_transport(parse_rows=[ghost_row], calls=calls)
+    result = _invoke(tmp_path, [], transport)
+
+    assert result.exit_code == 0, result.output
+    assert "AuraTable" not in calls
+
+
 def test_no_compare_issues_no_aura_queries(tmp_path: Path) -> None:
     calls: list[str] = []
     result = run_analyze(tmp_path, "--no-compare", calls=calls)

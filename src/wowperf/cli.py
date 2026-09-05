@@ -210,11 +210,16 @@ def analyze(
 
             our_auras = None
             if parse is not None:
-                our_auras = _auras(
-                    repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
-                )
+                # Resolve the counterpart before paying for our own aura fetch: when
+                # the reference's own roster does not contain the player the
+                # leaderboard row names, find_player can never resolve them, and
+                # fetching our side first would pay for a query with no use once
+                # that failure is discovered.
                 their_player = find_player(parse.loaded.run, parse.row.character_name)
                 if their_player is not None:
+                    our_auras = _auras(
+                        repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
+                    )
                     parse = parse.model_copy(
                         update={
                             "auras": _auras(
