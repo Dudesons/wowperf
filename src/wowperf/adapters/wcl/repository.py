@@ -70,10 +70,9 @@ class WclRunRepository:
         """Reject a null report.
 
         An unlisted or unknown report usually answers HTTP 200 with
-        `reportData.report` null and no GraphQL errors; occasionally the whole
-        `data` block comes back null instead, which the GraphQL response shape
-        allows and `WclClient.execute` passes through unchanged. Both mean the
-        same thing: nothing came back to build a report from. Raising before
+        `reportData.report` null and no GraphQL errors. Since
+        `WclClient.execute` now raises on a null `data` block, only a stale
+        cache entry from an older build can deliver None here. Raising before
         the payload is cached matters: entries never expire, so caching one
         would poison the key for good.
         """
