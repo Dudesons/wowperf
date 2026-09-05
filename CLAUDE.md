@@ -339,11 +339,14 @@ what their cooldown allowed, in `analysis/defensives.py` against the cooldowns n
 `data/defensives.toml`; and buff uptime on boss pulls against the top parse, in
 `comparison/uptime.py`, fed by one aliased aura-table query per player. Its debuff half ships
 inert — Warcraft Logs offers no way to scope the enemy-debuff table to one caster, measured
-2026-09-05 and recorded in design §2.2. Plan E added the report: a frozen view model and a pure
+2026-09-05 and recorded in `.claude/skills/wcl-api/SKILL.md` under "The debuff half cannot be
+scoped to one caster". Plan E added the report: a frozen view model and a pure
 builder under `src/wowperf/domain/report/`, holding every judgement the page makes; a Jinja2
 adapter under `src/wowperf/adapters/render/` that loops and decides nothing; and `analyze`
-writing a self-contained HTML file beside the findings JSON on every run. Design §8 — the three
-skills and the narrative's authorship — remains unwritten.
+writing a self-contained HTML file beside the findings JSON on every run. Plan F built design
+§8's inference layer: the three skills now under `.claude/skills/`, and a guardrail with tested
+Python behind it — `analyze --narrative` refuses a narrative file containing any digit, before
+it fetches anything.
 
 The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
 the authority on architecture, analyzers, and comparison rules. Read it before writing code.
@@ -355,6 +358,8 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
   that, behind the ports in `src/wowperf/domain/ports.py`.
 - **The LLM never computes a number.** Every metric comes from tested Python. Claude reads
   the findings JSON and interprets it; it does not calculate, and it does not parse the HTML.
+  The narrative it writes states **no numbers at all** — `analyze --narrative` refuses a file
+  containing any digit, before fetching anything.
 - **Every finding carries a confidence badge** — `measured`, `derived`, or `inferred`. A
   finding without one is a bug. This is what keeps the tool from confidently lying.
 - **Never accumulate a corpus of other players' logs.** RPGLogs terms §5d prohibit it.
@@ -364,9 +369,9 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
   verified-on date.
 - **Cache every Warcraft Logs response, and instrument `rateLimitData`.** Point cost per
   query is undocumented and the hourly budget is small.
-- **Never invent an API field name.** The verified schema reference lives today in
-  `docs/plans/2026-09-03-mplus-postmortem-design.md` §2; a `wcl-api` skill is planned to
-  hold it later. If a field is not there, verify against the live schema before using it.
+- **Never invent an API field name.** The verified schema reference lives in
+  `.claude/skills/wcl-api/SKILL.md`, where every claim carries the date it was checked. If a
+  field is not there, verify against the live schema before using it, then add a dated row.
 
 ## Commands
 
@@ -434,10 +439,9 @@ directly** with the Read tool before touching the area they cover:
 | Skill | Read before… |
 | --- | --- |
 | `testing/test-driven-development` | Writing any test in this repository |
-
-Three more land during slice 1, per the design: `wcl-api` (the verified Warcraft Logs schema
-reference), `mplus-analysis` (domain knowledge for interpreting findings), and
-`analyzing-a-run` (the end-to-end workflow). Add them to this table as they appear.
+| `wcl-api` | Writing or changing any code that queries the Warcraft Logs API |
+| `mplus-analysis` | Interpreting a findings file, or answering a question about what the analysis can honestly say |
+| `analyzing-a-run` | Handling a Warcraft Logs URL end to end |
 
 Everything else — TDD, plans, code review, brainstorming — comes from plugins; see
 `superpowers:*` and `mattpocock-skills`. Only add a repo skill when an area is both specific

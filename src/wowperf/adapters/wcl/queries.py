@@ -243,8 +243,9 @@ query CharacterRankings(
 # `Debuffs` with sourceID and Enemies does not work against the live API: confirmed
 # 2026-09-05, that combination returns zero auras, and no argument (sourceID,
 # filterExpression, sourceClass) narrows the enemy-debuff table to one caster —
-# see design §2.2 for the measured table. The selection stays wired for when a
-# working query is found; today `onTargets` ships inert.
+# see `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+# caster", for the measured table. The selection stays wired for when a working
+# query is found; today `onTargets` ships inert.
 AURA_TABLE_QUERY = """
 query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
   reportData {

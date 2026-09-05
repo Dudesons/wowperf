@@ -20,8 +20,10 @@ Never treat `null` as zero, and never sort it as though it were.
 The findings file says this itself, in `findings_are_ranked_not_additive`. It is the single
 easiest way to produce a confident wrong number, so it is worth restating:
 
-- `compare.duration` is the total gap against the reference run. It already contains every other
-  `seconds_lost` figure in the file.
+- `compare.duration` is the total gap against the reference run. When it carries a figure, that
+  figure already contains every other `seconds_lost` in the file. It carries none — `null` — in
+  two cases: a keystone-level gap withheld the comparison, or we finished no slower than the
+  reference.
 - `time.gap.*` and `compare.downtime` both nest inside `time.residual`.
 - `deaths.single.*`, `deaths.chain.*` and `deaths.repeat.*` nest inside `deaths.total`.
 - `compare.route.skipped.*` overlaps the waste `trash.overage` already reports.
@@ -41,8 +43,12 @@ argued with.
 | `inferred` | requires an assumption the log cannot confirm | "suggests", "looks like", never a flat claim |
 
 Asserting an `inferred` finding as fact is the fastest way to lose a reader who knows the game
-better than the tool does. Every defensives finding is `inferred`: the log emits no
-cooldown-reset events, so a defensive that was never pressed may genuinely have been unavailable.
+better than the tool does. Every defensives finding is `inferred`, in two different ways. The log
+emits no cooldown-reset events, so a defensive that was never pressed may genuinely have been
+unavailable. `defensives.ceiling.*` infers something else: a use count set against what the
+cooldown allowed over the seconds the player spent alive and in combat. That arithmetic is exact,
+but a defensive is pressed into incoming damage rather than on cooldown, so the ceiling is a
+ceiling and not a target — the finding says so itself, and the interpretation must keep saying it.
 
 ## Why damage goes unranked
 
@@ -68,9 +74,10 @@ treat every per-player damage figure in the report as approximate.
 ## Activity is cast-based here, and Warcraft Logs' is not
 
 Warcraft Logs computes Activity from damage events, so damage-over-time ticks mask real downtime.
-This project counts successful cast events instead, and only those inside a pull window, so
-waiting between packs is charged to the route rather than to a player. The two numbers will not
-agree, and ours is the one that answers "were you doing something".
+This project counts successful cast events instead — the API's own `Casts` events, as `wcl-api`
+records — and only those inside a pull window, so waiting between packs is charged to the route
+rather than to a player. The two numbers will not agree, and ours is the one that answers "were
+you doing something".
 
 The measure is deliberately coarse: the analyser charges one second per cast and calls that a
 floor on time spent acting, not a simulation of a rotation. The percentage it reports is that

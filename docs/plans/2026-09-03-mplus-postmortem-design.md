@@ -1,7 +1,7 @@
 # Mythic+ Run Post-Mortem — Design
 
 - **Date:** 2026-09-03
-- **Status:** Approved. Plans A, B and C implemented; §6.5 amended 2026-09-05 (see §6.5)
+- **Status:** Approved. Plans A to F implemented; §6.5 amended 2026-09-05 (see §6.5)
 - **Scope:** First vertical slice of the `wow_perf` project
 
 ---
@@ -367,21 +367,26 @@ Compared, in descending order of signal:
    - **on target** — ~~`dataType: Debuffs, sourceID: <subject>, hostilityType: Enemies`, the
      debuffs the player kept up on enemies.~~ **This does not work.** Corrected 2026-09-05:
      that argument combination returns zero auras against the live API, and no other argument
-     narrows the enemy-debuff table to one caster (§2.2). Plan D ships the plumbing, which is
-     correct code for a query that returns nothing, so the on-target half is inert. Reviving it
-     means either comparing the two groups' debuff uptime rather than the two players' — a
-     different claim, which the finding would have to state — or finding a per-source filter
-     this project has not found. Neither is decided.
+     narrows the enemy-debuff table to one caster — the measured table is in
+     `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one caster".
+     Plan D ships the plumbing, which is correct code for a query that returns nothing, so the
+     on-target half is inert. Reviving it means either comparing the two groups' debuff uptime
+     rather than the two players' — a different claim, which the finding would have to state —
+     or finding a per-source filter this project has not found. Neither is decided.
 
    Both are restricted to boss pulls by intersecting each aura's `bands` with the boss windows
-   (§2.2), and compared against the same specialization's top parse. Badge `derived`: the
-   arithmetic over bands is exact, but comparing two players in two different fights rests on
-   an assumption that can be wrong. The reference player is found by name in their own roster,
+   (`.claude/skills/wcl-api/SKILL.md`, "Aura tables"), and compared against the same
+   specialization's top parse. Badge `derived`: the arithmetic over bands is exact, but comparing
+   two players in two different fights rests on an assumption that can be wrong. The reference player is found by name in their own roster,
    and their absence from it is a finding, not a failure — as in §6.1.
 
    Plan C deferred this on the grounds that it "doubles the event fetch on both sides". That
    reasoning does not survive measurement — the table endpoint is pre-aggregated and needs no
-   event stream at all, and four aura tables cost about four points of an hourly 3600 (§2.2).
+   event stream at all, and ~~four aura tables cost about four points of an hourly
+   3600 (§2.2)~~. *Amended 2026-09-05:* the four-point figure was never measured on its own.
+   What was measured is 12.02 points of 3600 for a roster query, four aura tables and a
+   `rateLimitData` read together, recorded in `.claude/skills/wcl-api/SKILL.md`, "Rate limit".
+   The conclusion is unchanged: the cost is a rounding error against the hourly budget.
 
 ### 6.6 Confounds we declare rather than correct
 
@@ -420,9 +425,9 @@ Sections, in order:
    invented number. Reviving it needs a leaderboard query scoped to our own character, verified
    live and dated first. See the report design, §5.1. *Amended 2026-09-05:* the header states the
    run's own completion time, not a margin. `keystoneTime` is Blizzard's penalty-inclusive
-   completion time, not the key's time limit (§2.2), so "by how much" would need a par time no
-   Warcraft Logs field this project fetches carries — inventing one is exactly what this design
-   forbids.
+   completion time, not the key's time limit (`.claude/skills/wcl-api/SKILL.md`, "Mythic+ in the
+   schema"), so "by how much" would need a par time no Warcraft Logs field this project fetches
+   carries — inventing one is exactly what this design forbids.
 2. **Narrative** — the written interpretation (see §8), visually distinct and marked as
    interpretation.
 3. **Seconds ledger** — where the run's time went, and losses ranked, each with a confidence
@@ -464,9 +469,14 @@ The command-line tool emits **two artifacts**: HTML for people, and a structured
 Claude. Claude never parses the HTML.
 
 **The guardrail:** the skill instructs Claude to reason only over findings present in the JSON and
-to reference them by ID. A number absent from the findings file may not appear in the narrative.
-Confidence badges let Claude hedge where the underlying claim is inferred instead of asserting
-everything with equal force.
+to reference them by ID. ~~A number absent from the findings file may not appear in the
+narrative.~~ **Amended 2026-09-05:** the narrative states **no** numbers. Every figure already
+sits in a badged section directly below it, so a number repeated in the narrative is a second,
+unbadged claim competing with the first. `analyze --narrative` enforces it by refusing any digit,
+before fetching. The check is a tripwire rather than a proof — spelled-out quantities pass, and
+the instruction that forbids them lives in `analyzing-a-run`. See
+`docs/plans/2026-09-05-mplus-inference-layer-design.md` §3. Confidence badges let Claude hedge
+where the underlying claim is inferred instead of asserting everything with equal force.
 
 The narrative returns to the report through `--narrative notes.md`, which renders it as section 2
 (§7), directly below the header. Determinism survives, because the narrative is an input to
@@ -475,6 +485,10 @@ rendering rather than something the template invents.
 ### 8.1 Skills
 
 Three, each earning its place in `.claude/skills/`.
+
+*Built 2026-09-05.* All three exist as `.claude/skills/<name>/SKILL.md`, and `wcl-api` holds the
+verified API reference that was §2 — §2 is now a pointer to it, because two copies of a schema
+reference drift and the drifted one is read as true.
 
 - **`wcl-api`** — the verified API reference: exact field names, enum values, conventions that
   remain unverified, terms-of-service limits, rate-limit etiquette. It exists so that future
@@ -557,4 +571,5 @@ guild names are anonymized, and large event dumps are never committed.
   moved to §5.7 and narrowed to defensives, because the API publishes neither cooldown
   durations nor charge counts and the unnarrowed version would be wrong for most
   specializations. Item 5 is specified in §6.5 and built on the `table` endpoint verified in
-  §2.2, which is cheaper than the event stream Plan C priced it against. Both are Plan D's.
+  `.claude/skills/wcl-api/SKILL.md`, "Aura tables", which is cheaper than the event stream Plan C
+  priced it against. Both are Plan D's.

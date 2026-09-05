@@ -181,5 +181,10 @@ corrected 2026-09-03 against the schema.
   as unique to Final Fantasy XIV. WoW has `dps`, `wdps`, `playerscore`, `hps`, `tankhps`, and
   `playerspeed`.
 - **Warcraft Logs computes "Activity" from damage events, not cast events.** Damage-over-time
-  ticks therefore mask real downtime. Honest cast-based uptime must be computed from
-  `SPELL_CAST_SUCCESS` ourselves.
+  ticks therefore mask real downtime. Honest cast-based uptime has to be counted from successful
+  casts instead, and this project counts them from the API's own cast events rather than from a
+  raw combat log it never reads: `events(dataType: Casts)`, keeping the events whose `type` is
+  `"cast"`. Checked 2026-09-05 against `src/wowperf/adapters/wcl/queries.py` and
+  `src/wowperf/adapters/wcl/ingest.py`. Whether those correspond exactly to the client's
+  `SPELL_CAST_SUCCESS` lines is the community reading, unverified here; nothing in this project
+  depends on it.

@@ -2,8 +2,9 @@
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
 # The debuff half never fires in practice: `on_targets` is always empty against
-# the live API, confirmed 2026-09-05 (design §2.2) — no query argument narrows
-# the enemy-debuff table to one caster.
+# the live API, confirmed 2026-09-05 — no query argument narrows the enemy-debuff
+# table to one caster. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half
+# cannot be scoped to one caster".
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.spells import boss_seconds

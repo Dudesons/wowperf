@@ -198,7 +198,9 @@ class WclRunRepository:
         loading them for a whole roster would pay for ten tables to answer a
         question about two players. The debuff half of what comes back is
         always empty against the live API — confirmed 2026-09-05, no query
-        argument narrows the enemy-debuff table to one caster (design §2.2).
+        argument narrows the enemy-debuff table to one caster; the measured
+        table is in `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot
+        be scoped to one caster".
         """
         payload = self._query(
             AURA_TABLE_QUERY,
