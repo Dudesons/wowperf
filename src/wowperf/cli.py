@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import httpx
@@ -11,6 +12,7 @@ import typer
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_defensives, load_season_data
+from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
@@ -23,6 +25,7 @@ from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import Player, Run
+from wowperf.domain.report.build import build_report
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -186,16 +189,31 @@ def analyze(
     no_compare: bool = typer.Option(
         False, "--no-compare", help="Skip both reference runs and analyse in isolation"
     ),
+    narrative: Path | None = typer.Option(
+        None, help="Markdown notes to render as the report's interpretation section"
+    ),
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
     out: Path = typer.Option(Path("out"), help="Where to write the findings file"),
 ) -> None:
-    """Analyse a Mythic+ run and write its findings as JSON."""
+    """Analyse a Mythic+ run and write its findings as JSON and an HTML report."""
     # See the matching comment on `fetch`: Windows gives the process a
     # locale-dependent stdout encoding that cannot hold non-ASCII names.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
     try:
+        # Read this before anything is fetched: a typo in the path must cost
+        # nothing, and must never quietly produce a report with no narrative.
+        narrative_text = None
+        if narrative:
+            try:
+                narrative_text = narrative.read_text(encoding="utf-8")
+            except UnicodeDecodeError as error:
+                # UnicodeDecodeError's own message never names the file it came
+                # from, so a bad-encoding narrative would otherwise print a
+                # codec complaint with no way to tell which path caused it.
+                raise ValueError(f"{narrative}: {error}") from error
+
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
@@ -291,6 +309,22 @@ def analyze(
     # locale-dependent (commonly cp1252 on Windows) and would raise on them.
     written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     typer.echo(f"{len(findings)} findings written to {written}")
+
+    report_file = out / f"{run.report_code}-{run.fight_id}.html"
+    report_file.write_text(
+        render(
+            build_report(
+                loaded,
+                findings,
+                speed,
+                parse,
+                narrative_text,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+            )
+        ),
+        encoding="utf-8",
+    )
+    typer.echo(f"report written to {report_file}")
 
 
 if __name__ == "__main__":
