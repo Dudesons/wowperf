@@ -115,8 +115,8 @@ never be summed.</p>
 <p class="legend">A thin outline marks a boss pull. A heavier outline marks a pack we pulled
 that the reference run skipped. A dashed, unfilled block is a pack the reference run pulled
 that we skipped.</p>
-<svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}"
-     role="img" aria-label="Both runs on one elapsed-time axis">
+<svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}">
+  <title>Both runs on one elapsed-time axis</title>
   {% for x, label in report.timeline.ticks %}
   <line class="tick" x1="{{ x }}" y1="{{ report.timeline.tick_y1 }}" x2="{{ x }}"
         y2="{{ report.timeline.tick_y2 }}"></line>

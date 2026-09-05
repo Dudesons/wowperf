@@ -23,6 +23,9 @@ def _environment() -> Environment:
         autoescape=True,
         trim_blocks=True,
         lstrip_blocks=True,
+        # Jinja drops a template's own final newline by default; keeping it means
+        # the rendered file ends the same way any other text file in this repo does.
+        keep_trailing_newline=True,
     )
 
 
