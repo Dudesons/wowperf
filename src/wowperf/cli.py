@@ -190,10 +190,10 @@ def analyze(
         False, "--no-compare", help="Skip both reference runs and analyse in isolation"
     ),
     narrative: Path | None = typer.Option(
-        None, help="Markdown notes to render as the report's interpretation section"
+        None, help="Plain text notes to render as the report's interpretation section"
     ),
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
-    out: Path = typer.Option(Path("out"), help="Where to write the findings file"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings JSON and HTML report"),
 ) -> None:
     """Analyse a Mythic+ run and write its findings as JSON and an HTML report."""
     # See the matching comment on `fetch`: Windows gives the process a
