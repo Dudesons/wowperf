@@ -115,6 +115,21 @@ fight 36's three boss pulls and matching the boss window the analyzers already d
 Cost, measured the same day: a roster query, four aura tables and a `rateLimitData` read
 together spent **12.02 points of 3600**.
 
+**The debuff half cannot be scoped to one caster.** Corrected 2026-09-05 after Plan D's first
+run against the live API, which found this endpoint's per-source filter does not work the way
+the paragraph above once claimed. Measured, against the same report and fight:
+
+| Arguments | Returns |
+| --- | --- |
+| `dataType: Debuffs, hostilityType: Enemies` | 42 auras — every debuff the whole group put on enemies, `Blood Plague` and `Vampiric Touch` and `Immolate` side by side |
+| `dataType: Debuffs, hostilityType: Enemies, sourceID: <player>` | **0 auras** |
+| `dataType: Debuffs, hostilityType: Enemies, filterExpression: "source.id = <player>"` | **0 auras** |
+| `dataType: Debuffs, hostilityType: Enemies, sourceClass: "DeathKnight"` | **0 auras** |
+| `dataType: Debuffs, sourceID: <player>` (no `hostilityType`) | 21 auras, but these are debuffs *on friendlies* — the default hostility — not the player's own |
+
+So a per-player "debuffs I kept on the enemy" figure is not available from `table`. A group-wide
+one is. Anything built on the per-player reading returns nothing, silently.
+
 ### 2.3 Leaderboards return report codes
 
 Both `worldData.encounter.characterRankings` and `worldData.encounter.fightRankings` return
@@ -464,8 +479,14 @@ Compared, in descending order of signal:
    per side, which "on self and on target" resolves to exactly:
 
    - **on self** — `dataType: Buffs, targetID: <subject>`, the auras the player carried;
-   - **on target** — `dataType: Debuffs, sourceID: <subject>, hostilityType: Enemies`, the
-     debuffs the player kept up on enemies.
+   - **on target** — ~~`dataType: Debuffs, sourceID: <subject>, hostilityType: Enemies`, the
+     debuffs the player kept up on enemies.~~ **This does not work.** Corrected 2026-09-05:
+     that argument combination returns zero auras against the live API, and no other argument
+     narrows the enemy-debuff table to one caster (§2.2). Plan D ships the plumbing, which is
+     correct code for a query that returns nothing, so the on-target half is inert. Reviving it
+     means either comparing the two groups' debuff uptime rather than the two players' — a
+     different claim, which the finding would have to state — or finding a per-source filter
+     this project has not found. Neither is decided.
 
    Both are restricted to boss pulls by intersecting each aura's `bands` with the boss windows
    (§2.2), and compared against the same specialization's top parse. Badge `derived`: the

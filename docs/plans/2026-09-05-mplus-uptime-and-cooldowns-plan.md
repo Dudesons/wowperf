@@ -46,7 +46,7 @@ Confirmed against the live API on 2026-09-05, using report `6Kx1P9GbNXrcLdHa` fi
 
 Four behaviours established by running the query, not by reading documentation:
 
-- **`table(dataType: Buffs, targetID: N)` is the auras the player carried; `table(dataType: Debuffs, sourceID: N, hostilityType: Enemies)` is the debuffs the player kept on enemies.** These are the two halves of §6.5's "on self and on target".
+- **`table(dataType: Buffs, targetID: N)` is the auras the player carried.** ~~`table(dataType: Debuffs, sourceID: N, hostilityType: Enemies)` is the debuffs the player kept on enemies.~~ **The second half was never verified and is false.** Corrected 2026-09-05 by Plan D's own Task 9: that combination returns zero auras, and no argument narrows the enemy-debuff table to one caster — `sourceID`, `filterExpression` and `sourceClass` each zero it. `hostilityType: Enemies` alone returns the whole group's debuffs. See design §2.2 for the measured table. The on-target half of this plan ships inert.
 - **`bands` carry the exact intervals**, on the same millisecond clock as `Pull.start_ms`. Uptime over an arbitrary sub-window is an intersection, not a second query. Confirmed by recomputing Coagulopathy's uptime over fight 36's three boss pulls and matching the boss window the analysers already derive: 613086ms of 613086ms.
 - **`totalTime` is the queried window in milliseconds**, not the aura's uptime. On fight 36 it read `1857623` for both tables — the whole fight.
 - **The events endpoint is the wrong tool.** `events(dataType: Buffs)` returns aura *events* needing pagination and manual interval reconstruction; the table returns the same information pre-aggregated with the bands already computed. Do not use the events path.

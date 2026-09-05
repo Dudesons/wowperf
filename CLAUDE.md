@@ -334,7 +334,13 @@ leaderboard queries behind `WclRankingRepository`, pull alignment over pack sign
 findings for the route, the tempo, the spells and the confounds — measured against a fast
 completion of the same dungeon and the top parse of the analysed player's specialisation.
 A keystone-level gap withholds every duration-shaped comparison rather than printing a
-number the reader would misuse. Plan D — the HTML report — is not written yet.
+number the reader would misuse. Plan D added two more measures: defensives pressed far below
+what their cooldown allowed, in `analysis/defensives.py` against the cooldowns now recorded in
+`data/defensives.toml`; and buff uptime on boss pulls against the top parse, in
+`comparison/uptime.py`, fed by one aliased aura-table query per player. Its debuff half ships
+inert — Warcraft Logs offers no way to scope the enemy-debuff table to one caster, measured
+2026-09-05 and recorded in design §2.2. The HTML report gets its own plan and is not written
+yet.
 
 The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
 the authority on architecture, analyzers, and comparison rules. Read it before writing code.
