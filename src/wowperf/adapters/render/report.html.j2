@@ -98,11 +98,13 @@ p { margin: 0 0 10px; }
 {% endmacro %}
 
 <h2 id="ledger">Where the time went</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
 {% for row in report.ledger_decomposition %}
 {{ ledger_row(row) }}
 {% endfor %}
 {% if report.ledger_losses %}
-<p class="sub">Ranked losses. These are not additive — each says what already contains it.</p>
+<p class="sub">Ranked losses.</p>
 {% for row in report.ledger_losses %}
 {{ ledger_row(row) }}
 {% endfor %}
@@ -194,7 +196,7 @@ that we skipped.</p>
 
 <h2 id="observations">Other findings</h2>
 {% if report.observations %}
-<p class="sub">Measured, but with no seconds figure, so they sit outside the ledger above.</p>
+<p class="sub">Findings with no seconds figure, so they sit outside the ledger above.</p>
 {% for row in report.observations %}
 {{ ledger_row(row) }}
 {% endfor %}
