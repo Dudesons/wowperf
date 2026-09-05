@@ -1,0 +1,166 @@
+# ABOUTME: The rule deciding which defensives a player had off cooldown when they died.
+# ABOUTME: Every uncertainty in it is resolved toward silence, and these pin that direction.
+
+from wowperf.domain.analysis.defensives import (
+    analyse_defensives_at_death,
+    defensives_up_at,
+)
+from wowperf.domain.events import CastEvent, Death
+from wowperf.domain.findings import Confidence
+from wowperf.domain.model import EnemyNpc, Player, Pull, Run
+from wowperf.domain.season import DefensiveAbility, Defensives
+
+ICE_BLOCK = DefensiveAbility(ability_id=45438, name="Ice Block", cooldown_seconds=240.0)
+BARRIER = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
+ABILITIES = (ICE_BLOCK, BARRIER)
+
+DEATH_MS = 300_000
+"""Every case below is read against one death at this timestamp.
+
+Ice Block's window is (240 + 10) seconds, so it opens at 50_000; Prismatic
+Barrier's is (25 + 10), so it opens at 265_000.
+"""
+
+
+def a_cast(ability: DefensiveAbility, at_ms: int, actor_id: int = 11) -> CastEvent:
+    return CastEvent(
+        actor_id=actor_id, ability_id=ability.ability_id, ability_name=ability.name,
+        timestamp_ms=at_ms,
+    )
+
+
+def test_an_ability_never_cast_was_available() -> None:
+    assert defensives_up_at((), ABILITIES, 11, DEATH_MS) == ("Ice Block", "Prismatic Barrier")
+
+
+def test_an_ability_cast_before_its_window_opened_was_available() -> None:
+    casts = (a_cast(ICE_BLOCK, 49_000),)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+
+
+def test_a_cast_on_the_boundary_counts_against_availability() -> None:
+    # The window is closed at its lower edge on purpose. An ability coming off
+    # cooldown at the very instant the killing damage began is the most doubtful
+    # case there is, and doubt here resolves to saying nothing.
+    casts = (a_cast(ICE_BLOCK, 50_000),)
+    assert "Ice Block" not in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+
+
+def test_an_ability_still_on_cooldown_was_not_available() -> None:
+    casts = (a_cast(ICE_BLOCK, 51_000),)
+    assert defensives_up_at(casts, ABILITIES, 11, DEATH_MS) == ("Prismatic Barrier",)
+
+
+def test_an_ability_pressed_during_the_run_up_is_not_called_unused() -> None:
+    # They did press it and died anyway. The window covers the run-up precisely
+    # so that this case never reads as neglect.
+    casts = (a_cast(BARRIER, 295_000),)
+    assert "Prismatic Barrier" not in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+
+
+def test_a_cast_after_the_death_does_not_count_against_availability() -> None:
+    casts = (a_cast(ICE_BLOCK, 301_000),)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+
+
+def test_charges_are_ignored_so_a_second_charge_reads_as_unavailable() -> None:
+    # Stated as a test so nobody later reads this as a bug: a two-charge ability
+    # cast once may well have had its second charge up, and this rule says it did
+    # not. Understating availability cannot produce a false accusation.
+    two_charges = DefensiveAbility(
+        ability_id=108271, name="Astral Shift", cooldown_seconds=90.0, charges=2
+    )
+    casts = (a_cast(two_charges, 290_000),)
+    assert defensives_up_at(casts, (two_charges,), 11, DEATH_MS) == ()
+
+
+def test_only_this_players_casts_count() -> None:
+    casts = (a_cast(ICE_BLOCK, 290_000, actor_id=12),)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+
+
+def test_the_order_follows_the_ability_list() -> None:
+    assert defensives_up_at((), (BARRIER, ICE_BLOCK), 11, DEATH_MS) == (
+        "Prismatic Barrier",
+        "Ice Block",
+    )
+
+
+DEFENSIVES = Defensives(entries=(("Mage/Arcane", ABILITIES),))
+
+
+def a_run() -> Run:
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=400_000,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+    )
+    return Run(
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
+        keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
+        count_reached=100, count_required=100, npc_counts=(),
+        players=(
+            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+                   item_level=318),
+        ),
+        pulls=pulls,
+    )
+
+
+def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Uglymage") -> Death:
+    return Death(
+        player_name=name, actor_id=actor_id, timestamp_ms=at_ms,
+        killing_blow="Shadow Bolt", pull_index=0, seconds_until_next_action=4.0,
+    )
+
+
+def test_a_death_with_a_defensive_available_is_a_finding() -> None:
+    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, (a_death(),))
+    assert len(findings) == 1
+    assert findings[0].id == "defensives.unused.Uglymage"
+    assert findings[0].confidence is Confidence.INFERRED
+    # No honest number of seconds attaches to a button not pressed.
+    assert findings[0].seconds_lost is None
+
+
+def test_a_death_with_nothing_available_says_nothing() -> None:
+    casts = (a_cast(ICE_BLOCK, 290_000), a_cast(BARRIER, 290_000))
+    assert analyse_defensives_at_death(a_run(), casts, DEFENSIVES, (a_death(),)) == []
+
+
+def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
+    empty = Defensives(entries=())
+    assert analyse_defensives_at_death(a_run(), (), empty, (a_death(),)) == []
+
+
+def test_a_player_who_did_not_die_says_nothing() -> None:
+    assert analyse_defensives_at_death(a_run(), (), DEFENSIVES, ()) == []
+
+
+def test_the_title_counts_the_deaths() -> None:
+    deaths = (a_death(at_ms=300_000), a_death(at_ms=380_000))
+    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, deaths)
+    assert "2 times" in findings[0].title
+
+
+def test_the_evidence_names_the_killing_blow_and_what_was_up() -> None:
+    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, (a_death(),))
+    # The class and spec lead, as they do in this module's other findings, so a
+    # reader can discount the claim on sight. The death lines follow.
+    assert findings[0].evidence[0] == "Mage Arcane"
+    death_line = findings[0].evidence[1]
+    assert "Shadow Bolt" in death_line
+    assert "Ice Block" in death_line
+
+
+def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
+    run = a_run()
+    run = run.model_copy(
+        update={
+            "players": run.players
+            + (Player(actor_id=12, name="Uglymage", class_name="Mage", spec="Arcane",
+                      item_level=300),)
+        }
+    )
+    deaths = (a_death(actor_id=11), a_death(actor_id=12))
+    ids = {finding.id for finding in analyse_defensives_at_death(run, (), DEFENSIVES, deaths)}
+    assert ids == {"defensives.unused.Uglymage.11", "defensives.unused.Uglymage.12"}

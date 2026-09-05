@@ -90,3 +90,10 @@ def test_an_empty_run_analyses_without_raising() -> None:
     bare = LoadedRun(run=loaded.run)
     findings = analyse(bare, SEASON, DEFENSIVES)
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
+
+
+def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
+    # Uglymage dies at 30s having never cast Ice Block, so the availability
+    # analyser must contribute alongside the never-pressed one it sits beside.
+    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES)}
+    assert "defensives.unused.Uglymage" in ids

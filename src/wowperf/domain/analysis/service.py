@@ -2,7 +2,10 @@
 # ABOUTME: Deliberately dull: all the judgement lives in the analysers, none of it here.
 
 from wowperf.domain.analysis.deaths import analyse_deaths
-from wowperf.domain.analysis.defensives import analyse_defensives
+from wowperf.domain.analysis.defensives import (
+    analyse_defensives,
+    analyse_defensives_at_death,
+)
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.players import analyse_players
 from wowperf.domain.analysis.timeline import decompose_time
@@ -25,4 +28,7 @@ def analyse(loaded: LoadedRun, season: SeasonData, defensives: Defensives) -> li
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken
     )
     findings += analyse_defensives(loaded.run, loaded.casts, defensives, loaded.deaths)
+    findings += analyse_defensives_at_death(
+        loaded.run, loaded.casts, defensives, loaded.deaths
+    )
     return rank_findings(findings)

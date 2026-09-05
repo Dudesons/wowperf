@@ -3,6 +3,7 @@
 
 from collections import defaultdict
 
+from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
@@ -21,6 +22,127 @@ fires only on genuine near-neglect instead of on almost everything pressed.
 
 MIN_CEILING_USES = 3.0
 """Below this the ceiling itself is too small to argue from."""
+
+RUN_UP_SECONDS = 10.0
+"""How much of the run-up to a death counts as the damage that killed the player.
+
+An ability that came off cooldown halfway through that run-up was never an
+option anyone had, so availability is judged from when the damage began rather
+than from the instant of death. The report's death card shows this same window,
+so a reader sees the damage a defensive could have answered — long enough to
+read the sequence, short enough that the card stays a card.
+"""
+
+
+def defensives_up_at(
+    casts: tuple[CastEvent, ...],
+    abilities: tuple[DefensiveAbility, ...],
+    actor_id: int,
+    when_ms: int,
+) -> tuple[str, ...]:
+    """Names of `abilities` this player had off cooldown when the killing damage began.
+
+    An ability counts as available when the player cast it at no point in
+    `[when - (cooldown + run-up), when]`. That one window does two jobs: it
+    excludes an ability still on cooldown, and it excludes one they pressed
+    during the run-up and died anyway.
+
+    Every uncertainty here resolves toward saying nothing. Base cooldowns are
+    longer than talented ones; charges are ignored, so a spare charge reads as
+    unavailable; and the log emits no cooldown reset or reduction events, so a
+    reset reads as unavailable too. Each of those understates what was up, and
+    understating cannot produce a false accusation.
+
+    Returned in the order the abilities were given, so a caller controls the
+    reading order rather than inheriting a set's.
+    """
+    return tuple(
+        ability.name
+        for ability in abilities
+        if not any(
+            cast.actor_id == actor_id
+            and cast.ability_id == ability.ability_id
+            and when_ms - (ability.cooldown_seconds + RUN_UP_SECONDS) * 1000
+            <= cast.timestamp_ms
+            <= when_ms
+            for cast in casts
+        )
+    )
+
+
+def analyse_defensives_at_death(
+    run: Run,
+    casts: tuple[CastEvent, ...],
+    defensives: Defensives,
+    deaths: tuple[Death, ...],
+) -> list[Finding]:
+    """Players who died while a personal defensive was off cooldown.
+
+    One finding per player rather than per death, because the question a reader
+    asks is about the player, and the evidence carries each death separately.
+
+    `inferred`, like every other claim in this module: availability is
+    reconstructed from cast timestamps and a base cooldown, and the log records
+    no cooldown state to check it against. A defensive is also pressed into
+    incoming damage rather than on cooldown, so an unpressed one that was up is
+    a question worth asking, never a verdict.
+
+    A spec absent from the data file produces nothing, which is not the same
+    claim as a spec that had nothing available. The caller must keep those apart.
+    """
+    name_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        name_counts[player.name] += 1
+
+    findings = []
+    for player in run.players:
+        abilities = defensives.for_spec(player.class_name, player.spec)
+        if not abilities:
+            continue
+
+        lines = []
+        first_pull: int | None = None
+        for death in sorted(
+            (death for death in deaths if death.actor_id == player.actor_id),
+            key=lambda death: death.timestamp_ms,
+        ):
+            up = defensives_up_at(casts, abilities, player.actor_id, death.timestamp_ms)
+            if not up:
+                continue
+            if first_pull is None:
+                first_pull = death.pull_index
+            lines.append(
+                f"{pull_offset(run, death)} to {death.killing_blow}, with "
+                f"{', '.join(up)} off cooldown"
+            )
+
+        if not lines:
+            continue
+
+        base_id = (
+            player.name
+            if name_counts[player.name] == 1
+            else f"{player.name}.{player.actor_id}"
+        )
+        times = "once" if len(lines) == 1 else f"{len(lines)} times"
+        findings.append(
+            Finding(
+                id=f"defensives.unused.{base_id}",
+                title=f"{player.name} died {times} with a defensive available",
+                detail=(
+                    "Availability is read from this player's own casts against the "
+                    "ability's base cooldown, judged from when the damage that killed "
+                    "them began. Every unknown resolves the other way: talents shorten "
+                    "cooldowns, spare charges are not counted, and resets leave no trace "
+                    "in the log, so anything listed here is what the log can defend."
+                ),
+                confidence=Confidence.INFERRED,
+                seconds_lost=None,
+                evidence=(f"{player.class_name} {player.spec}", *lines),
+                pull_index=first_pull,
+            )
+        )
+    return findings
 
 
 def _alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:

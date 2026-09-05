@@ -38,7 +38,7 @@ def _unmeasured_evidence(unmeasured_count: int) -> str:
     )
 
 
-def _pull_offset(run: Run, death: Death) -> str:
+def pull_offset(run: Run, death: Death) -> str:
     """Where a death happened, in terms a reader can act on.
 
     A raw report-wide millisecond offset is useless: it is milliseconds since
@@ -115,7 +115,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                 f"{names}. In a chain the first death usually causes the rest."
             )
             group_evidence = tuple(
-                f"{death.player_name} at {_pull_offset(run, death)} to "
+                f"{death.player_name} at {pull_offset(run, death)} to "
                 f"{death.killing_blow}"
                 for death in group
             )
@@ -153,7 +153,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                     detail=detail,
                     confidence=Confidence.MEASURED,
                     seconds_lost=seconds_lost,
-                    evidence=(_pull_offset(run, first),),
+                    evidence=(pull_offset(run, first),),
                     pull_index=first.pull_index,
                 )
             )
@@ -179,7 +179,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
         seconds_lost, unmeasured_count = _measured_cost(theirs)
         detail = f"{count} of the run's {len(deaths)} deaths were {name}."
         player_evidence = tuple(
-            f"{death.killing_blow} at {_pull_offset(run, death)}" for death in theirs
+            f"{death.killing_blow} at {pull_offset(run, death)}" for death in theirs
         )
         if seconds_lost is None:
             detail += (
