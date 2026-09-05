@@ -355,7 +355,19 @@ there is worth reporting.
 
 What it cannot do is see a bag. A consumable reaches the log only when it is drunk, so an
 available category means "nothing was on cooldown" and never "one was carried". The finding's
-detail states that outright rather than leaving a reader to assume the stronger claim.
+detail states that outright, the title says "with no healing consumable on cooldown" rather than
+implying possession, and the death card carries the caveat beside the claim rather than several
+screens below it — because the card is where a reader draws the conclusion.
+
+Dropping the ownership rule costs one protection that §5.8 relies on. Casts are fetched per
+fight, so a potion drunk before the timer started is invisible; with no proof of ownership to
+lean on, reporting the category as clear there would be a false accusation rather than an
+understatement. A category whose window reaches back before the log begins is therefore not
+judged at all.
+
+**It fires on very nearly every death**, because most players drink neither consumable in most
+runs. That is the honest consequence of the design and not a defect, but it means the claim
+carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
 
 ---
 

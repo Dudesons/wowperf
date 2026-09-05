@@ -16,6 +16,7 @@ def consumables_up_at(
     categories: tuple[ConsumableCategory, ...],
     actor_id: int,
     death_ms: int,
+    visible_from_ms: int,
 ) -> tuple[str, ...]:
     """Names of the categories this player had off cooldown when the killing damage began.
 
@@ -33,12 +34,20 @@ def consumables_up_at(
     talent they never took must never be held against them; a potion is a choice
     they control, and the log cannot separate an unused one from an empty bag in
     either direction.
+
+    Dropping that proof costs one protection, which `visible_from_ms` restores.
+    Casts are fetched per fight, so a potion drunk before the timer started is
+    invisible; with no ownership rule to lean on, reporting the category as clear
+    there would be a false accusation rather than the understatement every other
+    rule in this project settles for. A category whose window reaches back before
+    the log begins is therefore not reported at all — unknown, not available.
     """
     ours = [cast for cast in casts if cast.actor_id == actor_id]
     return tuple(
         category.name
         for category in categories
-        if not any(
+        if death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
+        and not any(
             cast.ability_id in category.ability_ids
             and death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000
             <= cast.timestamp_ms
@@ -66,6 +75,11 @@ def analyse_consumables_at_death(
     if not consumables.categories:
         return []
 
+    # Casts are fetched from the fight's start, so nothing before the first pull
+    # is visible. `consumables_up_at` needs that boundary to refuse a claim it
+    # cannot support.
+    visible_from_ms = min((pull.start_ms for pull in run.pulls), default=0)
+
     name_counts: dict[str, int] = defaultdict(int)
     for player in run.players:
         name_counts[player.name] += 1
@@ -79,15 +93,19 @@ def analyse_consumables_at_death(
             key=lambda death: death.timestamp_ms,
         ):
             up = consumables_up_at(
-                casts, consumables.categories, player.actor_id, death.timestamp_ms
+                casts,
+                consumables.categories,
+                player.actor_id,
+                death.timestamp_ms,
+                visible_from_ms=visible_from_ms,
             )
             if not up:
                 continue
             if first_pull is None:
                 first_pull = death.pull_index
             lines.append(
-                f"{pull_offset(run, death)} to {death.killing_blow}, with "
-                f"{', '.join(up)} off cooldown"
+                f"{pull_offset(run, death)} to {death.killing_blow}, with the "
+                f"{', '.join(up)} cooldown clear"
             )
 
         if not lines:
@@ -102,12 +120,16 @@ def analyse_consumables_at_death(
         findings.append(
             Finding(
                 id=f"consumables.unused.{base_id}",
-                title=f"{player.name} died {times} with a healing consumable off cooldown",
+                title=(
+                    f"{player.name} died {times} with no healing consumable on cooldown"
+                ),
                 detail=(
                     "A consumable reaches the log only when it is drunk, so this says "
                     "nothing was on cooldown — not that one was carried. An empty bag "
                     "and an unpressed button look identical here, and both are worth "
-                    "asking about, which is why this is a question rather than a fault."
+                    "asking about, which is why this is a question rather than a fault. "
+                    "It is also close to the default state: most players drink neither "
+                    "in most runs, so this says far less than a defensive left unused."
                 ),
                 confidence=Confidence.INFERRED,
                 seconds_lost=None,

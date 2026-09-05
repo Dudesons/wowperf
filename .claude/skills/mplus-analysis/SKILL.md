@@ -58,18 +58,29 @@ player cast somewhere in the run — a talent they never took can never appear. 
 question rather than a verdict: a defensive held for a worse moment thirty seconds later is
 ordinary play. Say "had it available", never "should have pressed it".
 
-`consumables.unused.*` is a fourth claim of the same kind, about what the player carried rather
-than what their spec gives them. It is weaker than it looks and the detail says so: a consumable
-appears in the log only when it is drunk, so the finding means "nothing was on cooldown", never
-"a potion was in the bag". Say "no potion was used and none was on cooldown"; do not say they had
-one. The death cards distinguish a checked-and-empty result from an unchecked one, as they do for
-defensives.
-
-Silence from any of the three defensive claims means one of two things, and they are not the same: the player's
+Silence from any of the three means one of two things, and they are not the same: the player's
 spec is absent from `data/defensives.toml`, which covers five specs, or the tool checked and
 found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
 check that came back empty, and no line at all is a spec nobody has entered. The findings file
 cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
+
+## `consumables.unused.*` is the weakest claim on the page
+
+It is about what the player carried rather than what their spec gives them, and it is the one
+finding whose absence of evidence is not evidence. A consumable reaches the log only when it is
+drunk, so the finding means **nothing was on cooldown** — never that a potion was in the bag.
+Write "no potion was used, and none was on cooldown". Do not write that they had one.
+
+It is also close to the default state. Most players drink neither a health potion nor a
+healthstone in most runs, so this fires for very nearly every death and says far less than a
+defensive left unused. Treat it as a prompt to ask what they carry, never as a ranked loss, and
+do not lead a narrative with it.
+
+Two silences here mean nothing at all rather than something good: a death early enough that the
+category's window reaches back before the log begins is not judged, because the casts are fetched
+per fight and a potion drunk before the pull is invisible. Combat and mana potions are not
+tracked at all — they stopped sharing a cooldown with health potions in patch 9.0, so their
+absence from the data is deliberate and carries no meaning.
 
 ## Why damage goes unranked
 

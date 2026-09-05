@@ -276,6 +276,18 @@ def _when(death: Death, run: Run) -> str:
     return f"{at}, pull {death.pull_index}"
 
 
+CONSUMABLE_CAVEAT = (
+    "The log shows only what was drunk, so this says nothing was on cooldown, "
+    "not that one was carried."
+)
+"""Why the line above it is weaker than the defensive line that looks identical.
+
+It sits on the card rather than in the ledger because that is where a reader
+draws the conclusion, and the honest sentence has to be next to the claim it
+qualifies rather than several screens below it.
+"""
+
+
 def build_deaths(
     loaded: LoadedRun, defensives: Defensives, consumables: Consumables
 ) -> tuple[DeathCard, ...]:
@@ -284,8 +296,9 @@ def build_deaths(
     Built from events rather than findings: no finding carries the damage
     run-up, which is the reason this section exists at all.
 
-    The same run-up window decides which defensives were available, so the card
-    shows the damage and the answer the player had to it side by side.
+    The same run-up window decides which defensives and consumables were
+    available, so the card shows the damage and the answers the player had to it
+    side by side.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
     names_by_actor = display_names(loaded.run)
@@ -323,13 +336,27 @@ def build_deaths(
                 # This one is reconstructed, and says so in the same words the
                 # ledger uses.
                 defensives_badge=badge_for(Confidence.INFERRED) if known else None,
-                consumables_checked=bool(consumables.categories),
-                consumables_available=consumables_up_at(
-                    loaded.casts, consumables.categories, death.actor_id, death.timestamp_ms
+                # Gated on the roster like the defensives above: the findings
+                # file iterates the roster, so a claim here about an actor it
+                # cannot identify would be a claim the findings do not make.
+                consumables_checked=bool(consumables.categories and player is not None),
+                consumables_available=(
+                    consumables_up_at(
+                        loaded.casts,
+                        consumables.categories,
+                        death.actor_id,
+                        death.timestamp_ms,
+                        visible_from_ms=_run_start_ms(loaded.run),
+                    )
+                    if player is not None
+                    else ()
                 ),
                 consumables_badge=(
-                    badge_for(Confidence.INFERRED) if consumables.categories else None
+                    badge_for(Confidence.INFERRED)
+                    if consumables.categories and player is not None
+                    else None
                 ),
+                consumables_caveat=CONSUMABLE_CAVEAT,
                 last_ten_seconds=tuple(
                     DamageRow(
                         seconds_before=(

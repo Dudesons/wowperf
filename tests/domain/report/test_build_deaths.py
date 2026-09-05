@@ -231,18 +231,25 @@ POTIONS = Consumables(
 )
 
 
+# Late enough that the health-potion window (300s + the 10s run-up) fits inside
+# the run: a death before then is one the log cannot see far enough back for.
+LATE_ENOUGH_MS = 400_000
+
+
 def test_a_card_names_the_consumables_that_were_off_cooldown() -> None:
-    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, POTIONS)[0]
+    card = build_deaths(
+        a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES, POTIONS
+    )[0]
     assert card.consumables_checked is True
     assert card.consumables_available == ("health potion",)
 
 
 def test_a_card_says_so_when_every_consumable_was_on_cooldown() -> None:
-    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+    loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
         update={
             "casts": (
                 CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
-                          timestamp_ms=55_000, pull_index=0),
+                          timestamp_ms=LATE_ENOUGH_MS - 5_000, pull_index=0),
             )
         }
     )
@@ -254,6 +261,16 @@ def test_a_card_says_so_when_every_consumable_was_on_cooldown() -> None:
 def test_a_card_with_no_consumable_data_is_marked_unchecked() -> None:
     card = build_deaths(
         a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, Consumables()
+    )[0]
+    assert card.consumables_checked is False
+    assert card.consumables_available == ()
+
+
+def test_an_actor_not_on_the_roster_is_unchecked_for_consumables_too() -> None:
+    # The findings file iterates the roster, so it says nothing for an actor it
+    # cannot identify. The card must not claim more than the findings do.
+    card = build_deaths(
+        a_loaded_with((a_death(99, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES, POTIONS
     )[0]
     assert card.consumables_checked is False
     assert card.consumables_available == ()

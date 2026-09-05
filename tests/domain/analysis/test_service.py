@@ -95,9 +95,11 @@ def test_finding_ids_are_unique() -> None:
 def test_every_analyser_contributes() -> None:
     ids = {
         finding.id.split(".")[0]
-        for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
+        for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
     }
-    assert {"time", "deaths", "interrupts", "trash", "defensives"} <= ids
+    assert {
+        "time", "deaths", "interrupts", "trash", "defensives", "consumables",
+    } <= ids
 
 
 def test_an_empty_run_analyses_without_raising() -> None:
@@ -118,7 +120,10 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
 CONSUMABLES = Consumables(
     categories=(
         ConsumableCategory(
-            name="health potion", cooldown_seconds=300.0, ability_ids=(1234768,)
+            # Short on purpose: the fixture death is 30s in, and a category
+            # whose window reaches before the run starts is deliberately not
+            # claimed at all.
+            name="health potion", cooldown_seconds=20.0, ability_ids=(1234768,)
         ),
     )
 )

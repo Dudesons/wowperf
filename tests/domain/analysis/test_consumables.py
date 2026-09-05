@@ -28,41 +28,60 @@ def a_cast(ability_id: int, at_ms: int, actor_id: int = 11) -> CastEvent:
     )
 
 
+def test_a_category_is_not_claimed_when_the_window_reaches_before_the_log_begins() -> None:
+    """The one place dropping the ownership rule would otherwise accuse someone.
+
+    Casts are fetched per fight, so a potion drunk before the timer started is
+    invisible. Without proof of ownership to lean on, claiming the category was
+    available there would be a false accusation rather than an understatement —
+    the direction every other rule in this project leans away from.
+    """
+    # The health-potion window opens 310s before the death, so a death 100s into
+    # a run cannot be judged: the log does not reach back that far.
+    early = 100_000
+    assert consumables_up_at((), CATEGORIES, 11, early, visible_from_ms=0) == ("healthstone",)
+
+
 def test_a_player_who_drank_nothing_had_everything_available() -> None:
     # Unlike a defensive, nothing has to prove the player carried one: a potion
     # is a choice they control, and the log cannot tell an unused one from an
     # empty bag either way.
-    assert consumables_up_at((), CATEGORIES, 11, DEATH_MS) == ("health potion", "healthstone")
+    assert consumables_up_at((), CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == (
+        "health potion",
+        "healthstone",
+    )
 
 
 def test_any_id_in_a_category_blocks_the_whole_category() -> None:
     # A different health potion from the one listed first still puts the
     # category on cooldown — that is what a category is for.
     casts = (a_cast(1262857, 200_000),)
-    assert consumables_up_at(casts, CATEGORIES, 11, DEATH_MS) == ("healthstone",)
+    assert consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == ("healthstone",)
 
 
 def test_a_category_comes_back_once_its_own_cooldown_has_passed() -> None:
     # Drunk before the health-potion window opened at 90_000.
     casts = (a_cast(1234768, 80_000),)
-    assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS)
+    assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
 
 
 def test_categories_do_not_block_each_other() -> None:
     # A healthstone has not shared a cooldown with health potions since patch
     # 8.0.1, which is why they are separate categories at all.
     casts = (a_cast(6262, 390_000),)
-    assert consumables_up_at(casts, CATEGORIES, 11, DEATH_MS) == ("health potion",)
+    up = consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
+    assert up == ("health potion",)
 
 
 def test_one_drunk_during_the_run_up_is_not_called_unused() -> None:
     casts = (a_cast(6262, 395_000),)
-    assert "healthstone" not in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS)
+    up = consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
+    assert "healthstone" not in up
 
 
 def test_only_this_players_casts_count() -> None:
     casts = (a_cast(1234768, 200_000, actor_id=12),)
-    assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS)
+    assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
 
 
 def a_run() -> Run:
@@ -107,7 +126,7 @@ def test_the_detail_admits_it_cannot_see_an_empty_bag() -> None:
     # "not on cooldown" and nothing more. Saying otherwise would accuse someone
     # of not pressing a button they never had.
     detail = analyse_consumables_at_death(a_run(), (), CONSUMABLES, (a_death(),))[0].detail
-    assert "carried" in detail or "bag" in detail
+    assert "not that one was carried" in detail
 
 
 def test_no_deaths_says_nothing() -> None:

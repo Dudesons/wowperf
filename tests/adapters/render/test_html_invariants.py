@@ -424,26 +424,39 @@ def test_the_defensives_line_carries_its_confidence_badge() -> None:
 def a_page_with_consumables(cast: CastEvent | None = None) -> str:
     loaded = minimal_loaded()
     casts = loaded.casts + ((cast,) if cast else ())
+    # Late enough that the health-potion window fits inside the run; an earlier
+    # death is one the log cannot see far enough back for, and is not claimed.
+    late = tuple(d.model_copy(update={"timestamp_ms": 400_000}) for d in loaded.deaths)
     return render(
         build_report(
-            loaded.model_copy(update={"casts": casts}), minimal_findings(),
+            loaded.model_copy(update={"casts": casts, "deaths": late}), minimal_findings(),
             None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, POTIONS,
         )
     )
 
 
-def test_a_death_card_names_the_consumables_that_were_available() -> None:
+def test_a_death_card_names_the_consumables_whose_cooldown_was_clear() -> None:
     section = deaths_section(a_page_with_consumables())
-    assert "Consumables off cooldown: health potion" in section
+    assert "Healing consumable cooldowns clear: health potion" in section
+
+
+def test_the_consumable_line_carries_its_caveat_beside_it() -> None:
+    # It looks identical to the defensive line above it and is a weaker claim:
+    # a defensive is only named once the player demonstrably cast it, while a
+    # consumable never proves it was carried. Without the caveat next to it, a
+    # reader concludes the player had a potion and did not drink it.
+    section = deaths_section(a_page_with_consumables())
+    assert "not that one was carried" in section
 
 
 def test_a_death_card_says_so_when_every_consumable_was_on_cooldown() -> None:
     drunk = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
-                      timestamp_ms=45_000, pull_index=0)
+                      timestamp_ms=395_000, pull_index=0)
     section = deaths_section(a_page_with_consumables(drunk))
-    assert "Consumables off cooldown: none" in section
+    assert "Healing consumable cooldowns clear: none" in section
 
 
 def test_a_page_with_no_consumable_data_makes_no_claim_either_way() -> None:
     section = deaths_section(a_page(NO_DEFENSIVES))
-    assert "Consumables off cooldown" not in section
+    assert "Healing consumable" not in section
+    assert "not that one was carried" not in section

@@ -328,8 +328,7 @@ credentials, GraphQL client, disk cache, event pagination, and ingest into the d
 model), and a `fetch` command that prints a run as JSON. Plan B added the six analysers
 under `src/wowperf/domain/analysis/` — time decomposition, deaths, missed interrupts, trash
 efficiency, per-player facts, and defensives never pressed — the service that runs and ranks
-them, the season, defensive and consumable data under `data/`, and an `analyze` command that
-writes the
+them, the season and defensive data under `data/`, and an `analyze` command that writes the
 findings as JSON. Plan C added the comparison under `src/wowperf/domain/comparison/`: two
 leaderboard queries behind `WclRankingRepository`, pull alignment over pack signatures, and
 findings for the route, the tempo, the spells and the confounds — measured against a fast
