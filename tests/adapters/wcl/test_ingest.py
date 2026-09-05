@@ -124,6 +124,54 @@ def test_a_roster_member_with_no_matching_actor_is_rejected_not_dropped() -> Non
     )
 
 
+def test_a_null_spec_leaves_the_player_on_the_roster_with_no_spec() -> None:
+    """Real reports carry nulls in `friendlySpecs`.
+
+    Observed in cached responses on 2026-09-05, e.g.
+    `['Retribution', None, 'Balance', ...]`. Dropping the player would shrink the
+    roster and skew every per-player metric computed from it, exactly as an
+    unmatched actor would; raising would refuse to analyse a run over a field
+    nothing depends on. An unknown spec is reported as unknown instead.
+    """
+    report_payload = {
+        "code": "abc123",
+        "masterData": {
+            "actors": [
+                {"id": 693, "name": "Uglymage", "subType": "Mage"},
+                {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
+            ]
+        },
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693, 7]
+    fight["friendlySpecs"] = ["Arcane", None]
+    fight["friendlyItemLevels"] = [318, 320]
+
+    run = build_run(report_payload, fight)
+
+    by_name = {player.name: player for player in run.players}
+    assert set(by_name) == {"Uglymage", "Dudesons"}
+    assert by_name["Dudesons"].spec == ""
+    assert by_name["Dudesons"].class_name == "DeathKnight"
+    # The neighbouring player must be unaffected: the arrays are index-aligned,
+    # so a null must not shift what anyone else is read as.
+    assert by_name["Uglymage"].spec == "Arcane"
+
+
+def test_a_null_item_level_leaves_the_player_on_the_roster() -> None:
+    # Same array, same nullability, same reasoning.
+    report_payload = {
+        "code": "abc123",
+        "masterData": {"actors": [{"id": 693, "name": "Uglymage", "subType": "Mage"}]},
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693]
+    fight["friendlySpecs"] = ["Arcane"]
+    fight["friendlyItemLevels"] = [None]
+
+    assert build_run(report_payload, fight).players[0].item_level == 0
+
+
 def a_minimal_fight() -> dict[str, object]:
     return {
         "id": 36,
