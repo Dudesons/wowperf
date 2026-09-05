@@ -24,5 +24,5 @@ def analyse(loaded: LoadedRun, season: SeasonData, defensives: Defensives) -> li
     findings += analyse_players(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken
     )
-    findings += analyse_defensives(loaded.run, loaded.casts, defensives)
+    findings += analyse_defensives(loaded.run, loaded.casts, defensives, loaded.deaths)
     return rank_findings(findings)

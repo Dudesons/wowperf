@@ -10,7 +10,16 @@ from wowperf.domain.season import DefensiveAbility, Defensives, SeasonData
 SEASON = SeasonData(death_penalty_seconds=5.0, death_penalty_seconds_high_key=15.0,
                     high_key_threshold=12)
 DEFENSIVES = Defensives(
-    entries=(("Mage/Arcane", (DefensiveAbility(ability_id=45438, name="Ice Block"),)),)
+    entries=(
+        (
+            "Mage/Arcane",
+            (
+                DefensiveAbility(
+                    ability_id=45438, name="Ice Block", cooldown_seconds=240.0
+                ),
+            ),
+        ),
+    )
 )
 
 

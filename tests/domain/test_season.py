@@ -1,7 +1,10 @@
 # ABOUTME: Behaviour tests for the season constants the timer arithmetic depends on.
 # ABOUTME: The threshold is a boundary, so both sides of it are pinned here.
 
-from wowperf.domain.season import SeasonData
+import pytest
+from pydantic import ValidationError
+
+from wowperf.domain.season import DefensiveAbility, SeasonData
 
 
 def a_season() -> SeasonData:
@@ -22,3 +25,23 @@ def test_the_threshold_itself_uses_the_high_penalty() -> None:
 
 def test_above_the_threshold_uses_the_high_penalty() -> None:
     assert a_season().death_penalty(20) == 15.0
+
+
+def test_a_defensive_carries_the_cooldown_its_ceiling_is_computed_from() -> None:
+    ability = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=180.0)
+
+    assert ability.cooldown_seconds == 180.0
+    assert ability.charges == 1
+
+
+def test_a_defensive_with_two_charges_says_so() -> None:
+    ability = DefensiveAbility(
+        ability_id=55342, name="Mirror Image", cooldown_seconds=120.0, charges=2
+    )
+
+    assert ability.charges == 2
+
+
+def test_a_defensive_without_a_cooldown_cannot_be_built() -> None:
+    with pytest.raises(ValidationError):
+        DefensiveAbility(ability_id=1, name="Nameless")  # type: ignore[call-arg]

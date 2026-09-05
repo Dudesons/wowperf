@@ -3,6 +3,7 @@
 
 from typing import Any
 
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -327,3 +328,41 @@ def build_damage_taken(
             )
         )
     return tuple(taken)
+
+
+def _aura_rows(report: dict[str, Any], alias: str) -> list[dict[str, Any]]:
+    """The aura list under one aliased table, or an error if the table is absent.
+
+    A table that came back null and a table with no auras are different claims:
+    the first is a failed query, the second is a player who carried nothing.
+    """
+    table = report.get(alias)
+    if not isinstance(table, dict):
+        raise IngestError(f"The aura response carried no {alias} table")
+    data = table.get("data")
+    if not isinstance(data, dict):
+        raise IngestError(f"The aura response's {alias} table carried no data block")
+    return list(data.get("auras") or [])
+
+
+def _aura(row: dict[str, Any]) -> Aura:
+    return Aura(
+        ability_id=int(row["guid"]),
+        name=str(row["name"]),
+        total_uptime_ms=int(row.get("totalUptime") or 0),
+        uses=int(row.get("totalUses") or 0),
+        bands=tuple(
+            AuraBand(start_ms=int(band["startTime"]), end_ms=int(band["endTime"]))
+            for band in row.get("bands") or ()
+        ),
+    )
+
+
+def build_player_auras(payload: dict[str, Any], actor_id: int) -> PlayerAuras:
+    """Both aliased aura tables for one actor, as domain values."""
+    report = payload["reportData"]["report"]
+    return PlayerAuras(
+        actor_id=actor_id,
+        on_self=tuple(_aura(row) for row in _aura_rows(report, "onSelf")),
+        on_targets=tuple(_aura(row) for row in _aura_rows(report, "onTargets")),
+    )

@@ -40,3 +40,24 @@ def test_the_committed_defensives_file_parses() -> None:
     arcane = defensives.for_spec("Mage", "Arcane")
     assert any(ability.name == "Ice Block" for ability in arcane)
     assert defensives.for_spec("Druid", "Feral") == ()
+
+
+def test_the_defensive_list_carries_cooldowns_and_charges() -> None:
+    from wowperf.adapters.config.toml import load_defensives
+
+    defensives = load_defensives()
+    blood = defensives.for_spec("DeathKnight", "Blood")
+
+    icebound = next(a for a in blood if a.ability_id == 48792)
+    assert icebound.cooldown_seconds == 180.0
+    assert icebound.charges == 1
+
+
+def test_every_listed_defensive_has_a_positive_cooldown() -> None:
+    from wowperf.adapters.config.toml import load_defensives
+
+    defensives = load_defensives()
+
+    for _spec, abilities in defensives.entries:
+        for ability in abilities:
+            assert ability.cooldown_seconds > 0, f"{ability.name} has no usable cooldown"

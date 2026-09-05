@@ -51,6 +51,37 @@ def test_a_200_response_with_neither_data_nor_errors_raises_a_wcl_error() -> Non
         client.execute("query { hello }")
 
 
+def test_a_null_data_block_raises_a_named_wcl_error() -> None:
+    """{"data": null} is a real response shape, not only a null nested report.
+
+    Casting it to a dict used to hand every caller a `None` they had no reason
+    to expect, since the return type is annotated `dict[str, Any]`. Two call
+    sites had no guard against it at all: the rate-limit reader in this module,
+    and `rankings_block` in `ranking_repository.py` — both would raise a raw
+    `AttributeError`, which is not in `analyze`'s caught exception tuple, and
+    crash the CLI after the run had already been fetched and analysed.
+    """
+    client = build_client(httpx.Response(200, json={"data": None}))
+    with pytest.raises(WclError, match="null 'data' block"):
+        client.execute("query AuraTable($code: String!) { hello }", {"code": "abc123"})
+
+
+def test_a_null_data_block_names_the_query_and_report_it_happened_on() -> None:
+    client = build_client(httpx.Response(200, json={"data": None}))
+    with pytest.raises(WclError, match="AuraTable") as exc_info:
+        client.execute("query AuraTable($code: String!) { hello }", {"code": "abc123"})
+    assert "abc123" in str(exc_info.value)
+
+
+def test_a_null_data_block_on_the_rate_limit_query_raises_a_named_error() -> None:
+    """The rate-limit reader had no guard of its own against a null `data` block:
+    `self.execute(RATE_LIMIT_QUERY).get("rateLimitData")` would raise a raw
+    `AttributeError` on `None`. Guarding in `execute` fixes this call site too."""
+    client = build_client(httpx.Response(200, json={"data": None}))
+    with pytest.raises(WclError, match="null 'data' block"):
+        client.rate_limit()
+
+
 def test_an_exhausted_point_budget_raises_a_named_error() -> None:
     client = build_client(httpx.Response(429, text="Too Many Requests"))
     with pytest.raises(RateLimitExceeded):

@@ -23,6 +23,10 @@ class DefensiveAbility(Frozen):
 
     ability_id: int
     name: str
+    # Required, not defaulted: an ability whose cooldown is unknown has no honest
+    # ceiling, and a default would let that travel silently into a printed number.
+    cooldown_seconds: float
+    charges: int = 1
 
 
 class Defensives(Frozen):

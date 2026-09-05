@@ -14,6 +14,7 @@ from wowperf.adapters.wcl.ingest import (
     build_enemy_cast_rows,
     build_enemy_deaths,
     build_interrupts,
+    build_player_auras,
     build_run,
     select_keystone_fight,
 )
@@ -21,6 +22,7 @@ from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
     ACTORS_QUERY,
+    AURA_TABLE_QUERY,
     CASTS_QUERY,
     DAMAGE_TAKEN_QUERY,
     DEATHS_QUERY,
@@ -30,6 +32,7 @@ from wowperf.adapters.wcl.queries import (
     INTERRUPTS_QUERY,
     talents_query,
 )
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.model import LoadedRun, Run
 
 
@@ -63,13 +66,22 @@ class WclRunRepository:
         return payload
 
     @staticmethod
-    def _require_report(payload: dict[str, Any], variables: dict[str, Any]) -> None:
+    def _require_report(payload: dict[str, Any] | None, variables: dict[str, Any]) -> None:
         """Reject a null report.
 
-        An unlisted or unknown report answers HTTP 200 with `reportData.report`
-        null and no GraphQL errors. Raising before the payload is cached matters:
-        entries never expire, so caching one would poison the key for good.
+        An unlisted or unknown report usually answers HTTP 200 with
+        `reportData.report` null and no GraphQL errors. Since
+        `WclClient.execute` now raises on a null `data` block, only a stale
+        cache entry from an older build can deliver None here. Raising before
+        the payload is cached matters: entries never expire, so caching one
+        would poison the key for good.
         """
+        if payload is None:
+            raise IngestError(
+                f"Report {variables.get('code')} was not found, or is not accessible "
+                "with these credentials. Private reports need a personal login, which "
+                "this tool does not support."
+            )
         report_data = payload.get("reportData")
         if isinstance(report_data, dict) and report_data.get("report") is None:
             raise IngestError(
@@ -178,3 +190,18 @@ class WclRunRepository:
             enemy_deaths=enemy_deaths,
             damage_taken=damage_taken,
         )
+
+    def auras(self, report_code: str, fight_id: int, actor_id: int) -> PlayerAuras:
+        """Buff and debuff uptime for one player of one fight.
+
+        Scoped rather than folded into `load`: an aura table is per-actor, so
+        loading them for a whole roster would pay for ten tables to answer a
+        question about two players. The debuff half of what comes back is
+        always empty against the live API — confirmed 2026-09-05, no query
+        argument narrows the enemy-debuff table to one caster (design §2.2).
+        """
+        payload = self._query(
+            AURA_TABLE_QUERY,
+            {"code": report_code, "fightId": fight_id, "actorId": actor_id},
+        )
+        return build_player_auras(payload, actor_id)

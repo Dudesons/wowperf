@@ -18,6 +18,7 @@ from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.service import analyse
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
@@ -158,6 +159,23 @@ def _references(
     return speed, parse
 
 
+def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
+    """One player's auras, or None if they cannot be had.
+
+    A failed aura fetch must not discard the whole report: everything else has
+    already been fetched and paid for, and `compare.uptime.unavailable` states
+    the gap rather than hiding it. `httpx.HTTPError` covers a non-2xx aura
+    response that is not itself a rate limit: `WclClient.execute` raises
+    `RateLimitExceeded` (a `WclError`) for 429 before it ever calls
+    `raise_for_status`, so that deliberate handling still goes through the
+    `WclError` branch above and is untouched by the wider catch here.
+    """
+    try:
+        return runs.auras(code, fight_id, actor_id)
+    except (IngestError, WclError, httpx.HTTPError):
+        return None
+
+
 @app.command()
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -189,7 +207,33 @@ def analyze(
         if not no_compare:
             rankings = WclRankingRepository(repository.client, repository.cache)
             speed, parse = _references(rankings, repository, loaded.run, subject)
-            findings += compare(loaded, subject, speed, parse)
+
+            our_auras = None
+            if parse is not None:
+                # Resolve the counterpart before paying for our own aura fetch: when
+                # the reference's own roster does not contain the player the
+                # leaderboard row names, find_player can never resolve them, and
+                # fetching our side first would pay for a query with no use once
+                # that failure is discovered.
+                their_player = find_player(parse.loaded.run, parse.row.character_name)
+                if their_player is not None:
+                    our_auras = _auras(
+                        repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
+                    )
+                    parse = parse.model_copy(
+                        update={
+                            "auras": _auras(
+                                repository,
+                                parse.loaded.run.report_code,
+                                parse.loaded.run.fight_id,
+                                their_player.actor_id,
+                            )
+                        }
+                    )
+
+            findings += compare(
+                ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
+            )
             findings = rank_findings(findings)
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")

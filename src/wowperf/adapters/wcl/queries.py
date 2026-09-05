@@ -238,6 +238,30 @@ query CharacterRankings(
 """
 
 
+# Two aliased selections of `table`, so one cached query covers both halves of
+# "on self and on target". `Buffs` with targetID is what the player carried.
+# `Debuffs` with sourceID and Enemies does not work against the live API: confirmed
+# 2026-09-05, that combination returns zero auras, and no argument (sourceID,
+# filterExpression, sourceClass) narrows the enemy-debuff table to one caster —
+# see design §2.2 for the measured table. The selection stays wired for when a
+# working query is found; today `onTargets` ships inert.
+AURA_TABLE_QUERY = """
+query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      onSelf: table(fightIDs: [$fightId], dataType: Buffs, targetID: $actorId)
+      onTargets: table(
+        fightIDs: [$fightId]
+        dataType: Debuffs
+        sourceID: $actorId
+        hostilityType: Enemies
+      )
+    }
+  }
+}
+"""
+
+
 def talents_query(actor_ids: Sequence[int]) -> str:
     """One aliased `talentImportCode` per player.
 

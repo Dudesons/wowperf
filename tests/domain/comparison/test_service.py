@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for running every comparison over one run and ranking the result.
 # ABOUTME: Guards the two things only the service can get wrong: a missing reference, and a name.
 
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.reference import (
     Comparability,
     ParseReference,
@@ -104,7 +105,7 @@ def a_speed_reference(level: int = 16) -> SpeedReference:
     )
 
 
-def a_parse_reference() -> ParseReference:
+def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
     return ParseReference(
         row=ParseRow(
             report_code="37FzMg9pVPH6fnJT",
@@ -131,7 +132,46 @@ def a_parse_reference() -> ParseReference:
                 ),
             ),
         ),
+        auras=auras,
     )
+
+
+# OURS's boss pull in our_run() runs 400_000-460_000ms; the parse reference's runs
+# 0-60_000ms. Both are 60s, so a 90-point uptime gap on the same ability clears
+# UPTIME_GAP_FRACTION regardless of which side's window backs the fraction.
+OUR_AURAS = PlayerAuras(
+    actor_id=OURS.actor_id,
+    on_self=(
+        Aura(
+            ability_id=12042,
+            name="Arcane Power",
+            total_uptime_ms=3_000,
+            uses=1,
+            bands=(AuraBand(start_ms=400_000, end_ms=403_000),),
+        ),
+    ),
+)
+THEIR_AURAS = PlayerAuras(
+    actor_id=THEIRS.actor_id,
+    on_self=(
+        Aura(
+            ability_id=12042,
+            name="Arcane Power",
+            total_uptime_ms=57_000,
+            uses=1,
+            bands=(AuraBand(start_ms=0, end_ms=57_000),),
+        ),
+    ),
+)
+
+
+def a_comparable_pair_with_auras() -> tuple[LoadedRun, Player, SpeedReference, ParseReference]:
+    """The usual comparable pair, with aura data riding along on the parse side.
+
+    Extends `a_parse_reference` rather than a parallel fixture, so the boss pull
+    that grounds the aura windows can't drift out of sync with the plain one.
+    """
+    return our_run(), OURS, a_speed_reference(), a_parse_reference(auras=THEIR_AURAS)
 
 
 def test_a_player_is_found_whatever_the_case() -> None:
@@ -200,3 +240,29 @@ def test_a_reference_at_another_level_withholds_the_duration() -> None:
 
     assert duration.seconds_lost is None
     assert Comparability(our_level=16, their_level=17).withheld_because() == duration.detail
+
+
+def test_uptime_findings_appear_when_both_sides_carry_auras() -> None:
+    ours, our_player, speed, parse = a_comparable_pair_with_auras()
+
+    ids = {f.id.rsplit(".", 1)[0] for f in compare(ours, our_player, speed, parse,
+                                                   our_auras=OUR_AURAS)}
+
+    assert "compare.uptime.self" in ids
+
+
+def test_a_comparison_without_auras_says_uptime_was_not_compared() -> None:
+    ours, our_player, speed, parse = a_comparable_pair_with_auras()
+
+    ids = [f.id for f in compare(ours, our_player, speed, parse)]
+
+    assert "compare.uptime.unavailable" in ids
+
+
+def test_no_parse_reference_means_no_uptime_findings_at_all() -> None:
+    ours, our_player, speed, _parse = a_comparable_pair_with_auras()
+
+    ids = [f.id for f in compare(ours, our_player, speed, None, our_auras=OUR_AURAS)]
+
+    assert [i for i in ids if i.startswith("compare.uptime.")] == []
+    assert "compare.parse.unavailable" in ids

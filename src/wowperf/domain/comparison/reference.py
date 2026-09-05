@@ -1,6 +1,7 @@
 # ABOUTME: What a reference run is, and which comparisons a keystone-level gap invalidates.
 # ABOUTME: Pure value objects; fetching a reference is an adapter's job, not this module's.
 
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.model import LoadedRun
 
@@ -62,6 +63,8 @@ class ParseReference(Frozen):
 
     row: ParseRow
     loaded: LoadedRun
+    # Absent is a real state, not a failure: `compare.uptime.unavailable` reports it.
+    auras: PlayerAuras | None = None
 
 
 class Comparability(Frozen):

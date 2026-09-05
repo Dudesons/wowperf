@@ -185,6 +185,11 @@ SPEED_REFERENCE_CODE = "71cv4MRdNCp8ZFjG"
 SPEED_REFERENCE_FIGHT = 28
 PARSE_REFERENCE_CODE = "37FzMg9pVPH6fnJT"
 PARSE_REFERENCE_FIGHT = 16
+# The character name the default `_parse_row()` puts on the top-parse leaderboard row.
+# The parse reference's own roster fixture must carry an actor under this same name —
+# see `build_analyze_transport`'s `fights_by_code` — or `find_player` can never resolve
+# the counterpart and the counterpart's aura fetch silently never fires.
+PARSE_REFERENCE_CHARACTER_NAME = "Críms"
 
 
 def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str, Any]:
@@ -223,7 +228,7 @@ def _speed_row(bracket_data: int) -> dict[str, Any]:
 
 def _parse_row(bracket_data: int) -> dict[str, Any]:
     return {
-        "name": "Críms",
+        "name": PARSE_REFERENCE_CHARACTER_NAME,
         "class": "Mage",
         "spec": "Arcane",
         "duration": 1399143,
@@ -273,6 +278,10 @@ def build_analyze_transport(
     rankings: list[dict[str, Any]] | None = None,
     speed_rows: list[dict[str, Any]] | None = None,
     parse_rows: list[dict[str, Any]] | None = None,
+    calls: list[str] | None = None,
+    aura_response: httpx.Response | None = None,
+    boss_pull_reports: tuple[str, ...] = (),
+    aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -294,15 +303,49 @@ def build_analyze_transport(
     A Fights query for a report code this transport does not recognise answers
     "report not found", so a reference row can point at a code that will fail
     to load without any extra wiring.
+
+    Also answers `AuraTable` with an empty-but-valid pair of aura tables, so a
+    comparison against a parse reference has real (if empty) aura data on both
+    sides. `aura_response` overrides that answer for every `AuraTable` request,
+    letting a caller simulate a fetch that fails. `calls` records every
+    operation name this transport answers, in order, so a caller can prove a
+    query was (or was not) issued rather than only checking the exit code.
+
+    The parse reference's roster carries its own actor under
+    `PARSE_REFERENCE_CHARACTER_NAME` rather than under `player_name`: the
+    top-parse leaderboard row names that player as the one to compare against,
+    and `find_player` must be able to find them on that report for the
+    counterpart's aura fetch to fire at all.
+
+    `boss_pull_reports` turns a named report's only dungeon pull from trash
+    (encounter id 0) into a boss pull. `compare_uptime` measures only boss-pull
+    time, so with the fixture's default all-trash pull every run reports zero
+    boss seconds and any uptime comparison degrades to
+    `compare.uptime.unavailable` regardless of aura content — this is what a
+    caller needs to get a genuine, populated uptime finding instead.
+    `aura_rows_by_code` answers `AuraTable` with real aura rows for the report
+    codes named (`{"onSelf": [...], "onTargets": [...]}`, each a list of
+    `{"guid", "name", "totalUptime", "totalUses", "bands"}` rows, the shape
+    `build_player_auras` reads), in place of the default empty-but-valid tables
+    — letting a caller give the two players aura data that actually differs.
     """
     fights_by_code = {
-        code: _fights_payload_for(code, fight_id, player_name)
+        code: _fights_payload_for(
+            code,
+            fight_id,
+            PARSE_REFERENCE_CHARACTER_NAME if code == PARSE_REFERENCE_CODE else player_name,
+        )
         for code, fight_id in (
             ("abc123", 36),
             (SPEED_REFERENCE_CODE, SPEED_REFERENCE_FIGHT),
             (PARSE_REFERENCE_CODE, PARSE_REFERENCE_FIGHT),
         )
     }
+    for code in boss_pull_reports:
+        fight = fights_by_code[code]["reportData"]["report"]["fights"][0]
+        fight["dungeonPulls"] = [
+            {**pull, "encounterID": fight["encounterID"]} for pull in fight["dungeonPulls"]
+        ]
 
     abilities_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"abilities": []}}}
@@ -312,6 +355,14 @@ def build_analyze_transport(
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+    empty_auras: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "onSelf": {"data": {"auras": [], "totalTime": 0}},
+                "onTargets": {"data": {"auras": [], "totalTime": 0}},
+            }
+        }
     }
     if speed_rows is None:
         speed_rows = [_speed_row(bracket_data)] if rankings is None else rankings
@@ -340,6 +391,8 @@ def build_analyze_transport(
         body = json.loads(request.content)
         query = body["query"]
         name = query.split("query ")[1].split("(")[0].strip()
+        if calls is not None:
+            calls.append(name)
         if name == "Fights":
             code = body["variables"]["code"]
             payload = fights_by_code.get(code, {"reportData": {"report": None}})
@@ -361,6 +414,36 @@ def build_analyze_transport(
             return rankings_response("fightRankings", speed_rows)
         if name == "CharacterRankings":
             return rankings_response("characterRankings", parse_rows)
+        if name == "AuraTable":
+            code = body["variables"]["code"]
+            if aura_rows_by_code is not None and code in aura_rows_by_code:
+                rows = aura_rows_by_code[code]
+                return httpx.Response(
+                    200,
+                    json={
+                        "data": {
+                            "reportData": {
+                                "report": {
+                                    "onSelf": {
+                                        "data": {
+                                            "auras": rows.get("onSelf", []),
+                                            "totalTime": 0,
+                                        }
+                                    },
+                                    "onTargets": {
+                                        "data": {
+                                            "auras": rows.get("onTargets", []),
+                                            "totalTime": 0,
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    },
+                )
+            return aura_response if aura_response is not None else httpx.Response(
+                200, json={"data": empty_auras}
+            )
         return httpx.Response(200, json={"data": empty_events})
 
     return httpx.MockTransport(handler)
@@ -394,17 +477,27 @@ def invoke_analyze(tmp_path: Path, player_name: str = "Uglymage", *extra_args: s
 
 def run_analyze(
     tmp_path: Path,
-    extra_args: list[str],
-    *,
+    *extra_args: str,
     bracket_data: int = 16,
     rankings: list[dict[str, Any]] | None = None,
+    calls: list[str] | None = None,
+    aura_response: httpx.Response | None = None,
+    boss_pull_reports: tuple[str, ...] = (),
+    aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
 ) -> Any:
     """Invoke `analyze abc123`, mocking the report queries and both leaderboards."""
-    transport = build_analyze_transport(bracket_data=bracket_data, rankings=rankings)
-    return _invoke(tmp_path, extra_args, transport)
+    transport = build_analyze_transport(
+        bracket_data=bracket_data,
+        rankings=rankings,
+        calls=calls,
+        aura_response=aura_response,
+        boss_pull_reports=boss_pull_reports,
+        aura_rows_by_code=aura_rows_by_code,
+    )
+    return _invoke(tmp_path, list(extra_args), transport)
 
 
-def written_payload(tmp_path: Path) -> dict[str, Any]:
+def written_findings(tmp_path: Path) -> dict[str, Any]:
     """Read back the single findings file `analyze` wrote under `tmp_path/out`."""
     [written] = (tmp_path / "out").glob("*.findings.json")
     return cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
@@ -553,10 +646,10 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
 
 
 def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+    result = run_analyze(tmp_path, "--player", "Uglymage")
 
     assert result.exit_code == 0
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
     assert payload["player"] == "Uglymage"
     assert payload["comparison"]["compared"] is True
     assert payload["comparison"]["speed_reference"]["report_code"]
@@ -564,17 +657,17 @@ def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
 
 
 def test_no_compare_skips_both_references(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, ["--no-compare"])
+    result = run_analyze(tmp_path, "--no-compare")
 
     assert result.exit_code == 0
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
     assert payload["comparison"]["speed_reference"] is None
     assert not any(f["id"].startswith("compare.") for f in payload["findings"])
 
 
 def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, ["--player", "Nobody"])
+    result = run_analyze(tmp_path, "--player", "Nobody")
 
     assert result.exit_code == 1
     assert "Uglymage" in result.output
@@ -582,14 +675,14 @@ def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
 
 def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
     # The API lowercases the owner's name; the roster does not.
-    result = run_analyze(tmp_path, [])
+    result = run_analyze(tmp_path)
 
     assert result.exit_code == 0
-    assert written_payload(tmp_path)["player"] == "Uglymage"
+    assert written_findings(tmp_path)["player"] == "Uglymage"
 
 
 def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, [], bracket_data=11)
+    result = run_analyze(tmp_path, bracket_data=11)
 
     assert result.exit_code == 1
     assert "bracket" in result.output.lower()
@@ -606,7 +699,7 @@ def test_a_reference_that_fails_to_load_falls_through_to_the_next_row(tmp_path: 
     result = _invoke(tmp_path, ["--player", "Uglymage"], transport)
 
     assert result.exit_code == 0, result.output
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is True
     assert payload["comparison"]["speed_reference"]["report_code"] == SPEED_REFERENCE_CODE
     assert payload["comparison"]["parse_reference"]["report_code"] == PARSE_REFERENCE_CODE
@@ -628,7 +721,7 @@ def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -
     result = _invoke(tmp_path, [], transport)
 
     assert result.exit_code == 0, result.output
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
     assert payload["comparison"]["speed_reference"] is None
     assert payload["comparison"]["parse_reference"] is None
@@ -636,10 +729,10 @@ def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -
 
 
 def test_an_empty_leaderboard_degrades_to_no_comparison(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, [], rankings=[])
+    result = run_analyze(tmp_path, rankings=[])
 
     assert result.exit_code == 0
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
     assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
 
@@ -651,10 +744,10 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     This test pins the contract to fixed literals so a future swap (e.g. class_name
     and spec) would fail, not silently produce wrong output on screen.
     """
-    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+    result = run_analyze(tmp_path, "--player", "Uglymage")
 
     assert result.exit_code == 0
-    payload = written_payload(tmp_path)
+    payload = written_findings(tmp_path)
 
     # speed_reference fields
     assert payload["comparison"]["speed_reference"]["report_code"] == "71cv4MRdNCp8ZFjG"
@@ -671,3 +764,126 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     assert payload["comparison"]["parse_reference"]["class_name"] == "Mage"
     assert payload["comparison"]["parse_reference"]["spec"] == "Arcane"
     assert payload["comparison"]["parse_reference"]["medal"] == "silver"
+
+
+def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: Path) -> None:
+    """The defining feature of this task: two `AuraTable` queries, one per player,
+    feeding a real, populated uptime finding — not the `unavailable` fallback a
+    missing counterpart (or a fixture with no boss-pull time at all) would
+    silently produce instead, satisfying `any(id.startswith("compare.uptime."))`
+    either way and hiding the bug.
+
+    The shared fixture's only pull is trash, so both runs need a boss pull
+    (`boss_pull_reports`) before `compare_uptime` measures any boss-pull time at
+    all; `aura_rows_by_code` then gives both sides the same ability at
+    different uptimes, so the gap actually clears the reporting thresholds in
+    `wowperf.domain.comparison.uptime` — and, since Task 10, our own side must
+    carry the ability at all, or `_gap_findings` now drops it as attributed to
+    someone else's kit rather than this player's.
+    """
+    calls: list[str] = []
+    result = run_analyze(
+        tmp_path,
+        calls=calls,
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        aura_rows_by_code={
+            "abc123": {
+                "onSelf": [
+                    {
+                        "guid": 999,
+                        "name": "Power Infusion",
+                        "totalUptime": 1000,
+                        "totalUses": 1,
+                        "bands": [{"startTime": 1000, "endTime": 2000}],
+                    }
+                ],
+            },
+            PARSE_REFERENCE_CODE: {
+                "onSelf": [
+                    {
+                        "guid": 999,
+                        "name": "Power Infusion",
+                        "totalUptime": 4000,
+                        "totalUses": 1,
+                        "bands": [{"startTime": 1000, "endTime": 5000}],
+                    }
+                ],
+            },
+        },
+    )
+
+    payload = written_findings(tmp_path)
+    ids = [f["id"] for f in payload["findings"]]
+
+    assert result.exit_code == 0, result.output
+    assert calls.count("AuraTable") == 2
+    assert "compare.uptime.self.0" in ids
+
+
+def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_auras(
+    tmp_path: Path,
+) -> None:
+    """When the parse leaderboard names a player the reference's own roster does
+    not contain, `find_player` can never resolve the counterpart, and the
+    counterpart's aura fetch never fires — a state `cli.analyze` already handles.
+    Our own auras must be fetched only once that counterpart is known to resolve,
+    or this state pays for one `AuraTable` query it then has no use for."""
+    calls: list[str] = []
+    ghost_row = {**_parse_row(16), "name": "Ghost"}
+    transport = build_analyze_transport(parse_rows=[ghost_row], calls=calls)
+    result = _invoke(tmp_path, [], transport)
+
+    assert result.exit_code == 0, result.output
+    assert "AuraTable" not in calls
+
+
+def test_no_compare_issues_no_aura_queries(tmp_path: Path) -> None:
+    calls: list[str] = []
+    result = run_analyze(tmp_path, "--no-compare", calls=calls)
+
+    assert result.exit_code == 0
+    assert "AuraTable" not in calls
+
+
+def test_an_aura_fetch_that_fails_still_writes_the_report(tmp_path: Path) -> None:
+    """Drives the `WclError` branch of `cli._auras`: a null `data` block now makes
+    `WclClient.execute` itself raise `WclError`, before `WclRunRepository`'s own
+    `_require_report` guard is ever reached."""
+    result = run_analyze(tmp_path, aura_response=httpx.Response(200, json={"data": None}))
+
+    payload = written_findings(tmp_path)
+    ids = [f["id"] for f in payload["findings"]]
+
+    assert result.exit_code == 0, result.output
+    assert "compare.uptime.unavailable" in ids
+
+
+def test_a_graphql_error_on_the_aura_query_still_writes_the_report(tmp_path: Path) -> None:
+    """Drives the `WclError` branch of `cli._auras`: a GraphQL `errors` array makes
+    `WclClient.execute` raise `WclError`, the same shape `test_client.py` uses."""
+    result = run_analyze(
+        tmp_path,
+        aura_response=httpx.Response(
+            200, json={"errors": [{"message": "aura table is temporarily unavailable"}]}
+        ),
+    )
+
+    payload = written_findings(tmp_path)
+    ids = [f["id"] for f in payload["findings"]]
+
+    assert result.exit_code == 0, result.output
+    assert "compare.uptime.unavailable" in ids
+
+
+def test_a_non_429_http_failure_on_the_aura_query_still_writes_the_report(tmp_path: Path) -> None:
+    """A 500 on the aura query raises `httpx.HTTPStatusError` from
+    `WclClient.execute`'s `response.raise_for_status()` — neither `IngestError` nor
+    `WclError`, so `_auras` must catch `httpx.HTTPError` too or this kills the whole
+    command and discards findings the user already paid quota for."""
+    result = run_analyze(tmp_path, aura_response=httpx.Response(500, text="internal error"))
+
+    payload = written_findings(tmp_path)
+    ids = [f["id"] for f in payload["findings"]]
+
+    assert result.exit_code == 0, result.output
+    assert "compare.uptime.unavailable" in ids

@@ -3,6 +3,7 @@
 
 import json
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import pytest
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.queries import ACTORS_QUERY, FIGHTS_QUERY
 from wowperf.adapters.wcl.repository import WclRunRepository
@@ -80,6 +82,21 @@ FIGHTS_PAYLOAD: dict[str, Any] = {
 }
 
 
+def a_repository(
+    handler: Callable[[httpx.Request], httpx.Response], tmp_path: Path
+) -> WclRunRepository:
+    """Wire a mock transport into one repository, cached under `tmp_path`."""
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return WclRunRepository(client, DiskCache(tmp_path))
+
+
+def operation_name(body: dict[str, Any]) -> str:
+    """Pull the GraphQL operation name (e.g. "Fights") out of a request body."""
+    query: str = body["query"]
+    return query.split("query ")[1].split("(")[0].strip()
+
+
 def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
     """Build one repository whose mock transport records every GraphQL operation name.
 
@@ -141,8 +158,7 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        query = json.loads(request.content)["query"]
-        name = query.split("query ")[1].split("(")[0].strip()
+        name = operation_name(json.loads(request.content))
         calls.append(name)
         if name == "Fights":
             return httpx.Response(200, json={"data": FIGHTS_PAYLOAD})
@@ -161,10 +177,8 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
             )
         return httpx.Response(200, json={"data": event_payloads[name]})
 
-    http = httpx.Client(transport=httpx.MockTransport(handler))
-    client = WclClient(TokenProvider("id", "secret", http), http)
     cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
-    return WclRunRepository(client, DiskCache(cache_dir))
+    return a_repository(handler, cache_dir)
 
 
 def test_the_repository_builds_a_run_from_the_api(tmp_path: Path) -> None:
@@ -236,9 +250,7 @@ def build_null_report_repository(tmp_path: Path, calls: list[str]) -> WclRunRepo
         calls.append(str(request.url))
         return httpx.Response(200, json={"data": {"reportData": {"report": None}}})
 
-    http = httpx.Client(transport=httpx.MockTransport(handler))
-    client = WclClient(TokenProvider("id", "secret", http), http)
-    return WclRunRepository(client, DiskCache(tmp_path))
+    return a_repository(handler, tmp_path)
 
 
 def test_a_null_report_raises_an_ingest_error_naming_the_code(tmp_path: Path) -> None:
@@ -298,3 +310,99 @@ def test_actors_query_carries_no_type_filter() -> None:
     """
     assert 'actors(type:' not in ACTORS_QUERY
     assert 'actors { id gameID }' in ACTORS_QUERY
+
+
+def an_aura_payload() -> dict[str, object]:
+    return {
+        "data": {
+            "reportData": {
+                "report": {
+                    "onSelf": {
+                        "data": {
+                            "auras": [
+                                {
+                                    "name": "Coagulopathy",
+                                    "guid": 391477,
+                                    "totalUptime": 5000,
+                                    "totalUses": 1,
+                                    "bands": [{"startTime": 0, "endTime": 5000}],
+                                }
+                            ],
+                            "totalTime": 5000,
+                        }
+                    },
+                    "onTargets": {"data": {"auras": [], "totalTime": 5000}},
+                }
+            }
+        }
+    }
+
+
+def test_auras_come_back_for_the_actor_that_was_asked_for(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        body = json.loads(request.content)
+        calls.append(operation_name(body))
+        return httpx.Response(200, json=an_aura_payload())
+
+    repository = a_repository(handler, tmp_path)
+    auras = repository.auras("abc123", 36, 7)
+
+    assert calls == ["AuraTable"]
+    assert auras.actor_id == 7
+    assert [a.name for a in auras.on_self] == ["Coagulopathy"]
+    assert auras.on_targets == ()
+
+
+def test_a_second_lookup_for_the_same_actor_is_served_from_the_cache(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        body = json.loads(request.content)
+        calls.append(operation_name(body))
+        return httpx.Response(200, json=an_aura_payload())
+
+    repository = a_repository(handler, tmp_path)
+    repository.auras("abc123", 36, 7)
+    repository.auras("abc123", 36, 7)
+
+    assert calls == ["AuraTable"], "the second lookup should not reach the network"
+
+
+def test_a_null_data_block_raises_a_wcl_error_naming_the_code(tmp_path: Path) -> None:
+    """A GraphQL response can carry a null `data` block itself, not only a null
+    nested report: the aura table query hits this for a fight the API cannot
+    resolve. `WclClient.execute` now raises `WclError` for a null `data` block
+    itself, before this repository's `_require_report` guard is ever reached —
+    so a null `data` block never reaches `_fetch` as a bare `None` to subscript."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        return httpx.Response(200, json={"data": None})
+
+    repository = a_repository(handler, tmp_path)
+    with pytest.raises(WclError, match="null 'data' block.*abc123"):
+        repository.auras("abc123", 36, 7)
+
+
+def test_two_different_actors_do_not_collide_in_the_cache(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        body = json.loads(request.content)
+        calls.append(operation_name(body))
+        return httpx.Response(200, json=an_aura_payload())
+
+    repository = a_repository(handler, tmp_path)
+    repository.auras("abc123", 36, 7)
+    repository.auras("abc123", 36, 8)
+
+    assert len(calls) == 2, "a different actor is a different query"
