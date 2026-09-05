@@ -3,7 +3,7 @@
 
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
+from jinja2 import Environment, FileSystemLoader
 
 from wowperf.domain.report.model import Report
 
@@ -20,7 +20,7 @@ def _environment() -> Environment:
     """
     return Environment(
         loader=FileSystemLoader(TEMPLATE_DIR),
-        autoescape=select_autoescape(default_for_string=True, default=True),
+        autoescape=True,
         trim_blocks=True,
         lstrip_blocks=True,
     )

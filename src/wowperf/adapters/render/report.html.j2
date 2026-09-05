@@ -1,4 +1,5 @@
-{# The report: one self-contained file. No script, no network, no external font. #}
+{# ABOUTME: Document skeleton for the Mythic+ post-mortem report: header, ledger, and provenance. #}
+{# ABOUTME: One self-contained file: no script, no network fetch, no external font or stylesheet. #}
 <!doctype html>
 <html lang="en">
 <head>
@@ -7,7 +8,7 @@
 <title>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</title>
 <style>
 :root {
-  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #6f6a64;
+  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
   --page: #16181c; --card: #1e2126; --line: #2c3038;
   --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c;
   --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
@@ -21,6 +22,7 @@
 body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
   font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 main { max-width: 760px; margin: 0 auto; }
+a { color: var(--ours); }
 h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
 h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
   border-bottom: 1px solid var(--line); }
@@ -33,7 +35,8 @@ p { margin: 0 0 10px; }
 .row-head h3 { flex: 1; }
 .cost { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
-  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page); }
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page);
+  text-decoration: none; }
 .badge-measured { background: var(--badge-measured); }
 .badge-derived { background: var(--badge-derived); }
 .badge-inferred { background: var(--badge-inferred); }
@@ -67,7 +70,7 @@ p { margin: 0 0 10px; }
   <div class="row-head">
     <h3>{{ row.title }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
-    <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
+    <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
   </div>
   <p class="detail">{{ row.detail }}</p>
   {% if row.nests_inside %}
@@ -104,6 +107,12 @@ p { margin: 0 0 10px; }
 <h2 id="provenance">Provenance</h2>
 <p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
 fetched {{ report.provenance.fetched_at }}.</p>
+{% if report.provenance.speed_reference_url %}
+<p class="sub"><a href="{{ report.provenance.speed_reference_url }}">Speed reference run</a></p>
+{% endif %}
+{% if report.provenance.parse_reference_url %}
+<p class="sub"><a href="{{ report.provenance.parse_reference_url }}">Parse reference run</a></p>
+{% endif %}
 {% for line in report.provenance.withheld %}
 <p class="withheld">{{ line }}</p>
 {% endfor %}

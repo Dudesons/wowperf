@@ -15,8 +15,6 @@ from wowperf.domain.report.model import (
     Timeline,
 )
 
-PRESENT = Section(state=SectionState.PRESENT)
-
 
 def a_row(finding_id: str = "time.gap.0", **overrides: object) -> LedgerRow:
     fields: dict[str, object] = {
@@ -62,16 +60,31 @@ def test_the_document_is_html() -> None:
 def test_nothing_is_fetched_from_anywhere() -> None:
     html = render(a_report())
     assert "<script" not in html.lower()
-    assert "http://" not in html
-    assert "https://" not in html
-    assert "@import" not in html
-    assert "//fonts." not in html
+    assert "@import" not in html.lower()
+    assert "<link rel=" not in html.lower()
+    for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
+        assert not src.startswith(("http://", "https://", "//")), src
 
 
 def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:
-    html = render(a_report())
-    for href in re.findall(r'href="([^"]*)"', html):
-        assert href.startswith("#"), href
+    html = render(
+        a_report(
+            ledger_losses=(a_row(),),
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                speed_reference_url="https://www.warcraftlogs.com/reports/xyz789?fight=12",
+            ),
+        )
+    )
+    hrefs = re.findall(r'href="([^"]*)"', html)
+    assert any(href.startswith("#") for href in hrefs)
+    assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
+    for href in hrefs:
+        assert href.startswith("#") or href.startswith(
+            "https://www.warcraftlogs.com/reports/"
+        ), href
 
 
 def test_the_header_is_rendered() -> None:
@@ -121,6 +134,28 @@ def test_provenance_names_the_report_and_when_it_was_fetched() -> None:
     html = render(a_report())
     assert "abc123" in html
     assert "2026-09-05 14:02" in html
+
+
+def test_provenance_links_each_reference_run_when_its_url_is_present() -> None:
+    html = render(
+        a_report(
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                speed_reference_url="https://www.warcraftlogs.com/reports/speed1?fight=1",
+                parse_reference_url="https://www.warcraftlogs.com/reports/parse1?fight=2",
+            )
+        )
+    )
+    assert 'href="https://www.warcraftlogs.com/reports/speed1?fight=1"' in html
+    assert 'href="https://www.warcraftlogs.com/reports/parse1?fight=2"' in html
+
+
+def test_provenance_renders_no_reference_link_when_the_url_is_absent() -> None:
+    html = render(a_report())
+    assert "reference run" not in html.lower()
+    assert "warcraftlogs.com/reports/" not in html
 
 
 def test_the_confidence_legend_explains_all_three_badges() -> None:
