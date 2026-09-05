@@ -299,7 +299,13 @@ game's rules, which is why it is an analyzer and not a comparison.
 §5.6 asks whether a defensive was ever pressed and §5.7 how often. Neither asks the question a
 reader actually has when they look at a death: was anything up?
 
-An ability counts as available at a death when the player cast it at no point in
+Two conditions. **The player must have cast the ability somewhere in the run**, because
+several entries in `data/defensives.toml` are talent-gated and a player who did not take the
+talent casts it nowhere — indistinguishable from having it and never pressing it. Without this,
+the analyser would report a missing talent as an unpressed button at every death the player
+suffered. The never-cast case stays with §5.6, which discloses that ambiguity in its own detail.
+
+**And** the ability counts as available at a death when the player cast it at no point in
 
 ```
 [death - (cooldown_seconds + run_up_seconds), death]
@@ -311,10 +317,11 @@ things at once: an ability that came off cooldown halfway through was never an o
 and an ability pressed during that run-up falls inside the window, so a player who used it and
 died anyway is never accused of neglect.
 
-Every unknown resolves toward silence. Base cooldowns are longer than talented ones; charges are
-ignored, so a spare charge reads as unavailable; and the log emits no reset or reduction events,
-so a reset reads as unavailable too. Each understates what was up, and understating cannot
-produce a false accusation.
+What remains resolves toward silence. Base cooldowns are longer than talented ones; charges are
+ignored, so a spare charge reads as unavailable; the log emits no reset or reduction events, so a
+reset reads as unavailable; and casts are fetched per fight, so one pressed before the timer
+started is invisible. Each understates what was up, and understating cannot produce a false
+accusation.
 
 It reaches the reader twice, because the two audiences differ. `defensives.unused.*` is one
 finding per player, so the narrative and the findings file can see it. The death card carries the

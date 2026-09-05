@@ -81,8 +81,9 @@ def test_a_timed_run_states_the_verb_and_the_completion_time() -> None:
     # keystoneTime is Blizzard's penalty-inclusive completion time, not the key's
     # time limit: 1_908_000 ms is 31:48, whatever the dungeon's par time is.
     report = build_report(
-        a_loaded(keystone_time_ms=1_908_000), (), None, None, a_player(), None, FETCHED
-    , NO_DEFENSIVES)
+        a_loaded(keystone_time_ms=1_908_000), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES,
+    )
     assert report.header.result == "Timed in 31:48"
 
 
@@ -107,8 +108,9 @@ def test_no_narrative_leaves_the_section_absent_rather_than_withheld() -> None:
 
 def test_a_narrative_is_carried_through_verbatim() -> None:
     report = build_report(
-        a_loaded(), (), None, None, a_player(), "Both losses were travel.", FETCHED
-    , NO_DEFENSIVES)
+        a_loaded(), (), None, None, a_player(), "Both losses were travel.", FETCHED,
+        NO_DEFENSIVES,
+    )
     assert report.narrative == "Both losses were travel."
 
 

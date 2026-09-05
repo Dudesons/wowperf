@@ -53,9 +53,10 @@ ceiling and not a target — the finding says so itself, and the interpretation 
 
 `defensives.unused.*` is the third: the player died while an ability was, as far as cast
 timestamps and a base cooldown can tell, off cooldown. It is the strongest of the three, because
-it is anchored to a moment rather than to a whole run, and it is still a question rather than a
-verdict — a defensive held for a worse moment thirty seconds later is ordinary play. Say "had it
-available", never "should have pressed it".
+it is anchored to a moment rather than to a whole run and because it only names abilities the
+player cast somewhere in the run — a talent they never took can never appear. It is still a
+question rather than a verdict: a defensive held for a worse moment thirty seconds later is
+ordinary play. Say "had it available", never "should have pressed it".
 
 Silence from any of the three means one of two things, and they are not the same: the player's
 spec is absent from `data/defensives.toml`, which covers five specs, or the tool checked and

@@ -284,7 +284,8 @@ def test_the_report_carries_no_total_row() -> None:
     # that the report's own view model and template have nowhere to hold or
     # build one.
     report = build_report(
-        minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES
+        minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+        NO_DEFENSIVES,
     )
     assert not any(field.startswith("total") for field in type(report).model_fields)
 
@@ -330,7 +331,11 @@ ARCANE = Defensives(
     entries=(
         (
             "Mage/Arcane",
-            (DefensiveAbility(ability_id=45438, name="Ice Block", cooldown_seconds=240.0),),
+            (
+                DefensiveAbility(
+                    ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0
+                ),
+            ),
         ),
     )
 )
@@ -351,25 +356,32 @@ def deaths_section(html: str) -> str:
     return html[start : html.index('<h2 id="interrupts">', start)]
 
 
+def owns_barrier(at_ms: int) -> CastEvent:
+    return CastEvent(actor_id=1, ability_id=235450, ability_name="Prismatic Barrier",
+                     timestamp_ms=at_ms, pull_index=0)
+
+
+def a_page_with(cast: CastEvent) -> str:
+    loaded = minimal_loaded()
+    return render(
+        build_report(
+            loaded.model_copy(update={"casts": loaded.casts + (cast,)}), minimal_findings(),
+            None, None, SUBJECT, None, FETCHED, ARCANE,
+        )
+    )
+
+
 def test_a_death_card_names_the_defensives_that_were_available() -> None:
-    assert "Ice Block" in deaths_section(a_page(ARCANE))
+    # Cast at 10s, outside the window that opens at 15s for a 25s cooldown.
+    section = deaths_section(a_page_with(owns_barrier(10_000)))
+    assert "Defensives off cooldown: Prismatic Barrier" in section
 
 
 def test_a_death_card_says_so_when_nothing_was_off_cooldown() -> None:
-    loaded = minimal_loaded()
-    used = loaded.casts + (
-        CastEvent(actor_id=1, ability_id=45438, ability_name="Ice Block",
-                  timestamp_ms=45_000, pull_index=0),
-    )
-    html = render(
-        build_report(
-            loaded.model_copy(update={"casts": used}), minimal_findings(), None, None,
-            SUBJECT, None, FETCHED, ARCANE,
-        )
-    )
-    section = deaths_section(html)
+    # Cast at 45s, inside the window that ends at the death at 50s.
+    section = deaths_section(a_page_with(owns_barrier(45_000)))
     assert "Defensives off cooldown: none" in section
-    assert "Ice Block" not in section
+    assert "Prismatic Barrier" not in section
 
 
 def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
@@ -377,3 +389,11 @@ def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
     section = deaths_section(a_page(NO_DEFENSIVES))
     assert "Defensives off cooldown" not in section
     assert "off cooldown" not in section
+
+
+def test_the_defensives_line_carries_its_confidence_badge() -> None:
+    # The only inferred claim on a card whose other facts are all measured. Without
+    # a badge a reader has no way to tell it is reconstructed rather than logged.
+    section = deaths_section(a_page_with(owns_barrier(10_000)))
+    assert "badge-inferred" in section
+    assert 'href="#provenance"' in section

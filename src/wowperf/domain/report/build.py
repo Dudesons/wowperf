@@ -316,6 +316,10 @@ def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, 
                 defensives_available=defensives_up_at(
                     loaded.casts, known, death.actor_id, death.timestamp_ms
                 ),
+                # Every other fact on this card is read straight from the log.
+                # This one is reconstructed, and says so in the same words the
+                # ledger uses.
+                defensives_badge=badge_for(Confidence.INFERRED) if known else None,
                 last_ten_seconds=tuple(
                     DamageRow(
                         seconds_before=(

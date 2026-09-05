@@ -29,12 +29,21 @@ def a_cast(ability: DefensiveAbility, at_ms: int, actor_id: int = 11) -> CastEve
     )
 
 
-def test_an_ability_never_cast_was_available() -> None:
-    assert defensives_up_at((), ABILITIES, 11, DEATH_MS) == ("Ice Block", "Prismatic Barrier")
+def owns_both(actor_id: int = 11) -> tuple[CastEvent, ...]:
+    """One early cast of each, far outside every window: proof the player has them."""
+    return (a_cast(ICE_BLOCK, 1_000, actor_id), a_cast(BARRIER, 1_000, actor_id))
+
+
+def test_an_ability_the_player_never_cast_is_not_claimed_as_available() -> None:
+    # Several abilities in the data file are talent-gated. A player who did not
+    # take the talent casts it nowhere, which is indistinguishable from having it
+    # and never pressing it. Claiming it was "available" would accuse someone of
+    # not pressing a button they do not have.
+    assert defensives_up_at((), ABILITIES, 11, DEATH_MS) == ()
 
 
 def test_an_ability_cast_before_its_window_opened_was_available() -> None:
-    casts = (a_cast(ICE_BLOCK, 49_000),)
+    casts = (a_cast(ICE_BLOCK, 49_000), a_cast(BARRIER, 1_000))
     assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
 
 
@@ -47,18 +56,18 @@ def test_a_cast_on_the_boundary_counts_against_availability() -> None:
 
 
 def test_an_ability_still_on_cooldown_was_not_available() -> None:
-    casts = (a_cast(ICE_BLOCK, 51_000),)
+    casts = (a_cast(ICE_BLOCK, 51_000), a_cast(BARRIER, 1_000))
     assert defensives_up_at(casts, ABILITIES, 11, DEATH_MS) == ("Prismatic Barrier",)
 
 
 def test_an_ability_pressed_during_the_run_up_is_not_called_unused() -> None:
     # They did press it and died anyway. The window covers the run-up precisely
     # so that this case never reads as neglect.
-    casts = (a_cast(BARRIER, 295_000),)
+    casts = (a_cast(ICE_BLOCK, 1_000), a_cast(BARRIER, 295_000))
     assert "Prismatic Barrier" not in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
 
 
-def test_a_cast_after_the_death_does_not_count_against_availability() -> None:
+def test_a_cast_after_the_death_still_proves_the_player_has_the_ability() -> None:
     casts = (a_cast(ICE_BLOCK, 301_000),)
     assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
 
@@ -75,12 +84,14 @@ def test_charges_are_ignored_so_a_second_charge_reads_as_unavailable() -> None:
 
 
 def test_only_this_players_casts_count() -> None:
-    casts = (a_cast(ICE_BLOCK, 290_000, actor_id=12),)
+    # Ours proves ownership early; theirs would have blocked the window had the
+    # rule read the whole roster's casts.
+    casts = owns_both() + (a_cast(ICE_BLOCK, 290_000, actor_id=12),)
     assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
 
 
 def test_the_order_follows_the_ability_list() -> None:
-    assert defensives_up_at((), (BARRIER, ICE_BLOCK), 11, DEATH_MS) == (
+    assert defensives_up_at(owns_both(), (BARRIER, ICE_BLOCK), 11, DEATH_MS) == (
         "Prismatic Barrier",
         "Ice Block",
     )
@@ -114,7 +125,7 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Uglymage") -
 
 
 def test_a_death_with_a_defensive_available_is_a_finding() -> None:
-    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, (a_death(),))
+    findings = analyse_defensives_at_death(a_run(), owns_both(), DEFENSIVES, (a_death(),))
     assert len(findings) == 1
     assert findings[0].id == "defensives.unused.Uglymage"
     assert findings[0].confidence is Confidence.INFERRED
@@ -123,27 +134,45 @@ def test_a_death_with_a_defensive_available_is_a_finding() -> None:
 
 
 def test_a_death_with_nothing_available_says_nothing() -> None:
-    casts = (a_cast(ICE_BLOCK, 290_000), a_cast(BARRIER, 290_000))
+    casts = owns_both() + (a_cast(ICE_BLOCK, 290_000), a_cast(BARRIER, 290_000))
     assert analyse_defensives_at_death(a_run(), casts, DEFENSIVES, (a_death(),)) == []
+
+
+def test_a_player_who_cast_none_of_their_defensives_says_nothing_here() -> None:
+    # The never-cast case belongs to the other analyser, which discloses that a
+    # missing talent explains it just as well as a missing button press.
+    assert analyse_defensives_at_death(a_run(), (), DEFENSIVES, (a_death(),)) == []
 
 
 def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
     empty = Defensives(entries=())
-    assert analyse_defensives_at_death(a_run(), (), empty, (a_death(),)) == []
+    assert analyse_defensives_at_death(a_run(), owns_both(), empty, (a_death(),)) == []
 
 
 def test_a_player_who_did_not_die_says_nothing() -> None:
-    assert analyse_defensives_at_death(a_run(), (), DEFENSIVES, ()) == []
+    assert analyse_defensives_at_death(a_run(), owns_both(), DEFENSIVES, ()) == []
 
 
-def test_the_title_counts_the_deaths() -> None:
-    deaths = (a_death(at_ms=300_000), a_death(at_ms=380_000))
-    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, deaths)
-    assert "2 times" in findings[0].title
+def test_the_title_counts_only_the_deaths_that_qualified() -> None:
+    # The first death has Ice Block up. By the second, Ice Block has been cast
+    # and Barrier is inside its own window, so nothing was available.
+    casts = owns_both() + (a_cast(BARRIER, 280_000), a_cast(ICE_BLOCK, 305_000))
+    deaths = (a_death(at_ms=300_000), a_death(at_ms=310_000))
+    findings = analyse_defensives_at_death(a_run(), casts, DEFENSIVES, deaths)
+    assert "once" in findings[0].title
+
+
+def test_the_pull_index_comes_from_the_first_qualifying_death() -> None:
+    # Nothing is up at the earlier death; Barrier has come back round by the later one.
+    casts = owns_both() + (a_cast(BARRIER, 280_000), a_cast(ICE_BLOCK, 305_000))
+    early = a_death(at_ms=310_000).model_copy(update={"pull_index": 7})
+    late = a_death(at_ms=380_000).model_copy(update={"pull_index": 9})
+    findings = analyse_defensives_at_death(a_run(), casts, DEFENSIVES, (early, late))
+    assert findings[0].pull_index == 9
 
 
 def test_the_evidence_names_the_killing_blow_and_what_was_up() -> None:
-    findings = analyse_defensives_at_death(a_run(), (), DEFENSIVES, (a_death(),))
+    findings = analyse_defensives_at_death(a_run(), owns_both(), DEFENSIVES, (a_death(),))
     # The class and spec lead, as they do in this module's other findings, so a
     # reader can discount the claim on sight. The death lines follow.
     assert findings[0].evidence[0] == "Mage Arcane"
@@ -161,6 +190,7 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
                       item_level=300),)
         }
     )
+    casts = owns_both(11) + owns_both(12)
     deaths = (a_death(actor_id=11), a_death(actor_id=12))
-    ids = {finding.id for finding in analyse_defensives_at_death(run, (), DEFENSIVES, deaths)}
+    ids = {finding.id for finding in analyse_defensives_at_death(run, casts, DEFENSIVES, deaths)}
     assert ids == {"defensives.unused.Uglymage.11", "defensives.unused.Uglymage.12"}

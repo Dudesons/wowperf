@@ -41,8 +41,14 @@ def a_loaded_run() -> LoadedRun:
     )
     return LoadedRun(
         run=run,
-        casts=(CastEvent(actor_id=11, ability_id=1, ability_name="Frostbolt",
-                         timestamp_ms=1_000, pull_index=0),),
+        casts=(
+            CastEvent(actor_id=11, ability_id=1, ability_name="Frostbolt",
+                      timestamp_ms=1_000, pull_index=0),
+            # After the death at 30s, so it proves the talent is taken without
+            # putting the ability on cooldown before it.
+            CastEvent(actor_id=11, ability_id=45438, ability_name="Ice Block",
+                      timestamp_ms=40_000, pull_index=0),
+        ),
         deaths=(Death(player_name="Uglymage", actor_id=11, timestamp_ms=30_000,
                       killing_blow="Molten Scar", pull_index=0,
                       seconds_until_next_action=22.0),),

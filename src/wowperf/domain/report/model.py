@@ -113,6 +113,7 @@ class DeathCard(Frozen):
     last_ten_seconds: tuple[DamageRow, ...] = ()
     defensives_checked: bool = False
     defensives_available: tuple[str, ...] = ()
+    defensives_badge: Badge | None = None
 
 
 class PlayerCard(Frozen):

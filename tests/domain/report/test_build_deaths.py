@@ -1,14 +1,11 @@
 # ABOUTME: Behaviour tests for the deaths section: ordered by time, expanded into the last ten
 # ABOUTME: seconds. Built from raw events, not findings, since no finding carries the run-up.
 
-from tests.domain.report.test_build_frame import a_pull, a_run
+from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_deaths
 from wowperf.domain.season import DefensiveAbility, Defensives
-
-NO_DEFENSIVES = Defensives(entries=())
-"""For the cards whose subject is not defensives. Says the tool checked nothing."""
 
 
 def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
@@ -175,8 +172,21 @@ BLOOD = Defensives(
 )
 
 
+def owns_icebound(at_ms: int) -> tuple[CastEvent, ...]:
+    """A cast somewhere in the run, proving the player has the talent at all."""
+    return (
+        CastEvent(actor_id=1, ability_id=48792, ability_name="Icebound Fortitude",
+                  timestamp_ms=at_ms, pull_index=0),
+    )
+
+
 def test_a_card_names_the_defensives_that_were_off_cooldown() -> None:
-    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), BLOOD)[0]
+    # Pressed after the rez, so the ability is demonstrably theirs and the cast
+    # falls outside the window that ends at the death.
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(70_000)}
+    )
+    card = build_deaths(loaded, BLOOD)[0]
     assert card.defensives_checked is True
     assert card.defensives_available == ("Icebound Fortitude",)
 
@@ -186,14 +196,7 @@ def test_a_card_says_the_defensives_were_checked_even_when_none_were_up() -> Non
     # as the accusation. It must not be renderable as the same blank as an
     # unknown spec.
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
-        update={
-            "casts": (
-                CastEvent(
-                    actor_id=1, ability_id=48792, ability_name="Icebound Fortitude",
-                    timestamp_ms=55_000, pull_index=0,
-                ),
-            )
-        }
+        update={"casts": owns_icebound(55_000)}
     )
     card = build_deaths(loaded, BLOOD)[0]
     assert card.defensives_checked is True
@@ -201,6 +204,9 @@ def test_a_card_says_the_defensives_were_checked_even_when_none_were_up() -> Non
 
 
 def test_a_spec_the_data_file_does_not_cover_is_marked_unchecked() -> None:
-    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), Defensives(entries=()))[0]
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(70_000)}
+    )
+    card = build_deaths(loaded, Defensives(entries=()))[0]
     assert card.defensives_checked is False
     assert card.defensives_available == ()
