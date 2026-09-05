@@ -84,6 +84,30 @@ def summarise_players(
     return tuple(summaries)
 
 
+def display_names(run: Run) -> dict[int, str]:
+    """Map each player's actor id to the name a report should show for them.
+
+    Two players can share a display name (cross-realm groups ordinarily
+    produce this); when that happens the actor id disambiguates both, so a
+    reader — and any code matching against a finding's title — is never
+    handed one name that could mean two different people. A name held by
+    exactly one player stays plain, since the common case needs no clutter.
+    Computed once from the roster, the same rule `analyse_players` applies
+    to its own damage-outlier titles.
+    """
+    name_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        name_counts[player.name] += 1
+    return {
+        player.actor_id: (
+            player.name
+            if name_counts[player.name] == 1
+            else f"{player.name} (actor {player.actor_id})"
+        )
+        for player in run.players
+    }
+
+
 def _damage_outliers(
     run: Run, damage_taken: tuple[DamageTakenEvent, ...]
 ) -> list[tuple[int, str, str, int, float]]:
@@ -139,6 +163,7 @@ def analyse_players(
     for player in run.players:
         name_counts[player.name] += 1
     players_by_id = {player.actor_id: player for player in run.players}
+    names_by_actor = display_names(run)
 
     for summary in summarise_players(run, casts, deaths, interrupts):
         if summary.activity_percent >= LOW_ACTIVITY_PERCENT:
@@ -172,9 +197,11 @@ def analyse_players(
     for rank, (actor_id, name, ability, amount, multiple) in enumerate(
         _damage_outliers(run, damage_taken)[:MAX_OUTLIERS_REPORTED]
     ):
-        # Two players can share a display name; disambiguate the title with the
-        # actor id only when that happens, so the common case stays readable.
-        display_name = name if name_counts[name] == 1 else f"{name} (actor {actor_id})"
+        # Two players can share a display name; `display_names` disambiguates
+        # with the actor id, matching the roster-wide rule used elsewhere.
+        # `name` (from `_damage_outliers`) is the fallback for an actor id
+        # that is not on the roster at all, which `display_names` cannot map.
+        display_name = names_by_actor.get(actor_id, f"{name} (actor {actor_id})")
         taker = players_by_id.get(actor_id)
         # Melee damage on a tank is the job, not a mistake; naming the class and
         # spec here lets a reader discount an outlier like that on sight, without

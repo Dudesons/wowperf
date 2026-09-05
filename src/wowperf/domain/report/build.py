@@ -3,7 +3,7 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.analysis.players import summarise_players
+from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.events import Death
@@ -260,9 +260,10 @@ def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
 
 
-def build_interrupts(findings: Sequence[Finding]) -> tuple[LedgerRow, ...]:
+def build_interrupts(
+    findings: Sequence[Finding], titles_by_id: dict[str, str]
+) -> tuple[LedgerRow, ...]:
     """Interrupt findings that carry no seconds. Anything timed went to the ledger."""
-    titles_by_id = {finding.id: finding.title for finding in findings}
     return tuple(
         _ledger_row(finding, titles_by_id)
         for finding in findings
@@ -271,7 +272,10 @@ def build_interrupts(findings: Sequence[Finding]) -> tuple[LedgerRow, ...]:
 
 
 def build_players(
-    loaded: LoadedRun, findings: Sequence[Finding], parse: ParseReference | None
+    loaded: LoadedRun,
+    findings: Sequence[Finding],
+    parse: ParseReference | None,
+    titles_by_id: dict[str, str],
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
 
@@ -280,9 +284,9 @@ def build_players(
     mistake. The log does not record whether a hit could have been dodged, so
     no card here claims damage was avoidable.
     """
-    titles_by_id = {finding.id: finding.title for finding in findings}
     comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
     subject_name = parse.row.character_name.casefold() if parse else ""
+    names_by_actor = display_names(loaded.run)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
@@ -290,17 +294,17 @@ def build_players(
         finding
         for finding in untimed
         if any(finding.id.startswith(prefix) for prefix in COMPARISON_PREFIXES)
-        and not finding.id.endswith(".unavailable")
     ]
 
     cards = []
     for summary in summarise_players(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
     ):
+        display_name = names_by_actor[summary.actor_id]
         mine = tuple(
             _ledger_row(finding, titles_by_id)
             for finding in damage
-            if finding.title.startswith(summary.name)
+            if finding.title.startswith(f"{display_name} took ")
         )
         is_subject = summary.name.casefold() == subject_name
         cards.append(
@@ -414,8 +418,8 @@ def build_report(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
         deaths=build_deaths(loaded),
-        interrupts=build_interrupts(findings),
-        players=build_players(loaded, findings, parse),
+        interrupts=build_interrupts(findings, titles_by_id),
+        players=build_players(loaded, findings, parse, titles_by_id),
         provenance=Provenance(
             report_code=loaded.run.report_code,
             fight_id=loaded.run.fight_id,
