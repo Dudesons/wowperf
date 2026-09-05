@@ -105,6 +105,12 @@ def test_each_hit_says_how_long_before_the_death_it_landed() -> None:
     assert card.last_ten_seconds[0].seconds_before == "5.8s before"
 
 
+def test_a_hits_amount_is_formatted_with_thousands_separators() -> None:
+    hits = (a_hit(1, 54_200, "Snowdrift", 82_410),)
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits))[0]
+    assert card.last_ten_seconds[0].amount == "82,410"
+
+
 def test_cards_come_in_the_order_the_deaths_happened() -> None:
     deaths = (a_death(1, 90_000, "Late"), a_death(1, 30_000, "Early"))
     cards = build_deaths(a_loaded_with(deaths, ()))
