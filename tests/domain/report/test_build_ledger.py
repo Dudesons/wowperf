@@ -113,6 +113,8 @@ def test_every_nesting_relationship_the_findings_file_declares() -> None:
     assert parent_of("compare.downtime") == "time.residual"
     assert parent_of("deaths.single.0") == "deaths.total"
     assert parent_of("deaths.chain.1") == "deaths.total"
+    assert parent_of("deaths.repeat.Ashkandi") == "deaths.total"
+    assert parent_of("deaths.repeat.Ashkandi.12") == "deaths.total"
     assert parent_of("compare.route.skipped.2") == "trash.overage"
     assert parent_of("trash.overage") is None
     assert parent_of("compare.duration") is None

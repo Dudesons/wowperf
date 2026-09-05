@@ -43,6 +43,7 @@ NESTS_INSIDE = (
     ("compare.downtime", "time.residual"),
     ("deaths.single.", "deaths.total"),
     ("deaths.chain.", "deaths.total"),
+    ("deaths.repeat.", "deaths.total"),
     ("compare.route.skipped.", "trash.overage"),
 )
 """Which figures are already contained by which, copied from the findings file's own warning.
