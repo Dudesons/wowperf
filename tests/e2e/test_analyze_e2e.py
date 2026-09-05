@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.adapters.config.toml import load_defensives, load_season_data
+from wowperf.adapters.config.toml import (
+    load_consumables,
+    load_defensives,
+    load_season_data,
+)
 from wowperf.cli import build_repository
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.findings import Confidence
@@ -24,7 +28,7 @@ def test_a_real_run_produces_ranked_findings(tmp_path: Path) -> None:
 
     code, fight = parse_report_url(REPORT)
     loaded = build_repository(tmp_path).load(code, fight)
-    findings = analyse(loaded, load_season_data(), load_defensives())
+    findings = analyse(loaded, load_season_data(), load_defensives(), load_consumables())
 
     assert findings, "a real run should produce at least one finding"
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)

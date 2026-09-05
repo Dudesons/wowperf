@@ -1,6 +1,7 @@
 # ABOUTME: Runs every analyser over one loaded run and ranks the findings by time cost.
 # ABOUTME: Deliberately dull: all the judgement lives in the analysers, none of it here.
 
+from wowperf.domain.analysis.consumables import analyse_consumables_at_death
 from wowperf.domain.analysis.deaths import analyse_deaths
 from wowperf.domain.analysis.defensives import (
     analyse_defensives,
@@ -12,10 +13,15 @@ from wowperf.domain.analysis.timeline import decompose_time
 from wowperf.domain.analysis.trash import analyse_trash
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun
-from wowperf.domain.season import Defensives, SeasonData
+from wowperf.domain.season import Consumables, Defensives, SeasonData
 
 
-def analyse(loaded: LoadedRun, season: SeasonData, defensives: Defensives) -> list[Finding]:
+def analyse(
+    loaded: LoadedRun,
+    season: SeasonData,
+    defensives: Defensives,
+    consumables: Consumables,
+) -> list[Finding]:
     """Every analyser, one ranked list."""
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
 
@@ -30,5 +36,8 @@ def analyse(loaded: LoadedRun, season: SeasonData, defensives: Defensives) -> li
     findings += analyse_defensives(loaded.run, loaded.casts, defensives, loaded.deaths)
     findings += analyse_defensives_at_death(
         loaded.run, loaded.casts, defensives, loaded.deaths
+    )
+    findings += analyse_consumables_at_death(
+        loaded.run, loaded.casts, consumables, loaded.deaths
     )
     return rank_findings(findings)

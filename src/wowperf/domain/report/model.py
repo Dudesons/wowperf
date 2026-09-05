@@ -103,7 +103,7 @@ class DeathCard(Frozen):
     An empty list under a checked spec says nothing was off cooldown, which
     exonerates the player; an unchecked spec says the data file does not cover
     them and the tool knows nothing. Rendering both as a blank would turn the
-    second into the first.
+    second into the first. The consumable pair carries the same distinction.
     """
 
     player: str
@@ -114,6 +114,9 @@ class DeathCard(Frozen):
     defensives_checked: bool = False
     defensives_available: tuple[str, ...] = ()
     defensives_badge: Badge | None = None
+    consumables_checked: bool = False
+    consumables_available: tuple[str, ...] = ()
+    consumables_badge: Badge | None = None
 
 
 class PlayerCard(Frozen):

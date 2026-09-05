@@ -119,3 +119,41 @@ def test_no_spec_is_listed_twice() -> None:
 
     keys = [key for key, _ in load_defensives().entries]
     assert len(keys) == len(set(keys)), "a spec appears more than once"
+
+
+def test_the_committed_consumables_file_parses() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_CONSUMABLES_PATH, load_consumables
+
+    consumables = load_consumables(DEFAULT_CONSUMABLES_PATH)
+    names = {category.name for category in consumables.categories}
+    assert names == {"health potion", "healthstone"}
+
+
+def test_a_category_carries_its_cooldown_and_every_id_that_shares_it() -> None:
+    from wowperf.adapters.config.toml import load_consumables
+
+    stone = next(c for c in load_consumables().categories if c.name == "healthstone")
+    assert stone.cooldown_seconds == 60.0
+    # Soulburn: Healthstone consumes one without being drunk itself, so it has to
+    # block the category like any other id in it.
+    assert 387636 in stone.ability_ids
+
+
+def test_every_consumable_category_has_a_positive_cooldown_and_some_ids() -> None:
+    from wowperf.adapters.config.toml import load_consumables
+
+    for category in load_consumables().categories:
+        assert category.cooldown_seconds > 0, f"{category.name} has no usable cooldown"
+        assert category.ability_ids, f"{category.name} lists no abilities"
+
+
+def test_no_ability_belongs_to_two_categories() -> None:
+    # An id in two categories would make availability depend on which category
+    # was consulted first, which is not a question with an answer.
+    from wowperf.adapters.config.toml import load_consumables
+
+    seen: set[int] = set()
+    for category in load_consumables().categories:
+        overlap = seen & set(category.ability_ids)
+        assert not overlap, f"{category.name} repeats ids from another category: {overlap}"
+        seen |= set(category.ability_ids)

@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.consumables import consumables_up_at
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS, defensives_up_at
 from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.alignment import align_pulls
@@ -25,7 +26,7 @@ from wowperf.domain.report.model import (
     TimelineBlock,
     TimelineTrack,
 )
-from wowperf.domain.season import Defensives
+from wowperf.domain.season import Consumables, Defensives
 
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
 PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
@@ -275,7 +276,9 @@ def _when(death: Death, run: Run) -> str:
     return f"{at}, pull {death.pull_index}"
 
 
-def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, ...]:
+def build_deaths(
+    loaded: LoadedRun, defensives: Defensives, consumables: Consumables
+) -> tuple[DeathCard, ...]:
     """One card per death, oldest first, each expanded into its last ten seconds.
 
     Built from events rather than findings: no finding carries the damage
@@ -320,6 +323,13 @@ def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, 
                 # This one is reconstructed, and says so in the same words the
                 # ledger uses.
                 defensives_badge=badge_for(Confidence.INFERRED) if known else None,
+                consumables_checked=bool(consumables.categories),
+                consumables_available=consumables_up_at(
+                    loaded.casts, consumables.categories, death.actor_id, death.timestamp_ms
+                ),
+                consumables_badge=(
+                    badge_for(Confidence.INFERRED) if consumables.categories else None
+                ),
                 last_ten_seconds=tuple(
                     DamageRow(
                         seconds_before=(
@@ -533,6 +543,7 @@ def build_report(
     narrative: str | None,
     fetched_at: str,
     defensives: Defensives,
+    consumables: Consumables,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -577,7 +588,7 @@ def build_report(
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
-        deaths=build_deaths(loaded, defensives),
+        deaths=build_deaths(loaded, defensives, consumables),
         interrupts=interrupts,
         players=players,
         observations=build_observations(findings, placed_ids, titles_by_id),

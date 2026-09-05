@@ -1,0 +1,34 @@
+# Healing consumables a player drinks to survive, grouped by cooldown category.
+# No API exposes this list, so it is maintained by hand and dated.
+#
+# A category is the unit of availability: every id inside one shares that
+# category's cooldown, so drinking any of them blocks all of them. The three
+# categories the game actually has were established rather than assumed —
+# health potions stopped sharing a cooldown with combat and mana potions in
+# patch 9.0, and Healthstone stopped sharing with health potions in patch 8.0.1.
+# Combat and mana potions are therefore absent from this file: they cannot make
+# a health potion unavailable, and listing them would imply they could.
+#
+# Every id here was read from real Warcraft Logs combat data, so the names are
+# the game's own, and every cooldown was read from the game's spell data on the
+# date below.
+verified = "2026-09-05"
+
+["health potion"]
+cooldown_seconds = 300.0
+ability_ids = [
+  1234768,  # Silvermoon Health Potion
+  1295247,  # Concentrated Silvermoon Health Potion
+  1262857,  # Potent Healing Potion
+]
+
+["healthstone"]
+cooldown_seconds = 60.0
+ability_ids = [
+  6262,     # Healthstone
+  452930,   # Demonic Healthstone
+  # Buffs the next Healthstone rather than being drunk itself, so it cannot be
+  # used without consuming one. Its own tooltip states no cooldown, which does
+  # not matter here: the category carries the cooldown, not the ability.
+  387636,   # Soulburn: Healthstone
+]

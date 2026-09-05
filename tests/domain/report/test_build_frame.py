@@ -5,10 +5,13 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import _run_seconds, badge_for, build_report, format_seconds
 from wowperf.domain.report.model import SectionState
-from wowperf.domain.season import Defensives
+from wowperf.domain.season import Consumables, Defensives
 
 FETCHED = "2026-09-05 14:02"
 
+
+NO_CONSUMABLES = Consumables()
+"""As above, for consumables: the tool checked nothing."""
 
 NO_DEFENSIVES = Defensives(entries=())
 """The report tests whose subject is not defensives. Says the tool checked nothing."""
@@ -72,7 +75,8 @@ def unavailable(finding_id: str, detail: str) -> Finding:
 
 
 def test_the_header_states_the_dungeon_and_the_key() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.header.dungeon == "Den of Nalorakk"
     assert report.header.keystone_level == 16
 
@@ -83,6 +87,7 @@ def test_a_timed_run_states_the_verb_and_the_completion_time() -> None:
     report = build_report(
         a_loaded(keystone_time_ms=1_908_000), (), None, None, a_player(), None, FETCHED,
         NO_DEFENSIVES,
+        NO_CONSUMABLES,
     )
     assert report.header.result == "Timed in 31:48"
 
@@ -97,12 +102,14 @@ def test_a_depleted_run_states_the_verb_and_the_completion_time() -> None:
         None,
         FETCHED,
         NO_DEFENSIVES,
+        NO_CONSUMABLES,
     )
     assert report.header.result == "Depleted in 34:12"
 
 
 def test_no_narrative_leaves_the_section_absent_rather_than_withheld() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.narrative is None
 
 
@@ -110,6 +117,7 @@ def test_a_narrative_is_carried_through_verbatim() -> None:
     report = build_report(
         a_loaded(), (), None, None, a_player(), "Both losses were travel.", FETCHED,
         NO_DEFENSIVES,
+        NO_CONSUMABLES,
     )
     assert report.narrative == "Both losses were travel."
 
@@ -125,6 +133,7 @@ def test_a_withheld_section_takes_its_reason_from_the_finding() -> None:
         None,
         FETCHED,
         NO_DEFENSIVES,
+        NO_CONSUMABLES,
     )
     assert report.timeline.section.state is SectionState.WITHHELD
     assert report.timeline.section.reason == detail
@@ -132,18 +141,21 @@ def test_a_withheld_section_takes_its_reason_from_the_finding() -> None:
 
 def test_a_withheld_section_with_no_finding_still_says_something_true() -> None:
     # `--no-compare` emits no unavailable finding at all, because no comparison ran.
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.timeline.section.state is SectionState.WITHHELD
     assert report.timeline.section.reason
 
 
 def test_provenance_lists_every_withheld_section() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert any("timeline" in line.lower() for line in report.provenance.withheld)
 
 
 def test_provenance_carries_the_report_code_and_the_fetch_time() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.provenance.report_code == "abc123"
     assert report.provenance.fetched_at == FETCHED
 

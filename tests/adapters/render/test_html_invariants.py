@@ -9,7 +9,13 @@ from typing import Union, get_args, get_origin
 import pytest
 from markupsafe import escape
 
-from tests.domain.report.test_build_frame import FETCHED, NO_DEFENSIVES, a_pull, a_run
+from tests.domain.report.test_build_frame import (
+    FETCHED,
+    NO_CONSUMABLES,
+    NO_DEFENSIVES,
+    a_pull,
+    a_run,
+)
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
@@ -18,7 +24,12 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import Header, Provenance, Timeline, TimelineBlock, TimelineTrack
-from wowperf.domain.season import DefensiveAbility, Defensives
+from wowperf.domain.season import (
+    ConsumableCategory,
+    Consumables,
+    DefensiveAbility,
+    Defensives,
+)
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
@@ -88,6 +99,7 @@ def minimal_html() -> str:
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
             NO_DEFENSIVES,
+        NO_CONSUMABLES,
         )
     )
 
@@ -156,7 +168,7 @@ def rich_html() -> str:
     return render(
         build_report(
             rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED
-        , NO_DEFENSIVES)
+        , NO_DEFENSIVES, NO_CONSUMABLES)
     )
 
 
@@ -216,7 +228,7 @@ def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
-        , NO_DEFENSIVES)
+        , NO_DEFENSIVES, NO_CONSUMABLES)
     )
     assert 'id="narrative"' in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER) + 1
@@ -286,6 +298,7 @@ def test_the_report_carries_no_total_row() -> None:
     report = build_report(
         minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES,
+        NO_CONSUMABLES,
     )
     assert not any(field.startswith("total") for field in type(report).model_fields)
 
@@ -327,6 +340,14 @@ def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) 
     )
 
 
+POTIONS = Consumables(
+    categories=(
+        ConsumableCategory(
+            name="health potion", cooldown_seconds=300.0, ability_ids=(1234768,)
+        ),
+    )
+)
+
 ARCANE = Defensives(
     entries=(
         (
@@ -344,7 +365,8 @@ ARCANE = Defensives(
 def a_page(defensives: Defensives) -> str:
     return render(
         build_report(
-            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED, defensives
+            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+            defensives, NO_CONSUMABLES,
         )
     )
 
@@ -366,7 +388,7 @@ def a_page_with(cast: CastEvent) -> str:
     return render(
         build_report(
             loaded.model_copy(update={"casts": loaded.casts + (cast,)}), minimal_findings(),
-            None, None, SUBJECT, None, FETCHED, ARCANE,
+            None, None, SUBJECT, None, FETCHED, ARCANE, NO_CONSUMABLES,
         )
     )
 
@@ -397,3 +419,31 @@ def test_the_defensives_line_carries_its_confidence_badge() -> None:
     section = deaths_section(a_page_with(owns_barrier(10_000)))
     assert "badge-inferred" in section
     assert 'href="#provenance"' in section
+
+
+def a_page_with_consumables(cast: CastEvent | None = None) -> str:
+    loaded = minimal_loaded()
+    casts = loaded.casts + ((cast,) if cast else ())
+    return render(
+        build_report(
+            loaded.model_copy(update={"casts": casts}), minimal_findings(),
+            None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, POTIONS,
+        )
+    )
+
+
+def test_a_death_card_names_the_consumables_that_were_available() -> None:
+    section = deaths_section(a_page_with_consumables())
+    assert "Consumables off cooldown: health potion" in section
+
+
+def test_a_death_card_says_so_when_every_consumable_was_on_cooldown() -> None:
+    drunk = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                      timestamp_ms=45_000, pull_index=0)
+    section = deaths_section(a_page_with_consumables(drunk))
+    assert "Consumables off cooldown: none" in section
+
+
+def test_a_page_with_no_consumable_data_makes_no_claim_either_way() -> None:
+    section = deaths_section(a_page(NO_DEFENSIVES))
+    assert "Consumables off cooldown" not in section
