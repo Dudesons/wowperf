@@ -88,9 +88,7 @@ def test_a_player_card_names_the_class_in_text_not_only_in_colour() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=1,
-        kicks=7,
+        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
         spell_and_talent=a_section(SectionState.WITHHELD, "no ranked parse"),
     )
     assert card.class_name in ("DeathKnight",)

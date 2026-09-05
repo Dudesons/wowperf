@@ -207,9 +207,7 @@ def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=1,
-        kicks=7,
+        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
         spell_and_talent=Section(state=SectionState.WITHHELD, reason="no ranked parse"),
     )
     html = render(a_report(players=(card,)))
@@ -224,9 +222,7 @@ def test_a_player_cards_withheld_comparison_states_its_reason() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        casts_summary="182 casts in 31:49 of pulls",
-        deaths=0,
-        kicks=0,
+        stats_line="182 casts in 31:49 of pulls · 0 deaths · 0 interrupts",
         spell_and_talent=Section(state=SectionState.WITHHELD, reason="no ranked parse was found"),
     )
     html = render(a_report(players=(card,)))

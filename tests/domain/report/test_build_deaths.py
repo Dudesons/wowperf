@@ -62,6 +62,20 @@ def test_a_death_by_an_actor_not_in_the_roster_still_renders() -> None:
     assert card.class_name == "unknown class"
 
 
+def test_a_death_by_a_player_sharing_a_name_is_disambiguated() -> None:
+    # Cross-realm groups ordinarily produce two players with the same display
+    # name; the actor id disambiguates the death card the same way it already
+    # disambiguates the matching player card, so the two are never confused.
+    players = (a_player(1, "Sublime"), a_player(2, "Sublime"))
+    run = a_run(players=players, pulls=(a_pull(0, 0, 120_000),))
+    death = Death(
+        player_name="Sublime", actor_id=2, timestamp_ms=60_000,
+        killing_blow="Frigid Roar", pull_index=0,
+    )
+    card = build_deaths(LoadedRun(run=run, deaths=(death,)))[0]
+    assert card.player == "Sublime (actor 2)"
+
+
 def test_the_run_up_holds_only_hits_on_the_player_who_died() -> None:
     hits = (a_hit(1, 55_000, "Frigid Roar", 900), a_hit(2, 55_000, "Snowdrift", 800))
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits))[0]

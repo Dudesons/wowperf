@@ -178,7 +178,7 @@ that we skipped.</p>
     <h3>{{ player.name }}</h3>
     <span class="sub">{{ player.class_name }} {{ player.spec }}</span>
   </div>
-  <p class="stats">{{ player.casts_summary }} · {{ player.deaths }} death{{ "" if player.deaths == 1 else "s" }} · {{ player.kicks }} interrupt{{ "" if player.kicks == 1 else "s" }}</p>
+  <p class="stats">{{ player.stats_line }}</p>
   {% for row in player.damage_rows %}
   {{ ledger_row(row) }}
   {% endfor %}
