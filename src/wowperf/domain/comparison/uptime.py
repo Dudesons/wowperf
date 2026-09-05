@@ -88,7 +88,9 @@ def _gap_findings(
                     "Both figures are the share of boss-pull time the aura was present, which "
                     "is comparable even though the two fights ran for different lengths. A "
                     "shorter fight at a different keystone level still changes what fits, so "
-                    "read a narrow gap as noise."
+                    "read a narrow gap as noise. This compares by exact ability, though, so a "
+                    "gap can also mean a different item of the same kind, or gear this player "
+                    "does not own — not that nothing was used at all."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,

@@ -176,6 +176,20 @@ def test_a_run_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() -> None:
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
 
 
+def test_a_gap_findings_detail_warns_the_comparison_is_by_exact_ability() -> None:
+    """A 0% gap can be a different item of the same kind, or gear the player lacks —
+    not proof that nothing was used, since the comparison keys on exact ability id."""
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
+
+    findings = compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
+    reported = [f for f in findings if f.id.startswith("compare.uptime.self.")]
+
+    assert "gear this player does not own" in reported[0].detail
+
+
 def test_no_more_than_the_cap_is_reported() -> None:
     ours = a_run(BOSS)
     theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
