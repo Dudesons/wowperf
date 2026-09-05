@@ -322,7 +322,7 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis.
 
-**Current state: a run goes in and ranked findings come out.** Plan A shipped the `wowperf`
+**Current state: a run goes in and a report comes out.** Plan A shipped the `wowperf`
 package under `src/`: the domain model and ports, the Warcraft Logs adapter (OAuth client
 credentials, GraphQL client, disk cache, event pagination, and ingest into the domain
 model), and a `fetch` command that prints a run as JSON. Plan B added the six analysers
@@ -339,8 +339,11 @@ what their cooldown allowed, in `analysis/defensives.py` against the cooldowns n
 `data/defensives.toml`; and buff uptime on boss pulls against the top parse, in
 `comparison/uptime.py`, fed by one aliased aura-table query per player. Its debuff half ships
 inert — Warcraft Logs offers no way to scope the enemy-debuff table to one caster, measured
-2026-09-05 and recorded in design §2.2. The HTML report gets its own plan and is not written
-yet.
+2026-09-05 and recorded in design §2.2. Plan E added the report: a frozen view model and a pure
+builder under `src/wowperf/domain/report/`, holding every judgement the page makes; a Jinja2
+adapter under `src/wowperf/adapters/render/` that loops and decides nothing; and `analyze`
+writing a self-contained HTML file beside the findings JSON on every run. Design §8 — the three
+skills and the narrative's authorship — remains unwritten.
 
 The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
 the authority on architecture, analyzers, and comparison rules. Read it before writing code.
@@ -377,7 +380,7 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
 | `uv run ruff check .` | Lint |
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
 | `uv run wowperf fetch <url>` | Fetch a Mythic+ run and print it as JSON |
-| `uv run wowperf analyze <url> [--player NAME] [--no-compare]` | Analyse a run, compare it against two references, and write `<code>-<fight>.findings.json`; the HTML report is Plan D |
+| `uv run wowperf analyze <url> [--player NAME] [--no-compare] [--narrative FILE]` | Analyse a run, compare it against two references, and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` |
 
 ---
 
