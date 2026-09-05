@@ -261,8 +261,9 @@ analyzer moves behind a `--deep` flag. It does not get silently dropped.
 
 "Defensive available but unused" is **inference, not measurement**. The combat log emits no
 cooldown-reset or cooldown-reduction events, so a defensive may genuinely have been unavailable.
-It ships labelled `inferred` and only for the unambiguous case: never cast at any point in the
-run.
+It ships labelled `inferred` and ~~only for the unambiguous case: never cast at any point in the
+run.~~ **Amended 2026-09-05:** for that case and for the narrower one in §5.8, which asks the
+same question at the moment it matters.
 
 ### 5.7 Defensive uses against the cooldown ceiling — `inferred`
 
@@ -290,6 +291,40 @@ states the situational caveat outright rather than leaving the reader to supply 
 
 This needs no reference run and appears under `--no-compare`. It measures a player against the
 game's rules, which is why it is an analyzer and not a comparison.
+
+### 5.8 Defensives available at a death — `inferred`
+
+*Added 2026-09-05.*
+
+§5.6 asks whether a defensive was ever pressed and §5.7 how often. Neither asks the question a
+reader actually has when they look at a death: was anything up?
+
+An ability counts as available at a death when the player cast it at no point in
+
+```
+[death - (cooldown_seconds + run_up_seconds), death]
+```
+
+where `run_up_seconds` is the ten seconds of damage the death card already shows. Judging
+availability from when the killing damage began rather than from the instant of death does two
+things at once: an ability that came off cooldown halfway through was never an option anyone had,
+and an ability pressed during that run-up falls inside the window, so a player who used it and
+died anyway is never accused of neglect.
+
+Every unknown resolves toward silence. Base cooldowns are longer than talented ones; charges are
+ignored, so a spare charge reads as unavailable; and the log emits no reset or reduction events,
+so a reset reads as unavailable too. Each understates what was up, and understating cannot
+produce a false accusation.
+
+It reaches the reader twice, because the two audiences differ. `defensives.unused.*` is one
+finding per player, so the narrative and the findings file can see it. The death card carries the
+same answer beside the damage, and keeps **two facts apart that a blank line would merge**: a spec
+`data/defensives.toml` does not cover is a spec the tool knows nothing about, while a covered spec
+with nothing available has exonerated the player. The card says "none" for the second and stays
+silent for the first.
+
+The data file covers five specs at the time of writing. A spec absent from it produces no claim
+in either place, which is the correct behaviour and also the feature's main limit.
 
 ---
 
