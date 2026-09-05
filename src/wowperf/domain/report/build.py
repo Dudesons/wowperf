@@ -5,10 +5,13 @@ from collections.abc import Sequence
 
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.model import (
     Badge,
+    DamageRow,
+    DeathCard,
     Header,
     LedgerRow,
     Provenance,
@@ -183,6 +186,59 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     )
 
 
+LAST_SECONDS_BEFORE_DEATH = 10.0
+"""How much of the run-up to a death to show. Long enough to see the sequence, short
+enough that the card stays a card."""
+
+
+def _when(death: Death, run: Run) -> str:
+    at = format_seconds(death.timestamp_ms / 1000) or "0:00"
+    if death.pull_index is None:
+        return f"{at}, between pulls"
+    return f"{at}, pull {death.pull_index}"
+
+
+def build_deaths(loaded: LoadedRun) -> tuple[DeathCard, ...]:
+    """One card per death, oldest first, each expanded into its last ten seconds.
+
+    Built from events rather than findings: no finding carries the damage
+    run-up, which is the reason this section exists at all.
+    """
+    players_by_id = {player.actor_id: player for player in loaded.run.players}
+    cards = []
+    for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
+        window_start = death.timestamp_ms - LAST_SECONDS_BEFORE_DEATH * 1000
+        hits = sorted(
+            (
+                hit
+                for hit in loaded.damage_taken
+                if hit.actor_id == death.actor_id
+                and window_start <= hit.timestamp_ms <= death.timestamp_ms
+            ),
+            key=lambda hit: hit.timestamp_ms,
+        )
+        player = players_by_id.get(death.actor_id)
+        cards.append(
+            DeathCard(
+                player=death.player_name,
+                class_name=player.class_name if player else "unknown class",
+                when=_when(death, loaded.run),
+                killing_blow=death.killing_blow,
+                last_ten_seconds=tuple(
+                    DamageRow(
+                        seconds_before=(
+                            f"{(death.timestamp_ms - hit.timestamp_ms) / 1000:.1f}s before"
+                        ),
+                        ability=hit.ability_name,
+                        amount=f"{hit.amount:,}",
+                    )
+                    for hit in hits
+                ),
+            )
+        )
+    return tuple(cards)
+
+
 def _header(loaded: LoadedRun) -> Header:
     run = loaded.run
     verb = "Timed" if run.keystone_bonus >= 1 else "Depleted"
@@ -265,7 +321,7 @@ def build_report(
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
-        deaths=(),
+        deaths=build_deaths(loaded),
         interrupts=(),
         players=(),
         provenance=Provenance(
