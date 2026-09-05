@@ -963,17 +963,44 @@ def test_a_narrative_with_markup_is_escaped_in_the_report(tmp_path: Path) -> Non
     asserts both that the raw tag does not appear and that the escaped form does."""
     notes = tmp_path / "notes.md"
     notes.write_text(
-        "<script>alert(1)</script> and <b>bold</b> text", encoding="utf-8"
+        "<script>alert('x')</script> and <b>bold</b> text", encoding="utf-8"
     )
     result = run_analyze(tmp_path, "--narrative", str(notes))
     assert result.exit_code == 0, result.output
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
     # Assert the raw tags do NOT appear
-    assert "<script>alert(1)</script>" not in html
+    assert "<script>alert('x')</script>" not in html
     assert "<b>bold</b>" not in html
     # Assert the escaped forms DO appear
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;" in html
     assert "&lt;b&gt;bold&lt;/b&gt;" in html
+
+
+def test_a_narrative_with_numbers_fails_before_anything_is_fetched(tmp_path: Path) -> None:
+    """Every figure lives in a section that owns it, so a number in the narrative is a
+    second unbadged claim. The refusal must cost no API quota, exactly as an unreadable
+    narrative path does."""
+    notes = tmp_path / "notes.md"
+    notes.write_text("Fine.\nTravel cost 3:13.\nAlso fine.\nYou died 4 times.", encoding="utf-8")
+    calls: list[str] = []
+    result = run_analyze(tmp_path, "--narrative", str(notes), calls=calls)
+    assert result.exit_code == 1
+    assert calls == []
+    assert "notes.md" in result.output
+    # Every offending line, not only the first.
+    assert "line 2" in result.output
+    assert "line 4" in result.output
+    assert "Travel cost 3:13." in result.output
+    assert "You died 4 times." in result.output
+
+
+def test_a_narrative_without_numbers_is_accepted(tmp_path: Path) -> None:
+    notes = tmp_path / "notes.md"
+    notes.write_text("Your losses are route, not execution.", encoding="utf-8")
+    result = run_analyze(tmp_path, "--narrative", str(notes))
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "Your losses are route, not execution." in html
 
 
 def test_no_compare_report_contains_the_withheld_reason(tmp_path: Path) -> None:

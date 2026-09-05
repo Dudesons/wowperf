@@ -26,6 +26,7 @@ from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import Player, Run
 from wowperf.domain.report.build import build_report
+from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -179,6 +180,15 @@ def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> P
         return None
 
 
+def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]) -> str:
+    """Explain the rule once, then list every line that breaks it."""
+    lines = "\n".join(f"  line {number}: {line}" for number, line in offending)
+    return (
+        f"{path}: the narrative states no numbers — the figures live in the "
+        f"report's own sections, directly below it.\n{lines}"
+    )
+
+
 @app.command()
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -213,6 +223,10 @@ def analyze(
                 # from, so a bad-encoding narrative would otherwise print a
                 # codec complaint with no way to tell which path caused it.
                 raise ValueError(f"{narrative}: {error}") from error
+
+            offending = lines_with_digits(narrative_text)
+            if offending:
+                raise ValueError(_narrative_digits_message(narrative, offending))
 
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
