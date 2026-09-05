@@ -11,7 +11,8 @@ import pytest
 from markupsafe import escape
 from typer.testing import CliRunner
 
-from wowperf.cli import app
+from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, app
+from wowperf.domain.report.build import DECOMPOSITION_IDS, NESTS_INSIDE
 
 runner = CliRunner()
 
@@ -1014,3 +1015,29 @@ def test_no_compare_report_contains_the_withheld_reason(tmp_path: Path) -> None:
         "No reference run was fetched for this analysis, so there is nothing to compare against."
         in html
     )
+
+
+# A finding id as the warning writes it: dotted, lower-case, optionally a `.*` suffix.
+FINDING_ID_IN_PROSE = re.compile(r"[a-z]+(?:\.[a-z]+)+\.?\*?")
+
+
+def test_the_warning_names_exactly_the_nestings_the_report_draws() -> None:
+    """The warning and NESTS_INSIDE are one claim written twice; hold them in step.
+
+    Nothing copies one from the other, so they drift silently, and each
+    direction of drift lies to a different reader. A containment the warning
+    omits invites whoever reads the findings file to sum two figures that
+    overlap. A containment NESTS_INSIDE omits drops the "Already counted
+    inside" note from the row that needs it, and invites the same addition of
+    whoever reads the report instead.
+    """
+    named = {
+        match.rstrip("*").rstrip(".")
+        for match in FINDING_ID_IN_PROSE.findall(FINDINGS_ARE_RANKED_NOT_ADDITIVE)
+    }
+    drawn = {prefix.rstrip(".") for prefix, _ in NESTS_INSIDE}
+    drawn |= {parent for _, parent in NESTS_INSIDE}
+
+    # The decomposition ids head the ledger rather than nesting, so the warning
+    # may name them without NESTS_INSIDE carrying an entry for them.
+    assert named - set(DECOMPOSITION_IDS) == drawn - set(DECOMPOSITION_IDS)

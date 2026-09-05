@@ -33,6 +33,21 @@ app = typer.Typer(help="Analyse World of Warcraft logs and report what to improv
 
 DEFAULT_CACHE_DIR = Path("cache")
 
+FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
+    "findings are ranked by seconds_lost, not additive: compare.duration is the "
+    "total gap against the reference and already contains every other seconds_lost "
+    "figure in this report; time.gap.* and compare.downtime both nest inside "
+    "time.residual; deaths.single.*, deaths.chain.* and deaths.repeat.* all nest "
+    "inside deaths.total; and compare.route.skipped.* overlaps the waste "
+    "trash.overage already reports"
+)
+"""Why the seconds in this file must never be summed.
+
+Every containment this names is one the report also relies on, in
+`report.build.NESTS_INSIDE`; the two are held in step by
+`test_cli.test_the_warning_names_exactly_the_nestings_the_report_draws`.
+"""
+
 
 @app.callback()
 def main() -> None:
@@ -307,13 +322,7 @@ def analyze(
                 else None
             ),
         },
-        "findings_are_ranked_not_additive": (
-            "findings are ranked by seconds_lost, not additive: compare.duration is the "
-            "total gap against the reference and already contains every other seconds_lost "
-            "figure in this report; time.gap.* and compare.downtime both nest inside "
-            "time.residual; deaths.single/chain/repeat.* nest inside deaths.total; and "
-            "compare.route.skipped.* overlaps the waste trash.overage already reports"
-        ),
+        "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
         "findings": [finding.model_dump(mode="json") for finding in findings],
     }
 
