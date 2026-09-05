@@ -64,7 +64,7 @@ found nothing to say. The death cards distinguish them — "Defensives off coold
 check that came back empty, and no line at all is a spec nobody has entered. The findings file
 cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
 
-## Offensive cooldowns ask about placement, not rate
+## Throughput cooldowns ask about placement, not rate
 
 `throughput.alignment.*` names cooldowns a player owned, had off cooldown when a big pack was
 engaged, and did not press. It is deliberately scoped to the run's boss pulls and its three

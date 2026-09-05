@@ -330,7 +330,7 @@ same answer beside the damage, and keeps **two facts apart that a blank line wou
 with nothing available has exonerated the player. The card says "none" for the second and stays
 silent for the first.
 
-The data file covers five specs at the time of writing. A spec absent from it produces no claim
+The data file covers every specialisation as of 2026-09-05. A spec absent from it produces no claim
 in either place, which is the correct behaviour and also the feature's main limit.
 
 ### 5.9 Healing consumables at a death — `inferred`
@@ -369,7 +369,7 @@ judged at all.
 runs. That is the honest consequence of the design and not a defect, but it means the claim
 carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
 
-### 5.10 Offensive cooldowns — `inferred`
+### 5.10 Throughput cooldowns — `inferred`
 
 *Added 2026-09-06.*
 

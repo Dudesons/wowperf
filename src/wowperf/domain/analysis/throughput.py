@@ -32,7 +32,7 @@ def ready_at(
 ) -> tuple[CooldownAbility, ...]:
     """Which of `abilities` this player owned and had off cooldown at `at_ms`.
 
-    Owned means cast at least once somewhere in the run. Offensive cooldowns are
+    Owned means cast at least once somewhere in the run. Throughput cooldowns are
     talent-gated like defensive ones, and a player who never took the talent
     casts it nowhere — indistinguishable from holding it back, so silence must
     not be read as either.
@@ -208,7 +208,7 @@ def analyse_cooldown_ceiling(
     cooldowns: ThroughputCooldowns,
     deaths: tuple[Death, ...],
 ) -> list[Finding]:
-    """Offensive cooldowns pressed far below what their cooldown allowed.
+    """Throughput cooldowns pressed far below what their cooldown allowed.
 
     Off by default, and the reason is in the claim itself. For a defensive the
     ceiling is explicitly not a target, because a defensive answers incoming

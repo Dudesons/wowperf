@@ -159,15 +159,15 @@ def test_no_ability_belongs_to_two_categories() -> None:
         seen |= set(category.ability_ids)
 
 
-def test_the_committed_offensive_file_parses() -> None:
+def test_the_committed_throughput_file_parses() -> None:
     from wowperf.adapters.config.toml import DEFAULT_THROUGHPUT_PATH, load_throughput_cooldowns
 
     cooldowns = load_throughput_cooldowns(DEFAULT_THROUGHPUT_PATH)
-    assert cooldowns.for_spec("Mage", "Frost"), "Frost Mage has no offensive cooldowns listed"
+    assert cooldowns.for_spec("Mage", "Frost"), "Frost Mage has no throughput cooldowns listed"
     assert cooldowns.for_spec("Bard", "Jazz") == ()
 
 
-def test_every_offensive_cooldown_is_long_enough_to_be_one() -> None:
+def test_every_throughput_cooldown_is_long_enough_to_be_one() -> None:
     # The data file's own criterion. A 30s rotational ability is not a cooldown
     # anyone plans a pull around, and listing one would make the alignment claim
     # fire on abilities nobody holds.
@@ -178,7 +178,7 @@ def test_every_offensive_cooldown_is_long_enough_to_be_one() -> None:
             assert ability.cooldown_seconds >= 45.0, f"{spec}: {ability.name} is too short"
 
 
-def test_every_offensive_spec_key_names_a_class_the_log_api_reports() -> None:
+def test_every_throughput_spec_key_names_a_class_the_log_api_reports() -> None:
     from wowperf.adapters.config.toml import load_throughput_cooldowns
 
     unknown = []
@@ -189,7 +189,7 @@ def test_every_offensive_spec_key_names_a_class_the_log_api_reports() -> None:
     assert unknown == [], f"spec keys that can never match a player: {unknown}"
 
 
-def test_no_ability_is_both_a_defensive_and_an_offensive_cooldown_for_one_spec() -> None:
+def test_no_ability_is_both_a_defensive_and_a_throughput_cooldown_for_one_spec() -> None:
     """The two files ask opposite questions, so an ability in both answers neither.
 
     Several abilities are genuinely dual-purpose — a tank cooldown that also
@@ -205,4 +205,4 @@ def test_no_ability_is_both_a_defensive_and_an_offensive_cooldown_for_one_spec()
         overlap = defensive.get(key, set()) & {ability.ability_id for ability in abilities}
         if overlap:
             clashes.append((key, sorted(overlap)))
-    assert clashes == [], f"listed as both defensive and offensive: {clashes}"
+    assert clashes == [], f"listed as both defensive and throughput: {clashes}"

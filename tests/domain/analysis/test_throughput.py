@@ -51,7 +51,7 @@ def a_run(pulls: tuple[Pull, ...]) -> Run:
 
 
 def test_ready_requires_the_player_to_own_the_ability() -> None:
-    # Offensive cooldowns are talent-gated too. A player who never cast one all
+    # Throughput cooldowns are talent-gated too. A player who never cast one all
     # run may simply not have taken it, and must not be told they held it back.
     assert ready_at((), ABILITIES, 11, 600_000, visible_from_ms=0) == ()
 

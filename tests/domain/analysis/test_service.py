@@ -73,6 +73,25 @@ def a_loaded_run() -> LoadedRun:
     )
 
 
+def a_loaded_run_owning_its_cooldown() -> LoadedRun:
+    """The shared run, plus one Arcane Surge cast so the player demonstrably has it.
+
+    Ownership is what the throughput analysers require before saying anything: a
+    talent never taken looks exactly like a button never pressed, and must not be
+    held against anyone.
+    """
+    loaded = a_loaded_run()
+    return loaded.model_copy(
+        update={
+            "casts": loaded.casts
+            + (
+                CastEvent(actor_id=11, ability_id=365350, ability_name="Arcane Surge",
+                          timestamp_ms=5_000, pull_index=0),
+            )
+        }
+    )
+
+
 def test_every_finding_carries_a_confidence_badge() -> None:
     findings = analyse(
         a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
@@ -107,11 +126,11 @@ def test_every_analyser_contributes() -> None:
     ids = {
         finding.id.split(".")[0]
         for finding in analyse(
-            a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns()
+            a_loaded_run_owning_its_cooldown(), SEASON, DEFENSIVES, CONSUMABLES, THROUGHPUT
         )
     }
     assert {
-        "time", "deaths", "interrupts", "trash", "defensives", "consumables",
+        "time", "deaths", "interrupts", "trash", "defensives", "consumables", "throughput",
     } <= ids
 
 
@@ -159,19 +178,13 @@ def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
 def test_the_alignment_analyser_reaches_the_ranked_list() -> None:
     # The boss pull is judgeable and Arcane Surge is owned but never pressed on
     # it, so the default half of the throughput pair must contribute.
-    loaded = a_loaded_run()
-    owned = loaded.casts + (
-        CastEvent(actor_id=11, ability_id=365350, ability_name="Arcane Surge",
-                  timestamp_ms=5_000, pull_index=0),
-    )
     findings = analyse(
-        loaded.model_copy(update={"casts": owned}),
-        SEASON, DEFENSIVES, Consumables(), OFFENSIVE,
+        a_loaded_run_owning_its_cooldown(), SEASON, DEFENSIVES, Consumables(), THROUGHPUT
     )
     assert any(f.id.startswith("throughput.alignment.") for f in findings)
 
 
-OFFENSIVE = ThroughputCooldowns(
+THROUGHPUT = ThroughputCooldowns(
     entries=(
         (
             "Mage/Arcane",
@@ -206,7 +219,7 @@ def test_the_throughput_ceiling_is_off_unless_it_is_asked_for() -> None:
     # many packs are worth a burst cooldown, so a low count is often right. This
     # is the same run the test below gets a ceiling finding out of.
     findings = analyse(
-        a_run_the_ceiling_can_judge(), SEASON, DEFENSIVES, Consumables(), OFFENSIVE
+        a_run_the_ceiling_can_judge(), SEASON, DEFENSIVES, Consumables(), THROUGHPUT
     )
     assert not any(f.id.startswith("throughput.ceiling.") for f in findings)
 
@@ -217,7 +230,7 @@ def test_asking_for_the_throughput_ceiling_turns_it_on() -> None:
         SEASON,
         DEFENSIVES,
         Consumables(),
-        OFFENSIVE,
+        THROUGHPUT,
         include_cooldown_ceiling=True,
     )
     assert any(f.id.startswith("throughput.ceiling.") for f in findings)
