@@ -28,9 +28,9 @@ easiest way to produce a confident wrong number, so it is worth restating:
 - `deaths.single.*`, `deaths.chain.*` and `deaths.repeat.*` nest inside `deaths.total`.
 - `compare.route.skipped.*` overlaps the waste `trash.overage` already reports.
 
-Adding any two of those together produces a number larger than the run. The report labels most
-nested rows "Already counted inside …" for exactly this reason — most, not all, so a missing
-label is no evidence that a row stands alone. This list is what governs.
+Adding any two of those together produces a number larger than the run. The report labels every
+nested row "Already counted inside …" for exactly this reason, and a test holds that label set
+and the warning above in step, so neither can drift from the other.
 
 ## What each confidence badge licenses you to say
 
