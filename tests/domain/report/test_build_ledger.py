@@ -36,15 +36,30 @@ def test_a_ranked_loss_goes_to_the_losses() -> None:
 
 
 def test_a_loss_that_nests_says_what_contains_it() -> None:
+    # Title copied from analysis/timeline.py's `time.residual` finding, not the id:
+    # a reader must see a sentence, never a dotted internal identifier.
     report = build_report(
         a_loaded(),
-        (a_finding("time.residual", 300.0), a_finding("time.gap.0", 41.0)),
+        (
+            a_finding("time.residual", 300.0, title="Time spent outside pulls"),
+            a_finding("time.gap.0", 41.0),
+        ),
         None,
         None,
         None,
         FETCHED,
     )
-    assert report.ledger_losses[0].nests_inside == "time.residual"
+    assert report.ledger_losses[0].nests_inside == "Time spent outside pulls"
+
+
+def test_a_loss_whose_parent_is_absent_from_this_run_says_nothing() -> None:
+    # `time.gap.0` nests inside `time.residual`, but that finding never arrived
+    # in this run's findings; pointing at a row that is not on the page would be
+    # worse than staying silent, so `nests_inside` must not fall back to the id.
+    report = build_report(
+        a_loaded(), (a_finding("time.gap.0", 41.0),), None, None, None, FETCHED
+    )
+    assert report.ledger_losses[0].nests_inside is None
 
 
 def test_a_loss_that_nests_in_nothing_says_nothing() -> None:

@@ -43,6 +43,10 @@ Stated rather than inferred: the relationships come from what the analysers
 measure, and they change when an analyser changes, not when a report renders.
 `compare.duration` contains every figure here and is a decomposition row rather
 than a parent — repeating it on every line would be noise.
+
+Entries must stay mutually non-overlapping: `parent_of` resolves by first match
+in tuple order, so a broader prefix placed ahead of a narrower one would
+silently win and misattribute nesting.
 """
 
 
@@ -118,14 +122,22 @@ def parent_of(finding_id: str) -> str | None:
     return None
 
 
-def _ledger_row(finding: Finding) -> LedgerRow:
+def _ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
+    """Format one finding for display.
+
+    `nests_inside` carries the parent finding's title, not its id: the id is
+    an internal identifier and never belongs on a page a person reads. When
+    the parent finding is not among this run's findings, `nests_inside` stays
+    `None` — a pointer to a row that is not on the page is worse than silence.
+    """
+    parent_id = parent_of(finding.id)
     return LedgerRow(
         finding_id=finding.id,
         title=finding.title,
         detail=finding.detail,
         badge=badge_for(finding.confidence),
         seconds=format_seconds(finding.seconds_lost),
-        nests_inside=parent_of(finding.id),
+        nests_inside=titles_by_id.get(parent_id) if parent_id is not None else None,
         evidence=finding.evidence,
     )
 
@@ -149,16 +161,18 @@ def build_report(
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 
+    titles_by_id = {finding.id: finding.title for finding in findings}
+
     return Report(
         header=_header(loaded),
         narrative=narrative,
         ledger_decomposition=tuple(
-            _ledger_row(finding)
+            _ledger_row(finding, titles_by_id)
             for finding in findings
             if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
         ),
         ledger_losses=tuple(
-            _ledger_row(finding)
+            _ledger_row(finding, titles_by_id)
             for finding in findings
             if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
         ),
