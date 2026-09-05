@@ -30,7 +30,9 @@ def _fractions(
     }
 
 
-def _unavailable(our_seconds: float, their_seconds: float, has_auras: bool) -> Finding:
+def _unavailable(
+    our_seconds: float, their_seconds: float, our_has_auras: bool, their_has_auras: bool
+) -> Finding:
     return Finding(
         id="compare.uptime.unavailable",
         title="Buff and debuff uptime could not be compared",
@@ -44,7 +46,8 @@ def _unavailable(our_seconds: float, their_seconds: float, has_auras: bool) -> F
         evidence=(
             f"our boss time {our_seconds:.0f}s",
             f"their boss time {their_seconds:.0f}s",
-            f"reference aura data {'present' if has_auras else 'absent'}",
+            f"our aura data {'present' if our_has_auras else 'absent'}",
+            f"their aura data {'present' if their_has_auras else 'absent'}",
         ),
     )
 
@@ -112,7 +115,11 @@ def compare_uptime(
     their_seconds = boss_seconds(theirs)
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
-        return [_unavailable(our_seconds, their_seconds, their_auras is not None)]
+        return [
+            _unavailable(
+                our_seconds, their_seconds, our_auras is not None, their_auras is not None
+            )
+        ]
 
     our_windows = boss_windows(ours)
     their_windows = boss_windows(theirs)

@@ -147,6 +147,22 @@ def test_a_missing_reference_says_so_rather_than_reporting_nothing() -> None:
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
+    assert "our aura data present" in findings[0].evidence
+    assert "their aura data absent" in findings[0].evidence
+
+
+def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:
+    """Our aura data can be the missing half even when the reference's own data is real."""
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
+
+    findings = compare_uptime(ours, None, a_player(), theirs, their_auras, "Wipsdk")
+
+    assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
+    assert findings[0].seconds_lost is None
+    assert "our aura data absent" in findings[0].evidence
+    assert "their aura data present" in findings[0].evidence
 
 
 def test_a_run_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() -> None:
