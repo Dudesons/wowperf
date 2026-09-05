@@ -25,9 +25,9 @@ def a_loaded() -> LoadedRun:
 
 
 def test_a_finding_no_section_claims_reaches_observations() -> None:
-    # "trash.pull.0" and "defensives.Uglymage.45438" match no ledger prefix
-    # (both untimed), no "interrupts.", no "players.damage." and no comparison
-    # prefix — the exact families Plan D and task 11 left with nowhere to go.
+    # "trash.pull.0" and "defensives.Uglymage.45438" match no ledger prefix,
+    # no "interrupts.", no "players.damage." and no comparison prefix —
+    # findings that belong in observations, the catch-all section.
     findings = (
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
         a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),

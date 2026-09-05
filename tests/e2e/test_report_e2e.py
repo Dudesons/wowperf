@@ -102,9 +102,10 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # The timeline heading always renders, whether present or withheld.
     assert "Aligned timeline" in html
 
-    # The spell/talent/uptime comparison rows reach the analysed player's own
-    # card, never a namesake's card -- the exact gap Ruling Q found, and the
-    # only path in this suite that exercises it against a real reference run.
+    # Spell, talent and uptime comparison rows must land on the analysed
+    # player's own card, never a namesake's card. The code matches by actor id,
+    # not by name, to avoid routing comparison rows to the wrong player when
+    # names collide.
     if parse is not None:
         comparison_ids = {
             finding.id

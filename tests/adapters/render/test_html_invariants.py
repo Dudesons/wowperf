@@ -68,9 +68,9 @@ def minimal_findings() -> tuple[Finding, ...]:
         ),
         Finding(
             id="interrupts.summary",
-            # Apostrophe and ampersand on purpose: a hand-written fixture that never
-            # carries the characters autoescape transforms is how this project's
-            # escaping bugs keep surviving the offline suite (see Ruling V).
+            # Apostrophe and ampersand on purpose: Jinja's autoescape turns
+            # apostrophes into &#39;, so the title must be escaped before
+            # comparing against the rendered HTML.
             title="Wipsdk let Death's Advance & Ice Block go uninterrupted",
             detail="Grouped by spell.",
             confidence=Confidence.DERIVED,
