@@ -42,6 +42,18 @@ def test_a_category_is_not_claimed_when_the_window_reaches_before_the_log_begins
     assert consumables_up_at((), CATEGORIES, 11, early, visible_from_ms=0) == ("healthstone",)
 
 
+def test_a_window_opening_exactly_when_the_log_does_is_judged() -> None:
+    # The boundary is inclusive: a window reaching back to the first visible
+    # moment is fully covered, so there is nothing the log failed to see.
+    death = 310_000
+    assert "health potion" in consumables_up_at(
+        (), CATEGORIES, 11, death, visible_from_ms=0
+    )
+    assert "health potion" not in consumables_up_at(
+        (), CATEGORIES, 11, death - 1, visible_from_ms=0
+    )
+
+
 def test_a_player_who_drank_nothing_had_everything_available() -> None:
     # Unlike a defensive, nothing has to prove the player carried one: a potion
     # is a choice they control, and the log cannot tell an unused one from an
