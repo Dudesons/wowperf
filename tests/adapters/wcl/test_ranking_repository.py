@@ -10,7 +10,7 @@ import pytest
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
-from wowperf.adapters.wcl.errors import BracketMismatch
+from wowperf.adapters.wcl.errors import BracketMismatch, WclError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 
 TOKEN = {"access_token": "t", "expires_in": 86400}
@@ -115,6 +115,25 @@ def test_top_parses_pass_the_class_and_spec_through(tmp_path: Path) -> None:
     assert calls == [15]
     assert rows[0].character_name == "Críms"
     assert rows[0].spec == "Arcane"
+
+
+def test_a_null_data_block_on_a_rankings_query_raises_a_named_error(tmp_path: Path) -> None:
+    """{"data": null} reaches `rankings_block(payload)` as `payload.get(...)` on `None`,
+    a raw `AttributeError` — not in `analyze`'s caught exception tuple — before this
+    call site had any guard of its own. Guarding in `WclClient.execute` fixes it here too.
+    """
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        return httpx.Response(200, json={"data": None})
+
+    http = httpx.Client(transport=httpx.MockTransport(handle), base_url="https://x")
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    repository = WclRankingRepository(client, DiskCache(tmp_path))
+
+    with pytest.raises(WclError, match="null 'data' block"):
+        repository.fastest_runs(12825, 16)
 
 
 def test_a_repeated_lookup_is_served_from_the_cache(tmp_path: Path) -> None:

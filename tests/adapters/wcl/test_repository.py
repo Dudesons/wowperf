@@ -13,6 +13,7 @@ import pytest
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.queries import ACTORS_QUERY, FIGHTS_QUERY
 from wowperf.adapters.wcl.repository import WclRunRepository
@@ -373,11 +374,12 @@ def test_a_second_lookup_for_the_same_actor_is_served_from_the_cache(tmp_path: P
     assert calls == ["AuraTable"], "the second lookup should not reach the network"
 
 
-def test_a_null_data_block_raises_an_ingest_error_naming_the_code(tmp_path: Path) -> None:
+def test_a_null_data_block_raises_a_wcl_error_naming_the_code(tmp_path: Path) -> None:
     """A GraphQL response can carry a null `data` block itself, not only a null
     nested report: the aura table query hits this for a fight the API cannot
-    resolve. `WclClient.execute` passes that null straight through, so the
-    repository must reject it explicitly rather than crash subscripting None."""
+    resolve. `WclClient.execute` now raises `WclError` for a null `data` block
+    itself, before this repository's `_require_report` guard is ever reached —
+    so a null `data` block never reaches `_fetch` as a bare `None` to subscript."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if "oauth" in str(request.url):
@@ -385,7 +387,7 @@ def test_a_null_data_block_raises_an_ingest_error_naming_the_code(tmp_path: Path
         return httpx.Response(200, json={"data": None})
 
     repository = a_repository(handler, tmp_path)
-    with pytest.raises(IngestError, match="Report abc123 was not found"):
+    with pytest.raises(WclError, match="null 'data' block.*abc123"):
         repository.auras("abc123", 36, 7)
 
 

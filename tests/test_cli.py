@@ -829,8 +829,9 @@ def test_no_compare_issues_no_aura_queries(tmp_path: Path) -> None:
 
 
 def test_an_aura_fetch_that_fails_still_writes_the_report(tmp_path: Path) -> None:
-    """Drives the `IngestError` branch of `cli._auras`: a null `data` block reaches
-    `WclRunRepository._require_report`, which raises `IngestError`."""
+    """Drives the `WclError` branch of `cli._auras`: a null `data` block now makes
+    `WclClient.execute` itself raise `WclError`, before `WclRunRepository`'s own
+    `_require_report` guard is ever reached."""
     result = run_analyze(tmp_path, aura_response=httpx.Response(200, json={"data": None}))
 
     payload = written_findings(tmp_path)
