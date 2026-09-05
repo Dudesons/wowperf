@@ -1,0 +1,227 @@
+{# ABOUTME: Document skeleton for the Mythic+ post-mortem report: header, ledger, timeline, #}
+{# ABOUTME: deaths, interrupts, players and provenance — one self-contained file, no script or fetch. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</title>
+<style>
+:root {
+  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
+  --page: #16181c; --card: #1e2126; --line: #2c3038;
+  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c;
+  --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
+  --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
+  --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
+  --class-monk: #00ff96; --class-paladin: #f58cba; --class-priest: #ffffff;
+  --class-rogue: #fff569; --class-shaman: #0070de; --class-warlock: #9482c9;
+  --class-warrior: #c79c6e; --class-unknown: #a8a29b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 760px; margin: 0 auto; }
+a { color: var(--ours); }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+p { margin: 0 0 10px; }
+.sub { color: var(--ink-dim); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; margin: 0 0 10px; }
+.row-head { display: flex; align-items: baseline; gap: 10px; }
+.row-head h3 { flex: 1; }
+.cost { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page);
+  text-decoration: none; }
+.badge-measured { background: var(--badge-measured); }
+.badge-derived { background: var(--badge-derived); }
+.badge-inferred { background: var(--badge-inferred); }
+.detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+.evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
+.evidence li::before { content: "· "; }
+.nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
+.withheld { color: var(--ink-dim); font-style: italic; }
+.narrative { border-left: 3px solid var(--ours); padding: 2px 0 2px 14px;
+  white-space: pre-wrap; margin: 0 0 10px; }
+.legend { color: var(--ink-faint); font-size: 13px; }
+.track-label { fill: var(--ink-dim); font-size: 12px; }
+.tick { stroke: var(--ink-faint); stroke-width: 1; }
+.tick-label { fill: var(--ink-faint); font-size: 11px; }
+.block { fill: var(--ours); }
+.block-theirs { fill: var(--theirs); }
+.block-boss { stroke: var(--ink); stroke-width: 1; }
+.block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
+.block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
+.death-when { color: var(--ink-dim); font-size: 13px; }
+.runup { width: 100%; border-collapse: collapse; margin: 8px 0 0; font-size: 13px; }
+.runup td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim); }
+.runup td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.player-head { display: flex; align-items: baseline; gap: 8px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</h1>
+<p class="sub">{{ report.header.result }}{% if report.header.affixes %} · Affixes {{ report.header.affixes|join(", ") }}{% endif %}</p>
+{% for warning in report.header.warnings %}
+<p class="withheld">{{ warning }}</p>
+{% endfor %}
+
+{% if report.narrative %}
+<h2 id="narrative">What this run says</h2>
+<div class="narrative">{{ report.narrative }}</div>
+<p class="legend">Interpretation, written from the findings below.</p>
+{% endif %}
+
+{% macro ledger_row(row) %}
+<div class="card">
+  <div class="row-head">
+    <h3>{{ row.title }}</h3>
+    {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
+    <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
+  </div>
+  <p class="detail">{{ row.detail }}</p>
+  {% if row.nests_inside %}
+  <p class="nests">Already counted inside {{ row.nests_inside }}.</p>
+  {% endif %}
+  {% if row.evidence %}
+  <ul class="evidence">{% for item in row.evidence %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+</div>
+{% endmacro %}
+
+<h2 id="ledger">Where the time went</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.ledger_decomposition %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% if report.ledger_losses %}
+<p class="sub">Ranked losses.</p>
+{% for row in report.ledger_losses %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% endif %}
+
+<h2 id="timeline">Aligned timeline</h2>
+{% if report.timeline.section.state.value == "withheld" %}
+<p class="withheld">{{ report.timeline.section.reason }}</p>
+{% else %}
+<p class="sub">Blocks are pulls. The space between them is travel.</p>
+<p class="legend">A thin outline marks a boss pull. A heavier outline marks a pack we pulled
+that the reference run skipped. A dashed, unfilled block is a pack the reference run pulled
+that we skipped.</p>
+<svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}"
+     role="img" aria-label="Both runs on one elapsed-time axis">
+  {% for x, label in report.timeline.ticks %}
+  <line class="tick" x1="{{ x }}" y1="{{ report.timeline.tick_y1 }}" x2="{{ x }}"
+        y2="{{ report.timeline.tick_y2 }}"></line>
+  <text class="tick-label" x="{{ x }}" y="{{ report.timeline.tick_label_y }}"
+        text-anchor="middle">{{ label }}</text>
+  {% endfor %}
+  {% for track in [report.timeline.ours, report.timeline.theirs] %}
+  {% if track %}
+  <text class="track-label" x="{{ report.timeline.caption_x }}" y="{{ track.baseline_y }}"
+        dy="{{ report.timeline.caption_dy }}">{{ track.caption }}</text>
+  {% for block in track.blocks %}
+  <rect x="{{ block.x }}" y="{{ track.baseline_y }}" width="{{ block.width }}"
+        height="{{ report.timeline.block_height }}" rx="2" class="{{ block.css_class }}">
+    <title>{{ block.label }}</title>
+  </rect>
+  {% endfor %}
+  {% endif %}
+  {% endfor %}
+</svg>
+{% endif %}
+
+<h2 id="deaths">Deaths</h2>
+{% if not report.deaths %}
+<p class="sub">No deaths.</p>
+{% endif %}
+{% for death in report.deaths %}
+<div class="card">
+  <div class="row-head">
+    <h3>{{ death.player }} — {{ death.killing_blow }}</h3>
+    <span class="death-when">{{ death.when }}</span>
+  </div>
+  <p class="detail">{{ death.class_name }}</p>
+  {% if death.last_ten_seconds %}
+  <table class="runup">
+    {% for hit in death.last_ten_seconds %}
+    <tr><td>{{ hit.seconds_before }}</td><td>{{ hit.ability }}</td><td>{{ hit.amount }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</div>
+{% endfor %}
+
+<h2 id="interrupts">Interrupts</h2>
+{% if not report.interrupts %}
+<p class="sub">Nothing to report.</p>
+{% endif %}
+{% for row in report.interrupts %}
+{{ ledger_row(row) }}
+{% endfor %}
+
+<h2 id="players">Players</h2>
+{% if not report.players %}
+<p class="sub">No players.</p>
+{% endif %}
+{% for player in report.players %}
+<div class="card">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--{{ player.colour }})"></span>
+    <h3>{{ player.name }}</h3>
+    <span class="sub">{{ player.class_name }} {{ player.spec }}</span>
+  </div>
+  <p class="stats">{{ player.casts_summary }} · {{ player.deaths }} death{{ "" if player.deaths == 1 else "s" }} · {{ player.kicks }} interrupt{{ "" if player.kicks == 1 else "s" }}</p>
+  {% for row in player.damage_rows %}
+  {{ ledger_row(row) }}
+  {% endfor %}
+  {% if player.spell_and_talent.state.value == "withheld" %}
+  <p class="withheld">{{ player.spell_and_talent.reason }}</p>
+  {% endif %}
+  {% for row in player.spell_and_talent_rows %}
+  {{ ledger_row(row) }}
+  {% endfor %}
+</div>
+{% endfor %}
+
+<h2 id="observations">Other findings</h2>
+{% if report.observations %}
+<p class="sub">Findings with no seconds figure, so they sit outside the ledger above.</p>
+{% for row in report.observations %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% else %}
+<p class="sub">Nothing else measured.</p>
+{% endif %}
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
+fetched {{ report.provenance.fetched_at }}.</p>
+{% if report.provenance.speed_reference_url %}
+<p class="sub"><a href="{{ report.provenance.speed_reference_url }}">Speed reference run</a></p>
+{% endif %}
+{% if report.provenance.parse_reference_url %}
+<p class="sub"><a href="{{ report.provenance.parse_reference_url }}">Parse reference run</a></p>
+{% endif %}
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</main>
+</body>
+</html>

@@ -528,12 +528,16 @@ snapshot-testable.
 
 Sections, in order:
 
-1. **Header** — dungeon, keystone level, affixes, timed or depleted and by how much, ~~parse
+1. **Header** — dungeon, keystone level, affixes, timed or depleted ~~and by how much~~, ~~parse
    percentile as triage,~~ warning banners. *Amended 2026-09-05:* the percentile is not built.
    Nothing this project fetches produces our own player's rank — `top_parses` returns the leading
    rows for a specialisation, not our position among them — so a percentile here would be an
    invented number. Reviving it needs a leaderboard query scoped to our own character, verified
-   live and dated first. See the report design, §5.1.
+   live and dated first. See the report design, §5.1. *Amended 2026-09-05:* the header states the
+   run's own completion time, not a margin. `keystoneTime` is Blizzard's penalty-inclusive
+   completion time, not the key's time limit (§2.2), so "by how much" would need a par time no
+   Warcraft Logs field this project fetches carries — inventing one is exactly what this design
+   forbids.
 2. **Narrative** — the written interpretation (see §8), visually distinct and marked as
    interpretation.
 3. **Seconds ledger** — where the run's time went, and losses ranked, each with a confidence
@@ -542,11 +546,16 @@ Sections, in order:
    marked.
 5. **Deaths** — ordered, expanding into the last ten seconds of damage taken.
 6. **Interrupts** — missed casts grouped by spell, ranked by the damage that followed.
-7. **Per-player cards** — in-pull active time, deaths, kicks, ~~avoidable damage~~, and the spell
-   and talent difference. *Amended 2026-09-05:* not "avoidable damage" — the log does not record
-   whether a hit could have been dodged, and §5.5's analyser already refuses that framing, stating
-   damage against the group median instead. The card follows the analyser. See the report design,
-   §3.1.
+7. **Per-player cards** — ~~in-pull active time~~, deaths, kicks, ~~avoidable damage~~, and the
+   spell and talent difference. *Amended 2026-09-05:* not "avoidable damage" — the log does not
+   record whether a hit could have been dodged, and §5.5's analyser already refuses that framing,
+   stating damage against the group median instead. The card follows the analyser. See the report
+   design, §3.1. *Amended 2026-09-05:* not "active time" either. `active_seconds` is
+   `casts_in_pulls` at one modelled second per cast — a deliberately coarse floor — so a fast
+   caster exceeds both the pull time and 100% activity on the reference run, and a percentage
+   that is meaningful below 100 and nonsense above it is worse than no percentage. The card states
+   the cast count over the pull time instead, and drops the derived share. See the report design,
+   §4.
 8. **Provenance** — report code, fetch time, reference run links, and the confidence legend.
 
 Dark by default. Class colours identify players but never carry meaning alone, since several are

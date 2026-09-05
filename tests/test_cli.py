@@ -2,11 +2,13 @@
 # ABOUTME: Exercises argument parsing, error reporting and quota logging; makes no network call.
 
 import json
+import re
 from pathlib import Path
 from typing import Any, cast
 
 import httpx
 import pytest
+from markupsafe import escape
 from typer.testing import CliRunner
 
 from wowperf.cli import app
@@ -887,3 +889,101 @@ def test_a_non_429_http_failure_on_the_aura_query_still_writes_the_report(tmp_pa
 
     assert result.exit_code == 0, result.output
     assert "compare.uptime.unavailable" in ids
+
+
+def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+    written = tmp_path / "out" / "abc123-36.html"
+    assert written.exists()
+    assert written.read_text(encoding="utf-8").lstrip().lower().startswith("<!doctype html>")
+
+
+def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
+    """Mirrors `test_nothing_is_fetched_from_anywhere` in `test_html.py`: an `href` to
+    the reference run on warcraftlogs.com is a link the reader may follow, not a
+    resource the page loads, so only `src=` and script/stylesheet tags are checked."""
+    result = run_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "<script" not in html.lower()
+    assert "@import" not in html.lower()
+    assert "<link rel=" not in html.lower()
+    for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
+        assert not src.startswith(("http://", "https://", "//")), src
+
+
+def test_no_compare_still_writes_a_report(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "out" / "abc123-36.html").exists()
+
+
+def test_a_narrative_file_reaches_the_report(tmp_path: Path) -> None:
+    # Escaped on comparison: a hand-written narrative file is free text and
+    # can carry an apostrophe or ampersand, which autoescape would transform.
+    text = "Both of your largest losses were travel."
+    notes = tmp_path / "notes.md"
+    notes.write_text(text, encoding="utf-8")
+    result = run_analyze(tmp_path, "--narrative", str(notes))
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert str(escape(text)) in html
+
+
+def test_a_missing_narrative_file_fails_before_anything_is_fetched(tmp_path: Path) -> None:
+    calls: list[str] = []
+    result = run_analyze(
+        tmp_path, "--narrative", str(tmp_path / "absent.md"), calls=calls
+    )
+    assert result.exit_code == 1
+    assert "absent.md" in result.output
+    # The whole point: a typo must not cost an API round trip.
+    assert calls == []
+
+
+def test_an_undecodable_narrative_file_names_the_path_before_anything_is_fetched(
+    tmp_path: Path,
+) -> None:
+    """`UnicodeDecodeError`'s own message never names the file it came from — without
+    the wrapping in `cli.analyze`, a bad-encoding narrative would print only a codec
+    complaint, leaving the reader no way to tell which path caused it."""
+    notes = tmp_path / "notes.md"
+    notes.write_bytes(b"\xff\xfe not valid utf-8")
+    calls: list[str] = []
+    result = run_analyze(tmp_path, "--narrative", str(notes), calls=calls)
+    assert result.exit_code == 1
+    assert "notes.md" in result.output
+    assert calls == []
+
+
+def test_a_narrative_with_markup_is_escaped_in_the_report(tmp_path: Path) -> None:
+    """A narrative file containing markup must be escaped before rendering, or a
+    malicious narrative could inject scripts or break the page structure. This test
+    asserts both that the raw tag does not appear and that the escaped form does."""
+    notes = tmp_path / "notes.md"
+    notes.write_text(
+        "<script>alert(1)</script> and <b>bold</b> text", encoding="utf-8"
+    )
+    result = run_analyze(tmp_path, "--narrative", str(notes))
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    # Assert the raw tags do NOT appear
+    assert "<script>alert(1)</script>" not in html
+    assert "<b>bold</b>" not in html
+    # Assert the escaped forms DO appear
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "&lt;b&gt;bold&lt;/b&gt;" in html
+
+
+def test_no_compare_report_contains_the_withheld_reason(tmp_path: Path) -> None:
+    """When `--no-compare` is passed, many report sections are withheld and
+    replaced with a reason message. The reader must be told explicitly why those
+    sections are empty, not left guessing."""
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert (
+        "No reference run was fetched for this analysis, so there is nothing to compare against."
+        in html
+    )

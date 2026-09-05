@@ -181,9 +181,8 @@ def analyse_interrupts(
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"{damage} unmitigated damage attributed",
+                    f"{damage:,} unmitigated damage attributed",
                     "unmitigated: before absorbs and mitigation",
-                    f"ability {ability_id}",
                 ),
             )
         )

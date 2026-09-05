@@ -35,6 +35,16 @@ def a_run(keystone_level: int = 16) -> Run:
     )
 
 
+def a_pull(
+    index: int, start_ms: int, end_ms: int, name: str = "Pack"
+) -> Pull:
+    return Pull(
+        index=index, pull_id=index + 1, name=name, encounter_id=0,
+        start_ms=start_ms, end_ms=end_ms, killed=True, x=index, y=index,
+        enemies=(EnemyNpc(actor_id=index, game_id=100 + index),)
+    )
+
+
 def a_death(timestamp_ms: int) -> Death:
     return Death(player_name="Uglymage", actor_id=11, timestamp_ms=timestamp_ms,
                  killing_blow="Molten Scar")
@@ -127,3 +137,15 @@ def test_gap_findings_are_capped_at_the_worst_ones() -> None:
     gap_findings = [f for f in findings if f.id.startswith("time.gap.")]
     assert len(gap_findings) == MAX_GAPS_REPORTED
     assert [f.seconds_lost for f in gap_findings] == [100.0, 90.0, 80.0, 70.0, 60.0]
+
+
+def test_a_gaps_evidence_names_the_pack_it_leads_to() -> None:
+    pulls = (
+        a_pull(0, 0, 60_000),
+        a_pull(1, 200_000, 260_000, name="Loa Speaker Nanea"),
+    )
+    run = a_run().model_copy(update={"pulls": pulls})
+    findings = decompose_time(run, (), SEASON)
+    gaps = [f for f in findings if f.id.startswith("time.gap.")]
+    assert gaps
+    assert gaps[0].evidence[0] == "Loa Speaker Nanea"

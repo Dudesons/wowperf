@@ -154,7 +154,12 @@ class PlayerCard(Frozen):
     class_name: str          # rendered as text, never colour alone
     spec: str
     colour: str              # palette token for the class
-    active_time: str         # "412s in pulls (38%)"
+    casts_summary: str       # "182 casts in 31:49 of pulls"
+    # *Amended 2026-09-05:* not `active_time` as a percentage. `active_seconds` is
+    # `casts_in_pulls` at one modelled second per cast, a deliberately coarse floor, so a fast
+    # caster exceeds both the pull time and 100% activity on the reference run. The card states
+    # the cast count over the pull time instead, and drops the derived share. See postmortem
+    # design §7 item 7.
     deaths: int
     kicks: int
     # Damage outliers as `players.damage.*` words them: a multiple of the group
@@ -208,9 +213,12 @@ reported, never invented by the template.
 | 7 | Per-player cards | `summarise_players` and `players.damage.*`; comparison rows from `compare.spells.*`, `compare.talents`, `compare.uptime.*` | The comparison rows only, without a parse reference. Reason from `compare.parse.unavailable` |
 | 8 | Provenance | `Run`, both references, and the list of everything withheld | Never |
 
+*Amended 2026-09-05:* a ninth section, "Other findings", renders between 7 and 8. See §5.2.
+
 Section 2 is the one exception to "always appears", and deliberately: a report generated without
-`--narrative` has not withheld anything. So the report renders eight sections with a narrative and
-seven without, and §10's invariant is worded to match.
+`--narrative` has not withheld anything. So the report renders ~~eight~~ **nine** sections with a
+narrative and ~~seven~~ **eight** without, and §10's invariant is worded to match. *Amended
+2026-09-05:* a ninth section was added after this design was approved. See §5.2.
 
 ### 5.1 The header's percentile is not built, and why
 
@@ -228,6 +236,20 @@ So the header carries dungeon, keystone level, affixes, result and warnings, and
 is a deliberate omission from an approved design; §7 is amended to say so when this design is
 committed.
 
+### 5.2 A ninth section: observations *(amended 2026-09-05)*
+
+On the first real run this branch analysed, four of twenty-six findings — three `trash.pull.*`
+and one `defensives.<player>.<ability>` — matched no section's id-prefix whitelist and were
+silently dropped (final whole-branch review, Ruling N). A prefix list is not a stable partition:
+any analyser family absent from it disappears from the page without a trace, and Plan D's entire
+defensives analyser was one such family with nowhere assigned to go.
+
+The fix is structural rather than another whitelist entry: `build_report` computes the set of
+finding ids every other section actually placed and routes everything left over into a new
+"Other findings" heading, positioned after the per-player cards and before provenance. The report
+therefore renders **nine** sections with a narrative and **eight** without — this design's "eight
+sections" (§5) and §10's invariant are both superseded by that count.
+
 ## 6. The aligned timeline
 
 Two horizontal tracks on one shared elapsed-time axis. Ours above, the reference below. Blocks are
@@ -240,7 +262,10 @@ and no per-pull table shows it.
 - Boss pulls carry a stroke; trash does not.
 - A pack only we pulled is tinted as an addition. A pack only they pulled is drawn as a dashed
   outline on their track.
-- Matched boss pulls are joined by a faint tie, so cumulative drift reads as the ties fanning.
+- ~~Matched boss pulls are joined by a faint tie, so cumulative drift reads as the ties
+  fanning.~~ *Amended 2026-09-05:* not built. The implementation plan never asked for it, and its
+  absence went unrecorded until this amendment — it stayed unbuilt through every task of this
+  branch's execution.
 - Pack names do not fit inside thin blocks and are not attempted. Each block carries an SVG
   `<title>` child, so a name appears on hover when the file is opened. **A screenshot loses the
   names, which is accepted:** the section's job is showing where time went, and section 4's detail
@@ -311,7 +336,9 @@ deaths, a run with no boss pulls.
 **HTML by invariant** — parse the rendered string and assert:
 
 - no `<script>` element, and no `src` or `href` whose value is not a fragment;
-- every section present and in order — eight when a narrative was supplied, seven without it;
+- every section present and in order — ~~eight~~ **nine** when a narrative was supplied, ~~seven~~
+  **eight** without it (*amended 2026-09-05:* a ninth section, "Other findings", was added after
+  this design was approved; see §5.2);
 - every finding id in the input appears in the output;
 - every withheld section renders a non-empty reason.
 

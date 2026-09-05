@@ -139,7 +139,8 @@ def test_landed_casts_are_ranked_by_the_damage_that_followed() -> None:
         casts, (hit(2100, 50_000), hit(6100, 200_000, ability=OTHER))
     )
     ranked = [f for f in findings if f.id.startswith("interrupts.ability.")]
-    assert ranked[0].evidence[0].startswith("200000") or "200000" in ranked[0].evidence[0]
+    # Thousands-separated, matching the death card's own convention for large amounts.
+    assert "200,000" in ranked[0].evidence[0]
 
 
 def test_damage_outside_the_follow_window_is_not_attributed() -> None:
