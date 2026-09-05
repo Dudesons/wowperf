@@ -7,3 +7,6 @@ __pycache__/
 /cache/
 out/
 .python-version.local
+
+# PyCharm project config, local to whoever opened the repo
+.idea/
