@@ -4,14 +4,21 @@
 import re
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from wowperf.cli import app
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WCL_API_SKILL = REPO_ROOT / ".claude" / "skills" / "wcl-api" / "SKILL.md"
 QUERIES = REPO_ROOT / "src" / "wowperf" / "adapters" / "wcl" / "queries.py"
+ANALYZING_SKILL = REPO_ROOT / ".claude" / "skills" / "analyzing-a-run" / "SKILL.md"
 
 FIELD_ROW = re.compile(
     r"^\|\s*`(?P<field>[^`]+)`\s*\|[^|]*\|\s*(?P<verified>\d{4}-\d{2}-\d{2})\s*\|"
     r"\s*(?P<used>yes|no)\s*\|"
 )
+
+FLAG = re.compile(r"--[a-z][a-z-]+")
 
 
 def field_rows() -> list[tuple[str, str]]:
@@ -40,3 +47,14 @@ def test_every_field_the_table_says_we_do_not_query_is_absent() -> None:
     queries = QUERIES.read_text(encoding="utf-8")
     present = [field for field, used in field_rows() if used == "no" and field in queries]
     assert present == [], f"documented as unused but present in queries.py: {present}"
+
+
+def test_every_flag_the_workflow_tells_you_to_type_exists() -> None:
+    # Asserted against the command's own help rather than against cli.py's text:
+    # typer infers `--player` and `--narrative` from their parameter names, so
+    # neither string appears in the source at all.
+    help_text = CliRunner().invoke(app, ["analyze", "--help"]).output
+    flags = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
+    assert flags, "the workflow names no flags at all, so this test proves nothing"
+    missing = sorted(flag for flag in flags if flag not in help_text)
+    assert missing == [], f"named in the skill but absent from the command: {missing}"
