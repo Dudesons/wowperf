@@ -9,9 +9,12 @@ import pytest
 
 from wowperf.adapters.config.toml import load_defensives, load_season_data
 from wowperf.adapters.render.html import render
-from wowperf.cli import _resolve_player, build_repository
+from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
+from wowperf.cli import _auras, _references, _resolve_player, build_repository
 from wowperf.domain.analysis.service import analyse
-from wowperf.domain.report.build import build_report
+from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.findings import rank_findings
+from wowperf.domain.report.build import COMPARISON_PREFIXES, build_report
 from wowperf.urls import parse_report_url
 
 REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")
@@ -25,14 +28,48 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
         )
 
     code, fight = parse_report_url(REPORT)
-    loaded = build_repository(tmp_path).load(code, fight)
+    repository = build_repository(tmp_path)
+    loaded = repository.load(code, fight)
     findings = analyse(loaded, load_season_data(), load_defensives())
 
-    # The player being analysed, from our own roster -- never a reference run's
-    # top parser. `build_report` needs it to route comparison rows onto the
-    # right player's card.
+    # Mirrors `analyze`'s own resolution (cli.py), so this is the only place
+    # `--compare`'s default path -- both reference runs, spell/talent/uptime
+    # comparison, and the routing of their findings onto one player's card --
+    # is exercised against real data instead of only offline fixtures.
     subject = _resolve_player(loaded.run, None)
-    html = render(build_report(loaded, findings, None, None, subject, None, "2026-09-05 00:00"))
+    rankings = WclRankingRepository(repository.client, repository.cache)
+    speed, parse = _references(rankings, repository, loaded.run, subject)
+
+    our_auras = None
+    if parse is not None:
+        their_player = find_player(parse.loaded.run, parse.row.character_name)
+        if their_player is not None:
+            our_auras = _auras(
+                repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
+            )
+            parse = parse.model_copy(
+                update={
+                    "auras": _auras(
+                        repository,
+                        parse.loaded.run.report_code,
+                        parse.loaded.run.fight_id,
+                        their_player.actor_id,
+                    )
+                }
+            )
+
+    findings += compare(
+        ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
+    )
+    findings = rank_findings(findings)
+
+    # A misconfigured WOWPERF_E2E_REPORT pointing at an empty or mismatched
+    # fight must fail loudly here, not render a report with nothing to show
+    # and pass vacuously.
+    assert findings, "The analysis produced no findings at all"
+
+    report = build_report(loaded, findings, speed, parse, subject, None, "2026-09-05 00:00")
+    html = render(report)
 
     # The report's one hard promise: it opens from disk, offline, forever. Checked by
     # what the page can execute or load, not by whether a URL string appears at all —
@@ -58,5 +95,23 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     for finding in findings:
         assert html.count(f"<h3>{finding.title}</h3>") == 1, finding.id
 
-    # Without a speed reference the timeline is withheld, and says so.
+    # The timeline heading always renders, whether present or withheld.
     assert "Aligned timeline" in html
+
+    # The spell/talent/uptime comparison rows reach the analysed player's own
+    # card, never a namesake's card -- the exact gap Ruling Q found, and the
+    # only path in this suite that exercises it against a real reference run.
+    if parse is not None:
+        comparison_ids = {
+            finding.id
+            for finding in findings
+            if finding.seconds_lost is None
+            and any(finding.id.startswith(prefix) for prefix in COMPARISON_PREFIXES)
+        }
+        assert comparison_ids, "No compare.* findings were produced to test the routing"
+        subject_card = next(card for card in report.players if card.name == subject.name)
+        assert subject_card.spell_and_talent.state.value == "present"
+        assert {row.finding_id for row in subject_card.spell_and_talent_rows} == comparison_ids
+        for card in report.players:
+            if card is not subject_card:
+                assert card.spell_and_talent_rows == ()
