@@ -2,14 +2,16 @@
 # ABOUTME: The withheld reason must come from the finding, never from a string in the template.
 
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import LoadedRun, Pull, Run
+from wowperf.domain.model import EnemyNpc, LoadedRun, Pull, Run
 from wowperf.domain.report.build import _run_seconds, badge_for, build_report, format_seconds
 from wowperf.domain.report.model import SectionState
 
 FETCHED = "2026-09-05 14:02"
 
 
-def a_pull(index: int, start: int, end: int, encounter_id: int = 0) -> Pull:
+def a_pull(
+    index: int, start: int, end: int, encounter_id: int = 0, enemies: tuple[int, ...] = ()
+) -> Pull:
     return Pull(
         index=index,
         pull_id=index,
@@ -20,7 +22,7 @@ def a_pull(index: int, start: int, end: int, encounter_id: int = 0) -> Pull:
         killed=True,
         x=100,
         y=200,
-        enemies=(),
+        enemies=tuple(EnemyNpc(actor_id=n, game_id=n) for n in enemies),
     )
 
 

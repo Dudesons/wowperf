@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Run
@@ -15,6 +16,8 @@ from wowperf.domain.report.model import (
     Section,
     SectionState,
     Timeline,
+    TimelineBlock,
+    TimelineTrack,
 )
 
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
@@ -48,6 +51,16 @@ Entries must stay mutually non-overlapping: `parent_of` resolves by first match
 in tuple order, so a broader prefix placed ahead of a narrower one would
 silently win and misattribute nesting.
 """
+
+TIMELINE_WIDTH = 680.0
+TIMELINE_HEIGHT = 208.0
+TRACK_X0 = 46.0
+TRACK_X1 = 656.0
+MIN_BLOCK_WIDTH = 2.0
+"""A pull narrower than this reads as nothing at all, so it is drawn at this width."""
+
+TICK_SECONDS = 600
+"""One axis label every ten minutes: enough to place a pull, few enough to stay legible."""
 
 
 def badge_for(confidence: Confidence) -> Badge:
@@ -95,6 +108,79 @@ def _run_seconds(run: Run) -> float:
     if not run.pulls:
         return 0.0
     return (max(p.end_ms for p in run.pulls) - min(p.start_ms for p in run.pulls)) / 1000
+
+
+def _blocks(
+    run: Run, kinds: dict[int, str], scale: float, origin_ms: int
+) -> tuple[TimelineBlock, ...]:
+    return tuple(
+        TimelineBlock(
+            label=pull.name,
+            x=TRACK_X0 + (pull.start_ms - origin_ms) / 1000 * scale,
+            width=max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH),
+            is_boss=pull.is_boss,
+            kind=kinds.get(pull.index, "matched"),
+        )
+        for pull in run.pulls
+    )
+
+
+def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
+    marks = []
+    second = 0
+    while second <= longest:
+        marks.append((TRACK_X0 + second * scale, format_seconds(float(second)) or "0:00"))
+        second += TICK_SECONDS
+    return tuple(marks)
+
+
+def _timeline_caption(label: str, run: Run) -> str:
+    """State which span this caption measures, not just its length.
+
+    `_run_seconds` spans the first pull's start to the last pull's end. The
+    header states a different, longer figure — `keystone_time_seconds`,
+    which also counts the trip to the first pack and Blizzard's death
+    penalties. Naming the span here keeps a reader from seeing two numbers
+    for the same run and assuming one of them is wrong.
+    """
+    return f"{label} — {format_seconds(_run_seconds(run))} from first pull to last"
+
+
+def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
+    """Both runs on one elapsed-time axis, scaled so the longer one fills the width.
+
+    The space between blocks is travel. That is why this layout exists: a
+    per-pull table compares durations, and durations are rarely where a
+    Mythic+ run loses its time.
+    """
+    if section.state is SectionState.WITHHELD or theirs is None:
+        return Timeline(section=section, width=TIMELINE_WIDTH, height=TIMELINE_HEIGHT)
+
+    longest = max(_run_seconds(ours), _run_seconds(theirs))
+    scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
+
+    alignment = align_pulls(ours, theirs)
+    our_kinds = {index: "extra" for index in alignment.only_ours}
+    their_kinds = {index: "skipped" for index in alignment.only_theirs}
+
+    return Timeline(
+        section=section,
+        ours=TimelineTrack(
+            caption=_timeline_caption("Ours", ours),
+            blocks=_blocks(
+                ours, our_kinds, scale, min((p.start_ms for p in ours.pulls), default=0)
+            ),
+        ),
+        theirs=TimelineTrack(
+            caption=_timeline_caption("Reference", theirs),
+            blocks=_blocks(
+                theirs, their_kinds, scale, min((p.start_ms for p in theirs.pulls), default=0)
+            ),
+        ),
+        ticks=_ticks(longest, scale),
+        width=TIMELINE_WIDTH,
+        height=TIMELINE_HEIGHT,
+    )
 
 
 def _header(loaded: LoadedRun) -> Header:
@@ -176,7 +262,9 @@ def build_report(
             for finding in findings
             if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
         ),
-        timeline=Timeline(section=timeline_section),
+        timeline=build_timeline(
+            loaded.run, speed.loaded.run if speed else None, timeline_section
+        ),
         deaths=(),
         interrupts=(),
         players=(),
