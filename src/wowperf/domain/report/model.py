@@ -136,7 +136,6 @@ class Header(Frozen):
     keystone_level: int
     affixes: tuple[str, ...] = ()
     result: str = ""
-    warnings: tuple[str, ...] = ()
 
 
 class Provenance(Frozen):

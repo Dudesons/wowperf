@@ -187,21 +187,25 @@ def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
     marks = []
     second = 0
     while second <= longest:
-        marks.append((TRACK_X0 + second * scale, format_seconds(float(second)) or "0:00"))
+        label = format_seconds(float(second))
+        assert label is not None  # a float input always formats to a string
+        marks.append((TRACK_X0 + second * scale, label))
         second += TICK_SECONDS
     return tuple(marks)
 
 
-def _timeline_caption(label: str, run: Run) -> str:
+def _timeline_caption(label: str, seconds: float) -> str:
     """State which span this caption measures, not just its length.
 
-    `_run_seconds` spans the first pull's start to the last pull's end. The
+    `seconds` spans the first pull's start to the last pull's end. The
     header states a different, longer figure — `keystone_time_seconds`,
     which also counts the trip to the first pack and Blizzard's death
     penalties. Naming the span here keeps a reader from seeing two numbers
     for the same run and assuming one of them is wrong.
     """
-    return f"{label} — {format_seconds(_run_seconds(run))} from first pull to last"
+    formatted = format_seconds(seconds)
+    assert formatted is not None  # a float input always formats to a string
+    return f"{label} — {formatted} from first pull to last"
 
 
 def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
@@ -214,7 +218,9 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     if section.state is SectionState.WITHHELD or theirs is None:
         return Timeline(section=section, width=TIMELINE_WIDTH, height=TIMELINE_HEIGHT)
 
-    longest = max(_run_seconds(ours), _run_seconds(theirs))
+    our_seconds = _run_seconds(ours)
+    their_seconds = _run_seconds(theirs)
+    longest = max(our_seconds, their_seconds)
     scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
 
     alignment = align_pulls(ours, theirs)
@@ -224,20 +230,18 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
     return Timeline(
         section=section,
         ours=TimelineTrack(
-            caption=_timeline_caption("Ours", ours),
+            caption=_timeline_caption("Ours", our_seconds),
             baseline_y=OURS_BASELINE_Y,
-            blocks=_blocks(
-                ours, our_kinds, scale, min((p.start_ms for p in ours.pulls), default=0)
-            ),
+            blocks=_blocks(ours, our_kinds, scale, _run_start_ms(ours)),
         ),
         theirs=TimelineTrack(
-            caption=_timeline_caption("Reference", theirs),
+            caption=_timeline_caption("Reference", their_seconds),
             baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(
                 theirs,
                 their_kinds,
                 scale,
-                min((p.start_ms for p in theirs.pulls), default=0),
+                _run_start_ms(theirs),
                 track_class="block-theirs",
             ),
         ),
@@ -266,7 +270,8 @@ def _when(death: Death, run: Run) -> str:
     start of the run rather than as a negative time.
     """
     elapsed = max(death.timestamp_ms - _run_start_ms(run), 0) / 1000
-    at = format_seconds(elapsed) or "0:00"
+    at = format_seconds(elapsed)
+    assert at is not None  # a float input always formats to a string
     if death.pull_index is None:
         return f"{at}, between pulls"
     return f"{at}, pull {death.pull_index}"
