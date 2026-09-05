@@ -95,3 +95,42 @@ def test_cards_come_in_the_order_the_deaths_happened() -> None:
     deaths = (a_death(1, 90_000, "Late"), a_death(1, 30_000, "Early"))
     cards = build_deaths(a_loaded_with(deaths, ()))
     assert [card.killing_blow for card in cards] == ["Early", "Late"]
+
+
+def test_a_deaths_time_is_measured_from_the_runs_start_not_from_report_zero() -> None:
+    # `timestamp_ms` is an absolute report timestamp, not an offset from the
+    # first pull. A pull starting at 0 would let a regression to the raw
+    # timestamp pass unnoticed, so this run's first pull starts well after
+    # the report's own zero, the way a real Warcraft Logs report does.
+    run = a_run(
+        players=(a_player(),),
+        pulls=(a_pull(0, 1_800_000, 1_860_000),),
+    )
+    death = Death(
+        player_name="Dudesons", actor_id=1, timestamp_ms=1_830_000,
+        killing_blow="Frigid Roar", pull_index=0,
+    )
+    card = build_deaths(LoadedRun(run=run, deaths=(death,)))[0]
+    # 1_830_000 - 1_800_000 = 30_000ms = 0:30 elapsed into the run, not 30:30
+    # as the absolute timestamp alone would read.
+    assert card.when == "0:30, pull 0"
+
+
+def test_a_death_before_the_first_pull_does_not_go_negative() -> None:
+    run = a_run(players=(a_player(),), pulls=(a_pull(0, 1_800_000, 1_860_000),))
+    death = Death(
+        player_name="Dudesons", actor_id=1, timestamp_ms=1_700_000,
+        killing_blow="Frigid Roar", pull_index=None,
+    )
+    card = build_deaths(LoadedRun(run=run, deaths=(death,)))[0]
+    assert card.when == "0:00, between pulls"
+
+
+def test_a_death_in_a_run_with_no_pulls_does_not_crash() -> None:
+    run = a_run(players=(a_player(),), pulls=())
+    death = Death(
+        player_name="Dudesons", actor_id=1, timestamp_ms=5_000,
+        killing_blow="Frigid Roar", pull_index=None,
+    )
+    card = build_deaths(LoadedRun(run=run, deaths=(death,)))[0]
+    assert card.when == "0:05, between pulls"

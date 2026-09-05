@@ -45,6 +45,7 @@ def a_report(**overrides: object) -> Report:
         "deaths": (),
         "interrupts": (),
         "players": (),
+        "observations": (),
         "provenance": Provenance(
             report_code="abc123", fight_id=36, fetched_at="2026-09-05 14:02"
         ),

@@ -179,7 +179,7 @@ that we skipped.</p>
     <h3>{{ player.name }}</h3>
     <span class="sub">{{ player.class_name }} {{ player.spec }}</span>
   </div>
-  <p class="stats">{{ player.active_time }} · {{ player.deaths }} death{{ "" if player.deaths == 1 else "s" }} · {{ player.kicks }} interrupt{{ "" if player.kicks == 1 else "s" }}</p>
+  <p class="stats">{{ player.casts_summary }} · {{ player.deaths }} death{{ "" if player.deaths == 1 else "s" }} · {{ player.kicks }} interrupt{{ "" if player.kicks == 1 else "s" }}</p>
   {% for row in player.damage_rows %}
   {{ ledger_row(row) }}
   {% endfor %}
@@ -191,6 +191,16 @@ that we skipped.</p>
   {% endfor %}
 </div>
 {% endfor %}
+
+<h2 id="observations">Other findings</h2>
+{% if report.observations %}
+<p class="sub">Measured, but with no seconds figure, so they sit outside the ledger above.</p>
+{% for row in report.observations %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% else %}
+<p class="sub">Nothing else measured.</p>
+{% endif %}
 
 <h2 id="provenance">Provenance</h2>
 <p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},

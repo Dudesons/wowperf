@@ -69,6 +69,7 @@ def test_a_report_holds_every_section() -> None:
         deaths=(),
         interrupts=(),
         players=(),
+        observations=(),
         provenance=Provenance(
             report_code="abc123",
             fight_id=36,
@@ -87,7 +88,7 @@ def test_a_player_card_names_the_class_in_text_not_only_in_colour() -> None:
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
-        active_time="412s in pulls (38%)",
+        casts_summary="182 casts in 31:49 of pulls",
         deaths=1,
         kicks=7,
         spell_and_talent=a_section(SectionState.WITHHELD, "no ranked parse"),

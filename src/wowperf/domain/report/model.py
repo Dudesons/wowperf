@@ -110,13 +110,18 @@ class PlayerCard(Frozen):
     `damage_rows` states damage against the group median, never as avoidable:
     the log does not record whether a hit could have been dodged, and this card
     follows the analyser that refuses that framing.
+
+    `casts_summary` states a cast count over the pull time it happened in, e.g.
+    "182 casts in 31:49 of pulls" — never a percentage. A player casting faster
+    than once a second exceeds the pull time itself under the model this is
+    measured with, so a share of it would read as more than 100% activity.
     """
 
     name: str
     class_name: str
     spec: str
     colour: str
-    active_time: str
+    casts_summary: str
     deaths: int
     kicks: int
     damage_rows: tuple[LedgerRow, ...] = ()
@@ -152,4 +157,7 @@ class Report(Frozen):
     deaths: tuple[DeathCard, ...]
     interrupts: tuple[LedgerRow, ...]
     players: tuple[PlayerCard, ...]
+    # Every finding no section above claimed — a structural catch-all, not a
+    # whitelist of its own. See `build_observations`.
+    observations: tuple[LedgerRow, ...]
     provenance: Provenance

@@ -125,6 +125,15 @@ def _section_for(findings: Sequence[Finding], unavailable_id: str, present: bool
     )
 
 
+def _run_start_ms(run: Run) -> int:
+    """The run's own clock origin: the earliest pull's start, or zero with no pulls.
+
+    Shared by `_run_seconds` and `_when` so a death's elapsed time and the
+    run's span are measured from the same point and cannot drift apart.
+    """
+    return min((p.start_ms for p in run.pulls), default=0)
+
+
 def _run_seconds(run: Run) -> float:
     """Wall-clock span from the first pull's start to the last pull's end.
 
@@ -133,7 +142,7 @@ def _run_seconds(run: Run) -> float:
     """
     if not run.pulls:
         return 0.0
-    return (max(p.end_ms for p in run.pulls) - min(p.start_ms for p in run.pulls)) / 1000
+    return (max(p.end_ms for p in run.pulls) - _run_start_ms(run)) / 1000
 
 
 def _block_css_class(kind: str, is_boss: bool, track_class: str) -> str:
@@ -250,7 +259,14 @@ enough that the card stays a card."""
 
 
 def _when(death: Death, run: Run) -> str:
-    at = format_seconds(death.timestamp_ms / 1000) or "0:00"
+    """Elapsed time since the run's start, never the absolute report timestamp.
+
+    Clamped to zero so a death logged before the first pull — or a run with
+    no pulls at all, where the run's start is taken as zero — reads as the
+    start of the run rather than as a negative time.
+    """
+    elapsed = max(death.timestamp_ms - _run_start_ms(run), 0) / 1000
+    at = format_seconds(elapsed) or "0:00"
     if death.pull_index is None:
         return f"{at}, between pulls"
     return f"{at}, pull {death.pull_index}"
@@ -363,15 +379,16 @@ def build_players(
             if finding.title.startswith(f"{display_name} took ")
         )
         is_subject = summary.name.casefold() == subject_name
+        noun = "cast" if summary.casts_in_pulls == 1 else "casts"
         cards.append(
             PlayerCard(
                 name=summary.name,
                 class_name=summary.class_name,
                 spec=summary.spec,
                 colour=class_colour(summary.class_name),
-                active_time=(
-                    f"{summary.active_seconds:.0f}s in pulls "
-                    f"({summary.activity_percent:.0f}%)"
+                casts_summary=(
+                    f"{summary.casts_in_pulls} {noun} in "
+                    f"{format_seconds(loaded.run.total_pull_seconds) or '0:00'} of pulls"
                 ),
                 deaths=summary.deaths,
                 kicks=summary.interrupts,
@@ -432,6 +449,42 @@ def _ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
     )
 
 
+def _placed_finding_ids(
+    ledger_decomposition: Sequence[LedgerRow],
+    ledger_losses: Sequence[LedgerRow],
+    interrupts: Sequence[LedgerRow],
+    players: Sequence[PlayerCard],
+) -> set[str]:
+    """Every finding id some section already claims.
+
+    Read back off the sections themselves rather than recomputed from a
+    prefix list: this is what keeps `build_observations` a structural
+    partition instead of a second whitelist someone has to remember to update.
+    """
+    ids = {row.finding_id for row in ledger_decomposition}
+    ids |= {row.finding_id for row in ledger_losses}
+    ids |= {row.finding_id for row in interrupts}
+    for card in players:
+        ids |= {row.finding_id for row in card.damage_rows}
+        ids |= {row.finding_id for row in card.spell_and_talent_rows}
+    return ids
+
+
+def build_observations(
+    findings: Sequence[Finding], placed_ids: set[str], titles_by_id: dict[str, str]
+) -> tuple[LedgerRow, ...]:
+    """Every finding no other section placed, in the order the analysis produced them.
+
+    A finding lands here because it is missing from `placed_ids`, never
+    because it matches an id prefix of its own — so an analyser that starts
+    emitting a new finding family reaches the page automatically instead of
+    being silently dropped until someone adds its prefix to a whitelist.
+    """
+    return tuple(
+        _ledger_row(finding, titles_by_id) for finding in findings if finding.id not in placed_ids
+    )
+
+
 def build_report(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -457,25 +510,32 @@ def build_report(
 
     titles_by_id = {finding.id: finding.title for finding in findings}
 
+    ledger_decomposition = tuple(
+        _ledger_row(finding, titles_by_id)
+        for finding in findings
+        if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
+    )
+    ledger_losses = tuple(
+        _ledger_row(finding, titles_by_id)
+        for finding in findings
+        if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
+    )
+    interrupts = build_interrupts(findings, titles_by_id)
+    players = build_players(loaded, findings, parse, titles_by_id)
+    placed_ids = _placed_finding_ids(ledger_decomposition, ledger_losses, interrupts, players)
+
     return Report(
         header=_header(loaded),
         narrative=narrative,
-        ledger_decomposition=tuple(
-            _ledger_row(finding, titles_by_id)
-            for finding in findings
-            if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
-        ),
-        ledger_losses=tuple(
-            _ledger_row(finding, titles_by_id)
-            for finding in findings
-            if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
-        ),
+        ledger_decomposition=ledger_decomposition,
+        ledger_losses=ledger_losses,
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
         deaths=build_deaths(loaded),
-        interrupts=build_interrupts(findings, titles_by_id),
-        players=build_players(loaded, findings, parse, titles_by_id),
+        interrupts=interrupts,
+        players=players,
+        observations=build_observations(findings, placed_ids, titles_by_id),
         provenance=Provenance(
             report_code=loaded.run.report_code,
             fight_id=loaded.run.fight_id,

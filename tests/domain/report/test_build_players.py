@@ -3,6 +3,7 @@
 
 from tests.domain.report.test_build_frame import a_pull, a_run
 from wowperf.domain.comparison.reference import ParseReference, ParseRow
+from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_interrupts, build_players, class_colour
@@ -187,6 +188,27 @@ def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -
     assert ids(card.spell_and_talent_rows) == ["compare.spells.unavailable"]
 
 
-def test_a_card_states_active_time_as_a_share_of_pull_time() -> None:
+def test_a_card_states_casts_over_the_pull_time_they_happened_in() -> None:
+    # a_loaded() carries one pull, 0 to 120_000ms, and no casts.
     card = build_players(a_loaded(), (), None, {})[0]
-    assert "%" in card.active_time
+    assert card.casts_summary == "0 casts in 2:00 of pulls"
+
+
+def test_a_cards_cast_count_cannot_read_as_a_percentage() -> None:
+    # The old field claimed a share of pull time and could exceed 100%; the
+    # replacement states a plain count over a plain duration, with no "%" in
+    # sight to imply a bound the underlying model does not respect.
+    card = build_players(a_loaded(), (), None, {})[0]
+    assert "%" not in card.casts_summary
+
+
+def test_a_single_cast_is_worded_in_the_singular() -> None:
+    # One cast inside the pull window gives "1 cast", not "1 casts".
+    loaded = a_loaded()
+    loaded_with_cast = LoadedRun(
+        run=loaded.run,
+        casts=(CastEvent(actor_id=1, ability_id=1, ability_name="Whirlwind",
+                          timestamp_ms=1_000, pull_index=0),),
+    )
+    card = build_players(loaded_with_cast, (), None, {})[0]
+    assert card.casts_summary == "1 cast in 2:00 of pulls"

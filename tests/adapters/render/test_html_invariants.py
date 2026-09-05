@@ -16,7 +16,9 @@ from wowperf.domain.report.build import build_report
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
-SECTION_ORDER = ["ledger", "timeline", "deaths", "interrupts", "players", "provenance"]
+SECTION_ORDER = [
+    "ledger", "timeline", "deaths", "interrupts", "players", "observations", "provenance",
+]
 
 
 def minimal_loaded() -> LoadedRun:
@@ -182,13 +184,14 @@ def test_every_section_appears_in_the_order_the_design_fixes() -> None:
     assert positions == sorted(positions)
 
 
-def test_a_report_without_a_narrative_renders_seven_sections_not_eight() -> None:
+def test_a_report_without_a_narrative_renders_eight_sections_not_nine() -> None:
+    # Header (h1) plus the seven always-present h2 sections in SECTION_ORDER.
     html = minimal_html()
     assert 'id="narrative"' not in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER)
 
 
-def test_a_report_with_a_narrative_renders_all_eight() -> None:
+def test_a_report_with_a_narrative_renders_all_nine() -> None:
     html = render(
         build_report(minimal_loaded(), minimal_findings(), None, None, "A sentence.", FETCHED)
     )
