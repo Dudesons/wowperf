@@ -528,8 +528,12 @@ snapshot-testable.
 
 Sections, in order:
 
-1. **Header** — dungeon, keystone level, affixes, timed or depleted and by how much, parse
-   percentile as triage, warning banners.
+1. **Header** — dungeon, keystone level, affixes, timed or depleted and by how much, ~~parse
+   percentile as triage,~~ warning banners. *Amended 2026-09-05:* the percentile is not built.
+   Nothing this project fetches produces our own player's rank — `top_parses` returns the leading
+   rows for a specialisation, not our position among them — so a percentile here would be an
+   invented number. Reviving it needs a leaderboard query scoped to our own character, verified
+   live and dated first. See the report design, §5.1.
 2. **Narrative** — the written interpretation (see §8), visually distinct and marked as
    interpretation.
 3. **Seconds ledger** — where the run's time went, and losses ranked, each with a confidence
