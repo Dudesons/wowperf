@@ -45,14 +45,26 @@ def test_the_committed_defensives_file_parses() -> None:
 
 
 def test_the_defensive_list_carries_cooldowns_and_charges() -> None:
+    # Structure, not values: a cooldown is whatever the game currently says, and
+    # pinning one here would make a balance patch look like a code failure. The
+    # file's `verified` date records when the numbers were last checked.
     from wowperf.adapters.config.toml import load_defensives
 
     defensives = load_defensives()
-    blood = defensives.for_spec("DeathKnight", "Blood")
 
-    icebound = next(a for a in blood if a.ability_id == 48792)
-    assert icebound.cooldown_seconds == 180.0
+    icebound = next(
+        a for a in defensives.for_spec("DeathKnight", "Blood") if a.ability_id == 48792
+    )
+    assert icebound.name == "Icebound Fortitude"
+    assert icebound.cooldown_seconds > 0
     assert icebound.charges == 1
+
+    # An ability whose charges are not the default, so the field is actually read
+    # rather than defaulted past.
+    instincts = next(
+        a for a in defensives.for_spec("Druid", "Guardian") if a.ability_id == 61336
+    )
+    assert instincts.charges == 2
 
 
 def test_every_listed_defensive_has_a_positive_cooldown() -> None:

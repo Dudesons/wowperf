@@ -5,36 +5,310 @@
 # Cooldowns are base values in seconds, without talent reductions. That is
 # deliberate: a talented shorter cooldown makes the ceiling an underestimate,
 # and an underestimate cannot produce a false accusation.
+#
+# Every ability id and cooldown here was read from the game's own spell data via
+# Wowhead's tooltip endpoint on the date below, one spell at a time, and the name
+# returned had to match the ability intended. An id that matches nothing fails
+# silently forever, so recall is not good enough.
 verified = "2026-09-05"
+
+
+["DeathKnight/Blood"]
+abilities = [
+  { ability_id = 48792, name = "Icebound Fortitude", cooldown_seconds = 120.0 },
+  { ability_id = 48707, name = "Anti-Magic Shell", cooldown_seconds = 60.0 },
+  { ability_id = 49039, name = "Lichborne", cooldown_seconds = 120.0 },
+  { ability_id = 48743, name = "Death Pact", cooldown_seconds = 120.0 },
+  { ability_id = 55233, name = "Vampiric Blood", cooldown_seconds = 90.0 },
+  { ability_id = 49028, name = "Dancing Rune Weapon", cooldown_seconds = 120.0 },
+]
+
+["DeathKnight/Frost"]
+abilities = [
+  { ability_id = 48792, name = "Icebound Fortitude", cooldown_seconds = 120.0 },
+  { ability_id = 48707, name = "Anti-Magic Shell", cooldown_seconds = 60.0 },
+  { ability_id = 49039, name = "Lichborne", cooldown_seconds = 120.0 },
+  { ability_id = 48743, name = "Death Pact", cooldown_seconds = 120.0 },
+]
+
+["DeathKnight/Unholy"]
+abilities = [
+  { ability_id = 48792, name = "Icebound Fortitude", cooldown_seconds = 120.0 },
+  { ability_id = 48707, name = "Anti-Magic Shell", cooldown_seconds = 60.0 },
+  { ability_id = 49039, name = "Lichborne", cooldown_seconds = 120.0 },
+  { ability_id = 48743, name = "Death Pact", cooldown_seconds = 120.0 },
+]
+
+["DemonHunter/Havoc"]
+abilities = [
+  { ability_id = 198589, name = "Blur", cooldown_seconds = 60.0 },
+]
+
+["DemonHunter/Vengeance"]
+abilities = [
+  { ability_id = 187827, name = "Metamorphosis", cooldown_seconds = 120.0 },
+  { ability_id = 203720, name = "Demon Spikes", cooldown_seconds = 20.0 },
+  { ability_id = 204021, name = "Fiery Brand", cooldown_seconds = 60.0 },
+  { ability_id = 263648, name = "Soul Barrier", cooldown_seconds = 30.0 },
+  { ability_id = 212084, name = "Fel Devastation", cooldown_seconds = 40.0 },
+]
+
+["Druid/Balance"]
+abilities = [
+  { ability_id = 22812, name = "Barkskin", cooldown_seconds = 60.0 },
+  { ability_id = 61336, name = "Survival Instincts", cooldown_seconds = 180.0 },
+  { ability_id = 22842, name = "Frenzied Regeneration", cooldown_seconds = 36.0 },
+  { ability_id = 108238, name = "Renewal", cooldown_seconds = 90.0 },
+]
+
+["Druid/Feral"]
+abilities = [
+  { ability_id = 22812, name = "Barkskin", cooldown_seconds = 60.0 },
+  { ability_id = 61336, name = "Survival Instincts", cooldown_seconds = 180.0 },
+  { ability_id = 22842, name = "Frenzied Regeneration", cooldown_seconds = 36.0 },
+  { ability_id = 108238, name = "Renewal", cooldown_seconds = 90.0 },
+]
+
+["Druid/Guardian"]
+abilities = [
+  { ability_id = 22812, name = "Barkskin", cooldown_seconds = 45.0 },
+  { ability_id = 61336, name = "Survival Instincts", cooldown_seconds = 180.0, charges = 2 },
+  { ability_id = 22842, name = "Frenzied Regeneration", cooldown_seconds = 26.0 },
+  { ability_id = 108238, name = "Renewal", cooldown_seconds = 90.0 },
+]
+
+["Druid/Restoration"]
+abilities = [
+  { ability_id = 22812, name = "Barkskin", cooldown_seconds = 60.0 },
+  { ability_id = 61336, name = "Survival Instincts", cooldown_seconds = 180.0 },
+  { ability_id = 22842, name = "Frenzied Regeneration", cooldown_seconds = 36.0 },
+  { ability_id = 108238, name = "Renewal", cooldown_seconds = 90.0 },
+  { ability_id = 102342, name = "Ironbark", cooldown_seconds = 90.0 },
+]
+
+["Evoker/Augmentation"]
+abilities = [
+  { ability_id = 363916, name = "Obsidian Scales", cooldown_seconds = 90.0 },
+  { ability_id = 360995, name = "Verdant Embrace", cooldown_seconds = 24.0 },
+  { ability_id = 404195, name = "Defy Fate", cooldown_seconds = 360.0 },
+]
+
+["Evoker/Devastation"]
+abilities = [
+  { ability_id = 363916, name = "Obsidian Scales", cooldown_seconds = 90.0 },
+  { ability_id = 360995, name = "Verdant Embrace", cooldown_seconds = 24.0 },
+]
+
+["Evoker/Preservation"]
+abilities = [
+  { ability_id = 363916, name = "Obsidian Scales", cooldown_seconds = 90.0 },
+  { ability_id = 360995, name = "Verdant Embrace", cooldown_seconds = 24.0 },
+]
+
+["Hunter/BeastMastery"]
+abilities = [
+  { ability_id = 109304, name = "Exhilaration", cooldown_seconds = 120.0 },
+  { ability_id = 186265, name = "Aspect of the Turtle", cooldown_seconds = 180.0 },
+  { ability_id = 264735, name = "Survival of the Fittest", cooldown_seconds = 90.0 },
+  { ability_id = 5384, name = "Feign Death", cooldown_seconds = 30.0 },
+]
+
+["Hunter/Marksmanship"]
+abilities = [
+  { ability_id = 109304, name = "Exhilaration", cooldown_seconds = 120.0 },
+  { ability_id = 186265, name = "Aspect of the Turtle", cooldown_seconds = 180.0 },
+  { ability_id = 264735, name = "Survival of the Fittest", cooldown_seconds = 90.0 },
+  { ability_id = 5384, name = "Feign Death", cooldown_seconds = 30.0 },
+]
+
+["Hunter/Survival"]
+abilities = [
+  { ability_id = 109304, name = "Exhilaration", cooldown_seconds = 120.0 },
+  { ability_id = 186265, name = "Aspect of the Turtle", cooldown_seconds = 180.0 },
+  { ability_id = 264735, name = "Survival of the Fittest", cooldown_seconds = 90.0 },
+  { ability_id = 5384, name = "Feign Death", cooldown_seconds = 30.0 },
+]
 
 ["Mage/Arcane"]
 abilities = [
-  { ability_id = 235450, name = "Prismatic Barrier", cooldown_seconds = 25.0 },
+  { ability_id = 235450, name = "Prismatic Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
+  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
-["Shaman/Elemental"]
+["Mage/Fire"]
 abilities = [
-  { ability_id = 108271, name = "Astral Shift", cooldown_seconds = 90.0 },
-  { ability_id = 198103, name = "Earth Elemental", cooldown_seconds = 300.0 },
+  { ability_id = 235313, name = "Blazing Barrier", cooldown_seconds = 30.0 },
+  { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
+  { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
+  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
-["Priest/Shadow"]
+["Mage/Frost"]
 abilities = [
-  { ability_id = 47585, name = "Dispersion", cooldown_seconds = 120.0 },
-  { ability_id = 19236, name = "Desperate Prayer", cooldown_seconds = 90.0 },
+  { ability_id = 11426, name = "Ice Barrier", cooldown_seconds = 30.0 },
+  { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
+  { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
+  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
+]
+
+["Monk/Brewmaster"]
+abilities = [
+  { ability_id = 115203, name = "Fortifying Brew", cooldown_seconds = 360.0 },
+  { ability_id = 322507, name = "Celestial Brew", cooldown_seconds = 90.0 },
+  { ability_id = 115176, name = "Zen Meditation", cooldown_seconds = 300.0 },
+  { ability_id = 122783, name = "Diffuse Magic", cooldown_seconds = 90.0 },
+  { ability_id = 122278, name = "Dampen Harm", cooldown_seconds = 120.0 },
+]
+
+["Monk/Mistweaver"]
+abilities = [
+  { ability_id = 243435, name = "Fortifying Brew", cooldown_seconds = 420.0 },
+  { ability_id = 122783, name = "Diffuse Magic", cooldown_seconds = 90.0 },
+  { ability_id = 122278, name = "Dampen Harm", cooldown_seconds = 120.0 },
+]
+
+["Monk/Windwalker"]
+abilities = [
+  { ability_id = 122470, name = "Touch of Karma", cooldown_seconds = 90.0 },
+  { ability_id = 243435, name = "Fortifying Brew", cooldown_seconds = 420.0 },
+  { ability_id = 122783, name = "Diffuse Magic", cooldown_seconds = 90.0 },
+  { ability_id = 122278, name = "Dampen Harm", cooldown_seconds = 120.0 },
 ]
 
 ["Paladin/Holy"]
 abilities = [
   { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
   { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
 ]
 
-["DeathKnight/Blood"]
+["Paladin/Protection"]
 abilities = [
-  { ability_id = 55233, name = "Vampiric Blood", cooldown_seconds = 90.0 },
-  { ability_id = 48792, name = "Icebound Fortitude", cooldown_seconds = 180.0 },
-  { ability_id = 49028, name = "Dancing Rune Weapon", cooldown_seconds = 120.0 },
+  { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
+  { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+  { ability_id = 31850, name = "Ardent Defender", cooldown_seconds = 90.0 },
+  { ability_id = 86659, name = "Guardian of Ancient Kings", cooldown_seconds = 180.0 },
+  { ability_id = 387174, name = "Eye of Tyr", cooldown_seconds = 60.0 },
+]
+
+["Paladin/Retribution"]
+abilities = [
+  { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
+  { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+]
+
+["Priest/Discipline"]
+abilities = [
+  { ability_id = 19236, name = "Desperate Prayer", cooldown_seconds = 90.0 },
+  { ability_id = 586, name = "Fade", cooldown_seconds = 30.0 },
+  { ability_id = 421453, name = "Ultimate Penitence", cooldown_seconds = 240.0 },
+]
+
+["Priest/Holy"]
+abilities = [
+  { ability_id = 19236, name = "Desperate Prayer", cooldown_seconds = 90.0 },
+  { ability_id = 586, name = "Fade", cooldown_seconds = 30.0 },
+]
+
+["Priest/Shadow"]
+abilities = [
+  { ability_id = 47585, name = "Dispersion", cooldown_seconds = 120.0 },
+  { ability_id = 19236, name = "Desperate Prayer", cooldown_seconds = 90.0 },
+  { ability_id = 586, name = "Fade", cooldown_seconds = 30.0 },
+]
+
+["Rogue/Assassination"]
+abilities = [
+  { ability_id = 31224, name = "Cloak of Shadows", cooldown_seconds = 120.0 },
+  { ability_id = 5277, name = "Evasion", cooldown_seconds = 120.0 },
+  { ability_id = 1966, name = "Feint", cooldown_seconds = 15.0 },
+  { ability_id = 185311, name = "Crimson Vial", cooldown_seconds = 30.0 },
+  { ability_id = 1856, name = "Vanish", cooldown_seconds = 120.0 },
+]
+
+["Rogue/Outlaw"]
+abilities = [
+  { ability_id = 31224, name = "Cloak of Shadows", cooldown_seconds = 120.0 },
+  { ability_id = 5277, name = "Evasion", cooldown_seconds = 120.0 },
+  { ability_id = 1966, name = "Feint", cooldown_seconds = 15.0 },
+  { ability_id = 185311, name = "Crimson Vial", cooldown_seconds = 30.0 },
+  { ability_id = 1856, name = "Vanish", cooldown_seconds = 120.0 },
+]
+
+["Rogue/Subtlety"]
+abilities = [
+  { ability_id = 31224, name = "Cloak of Shadows", cooldown_seconds = 120.0 },
+  { ability_id = 5277, name = "Evasion", cooldown_seconds = 120.0 },
+  { ability_id = 1966, name = "Feint", cooldown_seconds = 15.0 },
+  { ability_id = 185311, name = "Crimson Vial", cooldown_seconds = 30.0 },
+  { ability_id = 1856, name = "Vanish", cooldown_seconds = 120.0 },
+]
+
+["Shaman/Elemental"]
+abilities = [
+  { ability_id = 108271, name = "Astral Shift", cooldown_seconds = 120.0 },
+  { ability_id = 198103, name = "Earth Elemental", cooldown_seconds = 180.0 },
+]
+
+["Shaman/Enhancement"]
+abilities = [
+  { ability_id = 108271, name = "Astral Shift", cooldown_seconds = 120.0 },
+  { ability_id = 198103, name = "Earth Elemental", cooldown_seconds = 180.0 },
+]
+
+["Shaman/Restoration"]
+abilities = [
+  { ability_id = 108271, name = "Astral Shift", cooldown_seconds = 120.0 },
+  { ability_id = 198103, name = "Earth Elemental", cooldown_seconds = 180.0 },
+]
+
+["Warlock/Affliction"]
+abilities = [
+  { ability_id = 104773, name = "Unending Resolve", cooldown_seconds = 180.0 },
+  { ability_id = 108416, name = "Dark Pact", cooldown_seconds = 60.0 },
+  { ability_id = 6789, name = "Mortal Coil", cooldown_seconds = 45.0 },
+]
+
+["Warlock/Demonology"]
+abilities = [
+  { ability_id = 104773, name = "Unending Resolve", cooldown_seconds = 180.0 },
+  { ability_id = 108416, name = "Dark Pact", cooldown_seconds = 60.0 },
+  { ability_id = 6789, name = "Mortal Coil", cooldown_seconds = 45.0 },
+]
+
+["Warlock/Destruction"]
+abilities = [
+  { ability_id = 104773, name = "Unending Resolve", cooldown_seconds = 180.0 },
+  { ability_id = 108416, name = "Dark Pact", cooldown_seconds = 60.0 },
+  { ability_id = 6789, name = "Mortal Coil", cooldown_seconds = 45.0 },
+]
+
+["Warrior/Arms"]
+abilities = [
+  { ability_id = 118038, name = "Die by the Sword", cooldown_seconds = 120.0 },
+  { ability_id = 23920, name = "Spell Reflection", cooldown_seconds = 25.0 },
+  { ability_id = 202168, name = "Impending Victory", cooldown_seconds = 25.0 },
+]
+
+["Warrior/Fury"]
+abilities = [
+  { ability_id = 184364, name = "Enraged Regeneration", cooldown_seconds = 120.0 },
+  { ability_id = 23920, name = "Spell Reflection", cooldown_seconds = 25.0 },
+  { ability_id = 202168, name = "Impending Victory", cooldown_seconds = 25.0 },
+]
+
+["Warrior/Protection"]
+abilities = [
+  { ability_id = 871, name = "Shield Wall", cooldown_seconds = 180.0 },
+  { ability_id = 12975, name = "Last Stand", cooldown_seconds = 180.0 },
+  { ability_id = 2565, name = "Shield Block", cooldown_seconds = 16.0 },
+  { ability_id = 23920, name = "Spell Reflection", cooldown_seconds = 25.0 },
+  { ability_id = 202168, name = "Impending Victory", cooldown_seconds = 25.0 },
 ]
