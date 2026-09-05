@@ -5,7 +5,13 @@ from wowperf.domain.analysis.service import analyse
 from wowperf.domain.events import CastEvent, Death, EnemyCastRow, EnemyDeath
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
-from wowperf.domain.season import DefensiveAbility, Defensives, SeasonData
+from wowperf.domain.season import (
+    ConsumableCategory,
+    Consumables,
+    DefensiveAbility,
+    Defensives,
+    SeasonData,
+)
 
 SEASON = SeasonData(death_penalty_seconds=5.0, death_penalty_seconds_high_key=15.0,
                     high_key_threshold=12)
@@ -66,13 +72,13 @@ def a_loaded_run() -> LoadedRun:
 
 
 def test_every_finding_carries_a_confidence_badge() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES)
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
 def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES)
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())
     timed = [f.seconds_lost for f in findings if f.seconds_lost is not None]
     assert timed == sorted(timed, reverse=True)
     first_untimed = next(
@@ -82,19 +88,24 @@ def test_findings_are_ranked_worst_first_with_untimed_ones_last() -> None:
 
 
 def test_finding_ids_are_unique() -> None:
-    ids = [finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES)]
+    ids = [finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())]
     assert len(ids) == len(set(ids))
 
 
 def test_every_analyser_contributes() -> None:
-    ids = {finding.id.split(".")[0] for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES)}
-    assert {"time", "deaths", "interrupts", "trash", "defensives"} <= ids
+    ids = {
+        finding.id.split(".")[0]
+        for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+    }
+    assert {
+        "time", "deaths", "interrupts", "trash", "defensives", "consumables",
+    } <= ids
 
 
 def test_an_empty_run_analyses_without_raising() -> None:
     loaded = a_loaded_run()
     bare = LoadedRun(run=loaded.run)
-    findings = analyse(bare, SEASON, DEFENSIVES)
+    findings = analyse(bare, SEASON, DEFENSIVES, Consumables())
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
@@ -102,5 +113,24 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
     # Uglymage casts Ice Block at 40s, which proves it is talented, and dies at
     # 30s with it off cooldown. The availability analyser must contribute
     # alongside the never-pressed one it sits beside.
-    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES)}
+    ids = {finding.id for finding in analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables())}
     assert "defensives.unused.Uglymage" in ids
+
+
+CONSUMABLES = Consumables(
+    categories=(
+        ConsumableCategory(
+            # Short on purpose: the fixture death is 30s in, and a category
+            # whose window reaches before the run starts is deliberately not
+            # claimed at all.
+            name="health potion", cooldown_seconds=20.0, ability_ids=(1234768,)
+        ),
+    )
+)
+
+
+def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
+    # Uglymage drinks nothing all run and dies, so the consumable analyser must
+    # contribute alongside the defensive ones.
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES)
+    assert "consumables.unused.Uglymage" in {finding.id for finding in findings}

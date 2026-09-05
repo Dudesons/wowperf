@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.consumables import consumables_up_at
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS, defensives_up_at
 from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.alignment import align_pulls
@@ -25,7 +26,7 @@ from wowperf.domain.report.model import (
     TimelineBlock,
     TimelineTrack,
 )
-from wowperf.domain.season import Defensives
+from wowperf.domain.season import Consumables, Defensives
 
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
 PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
@@ -275,14 +276,29 @@ def _when(death: Death, run: Run) -> str:
     return f"{at}, pull {death.pull_index}"
 
 
-def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, ...]:
+CONSUMABLE_CAVEAT = (
+    "The log shows only what was drunk, so this says nothing was on cooldown, "
+    "not that one was carried."
+)
+"""Why the line above it is weaker than the defensive line that looks identical.
+
+It sits on the card rather than in the ledger because that is where a reader
+draws the conclusion, and the honest sentence has to be next to the claim it
+qualifies rather than several screens below it.
+"""
+
+
+def build_deaths(
+    loaded: LoadedRun, defensives: Defensives, consumables: Consumables
+) -> tuple[DeathCard, ...]:
     """One card per death, oldest first, each expanded into its last ten seconds.
 
     Built from events rather than findings: no finding carries the damage
     run-up, which is the reason this section exists at all.
 
-    The same run-up window decides which defensives were available, so the card
-    shows the damage and the answer the player had to it side by side.
+    The same run-up window decides which defensives and consumables were
+    available, so the card shows the damage and the answers the player had to it
+    side by side.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
     names_by_actor = display_names(loaded.run)
@@ -320,6 +336,27 @@ def build_deaths(loaded: LoadedRun, defensives: Defensives) -> tuple[DeathCard, 
                 # This one is reconstructed, and says so in the same words the
                 # ledger uses.
                 defensives_badge=badge_for(Confidence.INFERRED) if known else None,
+                # Gated on the roster like the defensives above: the findings
+                # file iterates the roster, so a claim here about an actor it
+                # cannot identify would be a claim the findings do not make.
+                consumables_checked=bool(consumables.categories and player is not None),
+                consumables_available=(
+                    consumables_up_at(
+                        loaded.casts,
+                        consumables.categories,
+                        death.actor_id,
+                        death.timestamp_ms,
+                        visible_from_ms=_run_start_ms(loaded.run),
+                    )
+                    if player is not None
+                    else ()
+                ),
+                consumables_badge=(
+                    badge_for(Confidence.INFERRED)
+                    if consumables.categories and player is not None
+                    else None
+                ),
+                consumables_caveat=CONSUMABLE_CAVEAT,
                 last_ten_seconds=tuple(
                     DamageRow(
                         seconds_before=(
@@ -533,6 +570,7 @@ def build_report(
     narrative: str | None,
     fetched_at: str,
     defensives: Defensives,
+    consumables: Consumables,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -577,7 +615,7 @@ def build_report(
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
-        deaths=build_deaths(loaded, defensives),
+        deaths=build_deaths(loaded, defensives, consumables),
         interrupts=interrupts,
         players=players,
         observations=build_observations(findings, placed_ids, titles_by_id),

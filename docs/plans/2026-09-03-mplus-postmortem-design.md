@@ -333,6 +333,42 @@ silent for the first.
 The data file covers five specs at the time of writing. A spec absent from it produces no claim
 in either place, which is the correct behaviour and also the feature's main limit.
 
+### 5.9 Healing consumables at a death — `inferred`
+
+*Added 2026-09-05.*
+
+§5.8 asks what a player's own kit had available. This asks the same of what they carried.
+
+The unit is a **cooldown category**, not an item, because that is how the game works and because
+health potions are re-issued each expansion at new ids: every id in a category shares its
+cooldown, so a rank upgrade joins a group rather than teaching the analyser a new number.
+
+Which categories exist was established rather than assumed. Health potions stopped sharing a
+cooldown with combat and mana potions in patch 9.0, and Healthstone stopped sharing with health
+potions in patch 8.0.1. Combat and mana potions are therefore absent from `data/consumables.toml`
+entirely: they cannot make a health potion unavailable, and listing them would imply they could.
+
+It reuses §5.8's window, so a potion drunk during the killing damage never reads as neglect. It
+does **not** reuse §5.8's ownership rule, and the difference is the point: a talent never taken
+must never be held against a player, but carrying a potion is a choice they control, so silence
+there is worth reporting.
+
+What it cannot do is see a bag. A consumable reaches the log only when it is drunk, so an
+available category means "nothing was on cooldown" and never "one was carried". The finding's
+detail states that outright, the title says "with no healing consumable on cooldown" rather than
+implying possession, and the death card carries the caveat beside the claim rather than several
+screens below it — because the card is where a reader draws the conclusion.
+
+Dropping the ownership rule costs one protection that §5.8 relies on. Casts are fetched per
+fight, so a potion drunk before the timer started is invisible; with no proof of ownership to
+lean on, reporting the category as clear there would be a false accusation rather than an
+understatement. A category whose window reaches back before the log begins is therefore not
+judged at all.
+
+**It fires on very nearly every death**, because most players drink neither consumable in most
+runs. That is the honest consequence of the design and not a defect, but it means the claim
+carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
+
 ---
 
 ## 6. Comparison

@@ -4,11 +4,18 @@
 import tomllib
 from pathlib import Path
 
-from wowperf.domain.season import DefensiveAbility, Defensives, SeasonData
+from wowperf.domain.season import (
+    ConsumableCategory,
+    Consumables,
+    DefensiveAbility,
+    Defensives,
+    SeasonData,
+)
 
 DATA_DIR = Path(__file__).resolve().parents[3].parent / "data"
 DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
+DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -52,3 +59,24 @@ def load_defensives(path: Path = DEFAULT_DEFENSIVES_PATH) -> Defensives:
             )
         )
     return Defensives(entries=tuple(entries))
+
+
+def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
+    """Healing consumables by cooldown category, from the committed TOML file.
+
+    `verified` is a date the file carries for a reader, not a field the domain
+    uses, so it is skipped like any other non-table key.
+    """
+    raw = _read(path)
+    categories = []
+    for name, block in raw.items():
+        if not isinstance(block, dict):
+            continue
+        categories.append(
+            ConsumableCategory(
+                name=name,
+                cooldown_seconds=float(block["cooldown_seconds"]),
+                ability_ids=tuple(block.get("ability_ids", ())),
+            )
+        )
+    return Consumables(categories=tuple(categories))

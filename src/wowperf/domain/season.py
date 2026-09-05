@@ -45,3 +45,24 @@ class Defensives(Frozen):
             if key == wanted:
                 return abilities
         return ()
+
+
+class ConsumableCategory(Frozen):
+    """Healing consumables that share one cooldown.
+
+    The category is the unit of availability, not the item: drinking any id in
+    it blocks every other id in it. That is what makes a rank-upgraded potion
+    join a group rather than needing the analyser to learn a new cooldown.
+    """
+
+    name: str
+    # Required for the same reason a defensive's is: a category whose cooldown is
+    # unknown cannot say whether anything was available.
+    cooldown_seconds: float
+    ability_ids: tuple[int, ...] = ()
+
+
+class Consumables(Frozen):
+    """Healing consumables by cooldown category."""
+
+    categories: tuple[ConsumableCategory, ...] = ()

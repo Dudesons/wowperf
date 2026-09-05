@@ -11,7 +11,11 @@ import httpx
 import typer
 
 from wowperf.adapters.cache.disk import DiskCache
-from wowperf.adapters.config.toml import load_defensives, load_season_data
+from wowperf.adapters.config.toml import (
+    load_consumables,
+    load_defensives,
+    load_season_data,
+)
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
@@ -249,7 +253,8 @@ def analyze(
         # Loaded once and shared: the analysers and the death cards must read
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
-        findings = analyse(loaded, load_season_data(), defensives)
+        consumables = load_consumables()
+        findings = analyse(loaded, load_season_data(), defensives, consumables)
 
         subject = _resolve_player(loaded.run, player)
         speed: SpeedReference | None = None
@@ -348,6 +353,7 @@ def analyze(
                 narrative_text,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
                 defensives,
+                consumables,
             )
         ),
         encoding="utf-8",

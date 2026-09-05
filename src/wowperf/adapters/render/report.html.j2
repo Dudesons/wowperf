@@ -157,6 +157,15 @@ that we skipped.</p>
     <a class="badge {{ death.defensives_badge.tint }}"
        href="#provenance">{{ death.defensives_badge.label }}</a></p>
   {% endif %}
+  {% if death.consumables_checked %}
+  <p class="detail">Healing consumable cooldowns clear:
+    {%- if death.consumables_available %} {{ death.consumables_available | join(", ") }}
+    {%- else %} none
+    {%- endif %}
+    <a class="badge {{ death.consumables_badge.tint }}"
+       href="#provenance">{{ death.consumables_badge.label }}</a></p>
+  <p class="nests">{{ death.consumables_caveat }}</p>
+  {% endif %}
   {% if death.last_ten_seconds %}
   <table class="runup">
     {% for hit in death.last_ten_seconds %}

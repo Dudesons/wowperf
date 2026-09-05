@@ -3,6 +3,7 @@
 
 from tests.domain.report.test_build_frame import (
     FETCHED,
+    NO_CONSUMABLES,
     NO_DEFENSIVES,
     a_loaded,
     a_player,
@@ -136,5 +137,6 @@ def test_the_caption_names_the_run_and_the_span_it_measures() -> None:
 
 
 def test_without_a_speed_reference_build_report_leaves_the_tracks_empty() -> None:
-    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES)
+    report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.timeline.ours is None

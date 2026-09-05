@@ -104,6 +104,13 @@ class DeathCard(Frozen):
     exonerates the player; an unchecked spec says the data file does not cover
     them and the tool knows nothing. Rendering both as a blank would turn the
     second into the first.
+
+    The consumable pair is shaped the same way but is a weaker claim, and
+    `consumables_caveat` is why it must not read like the defensive one. A
+    defensive is only named once the player has demonstrably cast it; a
+    consumable never proves it was carried, because the log records one only
+    when it is drunk. In practice `consumables_checked` is false only for a
+    death by an actor missing from the roster.
     """
 
     player: str
@@ -114,6 +121,10 @@ class DeathCard(Frozen):
     defensives_checked: bool = False
     defensives_available: tuple[str, ...] = ()
     defensives_badge: Badge | None = None
+    consumables_checked: bool = False
+    consumables_available: tuple[str, ...] = ()
+    consumables_badge: Badge | None = None
+    consumables_caveat: str = ""
 
 
 class PlayerCard(Frozen):
