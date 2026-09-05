@@ -9,6 +9,7 @@ from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.model import (
     Badge,
     Header,
+    LedgerRow,
     Provenance,
     Report,
     Section,
@@ -25,6 +26,24 @@ NO_COMPARISON_RAN = (
 )
 
 REPORT_URL = "https://www.warcraftlogs.com/reports/{code}?fight={fight}"
+
+DECOMPOSITION_IDS = ("compare.duration", "time.residual", "deaths.total")
+"""Figures that contain others. They head the ledger; everything else is ranked beneath."""
+
+NESTS_INSIDE = (
+    ("time.gap.", "time.residual"),
+    ("compare.downtime", "time.residual"),
+    ("deaths.single.", "deaths.total"),
+    ("deaths.chain.", "deaths.total"),
+    ("compare.route.skipped.", "trash.overage"),
+)
+"""Which figures are already contained by which, copied from the findings file's own warning.
+
+Stated rather than inferred: the relationships come from what the analysers
+measure, and they change when an analyser changes, not when a report renders.
+`compare.duration` contains every figure here and is a decomposition row rather
+than a parent — repeating it on every line would be noise.
+"""
 
 
 def badge_for(confidence: Confidence) -> Badge:
@@ -91,6 +110,26 @@ def _reference_url(report_code: str, fight_id: int) -> str:
     return REPORT_URL.format(code=report_code, fight=fight_id)
 
 
+def parent_of(finding_id: str) -> str | None:
+    """The figure this one is already contained by, if any."""
+    for prefix, parent in NESTS_INSIDE:
+        if finding_id.startswith(prefix):
+            return parent
+    return None
+
+
+def _ledger_row(finding: Finding) -> LedgerRow:
+    return LedgerRow(
+        finding_id=finding.id,
+        title=finding.title,
+        detail=finding.detail,
+        badge=badge_for(finding.confidence),
+        seconds=format_seconds(finding.seconds_lost),
+        nests_inside=parent_of(finding.id),
+        evidence=finding.evidence,
+    )
+
+
 def build_report(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -113,8 +152,16 @@ def build_report(
     return Report(
         header=_header(loaded),
         narrative=narrative,
-        ledger_decomposition=(),
-        ledger_losses=(),
+        ledger_decomposition=tuple(
+            _ledger_row(finding)
+            for finding in findings
+            if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
+        ),
+        ledger_losses=tuple(
+            _ledger_row(finding)
+            for finding in findings
+            if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
+        ),
         timeline=Timeline(section=timeline_section),
         deaths=(),
         interrupts=(),
