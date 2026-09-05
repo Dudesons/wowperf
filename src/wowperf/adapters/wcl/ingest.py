@@ -67,13 +67,20 @@ def _build_players(
                 f"Fight {fight.get('id')} lists player actor {actor_id}, "
                 "which is absent from the report's master data"
             )
+        # Both arrays are index-aligned with `friendlyPlayers` and both carry
+        # nulls in real reports. A null says exactly what a short array says —
+        # this report does not know — so it reads as unknown rather than
+        # dropping the player, which would shrink the roster for the same reason
+        # the unmatched actor above is refused rather than skipped.
+        spec = specs[position] if position < len(specs) else None
+        item_level = item_levels[position] if position < len(item_levels) else None
         players.append(
             Player(
                 actor_id=actor_id,
                 name=actor["name"],
                 class_name=actor["subType"],
-                spec=specs[position] if position < len(specs) else "",
-                item_level=item_levels[position] if position < len(item_levels) else 0,
+                spec=spec if spec is not None else "",
+                item_level=item_level if item_level is not None else 0,
                 talent_import_string=talents.get(actor_id),
             )
         )
