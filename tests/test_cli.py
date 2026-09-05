@@ -775,9 +775,11 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
 
     The shared fixture's only pull is trash, so both runs need a boss pull
     (`boss_pull_reports`) before `compare_uptime` measures any boss-pull time at
-    all; `aura_rows_by_code` then gives the reference a buff kept up for the
-    whole pull that our side never had, so the gap actually clears the
-    reporting thresholds in `wowperf.domain.comparison.uptime`.
+    all; `aura_rows_by_code` then gives both sides the same ability at
+    different uptimes, so the gap actually clears the reporting thresholds in
+    `wowperf.domain.comparison.uptime` — and, since Task 10, our own side must
+    carry the ability at all, or `_gap_findings` now drops it as attributed to
+    someone else's kit rather than this player's.
     """
     calls: list[str] = []
     result = run_analyze(
@@ -785,6 +787,17 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
         calls=calls,
         boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
         aura_rows_by_code={
+            "abc123": {
+                "onSelf": [
+                    {
+                        "guid": 999,
+                        "name": "Power Infusion",
+                        "totalUptime": 1000,
+                        "totalUses": 1,
+                        "bands": [{"startTime": 1000, "endTime": 2000}],
+                    }
+                ],
+            },
             PARSE_REFERENCE_CODE: {
                 "onSelf": [
                     {

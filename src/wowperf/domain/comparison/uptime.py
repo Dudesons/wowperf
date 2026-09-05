@@ -66,6 +66,14 @@ def _gap_findings(
         if their_fraction < MIN_UPTIME_FRACTION:
             continue
         our_fraction = ours.get(ability_id, (name, 0.0))[1]
+        if our_fraction <= 0.0:
+            # `onSelf` carries no source filter, so it returns teammate-cast
+            # buffs, consumables, and gear procs alongside what this player
+            # actually carries. Attributing a 0% on our side to this player is
+            # only trustworthy for an ability they carried at all; the case of
+            # a spell they never cast is already covered by compare_spells's
+            # missing-spell branch, against the caster who actually owns it.
+            continue
         if their_fraction - our_fraction < UPTIME_GAP_FRACTION:
             continue
         gaps.append((their_fraction - our_fraction, ability_id, name, our_fraction,

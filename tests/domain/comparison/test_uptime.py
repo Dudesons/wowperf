@@ -193,13 +193,56 @@ def test_a_gap_findings_detail_warns_the_comparison_is_by_exact_ability() -> Non
 def test_no_more_than_the_cap_is_reported() -> None:
     ours = a_run(BOSS)
     theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    # Our side must carry each ability at a nonzero fraction, or every one of
+    # these gaps would now be dropped as "we never had it at all" (see
+    # test_an_aura_we_never_carried_at_all_produces_no_finding below).
+    our_auras = PlayerAuras(
+        actor_id=7,
+        on_self=tuple(an_aura(100 + n, f"Buff {n}", (0, 10_000)) for n in range(8)),
+    )
     their_auras = PlayerAuras(
         actor_id=3,
         on_self=tuple(an_aura(100 + n, f"Buff {n}", (0, 90_000)) for n in range(8)),
+    )
+
+    findings = compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
+
+    assert len(ids(findings, "compare.uptime.self.")) == 5
+
+
+def test_an_aura_we_never_carried_at_all_produces_no_finding() -> None:
+    """`onSelf` has no source filter, so it returns teammate-cast buffs, consumables,
+    and gear procs alongside the player's own buffs. Reporting a 0% for one of those
+    blames the player for a button that isn't theirs to press — a Shadow Priest's
+    Power Infusion is not something a Blood Death Knight can act on. Attribution by
+    exact ability id can only be trusted when our side carried the ability at all;
+    "they used it and we never did" for anything a player actually casts is already
+    covered by `compare_spells`'s missing-spell branch."""
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    their_auras = PlayerAuras(
+        actor_id=3, on_self=(an_aura(10060, "Power Infusion", (0, 33_000)),)
     )
 
     findings = compare_uptime(
         ours, PlayerAuras(actor_id=7), a_player(), theirs, their_auras, "Wipsdk"
     )
 
-    assert len(ids(findings, "compare.uptime.self.")) == 5
+    assert ids(findings, "compare.uptime.") == []
+
+
+def test_an_aura_both_sides_carried_still_reports_a_real_gap() -> None:
+    """Skipping abilities we never carried at all must not swallow the case the
+    feature exists for: both sides had it, and one carried it much longer."""
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    our_auras = PlayerAuras(
+        actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),)
+    )
+    their_auras = PlayerAuras(
+        actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),)
+    )
+
+    findings = compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
+
+    assert ids(findings, "compare.uptime.self.") == ["compare.uptime.self.0"]
