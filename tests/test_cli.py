@@ -951,3 +951,35 @@ def test_an_undecodable_narrative_file_names_the_path_before_anything_is_fetched
     assert result.exit_code == 1
     assert "notes.md" in result.output
     assert calls == []
+
+
+def test_a_narrative_with_markup_is_escaped_in_the_report(tmp_path: Path) -> None:
+    """A narrative file containing markup must be escaped before rendering, or a
+    malicious narrative could inject scripts or break the page structure. This test
+    asserts both that the raw tag does not appear and that the escaped form does."""
+    notes = tmp_path / "notes.md"
+    notes.write_text(
+        "<script>alert(1)</script> and <b>bold</b> text", encoding="utf-8"
+    )
+    result = run_analyze(tmp_path, "--narrative", str(notes))
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    # Assert the raw tags do NOT appear
+    assert "<script>alert(1)</script>" not in html
+    assert "<b>bold</b>" not in html
+    # Assert the escaped forms DO appear
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    assert "&lt;b&gt;bold&lt;/b&gt;" in html
+
+
+def test_no_compare_report_contains_the_withheld_reason(tmp_path: Path) -> None:
+    """When `--no-compare` is passed, many report sections are withheld and
+    replaced with a reason message. The reader must be told explicitly why those
+    sections are empty, not left guessing."""
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert (
+        "No reference run was fetched for this analysis, so there is nothing to compare against."
+        in html
+    )
