@@ -373,6 +373,22 @@ def test_a_second_lookup_for_the_same_actor_is_served_from_the_cache(tmp_path: P
     assert calls == ["AuraTable"], "the second lookup should not reach the network"
 
 
+def test_a_null_data_block_raises_an_ingest_error_naming_the_code(tmp_path: Path) -> None:
+    """A GraphQL response can carry a null `data` block itself, not only a null
+    nested report: the aura table query hits this for a fight the API cannot
+    resolve. `WclClient.execute` passes that null straight through, so the
+    repository must reject it explicitly rather than crash subscripting None."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "oauth" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        return httpx.Response(200, json={"data": None})
+
+    repository = a_repository(handler, tmp_path)
+    with pytest.raises(IngestError, match="Report abc123 was not found"):
+        repository.auras("abc123", 36, 7)
+
+
 def test_two_different_actors_do_not_collide_in_the_cache(tmp_path: Path) -> None:
     calls: list[str] = []
 

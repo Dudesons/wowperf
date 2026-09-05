@@ -66,13 +66,23 @@ class WclRunRepository:
         return payload
 
     @staticmethod
-    def _require_report(payload: dict[str, Any], variables: dict[str, Any]) -> None:
+    def _require_report(payload: dict[str, Any] | None, variables: dict[str, Any]) -> None:
         """Reject a null report.
 
-        An unlisted or unknown report answers HTTP 200 with `reportData.report`
-        null and no GraphQL errors. Raising before the payload is cached matters:
-        entries never expire, so caching one would poison the key for good.
+        An unlisted or unknown report usually answers HTTP 200 with
+        `reportData.report` null and no GraphQL errors; occasionally the whole
+        `data` block comes back null instead, which the GraphQL response shape
+        allows and `WclClient.execute` passes through unchanged. Both mean the
+        same thing: nothing came back to build a report from. Raising before
+        the payload is cached matters: entries never expire, so caching one
+        would poison the key for good.
         """
+        if payload is None:
+            raise IngestError(
+                f"Report {variables.get('code')} was not found, or is not accessible "
+                "with these credentials. Private reports need a personal login, which "
+                "this tool does not support."
+            )
         report_data = payload.get("reportData")
         if isinstance(report_data, dict) and report_data.get("report") is None:
             raise IngestError(
