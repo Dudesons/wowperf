@@ -45,7 +45,8 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
    ```
 
    Only then is every response served from the cache written in step 1, and reference entries
-   live a day, so a second run the same day spends no API quota. Drop a flag and you change the
+   live a day, so a second run the same day spends no quota beyond the two rate-limit reads. Drop
+   a flag and you change the
    subject: without step 1's `--player` the comparison is fetched for a different specialisation
    and a different actor, which are different cache keys and so live queries; without its
    `--no-compare` both references are fetched outright, the roughly-28-point path. The reader

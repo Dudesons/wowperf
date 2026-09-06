@@ -97,6 +97,28 @@ def test_purge_expired_ignores_a_file_removed_between_glob_and_stat(tmp_path: Pa
     DiskCache(tmp_path, max_age_seconds=60, now=now_and_remove)
 
 
+def test_get_or_fetch_refetches_an_entry_removed_between_exists_and_stat(tmp_path: Path) -> None:
+    """The same race as above, on the read path: `get_or_fetch` checks that the
+    file exists and then stats it through `_expired`, and another process may
+    delete it in between. A vanished entry is a miss, not an exception. `_expired`
+    calls `now()` before it stats the path, so a `now` that deletes the file once
+    is the simplest way to land inside that window.
+    """
+    remove_next = [False]
+
+    def now_and_remove_once() -> float:
+        if remove_next[0]:
+            remove_next[0] = False
+            (tmp_path / "k.json").unlink(missing_ok=True)
+        return 1_000.0
+
+    cache = DiskCache(tmp_path, max_age_seconds=60, now=now_and_remove_once)
+    assert cache.get_or_fetch("k", lambda: {"v": 1}) == {"v": 1}
+
+    remove_next[0] = True
+    assert cache.get_or_fetch("k", lambda: {"v": 2}) == {"v": 2}
+
+
 def test_a_cache_without_a_max_age_keeps_everything(tmp_path: Path) -> None:
     clock = [0.0]
     cache = DiskCache(tmp_path, now=lambda: clock[0])

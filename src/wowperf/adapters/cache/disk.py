@@ -57,8 +57,14 @@ class DiskCache:
 
     def get_or_fetch(self, key: str, fetch: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         path = self._directory / f"{key}.json"
-        if path.exists() and not self._expired(path):
-            return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+        try:
+            if path.exists() and not self._expired(path):
+                return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+        except OSError:
+            # Another process sharing the directory may have removed the entry
+            # between the check and the stat or read that follows it. A vanished
+            # entry is a miss, which is what the fetch below already handles.
+            pass
 
         value = fetch()
         self._write_atomically(path, json.dumps(value))

@@ -415,10 +415,12 @@ def build_death_findings(
     findings: Sequence[Finding], titles_by_id: dict[str, str]
 ) -> tuple[LedgerRow, ...]:
     """The findings about what a dying player still had, placed with the deaths."""
+    # A death finding that ever carried seconds would belong in the ledger, and must not appear
+    # twice.
     return tuple(
         _ledger_row(finding, titles_by_id)
         for finding in findings
-        if finding.id.startswith(DEATH_FINDING_PREFIXES)
+        if finding.seconds_lost is None and finding.id.startswith(DEATH_FINDING_PREFIXES)
     )
 
 

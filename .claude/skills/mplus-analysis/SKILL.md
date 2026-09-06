@@ -133,9 +133,13 @@ badged `derived`.
 
 Do not turn that into "avoidable damage". The report deliberately refuses the phrase.
 
-A tank taking many multiples of the group median from melee is the job, not a mistake — and the
-tool still reports it, because it cannot tell which specs tank. The finding's evidence names the
-class and spec beside the figure so a reader can discount it on sight.
+A tank taking many multiples of the group median from melee is the job, not a mistake, so tanks
+are left out of the damage-against-median comparison altogether: as the only member of their role
+in a keystone they have no honest median to be measured against. Which specialisations tank is
+read from `data/roles.toml`, which is maintained by hand and carries the date it was checked, and
+a specialisation absent from it is treated as damage — so a tank the table does not know would
+still appear. The finding's evidence names the class and spec beside the figure, which is what
+lets a reader spot that case.
 
 An Augmentation Evoker on either roster raises `compare.confound.augmentation`: while it stands,
 treat every per-player damage figure in the report as approximate.
