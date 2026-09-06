@@ -64,8 +64,8 @@ def test_the_interrupts_section_takes_its_findings() -> None:
 
 
 def test_a_timed_interrupt_finding_lands_in_interrupts_too() -> None:
-    # PLACEMENTS now sends every "compare.interrupts" row to the Interrupts tab,
-    # timed or not: there is no page-wide ledger of losses left for it to go to instead.
+    # PLACEMENTS sends every "compare.interrupts" row to the Interrupts tab,
+    # timed or not: there is no page-wide ledger of losses for it to go to instead.
     findings = (a_finding("compare.interrupts", seconds=40.0),)
     rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
     assert ids(rows) == ["compare.interrupts"]

@@ -92,15 +92,15 @@ def test_a_family_the_table_does_not_know_reaches_the_catch_all() -> None:
 
 
 def test_a_timed_row_keeps_its_seconds_where_it_lands() -> None:
-    # There is no page-wide list of losses any more; a gap is a route row with its cost.
+    # There is no page-wide list of losses; a gap is a route row with its cost.
     report = a_report_of(a_finding("time.gap.0", seconds=41.0))
     assert ids(report.route_rows) == ["time.gap.0"]
     assert report.route_rows[0].seconds == "0:41"
 
 
 def test_a_timed_death_family_finding_lands_once_beneath_the_deaths() -> None:
-    # Before the table, a death-family finding carrying seconds went to the ledger of
-    # losses alone. It now stays with the deaths, with its seconds, and nowhere else.
+    # A death-family finding carrying seconds stays with the deaths, with its
+    # seconds, and nowhere else -- there is no page-wide ledger of losses.
     report = a_report_of(a_finding("defensives.unused.45438", seconds=12.0))
     assert ids(report.death_rows) == ["defensives.unused.45438"]
     assert report.death_rows[0].seconds == "0:12"

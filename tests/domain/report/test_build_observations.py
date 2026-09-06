@@ -98,7 +98,7 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
 
 
 def test_a_death_family_finding_carrying_seconds_stays_beneath_the_deaths() -> None:
-    """Anything timed belongs in the ledger, whatever family it is from.
+    """Anything timed keeps its seconds, whatever family it is from.
 
     A timed row keeps its seconds where its family lives; there is no separate
     list of losses for it to appear in twice.

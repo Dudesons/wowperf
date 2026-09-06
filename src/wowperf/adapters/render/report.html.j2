@@ -172,7 +172,7 @@ that we skipped.</p>
 
 <h2 id="observations">Other findings</h2>
 {% if report.observations %}
-<p class="sub">Findings with no seconds figure, so they sit outside the ledger above.</p>
+<p class="sub">Findings no other section claimed.</p>
 {% for row in report.observations %}
 {{ ledger_row(row) }}
 {% endfor %}
@@ -373,6 +373,7 @@ fetched {{ report.provenance.fetched_at }}.</p>
     if (panel) { show(panel); }
   }
   window.addEventListener("hashchange", resolve);
+  window.addEventListener("load", resolve);
   resolve();
 })();
 </script>

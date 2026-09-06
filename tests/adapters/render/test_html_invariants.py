@@ -229,6 +229,9 @@ def test_the_page_executes_only_its_own_script() -> None:
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert not src.startswith(("http://", "https://", "//")), src
+    # Finding ids contain dots (e.g. "finding-time.gap.0"); querySelector("#" + id)
+    # would parse the dot as a class selector, so the lookup must stay getElementById.
+    assert "getElementById" in body
 
 
 PANEL_ORDER = [
@@ -260,6 +263,14 @@ def test_every_panel_has_exactly_one_tab_button() -> None:
     html = minimal_html()
     for name in PANEL_ORDER:
         assert html.count(f'data-tab-for="{name}"') == 1, name
+
+
+def test_the_tab_buttons_follow_panel_order() -> None:
+    # The script opens the first button's panel by default, so button order is
+    # the default tab; nothing else pins the order the buttons appear in.
+    html = minimal_html()
+    positions = [html.index(f'data-tab-for="{name}"') for name in PANEL_ORDER]
+    assert positions == sorted(positions)
 
 
 def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
