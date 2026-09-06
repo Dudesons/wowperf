@@ -143,6 +143,15 @@ def test_landed_casts_are_ranked_by_the_damage_that_followed() -> None:
     assert "200,000" in ranked[0].evidence[0]
 
 
+def test_the_detail_formats_the_damage_with_thousands_separators() -> None:
+    # One landed cast followed by one hit large enough to need a separator.
+    casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
+    findings = analyse_interrupts(casts, (hit(2100, 1_234_567),))
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert "1,234,567 unmitigated damage" in ability.detail
+    assert "1234567" not in ability.detail
+
+
 def test_damage_outside_the_follow_window_is_not_attributed() -> None:
     casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
     findings = analyse_interrupts(casts, (hit(99_000, 500_000),))

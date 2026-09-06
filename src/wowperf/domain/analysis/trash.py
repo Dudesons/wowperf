@@ -13,6 +13,20 @@ OVERKILL_FLOOR_PERCENT = 2.0
 MAX_PULLS_REPORTED = 3
 
 
+def forces_by_pull(enemy_deaths: tuple[EnemyDeath, ...]) -> dict[int, int]:
+    """Enemy forces each pull actually awarded, summed from the deaths inside its window.
+
+    `Pull.enemies` lists NPC *types*, not individuals — the schema exposes no
+    instance count — so pricing a pull by its types under-counts a pack holding
+    several copies of one mob. Deaths are the honest unit.
+    """
+    forces: dict[int, int] = defaultdict(int)
+    for death in enemy_deaths:
+        if death.pull_index is not None:
+            forces[death.pull_index] += death.forces
+    return dict(forces)
+
+
 def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Finding]:
     """Report trash killed beyond the requirement, and the packs that bought least."""
     if run.count_required <= 0:
@@ -46,13 +60,10 @@ def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Findin
 
         # The per-pull ranking says where the overkill went, so it has nothing to
         # explain unless trash.overage actually fired.
-        forces_by_pull: dict[int, int] = defaultdict(int)
-        for death in enemy_deaths:
-            if death.pull_index is not None:
-                forces_by_pull[death.pull_index] += death.forces
+        pull_forces = forces_by_pull(enemy_deaths)
 
         rates = [
-            (pull.index, forces_by_pull.get(pull.index, 0) / pull.duration_seconds)
+            (pull.index, pull_forces.get(pull.index, 0) / pull.duration_seconds)
             for pull in run.trash_pulls
             if pull.duration_seconds > 0
         ]
@@ -65,12 +76,12 @@ def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Findin
                     id=f"trash.pull.{rank}",
                     title=f"Pull {pull_index} bought {rate:.1f} forces per second",
                     detail=(
-                        f"{forces_by_pull.get(pull_index, 0)} forces over "
+                        f"{pull_forces.get(pull_index, 0)} forces over "
                         f"{pull.duration_seconds:.0f}s."
                     ),
                     confidence=Confidence.MEASURED,
                     seconds_lost=None,
-                    evidence=(pull.name, f"map position x={pull.x}, y={pull.y}"),
+                    evidence=(pull.name,),
                     pull_index=pull_index,
                 )
             )

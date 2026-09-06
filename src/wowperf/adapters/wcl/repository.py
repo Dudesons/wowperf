@@ -1,10 +1,11 @@
 # ABOUTME: Assembles a Run from Warcraft Logs, caching every response it fetches.
 # ABOUTME: Satisfies the RunRepository port so services never learn where a run came from.
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
-from wowperf.adapters.wcl.client import RateLimit, WclClient
+from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
@@ -22,6 +23,7 @@ from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
     ACTORS_QUERY,
+    AFFIXES_QUERY,
     AURA_TABLE_QUERY,
     CASTS_QUERY,
     DAMAGE_TAKEN_QUERY,
@@ -73,8 +75,8 @@ class WclRunRepository:
         `reportData.report` null and no GraphQL errors. Since
         `WclClient.execute` now raises on a null `data` block, only a stale
         cache entry from an older build can deliver None here. Raising before
-        the payload is cached matters: entries never expire, so caching one
-        would poison the key for good.
+        the payload is cached matters: an entry lives for a day or forever, so
+        caching one would poison the key for that whole span.
         """
         if payload is None:
             raise IngestError(
@@ -100,10 +102,47 @@ class WclRunRepository:
             self._query(FIGHTS_QUERY, {"code": report_code})["reportData"]["report"],
         )
 
+    def _fetch_affixes(self) -> dict[str, Any]:
+        """Fetch and validate the affix table, so only a usable payload reaches the cache."""
+        payload = self._client.execute(AFFIXES_QUERY, {})
+        game_data = payload.get("gameData")
+        if not isinstance(game_data, dict) or not game_data.get("affixes"):
+            raise WclError("The affixes response did not carry gameData.affixes as expected")
+        return payload
+
+    def _affix_names(self, affix_ids: Sequence[int]) -> tuple[str, ...]:
+        """Affix names from game data, with the bare id for anything unlisted.
+
+        Goes to the cache and the client directly rather than through `_query`:
+        the affix table needs its own validation before it may be cached
+        (`_fetch_affixes` does that), and unlike every other query this
+        repository issues, its absence must degrade the run rather than fail
+        it — an affix id the report already carries is still usable on its
+        own, so a header of bare ids is preferable to no report at all. A
+        spent rate limit is the one failure still allowed through: it must
+        stop the run rather than be swallowed into a silent degrade.
+
+        Cached indefinitely: the affix table is game-wide and changes only when
+        Blizzard adds one, at which point the new id simply resolves to itself
+        until the cache is cleared.
+        """
+        if not affix_ids:
+            return ()
+        try:
+            payload = self._cache.get_or_fetch(cache_key(AFFIXES_QUERY, {}), self._fetch_affixes)
+        except WclError as error:
+            if isinstance(error, RateLimitExceeded):
+                raise
+            return tuple(str(affix_id) for affix_id in affix_ids)
+        rows = payload["gameData"]["affixes"]
+        names = {int(row["id"]): str(row["name"]) for row in rows}
+        return tuple(names.get(affix_id, str(affix_id)) for affix_id in affix_ids)
+
     def get(self, report_code: str, fight_id: int | None) -> Run:
         """Build the run alone, without paying for the event streams `load` fetches."""
         report = self._report(report_code)
-        return build_run(report, select_keystone_fight(report["fights"], fight_id))
+        run = build_run(report, select_keystone_fight(report["fights"], fight_id))
+        return run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
 
     def _actor_game_ids(self, report_code: str) -> dict[int, int]:
         """Map every actor in the report to its game id, so an enemy death always resolves.
@@ -145,6 +184,7 @@ class WclRunRepository:
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
         run = build_run(report, fight, self._talents(report_code, fight))
+        run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code})
         try:

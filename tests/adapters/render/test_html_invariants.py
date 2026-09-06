@@ -91,6 +91,14 @@ def minimal_findings() -> tuple[Finding, ...]:
             detail="Grouped by spell.",
             confidence=Confidence.DERIVED,
         ),
+        # A death-family finding, so the once-only and reaches-the-page
+        # invariants below exercise the rows beneath the Deaths section.
+        Finding(
+            id="defensives.unused.0",
+            title="Uglymage died with Ice Block available",
+            detail="Cast earlier in the run, and its cooldown had elapsed by the killing blow.",
+            confidence=Confidence.INFERRED,
+        ),
     )
 
 

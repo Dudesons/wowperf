@@ -10,6 +10,7 @@ from wowperf.domain.season import (
     CooldownAbility,
     DefensiveAbility,
     Defensives,
+    Roles,
     SeasonData,
     ThroughputCooldowns,
 )
@@ -19,6 +20,7 @@ DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
 DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
+DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -83,6 +85,18 @@ def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
             )
         )
     return Consumables(categories=tuple(categories))
+
+
+def load_roles(path: Path = DEFAULT_ROLES_PATH) -> Roles:
+    """Tank and healer specialisations, from the committed TOML file."""
+    raw = _read(path)
+    tank = raw.get("tank")
+    healer = raw.get("healer")
+    assert isinstance(tank, dict) and isinstance(healer, dict)
+    return Roles(
+        tanks=tuple(str(spec) for spec in tank.get("specs", ())),
+        healers=tuple(str(spec) for spec in healer.get("specs", ())),
+    )
 
 
 def load_throughput_cooldowns(path: Path = DEFAULT_THROUGHPUT_PATH) -> ThroughputCooldowns:

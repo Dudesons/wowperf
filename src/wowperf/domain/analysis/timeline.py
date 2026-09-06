@@ -86,10 +86,7 @@ def decompose_time(run: Run, deaths: tuple[Death, ...], season: SeasonData) -> l
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=gap.seconds,
-                evidence=(
-                    next_pull.name,
-                    f"map position x={gap.x}, y={gap.y}",
-                ),
+                evidence=(next_pull.name,),
                 pull_index=gap.after_pull_index + 1,
             )
         )

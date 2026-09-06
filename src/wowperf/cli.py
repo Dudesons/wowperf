@@ -14,12 +14,13 @@ from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_roles,
     load_season_data,
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
@@ -37,6 +38,15 @@ from wowperf.urls import parse_report_url
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
 
 DEFAULT_CACHE_DIR = Path("cache")
+
+REFERENCE_CACHE_SUBDIR = "references"
+REFERENCE_CACHE_SECONDS = 24 * 3600.0
+"""How long a leaderboard row or a reference run's responses are kept.
+
+Long enough for the narrative re-run the analyzing-a-run skill relies on to be
+served from cache; short enough that no standing store of other players' logs
+accumulates (RPGLogs terms §5d). Our own run's responses never expire.
+"""
 
 FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
     "findings are ranked by seconds_lost, not additive: compare.duration is the "
@@ -79,6 +89,32 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
+def build_reference_repositories(
+    client: WclClient, cache_dir: Path
+) -> tuple[WclRankingRepository, WclRunRepository]:
+    """The leaderboards and the reference runs, behind the expiring cache."""
+    transient = DiskCache(
+        cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    return WclRankingRepository(client, transient), WclRunRepository(client, transient)
+
+
+def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
+    """State the cost of a command's own queries, quota read before and after.
+
+    Point cost per query is undocumented, so both commands read the quota
+    before and after their work. The reading itself is a query too, so the
+    difference also counts the cost of these two quota reads, not only the
+    work between them.
+    """
+    spent = after.points_spent_this_hour - before.points_spent_this_hour
+    remaining = after.limit_per_hour - after.points_spent_this_hour
+    return (
+        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
+        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour."
+    )
+
+
 @app.command()
 def fetch(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -97,9 +133,6 @@ def fetch(
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
 
-        # Point cost per query is undocumented, so this reads the quota before and
-        # after the fetch. The reading itself is a query too, so the difference
-        # also counts the cost of these two quota reads, not only the fetch.
         before = repository.rate_limit()
         run = repository.get(code, fight if fight is not None else fight_from_url)
         after = repository.rate_limit()
@@ -109,13 +142,7 @@ def fetch(
         typer.echo(str(error), err=True)
         raise typer.Exit(1) from error
 
-    spent = after.points_spent_this_hour - before.points_spent_this_hour
-    remaining = after.limit_per_hour - after.points_spent_this_hour
-    typer.echo(
-        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
-        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour.",
-        err=True,
-    )
+    typer.echo(_quota_sentence(before, after), err=True)
     typer.echo(run.model_dump_json(indent=2))
 
 
@@ -255,6 +282,7 @@ def analyze(
 
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
+        before = repository.rate_limit()
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
         # Loaded once and shared: the analysers and the death cards must read
         # the same cooldowns, or the page and the findings disagree.
@@ -266,6 +294,7 @@ def analyze(
             defensives,
             consumables,
             load_throughput_cooldowns(),
+            roles=load_roles(),
             include_cooldown_ceiling=throughput_ceiling,
         )
 
@@ -273,8 +302,8 @@ def analyze(
         speed: SpeedReference | None = None
         parse: ParseReference | None = None
         if not no_compare:
-            rankings = WclRankingRepository(repository.client, repository.cache)
-            speed, parse = _references(rankings, repository, loaded.run, subject)
+            rankings, references = build_reference_repositories(repository.client, cache_dir)
+            speed, parse = _references(rankings, references, loaded.run, subject)
 
             our_auras = None
             if parse is not None:
@@ -291,7 +320,7 @@ def analyze(
                     parse = parse.model_copy(
                         update={
                             "auras": _auras(
-                                repository,
+                                references,
                                 parse.loaded.run.report_code,
                                 parse.loaded.run.fight_id,
                                 their_player.actor_id,
@@ -303,6 +332,7 @@ def analyze(
                 ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
             )
             findings = rank_findings(findings)
+        after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
@@ -372,6 +402,7 @@ def analyze(
         encoding="utf-8",
     )
     typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,29 @@
+# Which specialisations tank and which heal. No API field carries a role, so this
+# is maintained by hand and dated. A specialisation absent from both lists is
+# treated as damage, which is the safe direction: a tank mistaken for damage
+# produces a loud false finding about melee damage, a damage player mistaken for
+# a tank produces silence.
+#
+# Read from the game's class and specialisation list on the date below.
+verified = "2026-09-06"
+
+[tank]
+specs = [
+  "DeathKnight/Blood",
+  "DemonHunter/Vengeance",
+  "Druid/Guardian",
+  "Monk/Brewmaster",
+  "Paladin/Protection",
+  "Warrior/Protection",
+]
+
+[healer]
+specs = [
+  "Druid/Restoration",
+  "Evoker/Preservation",
+  "Monk/Mistweaver",
+  "Paladin/Holy",
+  "Priest/Discipline",
+  "Priest/Holy",
+  "Shaman/Restoration",
+]

@@ -92,29 +92,57 @@ def test_a_death_with_no_killing_ability_falls_back_to_unknown() -> None:
     assert death.killing_blow == "Unknown ability 54321"
 
 
-def test_the_cost_of_a_death_is_measured_to_the_players_next_cast() -> None:
+def test_a_cast_carries_its_target_and_none_for_an_untargeted_one() -> None:
     casts = build_casts(
         [
-            {"type": "cast", "sourceID": 11, "abilityGameID": 700, "timestamp": 11000},
-            {"type": "cast", "sourceID": 11, "abilityGameID": 700, "timestamp": 45000},
+            {"type": "cast", "sourceID": 11, "targetID": 501, "abilityGameID": 700,
+             "timestamp": 11000},
+            {"type": "cast", "sourceID": 11, "targetID": -1, "abilityGameID": 701,
+             "timestamp": 12000},
+            {"type": "cast", "sourceID": 11, "abilityGameID": 702, "timestamp": 13000},
+        ],
+        a_run(),
+        ABILITY_NAMES,
+    )
+    assert [cast.target_id for cast in casts] == [501, None, None]
+
+
+def test_the_cost_of_a_death_runs_until_the_player_cast_at_another_actor() -> None:
+    # Respawned at the entrance, the player pops a self-only sprint at 15s and a
+    # self-buff at 20s while running back, then heals an ally at 45s. Only the
+    # heal is the fight resuming.
+    casts = build_casts(
+        [
+            {"type": "cast", "sourceID": 11, "targetID": -1, "abilityGameID": 700,
+             "timestamp": 15000},
+            {"type": "cast", "sourceID": 11, "targetID": 11, "abilityGameID": 701,
+             "timestamp": 20000},
+            {"type": "cast", "sourceID": 11, "targetID": 12, "abilityGameID": 702,
+             "timestamp": 45000},
         ],
         a_run(),
         ABILITY_NAMES,
     )
     events: list[dict[str, Any]] = [
-        {
-            "abilityGameID": 0,
-            "fight": 2,
-            "killerID": 999,
-            "killingAbilityGameID": 900,
-            "sourceID": -1,
-            "targetID": 11,
-            "timestamp": 12000,
-            "type": "death",
-        }
+        {"abilityGameID": 0, "fight": 2, "killerID": 999, "killingAbilityGameID": 900,
+         "sourceID": -1, "targetID": 11, "timestamp": 12000, "type": "death"},
     ]
     death = build_deaths(events, a_run(), casts, ABILITY_NAMES)[0]
     assert death.seconds_until_next_action == 33.0
+
+
+def test_a_death_followed_only_by_self_casts_has_no_measured_cost() -> None:
+    casts = build_casts(
+        [{"type": "cast", "sourceID": 11, "targetID": -1, "abilityGameID": 700,
+          "timestamp": 15000}],
+        a_run(),
+        ABILITY_NAMES,
+    )
+    events: list[dict[str, Any]] = [
+        {"abilityGameID": 0, "fight": 2, "killerID": 999, "killingAbilityGameID": 900,
+         "sourceID": -1, "targetID": 11, "timestamp": 12000, "type": "death"},
+    ]
+    assert build_deaths(events, a_run(), casts, ABILITY_NAMES)[0].seconds_until_next_action is None
 
 
 def test_a_death_with_no_later_cast_has_no_measured_cost() -> None:

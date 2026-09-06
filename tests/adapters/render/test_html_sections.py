@@ -5,10 +5,17 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report, a_row
-from tests.domain.report.test_build_frame import a_pull, a_run
+from tests.domain.report.test_build_frame import (
+    FETCHED,
+    NO_CONSUMABLES,
+    NO_DEFENSIVES,
+    a_pull,
+    a_run,
+)
+from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from wowperf.adapters.render.html import render
 from wowperf.domain.report import build as build_module
-from wowperf.domain.report.build import build_timeline
+from wowperf.domain.report.build import build_report, build_timeline
 from wowperf.domain.report.model import (
     DamageRow,
     DeathCard,
@@ -247,3 +254,16 @@ def test_a_player_cards_withheld_comparison_states_its_reason() -> None:
 def test_a_run_with_no_players_says_so_rather_than_showing_an_empty_heading() -> None:
     html = render(a_report(players=()))
     assert "No players" in html
+
+
+def test_death_findings_render_inside_the_deaths_section() -> None:
+    html = render(build_report(a_loaded(), (
+        a_finding(
+            "defensives.unused.Uglymage",
+            title="Uglymage died once with a defensive available",
+        ),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    deaths_start = html.index('<h2 id="deaths">')
+    interrupts_start = html.index('<h2 id="interrupts">')
+    title_at = html.index("Uglymage died once with a defensive available")
+    assert deaths_start < title_at < interrupts_start

@@ -177,6 +177,9 @@ class Report(Frozen):
     ledger_losses: tuple[LedgerRow, ...]
     timeline: Timeline
     deaths: tuple[DeathCard, ...]
+    # The per-player death findings — a defensive or a consumable available at
+    # a death, a consumable never drunk — beneath the cards that show each death.
+    death_findings: tuple[LedgerRow, ...] = ()
     interrupts: tuple[LedgerRow, ...]
     players: tuple[PlayerCard, ...]
     # Every finding no section above claimed — a structural catch-all, not a

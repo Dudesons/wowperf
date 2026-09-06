@@ -8,6 +8,7 @@ from wowperf.domain.base import Frozen
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
+from wowperf.domain.season import Roles
 
 MEDIAN_MULTIPLE = 2.0
 """Taking this many times the group median of one ability is worth saying out loud."""
@@ -109,7 +110,7 @@ def display_names(run: Run) -> dict[int, str]:
 
 
 def _damage_outliers(
-    run: Run, damage_taken: tuple[DamageTakenEvent, ...]
+    run: Run, damage_taken: tuple[DamageTakenEvent, ...], roles: Roles
 ) -> list[tuple[int, str, str, int, float]]:
     """(actor id, player name, ability name, amount, multiple of the median), worst first.
 
@@ -118,9 +119,16 @@ def _damage_outliers(
     actor id only when a collision is possible, matching the other analysers.
     """
     names = {player.actor_id: player.name for player in run.players}
+    tank_ids = {
+        player.actor_id
+        for player in run.players
+        if roles.role_of(player.class_name, player.spec) == "tank"
+    }
     totals: dict[tuple[int, int], int] = defaultdict(int)
     ability_names: dict[int, str] = {}
     for hit in damage_taken:
+        if hit.actor_id in tank_ids:
+            continue
         totals[(hit.ability_id, hit.actor_id)] += hit.amount
         ability_names[hit.ability_id] = hit.ability_name
 
@@ -155,6 +163,7 @@ def analyse_players(
     deaths: tuple[Death, ...],
     interrupts: tuple[InterruptEvent, ...],
     damage_taken: tuple[DamageTakenEvent, ...],
+    roles: Roles = Roles(),
 ) -> list[Finding]:
     """Per-player facts, stated without ranking anyone's throughput."""
     findings: list[Finding] = []
@@ -195,7 +204,7 @@ def analyse_players(
         )
 
     for rank, (actor_id, name, ability, amount, multiple) in enumerate(
-        _damage_outliers(run, damage_taken)[:MAX_OUTLIERS_REPORTED]
+        _damage_outliers(run, damage_taken, roles)[:MAX_OUTLIERS_REPORTED]
     ):
         # Two players can share a display name; `display_names` disambiguates
         # with the actor id, matching the roster-wide rule used elsewhere.
@@ -203,16 +212,16 @@ def analyse_players(
         # that is not on the roster at all, which `display_names` cannot map.
         display_name = names_by_actor.get(actor_id, f"{name} (actor {actor_id})")
         taker = players_by_id.get(actor_id)
-        # Melee damage on a tank is the job, not a mistake; naming the class and
-        # spec here lets a reader discount an outlier like that on sight, without
-        # this analyser having to know which specs are tanks.
+        # Tanks are left out of this comparison altogether: as the only member of
+        # their role they have no honest median. The class and spec still name
+        # the player for a reader.
         class_and_spec = f"{taker.class_name} {taker.spec}" if taker else "unknown class"
         findings.append(
             Finding(
                 id=f"players.damage.{rank}",
                 title=f"{display_name} took {multiple:.1f}x the group median from {ability}",
                 detail=(
-                    f"{amount} unmitigated damage from {ability}. This states a difference, "
+                    f"{amount:,} unmitigated damage from {ability}. This states a difference, "
                     "not a mistake: whether any single hit was avoidable is not something "
                     "the log records."
                 ),

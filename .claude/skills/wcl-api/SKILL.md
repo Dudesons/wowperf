@@ -40,6 +40,8 @@ covers it otherwise.
 | `limitPerHour` | `RateLimitData` | 2026-09-04 | yes |
 | `pointsSpentThisHour` | `RateLimitData` | 2026-09-04 | yes |
 | `pointsResetIn` | `RateLimitData` | 2026-09-04 | yes |
+| `gameData` | `Query` | 2026-09-06 | yes |
+| `affixes` | `GameData` | 2026-09-06 | yes |
 | `characterRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightIDs` | `table` argument | 2026-09-05 | yes |
@@ -125,6 +127,39 @@ moment; it is not in this schema and nothing here queries it.
 
 Timestamps on fights and pulls are relative to report start. `Report.startTime` is absolute
 epoch milliseconds.
+
+## Event streams `ingest.py` reads
+
+Four rows here — enemy casts, interrupts, enemy deaths, damage taken — were verified
+2026-09-04 against report `6Kx1P9GbNXrcLdHa` fight 36 by live query, first recorded in Plan B's
+implementation plan (`docs/plans/2026-09-04-mplus-analysers-plan.md:34-46`) and carried here on
+2026-09-06 because this file is the authority. The player-deaths row comes from the design
+document, `docs/plans/2026-09-03-mplus-postmortem-design.md` §11, verified 2026-09-04 against a
+real death event on the same report and fight. The player-casts row was verified separately, on
+2026-09-06, against the cached `dataType: Casts, hostilityType: Friendlies` stream of the same
+report and fight — see the row's own date below. The design's §5.3 prose uses combat-log names
+(`SPELL_CAST_START`, `extraSpellId`, `sourceInstanceID`) that do **not** exist in the API; the
+table below supersedes them.
+
+| Stream | Verified | Query arguments | `type` values | Fields |
+| --- | --- | --- | --- | --- |
+| Player casts | 2026-09-06 | `dataType: Casts, hostilityType: Friendlies` | `begincast`, `cast` | `cast`: `abilityGameID`, `fight`, `sourceID`, `targetID`, `targetInstance`, `targetMarker`, `timestamp`, `type`. `begincast`: `abilityGameID`, `fight`, `sourceID`, `targetID`, `timestamp`, `type` (no `targetInstance`, no `targetMarker`). `targetID` is `-1` for a cast with no target. No `sourceInstance` was observed on a player cast. |
+| Enemy casts | 2026-09-04 | `dataType: Casts, hostilityType: Enemies` | `begincast`, `cast` | `abilityGameID`, `fight`, `sourceID`, `sourceInstance`, `sourceMarker`, `targetID`, `timestamp`, `type` |
+| Interrupts | 2026-09-04 | `dataType: Interrupts, hostilityType: Friendlies` | `interrupt`, `applydebuff` | `abilityGameID`, `extraAbilityGameID`, `fight`, `sourceID`, `sourceInstance`, `targetID`, `targetInstance`, `targetMarker`, `timestamp`, `type` |
+| Player deaths | 2026-09-04 | `dataType: Deaths` (default hostility) | `death` | `abilityGameID` (always 0), `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always -1), `targetID`, `timestamp`, `type` |
+| Enemy deaths | 2026-09-04 | `dataType: Deaths, hostilityType: Enemies` | `death` | `abilityGameID`, `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID`, `targetID`, `targetInstance`, `targetMarker`, `timestamp`, `type` |
+| Damage taken | 2026-09-04 | `dataType: DamageTaken, hostilityType: Friendlies` | `damage` | `abilityGameID`, `absorbed`, `amount`, `blocked`, `buffs`, `fight`, `hitType`, `isAoE`, `mitigated`, `sourceID`, `sourceInstance`, `sourceMarker`, `targetID`, `tick`, `timestamp`, `type`, `unmitigatedAmount` |
+
+- `sourceInstance` is absent when the instance is the first one; treat a missing value as `0`
+  on both sides of any comparison. Two copies of one NPC are `(sourceID, sourceInstance)`.
+- On an `interrupt` event, `abilityGameID` is the kick and `extraAbilityGameID` the spell
+  interrupted; `targetID`/`targetInstance` is the enemy, `sourceID` the player.
+- On a damage event `amount` excludes what was absorbed — a real row read `amount: 0,
+  absorbed: 123570` — so "how hard did this hit" is `unmitigatedAmount`.
+- `npcCountMap` keys are strings holding NPC game IDs; the join is enemy death `targetID` →
+  `masterData.actors` → `gameID` → `npcCountMap[str(gameID)]`. `masterData.actors` accepts
+  `type: "NPC"`, and `ReportActor` carries `gameID, icon, id, name, petOwner, server, subType,
+  type`.
 
 ## The event stream, probed for a death recap
 

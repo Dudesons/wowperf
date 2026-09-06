@@ -1,6 +1,7 @@
 # ABOUTME: Integration test wiring client, cache and ingest into a RunRepository.
 # ABOUTME: Confirms a second get is served from the cache rather than the network.
 
+import itertools
 import json
 import tempfile
 from collections.abc import Callable
@@ -92,9 +93,13 @@ def a_repository(
 
 
 def operation_name(body: dict[str, Any]) -> str:
-    """Pull the GraphQL operation name (e.g. "Fights") out of a request body."""
+    """Pull the GraphQL operation name (e.g. "Fights") out of a request body.
+
+    An operation takes variables or it does not, so the name ends at whichever
+    of `(` or `{` follows it.
+    """
     query: str = body["query"]
-    return query.split("query ")[1].split("(")[0].strip()
+    return query.split("query ")[1].split("(")[0].split("{")[0].strip()
 
 
 def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
@@ -112,6 +117,13 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
     must make a test built on this fixture fail.
     """
     abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
+    # Deliberately short of the fixture's third affix, 147, so the fallback to
+    # the bare id is exercised by every test built on this fixture.
+    affixes: dict[str, Any] = {
+        "gameData": {
+            "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
+        }
+    }
     all_actors: dict[str, Any] = {
         "reportData": {
             "report": {
@@ -166,6 +178,8 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
             return httpx.Response(200, json={"data": abilities})
         if name == "Actors":
             return httpx.Response(200, json={"data": all_actors})
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -200,13 +214,13 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     """get returns a Run, so it must not pay for the paginated cast and death streams."""
     get_calls: list[str] = []
     recording_repository(get_calls, tmp_path / "get").get("abc123", None)
-    assert get_calls == ["Fights"]
+    assert get_calls == ["Fights", "Affixes"]
 
     load_calls: list[str] = []
     recording_repository(load_calls, tmp_path / "load").load("abc123", None)
     assert load_calls[0] == "Fights"
     assert set(load_calls) == {
-        "Fights", "Abilities", "Casts", "Deaths",
+        "Fights", "Affixes", "Abilities", "Casts", "Deaths",
         "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors", "Talents",
     }
 
@@ -218,7 +232,7 @@ def test_a_get_after_a_load_costs_nothing() -> None:
 
     repository.load("abc123", 36)
     assert sorted(set(calls)) == [
-        "Abilities", "Actors", "Casts", "DamageTaken", "Deaths",
+        "Abilities", "Actors", "Affixes", "Casts", "DamageTaken", "Deaths",
         "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts", "Talents",
     ]
 
@@ -236,6 +250,84 @@ def test_a_loaded_run_carries_every_stream() -> None:
     assert [interrupt.interrupted_ability_id for interrupt in loaded.interrupts] == [400]
     assert [death.actor_id for death in loaded.enemy_deaths] == [702]
     assert [taken.amount for taken in loaded.damage_taken] == [1000]
+
+
+def test_a_run_carries_its_affix_names_from_game_data(tmp_path: Path) -> None:
+    """An affix the game data does not list resolves to its id, never to nothing."""
+    run = recording_repository([], tmp_path).get("abc123", None)
+
+    assert run.affix_ids == (9, 10, 147)
+    assert run.affix_names == ("Tyrannical", "Fortified", "147")
+
+
+def test_the_affix_table_is_fetched_once_for_two_runs(tmp_path: Path) -> None:
+    """It is game-wide and argument-free, so one cached response serves every run."""
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load("abc123", 36)
+    repository.get("abc123", 36)
+
+    assert calls.count("Affixes") == 1
+
+
+def repository_with_affix_answers(
+    affix_payloads: list[dict[str, Any]], tmp_path: Path
+) -> tuple[WclRunRepository, list[str]]:
+    """Build a repository whose Affixes query answers from `affix_payloads` in order,
+    cycling once exhausted (so a single bad payload can answer every call, and a
+    bad-then-good pair answers the first call badly and every later one well).
+    Every other query answers as the fixture fight does, so `get` still builds a
+    real run regardless of what the affix table says.
+    """
+    calls: list[str] = []
+    answers = itertools.cycle(affix_payloads)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        name = operation_name(json.loads(request.content))
+        calls.append(name)
+        if name == "Fights":
+            return httpx.Response(200, json={"data": FIGHTS_PAYLOAD})
+        assert name == "Affixes"
+        return httpx.Response(200, json={"data": next(answers)})
+
+    return a_repository(handler, tmp_path), calls
+
+
+def test_a_malformed_affix_table_degrades_to_ids_and_caches_nothing(tmp_path: Path) -> None:
+    """A payload with no gameData.affixes must not be cached, so a later get retries it."""
+    bad_payload: dict[str, Any] = {"reportData": {}}
+    repository, calls = repository_with_affix_answers([bad_payload], tmp_path)
+
+    run = repository.get("abc123", None)
+    assert run.affix_names == ("9", "10", "147")
+
+    calls.clear()
+    repository.get("abc123", None)
+    assert calls.count("Affixes") == 1
+
+
+def test_a_good_affix_table_after_a_bad_one_is_read_and_cached(tmp_path: Path) -> None:
+    """Nothing unusable is cached, so a later, well-formed answer is read normally."""
+    bad_payload: dict[str, Any] = {"reportData": {}}
+    good_payload: dict[str, Any] = {
+        "gameData": {
+            "affixes": [
+                {"id": 9, "name": "Tyrannical"},
+                {"id": 10, "name": "Fortified"},
+                {"id": 147, "name": "Xal'atath's Guile"},
+            ]
+        }
+    }
+    repository, calls = repository_with_affix_answers([bad_payload, good_payload], tmp_path)
+
+    first = repository.get("abc123", None)
+    assert first.affix_names == ("9", "10", "147")
+
+    second = repository.get("abc123", None)
+    assert second.affix_names == ("Tyrannical", "Fortified", "Xal'atath's Guile")
 
 
 def build_null_report_repository(tmp_path: Path, calls: list[str]) -> WclRunRepository:

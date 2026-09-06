@@ -162,6 +162,14 @@ def _ability_name(ability_names: dict[int, str], ability_id: int) -> str:
     return ability_names.get(ability_id, f"Unknown ability {ability_id}")
 
 
+def _target_of(event: dict[str, Any]) -> int | None:
+    """The cast's target actor, or None: the API writes -1 for a cast with no target."""
+    target = event.get("targetID")
+    if target is None or target == -1:
+        return None
+    return int(target)
+
+
 def build_casts(
     events: list[dict[str, Any]], run: Run, ability_names: dict[int, str]
 ) -> tuple[CastEvent, ...]:
@@ -172,6 +180,7 @@ def build_casts(
             ability_name=_ability_name(ability_names, event["abilityGameID"]),
             timestamp_ms=event["timestamp"],
             pull_index=pull_index_at(run, event["timestamp"]),
+            target_id=_target_of(event),
         )
         for event in events
         if event.get("type") == "cast" and "sourceID" in event
@@ -184,15 +193,21 @@ def build_deaths(
     casts: tuple[CastEvent, ...],
     ability_names: dict[int, str],
 ) -> tuple[Death, ...]:
-    """Build deaths, measuring the real cost as time until the player acted again.
+    """Build deaths, measuring the real cost as time until the player next acted on another actor.
 
     The timer penalty understates a death. The seconds a player spent unable to
     contribute is observable, so we measure that instead of estimating a run-back.
     """
     names = {player.actor_id: player.name for player in run.players}
-    casts_by_actor: dict[int, list[int]] = {}
+    # A cast aimed at another actor is the first moment the player affected the
+    # fight again. A released player respawns alive at the entrance with no
+    # event to say so, and presses self-only sprints and shields while running
+    # back; counting those would end the death after a few seconds of a
+    # twenty-second absence.
+    acted_by_actor: dict[int, list[int]] = {}
     for cast in casts:
-        casts_by_actor.setdefault(cast.actor_id, []).append(cast.timestamp_ms)
+        if cast.target_id is not None and cast.target_id != cast.actor_id:
+            acted_by_actor.setdefault(cast.actor_id, []).append(cast.timestamp_ms)
 
     deaths = []
     for event in events:
@@ -201,7 +216,7 @@ def build_deaths(
 
         actor_id = event["targetID"]
         timestamp = event["timestamp"]
-        later = [stamp for stamp in casts_by_actor.get(actor_id, []) if stamp > timestamp]
+        later = [stamp for stamp in acted_by_actor.get(actor_id, []) if stamp > timestamp]
 
         deaths.append(
             Death(

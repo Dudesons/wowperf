@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
-from wowperf.cli import build_repository
+from wowperf.cli import build_reference_repositories, build_repository
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP, ParseReference, SpeedReference
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import Confidence
@@ -26,7 +25,7 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
     code, fight = parse_report_url(REPORT)
     runs = build_repository(tmp_path)
     loaded = runs.load(code, fight)
-    rankings = WclRankingRepository(runs.client, runs.cache)
+    rankings, references = build_reference_repositories(runs.client, tmp_path)
 
     subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
@@ -56,12 +55,14 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
             break
     assert speed is not None
 
-    speed_reference = SpeedReference(row=speed, loaded=runs.load(speed.report_code, speed.fight_id))
+    speed_reference = SpeedReference(
+        row=speed, loaded=references.load(speed.report_code, speed.fight_id)
+    )
     parse_reference = None
     if parse_rows:
         parse_row = parse_rows[0]
         parse_reference = ParseReference(
-            row=parse_row, loaded=runs.load(parse_row.report_code, parse_row.fight_id)
+            row=parse_row, loaded=references.load(parse_row.report_code, parse_row.fight_id)
         )
 
     findings = compare(loaded, subject, speed_reference, parse_reference)

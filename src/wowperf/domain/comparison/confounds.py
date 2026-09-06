@@ -116,4 +116,33 @@ def declare_confounds(
             )
         )
 
+    our_affixes = set(ours.run.affix_ids)
+    their_affixes = set(theirs.run.affix_ids)
+    if our_affixes != their_affixes:
+        names: dict[int, str] = {}
+        for run in (ours.run, theirs.run):
+            if run.affix_names:
+                names.update(zip(run.affix_ids, run.affix_names, strict=True))
+
+        def named(ids: set[int]) -> str:
+            return ", ".join(names.get(i, str(i)) for i in sorted(ids)) or "none"
+
+        findings.append(
+            Finding(
+                id="compare.confound.affixes",
+                title="The two runs were not on the same affixes",
+                detail=(
+                    "An affix changes which packs are dangerous and how long a boss lives. "
+                    "Requiring the same affixes would usually leave nothing to compare "
+                    "against, so the difference is stated rather than filtered on."
+                ),
+                confidence=Confidence.MEASURED,
+                seconds_lost=None,
+                evidence=(
+                    f"only ours: {named(our_affixes - their_affixes)}",
+                    f"only theirs: {named(their_affixes - our_affixes)}",
+                ),
+            )
+        )
+
     return findings

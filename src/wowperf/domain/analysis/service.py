@@ -23,6 +23,7 @@ from wowperf.domain.model import LoadedRun
 from wowperf.domain.season import (
     Consumables,
     Defensives,
+    Roles,
     SeasonData,
     ThroughputCooldowns,
 )
@@ -35,6 +36,7 @@ def analyse(
     consumables: Consumables,
     throughput: ThroughputCooldowns,
     *,
+    roles: Roles = Roles(),
     include_cooldown_ceiling: bool = False,
 ) -> list[Finding]:
     """Every analyser, one ranked list.
@@ -53,7 +55,8 @@ def analyse(
     findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
     findings += analyse_trash(loaded.run, loaded.enemy_deaths)
     findings += analyse_players(
-        loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken
+        loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken,
+        roles=roles,
     )
     findings += analyse_defensives(loaded.run, loaded.casts, defensives, loaded.deaths)
     findings += analyse_defensives_at_death(

@@ -15,6 +15,9 @@ exists — a defensive never pressed, a talent the top parse takes and you do no
 withheld across a keystone-level gap. Ranking puts them last; that is a sort key, not a verdict.
 Never treat `null` as zero, and never sort it as though it were.
 
+A death's cost (`deaths.total` and its nested findings) is measured to the player's first cast at
+another actor, because a respawned player casts self-only spells while running back.
+
 ## Findings are ranked, never summed
 
 The findings file says this itself, in `findings_are_ranked_not_additive`. It is the single
@@ -130,9 +133,13 @@ badged `derived`.
 
 Do not turn that into "avoidable damage". The report deliberately refuses the phrase.
 
-A tank taking many multiples of the group median from melee is the job, not a mistake — and the
-tool still reports it, because it cannot tell which specs tank. The finding's evidence names the
-class and spec beside the figure so a reader can discount it on sight.
+A tank taking many multiples of the group median from melee is the job, not a mistake, so tanks
+are left out of the damage-against-median comparison altogether: as the only member of their role
+in a keystone they have no honest median to be measured against. Which specialisations tank is
+read from `data/roles.toml`, which is maintained by hand and carries the date it was checked, and
+a specialisation absent from it is treated as damage — so a tank the table does not know would
+still appear. The finding's evidence names the class and spec beside the figure, which is what
+lets a reader spot that case.
 
 An Augmentation Evoker on either roster raises `compare.confound.augmentation`: while it stands,
 treat every per-player damage figure in the report as approximate.
@@ -167,6 +174,12 @@ instead of adjusting for them, because adjusting would invent a number:
   skipped, deaths, missed interrupts and between-pull downtime do not depend on how much health a
   mob had, so they are still compared. A reference more than one level away is never offered at
   all.
+- **Pull segmentation.** Warcraft Logs records a chain of packs fought without a break as one
+  pull. Alignment matches a pull to every separate pull it covers, and the route summary says how
+  many of our trash pulls found a counterpart. When fewer than half did, `compare.route.unaligned`
+  appears and no `compare.route.skipped.*` or `compare.route.extra.*` finding does: the two logs
+  cut the route differently, and an unmatched pull is not a skipped pack. Say that, not "the
+  reference skipped it".
 - **The spell rate comparison is scoped to boss pulls**, the one stretch where two runs fought the
   same encounter, so it says nothing about trash. The "never cast it" finding is the exception: it
   checks the whole of our run, boss and trash, before claiming a spell is absent.

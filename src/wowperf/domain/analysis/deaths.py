@@ -89,8 +89,9 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
             f"{total_cost:.0f}s of play"
         )
         detail = (
-            "Measured from each death to that player's next cast, which is longer than "
-            "the timer penalty and is the time the group actually lost."
+            "Measured from each death to that player's first cast at another actor: the "
+            "time the group played without them. The timer penalty is counted separately, "
+            "in the time decomposition."
         )
 
     findings = [

@@ -130,6 +130,16 @@ caches indefinitely; game data caches indefinitely; rankings cache for hours.
 Every phase logs `rateLimitData` before and after, recording measured cost. After the first
 real runs we will know the actual budget instead of guessing at it.
 
+*Amended 2026-09-06:* the tiers above were designed and never built. Every entry lived forever,
+and `analyze` never read `rateLimitData`; only `fetch` did. Phase G builds both. Two cache
+directories sit under `--cache-dir`: the analysed run's own report data and game data are kept
+indefinitely, as before; leaderboard rows and every response fetched for a reference run go to a
+second directory whose entries expire after twenty-four hours and are deleted on the next start.
+A day is long enough for the narrative re-run the `analyzing-a-run` skill relies on to be served
+from cache, and short enough that no standing store of other players' logs accumulates (RPGLogs
+§5d). `analyze` reads the quota before and after and prints the difference to stderr in the words
+`fetch` already uses.
+
 ### 3.4 Tooling
 
 `uv` throughout: `uv init`, `.python-version`, dependencies declared in `pyproject.toml`,
@@ -156,6 +166,12 @@ Some constants have no API source and Blizzard retunes them between seasons. The
 The scaling figure is used only to justify refusing throughput comparisons (§6.4). No
 calculation depends on its precision.
 
+*Amended 2026-09-06:* affix names were printed as bare ids until Phase G. They resolve through
+`gameData.affixes`, one argument-free query cached indefinitely (verified 2026-09-06,
+`.claude/skills/wcl-api/SKILL.md`). One more hand-maintained table joins `data/`:
+`roles.toml`, naming the tank and healer specialisations, because no API field carries a role and
+§5.5 needs one. A specialisation absent from it is treated as damage.
+
 ### 3.6 Command-line contract
 
 ```
@@ -164,10 +180,14 @@ wowperf analyze <report-url-or-code> [options]
   --fight N            fight ID; defaults to the only keystone fight, errors if ambiguous
   --player NAME        subject of the individual comparison; defaults to the report owner
   --no-compare         skip both reference runs, analyse in isolation
-  --deep               include per-player cast analysis (see §5.5)
-  --narrative FILE     inject a Markdown narrative into the report (see §8)
+  --throughput-ceiling also report throughput cooldowns used far below their ceiling (see §5.10)
+  --narrative FILE     inject a plain-text narrative into the report (see §8)
   --out DIR            output directory; defaults to ./out
 ```
+
+*Amended 2026-09-06:* `--deep` never existed — §11 measured the cast fetch and shipped §5.5
+unconditionally — and `--throughput-ceiling` was added by Plan D. The table now says what the
+command does.
 
 Two files are written: `<code>-<fight>.html` and `<code>-<fight>.findings.json`. The exit code
 is non-zero when the report cannot be fetched, the fight is not a Mythic+ run, or a bracket
@@ -218,6 +238,17 @@ that actor's next cast or damage event is the actual time spent not playing.
 
 Deaths are ordered. In a chain, the first death usually causes the rest.
 
+*Amended 2026-09-06:* "next cast" is the wrong anchor. A player who releases respawns alive at
+the entrance with no event to say so, and their first casts are self-only movement and shield
+spells pressed while running back. On a real run that made two absences of over twenty seconds
+read as three and six seconds, and the finding's fixed sentence "longer than the timer penalty"
+was false beside a penalty four times larger. The cost is now measured from the death to the
+player's first cast aimed at another actor — a `targetID` that is neither absent nor the player
+themselves — which is the first moment they affected the fight again. The detail no longer
+compares the figure to the timer penalty; the time decomposition already counts that separately.
+How a player came back — a `resurrect` event targeting them, a self-resurrection cast, or a
+respawn with no event at all — is recorded by the death recap in a later phase, not here.
+
 ### 5.3 Missed interrupts — `derived`
 
 The combat log carries no "interruptible" flag, so we reconstruct outcomes. For each enemy
@@ -257,6 +288,13 @@ invites exactly the behaviour this tool exists to coach out.
 Full cast events are the expensive call. If measurement shows the cost is prohibitive, this
 analyzer moves behind a `--deep` flag. It does not get silently dropped.
 
+*Amended 2026-09-06:* the analyser knows which specialisations tank. On a real run the loudest
+damage finding on the page was a Blood Death Knight taking two hundred times the group median
+from melee swings, which is the job. Tanks are left out of the damage-against-median comparison
+altogether — as the only member of their role in a keystone they have no honest median to be
+measured against — and `data/roles.toml` (§3.5) says which specialisations those are. Every other
+player still compares across the roster.
+
 ### 5.6 Explicitly inferred
 
 "Defensive available but unused" is **inference, not measurement**. The combat log emits no
@@ -291,6 +329,11 @@ states the situational caveat outright rather than leaving the reader to supply 
 
 This needs no reference run and appears under `--no-compare`. It measures a player against the
 game's rules, which is why it is an analyzer and not a comparison.
+
+*Amended 2026-09-06:* "far below" is a fifth of the ceiling, not the half the plan first tested.
+Measured against a real run, a half fired on seven of eight defensives that had been pressed, so
+the fraction was tightened before shipping; the constant and the reason live beside
+`CEILING_USE_FRACTION` in `analysis/defensives.py`.
 
 ### 5.8 Defensives available at a death — `inferred`
 
@@ -445,6 +488,10 @@ words at the top of the report. Affixes are displayed as a difference rather tha
 an exact match would usually return nothing. Reference runs must have `kill: true` and a non-null
 `keystoneLevel`.
 
+*Amended 2026-09-06:* the affix difference was captured on both reference rows and never
+displayed. `compare.confound.affixes` states it, by name, whenever the two runs' affix sets
+differ.
+
 **The bracket convention is asserted, not assumed.** On the first ranking call the implementation
 checks the returned rows' `bracketData` against the requested keystone level and fails loudly on
 mismatch. An undocumented off-by-one would silently poison every comparison the tool makes.
@@ -458,6 +505,26 @@ we killed, pulls only they killed, and pulls matched out of order.
 That produces the findings that matter: which packs the faster group skipped and what they were
 worth, and which packs we killed for nothing. Standard library suffices; a bespoke alignment
 algorithm would be architecture for its own sake.
+
+*Amended 2026-09-06:* exact signatures do not survive Warcraft Logs' pull segmentation. A chain
+of packs pulled without a combat drop is one `dungeonPull`, so on a real run a 324-second pull of
+ours matched none of the reference's pulls, 8 of 12 pulls on each side were reported as skipped
+or extra, and the top-ranked loss on the page priced a pack the reference plainly fought. Alignment
+now works on the *set* of NPC types a pull contains. A boss pull matches the boss pull with the
+same encounter id. Two trash pulls match when either one's set of NPC types is contained in the
+other's, so a merged pull matches each of the separate pulls whose enemies it covers; where
+several candidates qualify, the one sharing the largest fraction of types wins, earliest on a tie.
+A pull may therefore have several counterparts and still counts as one matched pull. Reordering is
+read off the matched pairs: the pairs that would have to move for the reference's order to follow
+ours. The route summary states how many of our trash pulls found a counterpart, and when fewer
+than half did the skipped-pack findings are withheld, with that reason in place of a number —
+the same rule the keystone gap already applies — because pricing an unmatched pull as skipped is
+exactly the artefact this amendment removes. Skipped packs are priced by the forces the enemy
+deaths inside the pull actually awarded, as §5.4 already does; `enemyNPCs` lists NPC types, not
+individuals, and pricing by type under-counted a pack with several copies of one mob.
+Reordering is read off one pair per pull of ours — its earliest counterpart — as the pairs
+outside the longest run whose reference indices do not decrease; several of our pulls matched to
+one of theirs are therefore in order, not reordered.
 
 ### 6.4 What we compare, and what we refuse to
 

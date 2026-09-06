@@ -18,6 +18,12 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
    Add `--player NAME` when the person named someone other than the report's owner; if the name is
    not in the roster the tool prints the roster it does have. Add `--no-compare` only if they asked
    for the run in isolation; the comparison is the most useful half of the report.
+   Add `--throughput-ceiling` only when the person asks how often a burst cooldown was pressed
+   against what its cooldown allowed; it is off by default because a route, not a rotation,
+   decides how many windows there were (`mplus-analysis`, "Throughput cooldowns ask about
+   placement, not rate"). `--fight N` picks one keystone out of a report holding several,
+   `--out DIR` moves the two output files, and `--cache-dir DIR` moves the response cache;
+   none of the three changes what the report says.
 
 2. **Read `out/<code>-<fight>.findings.json`.** The command prints the path, and the path of the
    HTML beside it. Read the JSON, never the HTML. That is a project invariant, not a preference:
@@ -38,8 +44,9 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
    uv run wowperf analyze <url> --narrative out/<code>-<fight>.narrative.md
    ```
 
-   Only then is every response served from the cache written in step 1, and cache entries never
-   expire, so only then does the second run spend no API quota. Drop a flag and you change the
+   Only then is every response served from the cache written in step 1, and reference entries
+   live a day, so a second run the same day spends no quota beyond the two rate-limit reads. Drop
+   a flag and you change the
    subject: without step 1's `--player` the comparison is fetched for a different specialisation
    and a different actor, which are different cache keys and so live queries; without its
    `--no-compare` both references are fetched outright, the roughly-28-point path. The reader

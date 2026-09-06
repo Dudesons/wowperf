@@ -19,6 +19,9 @@ class CastEvent(Frozen):
     ability_name: str
     timestamp_ms: int
     pull_index: int | None = None
+    # The actor the cast was aimed at. None when the log recorded no target,
+    # which is how self-only movement and shield spells appear.
+    target_id: int | None = None
 
 
 class EnemyCastRow(Frozen):

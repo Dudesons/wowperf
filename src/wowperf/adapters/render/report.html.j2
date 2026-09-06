@@ -176,6 +176,10 @@ that we skipped.</p>
 </div>
 {% endfor %}
 
+{% for row in report.death_findings %}
+{{ ledger_row(row) }}
+{% endfor %}
+
 <h2 id="interrupts">Interrupts</h2>
 {% if not report.interrupts %}
 <p class="sub">Nothing to report.</p>

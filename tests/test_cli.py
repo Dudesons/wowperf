@@ -37,12 +37,23 @@ def quota_response(spent: float) -> httpx.Response:
 def build_transport(quota: list[float]) -> httpx.MockTransport:
     """Answer the fights query from the fixture and report a rising point count."""
     fights = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    affixes: dict[str, Any] = {
+        "gameData": {
+            "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
+        }
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        if "rateLimitData" in json.loads(request.content)["query"]:
+        query = json.loads(request.content)["query"]
+        if "rateLimitData" in query:
             return quota_response(quota.pop(0))
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})
 
     return httpx.MockTransport(handler)
@@ -285,6 +296,7 @@ def build_analyze_transport(
     aura_response: httpx.Response | None = None,
     boss_pull_reports: tuple[str, ...] = (),
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+    quota: list[float] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -331,7 +343,14 @@ def build_analyze_transport(
     `{"guid", "name", "totalUptime", "totalUses", "bands"}` rows, the shape
     `build_player_auras` reads), in place of the default empty-but-valid tables
     — letting a caller give the two players aura data that actually differs.
+
+    Also answers `RateLimit` with a rising point count, mirroring `build_transport`:
+    `quota` defaults to `[100.0, 128.0]`, enough for the two reads `analyze` takes
+    (before the run is fetched, and after the comparison), so every existing test
+    keeps working without passing it.
     """
+    if quota is None:
+        quota = [100.0, 128.0]
     fights_by_code = {
         code: _fights_payload_for(
             code,
@@ -355,6 +374,15 @@ def build_analyze_transport(
     }
     actors_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"actors": [{"id": 699, "gameID": 241874}]}}}
+    }
+    affixes_payload: dict[str, Any] = {
+        "gameData": {
+            "affixes": [
+                {"id": 9, "name": "Tyrannical"},
+                {"id": 10, "name": "Fortified"},
+                {"id": 147, "name": "Xal'atath's Guile"},
+            ]
+        }
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
@@ -393,9 +421,13 @@ def build_analyze_transport(
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
         body = json.loads(request.content)
         query = body["query"]
-        name = query.split("query ")[1].split("(")[0].strip()
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if calls is not None:
             calls.append(name)
+        if name == "RateLimit":
+            return quota_response(quota.pop(0))
         if name == "Fights":
             code = body["variables"]["code"]
             payload = fights_by_code.get(code, {"reportData": {"report": None}})
@@ -404,6 +436,8 @@ def build_analyze_transport(
             return httpx.Response(200, json={"data": abilities_payload})
         if name == "Actors":
             return httpx.Response(200, json={"data": actors_payload})
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes_payload})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -517,6 +551,13 @@ def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
     assert isinstance(payload["findings"], list)
 
 
+def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    assert "points spent, including the cost of these two quota reads" in result.stderr
+    assert "of 3600 remain this hour" in result.stderr
+
+
 def test_every_written_finding_carries_a_confidence(tmp_path: Path) -> None:
     invoke_analyze(tmp_path)
     payload = json.loads(
@@ -615,12 +656,23 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     report = fights["reportData"]["report"]
     report["fights"][1]["name"] = "Подземелье"
     report["masterData"]["actors"][0]["name"] = "Бубатурбина"
+    affixes: dict[str, Any] = {
+        "gameData": {
+            "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
+        }
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        if "rateLimitData" in json.loads(request.content)["query"]:
+        query = json.loads(request.content)["query"]
+        if "rateLimitData" in query:
             return quota_response(100.0)
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})
 
     transport = httpx.MockTransport(handler)
@@ -667,6 +719,28 @@ def test_no_compare_skips_both_references(tmp_path: Path) -> None:
     assert payload["comparison"]["compared"] is False
     assert payload["comparison"]["speed_reference"] is None
     assert not any(f["id"].startswith("compare.") for f in payload["findings"])
+
+
+def test_reference_responses_are_cached_apart_from_the_runs_own(tmp_path: Path) -> None:
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+    own = [p.read_text(encoding="utf-8") for p in (tmp_path / "cache").glob("*.json")]
+    references = [
+        p.read_text(encoding="utf-8")
+        for p in (tmp_path / "cache" / "references").glob("*.json")
+    ]
+    assert own and references
+    # The leaderboard rows and the reference report's own responses name its code;
+    # nothing fetched for our own run does. (The affix table, argument-free, may
+    # legitimately be cached in both tiers.)
+    assert not any(SPEED_REFERENCE_CODE in text for text in own)
+    assert any(SPEED_REFERENCE_CODE in text for text in references)
+
+
+def test_no_compare_writes_nothing_under_references(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / "cache" / "references").exists()
 
 
 def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
@@ -912,6 +986,12 @@ def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> Non
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert not src.startswith(("http://", "https://", "//")), src
+
+
+def test_the_report_names_the_affixes(tmp_path: Path) -> None:
+    invoke_analyze(tmp_path)
+    [html] = (tmp_path / "out").glob("*.html")
+    assert "Tyrannical" in html.read_text(encoding="utf-8")
 
 
 def test_no_compare_still_writes_a_report(tmp_path: Path) -> None:

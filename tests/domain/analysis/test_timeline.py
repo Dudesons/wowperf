@@ -87,7 +87,8 @@ def test_the_worst_gap_is_reported_with_where_it_happened() -> None:
     gap = next(f for f in findings if f.id == "time.gap.0")
     assert gap.seconds_lost == 40.0
     assert gap.pull_index == 1
-    assert any("30" in item and "40" in item for item in gap.evidence)
+    # "Where it happened" is now the pack it leads to, not a map coordinate.
+    assert gap.evidence == ("Trash",)
 
 
 def test_gaps_shorter_than_the_floor_are_not_reported() -> None:
@@ -149,3 +150,9 @@ def test_a_gaps_evidence_names_the_pack_it_leads_to() -> None:
     gaps = [f for f in findings if f.id.startswith("time.gap.")]
     assert gaps
     assert gaps[0].evidence[0] == "Loa Speaker Nanea"
+
+
+def test_no_finding_prints_a_map_position() -> None:
+    for finding in decompose_time(a_run(), (), SEASON):
+        for line in finding.evidence:
+            assert "map position" not in line, finding.id

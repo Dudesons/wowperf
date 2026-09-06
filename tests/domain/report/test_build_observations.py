@@ -64,8 +64,8 @@ def test_a_finding_claimed_by_a_players_damage_row_does_not_also_reach_observati
 def test_every_input_finding_is_placed_exactly_once() -> None:
     """The structural property the design demands: the union of every placed
     finding id — across the ledger, interrupts, every player card's damage and
-    spell-and-talent rows, and observations — equals the input set exactly.
-    Nothing dropped, nothing doubled.
+    spell-and-talent rows, the death findings and observations — equals the input
+    set exactly. Nothing dropped, nothing doubled.
     """
     findings = (
         a_finding("compare.duration", seconds=120.0, title="Total gap"),
@@ -74,6 +74,8 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         a_finding("players.damage.0", title="Uglymage took 2.3x the group median"),
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
         a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
+        # A death-family finding, so the union below covers the Deaths rows too.
+        a_finding("defensives.unused.0", title="Uglymage died with Ice Block available"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
@@ -85,10 +87,27 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
     for card in report.players:
         placed_ids += [row.finding_id for row in card.damage_rows]
         placed_ids += [row.finding_id for row in card.spell_and_talent_rows]
+    placed_ids += [row.finding_id for row in report.death_findings]
     placed_ids += [row.finding_id for row in report.observations]
 
     assert sorted(placed_ids) == sorted(finding.id for finding in findings)
     assert len(placed_ids) == len(set(placed_ids))
+
+
+def test_a_death_family_finding_carrying_seconds_goes_to_the_ledger_alone() -> None:
+    """Anything timed belongs in the ledger, whatever family it is from.
+
+    The death rows are placed by id prefix, so a defensives finding that started
+    carrying seconds would otherwise reach the page twice: once in the ledger of
+    losses and once beneath the deaths.
+    """
+    findings = (a_finding("defensives.unused.0", seconds=12.0, title="Died with Ice Block up"),)
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
+
+    assert [row.finding_id for row in report.ledger_losses] == ["defensives.unused.0"]
+    assert report.death_findings == ()
+    assert report.observations == ()
 
 
 def test_build_observations_takes_only_what_is_missing_from_placed_ids() -> None:

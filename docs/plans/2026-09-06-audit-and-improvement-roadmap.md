@@ -64,12 +64,12 @@ on evidence of being alive again — a resurrection cast targeting the player, a
 or the player's first damage or healing *done* — and make the detail sentence conditional on the
 comparison it states. Section 5.2 of the design gets an amendment.
 
-### D4. A finished, tested analyser is not wired in — confirmed
+### D4. A finished, tested analyser is not wired in — withdrawn
 
-`analysis/consumables.py::analyse_consumables_never_used` — "died N times and drank nothing all
-run", the stronger of the two consumable claims by its own docstring — is never called from
-`analysis/service.py`. It reaches neither the JSON nor the page. One line in the service, plus a
-service test that distinguishes the two `consumables.*` id families.
+The audit's review agent reported that `analyse_consumables_never_used` was never called from
+`analysis/service.py`. That was wrong: the service calls it, and the real report carries its three
+`consumables.never.*` findings. Checked 2026-09-06 before Phase G was planned. Nothing to do; kept
+here so the numbering in the plan stays stable.
 
 ### D5. Affixes are printed as identifiers — confirmed
 
