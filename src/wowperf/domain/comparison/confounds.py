@@ -119,8 +119,10 @@ def declare_confounds(
     our_affixes = set(ours.run.affix_ids)
     their_affixes = set(theirs.run.affix_ids)
     if our_affixes != their_affixes:
-        names = dict(zip(ours.run.affix_ids, ours.run.affix_names, strict=False))
-        names.update(zip(theirs.run.affix_ids, theirs.run.affix_names, strict=False))
+        names: dict[int, str] = {}
+        for run in (ours.run, theirs.run):
+            if run.affix_names:
+                names.update(zip(run.affix_ids, run.affix_names, strict=True))
 
         def named(ids: set[int]) -> str:
             return ", ".join(names.get(i, str(i)) for i in sorted(ids)) or "none"

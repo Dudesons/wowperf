@@ -37,12 +37,23 @@ def quota_response(spent: float) -> httpx.Response:
 def build_transport(quota: list[float]) -> httpx.MockTransport:
     """Answer the fights query from the fixture and report a rising point count."""
     fights = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    affixes: dict[str, Any] = {
+        "gameData": {
+            "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
+        }
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        if "rateLimitData" in json.loads(request.content)["query"]:
+        query = json.loads(request.content)["query"]
+        if "rateLimitData" in query:
             return quota_response(quota.pop(0))
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})
 
     return httpx.MockTransport(handler)
@@ -628,12 +639,23 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     report = fights["reportData"]["report"]
     report["fights"][1]["name"] = "Подземелье"
     report["masterData"]["actors"][0]["name"] = "Бубатурбина"
+    affixes: dict[str, Any] = {
+        "gameData": {
+            "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
+        }
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        if "rateLimitData" in json.loads(request.content)["query"]:
+        query = json.loads(request.content)["query"]
+        if "rateLimitData" in query:
             return quota_response(100.0)
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})
 
     transport = httpx.MockTransport(handler)

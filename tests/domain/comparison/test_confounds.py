@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for confounds a comparison declares instead of correcting.
 # ABOUTME: Each is read straight off a roster, so fact is measured where risk is not.
 
+import pytest
+
 from wowperf.domain.comparison.confounds import ITEM_LEVEL_GAP, declare_confounds
 from wowperf.domain.comparison.reference import Comparability
 from wowperf.domain.findings import Confidence, Finding
@@ -156,6 +158,16 @@ def test_an_affix_with_no_resolved_name_is_declared_by_id() -> None:
 
     assert "only ours: 9" in affixes.evidence
     assert "only theirs: 10" in affixes.evidence
+
+
+def test_a_partial_affix_name_mismatch_raises() -> None:
+    """affix_names must be empty or index-aligned with affix_ids; a partial table
+    violates that invariant rather than being a legitimate shape to degrade from."""
+    ours = a_loaded(affix_ids=(9, 10), affix_names=("Tyrannical",))
+    theirs = a_loaded(affix_ids=(10, 147))
+
+    with pytest.raises(ValueError):
+        declare_confounds(ours, theirs, SAME_LEVEL)
 
 
 def test_identical_affixes_raise_no_confound() -> None:

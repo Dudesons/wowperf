@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
-from wowperf.adapters.wcl.client import RateLimit, WclClient
+from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
@@ -102,12 +102,25 @@ class WclRunRepository:
             self._query(FIGHTS_QUERY, {"code": report_code})["reportData"]["report"],
         )
 
+    def _fetch_affixes(self) -> dict[str, Any]:
+        """Fetch and validate the affix table, so only a usable payload reaches the cache."""
+        payload = self._client.execute(AFFIXES_QUERY, {})
+        game_data = payload.get("gameData")
+        if not isinstance(game_data, dict) or not game_data.get("affixes"):
+            raise WclError("The affixes response did not carry gameData.affixes as expected")
+        return payload
+
     def _affix_names(self, affix_ids: Sequence[int]) -> tuple[str, ...]:
         """Affix names from game data, with the bare id for anything unlisted.
 
         Goes to the cache and the client directly rather than through `_query`:
-        the response carries `gameData`, not `reportData`, so the null-report
-        guard has nothing to look at.
+        the affix table needs its own validation before it may be cached
+        (`_fetch_affixes` does that), and unlike every other query this
+        repository issues, its absence must degrade the run rather than fail
+        it — an affix id the report already carries is still usable on its
+        own, so a header of bare ids is preferable to no report at all. A
+        spent rate limit is the one failure still allowed through: it must
+        stop the run rather than be swallowed into a silent degrade.
 
         Cached indefinitely: the affix table is game-wide and changes only when
         Blizzard adds one, at which point the new id simply resolves to itself
@@ -115,10 +128,13 @@ class WclRunRepository:
         """
         if not affix_ids:
             return ()
-        payload = self._cache.get_or_fetch(
-            cache_key(AFFIXES_QUERY, {}), lambda: self._client.execute(AFFIXES_QUERY, {})
-        )
-        rows = (payload.get("gameData") or {}).get("affixes") or []
+        try:
+            payload = self._cache.get_or_fetch(cache_key(AFFIXES_QUERY, {}), self._fetch_affixes)
+        except WclError as error:
+            if isinstance(error, RateLimitExceeded):
+                raise
+            return tuple(str(affix_id) for affix_id in affix_ids)
+        rows = payload["gameData"]["affixes"]
         names = {int(row["id"]): str(row["name"]) for row in rows}
         return tuple(names.get(affix_id, str(affix_id)) for affix_id in affix_ids)
 

@@ -1,6 +1,7 @@
 # ABOUTME: Integration test wiring client, cache and ingest into a RunRepository.
 # ABOUTME: Confirms a second get is served from the cache rather than the network.
 
+import itertools
 import json
 import tempfile
 from collections.abc import Callable
@@ -268,6 +269,65 @@ def test_the_affix_table_is_fetched_once_for_two_runs(tmp_path: Path) -> None:
     repository.get("abc123", 36)
 
     assert calls.count("Affixes") == 1
+
+
+def repository_with_affix_answers(
+    affix_payloads: list[dict[str, Any]], tmp_path: Path
+) -> tuple[WclRunRepository, list[str]]:
+    """Build a repository whose Affixes query answers from `affix_payloads` in order,
+    cycling once exhausted (so a single bad payload can answer every call, and a
+    bad-then-good pair answers the first call badly and every later one well).
+    Every other query answers as the fixture fight does, so `get` still builds a
+    real run regardless of what the affix table says.
+    """
+    calls: list[str] = []
+    answers = itertools.cycle(affix_payloads)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        name = operation_name(json.loads(request.content))
+        calls.append(name)
+        if name == "Fights":
+            return httpx.Response(200, json={"data": FIGHTS_PAYLOAD})
+        assert name == "Affixes"
+        return httpx.Response(200, json={"data": next(answers)})
+
+    return a_repository(handler, tmp_path), calls
+
+
+def test_a_malformed_affix_table_degrades_to_ids_and_caches_nothing(tmp_path: Path) -> None:
+    """A payload with no gameData.affixes must not be cached, so a later get retries it."""
+    bad_payload: dict[str, Any] = {"reportData": {}}
+    repository, calls = repository_with_affix_answers([bad_payload], tmp_path)
+
+    run = repository.get("abc123", None)
+    assert run.affix_names == ("9", "10", "147")
+
+    calls.clear()
+    repository.get("abc123", None)
+    assert calls.count("Affixes") == 1
+
+
+def test_a_good_affix_table_after_a_bad_one_is_read_and_cached(tmp_path: Path) -> None:
+    """Nothing unusable is cached, so a later, well-formed answer is read normally."""
+    bad_payload: dict[str, Any] = {"reportData": {}}
+    good_payload: dict[str, Any] = {
+        "gameData": {
+            "affixes": [
+                {"id": 9, "name": "Tyrannical"},
+                {"id": 10, "name": "Fortified"},
+                {"id": 147, "name": "Xal'atath's Guile"},
+            ]
+        }
+    }
+    repository, calls = repository_with_affix_answers([bad_payload, good_payload], tmp_path)
+
+    first = repository.get("abc123", None)
+    assert first.affix_names == ("9", "10", "147")
+
+    second = repository.get("abc123", None)
+    assert second.affix_names == ("Tyrannical", "Fortified", "Xal'atath's Guile")
 
 
 def build_null_report_repository(tmp_path: Path, calls: list[str]) -> WclRunRepository:
