@@ -275,7 +275,9 @@ def test_route_rows_render_inside_the_route_section() -> None:
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     route_start = html.index('<h2 id="route">')
     deaths_start = html.index('<h2 id="deaths">')
-    title_at = html.index("A 41 second gap after pull 0")
+    # The card's own heading, not the Summary's pointer to it: the pointer
+    # repeats the same title as a link, earlier on the page, under "losses".
+    title_at = html.index("<h3>A 41 second gap after pull 0</h3>")
     assert route_start < title_at < deaths_start
 
 

@@ -42,6 +42,10 @@ p { margin: 0 0 10px; }
 .evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
 .evidence li::before { content: "· "; }
 .nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
+.pointer { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; margin: 0 0 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); text-decoration: none; }
+.pointer-title { flex: 1; }
 .withheld { color: var(--ink-dim); font-style: italic; }
 .narrative { border-left: 3px solid var(--ours); padding: 2px 0 2px 14px;
   white-space: pre-wrap; margin: 0 0 10px; }
@@ -71,16 +75,26 @@ p { margin: 0 0 10px; }
 
 
 
+
 <h2 id="ledger">Where the time went</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
-<div class="card">
+<div class="card" id="finding-time.residual">
   <div class="row-head">
     <h3>Time outside pulls</h3>
 <span class="cost">5:00</span>    <a class="badge badge-measured" href="#provenance">measured</a>
   </div>
   <p class="detail">Travel, waiting and run-backs.</p>
 </div>
+
+
+<h2 id="losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#finding-time.gap.0">
+  <span class="pointer-title">A 41 second gap after pull 0</span>
+  <span class="cost">0:41</span>
+  <span class="badge badge-measured">measured</span>
+</a>
 
 
 <h2 id="timeline">Aligned timeline</h2>
@@ -90,7 +104,7 @@ never be summed.</p>
 <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
-<div class="card">
+<div class="card" id="finding-time.gap.0">
   <div class="row-head">
     <h3>A 41 second gap after pull 0</h3>
 <span class="cost">0:41</span>    <a class="badge badge-measured" href="#provenance">measured</a>
@@ -115,7 +129,7 @@ never be summed.</p>
 
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
-<div class="card">
+<div class="card" id="finding-defensives.unused.0">
   <div class="row-head">
     <h3>Uglymage died with Ice Block available</h3>
     <a class="badge badge-inferred" href="#provenance">inferred</a>
@@ -125,7 +139,7 @@ never be summed.</p>
 
 
 <h2 id="interrupts">Interrupts</h2>
-<div class="card">
+<div class="card" id="finding-interrupts.summary">
   <div class="row-head">
     <h3>Wipsdk let Death&#39;s Advance &amp; Ice Block go uninterrupted</h3>
     <a class="badge badge-derived" href="#provenance">derived</a>

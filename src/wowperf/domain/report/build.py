@@ -448,6 +448,28 @@ def place_rows(
     return {field: tuple(rows) for field, rows in placed.items()}
 
 
+POINTER_COUNT = 5
+"""How many losses the Summary points at: enough to show the run's shape, few enough to
+stay a list."""
+
+
+def build_summary_pointers(
+    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
+) -> tuple[LedgerRow, ...]:
+    """The first timed findings that are not decomposition rows, in the order given.
+
+    `rank_findings` has already sorted the findings by seconds, descending, in
+    the CLI. Re-sorting here would be a second ranking authority that could
+    disagree with the findings file; taking the first few in order cannot.
+    """
+    timed = [
+        finding
+        for finding in findings
+        if finding.seconds_lost is not None and finding.id not in exclude
+    ]
+    return tuple(_ledger_row(finding, titles_by_id) for finding in timed[:POINTER_COUNT])
+
+
 def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -646,9 +668,9 @@ def build_report(
         for finding in findings
         if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
     )
-    placed_rows = place_rows(
-        findings, titles_by_id, exclude={row.finding_id for row in ledger_decomposition}
-    )
+    decomposition_ids = {row.finding_id for row in ledger_decomposition}
+    placed_rows = place_rows(findings, titles_by_id, exclude=decomposition_ids)
+    summary_pointers = build_summary_pointers(findings, titles_by_id, exclude=decomposition_ids)
     players = build_players(loaded, findings, parse, subject, titles_by_id)
     placed_ids = _placed_finding_ids(ledger_decomposition, placed_rows, players)
 
@@ -656,6 +678,7 @@ def build_report(
         header=_header(loaded),
         narrative=narrative,
         ledger_decomposition=ledger_decomposition,
+        summary_pointers=summary_pointers,
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),

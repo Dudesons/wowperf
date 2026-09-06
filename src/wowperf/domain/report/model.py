@@ -174,6 +174,10 @@ class Report(Frozen):
     header: Header
     narrative: str | None
     ledger_decomposition: tuple[LedgerRow, ...]
+    # The biggest timed losses, in the order the findings arrived. Each equals its
+    # card on another tab; the Summary renders it as a link to that card, never as
+    # a second card.
+    summary_pointers: tuple[LedgerRow, ...] = ()
     timeline: Timeline
     # Withheld without a speed reference, with the reason the timeline reads too. The
     # rows beneath it that need no reference — gaps, trash — still render.

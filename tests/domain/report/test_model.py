@@ -78,6 +78,7 @@ def test_a_report_holds_every_section() -> None:
         ),
         narrative=None,
         ledger_decomposition=(),
+        summary_pointers=(),
         timeline=Timeline(section=a_section(SectionState.WITHHELD, "no reference")),
         route=a_section(SectionState.WITHHELD, "no reference"),
         deaths=(),

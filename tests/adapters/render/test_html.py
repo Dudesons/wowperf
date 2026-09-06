@@ -40,6 +40,7 @@ def a_report(**overrides: object) -> Report:
         ),
         "narrative": None,
         "ledger_decomposition": (),
+        "summary_pointers": (),
         "timeline": Timeline(section=Section(state=SectionState.WITHHELD, reason="no reference")),
         "route": Section(state=SectionState.PRESENT),
         "deaths": (),

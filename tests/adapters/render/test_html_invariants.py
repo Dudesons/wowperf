@@ -37,8 +37,9 @@ GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 # parser, which names a different character in a different log (item 1).
 SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
 
+# "losses" renders only when a timed loss exists; the minimal fixture has two.
 SECTION_ORDER = [
-    "ledger", "timeline", "route", "deaths", "interrupts", "players", "observations",
+    "ledger", "losses", "timeline", "route", "deaths", "interrupts", "players", "observations",
     "provenance",
 ]
 
@@ -473,3 +474,34 @@ def test_a_page_with_no_consumable_data_makes_no_claim_either_way() -> None:
     section = deaths_section(a_page(NO_DEFENSIVES))
     assert "Healing consumable" not in section
     assert "not that one was carried" not in section
+
+
+def test_every_pointer_targets_an_anchor_that_exists() -> None:
+    html = minimal_html()
+    targets = re.findall(r'class="pointer" href="#([^"]+)"', html)
+    assert targets, "the minimal fixture has a timed loss, so the Summary must point at it"
+    for target in targets:
+        assert f'id="{target}"' in html, target
+
+
+def test_a_pointer_is_a_link_not_a_second_card() -> None:
+    # Once-only is anchored on <h3>; a pointer that emitted one would double every loss.
+    html = minimal_html()
+    pointers = re.findall(r'<a class="pointer"[^>]*>(.*?)</a>', html, flags=re.S)
+    assert pointers
+    for body in pointers:
+        assert "<h3>" not in body
+    # Every finding still appears exactly once as a heading, pointers notwithstanding.
+    for finding in minimal_findings():
+        assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+
+
+def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:
+    untimed = tuple(f for f in minimal_findings() if f.seconds_lost is None)
+    html = render(
+        build_report(
+            minimal_loaded(), untimed, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES,
+            NO_CONSUMABLES,
+        )
+    )
+    assert 'id="losses"' not in html
