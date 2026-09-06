@@ -76,6 +76,25 @@ class Consumables(Frozen):
     categories: tuple[ConsumableCategory, ...] = ()
 
 
+class Roles(Frozen):
+    """Which specialisations tank and which heal, as "Class/Spec" entries.
+
+    Empty by default, so a caller without the data file treats everyone as
+    damage — the direction that produces a finding rather than silence.
+    """
+
+    tanks: tuple[str, ...] = ()
+    healers: tuple[str, ...] = ()
+
+    def role_of(self, class_name: str, spec: str) -> str:
+        key = f"{class_name}/{spec}"
+        if key in self.tanks:
+            return "tank"
+        if key in self.healers:
+            return "healer"
+        return "damage"
+
+
 class ThroughputCooldowns(Frozen):
     """Throughput cooldowns per class and specialisation.
 

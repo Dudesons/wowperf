@@ -4,7 +4,7 @@
 import pytest
 from pydantic import ValidationError
 
-from wowperf.domain.season import DefensiveAbility, SeasonData
+from wowperf.domain.season import DefensiveAbility, Roles, SeasonData
 
 
 def a_season() -> SeasonData:
@@ -45,3 +45,11 @@ def test_a_defensive_with_two_charges_says_so() -> None:
 def test_a_defensive_without_a_cooldown_cannot_be_built() -> None:
     with pytest.raises(ValidationError):
         DefensiveAbility(ability_id=1, name="Nameless")  # type: ignore[call-arg]
+
+
+def test_role_of_reads_the_spec_lists_and_defaults_to_damage() -> None:
+    roles = Roles(tanks=("DeathKnight/Blood",), healers=("Paladin/Holy",))
+    assert roles.role_of("DeathKnight", "Blood") == "tank"
+    assert roles.role_of("Paladin", "Holy") == "healer"
+    assert roles.role_of("Mage", "Arcane") == "damage"
+    assert Roles().role_of("DeathKnight", "Blood") == "damage"

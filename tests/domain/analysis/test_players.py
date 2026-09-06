@@ -5,6 +5,7 @@ from wowperf.domain.analysis.players import analyse_players, summarise_players
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
+from wowperf.domain.season import Roles
 
 NAMES = ("Alpha", "Bravo", "Charlie", "Delta", "Echo")
 
@@ -166,3 +167,60 @@ def test_damage_outlier_players_sharing_a_name_are_distinguished_in_the_title() 
         "Alpha (actor 0) took 30.0x the group median from Molten Scar",
         "Alpha (actor 5) took 30.0x the group median from Molten Scar",
     }
+
+
+def a_run_with_a_tank() -> Run:
+    """A Blood Death Knight and three Mages of different specialisations."""
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=100_000,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+    )
+    return Run(
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
+        keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
+        count_reached=100, count_required=100, npc_counts=(),
+        players=(
+            Player(actor_id=1, name="Tank", class_name="DeathKnight", spec="Blood",
+                   item_level=1),
+            Player(actor_id=2, name="A", class_name="Mage", spec="Arcane", item_level=1),
+            Player(actor_id=3, name="B", class_name="Mage", spec="Fire", item_level=1),
+            Player(actor_id=4, name="C", class_name="Mage", spec="Frost", item_level=1),
+        ),
+        pulls=pulls,
+    )
+
+
+def melee_hits(amounts: dict[int, int]) -> tuple[DamageTakenEvent, ...]:
+    """One melee hit per actor id, at the given amount."""
+    return tuple(
+        DamageTakenEvent(actor_id=actor_id, ability_id=501, ability_name="Melee",
+                         amount=amount, timestamp_ms=1_000, pull_index=0)
+        for actor_id, amount in amounts.items()
+    )
+
+
+TANKS = Roles(tanks=("DeathKnight/Blood",))
+
+
+def test_a_tank_is_left_out_of_the_damage_comparison() -> None:
+    # The Blood Death Knight took forty times the others' melee damage. That is the job.
+    run = a_run_with_a_tank()
+    hits = melee_hits({1: 4_000_000, 2: 100_000, 3: 100_000, 4: 100_000})
+    findings = analyse_players(run, (), (), (), hits, roles=TANKS)
+    assert not any(f.id.startswith("players.damage.") for f in findings)
+
+
+def test_a_tank_does_not_pull_the_median_down_for_everyone_else() -> None:
+    # Without the tank, the three others' median is 100,000 and C's 300,000 is 3x it.
+    run = a_run_with_a_tank()
+    hits = melee_hits({1: 5_000, 2: 100_000, 3: 100_000, 4: 300_000})
+    findings = analyse_players(run, (), (), (), hits, roles=TANKS)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    assert outlier.title.startswith("C took 3.0x")
+
+
+def test_without_a_roles_table_nobody_is_a_tank() -> None:
+    run = a_run_with_a_tank()
+    hits = melee_hits({1: 4_000_000, 2: 100_000, 3: 100_000, 4: 100_000})
+    findings = analyse_players(run, (), (), (), hits)
+    assert any(f.title.startswith("Tank took") for f in findings)

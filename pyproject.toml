@@ -47,7 +47,9 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.flake8-bugbear]
 # typer.Argument()/typer.Option() calls as parameter defaults are how typer
 # declares CLI parameters; they are not the mutable-default bug B008 flags.
-extend-immutable-calls = ["typer.Argument", "typer.Option"]
+# Roles is a Frozen (immutable) value object; its empty default is the same
+# shape of thing and carries no mutable state a call site could corrupt.
+extend-immutable-calls = ["typer.Argument", "typer.Option", "wowperf.domain.season.Roles"]
 
 [tool.mypy]
 python_version = "3.12"

@@ -14,6 +14,7 @@ from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_roles,
     load_season_data,
     load_throughput_cooldowns,
 )
@@ -266,6 +267,7 @@ def analyze(
             defensives,
             consumables,
             load_throughput_cooldowns(),
+            roles=load_roles(),
             include_cooldown_ceiling=throughput_ceiling,
         )
 

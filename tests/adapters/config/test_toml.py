@@ -189,6 +189,16 @@ def test_every_throughput_spec_key_names_a_class_the_log_api_reports() -> None:
     assert unknown == [], f"spec keys that can never match a player: {unknown}"
 
 
+def test_the_committed_roles_file_names_six_tanks_and_seven_healers() -> None:
+    from wowperf.adapters.config.toml import load_roles
+
+    roles = load_roles()
+    assert len(roles.tanks) == 6
+    assert len(roles.healers) == 7
+    assert not set(roles.tanks) & set(roles.healers)
+    assert all(entry.count("/") == 1 for entry in roles.tanks + roles.healers)
+
+
 def test_no_ability_is_both_a_defensive_and_a_throughput_cooldown_for_one_spec() -> None:
     """The two files ask opposite questions, so an ability in both answers neither.
 
