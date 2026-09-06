@@ -1,7 +1,10 @@
 # ABOUTME: Runs every analyser over one loaded run and ranks the findings by time cost.
 # ABOUTME: Deliberately dull: all the judgement lives in the analysers, none of it here.
 
-from wowperf.domain.analysis.consumables import analyse_consumables_at_death
+from wowperf.domain.analysis.consumables import (
+    analyse_consumables_at_death,
+    analyse_consumables_never_used,
+)
 from wowperf.domain.analysis.deaths import analyse_deaths
 from wowperf.domain.analysis.defensives import (
     analyse_defensives,
@@ -57,6 +60,9 @@ def analyse(
         loaded.run, loaded.casts, defensives, loaded.deaths
     )
     findings += analyse_consumables_at_death(
+        loaded.run, loaded.casts, consumables, loaded.deaths
+    )
+    findings += analyse_consumables_never_used(
         loaded.run, loaded.casts, consumables, loaded.deaths
     )
     findings += analyse_cooldown_alignment(

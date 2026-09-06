@@ -171,7 +171,16 @@ CONSUMABLES = Consumables(
 def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
     # Uglymage drinks nothing all run and dies, so the consumable analyser must
     # contribute alongside the defensive ones.
-    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns())
+    # Drunk once early, so the category is one the tool may speak about at all.
+    loaded = a_loaded_run()
+    drank = loaded.casts + (
+        CastEvent(actor_id=11, ability_id=1234768, ability_name="Health Potion",
+                  timestamp_ms=50_000, pull_index=0),
+    )
+    findings = analyse(
+        loaded.model_copy(update={"casts": drank}),
+        SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns(),
+    )
     assert "consumables.unused.Uglymage" in {finding.id for finding in findings}
 
 

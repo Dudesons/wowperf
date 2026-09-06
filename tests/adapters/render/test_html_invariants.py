@@ -436,7 +436,11 @@ def a_page_with_consumables(cast: CastEvent | None = None) -> str:
 
 
 def test_a_death_card_names_the_consumables_whose_cooldown_was_clear() -> None:
-    section = deaths_section(a_page_with_consumables())
+    # A potion drunk at 10s: proof the category is theirs, and outside the
+    # window, which opens at 90s for a 300s cooldown and a death at 400s.
+    drunk_early = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                            timestamp_ms=10_000, pull_index=0)
+    section = deaths_section(a_page_with_consumables(drunk_early))
     assert "Healing consumable cooldowns clear: health potion" in section
 
 

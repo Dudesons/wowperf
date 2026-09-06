@@ -237,9 +237,16 @@ LATE_ENOUGH_MS = 400_000
 
 
 def test_a_card_names_the_consumables_that_were_off_cooldown() -> None:
-    card = build_deaths(
-        a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES, POTIONS
-    )[0]
+    # Drunk early, outside the window, so the category is theirs to speak about.
+    loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
+        update={
+            "casts": (
+                CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                          timestamp_ms=1_000, pull_index=0),
+            )
+        }
+    )
+    card = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0]
     assert card.consumables_checked is True
     assert card.consumables_available == ("health potion",)
 

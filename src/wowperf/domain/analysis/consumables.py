@@ -30,10 +30,14 @@ def consumables_up_at(
     potions stopped sharing a cooldown with combat potions in patch 9.0, and
     Healthstone stopped sharing with health potions in patch 8.0.1.
 
-    Unlike a defensive, nothing here has to prove the player carried one. A
-    talent they never took must never be held against them; a potion is a choice
-    they control, and the log cannot separate an unused one from an empty bag in
-    either direction.
+    Only categories the player drank from somewhere in the run are considered.
+    That rule was absent at first, on the reasoning that carrying a potion is a
+    choice the player controls, so silence about it was worth reporting. A real
+    run settled it: nobody used a healthstone in nine thousand casts, so every
+    death of every player carried a line saying the healthstone was off cooldown
+    — true, unarguable and worth nothing. What the log supports about a category
+    nobody touched is a fact about the run, which `analyse_consumables_never_used`
+    states once, rather than a fact about each death.
 
     Dropping that proof costs one protection, which `visible_from_ms` restores.
     Casts are fetched per fight, so a potion drunk before the timer started is
@@ -43,10 +47,12 @@ def consumables_up_at(
     the log begins is therefore not reported at all — unknown, not available.
     """
     ours = [cast for cast in casts if cast.actor_id == actor_id]
+    drank = {cast.ability_id for cast in ours}
     return tuple(
         category.name
         for category in categories
-        if death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
+        if any(ability_id in drank for ability_id in category.ability_ids)
+        and death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
         and not any(
             cast.ability_id in category.ability_ids
             and death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000
@@ -135,6 +141,77 @@ def analyse_consumables_at_death(
                 seconds_lost=None,
                 evidence=tuple(lines),
                 pull_index=first_pull,
+            )
+        )
+    return findings
+
+
+def analyse_consumables_never_used(
+    run: Run,
+    casts: tuple[CastEvent, ...],
+    consumables: Consumables,
+    deaths: tuple[Death, ...],
+) -> list[Finding]:
+    """Players who died and drank from a whole category at no point in the run.
+
+    The stronger of the two consumable claims, and the cheaper to act on. Its
+    sibling asks whether a category happened to be off cooldown at a death, which
+    is a coincidence of timing; this asks whether one was used at all, which is a
+    habit.
+
+    Still `inferred`, and for the same reason: a consumable reaches the log only
+    when it is drunk, so this says none was used, never that none was carried.
+    But unlike the per-death claim it is said once, and a reader can act on it
+    without knowing what was in anyone's bags.
+    """
+    if not consumables.categories:
+        return []
+
+    name_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        name_counts[player.name] += 1
+
+    findings = []
+    for player in run.players:
+        theirs = [death for death in deaths if death.actor_id == player.actor_id]
+        if not theirs:
+            continue
+        drank = {cast.ability_id for cast in casts if cast.actor_id == player.actor_id}
+        untouched = [
+            category.name
+            for category in consumables.categories
+            if not any(ability_id in drank for ability_id in category.ability_ids)
+        ]
+        if not untouched:
+            continue
+
+        base_id = (
+            player.name
+            if name_counts[player.name] == 1
+            else f"{player.name}.{player.actor_id}"
+        )
+        times = "once" if len(theirs) == 1 else f"{len(theirs)} times"
+        findings.append(
+            Finding(
+                id=f"consumables.never.{base_id}",
+                title=(
+                    f"{player.name} died {times} and used no "
+                    f"{' or '.join(untouched)} at any point in the run"
+                ),
+                detail=(
+                    "A consumable reaches the log only when it is drunk, so this says "
+                    "none was used — not that none was carried. Those want the same "
+                    "answer and the tool cannot tell them apart, which is why it reports "
+                    "the run rather than pinning it on a particular death."
+                ),
+                confidence=Confidence.INFERRED,
+                seconds_lost=None,
+                evidence=(
+                    f"{player.class_name} {player.spec}",
+                    f"died {times}",
+                    *(f"no {name} used in the run" for name in untouched),
+                ),
+                pull_index=theirs[0].pull_index,
             )
         )
     return findings

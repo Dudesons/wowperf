@@ -348,10 +348,23 @@ cooldown with combat and mana potions in patch 9.0, and Healthstone stopped shar
 potions in patch 8.0.1. Combat and mana potions are therefore absent from `data/consumables.toml`
 entirely: they cannot make a health potion unavailable, and listing them would imply they could.
 
-It reuses §5.8's window, so a potion drunk during the killing damage never reads as neglect. It
-does **not** reuse §5.8's ownership rule, and the difference is the point: a talent never taken
-must never be held against a player, but carrying a potion is a choice they control, so silence
-there is worth reporting.
+It reuses §5.8's window, so a potion drunk during the killing damage never reads as neglect.
+
+~~It does **not** reuse §5.8's ownership rule, and the difference is the point: a talent never
+taken must never be held against a player, but carrying a potion is a choice they control, so
+silence there is worth reporting.~~ **Amended 2026-09-06, by the first run against real data.**
+Nobody used a healthstone in nine thousand casts, so every death of every player carried a line
+saying the healthstone was off cooldown: true, unarguable and worth nothing. The reasoning above
+was right that silence is worth reporting and wrong about where. Silence is a fact about the
+**run**, and repeating it at each death buries it.
+
+So the per-death claim now takes the ownership rule too, and the run-level fact became its own
+claim: **`consumables.never.*` — this player died and drank from that category at no point in the
+run.** It is the stronger of the two and the cheaper to act on, because the sibling asks whether a
+category happened to be off cooldown at a death, which is a coincidence of timing, while this asks
+whether one was used at all, which is a habit. On the run that prompted the change it turned three
+repetitive findings into three single lines, one of which — a healer who used neither category all
+run — is the most actionable consumable statement the tool can make.
 
 What it cannot do is see a bag. A consumable reaches the log only when it is drunk, so an
 available category means "nothing was on cooldown" and never "one was carried". The finding's

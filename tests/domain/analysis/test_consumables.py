@@ -28,6 +28,21 @@ def a_cast(ability_id: int, at_ms: int, actor_id: int = 11) -> CastEvent:
     )
 
 
+def drank_both(actor_id: int = 11) -> tuple[CastEvent, ...]:
+    """One early drink from each category: proof the player has them at all.
+
+    Placed far outside every window, so it establishes ownership without putting
+    anything on cooldown.
+    """
+    return (a_cast(1234768, 1_000, actor_id), a_cast(6262, 1_000, actor_id))
+
+
+def test_a_category_the_player_never_drank_from_is_not_reported() -> None:
+    # The rule a real run forced: nobody used a healthstone in nine thousand
+    # casts, so without this every death of every player claimed one was up.
+    assert consumables_up_at((), CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == ()
+
+
 def test_a_category_is_not_claimed_when_the_window_reaches_before_the_log_begins() -> None:
     """The one place dropping the ownership rule would otherwise accuse someone.
 
@@ -39,26 +54,27 @@ def test_a_category_is_not_claimed_when_the_window_reaches_before_the_log_begins
     # The health-potion window opens 310s before the death, so a death 100s into
     # a run cannot be judged: the log does not reach back that far.
     early = 100_000
-    assert consumables_up_at((), CATEGORIES, 11, early, visible_from_ms=0) == ("healthstone",)
+    up = consumables_up_at(drank_both(), CATEGORIES, 11, early, visible_from_ms=0)
+    assert up == ("healthstone",)
 
 
 def test_a_window_opening_exactly_when_the_log_does_is_judged() -> None:
     # The boundary is inclusive: a window reaching back to the first visible
     # moment is fully covered, so there is nothing the log failed to see.
     death = 310_000
+    # Ownership proved by a drink *after* the death: an earlier one would fall
+    # inside a window that, at this boundary, opens at the very start of the log.
+    later = (a_cast(1234768, 900_000),)
     assert "health potion" in consumables_up_at(
-        (), CATEGORIES, 11, death, visible_from_ms=0
+        later, CATEGORIES, 11, death, visible_from_ms=0
     )
     assert "health potion" not in consumables_up_at(
-        (), CATEGORIES, 11, death - 1, visible_from_ms=0
+        later, CATEGORIES, 11, death - 1, visible_from_ms=0
     )
 
 
-def test_a_player_who_drank_nothing_had_everything_available() -> None:
-    # Unlike a defensive, nothing has to prove the player carried one: a potion
-    # is a choice they control, and the log cannot tell an unused one from an
-    # empty bag either way.
-    assert consumables_up_at((), CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == (
+def test_a_player_who_drank_early_had_everything_available_later() -> None:
+    assert consumables_up_at(drank_both(), CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == (
         "health potion",
         "healthstone",
     )
@@ -67,32 +83,32 @@ def test_a_player_who_drank_nothing_had_everything_available() -> None:
 def test_any_id_in_a_category_blocks_the_whole_category() -> None:
     # A different health potion from the one listed first still puts the
     # category on cooldown — that is what a category is for.
-    casts = (a_cast(1262857, 200_000),)
+    casts = drank_both() + (a_cast(1262857, 200_000),)
     assert consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == ("healthstone",)
 
 
 def test_a_category_comes_back_once_its_own_cooldown_has_passed() -> None:
     # Drunk before the health-potion window opened at 90_000.
-    casts = (a_cast(1234768, 80_000),)
+    casts = drank_both() + (a_cast(1234768, 80_000),)
     assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
 
 
 def test_categories_do_not_block_each_other() -> None:
     # A healthstone has not shared a cooldown with health potions since patch
     # 8.0.1, which is why they are separate categories at all.
-    casts = (a_cast(6262, 390_000),)
+    casts = drank_both() + (a_cast(6262, 390_000),)
     up = consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
     assert up == ("health potion",)
 
 
 def test_one_drunk_during_the_run_up_is_not_called_unused() -> None:
-    casts = (a_cast(6262, 395_000),)
+    casts = drank_both() + (a_cast(6262, 395_000),)
     up = consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
     assert "healthstone" not in up
 
 
 def test_only_this_players_casts_count() -> None:
-    casts = (a_cast(1234768, 200_000, actor_id=12),)
+    casts = drank_both() + (a_cast(1234768, 200_000, actor_id=12),)
     assert "health potion" in consumables_up_at(casts, CATEGORIES, 11, DEATH_MS, visible_from_ms=0)
 
 
@@ -121,7 +137,7 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS) -> Death:
 
 
 def test_a_death_with_a_consumable_available_is_a_finding() -> None:
-    findings = analyse_consumables_at_death(a_run(), (), CONSUMABLES, (a_death(),))
+    findings = analyse_consumables_at_death(a_run(), drank_both(), CONSUMABLES, (a_death(),))
     assert len(findings) == 1
     assert findings[0].id == "consumables.unused.Uglymage"
     assert findings[0].confidence is Confidence.INFERRED
@@ -129,7 +145,7 @@ def test_a_death_with_a_consumable_available_is_a_finding() -> None:
 
 
 def test_a_death_with_everything_on_cooldown_says_nothing() -> None:
-    casts = (a_cast(1234768, 395_000), a_cast(6262, 395_000))
+    casts = drank_both() + (a_cast(1234768, 395_000), a_cast(6262, 395_000))
     assert analyse_consumables_at_death(a_run(), casts, CONSUMABLES, (a_death(),)) == []
 
 
@@ -137,9 +153,54 @@ def test_the_detail_admits_it_cannot_see_an_empty_bag() -> None:
     # The log records a consumable only when it is drunk, so "available" means
     # "not on cooldown" and nothing more. Saying otherwise would accuse someone
     # of not pressing a button they never had.
-    detail = analyse_consumables_at_death(a_run(), (), CONSUMABLES, (a_death(),))[0].detail
+    detail = analyse_consumables_at_death(
+        a_run(), drank_both(), CONSUMABLES, (a_death(),)
+    )[0].detail
     assert "not that one was carried" in detail
 
 
 def test_no_deaths_says_nothing() -> None:
-    assert analyse_consumables_at_death(a_run(), (), CONSUMABLES, ()) == []
+    assert analyse_consumables_at_death(a_run(), drank_both(), CONSUMABLES, ()) == []
+
+
+def test_a_category_the_player_never_touched_is_not_reported_at_a_death() -> None:
+    """The first real run showed why this rule was missing.
+
+    Nobody used a healthstone in nine thousand casts, so "healthstone was off
+    cooldown" appeared under every death of every player — true, unfalsifiable
+    and contentless. What the log can support about a category nobody touched is
+    a run-level fact, not a per-death one.
+    """
+    only_potion = (a_cast(1234768, 1_000),)
+    assert consumables_up_at(only_potion, CATEGORIES, 11, DEATH_MS, visible_from_ms=0) == (
+        "health potion",
+    )
+
+
+def test_a_player_who_died_having_used_nothing_is_told_so_once() -> None:
+    from wowperf.domain.analysis.consumables import analyse_consumables_never_used
+
+    findings = analyse_consumables_never_used(
+        a_run(), (), CONSUMABLES, (a_death(at_ms=300_000), a_death(at_ms=380_000))
+    )
+    assert len(findings) == 1
+    assert findings[0].id == "consumables.never.Uglymage"
+    assert findings[0].confidence is Confidence.INFERRED
+    assert "health potion" in findings[0].title and "healthstone" in findings[0].title
+
+
+def test_a_category_the_player_used_is_not_in_the_never_claim() -> None:
+    from wowperf.domain.analysis.consumables import analyse_consumables_never_used
+
+    used_a_potion = (a_cast(1234768, 1_000),)
+    findings = analyse_consumables_never_used(
+        a_run(), used_a_potion, CONSUMABLES, (a_death(),)
+    )
+    assert "healthstone" in findings[0].title
+    assert "health potion" not in findings[0].title
+
+
+def test_a_player_who_did_not_die_is_not_asked_what_they_carried() -> None:
+    from wowperf.domain.analysis.consumables import analyse_consumables_never_used
+
+    assert analyse_consumables_never_used(a_run(), (), CONSUMABLES, ()) == []

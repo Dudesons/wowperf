@@ -89,23 +89,32 @@ thirty seconds away is good play and appears here as a gap. Say so when you repe
 the same caveat as the defensive ceiling and one more: a route, not a rotation, sets how many
 windows existed.
 
-## `consumables.unused.*` is the weakest claim on the page
+## The two consumable claims, and which one to lead with
 
-It is about what the player carried rather than what their spec gives them, and it is the one
-finding whose absence of evidence is not evidence. A consumable reaches the log only when it is
-drunk, so the finding means **nothing was on cooldown** — never that a potion was in the bag.
-Write "no potion was used, and none was on cooldown". Do not write that they had one.
+`consumables.never.*` says the player died and drank from a whole category at no point in the run.
+Lead with this one. It is a habit rather than a coincidence, a reader can act on it without
+knowing what was in anyone's bags, and it is said once however many times they died.
 
-It is also close to the default state. Most players drink neither a health potion nor a
-healthstone in most runs, so this fires for very nearly every death and says far less than a
-defensive left unused. Treat it as a prompt to ask what they carry, never as a ranked loss, and
-do not lead a narrative with it.
+`consumables.unused.*` says a category the player **does** use was off cooldown at a particular
+death. It only appears for a category they drank from at least once, so it is no longer the
+near-universal line it was — but it is still a coincidence of timing, so treat it as the weaker of
+the two.
 
-Two silences here mean nothing at all rather than something good: a death early enough that the
-category's window reaches back before the log begins is not judged, because the casts are fetched
-per fight and a potion drunk before the pull is invisible. Combat and mana potions are not
-tracked at all — they stopped sharing a cooldown with health potions in patch 9.0, so their
-absence from the data is deliberate and carries no meaning.
+Neither can see a bag. Both mean "none was used", never "none was carried", and the difference
+matters because they want the same fix.
+
+## Reading either of them
+
+Both are about what a player carried rather than what their spec gives them, and both are claims
+whose absence of evidence is not evidence. A consumable reaches the log only when it is drunk, so
+either finding means **none was used** — never that one was in the bag. Write "no potion was used";
+do not write that they had one.
+
+Two silences mean nothing at all rather than something good. A death early enough that the
+category's window reaches back before the log begins is not judged, because casts are fetched per
+fight and a potion drunk before the pull is invisible. And combat and mana potions are not tracked
+at all — they stopped sharing a cooldown with health potions in patch 9.0, so their absence from
+the data is deliberate and carries no meaning.
 
 ## Why damage goes unranked
 
