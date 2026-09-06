@@ -93,7 +93,10 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # The report's one hard promise: it opens from disk, offline, forever. Checked by
     # what the page can execute or load, not by whether a URL string appears at all —
     # a link the reader may click and the SVG's own namespace both fetch nothing.
-    assert "<script" not in html.lower()
+    # One inline script is allowed — the tab toggle — and only one; its text is
+    # checked in `test_html_invariants.py`.
+    scripts = re.findall(r"<script\b([^>]*)>", html, flags=re.I)
+    assert len(scripts) == 1 and "src=" not in scripts[0].lower()
     assert "@import" not in html.lower()
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):

@@ -308,9 +308,10 @@ def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
-    assert [row.finding_id for row in report.death_findings] == [
+    assert [row.finding_id for row in report.death_rows] == [
         "defensives.unused.Uglymage",
         "consumables.unused.Uglymage",
         "consumables.never.Uglymage",
     ]
-    assert [row.finding_id for row in report.observations] == ["trash.pull.0"]
+    assert [row.finding_id for row in report.route_rows] == ["trash.pull.0"]
+    assert report.observations == ()

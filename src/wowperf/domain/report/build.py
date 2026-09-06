@@ -396,32 +396,78 @@ def _plural(count: int, singular: str) -> str:
     return singular if count == 1 else f"{singular}s"
 
 
-def build_interrupts(
-    findings: Sequence[Finding], titles_by_id: dict[str, str]
+PLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("defensives.unused.", "death_rows"),
+    ("consumables.", "death_rows"),
+    ("deaths.", "death_rows"),
+    ("compare.deaths", "death_rows"),
+    ("time.gap.", "route_rows"),
+    ("compare.downtime", "route_rows"),
+    ("compare.route.", "route_rows"),
+    (SPEED_UNAVAILABLE_ID, "route_rows"),
+    ("trash.", "route_rows"),
+    ("compare.confound.", "route_rows"),
+    ("interrupts.", "interrupts"),
+    ("compare.interrupts", "interrupts"),
+    (PARSE_UNAVAILABLE_ID, "group_rows"),
+    ("defensives.", "group_rows"),
+    ("throughput.", "group_rows"),
+)
+"""Which tab's rows a finding family lands in: the first prefix that matches wins.
+
+Unlike `NESTS_INSIDE`, the entries here overlap on purpose — `defensives.unused.`
+is a death-shaped claim and the bare `defensives.` prefix is a rate — so order is
+the rule and the narrow families come first. A finding no prefix matches is not
+dropped: `build_observations` picks up everything unplaced. The player-card
+families (`players.damage.`, `compare.spells.`, `compare.talents`,
+`compare.uptime.`) are placed by `build_players` and are deliberately absent.
+"""
+
+
+def _field_for(finding_id: str) -> str | None:
+    return next((field for prefix, field in PLACEMENTS if finding_id.startswith(prefix)), None)
+
+
+def place_rows(
+    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
+) -> dict[str, tuple[LedgerRow, ...]]:
+    """Every finding's row, keyed by the `Report` field it lands in.
+
+    `exclude` holds the ids the decomposition already claimed, so a timed
+    `deaths.total` heads the ledger and does not also sit beneath the death
+    cards. Order within a field is the order the findings arrived in:
+    `rank_findings` has already sorted them, and one ranking authority is enough.
+    """
+    placed: dict[str, list[LedgerRow]] = {field: [] for _, field in PLACEMENTS}
+    for finding in findings:
+        if finding.id in exclude:
+            continue
+        field = _field_for(finding.id)
+        if field is not None:
+            placed[field].append(_ledger_row(finding, titles_by_id))
+    return {field: tuple(rows) for field, rows in placed.items()}
+
+
+POINTER_COUNT = 5
+"""How many losses the Summary points at: enough to show the run's shape, few enough to
+stay a list."""
+
+
+def build_summary_pointers(
+    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
 ) -> tuple[LedgerRow, ...]:
-    """Interrupt findings that carry no seconds. Anything timed went to the ledger."""
-    return tuple(
-        _ledger_row(finding, titles_by_id)
+    """The first timed findings that are not decomposition rows, in the order given.
+
+    `rank_findings` has already sorted the findings by seconds, descending, in
+    the CLI. Re-sorting here would be a second ranking authority that could
+    disagree with the findings file; taking the first few in order cannot.
+    """
+    timed = [
+        finding
         for finding in findings
-        if finding.seconds_lost is None and finding.id.startswith("interrupts.")
-    )
-
-
-DEATH_FINDING_PREFIXES = ("defensives.unused.", "consumables.unused.", "consumables.never.")
-"""Finding families that belong beneath the death cards rather than in the catch-all."""
-
-
-def build_death_findings(
-    findings: Sequence[Finding], titles_by_id: dict[str, str]
-) -> tuple[LedgerRow, ...]:
-    """The findings about what a dying player still had, placed with the deaths."""
-    # A death finding that ever carried seconds would belong in the ledger, and must not appear
-    # twice.
-    return tuple(
-        _ledger_row(finding, titles_by_id)
-        for finding in findings
-        if finding.seconds_lost is None and finding.id.startswith(DEATH_FINDING_PREFIXES)
-    )
+        if finding.seconds_lost is not None and finding.id not in exclude
+    ]
+    return tuple(_ledger_row(finding, titles_by_id) for finding in timed[:POINTER_COUNT])
 
 
 def build_players(
@@ -548,24 +594,21 @@ def _ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
 
 def _placed_finding_ids(
     ledger_decomposition: Sequence[LedgerRow],
-    ledger_losses: Sequence[LedgerRow],
-    interrupts: Sequence[LedgerRow],
+    placed_rows: dict[str, tuple[LedgerRow, ...]],
     players: Sequence[PlayerCard],
-    death_findings: Sequence[LedgerRow],
 ) -> set[str]:
-    """Every finding id some section already claims.
+    """Every finding id some field already claims.
 
-    Read back off the sections themselves rather than recomputed from a
-    prefix list: this is what keeps `build_observations` a structural
-    partition instead of a second whitelist someone has to remember to update.
+    Read back off the fields themselves rather than recomputed from a prefix
+    list: this is what keeps `build_observations` a structural partition
+    instead of a second whitelist someone has to remember to update.
     """
     ids = {row.finding_id for row in ledger_decomposition}
-    ids |= {row.finding_id for row in ledger_losses}
-    ids |= {row.finding_id for row in interrupts}
+    for rows in placed_rows.values():
+        ids |= {row.finding_id for row in rows}
     for card in players:
         ids |= {row.finding_id for row in card.damage_rows}
         ids |= {row.finding_id for row in card.spell_and_talent_rows}
-    ids |= {row.finding_id for row in death_findings}
     return ids
 
 
@@ -614,6 +657,10 @@ def build_report(
     if comparison_section.state is SectionState.WITHHELD:
         withheld.append(f"Spell and talent comparison: {comparison_section.reason}")
 
+    route_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
+    if route_section.state is SectionState.WITHHELD:
+        withheld.append(f"Route and tempo: {route_section.reason}")
+
     titles_by_id = {finding.id: finding.title for finding in findings}
 
     ledger_decomposition = tuple(
@@ -621,30 +668,27 @@ def build_report(
         for finding in findings
         if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
     )
-    ledger_losses = tuple(
-        _ledger_row(finding, titles_by_id)
-        for finding in findings
-        if finding.seconds_lost is not None and finding.id not in DECOMPOSITION_IDS
-    )
-    interrupts = build_interrupts(findings, titles_by_id)
+    decomposition_ids = {row.finding_id for row in ledger_decomposition}
+    placed_rows = place_rows(findings, titles_by_id, exclude=decomposition_ids)
+    summary_pointers = build_summary_pointers(findings, titles_by_id, exclude=decomposition_ids)
     players = build_players(loaded, findings, parse, subject, titles_by_id)
-    death_findings = build_death_findings(findings, titles_by_id)
-    placed_ids = _placed_finding_ids(
-        ledger_decomposition, ledger_losses, interrupts, players, death_findings
-    )
+    placed_ids = _placed_finding_ids(ledger_decomposition, placed_rows, players)
 
     return Report(
         header=_header(loaded),
         narrative=narrative,
         ledger_decomposition=ledger_decomposition,
-        ledger_losses=ledger_losses,
+        summary_pointers=summary_pointers,
         timeline=build_timeline(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
+        route=route_section,
+        route_rows=placed_rows["route_rows"],
         deaths=build_deaths(loaded, defensives, consumables),
-        death_findings=death_findings,
-        interrupts=interrupts,
+        death_rows=placed_rows["death_rows"],
+        interrupts=placed_rows["interrupts"],
         players=players,
+        group_rows=placed_rows["group_rows"],
         observations=build_observations(findings, placed_ids, titles_by_id),
         provenance=Provenance(
             report_code=loaded.run.report_code,

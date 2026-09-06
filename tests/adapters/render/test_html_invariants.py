@@ -37,8 +37,10 @@ GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 # parser, which names a different character in a different log (item 1).
 SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
 
+# "losses" renders only when a timed loss exists; the minimal fixture has two.
 SECTION_ORDER = [
-    "ledger", "timeline", "deaths", "interrupts", "players", "observations", "provenance",
+    "ledger", "losses", "timeline", "observations", "route", "deaths", "interrupts", "players",
+    "provenance",
 ]
 
 
@@ -194,17 +196,88 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
 
 
-def test_the_page_fetches_nothing_at_all() -> None:
+FORBIDDEN_IN_SCRIPT = (
+    "fetch",
+    "XMLHttpRequest",
+    "import(",
+    "document.write",
+    "innerHTML",
+    "textContent",
+    "localStorage",
+    "sessionStorage",
+    "eval",
+    "WebSocket",
+)
+"""What the script may not contain: anything that fetches, writes text or reads storage."""
+
+
+def test_the_page_executes_only_its_own_script() -> None:
     # A Warcraft Logs reference-run link and the SVG's own namespace attribute
     # both legitimately contain "http://" without fetching anything, so
     # self-containment is checked by what the page can *execute* or *load*,
-    # not by whether the string appears at all.
+    # not by whether the string appears at all. One inline script is allowed,
+    # and only one: the tab toggle. Its text is checked for anything that could
+    # reach past showing and hiding.
     html = rich_html()
-    assert "<script" not in html.lower()
+    scripts = re.findall(r"<script\b([^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+    assert len(scripts) == 1
+    attributes, body = scripts[0]
+    assert "src=" not in attributes.lower()
+    for forbidden in FORBIDDEN_IN_SCRIPT:
+        assert forbidden not in body, forbidden
     assert "@import" not in html.lower()
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert not src.startswith(("http://", "https://", "//")), src
+    # Finding ids contain dots (e.g. "finding-time.gap.0"); querySelector("#" + id)
+    # would parse the dot as a class selector, so the lookup must stay getElementById.
+    assert "getElementById" in body
+
+
+PANEL_ORDER = [
+    "tab-summary", "tab-route", "tab-deaths", "tab-interrupts", "tab-players", "tab-provenance",
+]
+
+
+def test_the_page_hides_nothing_before_the_script_runs() -> None:
+    # Without the script the root class is absent, so every hiding rule must be
+    # scoped under it. The tab bar is the one thing hidden *without* the script,
+    # by the bare `.tabs` rule, and that is checked by name.
+    html = rich_html()
+    assert not re.search(r"<[^>]*\shidden[\s>=]", html)
+    assert not re.search(r'style="[^"]*display', html)
+    style = html[html.index("<style>"):html.index("</style>")]
+    for rule in re.finditer(r"([^{}]+)\{[^{}]*display:\s*none", style):
+        selector = rule.group(1).strip().splitlines()[-1].strip()
+        assert selector.startswith(".js ") or selector == ".tabs", selector
+
+
+def test_every_panel_appears_once_in_tab_order() -> None:
+    html = minimal_html()
+    positions = [html.index(f'id="{name}"') for name in PANEL_ORDER]
+    assert positions == sorted(positions)
+    assert len(re.findall(r'<section class="panel"', html)) == len(PANEL_ORDER)
+
+
+def test_every_panel_has_exactly_one_tab_button() -> None:
+    html = minimal_html()
+    for name in PANEL_ORDER:
+        assert html.count(f'data-tab-for="{name}"') == 1, name
+
+
+def test_the_tab_buttons_follow_panel_order() -> None:
+    # The script opens the first button's panel by default, so button order is
+    # the default tab; nothing else pins the order the buttons appear in.
+    html = minimal_html()
+    positions = [html.index(f'data-tab-for="{name}"') for name in PANEL_ORDER]
+    assert positions == sorted(positions)
+
+
+def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
+    # The script adds it at run time; rendering it would hide panels with no script.
+    html = rich_html()
+    assert '<html lang="en">' in html
+    assert 'class="js' not in html
 
 
 def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:
@@ -224,15 +297,15 @@ def test_every_section_appears_in_the_order_the_design_fixes() -> None:
     assert positions == sorted(positions)
 
 
-def test_a_report_without_a_narrative_renders_eight_sections_not_nine() -> None:
-    # Header (h1) plus the seven always-present h2 sections in SECTION_ORDER.
+def test_a_report_without_a_narrative_renders_one_heading_per_section() -> None:
+    # Header (h1) plus the always-present h2 sections in SECTION_ORDER.
     html = minimal_html()
     assert 'id="narrative"' not in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER)
 
 
-def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
-    # Header (h1) plus the seven always-present h2 sections plus narrative.
+def test_a_narrative_adds_exactly_one_heading() -> None:
+    # Header (h1) plus the always-present h2 sections plus narrative.
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
@@ -472,3 +545,34 @@ def test_a_page_with_no_consumable_data_makes_no_claim_either_way() -> None:
     section = deaths_section(a_page(NO_DEFENSIVES))
     assert "Healing consumable" not in section
     assert "not that one was carried" not in section
+
+
+def test_every_pointer_targets_an_anchor_that_exists() -> None:
+    html = minimal_html()
+    targets = re.findall(r'class="pointer" href="#([^"]+)"', html)
+    assert targets, "the minimal fixture has a timed loss, so the Summary must point at it"
+    for target in targets:
+        assert f'id="{target}"' in html, target
+
+
+def test_a_pointer_is_a_link_not_a_second_card() -> None:
+    # Once-only is anchored on <h3>; a pointer that emitted one would double every loss.
+    html = minimal_html()
+    pointers = re.findall(r'<a class="pointer"[^>]*>(.*?)</a>', html, flags=re.S)
+    assert pointers
+    for body in pointers:
+        assert "<h3>" not in body
+    # Every finding still appears exactly once as a heading, pointers notwithstanding.
+    for finding in minimal_findings():
+        assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+
+
+def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:
+    untimed = tuple(f for f in minimal_findings() if f.seconds_lost is None)
+    html = render(
+        build_report(
+            minimal_loaded(), untimed, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES,
+            NO_CONSUMABLES,
+        )
+    )
+    assert 'id="losses"' not in html

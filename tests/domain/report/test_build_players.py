@@ -6,7 +6,7 @@ from wowperf.domain.comparison.reference import ParseReference, ParseRow
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import build_interrupts, build_players, class_colour
+from wowperf.domain.report.build import build_players, class_colour, place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
 
 
@@ -59,19 +59,21 @@ def ids(rows: tuple[LedgerRow, ...]) -> list[str]:
 
 def test_the_interrupts_section_takes_its_findings() -> None:
     findings = (a_finding("interrupts.summary"), a_finding("interrupts.ability.0"))
-    rows = build_interrupts(findings, titles(findings))
+    rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
     assert ids(rows) == ["interrupts.summary", "interrupts.ability.0"]
 
 
-def test_the_interrupts_section_leaves_timed_findings_to_the_ledger() -> None:
+def test_a_timed_interrupt_finding_lands_in_interrupts_too() -> None:
+    # PLACEMENTS sends every "compare.interrupts" row to the Interrupts tab,
+    # timed or not: there is no page-wide ledger of losses for it to go to instead.
     findings = (a_finding("compare.interrupts", seconds=40.0),)
-    rows = build_interrupts(findings, titles(findings))
-    assert ids(rows) == []
+    rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
+    assert ids(rows) == ["compare.interrupts"]
 
 
 def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None:
     findings = (a_finding("players.damage.0"),)
-    rows = build_interrupts(findings, titles(findings))
+    rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
     assert ids(rows) == []
 
 

@@ -78,8 +78,9 @@ def test_a_report_holds_every_section() -> None:
         ),
         narrative=None,
         ledger_decomposition=(),
-        ledger_losses=(),
+        summary_pointers=(),
         timeline=Timeline(section=a_section(SectionState.WITHHELD, "no reference")),
+        route=a_section(SectionState.WITHHELD, "no reference"),
         deaths=(),
         interrupts=(),
         players=(),
@@ -94,6 +95,7 @@ def test_a_report_holds_every_section() -> None:
     )
     assert report.narrative is None
     assert report.timeline.section.state is SectionState.WITHHELD
+    assert report.route.state is SectionState.WITHHELD
 
 
 def test_a_player_card_declares_a_class_name_field_independent_of_colour() -> None:

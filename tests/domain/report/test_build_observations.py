@@ -25,18 +25,18 @@ def a_loaded() -> LoadedRun:
 
 
 def test_a_finding_no_section_claims_reaches_observations() -> None:
-    # "trash.pull.0" and "defensives.Uglymage.45438" match no ledger prefix,
-    # no "interrupts.", no "players.damage." and no comparison prefix —
-    # findings that belong in observations, the catch-all section.
+    # "healing.overheal.0" and "dispels.missed.0" match no prefix in PLACEMENTS,
+    # no "players.damage." and no comparison prefix — findings that belong in
+    # observations, the catch-all section.
     findings = (
-        a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
-        a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
+        a_finding("healing.overheal.0", title="Uglymage overhealed by 40%"),
+        a_finding("dispels.missed.0", title="Two curses went undispelled"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert [row.finding_id for row in report.observations] == [
-        "trash.pull.0",
-        "defensives.Uglymage.45438",
+        "healing.overheal.0",
+        "dispels.missed.0",
     ]
 
 
@@ -76,37 +76,39 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
         # A death-family finding, so the union below covers the Deaths rows too.
         a_finding("defensives.unused.0", title="Uglymage died with Ice Block available"),
+        # A finding no PLACEMENTS prefix matches, so the catch-all is exercised too.
+        a_finding("healing.overheal.0", title="Uglymage overhealed"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
 
     placed_ids: list[str] = []
     placed_ids += [row.finding_id for row in report.ledger_decomposition]
-    placed_ids += [row.finding_id for row in report.ledger_losses]
+    placed_ids += [row.finding_id for row in report.route_rows]
+    placed_ids += [row.finding_id for row in report.death_rows]
     placed_ids += [row.finding_id for row in report.interrupts]
     for card in report.players:
         placed_ids += [row.finding_id for row in card.damage_rows]
         placed_ids += [row.finding_id for row in card.spell_and_talent_rows]
-    placed_ids += [row.finding_id for row in report.death_findings]
+    placed_ids += [row.finding_id for row in report.group_rows]
     placed_ids += [row.finding_id for row in report.observations]
 
     assert sorted(placed_ids) == sorted(finding.id for finding in findings)
     assert len(placed_ids) == len(set(placed_ids))
 
 
-def test_a_death_family_finding_carrying_seconds_goes_to_the_ledger_alone() -> None:
-    """Anything timed belongs in the ledger, whatever family it is from.
+def test_a_death_family_finding_carrying_seconds_stays_beneath_the_deaths() -> None:
+    """Anything timed keeps its seconds, whatever family it is from.
 
-    The death rows are placed by id prefix, so a defensives finding that started
-    carrying seconds would otherwise reach the page twice: once in the ledger of
-    losses and once beneath the deaths.
+    A timed row keeps its seconds where its family lives; there is no separate
+    list of losses for it to appear in twice.
     """
     findings = (a_finding("defensives.unused.0", seconds=12.0, title="Died with Ice Block up"),)
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
 
-    assert [row.finding_id for row in report.ledger_losses] == ["defensives.unused.0"]
-    assert report.death_findings == ()
+    assert [row.finding_id for row in report.death_rows] == ["defensives.unused.0"]
+    assert report.death_rows[0].seconds == "0:12"
     assert report.observations == ()
 
 

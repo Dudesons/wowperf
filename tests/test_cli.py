@@ -975,13 +975,14 @@ def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> No
 
 
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
-    """Mirrors `test_the_page_fetches_nothing_at_all` in `test_html_invariants.py`: an
+    """Mirrors `test_the_page_executes_only_its_own_script` in `test_html_invariants.py`: an
     `href` to the reference run on warcraftlogs.com is a link the reader may follow,
     not a resource the page loads, so only `src=` and script/stylesheet tags are checked."""
     result = run_analyze(tmp_path)
     assert result.exit_code == 0, result.output
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert "<script" not in html.lower()
+    scripts = re.findall(r"<script\b([^>]*)>", html, flags=re.I)
+    assert len(scripts) == 1 and "src=" not in scripts[0].lower()
     assert "@import" not in html.lower()
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):

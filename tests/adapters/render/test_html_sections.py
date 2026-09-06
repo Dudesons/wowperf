@@ -267,3 +267,51 @@ def test_death_findings_render_inside_the_deaths_section() -> None:
     interrupts_start = html.index('<h2 id="interrupts">')
     title_at = html.index("Uglymage died once with a defensive available")
     assert deaths_start < title_at < interrupts_start
+
+
+def test_route_rows_render_inside_the_route_section() -> None:
+    html = render(build_report(a_loaded(), (
+        a_finding("time.gap.0", seconds=41.0, title="A 41 second gap after pull 0"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    route_start = html.index('<h2 id="route">')
+    deaths_start = html.index('<h2 id="deaths">')
+    # The card's own heading, not the Summary's pointer to it: the pointer
+    # repeats the same title as a link, earlier on the page, under "losses".
+    title_at = html.index("<h3>A 41 second gap after pull 0</h3>")
+    assert route_start < title_at < deaths_start
+
+
+def test_a_withheld_route_states_its_reason_and_still_shows_the_gaps() -> None:
+    # Without a speed reference the comparison is withheld, but a gap between our
+    # own pulls needs no reference and must not disappear with it.
+    html = render(build_report(a_loaded(), (
+        a_finding("time.gap.0", seconds=41.0, title="A 41 second gap after pull 0"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    route = html[html.index('<h2 id="route">'):html.index('<h2 id="deaths">')]
+    assert 'class="withheld"' in route
+    assert "A 41 second gap after pull 0" in route
+
+
+def test_the_narrative_renders_inside_the_summary_panel() -> None:
+    # The panel-hiding rule only touches `.panel` elements, so anything that
+    # renders outside a panel shows on every tab. The narrative belongs to
+    # Summary and must sit between the panel's opening tag and the next
+    # <section> tag, not ahead of the panel altogether.
+    narrative = "Both losses were travel, not damage."
+    html = render(a_report(narrative=narrative))
+    summary_open = html.index('<section class="panel" data-tab-panel="main" id="tab-summary">')
+    next_section = html.index("<section ", summary_open + 1)
+    narrative_at = html.index('<h2 id="narrative">')
+    assert summary_open < narrative_at < next_section
+
+
+def test_group_rows_render_inside_the_players_section() -> None:
+    # Observations sits in the Summary panel, ahead of Players, so the section
+    # that follows Players in document order is Provenance.
+    html = render(build_report(a_loaded(), (
+        a_finding("throughput.alignment.1", title="Uglymage had a cooldown ready and unpressed"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    players_start = html.index('<h2 id="players">')
+    provenance_start = html.index('<h2 id="provenance">')
+    title_at = html.index("Uglymage had a cooldown ready and unpressed")
+    assert players_start < title_at < provenance_start

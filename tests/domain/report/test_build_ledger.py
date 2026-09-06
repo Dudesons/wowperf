@@ -1,4 +1,4 @@
-# ABOUTME: Behaviour tests for the seconds ledger: two parts, nesting stated, never a total.
+# ABOUTME: Behaviour tests for the seconds ledger: decomposition rows, nesting stated, no total.
 # ABOUTME: The nesting lines are what stop a reader adding figures that already contain each other.
 
 from tests.domain.report.test_build_frame import (
@@ -34,16 +34,16 @@ def test_a_top_level_figure_goes_to_the_decomposition() -> None:
         NO_CONSUMABLES,
     )
     assert ids(report.ledger_decomposition) == ["time.residual"]
-    assert ids(report.ledger_losses) == []
+    assert ids(report.route_rows) == []
 
 
-def test_a_ranked_loss_goes_to_the_losses() -> None:
+def test_a_ranked_loss_goes_to_the_tab_that_owns_its_family() -> None:
     report = build_report(
         a_loaded(), (a_finding("time.gap.0", 41.0),), None, None, a_player(), None, FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert ids(report.ledger_losses) == ["time.gap.0"]
+    assert ids(report.route_rows) == ["time.gap.0"]
     assert ids(report.ledger_decomposition) == []
 
 
@@ -64,7 +64,7 @@ def test_a_loss_that_nests_says_what_contains_it() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert report.ledger_losses[0].nests_inside == "Time spent outside pulls"
+    assert report.route_rows[0].nests_inside == "Time spent outside pulls"
 
 
 def test_a_loss_whose_parent_is_absent_from_this_run_says_nothing() -> None:
@@ -76,7 +76,7 @@ def test_a_loss_whose_parent_is_absent_from_this_run_says_nothing() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert report.ledger_losses[0].nests_inside is None
+    assert report.route_rows[0].nests_inside is None
 
 
 def test_a_loss_that_nests_in_nothing_says_nothing() -> None:
@@ -85,7 +85,7 @@ def test_a_loss_that_nests_in_nothing_says_nothing() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert report.ledger_losses[0].nests_inside is None
+    assert report.route_rows[0].nests_inside is None
 
 
 def test_a_finding_with_no_seconds_never_reaches_the_ledger() -> None:
@@ -95,7 +95,7 @@ def test_a_finding_with_no_seconds_never_reaches_the_ledger() -> None:
         NO_CONSUMABLES,
     )
     assert ids(report.ledger_decomposition) == []
-    assert ids(report.ledger_losses) == []
+    assert ids(report.route_rows) == []
 
 
 def test_losses_keep_the_order_they_arrived_in() -> None:
@@ -111,7 +111,7 @@ def test_losses_keep_the_order_they_arrived_in() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert ids(report.ledger_losses) == ["time.gap.0", "compare.downtime"]
+    assert ids(report.route_rows) == ["time.gap.0", "compare.downtime"]
 
 
 def test_seconds_reach_the_row_already_formatted() -> None:
@@ -120,7 +120,7 @@ def test_seconds_reach_the_row_already_formatted() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert report.ledger_losses[0].seconds == "4:12"
+    assert report.route_rows[0].seconds == "4:12"
 
 
 def test_the_badge_carries_a_word_not_only_a_tint() -> None:
@@ -129,7 +129,7 @@ def test_the_badge_carries_a_word_not_only_a_tint() -> None:
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
-    assert report.ledger_losses[0].badge.label == "measured"
+    assert report.route_rows[0].badge.label == "measured"
 
 
 def test_every_nesting_relationship_the_findings_file_declares() -> None:
