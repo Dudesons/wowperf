@@ -1,6 +1,7 @@
 # ABOUTME: Runs every comparison against the two reference runs and ranks what they find.
 # ABOUTME: Deliberately dull: all the judgement lives in the comparison modules, none of it here.
 
+from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.confounds import declare_confounds
@@ -59,7 +60,10 @@ def compare(
             our_level=ours.run.keystone_level, their_level=speed.loaded.run.keystone_level
         )
         findings += compare_route(
-            ours.run, speed.loaded.run, align_pulls(ours.run, speed.loaded.run)
+            ours.run,
+            speed.loaded.run,
+            align_pulls(ours.run, speed.loaded.run),
+            forces_by_pull(ours.enemy_deaths),
         )
         findings += compare_tempo(ours, speed.loaded, rule)
         findings += declare_confounds(ours, speed.loaded, rule)

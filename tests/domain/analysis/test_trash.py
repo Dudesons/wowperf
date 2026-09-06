@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for enemy-forces efficiency and the pulls that bought least.
 # ABOUTME: The percentage is measured; turning it into seconds is derived and labelled so.
 
-from wowperf.domain.analysis.trash import MAX_PULLS_REPORTED, analyse_trash
+from wowperf.domain.analysis.trash import MAX_PULLS_REPORTED, analyse_trash, forces_by_pull
 from wowperf.domain.events import EnemyDeath
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -165,3 +165,13 @@ def test_no_finding_prints_a_map_position() -> None:
     for finding in findings:
         for line in finding.evidence:
             assert "map position" not in line, finding.id
+
+
+def test_forces_by_pull_sums_every_death_inside_a_pull() -> None:
+    deaths = (
+        EnemyDeath(game_id=100, actor_id=1, timestamp_ms=1_000, forces=6, pull_index=0),
+        EnemyDeath(game_id=100, actor_id=2, timestamp_ms=2_000, forces=6, pull_index=0),
+        EnemyDeath(game_id=200, actor_id=3, timestamp_ms=9_000, forces=4, pull_index=1),
+        EnemyDeath(game_id=300, actor_id=4, timestamp_ms=9_500, forces=4, pull_index=None),
+    )
+    assert forces_by_pull(deaths) == {0: 12, 1: 4}

@@ -53,11 +53,10 @@ def findings_by_prefix(findings: list[Finding], prefix: str) -> list[Finding]:
 
 
 def test_a_pack_they_skipped_is_priced_with_our_own_clock() -> None:
-    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,), seconds=45.0), a_pull(2, (3,))),
-                 counts=((2, 12),))
+    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,), seconds=45.0), a_pull(2, (3,))))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {1: 12})
     skipped = findings_by_prefix(findings, "compare.route.skipped.")
 
     assert len(skipped) == 1
@@ -67,11 +66,21 @@ def test_a_pack_they_skipped_is_priced_with_our_own_clock() -> None:
     assert any("12" in line for line in skipped[0].evidence)
 
 
+def test_a_skipped_pack_is_priced_by_the_forces_its_deaths_awarded() -> None:
+    # Two copies of one NPC type died in the skipped pull. Pricing by type would say 6.
+    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {1: 12})
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert "12 enemy forces" in skipped.evidence
+    assert "It awarded 12 enemy forces." in skipped.detail
+
+
 def test_a_boss_is_never_reported_as_a_skipped_pack() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (99,), boss=True)))
     theirs = a_run((a_pull(0, (1,)),))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
 
     assert findings_by_prefix(findings, "compare.route.skipped.") == []
 
@@ -80,7 +89,7 @@ def test_a_boss_is_never_reported_as_an_extra_pack() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (99,), boss=True)))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
 
     assert findings_by_prefix(findings, "compare.route.extra.") == []
 
@@ -89,7 +98,7 @@ def test_a_pack_only_they_killed_carries_no_seconds() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,), seconds=77.0)))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     extra = findings_by_prefix(findings, "compare.route.extra.")
 
     assert len(extra) == 1
@@ -102,7 +111,7 @@ def test_the_extra_pack_evidence_carries_no_duration() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,), seconds=77.0)))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     extra = findings_by_prefix(findings, "compare.route.extra.")[0]
 
     assert not any("77" in line or "lasted" in line for line in extra.evidence)
@@ -112,7 +121,7 @@ def test_the_extra_pack_detail_makes_no_claim_about_keystone_levels() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     extra = findings_by_prefix(findings, "compare.route.extra.")[0]
 
     assert "keystone" not in extra.detail.lower()
@@ -126,7 +135,7 @@ def test_the_evidence_names_the_pack_for_both_skipped_and_extra_findings() -> No
     )
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,), name="Spirit of Hunger")))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     skipped = findings_by_prefix(findings, "compare.route.skipped.")
     extra = findings_by_prefix(findings, "compare.route.extra.")
 
@@ -138,7 +147,7 @@ def test_the_summary_counts_both_routes() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
     theirs = a_run((a_pull(0, (1,)),))
 
-    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                  "compare.route.summary")[0]
 
     assert "2" in summary.title
@@ -152,7 +161,7 @@ def test_the_summary_evidence_accounts_for_every_pull_including_reordered_ones()
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
     theirs = a_run((a_pull(0, (2,)), a_pull(1, (1,)), a_pull(2, (3,))))
 
-    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                  "compare.route.summary")[0]
 
     assert any("reordered" in line for line in summary.evidence)
@@ -163,7 +172,7 @@ def test_the_summary_pluralises_a_single_pack_correctly() -> None:
     ours = a_run((a_pull(0, (1,)),))
     theirs = ours
 
-    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    summary = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                  "compare.route.summary")[0]
 
     assert "1 pack," in summary.title
@@ -176,7 +185,7 @@ def test_a_single_enemy_pack_is_singular_in_skipped_evidence() -> None:
     ours = a_run((a_pull(0, (1,)),), counts=((1, 5),))
     theirs = a_run(())
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     skipped = findings_by_prefix(findings, "compare.route.skipped.")[0]
 
     assert "1 enemy" in skipped.evidence
@@ -187,7 +196,7 @@ def test_a_single_reordered_pack_is_singular_and_uses_was() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
     theirs = a_run((a_pull(0, (2,)), a_pull(1, (1,))))
 
-    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                "compare.route.order")[0]
 
     assert order.title == "1 pack was taken in a different order"
@@ -201,7 +210,7 @@ def test_only_the_worst_packs_are_reported() -> None:
     ours = a_run((a_pull(0, (1,)), *skipped_pulls))
     theirs = a_run((a_pull(0, (1,)),))
 
-    skipped = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    skipped = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                  "compare.route.skipped.")
 
     assert len(skipped) == MAX_PACKS_REPORTED
@@ -217,7 +226,7 @@ def test_a_reordered_route_is_reported_once() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
     theirs = a_run((a_pull(0, (2,)), a_pull(1, (1,)), a_pull(2, (3,))))
 
-    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs)),
+    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
                                "compare.route.order")
 
     assert len(order) <= 1
@@ -226,7 +235,7 @@ def test_a_reordered_route_is_reported_once() -> None:
 def test_identical_routes_report_only_the_summary() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
 
-    findings = compare_route(ours, ours, align_pulls(ours, ours))
+    findings = compare_route(ours, ours, align_pulls(ours, ours), {})
 
     assert [finding.id for finding in findings] == ["compare.route.summary"]
 
@@ -236,7 +245,7 @@ def test_no_finding_prints_a_map_position() -> None:
                  counts=((2, 12),))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))
 
-    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     for finding in findings:
         for line in finding.evidence:
             assert "map position" not in line, finding.id
@@ -246,6 +255,6 @@ def test_every_finding_id_is_unique() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (4,))))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))
 
-    ids = [finding.id for finding in compare_route(ours, theirs, align_pulls(ours, theirs))]
+    ids = [finding.id for finding in compare_route(ours, theirs, align_pulls(ours, theirs), {})]
 
     assert len(ids) == len(set(ids))

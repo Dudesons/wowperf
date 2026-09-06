@@ -1,6 +1,8 @@
 # ABOUTME: Turns a route alignment into findings: what a faster group skipped, and what we added.
 # ABOUTME: Every second here is measured on our own clock, so a keystone gap cannot distort it.
 
+from collections.abc import Mapping
+
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Pull, Run
@@ -9,22 +11,19 @@ MAX_PACKS_REPORTED = 5
 """Beyond five packs a reader stops reading and starts skimming."""
 
 
-def _forces(run: Run, pull: Pull) -> int:
-    """Enemy forces the pack awarded, priced by our own run's map.
-
-    The reference's map may differ if the season retuned between the two runs;
-    ours is the one that actually counted towards our key.
-    """
-    counts = run.npc_count_map
-    return sum(counts.get(enemy.game_id, 0) for enemy in pull.enemies)
-
-
 def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
 
 
-def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]:
-    """What the two routes did differently, priced where we honestly can."""
+def compare_route(
+    ours: Run, theirs: Run, alignment: Alignment, forces: Mapping[int, int]
+) -> list[Finding]:
+    """What the two routes did differently, priced where we honestly can.
+
+    `forces` is enemy forces per pull index of our run, summed from enemy deaths
+    by `analysis.trash.forces_by_pull`, so the route and the trash findings
+    price the same pull with the same number.
+    """
     findings: list[Finding] = [
         Finding(
             id="compare.route.summary",
@@ -63,20 +62,20 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
     skippable.sort(key=lambda pull: pull.duration_seconds, reverse=True)
 
     for rank, pull in enumerate(skippable[:MAX_PACKS_REPORTED]):
-        forces = _forces(ours, pull)
+        forces_awarded = forces.get(pull.index, 0)
         findings.append(
             Finding(
                 id=f"compare.route.skipped.{rank}",
                 title=f"The reference skipped the pack at pull {pull.index}",
                 detail=(
                     f"We spent {pull.duration_seconds:.0f}s on a pack the faster group never "
-                    f"pulled. It awarded {forces} enemy forces."
+                    f"pulled. It awarded {forces_awarded} enemy forces."
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=pull.duration_seconds,
                 evidence=(
                     pull.name,
-                    f"{forces} enemy forces",
+                    f"{forces_awarded} enemy forces",
                     f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
                 ),
                 pull_index=pull.index,
