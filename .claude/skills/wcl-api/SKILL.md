@@ -126,6 +126,53 @@ moment; it is not in this schema and nothing here queries it.
 Timestamps on fights and pulls are relative to report start. `Report.startTime` is absolute
 epoch milliseconds.
 
+## The event stream, probed for a death recap
+
+Verified 2026-09-06 against report `6Kx1P9GbNXrcLdHa` fight 36, by schema introspection and by
+running the queries. The whole probe — two introspections, three event queries, one table —
+spent 9.45 points. Nothing in `queries.py` uses these yet; they are recorded so the death-recap
+work can start from facts.
+
+- **`EventDataType` has no `Resurrects` value.** Its values are `All`, `Buffs`, `Casts`,
+  `CombatantInfo`, `DamageDone`, `DamageTaken`, `Deaths`, `Debuffs`, `Dispels`, `Healing`,
+  `Interrupts`, `Resources`, `Summons`, `Threat`. A resurrection has to be read from the
+  resurrecting spell's own `cast` event, or from the `All` stream.
+- **`events` accepts `includeResources: Boolean`.** With it, an event carries `hitPoints` and
+  `maxHitPoints` for the event's **source** actor. On a player's `DamageTaken` stream that means
+  almost nothing: 21 of 22 hits in a twelve-second window carried no hit points, and the one that
+  did was a hit the player dealt to themselves. A dying player's health curve therefore comes from
+  the events they are the source of — their `cast` and `resourcechange` events, which did carry
+  `hitPoints` — not from the hits they took.
+- **`dataType: Healing` scoped by `targetID`** returns `heal` events, `absorbed` events (a shield
+  soaking a hit, with `extraAbilityGameID` naming the absorbing aura) and `removebuff` events.
+  Observed keys: `abilityGameID`, `amount`, `attackerID`, `buffs`, `extraAbilityGameID`, `fight`,
+  `sourceID`, `targetID`, `timestamp`, `type`. No `overheal` key appeared.
+- **`table(dataType: Deaths, fightIDs: [Int])`** returns `{entries: [...]}`, one entry per death,
+  with `name`, `id`, `guid`, `type`, `icon`, `timestamp`, `fight`, `deathWindow`, `overkill`,
+  `killingBlow {name, guid, type, abilityIcon}`, `damage {total, totalReduced, activeTime,
+  activeTimeReduced, overheal, abilities, damageAbilities, sources}`, `healing`, and `events`.
+  Each event carries `ability {name, guid, type, abilityIcon}`, `amount`, `mitigated`,
+  `unmitigatedAmount`, `overkill`, `hitType`, `isAoE`, `tick`, `sourceIsFriendly`,
+  `targetIsFriendly`. The `events` list is short — three events on the first entry — so it is a
+  death recap, not a run-up; the run-up still comes from the `DamageTaken` stream.
+- **A resurrection is a `resurrect` event in the `All` stream**, carrying the resurrecting
+  spell as `abilityGameID`, the caster as `sourceID` and the dead player as `targetID` (observed:
+  `Raise Ally`, with a `Resurrecting` debuff applied on the cast and removed when accepted). A
+  self-resurrection is an ordinary `cast` by the dead player (observed: `Reincarnation`). **A
+  player who releases and respawns produces no event at all**: on fight 36 two players were
+  casting again 3 and 6 seconds after their death, at about 80% health and with their raid
+  buffs gone, then dealt no damage for a further 20 seconds. Their first casts were self-only
+  movement and shield spells with `targetID: -1`. "Playing again" therefore means a cast aimed at
+  another actor, never merely the next cast.
+- **`gameData.affixes` returns `[GameAffix {id, name, icon}]`**, 51 rows and no arguments, in
+  one query (`gameData.affix(id:)` also exists). Verified 2026-09-06: ids 9, 10 and 147 resolved
+  to Tyrannical, Fortified and Xal'atath's Guile.
+- **`ReportDungeonPullNPC` has no `instanceCount` and no `groupCount`** (both rejected by the
+  schema on 2026-09-06). `dungeonPulls[].enemyNPCs` lists NPC *types*, so multiplying a pull's
+  types by `npcCountMap` under-prices a pack with several copies of one mob. Forces a pull
+  actually awarded come from the enemy death events in its window, which is what
+  `analysis/trash.py` already does.
+
 ## Aura tables
 
 **Aura uptime comes from the table endpoint, not the event stream.** Verified 2026-09-05 against
