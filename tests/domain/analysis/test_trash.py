@@ -156,3 +156,12 @@ def test_a_slow_pulls_evidence_names_the_pack() -> None:
     slow = [f for f in findings if f.id.startswith("trash.pull.")]
     assert slow
     assert slow[0].evidence[0] == "Shale Prowlers"
+
+
+def test_no_finding_prints_a_map_position() -> None:
+    findings = analyse_trash(
+        a_run(reached=112), (kill(0, 40, 10_000), kill(1, 72, 50_000))
+    )
+    for finding in findings:
+        for line in finding.evidence:
+            assert "map position" not in line, finding.id

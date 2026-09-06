@@ -78,7 +78,6 @@ def compare_route(ours: Run, theirs: Run, alignment: Alignment) -> list[Finding]
                     pull.name,
                     f"{forces} enemy forces",
                     f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
-                    f"map position x={pull.x}, y={pull.y}",
                 ),
                 pull_index=pull.index,
             )

@@ -212,7 +212,7 @@ def analyse_players(
                 id=f"players.damage.{rank}",
                 title=f"{display_name} took {multiple:.1f}x the group median from {ability}",
                 detail=(
-                    f"{amount} unmitigated damage from {ability}. This states a difference, "
+                    f"{amount:,} unmitigated damage from {ability}. This states a difference, "
                     "not a mistake: whether any single hit was avoidable is not something "
                     "the log records."
                 ),

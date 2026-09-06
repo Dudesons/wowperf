@@ -231,6 +231,17 @@ def test_identical_routes_report_only_the_summary() -> None:
     assert [finding.id for finding in findings] == ["compare.route.summary"]
 
 
+def test_no_finding_prints_a_map_position() -> None:
+    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,), seconds=45.0), a_pull(2, (3,))),
+                 counts=((2, 12),))
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs))
+    for finding in findings:
+        for line in finding.evidence:
+            assert "map position" not in line, finding.id
+
+
 def test_every_finding_id_is_unique() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (4,))))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (3,))))

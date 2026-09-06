@@ -175,7 +175,7 @@ def analyse_interrupts(
                 title=f"{names[ability_id]} landed {counts[ability_id]} times",
                 detail=(
                     f"{names[ability_id]} was cast to completion {counts[ability_id]} times "
-                    f"and did {damage} unmitigated damage to the group within "
+                    f"and did {damage:,} unmitigated damage to the group within "
                     f"{FOLLOW_WINDOW_MS // 1000}s of each cast."
                 ),
                 confidence=Confidence.DERIVED,

@@ -74,6 +74,14 @@ def test_taking_far_more_than_the_median_of_one_ability_is_a_finding() -> None:
     assert outlier.seconds_lost is None
 
 
+def test_the_damage_detail_formats_the_amount_with_thousands_separators() -> None:
+    # Three players hit by one ability, one of them far above the others.
+    damage = (hit(0, 1_500_000), hit(1, 1_000), hit(2, 1_000))
+    findings = analyse_players(a_run(), (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    assert "1,500,000 unmitigated damage" in outlier.detail
+
+
 def test_the_median_definition_is_stated_in_the_evidence() -> None:
     damage = (
         hit(0, 100_000), hit(1, 10_000), hit(2, 10_000), hit(3, 10_000), hit(4, 10_000),

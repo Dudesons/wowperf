@@ -70,7 +70,7 @@ def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Findin
                     ),
                     confidence=Confidence.MEASURED,
                     seconds_lost=None,
-                    evidence=(pull.name, f"map position x={pull.x}, y={pull.y}"),
+                    evidence=(pull.name,),
                     pull_index=pull_index,
                 )
             )
