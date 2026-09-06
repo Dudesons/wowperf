@@ -1,5 +1,5 @@
 {# ABOUTME: Document skeleton for the Mythic+ post-mortem report: header, ledger, timeline, #}
-{# ABOUTME: deaths, interrupts, players and provenance — one self-contained file, no script or fetch. #}
+{# ABOUTME: route, deaths, interrupts, players and provenance — one self-contained file, no script or fetch. #}
 <!doctype html>
 <html lang="en">
 <head>
@@ -100,12 +100,6 @@ never be summed.</p>
 {% for row in report.ledger_decomposition %}
 {{ ledger_row(row) }}
 {% endfor %}
-{% if report.ledger_losses %}
-<p class="sub">Ranked losses.</p>
-{% for row in report.ledger_losses %}
-{{ ledger_row(row) }}
-{% endfor %}
-{% endif %}
 
 <h2 id="timeline">Aligned timeline</h2>
 {% if report.timeline.section.state.value == "withheld" %}
@@ -136,6 +130,20 @@ that we skipped.</p>
   {% endif %}
   {% endfor %}
 </svg>
+{% endif %}
+
+<h2 id="route">Route and tempo</h2>
+{% if report.route.state.value == "withheld" %}
+<p class="withheld">{{ report.route.reason }}</p>
+{% endif %}
+{% if report.route_rows %}
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.route_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% elif report.route.state.value != "withheld" %}
+<p class="sub">Nothing to report.</p>
 {% endif %}
 
 <h2 id="deaths">Deaths</h2>
@@ -176,9 +184,13 @@ that we skipped.</p>
 </div>
 {% endfor %}
 
-{% for row in report.death_findings %}
+{% if report.death_rows %}
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.death_rows %}
 {{ ledger_row(row) }}
 {% endfor %}
+{% endif %}
 
 <h2 id="interrupts">Interrupts</h2>
 {% if not report.interrupts %}
@@ -211,6 +223,13 @@ that we skipped.</p>
   {% endfor %}
 </div>
 {% endfor %}
+
+{% if report.group_rows %}
+<p class="sub">Group. Per-player rates, until each finds its player.</p>
+{% for row in report.group_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% endif %}
 
 <h2 id="observations">Other findings</h2>
 {% if report.observations %}

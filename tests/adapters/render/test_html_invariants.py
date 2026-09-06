@@ -38,7 +38,8 @@ GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
 
 SECTION_ORDER = [
-    "ledger", "timeline", "deaths", "interrupts", "players", "observations", "provenance",
+    "ledger", "timeline", "route", "deaths", "interrupts", "players", "observations",
+    "provenance",
 ]
 
 
@@ -224,15 +225,15 @@ def test_every_section_appears_in_the_order_the_design_fixes() -> None:
     assert positions == sorted(positions)
 
 
-def test_a_report_without_a_narrative_renders_eight_sections_not_nine() -> None:
-    # Header (h1) plus the seven always-present h2 sections in SECTION_ORDER.
+def test_a_report_without_a_narrative_renders_one_heading_per_section() -> None:
+    # Header (h1) plus the always-present h2 sections in SECTION_ORDER.
     html = minimal_html()
     assert 'id="narrative"' not in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER)
 
 
-def test_a_report_with_a_narrative_renders_nine_sections_not_eight() -> None:
-    # Header (h1) plus the seven always-present h2 sections plus narrative.
+def test_a_narrative_adds_exactly_one_heading() -> None:
+    # Header (h1) plus the always-present h2 sections plus narrative.
     html = render(
         build_report(
             minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED

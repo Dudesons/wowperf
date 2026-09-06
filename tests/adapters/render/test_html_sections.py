@@ -267,3 +267,34 @@ def test_death_findings_render_inside_the_deaths_section() -> None:
     interrupts_start = html.index('<h2 id="interrupts">')
     title_at = html.index("Uglymage died once with a defensive available")
     assert deaths_start < title_at < interrupts_start
+
+
+def test_route_rows_render_inside_the_route_section() -> None:
+    html = render(build_report(a_loaded(), (
+        a_finding("time.gap.0", seconds=41.0, title="A 41 second gap after pull 0"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    route_start = html.index('<h2 id="route">')
+    deaths_start = html.index('<h2 id="deaths">')
+    title_at = html.index("A 41 second gap after pull 0")
+    assert route_start < title_at < deaths_start
+
+
+def test_a_withheld_route_states_its_reason_and_still_shows_the_gaps() -> None:
+    # Without a speed reference the comparison is withheld, but a gap between our
+    # own pulls needs no reference and must not disappear with it.
+    html = render(build_report(a_loaded(), (
+        a_finding("time.gap.0", seconds=41.0, title="A 41 second gap after pull 0"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    route = html[html.index('<h2 id="route">'):html.index('<h2 id="deaths">')]
+    assert 'class="withheld"' in route
+    assert "A 41 second gap after pull 0" in route
+
+
+def test_group_rows_render_inside_the_players_section() -> None:
+    html = render(build_report(a_loaded(), (
+        a_finding("throughput.alignment.1", title="Uglymage had a cooldown ready and unpressed"),
+    ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
+    players_start = html.index('<h2 id="players">')
+    observations_start = html.index('<h2 id="observations">')
+    title_at = html.index("Uglymage had a cooldown ready and unpressed")
+    assert players_start < title_at < observations_start

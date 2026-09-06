@@ -40,8 +40,8 @@ def a_report(**overrides: object) -> Report:
         ),
         "narrative": None,
         "ledger_decomposition": (),
-        "ledger_losses": (),
         "timeline": Timeline(section=Section(state=SectionState.WITHHELD, reason="no reference")),
+        "route": Section(state=SectionState.PRESENT),
         "deaths": (),
         "interrupts": (),
         "players": (),
@@ -102,13 +102,13 @@ def test_a_narrative_cannot_smuggle_markup_into_the_page() -> None:
 
 
 def test_a_pack_name_from_the_api_cannot_smuggle_markup_either() -> None:
-    html = render(a_report(ledger_losses=(a_row(title="<img onerror=x>"),)))
+    html = render(a_report(route_rows=(a_row(title="<img onerror=x>"),)))
     assert "<img onerror=x>" not in html
     assert "&lt;img" in html
 
 
 def test_a_ledger_row_shows_its_badge_as_a_word() -> None:
-    html = render(a_report(ledger_losses=(a_row(),)))
+    html = render(a_report(route_rows=(a_row(),)))
     assert "measured" in html
 
 
@@ -117,7 +117,7 @@ def test_a_nested_row_says_what_contains_it() -> None:
     # `nests_inside` happened to appear elsewhere on the page for an unrelated
     # reason would still satisfy a plain substring check, so this pins the
     # value to the sentence the template is supposed to wrap it in.
-    html = render(a_report(ledger_losses=(a_row(nests_inside="Time spent outside pulls"),)))
+    html = render(a_report(route_rows=(a_row(nests_inside="Time spent outside pulls"),)))
     assert "Already counted inside Time spent outside pulls." in html
 
 

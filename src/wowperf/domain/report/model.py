@@ -174,15 +174,20 @@ class Report(Frozen):
     header: Header
     narrative: str | None
     ledger_decomposition: tuple[LedgerRow, ...]
-    ledger_losses: tuple[LedgerRow, ...]
     timeline: Timeline
+    # Withheld without a speed reference, with the reason the timeline reads too. The
+    # rows beneath it that need no reference — gaps, trash — still render.
+    route: Section
+    # Gaps, downtime, the route comparison, trash and confounds: what the route cost.
+    route_rows: tuple[LedgerRow, ...] = ()
     deaths: tuple[DeathCard, ...]
-    # The per-player death findings — a defensive or a consumable available at
-    # a death, a consumable never drunk — beneath the cards that show each death.
-    death_findings: tuple[LedgerRow, ...] = ()
+    # The death costs and what a dying player still had, beneath the death cards.
+    death_rows: tuple[LedgerRow, ...] = ()
     interrupts: tuple[LedgerRow, ...]
     players: tuple[PlayerCard, ...]
-    # Every finding no section above claimed — a structural catch-all, not a
+    # Per-player rate rows — defensive and throughput — beneath the player cards.
+    group_rows: tuple[LedgerRow, ...] = ()
+    # Every finding no field above claimed — a structural catch-all, not a
     # whitelist of its own. See `build_observations`.
     observations: tuple[LedgerRow, ...]
     provenance: Provenance
