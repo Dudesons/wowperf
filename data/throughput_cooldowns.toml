@@ -27,6 +27,11 @@ verified = "2026-09-06"
 ["DeathKnight/Blood"]
 abilities = [
   { ability_id = 1263824, name = "Consumption", cooldown_seconds = 45.0 },
+  { ability_id = 439843, name = "Reaper's Mark", cooldown_seconds = 45.0 },
+  # Held in defensives.toml until 2026-09-06. Current guides call it primarily a
+  # damage cooldown pressed on cooldown, with its parry as a real but secondary
+  # benefit, and Blood keeps five defensives without it.
+  { ability_id = 49028, name = "Dancing Rune Weapon", cooldown_seconds = 120.0 },
 ]
 
 ["DeathKnight/Frost"]

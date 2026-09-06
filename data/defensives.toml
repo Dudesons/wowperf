@@ -25,7 +25,6 @@ abilities = [
   { ability_id = 49039, name = "Lichborne", cooldown_seconds = 120.0 },
   { ability_id = 48743, name = "Death Pact", cooldown_seconds = 120.0 },
   { ability_id = 55233, name = "Vampiric Blood", cooldown_seconds = 90.0 },
-  { ability_id = 49028, name = "Dancing Rune Weapon", cooldown_seconds = 120.0 },
 ]
 
 ["DeathKnight/Frost"]
