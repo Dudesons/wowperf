@@ -39,6 +39,15 @@ app = typer.Typer(help="Analyse World of Warcraft logs and report what to improv
 
 DEFAULT_CACHE_DIR = Path("cache")
 
+REFERENCE_CACHE_SUBDIR = "references"
+REFERENCE_CACHE_SECONDS = 24 * 3600.0
+"""How long a leaderboard row or a reference run's responses are kept.
+
+Long enough for the narrative re-run the analyzing-a-run skill relies on to be
+served from cache; short enough that no standing store of other players' logs
+accumulates (RPGLogs terms §5d). Our own run's responses never expire.
+"""
+
 FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
     "findings are ranked by seconds_lost, not additive: compare.duration is the "
     "total gap against the reference and already contains every other seconds_lost "
@@ -78,6 +87,16 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
         WclClient(TokenProvider(client_id, client_secret, http), http),
         DiskCache(cache_dir),
     )
+
+
+def build_reference_repositories(
+    client: WclClient, cache_dir: Path
+) -> tuple[WclRankingRepository, WclRunRepository]:
+    """The leaderboards and the reference runs, behind the expiring cache."""
+    transient = DiskCache(
+        cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    return WclRankingRepository(client, transient), WclRunRepository(client, transient)
 
 
 def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
@@ -283,8 +302,8 @@ def analyze(
         speed: SpeedReference | None = None
         parse: ParseReference | None = None
         if not no_compare:
-            rankings = WclRankingRepository(repository.client, repository.cache)
-            speed, parse = _references(rankings, repository, loaded.run, subject)
+            rankings, references = build_reference_repositories(repository.client, cache_dir)
+            speed, parse = _references(rankings, references, loaded.run, subject)
 
             our_auras = None
             if parse is not None:
@@ -301,7 +320,7 @@ def analyze(
                     parse = parse.model_copy(
                         update={
                             "auras": _auras(
-                                repository,
+                                references,
                                 parse.loaded.run.report_code,
                                 parse.loaded.run.fight_id,
                                 their_player.actor_id,

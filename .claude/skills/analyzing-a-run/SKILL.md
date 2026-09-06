@@ -44,8 +44,8 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
    uv run wowperf analyze <url> --narrative out/<code>-<fight>.narrative.md
    ```
 
-   Only then is every response served from the cache written in step 1, and cache entries never
-   expire, so only then does the second run spend no API quota. Drop a flag and you change the
+   Only then is every response served from the cache written in step 1, and reference entries
+   live a day, so a second run the same day spends no API quota. Drop a flag and you change the
    subject: without step 1's `--player` the comparison is fetched for a different specialisation
    and a different actor, which are different cache keys and so live queries; without its
    `--no-compare` both references are fetched outright, the roughly-28-point path. The reader

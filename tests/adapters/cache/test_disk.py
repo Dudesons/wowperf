@@ -48,6 +48,45 @@ def test_a_written_entry_is_complete_and_leaves_no_temporary_behind(tmp_path: Pa
     assert json.loads((tmp_path / "k.json").read_text(encoding="utf-8")) == {"value": 42}
 
 
+def test_an_entry_older_than_max_age_is_fetched_again(tmp_path: Path) -> None:
+    clock = [1_000.0]
+    calls: list[int] = []
+
+    def fetch() -> dict[str, object]:
+        calls.append(1)
+        return {"at": clock[0]}
+
+    cache = DiskCache(tmp_path, max_age_seconds=60, now=lambda: clock[0])
+    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    clock[0] = 1_030.0
+    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    clock[0] = 1_061.0
+    assert cache.get_or_fetch("k", fetch) == {"at": 1_061.0}
+    assert len(calls) == 2
+
+
+def test_opening_a_cache_purges_its_expired_entries(tmp_path: Path) -> None:
+    clock = [1_000.0]
+    DiskCache(tmp_path, max_age_seconds=60, now=lambda: clock[0]).get_or_fetch(
+        "old", lambda: {"v": 1}
+    )
+    clock[0] = 1_100.0
+    DiskCache(tmp_path, max_age_seconds=60, now=lambda: clock[0]).get_or_fetch(
+        "fresh", lambda: {"v": 2}
+    )
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["fresh.json"]
+
+
+def test_a_cache_without_a_max_age_keeps_everything(tmp_path: Path) -> None:
+    clock = [0.0]
+    cache = DiskCache(tmp_path, now=lambda: clock[0])
+    cache.get_or_fetch("k", lambda: {"v": 1})
+    clock[0] = 10**9
+    assert DiskCache(tmp_path, now=lambda: clock[0]).get_or_fetch(
+        "k", lambda: {"v": 2}
+    ) == {"v": 1}
+
+
 def test_an_interrupted_write_never_becomes_a_cache_entry(tmp_path: Path) -> None:
     """Content reaches the key only through the rename, so a torn write cannot be read.
 

@@ -75,8 +75,8 @@ class WclRunRepository:
         `reportData.report` null and no GraphQL errors. Since
         `WclClient.execute` now raises on a null `data` block, only a stale
         cache entry from an older build can deliver None here. Raising before
-        the payload is cached matters: entries never expire, so caching one
-        would poison the key for good.
+        the payload is cached matters: an entry lives for a day or forever, so
+        caching one would poison the key for that whole span.
         """
         if payload is None:
             raise IngestError(
