@@ -292,6 +292,19 @@ def test_a_withheld_route_states_its_reason_and_still_shows_the_gaps() -> None:
     assert "A 41 second gap after pull 0" in route
 
 
+def test_the_narrative_renders_inside_the_summary_panel() -> None:
+    # The panel-hiding rule only touches `.panel` elements, so anything that
+    # renders outside a panel shows on every tab. The narrative belongs to
+    # Summary and must sit between the panel's opening tag and the next
+    # <section> tag, not ahead of the panel altogether.
+    narrative = "Both losses were travel, not damage."
+    html = render(a_report(narrative=narrative))
+    summary_open = html.index('<section class="panel" data-tab-panel="main" id="tab-summary">')
+    next_section = html.index("<section ", summary_open + 1)
+    narrative_at = html.index('<h2 id="narrative">')
+    assert summary_open < narrative_at < next_section
+
+
 def test_group_rows_render_inside_the_players_section() -> None:
     # Observations sits in the Summary panel, ahead of Players, so the section
     # that follows Players in document order is Provenance.

@@ -91,12 +91,6 @@ p { margin: 0 0 10px; }
   <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
 </nav>
 
-{% if report.narrative %}
-<h2 id="narrative">What this run says</h2>
-<div class="narrative">{{ report.narrative }}</div>
-<p class="legend">Interpretation, written from the findings below.</p>
-{% endif %}
-
 {% macro ledger_row(row) %}
 <div class="card" id="finding-{{ row.finding_id }}">
   <div class="row-head">
@@ -123,6 +117,12 @@ p { margin: 0 0 10px; }
 {% endmacro %}
 
 <section class="panel" data-tab-panel="main" id="tab-summary">
+
+{% if report.narrative %}
+<h2 id="narrative">What this run says</h2>
+<div class="narrative">{{ report.narrative }}</div>
+<p class="legend">Interpretation, written from the findings below.</p>
+{% endif %}
 
 <h2 id="ledger">Where the time went</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
