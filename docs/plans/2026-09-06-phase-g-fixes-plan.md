@@ -1429,10 +1429,17 @@ In `_write_atomically`, after `os.replace(temporary, path)`, add `stamp = self._
 def test_reference_responses_are_cached_apart_from_the_runs_own(tmp_path: Path) -> None:
     result = invoke_analyze(tmp_path)
     assert result.exit_code == 0, result.output
-    own = {p.name for p in (tmp_path / "cache").glob("*.json")}
-    references = {p.name for p in (tmp_path / "cache" / "references").glob("*.json")}
+    own = [p.read_text(encoding="utf-8") for p in (tmp_path / "cache").glob("*.json")]
+    references = [
+        p.read_text(encoding="utf-8")
+        for p in (tmp_path / "cache" / "references").glob("*.json")
+    ]
     assert own and references
-    assert not own & references
+    # The leaderboard rows and the reference report's own responses name its code;
+    # nothing fetched for our own run does. (The affix table, argument-free, may
+    # legitimately be cached in both tiers.)
+    assert not any(SPEED_REFERENCE_CODE in text for text in own)
+    assert any(SPEED_REFERENCE_CODE in text for text in references)
 
 
 def test_no_compare_writes_nothing_under_references(tmp_path: Path) -> None:
