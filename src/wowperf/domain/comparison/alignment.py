@@ -33,7 +33,10 @@ class Alignment(Frozen):
         """Our trash pulls that found a counterpart, as a share of all our trash pulls.
 
         Bosses are left out: they match by encounter id and would flatter the share.
-        A run with no trash pulls aligned everything it had.
+        Every non-boss pull counts in the denominator, even one with no recorded
+        enemies — it cannot match anything, and excluding it would let it be priced
+        as a skipped pack while the share still read whole. A run with no trash
+        pulls aligned everything it had.
         """
         if self.our_trash_count == 0:
             return 1.0
@@ -107,7 +110,7 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
     one's set of enemy types is contained in the other's, so a stretch that
     Warcraft Logs recorded as one pull matches each separate pull it covers.
     Pulls with no recorded enemies match nothing. See design §6.3, amended
-    2026-09-06, for why exact signatures were abandoned.
+    2026-09-06, for why containment rather than exact signatures.
     """
     matched: list[PullMatch] = []
 
@@ -132,15 +135,16 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
 
     # Their pulls nobody picked may still sit inside one of ours: a pack we
     # chain-pulled that they took alone, after our pull already chose its
-    # closest counterpart.
-    taken_ours = {match.ours_index for match in matched}
+    # closest counterpart. This sweep-back only recovers their unpicked pulls:
+    # because _covers is symmetric, pass 1 already matched every one of our
+    # pulls that has any covering candidate, so there is never an unpaired
+    # ours_index left here for "taken" to prefer.
     for pull in their_trash:
         if pull.index in taken_theirs:
             continue
-        counterpart = _best_counterpart(pull, our_trash, taken_ours)
+        counterpart = _best_counterpart(pull, our_trash, set())
         if counterpart is not None:
             matched.append(PullMatch(ours_index=counterpart.index, theirs_index=pull.index))
-            taken_ours.add(counterpart.index)
 
     matched_ours = {match.ours_index for match in matched}
     matched_theirs = {match.theirs_index for match in matched}
@@ -151,6 +155,6 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
             pull.index for pull in theirs.pulls if pull.index not in matched_theirs
         ),
         out_of_order=tuple(_reordered(matched)),
-        our_trash_count=len(our_trash),
+        our_trash_count=len([pull for pull in ours.pulls if not pull.is_boss]),
         boss_indices=tuple(pull.index for pull in ours.pulls if pull.is_boss),
     )

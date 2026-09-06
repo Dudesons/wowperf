@@ -189,10 +189,14 @@ def test_the_summary_pluralises_a_single_pack_correctly() -> None:
 
 
 def test_a_single_enemy_pack_is_singular_in_skipped_evidence() -> None:
-    # Half our trash pulls must align for any pack to be priced, so the pack
-    # under test is skipped beside one both routes share.
-    ours = a_run((a_pull(0, (9,)), a_pull(1, (1,))), counts=((1, 5),))
-    theirs = a_run((a_pull(0, (9,)),))
+    # More than half our trash pulls must align for any pack to be priced. Three
+    # of four align here, clear of the threshold by a full pull, so the pack
+    # under test is skipped beside the ones both routes share.
+    ours = a_run(
+        (a_pull(0, (9,)), a_pull(1, (1,)), a_pull(2, (8,)), a_pull(3, (7,))),
+        counts=((1, 5),),
+    )
+    theirs = a_run((a_pull(0, (9,)), a_pull(1, (8,)), a_pull(2, (7,))))
 
     findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
     skipped = findings_by_prefix(findings, "compare.route.skipped.")[0]
@@ -213,10 +217,11 @@ def test_a_single_reordered_pack_is_singular_and_uses_was() -> None:
 
 def test_only_the_worst_packs_are_reported() -> None:
     # Eight packs they skipped, each one second shorter than the last, beside
-    # eight both routes share: half our trash pulls must align for any to be priced.
-    shared_pulls = tuple(a_pull(index, (index + 1,)) for index in range(8))
+    # ten both routes share — one full pull clear of the threshold this test
+    # is not about.
+    shared_pulls = tuple(a_pull(index, (index + 1,)) for index in range(10))
     skipped_pulls = tuple(
-        a_pull(index, (index + 20,), seconds=float(60 - index)) for index in range(8, 16)
+        a_pull(index, (index + 30,), seconds=float(60 - index)) for index in range(10, 18)
     )
     ours = a_run((*shared_pulls, *skipped_pulls))
     theirs = a_run(shared_pulls)

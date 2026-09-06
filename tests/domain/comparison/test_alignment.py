@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for lining two pull sequences up by what each pack was made of.
 # ABOUTME: The interesting cases are a skipped pack, an extra pack, and a reordered route.
 
-from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.alignment import PullMatch, align_pulls
 from wowperf.domain.model import EnemyNpc, Pull, Run
 
 
@@ -104,6 +104,65 @@ def test_matched_share_counts_our_trash_pulls_with_a_counterpart() -> None:
 def test_a_run_with_no_trash_pulls_has_a_full_matched_share() -> None:
     ours = a_run().model_copy(update={"pulls": (a_boss(0, 3207, (9,)),)})
     assert align_pulls(ours, ours).matched_share == 1.0
+
+
+def test_matched_share_subtracts_matched_boss_pulls_from_the_numerator() -> None:
+    # Two boss pulls, matched on both sides, plus four trash pulls of which two
+    # match. Without subtracting the bosses from the numerator, matched_ours
+    # would hold all six indices over four trash pulls and the share would
+    # read 1.5, not 0.5.
+    ours = a_run().model_copy(
+        update={
+            "pulls": (
+                a_boss(0, 3207, (90,)),
+                a_boss(1, 3208, (91,)),
+                a_pull(2, (1,)),
+                a_pull(3, (2,)),
+                a_pull(4, (3,)),
+                a_pull(5, (4,)),
+            )
+        }
+    )
+    theirs = a_run().model_copy(
+        update={
+            "pulls": (
+                a_boss(0, 3207, (90,)),
+                a_boss(1, 3208, (91,)),
+                a_pull(2, (1,)),
+                a_pull(3, (2,)),
+            )
+        }
+    )
+    alignment = align_pulls(ours, theirs)
+    assert alignment.matched_share == 0.5
+
+
+def test_an_enemy_less_trash_pull_counts_against_the_share_and_lands_in_only_ours() -> None:
+    # One trash pull with enemies (matches), one with none recorded (matches
+    # nothing but still counts in the denominator).
+    ours = a_run().model_copy(
+        update={
+            "pulls": (
+                a_pull(0, (1,)),
+                Pull(
+                    index=1,
+                    pull_id=2,
+                    name="Pack",
+                    encounter_id=0,
+                    start_ms=100_000,
+                    end_ms=160_000,
+                    killed=True,
+                    x=0,
+                    y=0,
+                    enemies=(),
+                ),
+            )
+        }
+    )
+    theirs = a_run((1,))
+    alignment = align_pulls(ours, theirs)
+    assert alignment.matched_share == 0.5
+    assert 1 in alignment.only_ours
 
 
 def test_pairs_that_break_the_reference_order_are_out_of_order() -> None:
@@ -220,3 +279,17 @@ def test_a_pack_we_pulled_twice_matches_their_single_pull_of_it_twice() -> None:
     assert [(m.ours_index, m.theirs_index) for m in alignment.out_of_order] == [(1, 0), (2, 0)]
     assert alignment.only_ours == ()
     assert alignment.only_theirs == ()
+
+
+def test_the_earliest_unpaired_candidate_wins_a_tie() -> None:
+    # Three identical trash pulls of theirs, one of ours: pass 1 picks the
+    # earliest of the tied, unpaired candidates for our pull 0, and the
+    # sweep-back then pairs the other two of theirs with our pull 0 as well.
+    alignment = align_pulls(a_run((1,),), a_run((1,), (1,), (1,)))
+
+    assert sorted((m.ours_index, m.theirs_index) for m in alignment.matched) == [
+        (0, 0), (0, 1), (0, 2),
+    ]
+    # Pass 1 appends before the sweep-back, so the first match recorded for
+    # our pull 0 is the tie-break itself: their pull 0.
+    assert alignment.matched[0] == PullMatch(ours_index=0, theirs_index=0)
