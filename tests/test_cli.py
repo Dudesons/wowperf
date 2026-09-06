@@ -296,6 +296,7 @@ def build_analyze_transport(
     aura_response: httpx.Response | None = None,
     boss_pull_reports: tuple[str, ...] = (),
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+    quota: list[float] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -342,7 +343,14 @@ def build_analyze_transport(
     `{"guid", "name", "totalUptime", "totalUses", "bands"}` rows, the shape
     `build_player_auras` reads), in place of the default empty-but-valid tables
     — letting a caller give the two players aura data that actually differs.
+
+    Also answers `RateLimit` with a rising point count, mirroring `build_transport`:
+    `quota` defaults to `[100.0, 128.0]`, enough for the two reads `analyze` takes
+    (before the run is fetched, and after the comparison), so every existing test
+    keeps working without passing it.
     """
+    if quota is None:
+        quota = [100.0, 128.0]
     fights_by_code = {
         code: _fights_payload_for(
             code,
@@ -418,6 +426,8 @@ def build_analyze_transport(
         name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if calls is not None:
             calls.append(name)
+        if name == "RateLimit":
+            return quota_response(quota.pop(0))
         if name == "Fights":
             code = body["variables"]["code"]
             payload = fights_by_code.get(code, {"reportData": {"report": None}})
@@ -539,6 +549,13 @@ def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
     assert payload["report_code"] == "abc123"
     assert payload["keystone_level"] == 16
     assert isinstance(payload["findings"], list)
+
+
+def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
+    result = invoke_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+    assert "points spent, including the cost of these two quota reads" in result.stderr
+    assert "of 3600 remain this hour" in result.stderr
 
 
 def test_every_written_finding_carries_a_confidence(tmp_path: Path) -> None:

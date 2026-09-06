@@ -20,7 +20,7 @@ from wowperf.adapters.config.toml import (
 )
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
@@ -80,6 +80,22 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
+def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
+    """State the cost of a command's own queries, quota read before and after.
+
+    Point cost per query is undocumented, so both commands read the quota
+    before and after their work. The reading itself is a query too, so the
+    difference also counts the cost of these two quota reads, not only the
+    work between them.
+    """
+    spent = after.points_spent_this_hour - before.points_spent_this_hour
+    remaining = after.limit_per_hour - after.points_spent_this_hour
+    return (
+        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
+        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour."
+    )
+
+
 @app.command()
 def fetch(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -98,9 +114,6 @@ def fetch(
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
 
-        # Point cost per query is undocumented, so this reads the quota before and
-        # after the fetch. The reading itself is a query too, so the difference
-        # also counts the cost of these two quota reads, not only the fetch.
         before = repository.rate_limit()
         run = repository.get(code, fight if fight is not None else fight_from_url)
         after = repository.rate_limit()
@@ -110,13 +123,7 @@ def fetch(
         typer.echo(str(error), err=True)
         raise typer.Exit(1) from error
 
-    spent = after.points_spent_this_hour - before.points_spent_this_hour
-    remaining = after.limit_per_hour - after.points_spent_this_hour
-    typer.echo(
-        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
-        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour.",
-        err=True,
-    )
+    typer.echo(_quota_sentence(before, after), err=True)
     typer.echo(run.model_dump_json(indent=2))
 
 
@@ -256,6 +263,7 @@ def analyze(
 
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
+        before = repository.rate_limit()
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
         # Loaded once and shared: the analysers and the death cards must read
         # the same cooldowns, or the page and the findings disagree.
@@ -305,6 +313,7 @@ def analyze(
                 ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
             )
             findings = rank_findings(findings)
+        after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
@@ -374,6 +383,7 @@ def analyze(
         encoding="utf-8",
     )
     typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
 
 
 if __name__ == "__main__":
