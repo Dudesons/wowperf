@@ -738,7 +738,8 @@ def test_reference_responses_are_cached_apart_from_the_runs_own(tmp_path: Path) 
 
 
 def test_no_compare_writes_nothing_under_references(tmp_path: Path) -> None:
-    run_analyze(tmp_path, "--no-compare")
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
     assert not (tmp_path / "cache" / "references").exists()
 
 

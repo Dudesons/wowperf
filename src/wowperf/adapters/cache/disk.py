@@ -47,8 +47,13 @@ class DiskCache:
         if self._max_age is None:
             return
         for path in self._directory.glob("*.json"):
-            if self._expired(path):
-                path.unlink(missing_ok=True)
+            try:
+                if self._expired(path):
+                    path.unlink(missing_ok=True)
+            except OSError:
+                # Another process sharing the directory may have removed it
+                # first, which is the outcome wanted anyway.
+                continue
 
     def get_or_fetch(self, key: str, fetch: Callable[[], dict[str, Any]]) -> dict[str, Any]:
         path = self._directory / f"{key}.json"

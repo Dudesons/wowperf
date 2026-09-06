@@ -15,8 +15,13 @@ from wowperf.adapters.config.toml import (
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
-from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
-from wowperf.cli import _auras, _references, _resolve_player, build_repository
+from wowperf.cli import (
+    _auras,
+    _references,
+    _resolve_player,
+    build_reference_repositories,
+    build_repository,
+)
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.comparison.service import compare, find_player
@@ -48,8 +53,8 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # comparison, and the routing of their findings onto one player's card --
     # is exercised against real data instead of only offline fixtures.
     subject = _resolve_player(loaded.run, None)
-    rankings = WclRankingRepository(repository.client, repository.cache)
-    speed, parse = _references(rankings, repository, loaded.run, subject)
+    rankings, references = build_reference_repositories(repository.client, tmp_path)
+    speed, parse = _references(rankings, references, loaded.run, subject)
 
     our_auras = None
     if parse is not None:
@@ -61,7 +66,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
             parse = parse.model_copy(
                 update={
                     "auras": _auras(
-                        repository,
+                        references,
                         parse.loaded.run.report_code,
                         parse.loaded.run.fight_id,
                         their_player.actor_id,

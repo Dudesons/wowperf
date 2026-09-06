@@ -60,6 +60,9 @@ def test_an_entry_older_than_max_age_is_fetched_again(tmp_path: Path) -> None:
     assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
     clock[0] = 1_030.0
     assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    clock[0] = 1_060.0
+    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    assert len(calls) == 1
     clock[0] = 1_061.0
     assert cache.get_or_fetch("k", fetch) == {"at": 1_061.0}
     assert len(calls) == 2
@@ -75,6 +78,23 @@ def test_opening_a_cache_purges_its_expired_entries(tmp_path: Path) -> None:
         "fresh", lambda: {"v": 2}
     )
     assert sorted(p.name for p in tmp_path.iterdir()) == ["fresh.json"]
+
+
+def test_purge_expired_ignores_a_file_removed_between_glob_and_stat(tmp_path: Path) -> None:
+    """Another process sharing the cache directory may delete an entry between
+    purge_expired's glob and this entry's stat; that must not raise. `_expired`
+    calls `now()` before it stats the path, so a `now` that deletes the file is
+    the simplest way to land inside that window.
+    """
+    DiskCache(tmp_path, max_age_seconds=60, now=lambda: 1_000.0).get_or_fetch(
+        "k", lambda: {"v": 1}
+    )
+
+    def now_and_remove() -> float:
+        (tmp_path / "k.json").unlink(missing_ok=True)
+        return 1_100.0
+
+    DiskCache(tmp_path, max_age_seconds=60, now=now_and_remove)
 
 
 def test_a_cache_without_a_max_age_keeps_everything(tmp_path: Path) -> None:
