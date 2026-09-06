@@ -19,7 +19,8 @@ and its own plan.
 
 One self-contained HTML file, written beside the findings JSON every time `analyze` runs. It must
 open from disk with no network, survive being posted to Discord, and be readable on a phone
-screenshot. No content delivery network, no external font, no `<script>`.
+screenshot. No content delivery network, no external font, and one inline `<script>` that only shows and
+hides (*amended 2026-09-06*, see §9 and `2026-09-06-report-tabs-design.md` §3).
 
 Its reader is a person deciding what to practise next. The findings JSON serves a different
 reader — Claude, writing the narrative — and the two must not be collapsed into one artifact.
@@ -196,6 +197,12 @@ class Report(Frozen):
     provenance: Provenance
 ```
 
+*Amended 2026-09-06:* `ledger_losses` is gone. `Report` carries `summary_pointers`, `route`,
+`route_rows`, `death_rows` (formerly `death_findings`) and `group_rows` instead, all tuples of
+`LedgerRow` except `route`, a `Section`. Every ranked loss lives on the tab that owns its family
+and keeps its seconds there; the Summary points at the biggest five. See
+`2026-09-06-report-tabs-design.md` §4 and §5.
+
 ## 5. The eight sections
 
 Every section always appears. A section with no data renders its heading and one sentence saying
@@ -225,6 +232,13 @@ Section 2 is the one exception to "always appears", and deliberately: a report g
 `--narrative` has not withheld anything. So the report renders ~~eight~~ **nine** sections with a
 narrative and ~~seven~~ **eight** without, and §10's invariant is worded to match. *Amended
 2026-09-05:* a ninth section was added after this design was approved. See §5.2.
+
+*Amended 2026-09-06:* the sections are grouped under six tabs — Summary, Route & tempo, Deaths,
+Interrupts, Players, Provenance — and a tenth section, "Route and tempo", holds the route, gap,
+downtime, trash and confound findings that the ledger of losses used to rank on one list. The
+Summary's "Biggest losses" heading appears only when a timed loss exists. Which section sits
+under which tab is fixed in `2026-09-06-report-tabs-design.md` §2; the heading count in §10 is
+superseded by that document's §7.1.
 
 ### 5.1 The header's percentile is not built, and why
 
@@ -327,8 +341,12 @@ fetching**, so a typo costs nothing and never silently produces a report missing
   to tell apart, and reports get screenshotted and recompressed.
 - **Charts are server-generated inline SVG.** No charting library. Output is deterministic, which is
   what makes the golden file in §10 possible.
-- **Self-containment is a hard rule**: no `<script>`, no `src` or `href` to any external origin, no
-  webfont. System font stack only. §10 tests this directly rather than trusting it.
+- **Self-containment is a hard rule**: no `src` or `href` to any external origin, no webfont, and
+  exactly one `<script>` — inline, with no `src`, and restricted to showing and hiding sections.
+  System font stack only. §10 tests this directly rather than trusting it. *Amended 2026-09-06:*
+  this bullet said "no `<script>`" until the report grew to sixty-seven cards; see
+  `2026-09-06-report-tabs-design.md` §1 and §3 for the script's four duties and its no-script
+  fallback.
 
 ## 10. Testing
 
@@ -341,7 +359,12 @@ deaths, a run with no boss pulls.
 
 **HTML by invariant** — parse the rendered string and assert:
 
-- no `<script>` element, and no `src` or `href` whose value is not a fragment;
+- exactly one `<script>` element, inline, and its text free of anything that fetches, writes
+  text or reads storage; no `src` or `href` whose value is not a fragment or a Warcraft Logs
+  report link (*amended 2026-09-06*, see `2026-09-06-report-tabs-design.md` §7.1);
+- the rendered page hides nothing before the script runs, every Summary pointer targets an
+  anchor that exists, and every finding family lands on the tab the builder's table says
+  (*added 2026-09-06*, ibid. §7.2);
 - every section present and in order — ~~eight~~ **nine** when a narrative was supplied, ~~seven~~
   **eight** without it (*amended 2026-09-05:* a ninth section, "Other findings", was added after
   this design was approved; see §5.2);
@@ -362,9 +385,16 @@ external reference. Marked `e2e`, deselected by default, like the rest.
 
 ## 11. Out of scope, deliberately
 
-No table of contents, no print stylesheet, no interactivity, no collapsible sections, no theme
+~~No table of contents, no print stylesheet, no interactivity, no collapsible sections, no theme
 toggle, no chart library, no pagination. If the report ever needs navigation, that is evidence it
-has grown too long, and the answer is to cut it rather than to add a contents list.
+has grown too long, and the answer is to cut it rather than to add a contents list.~~
+
+*Superseded 2026-09-06.* The first real run rendered sixty-seven cards that different readers
+need different parts of, and cutting would remove something one of them came for. The page is
+grouped under six tabs by `2026-09-06-report-tabs-design.md`, whose §1 restates the rule this
+section was protecting: "the template decides nothing" is about judgement, and navigation is not
+judgement. Still out of scope: a print stylesheet, a theme toggle, a chart library, pagination,
+collapsible cards, and storing the chosen tab anywhere but the URL fragment.
 
 ## 12. Carried forward into this plan
 

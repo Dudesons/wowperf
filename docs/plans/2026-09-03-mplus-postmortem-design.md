@@ -651,6 +651,10 @@ Sections, in order:
 Dark by default. Class colours identify players but never carry meaning alone, since several are
 hard to distinguish and reports get screenshotted.
 
+*Amended 2026-09-06:* the eight sections are grouped under six tabs, driven by one inline script
+that only shows and hides, with every section visible when scripting is off. The rule and its
+reasons live in `2026-09-06-report-tabs-design.md`.
+
 ---
 
 ## 8. The inference layer
