@@ -552,7 +552,7 @@ def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
 
 
 def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
-    result = invoke_analyze(tmp_path, "--no-compare")
+    result = run_analyze(tmp_path, "--no-compare")
     assert result.exit_code == 0, result.output
     assert "points spent, including the cost of these two quota reads" in result.stderr
     assert "of 3600 remain this hour" in result.stderr

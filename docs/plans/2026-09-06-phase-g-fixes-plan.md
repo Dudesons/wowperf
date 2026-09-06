@@ -1271,7 +1271,7 @@ Expected: all pass.
 
 ```python
 def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
-    result = invoke_analyze(tmp_path, "--no-compare")
+    result = run_analyze(tmp_path, "--no-compare")
     assert result.exit_code == 0, result.output
     assert "points spent, including the cost of these two quota reads" in result.stderr
     assert "of 3600 remain this hour" in result.stderr
@@ -1443,7 +1443,7 @@ def test_reference_responses_are_cached_apart_from_the_runs_own(tmp_path: Path) 
 
 
 def test_no_compare_writes_nothing_under_references(tmp_path: Path) -> None:
-    invoke_analyze(tmp_path, "--no-compare")
+    run_analyze(tmp_path, "--no-compare")
     assert not (tmp_path / "cache" / "references").exists()
 ```
 
