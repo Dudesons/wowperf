@@ -58,27 +58,35 @@ def _shared_fraction(a: frozenset[int], b: frozenset[int]) -> float:
 
 
 def _best_counterpart(pull: Pull, candidates: list[Pull], taken: set[int]) -> Pull | None:
-    """The candidate sharing the largest fraction of types, preferring one not yet paired.
+    """The candidate sharing the largest fraction of types, as design §6.3 requires.
 
-    Preferring an unpaired candidate is what keeps two identical packs on a
-    route matched to two identical packs on the other, rather than both to the
-    first. Ties go to the earliest pull in route order.
+    Shared fraction decides first and alone: a candidate that is the pack we
+    fought must not lose to a distant one merely because nothing has claimed the
+    distant one yet. Among candidates of equal fraction, one not yet paired wins
+    — that is what keeps two identical packs on a route matched to two identical
+    packs on the other, rather than both to the first — and the earliest pull in
+    route order breaks what remains.
     """
     mine = _types(pull)
     covering = [c for c in candidates if _covers(mine, _types(c))]
     if not covering:
         return None
-    unpaired = [c for c in covering if c.index not in taken]
-    pool = unpaired or covering
-    return max(pool, key=lambda c: (_shared_fraction(mine, _types(c)), -c.index))
+    return max(
+        covering,
+        key=lambda c: (_shared_fraction(mine, _types(c)), c.index not in taken, -c.index),
+    )
 
 
 def _reordered(matched: list[PullMatch]) -> list[PullMatch]:
     """The pairs that would have to move for their order to follow ours.
 
     One pair per our pull — its earliest counterpart — in our route order; the
-    longest run whose reference indices also increase is the shared order, and
-    everything outside it was taken in a different sequence.
+    longest run whose reference indices do not decrease is the shared order, and
+    everything outside it was taken in a different sequence. The comparison is
+    non-strict because several of our pulls may share one counterpart: a stretch
+    they fought as one pull and we cut into several is a segmentation difference,
+    and pairs naming the same reference index never had to move for the two
+    orders to agree.
     """
     first_by_ours: dict[int, PullMatch] = {}
     for match in sorted(matched, key=lambda m: (m.ours_index, m.theirs_index)):
@@ -86,12 +94,12 @@ def _reordered(matched: list[PullMatch]) -> list[PullMatch]:
     pairs = list(first_by_ours.values())
     if not pairs:
         return []
-    # Longest strictly increasing subsequence of theirs_index, O(n^2): a route has a dozen pulls.
+    # Longest non-decreasing subsequence of theirs_index, O(n^2): a route has a dozen pulls.
     best_length = [1] * len(pairs)
     previous = [-1] * len(pairs)
     for i, pair in enumerate(pairs):
         for j in range(i):
-            if pairs[j].theirs_index < pair.theirs_index and best_length[j] + 1 > best_length[i]:
+            if pairs[j].theirs_index <= pair.theirs_index and best_length[j] + 1 > best_length[i]:
                 best_length[i] = best_length[j] + 1
                 previous[i] = j
     end = max(range(len(pairs)), key=lambda i: (best_length[i], -i))

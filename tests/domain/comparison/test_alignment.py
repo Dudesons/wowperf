@@ -268,17 +268,78 @@ def test_a_pack_we_pulled_twice_matches_their_single_pull_of_it_twice() -> None:
     """A pack fought twice on our route and once on theirs leaves nothing unmatched.
 
     Both of our pulls contain the same enemy types as theirs, so both are
-    counterparts of it. Only the first of the two can follow their order, so the
-    second is what reordering surfaces.
+    counterparts of it — and both pairs name the same reference index, so neither
+    had to move for the two orders to agree. Fighting a pack twice is not a
+    resequencing of the route, and the run in the same order reports none.
+    """
+    alignment = align_pulls(a_run((1,), (2,), (2,)), a_run((1,), (2,)))
+
+    assert sorted((m.ours_index, m.theirs_index) for m in alignment.matched) == [
+        (0, 0), (1, 1), (2, 1),
+    ]
+    assert alignment.out_of_order == ()
+    assert alignment.only_ours == ()
+    assert alignment.only_theirs == ()
+
+
+def test_a_pack_we_pulled_twice_beside_a_swap_reports_only_the_swap() -> None:
+    """The same duplicate, on a route that genuinely resequenced two packs.
+
+    We took pack 1 before pack 2 and they took pack 2 first, which is a real
+    swap and is reported. Our second pull of pack 2 shares its counterpart with
+    the first and is not a second reordering on top of it.
     """
     alignment = align_pulls(a_run((1,), (2,), (2,)), a_run((2,), (1,)))
 
     assert sorted((m.ours_index, m.theirs_index) for m in alignment.matched) == [
         (0, 1), (1, 0), (2, 0),
     ]
-    assert [(m.ours_index, m.theirs_index) for m in alignment.out_of_order] == [(1, 0), (2, 0)]
+    assert [(m.ours_index, m.theirs_index) for m in alignment.out_of_order] == [(0, 1)]
     assert alignment.only_ours == ()
     assert alignment.only_theirs == ()
+
+
+def test_a_large_pull_pairs_with_their_large_one_and_a_small_with_their_small() -> None:
+    """Shared fraction decides the pairing, not the order the routes list packs in.
+
+    A small pack that both groups fought, and a long chain containing it. Whichever
+    way round the two routes list the pair, the chain is the chain's counterpart and
+    the small pack is the small pack's.
+    """
+    small, chain = (1, 2), (1, 2, 3, 4, 5, 6, 7)
+
+    forwards = align_pulls(a_run(small, chain), a_run(chain, small))
+    assert sorted((m.ours_index, m.theirs_index) for m in forwards.matched) == [(0, 1), (1, 0)]
+
+    backwards = align_pulls(a_run(chain, small), a_run(small, chain))
+    assert sorted((m.ours_index, m.theirs_index) for m in backwards.matched) == [(0, 1), (1, 0)]
+
+
+def test_an_exact_counterpart_already_paired_still_beats_a_distant_unpaired_one() -> None:
+    """The real-run defect in miniature: preferring an unpaired candidate stole a pairing.
+
+    We fought the same small pack twice; they fought it once, and also fought a long
+    chain that happens to contain it. Ranking "not yet paired" above shared fraction
+    handed our second pull of the pack to the 5-type chain it shares two types with,
+    instead of to their identical pull of it.
+    """
+    alignment = align_pulls(a_run((1, 2), (1, 2)), a_run((1, 2), (1, 2, 3, 4, 5)))
+
+    pairs = {(m.ours_index, m.theirs_index) for m in alignment.matched}
+    assert (1, 0) in pairs
+    assert (1, 1) not in pairs
+
+
+def test_several_of_our_pulls_matched_to_one_of_theirs_are_in_order() -> None:
+    """Two of our pulls covered by one of theirs is segmentation, not resequencing.
+
+    Their single pull of {1, 2, 3} is the counterpart of both our {1, 2} and our
+    {3}. Both pairs name the same reference index, so neither had to move for the
+    orders to agree.
+    """
+    alignment = align_pulls(a_run((1, 2), (3,), (4,)), a_run((1, 2, 3), (4,)))
+
+    assert alignment.out_of_order == ()
 
 
 def test_the_earliest_unpaired_candidate_wins_a_tie() -> None:

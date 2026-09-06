@@ -522,6 +522,9 @@ the same rule the keystone gap already applies — because pricing an unmatched 
 exactly the artefact this amendment removes. Skipped packs are priced by the forces the enemy
 deaths inside the pull actually awarded, as §5.4 already does; `enemyNPCs` lists NPC types, not
 individuals, and pricing by type under-counted a pack with several copies of one mob.
+Reordering is read off one pair per pull of ours — its earliest counterpart — as the pairs
+outside the longest run whose reference indices do not decrease; several of our pulls matched to
+one of theirs are therefore in order, not reordered.
 
 ### 6.4 What we compare, and what we refuse to
 
