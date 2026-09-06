@@ -213,6 +213,13 @@ def test_a_transitive_chain_groups_all_three_deaths() -> None:
     assert chains[0].seconds_lost == 23.0
 
 
+def test_the_total_does_not_claim_to_exceed_the_timer_penalty() -> None:
+    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 3.0),))
+    total = next(f for f in findings if f.id == "deaths.total")
+    assert "longer than the timer penalty" not in total.detail
+    assert "cast at another actor" in total.detail
+
+
 def test_a_death_outside_every_pull_is_reported_without_inventing_one() -> None:
     """A death whose `pull_index` is None fell outside every pull window.
 

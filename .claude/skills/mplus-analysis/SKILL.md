@@ -15,6 +15,9 @@ exists — a defensive never pressed, a talent the top parse takes and you do no
 withheld across a keystone-level gap. Ranking puts them last; that is a sort key, not a verdict.
 Never treat `null` as zero, and never sort it as though it were.
 
+A death's cost (`deaths.total` and its nested findings) is measured to the player's first cast at
+another actor, because a respawned player casts self-only spells while running back.
+
 ## Findings are ranked, never summed
 
 The findings file says this itself, in `findings_are_ranked_not_additive`. It is the single
