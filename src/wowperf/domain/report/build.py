@@ -407,6 +407,21 @@ def build_interrupts(
     )
 
 
+DEATH_FINDING_PREFIXES = ("defensives.unused.", "consumables.unused.", "consumables.never.")
+"""Finding families that belong beneath the death cards rather than in the catch-all."""
+
+
+def build_death_findings(
+    findings: Sequence[Finding], titles_by_id: dict[str, str]
+) -> tuple[LedgerRow, ...]:
+    """The findings about what a dying player still had, placed with the deaths."""
+    return tuple(
+        _ledger_row(finding, titles_by_id)
+        for finding in findings
+        if finding.id.startswith(DEATH_FINDING_PREFIXES)
+    )
+
+
 def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -534,6 +549,7 @@ def _placed_finding_ids(
     ledger_losses: Sequence[LedgerRow],
     interrupts: Sequence[LedgerRow],
     players: Sequence[PlayerCard],
+    death_findings: Sequence[LedgerRow],
 ) -> set[str]:
     """Every finding id some section already claims.
 
@@ -547,6 +563,7 @@ def _placed_finding_ids(
     for card in players:
         ids |= {row.finding_id for row in card.damage_rows}
         ids |= {row.finding_id for row in card.spell_and_talent_rows}
+    ids |= {row.finding_id for row in death_findings}
     return ids
 
 
@@ -609,7 +626,10 @@ def build_report(
     )
     interrupts = build_interrupts(findings, titles_by_id)
     players = build_players(loaded, findings, parse, subject, titles_by_id)
-    placed_ids = _placed_finding_ids(ledger_decomposition, ledger_losses, interrupts, players)
+    death_findings = build_death_findings(findings, titles_by_id)
+    placed_ids = _placed_finding_ids(
+        ledger_decomposition, ledger_losses, interrupts, players, death_findings
+    )
 
     return Report(
         header=_header(loaded),
@@ -620,6 +640,7 @@ def build_report(
             loaded.run, speed.loaded.run if speed else None, timeline_section
         ),
         deaths=build_deaths(loaded, defensives, consumables),
+        death_findings=death_findings,
         interrupts=interrupts,
         players=players,
         observations=build_observations(findings, placed_ids, titles_by_id),

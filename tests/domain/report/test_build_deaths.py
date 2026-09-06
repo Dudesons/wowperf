@@ -1,10 +1,17 @@
 # ABOUTME: Behaviour tests for the deaths section: ordered by time, expanded into the last ten
 # ABOUTME: seconds. Built from raw events, not findings, since no finding carries the run-up.
 
-from tests.domain.report.test_build_frame import NO_CONSUMABLES, NO_DEFENSIVES, a_pull, a_run
+from tests.domain.report.test_build_frame import (
+    FETCHED,
+    NO_CONSUMABLES,
+    NO_DEFENSIVES,
+    a_pull,
+    a_run,
+)
+from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import build_deaths
+from wowperf.domain.report.build import build_deaths, build_report
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -281,3 +288,29 @@ def test_an_actor_not_on_the_roster_is_unchecked_for_consumables_too() -> None:
     )[0]
     assert card.consumables_checked is False
     assert card.consumables_available == ()
+
+
+def test_death_findings_are_placed_under_deaths_not_observations() -> None:
+    findings = (
+        a_finding(
+            "defensives.unused.Uglymage",
+            title="Uglymage died once with a defensive available",
+        ),
+        a_finding(
+            "consumables.unused.Uglymage",
+            title="Uglymage died once with no healing consumable on cooldown",
+        ),
+        a_finding(
+            "consumables.never.Uglymage",
+            title="Uglymage died once and used no health potion",
+        ),
+        a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
+    )
+    report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES)
+    assert [row.finding_id for row in report.death_findings] == [
+        "defensives.unused.Uglymage",
+        "consumables.unused.Uglymage",
+        "consumables.never.Uglymage",
+    ]
+    assert [row.finding_id for row in report.observations] == ["trash.pull.0"]
