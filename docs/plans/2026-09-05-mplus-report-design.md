@@ -215,6 +215,12 @@ reported, never invented by the template.
 
 *Amended 2026-09-05:* a ninth section, "Other findings", renders between 7 and 8. See §5.2.
 
+*Amended 2026-09-06:* the Deaths section also places the `defensives.unused.*`,
+`consumables.unused.*` and `consumables.never.*` findings, as rows beneath the cards. On a real
+run the catch-all repeated each card's one-line claim as a full card with a three-sentence caveat,
+six times over. A finding placed under Deaths is claimed like any other and reaches the page once;
+the section count does not change.
+
 Section 2 is the one exception to "always appears", and deliberately: a report generated without
 `--narrative` has not withheld anything. So the report renders ~~eight~~ **nine** sections with a
 narrative and ~~seven~~ **eight** without, and §10's invariant is worded to match. *Amended
