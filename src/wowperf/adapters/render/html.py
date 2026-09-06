@@ -30,5 +30,6 @@ def _environment() -> Environment:
 
 
 def render(report: Report) -> str:
-    """One self-contained HTML document: no script, no network, no external font."""
+    """One self-contained HTML document: one inline script that only shows and hides,
+    no network, no external font."""
     return _environment().get_template(TEMPLATE_NAME).render(report=report)

@@ -293,10 +293,13 @@ def test_a_withheld_route_states_its_reason_and_still_shows_the_gaps() -> None:
 
 
 def test_group_rows_render_inside_the_players_section() -> None:
+    # Observations now sits in the Summary panel, ahead of Players (tabs design
+    # 2026-09-06), so the section that follows Players in document order is
+    # Provenance, not Observations.
     html = render(build_report(a_loaded(), (
         a_finding("throughput.alignment.1", title="Uglymage had a cooldown ready and unpressed"),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     players_start = html.index('<h2 id="players">')
-    observations_start = html.index('<h2 id="observations">')
+    provenance_start = html.index('<h2 id="provenance">')
     title_at = html.index("Uglymage had a cooldown ready and unpressed")
-    assert players_start < title_at < observations_start
+    assert players_start < title_at < provenance_start

@@ -39,7 +39,7 @@ SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", 
 
 # "losses" renders only when a timed loss exists; the minimal fixture has two.
 SECTION_ORDER = [
-    "ledger", "losses", "timeline", "route", "deaths", "interrupts", "players", "observations",
+    "ledger", "losses", "timeline", "observations", "route", "deaths", "interrupts", "players",
     "provenance",
 ]
 
@@ -196,17 +196,77 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
 
 
-def test_the_page_fetches_nothing_at_all() -> None:
+FORBIDDEN_IN_SCRIPT = (
+    "fetch",
+    "XMLHttpRequest",
+    "import(",
+    "document.write",
+    "innerHTML",
+    "textContent",
+    "localStorage",
+    "sessionStorage",
+    "eval",
+    "WebSocket",
+)
+"""What the script may not contain: anything that fetches, writes text or reads storage."""
+
+
+def test_the_page_executes_only_its_own_script() -> None:
     # A Warcraft Logs reference-run link and the SVG's own namespace attribute
     # both legitimately contain "http://" without fetching anything, so
     # self-containment is checked by what the page can *execute* or *load*,
-    # not by whether the string appears at all.
+    # not by whether the string appears at all. One inline script is allowed,
+    # and only one: the tab toggle. Its text is checked for anything that could
+    # reach past showing and hiding.
     html = rich_html()
-    assert "<script" not in html.lower()
+    scripts = re.findall(r"<script\b([^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+    assert len(scripts) == 1
+    attributes, body = scripts[0]
+    assert "src=" not in attributes.lower()
+    for forbidden in FORBIDDEN_IN_SCRIPT:
+        assert forbidden not in body, forbidden
     assert "@import" not in html.lower()
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert not src.startswith(("http://", "https://", "//")), src
+
+
+PANEL_ORDER = [
+    "tab-summary", "tab-route", "tab-deaths", "tab-interrupts", "tab-players", "tab-provenance",
+]
+
+
+def test_the_page_hides_nothing_before_the_script_runs() -> None:
+    # Without the script the root class is absent, so every hiding rule must be
+    # scoped under it. The tab bar is the one thing hidden *without* the script,
+    # by the bare `.tabs` rule, and that is checked by name.
+    html = rich_html()
+    assert not re.search(r"<[^>]*\shidden[\s>=]", html)
+    assert not re.search(r'style="[^"]*display', html)
+    style = html[html.index("<style>"):html.index("</style>")]
+    for rule in re.finditer(r"([^{}]+)\{[^{}]*display:\s*none", style):
+        selector = rule.group(1).strip().splitlines()[-1].strip()
+        assert selector.startswith(".js ") or selector == ".tabs", selector
+
+
+def test_every_panel_appears_once_in_tab_order() -> None:
+    html = minimal_html()
+    positions = [html.index(f'id="{name}"') for name in PANEL_ORDER]
+    assert positions == sorted(positions)
+    assert len(re.findall(r'<section class="panel"', html)) == len(PANEL_ORDER)
+
+
+def test_every_panel_has_exactly_one_tab_button() -> None:
+    html = minimal_html()
+    for name in PANEL_ORDER:
+        assert html.count(f'data-tab-for="{name}"') == 1, name
+
+
+def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
+    # The script adds it at run time; rendering it would hide panels with no script.
+    html = rich_html()
+    assert '<html lang="en">' in html
+    assert 'class="js' not in html
 
 
 def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:

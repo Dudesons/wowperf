@@ -211,3 +211,12 @@ talents and uptime hang off the parse reference. One can be absent while the oth
 The `title` is prose written for a reader. The `id` is a machine identifier. When you want to
 point a reader at a finding, echo its title — they can find it on the page. An id means nothing to
 them.
+
+The page groups the findings under six tabs, so when you point a reader at one, you can also say
+where to look. Summary holds the three decomposition rows, up to five pointers at the biggest
+losses, the aligned timeline and anything no tab claimed. Route & tempo holds the gaps, the
+downtime, the skipped and extra packs, the trash rates and the confounds. Deaths holds each death
+card and the death costs, defensives and consumables beneath them. Interrupts holds the kicks.
+Players holds the cards and, beneath them, the per-player defensive and throughput rates.
+Provenance holds the sources, everything withheld, and the badge legend. Without scripting, the
+same sections stack in that order.
