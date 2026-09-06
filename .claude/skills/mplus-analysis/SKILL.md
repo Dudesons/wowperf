@@ -167,6 +167,12 @@ instead of adjusting for them, because adjusting would invent a number:
   skipped, deaths, missed interrupts and between-pull downtime do not depend on how much health a
   mob had, so they are still compared. A reference more than one level away is never offered at
   all.
+- **Pull segmentation.** Warcraft Logs records a chain of packs fought without a break as one
+  pull. Alignment matches a pull to every separate pull it covers, and the route summary says how
+  many of our trash pulls found a counterpart. When fewer than half did, `compare.route.unaligned`
+  appears and no `compare.route.skipped.*` or `compare.route.extra.*` finding does: the two logs
+  cut the route differently, and an unmatched pull is not a skipped pack. Say that, not "the
+  reference skipped it".
 - **The spell rate comparison is scoped to boss pulls**, the one stretch where two runs fought the
   same encounter, so it says nothing about trash. The "never cast it" finding is the exception: it
   checks the whole of our run, boss and trash, before claiming a spell is absent.

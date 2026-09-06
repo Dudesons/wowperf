@@ -10,6 +10,14 @@ from wowperf.domain.model import Pull, Run
 MAX_PACKS_REPORTED = 5
 """Beyond five packs a reader stops reading and starts skimming."""
 
+MIN_ALIGNED_SHARE = 0.5
+"""Below this share of our trash pulls with a counterpart, no pack is priced as skipped.
+
+When the two logs cut the route into pulls differently, an unmatched pull is not
+a skipped pack; it is a segmentation difference, and pricing it would put the
+largest wrong number on the page at the top of the ledger.
+"""
+
 
 def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
@@ -24,6 +32,8 @@ def compare_route(
     by `analysis.trash.forces_by_pull`, so the route and the trash findings
     price the same pull with the same number.
     """
+    matched_trash = round(alignment.matched_share * alignment.our_trash_count)
+    in_common = len({match.ours_index for match in alignment.matched})
     findings: list[Finding] = [
         Finding(
             id="compare.route.summary",
@@ -33,23 +43,46 @@ def compare_route(
                 f"the reference pulled {len(theirs.pulls)}"
             ),
             detail=(
-                f"{len(alignment.matched)} "
-                f"pack{'s' if len(alignment.matched) != 1 else ''} matched on composition. "
-                "Packs are matched by "
-                "which enemies they contain, not by when either group fought them, so this "
-                "comparison holds across a keystone-level difference."
+                f"{matched_trash} of {alignment.our_trash_count} trash "
+                f"pull{'s' if alignment.our_trash_count != 1 else ''} found a counterpart. "
+                "Packs are matched by which enemies they contain, not by when either group "
+                "fought them, so this comparison holds across a keystone-level difference. A "
+                "stretch fought without a break is one pull to Warcraft Logs, and it matches "
+                "each of the separate pulls it covers."
             ),
             confidence=Confidence.MEASURED,
             seconds_lost=None,
             evidence=(
-                f"{len(alignment.matched)} pack{'s' if len(alignment.matched) != 1 else ''} "
-                "in common",
+                f"{in_common} pack{'s' if in_common != 1 else ''} in common",
                 f"{len(alignment.only_ours)} only ours",
                 f"{len(alignment.only_theirs)} only theirs",
                 f"{len(alignment.out_of_order)} reordered",
             ),
         )
     ]
+
+    if alignment.matched_share < MIN_ALIGNED_SHARE:
+        findings.append(
+            Finding(
+                id="compare.route.unaligned",
+                title=(
+                    f"Only {matched_trash} of {alignment.our_trash_count} trash pulls could be "
+                    "matched to the reference's"
+                ),
+                detail=(
+                    "The two logs cut the route into pulls differently — a chain of packs "
+                    "fought without a break is one pull to Warcraft Logs — so no pack is priced "
+                    "as skipped or listed as extra. The timeline still shows both routes."
+                ),
+                confidence=Confidence.MEASURED,
+                seconds_lost=None,
+                evidence=(
+                    f"{len(alignment.only_ours)} of our pulls without a counterpart",
+                    f"{len(alignment.only_theirs)} of theirs without a counterpart",
+                ),
+            )
+        )
+        return findings
 
     # Only trash pulls can be skipped. A boss in only_ours means the reference
     # took a different route through the dungeon, not that anyone skipped a
