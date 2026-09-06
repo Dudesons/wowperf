@@ -13,6 +13,15 @@ query RateLimit {
 }
 """
 
+# Argument-free and game-wide, so one cached response serves every run.
+AFFIXES_QUERY = """
+query Affixes {
+  gameData {
+    affixes { id name }
+  }
+}
+"""
+
 FIGHTS_QUERY = """
 query Fights($code: String!) {
   reportData {

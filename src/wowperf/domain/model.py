@@ -70,6 +70,11 @@ class Run(Frozen):
     encounter_id: int
     keystone_level: int
     affix_ids: tuple[int, ...]
+    # Resolved from game data by the adapter, index-aligned with affix_ids.
+    # Empty when no resolution ran; an id the game data does not list resolves
+    # to the id as text, so the two tuples are equal in length whenever this
+    # one is non-empty.
+    affix_names: tuple[str, ...] = ()
     keystone_time_ms: int
     keystone_bonus: int
     count_reached: int

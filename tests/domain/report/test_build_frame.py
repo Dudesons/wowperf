@@ -107,6 +107,22 @@ def test_a_depleted_run_states_the_verb_and_the_completion_time() -> None:
     assert report.header.result == "Depleted in 34:12"
 
 
+def test_the_header_names_the_affixes_when_names_are_known() -> None:
+    report = build_report(
+        a_loaded(affix_ids=(9, 10), affix_names=("Tyrannical", "Fortified")),
+        (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+    assert report.header.affixes == ("Tyrannical", "Fortified")
+
+
+def test_the_header_falls_back_to_ids_when_no_name_was_resolved() -> None:
+    report = build_report(
+        a_loaded(affix_ids=(9, 10)),
+        (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+    assert report.header.affixes == ("9", "10")
+
+
 def test_no_narrative_leaves_the_section_absent_rather_than_withheld() -> None:
     report = build_report(a_loaded(), (), None, None, a_player(), None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)

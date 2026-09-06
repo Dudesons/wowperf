@@ -19,7 +19,12 @@ def player(name: str, class_name: str, spec: str, item_level: int = 318) -> Play
     )
 
 
-def a_loaded(players: tuple[Player, ...], level: int = 16) -> LoadedRun:
+def a_loaded(
+    players: tuple[Player, ...] = (),
+    level: int = 16,
+    affix_ids: tuple[int, ...] = (9, 10, 147),
+    affix_names: tuple[str, ...] = (),
+) -> LoadedRun:
     return LoadedRun(
         run=Run(
             report_code="abc123",
@@ -27,7 +32,8 @@ def a_loaded(players: tuple[Player, ...], level: int = 16) -> LoadedRun:
             dungeon_name="Den of Nalorakk",
             encounter_id=12825,
             keystone_level=level,
-            affix_ids=(9, 10, 147),
+            affix_ids=affix_ids,
+            affix_names=affix_names,
             keystone_time_ms=1_909_000,
             keystone_bonus=1,
             count_reached=744,
@@ -126,3 +132,35 @@ def test_an_empty_roster_declares_nothing_and_does_not_divide_by_zero() -> None:
     findings = declare_confounds(a_loaded(()), a_loaded(()), SAME_LEVEL)
 
     assert "compare.confound.item_level" not in ids(findings)
+
+
+def test_differing_affixes_are_declared_by_name() -> None:
+    ours = a_loaded(affix_ids=(9, 147), affix_names=("Tyrannical", "Xal'atath's Guile"))
+    theirs = a_loaded(affix_ids=(10, 147), affix_names=("Fortified", "Xal'atath's Guile"))
+
+    findings = declare_confounds(ours, theirs, SAME_LEVEL)
+    affixes = next(f for f in findings if f.id == "compare.confound.affixes")
+
+    assert affixes.confidence is Confidence.MEASURED
+    assert affixes.seconds_lost is None
+    assert "only ours: Tyrannical" in affixes.evidence
+    assert "only theirs: Fortified" in affixes.evidence
+
+
+def test_an_affix_with_no_resolved_name_is_declared_by_id() -> None:
+    ours = a_loaded(affix_ids=(9, 147))
+    theirs = a_loaded(affix_ids=(10, 147))
+
+    findings = declare_confounds(ours, theirs, SAME_LEVEL)
+    affixes = next(f for f in findings if f.id == "compare.confound.affixes")
+
+    assert "only ours: 9" in affixes.evidence
+    assert "only theirs: 10" in affixes.evidence
+
+
+def test_identical_affixes_raise_no_confound() -> None:
+    ours = a_loaded(affix_ids=(9, 147))
+
+    findings = declare_confounds(ours, ours, SAME_LEVEL)
+
+    assert "compare.confound.affixes" not in ids(findings)

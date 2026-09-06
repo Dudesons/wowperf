@@ -1,6 +1,7 @@
 # ABOUTME: Assembles a Run from Warcraft Logs, caching every response it fetches.
 # ABOUTME: Satisfies the RunRepository port so services never learn where a run came from.
 
+from collections.abc import Sequence
 from typing import Any, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
@@ -22,6 +23,7 @@ from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
     ACTORS_QUERY,
+    AFFIXES_QUERY,
     AURA_TABLE_QUERY,
     CASTS_QUERY,
     DAMAGE_TAKEN_QUERY,
@@ -100,10 +102,31 @@ class WclRunRepository:
             self._query(FIGHTS_QUERY, {"code": report_code})["reportData"]["report"],
         )
 
+    def _affix_names(self, affix_ids: Sequence[int]) -> tuple[str, ...]:
+        """Affix names from game data, with the bare id for anything unlisted.
+
+        Goes to the cache and the client directly rather than through `_query`:
+        the response carries `gameData`, not `reportData`, so the null-report
+        guard has nothing to look at.
+
+        Cached indefinitely: the affix table is game-wide and changes only when
+        Blizzard adds one, at which point the new id simply resolves to itself
+        until the cache is cleared.
+        """
+        if not affix_ids:
+            return ()
+        payload = self._cache.get_or_fetch(
+            cache_key(AFFIXES_QUERY, {}), lambda: self._client.execute(AFFIXES_QUERY, {})
+        )
+        rows = (payload.get("gameData") or {}).get("affixes") or []
+        names = {int(row["id"]): str(row["name"]) for row in rows}
+        return tuple(names.get(affix_id, str(affix_id)) for affix_id in affix_ids)
+
     def get(self, report_code: str, fight_id: int | None) -> Run:
         """Build the run alone, without paying for the event streams `load` fetches."""
         report = self._report(report_code)
-        return build_run(report, select_keystone_fight(report["fights"], fight_id))
+        run = build_run(report, select_keystone_fight(report["fights"], fight_id))
+        return run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
 
     def _actor_game_ids(self, report_code: str) -> dict[int, int]:
         """Map every actor in the report to its game id, so an enemy death always resolves.
@@ -145,6 +168,7 @@ class WclRunRepository:
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
         run = build_run(report, fight, self._talents(report_code, fight))
+        run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code})
         try:

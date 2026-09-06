@@ -488,7 +488,11 @@ def _header(loaded: LoadedRun) -> Header:
     return Header(
         dungeon=run.dungeon_name,
         keystone_level=run.keystone_level,
-        affixes=tuple(str(affix_id) for affix_id in run.affix_ids),
+        affixes=(
+            run.affix_names
+            if run.affix_names
+            else tuple(str(affix_id) for affix_id in run.affix_ids)
+        ),
         result=f"{verb} in {duration}",
     )
 

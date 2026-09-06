@@ -40,6 +40,8 @@ covers it otherwise.
 | `limitPerHour` | `RateLimitData` | 2026-09-04 | yes |
 | `pointsSpentThisHour` | `RateLimitData` | 2026-09-04 | yes |
 | `pointsResetIn` | `RateLimitData` | 2026-09-04 | yes |
+| `gameData` | `Query` | 2026-09-06 | yes |
+| `affixes` | `GameData` | 2026-09-06 | yes |
 | `characterRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightIDs` | `table` argument | 2026-09-05 | yes |

@@ -356,6 +356,15 @@ def build_analyze_transport(
     actors_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"actors": [{"id": 699, "gameID": 241874}]}}}
     }
+    affixes_payload: dict[str, Any] = {
+        "gameData": {
+            "affixes": [
+                {"id": 9, "name": "Tyrannical"},
+                {"id": 10, "name": "Fortified"},
+                {"id": 147, "name": "Xal'atath's Guile"},
+            ]
+        }
+    }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
     }
@@ -393,7 +402,9 @@ def build_analyze_transport(
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
         body = json.loads(request.content)
         query = body["query"]
-        name = query.split("query ")[1].split("(")[0].strip()
+        # An operation takes variables or it does not, so the name ends at
+        # whichever of `(` or `{` follows it.
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if calls is not None:
             calls.append(name)
         if name == "Fights":
@@ -404,6 +415,8 @@ def build_analyze_transport(
             return httpx.Response(200, json={"data": abilities_payload})
         if name == "Actors":
             return httpx.Response(200, json={"data": actors_payload})
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes_payload})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -912,6 +925,12 @@ def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> Non
     assert "<link rel=" not in html.lower()
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert not src.startswith(("http://", "https://", "//")), src
+
+
+def test_the_report_names_the_affixes(tmp_path: Path) -> None:
+    invoke_analyze(tmp_path)
+    [html] = (tmp_path / "out").glob("*.html")
+    assert "Tyrannical" in html.read_text(encoding="utf-8")
 
 
 def test_no_compare_still_writes_a_report(tmp_path: Path) -> None:
