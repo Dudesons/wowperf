@@ -138,9 +138,10 @@ class AvailabilityGroup(Frozen):
 class DeathCard(Frozen):
     """One death as a recap: what killed the player, what was up, how they came back.
 
-    Every string is formatted by the builder. `health_badge` is None when no
-    row carries health and `health_note` then says why. `came_back` is one of
-    the four return lines and always carries its badge.
+    Every string is formatted by the builder. `timeline_note` says why the
+    timeline is empty when it is. `health_badge` is None when no row carries
+    health and `health_note` then says why. `came_back` is one of the four
+    return lines and always carries its badge.
     """
 
     player: str
@@ -148,6 +149,7 @@ class DeathCard(Frozen):
     when: str
     killing_blow: str
     timeline: tuple[RecapRow, ...] = ()
+    timeline_note: str = ""
     health_badge: Badge | None = None
     health_note: str = ""
     came_back: str = ""

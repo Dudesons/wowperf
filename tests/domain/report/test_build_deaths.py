@@ -21,6 +21,7 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import (
     CONSUMABLE_CAVEAT,
     NO_CONSUMABLE_DATA,
+    NO_TIMELINE_EVENT,
     build_deaths,
     build_report,
 )
@@ -444,6 +445,15 @@ def test_the_return_line_is_worded_per_outcome_and_badged() -> None:
         ("Released; first action against an enemy 34.2 s after death.", "derived"),
         ("Not seen acting again this run.", "measured"),
     ]
+
+
+def test_a_death_with_an_empty_run_up_carries_the_reason_as_a_note() -> None:
+    # A timeline with nothing in it is a fact about the death, so the builder
+    # states it. The template prints what it is handed and composes no sentence.
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+    assert card.timeline == ()
+    assert card.timeline_note == NO_TIMELINE_EVENT
 
 
 def test_an_actor_whose_id_is_zero_is_named_like_any_other() -> None:

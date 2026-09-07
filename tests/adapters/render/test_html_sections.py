@@ -195,6 +195,17 @@ def test_the_rendered_geometry_matches_what_build_timeline_computed() -> None:
     assert f'y="{timeline.ours.baseline_y}"' in html
 
 
+def test_a_death_card_with_no_timeline_prints_the_note_the_builder_wrote() -> None:
+    # Deliberately not the builder's own wording: the template must print the
+    # card's note rather than a sentence of its own.
+    card = DeathCard(player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", timeline_note="Nothing reached this player.")
+
+    html = render(a_report(deaths=(card,)))
+
+    assert "Nothing reached this player." in html
+
+
 def test_a_death_card_renders_its_recap() -> None:
     card = DeathCard(
         player="Dudesons",

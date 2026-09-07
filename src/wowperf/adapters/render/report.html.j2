@@ -250,8 +250,8 @@ never be summed.</p>
         {% endfor %}
         </tbody>
       </table>
-      {% else %}
-      <p class="sub">No event in the last seconds.</p>
+      {% elif death.timeline_note %}
+      <p class="sub">{{ death.timeline_note }}</p>
       {% endif %}
       {% if death.health_badge %}
       <p class="nests">Health after each event

@@ -317,6 +317,8 @@ NO_HEALTH_READING = (
     "column is empty."
 )
 
+NO_TIMELINE_EVENT = "No event in the last seconds."
+
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
 
 NO_CONSUMABLE_DATA = (
@@ -454,6 +456,7 @@ def build_deaths(
                 # The health column is reconstructed, and says so in the same
                 # words the ledger uses.
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
+                timeline_note="" if timeline else NO_TIMELINE_EVENT,
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
                 came_back=came_back,
                 came_back_badge=came_back_badge,
