@@ -8,7 +8,7 @@
 :root {
   --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
   --page: #16181c; --card: #1e2126; --line: #2c3038;
-  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c;
+  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c; --hit: #e07a7a;
   --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
   --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
   --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
@@ -66,9 +66,28 @@ p { margin: 0 0 10px; }
 .block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
 .block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
 .death-when { color: var(--ink-dim); font-size: 13px; }
-.runup { width: 100%; border-collapse: collapse; margin: 8px 0 0; font-size: 13px; }
-.runup td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim); }
-.runup td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.recap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px;
+  margin: 8px 0 0; }
+@media (max-width: 640px) { .recap { grid-template-columns: 1fr; } }
+.timeline { width: 100%; border-collapse: collapse; font-size: 13px; }
+.timeline th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 3px 0; }
+.timeline td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim);
+  vertical-align: top; }
+.timeline tr.hit td:nth-child(2) { color: var(--hit); }
+.timeline tr.absorb td:nth-child(2) { color: var(--ours); }
+.timeline tr.heal td:nth-child(2) { color: var(--badge-measured); }
+.timeline tr.cast td { color: var(--ink-faint); }
+.hp { position: relative; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+.hp-bar { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--badge-measured); }
+.avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
+.avail ul { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.avail li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0;
+  border-top: 1px solid var(--line); }
+.avail li.pressed .avail-detail { color: var(--badge-measured); }
+.avail li.cooldown .avail-detail { color: var(--extra); }
+.avail li.unseen { color: var(--ink-faint); }
+.owner { color: var(--ink-faint); font-size: 12px; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
@@ -151,9 +170,38 @@ never be summed.</p>
     <span class="death-when">0:50, pull 0</span>
   </div>
   <p class="detail">Mage</p>
-  <table class="runup">
-    <tr><td>5.0s before</td><td>Snowdrift</td><td>82,410</td></tr>
-  </table>
+  <div class="recap">
+    <div class="recap-timeline">
+      <table class="timeline">
+        <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
+        <tbody>
+        <tr class="hit">
+          <td>5.0 s</td>
+          <td>Snowdrift</td>
+          <td>82,410 to health</td>
+          <td class="hp"></td>
+        </tr>
+        </tbody>
+      </table>
+      <p class="nests">The log carries no health reading for this player before the death, so the health column is empty.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives</p>
+        <p class="nests">No data file covers Mage Arcane.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
 </div>
 
 <p class="sub">Not additive — every figure below can already contain another, so they must

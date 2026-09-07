@@ -49,14 +49,15 @@ priced at 83 forces by the route finding and 160 forces by the trash finding on 
 `analysis/trash.py` already computes forces from the enemy deaths inside the pull window, which
 is correct. Route must use the same figure.
 
-### D3. The death cost anchor produces impossible numbers — confirmed, cause open
+### D3. The death cost anchor produces impossible numbers — amended 2026-09-06; the return recorded by Phase I
 
 `Death.seconds_until_next_action` is death → the player's next `cast` event. On the real run two
 of four deaths show a cast 3.4 s and 5.6 s after death, followed by 20+ seconds of silence, with
 no resurrection cast by anyone in between. Whatever those casts are, they are not the player
 playing again. The four deaths therefore total "15 s of play" while the same page shows the timer
 penalty was 60 s, and the finding's fixed sentence "which is longer than the timer penalty" is
-false on this run.
+false on this run. The §5.2 amendment of 2026-09-06 re-anchored the cost on the first cast aimed
+at another actor; Phase I's recap says how each player came back.
 
 Fix: a spike first — read the `All` stream around those two deaths and find what a resurrection
 and a release look like in this schema (there is no `Resurrects` data type). Then anchor the cost

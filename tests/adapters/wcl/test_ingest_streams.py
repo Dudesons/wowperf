@@ -10,12 +10,17 @@ from wowperf.adapters.wcl.ingest import (
     build_damage_taken,
     build_enemy_cast_rows,
     build_enemy_deaths,
+    build_healing,
+    build_health_samples,
     build_interrupts,
+    build_resurrections,
 )
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 ABILITY_NAMES = {1238440: "Molten Scar", 1241214: "Searing Wave", 47528: "Kick"}
 PLAYERS = {693: "Uglymage"}
+RECAP_NAMES = {1238440: "Molten Scar", 17: "Power Word: Shield", 774: "Rejuvenation",
+               61999: "Raise Ally"}
 
 
 def a_run() -> Run:
@@ -126,3 +131,58 @@ def test_damage_taken_falls_back_to_amount_when_unmitigated_is_absent() -> None:
          "timestamp": 2500},
     ]
     assert build_damage_taken(events, a_run(), ABILITY_NAMES)[0].amount == 900
+
+
+def test_damage_taken_keeps_the_health_damage_and_the_absorbed_share() -> None:
+    events: list[dict[str, Any]] = [
+        {"type": "damage", "abilityGameID": 1238440, "targetID": 693, "amount": 9_218,
+         "absorbed": 123_570, "unmitigatedAmount": 132_788, "timestamp": 2500},
+    ]
+    hit = build_damage_taken(events, a_run(), RECAP_NAMES)[0]
+    assert (hit.amount, hit.health_damage, hit.absorbed) == (132_788, 9_218, 123_570)
+
+
+def test_a_cast_carrying_hit_points_becomes_a_health_sample() -> None:
+    events: list[dict[str, Any]] = [
+        {"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000,
+         "hitPoints": 61_200, "maxHitPoints": 99_000},
+        {"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2600},
+        {"type": "begincast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2900,
+         "hitPoints": 50_000, "maxHitPoints": 99_000},
+    ]
+    samples = build_health_samples(events)
+    # The bare cast carries no reading and must not become a zero; a begincast
+    # is not a cast and is not a sample either.
+    assert [(s.timestamp_ms, s.hit_points, s.max_hit_points) for s in samples] == [
+        (2000, 61_200, 99_000)
+    ]
+
+
+def test_a_heal_and_an_absorb_become_healing_events_and_a_removebuff_does_not() -> None:
+    events: list[dict[str, Any]] = [
+        {"type": "heal", "abilityGameID": 774, "sourceID": 5, "targetID": 693, "amount": 9_100,
+         "timestamp": 3000},
+        {"type": "absorbed", "abilityGameID": 17, "extraAbilityGameID": 1238440, "sourceID": 5,
+         "attackerID": 699, "targetID": 693, "amount": 12_000, "timestamp": 3100},
+        {"type": "removebuff", "abilityGameID": 17, "sourceID": 5, "targetID": 693,
+         "timestamp": 3200},
+    ]
+    healing = build_healing(events, RECAP_NAMES)
+    assert [(h.ability_name, h.amount, h.absorbed, h.source_id) for h in healing] == [
+        ("Rejuvenation", 9_100, False, 5),
+        ("Power Word: Shield", 12_000, True, 5),
+    ]
+    assert all(h.actor_id == 693 for h in healing)
+
+
+def test_a_resurrect_event_names_the_caster_and_the_spell() -> None:
+    events: list[dict[str, Any]] = [
+        {"type": "resurrect", "abilityGameID": 61999, "sourceID": 7, "targetID": 693,
+         "timestamp": 9000},
+        {"type": "applydebuff", "abilityGameID": 1, "sourceID": 7, "targetID": 693,
+         "timestamp": 9000},
+    ]
+    back = build_resurrections(events, RECAP_NAMES)
+    assert [(r.actor_id, r.caster_id, r.ability_name, r.timestamp_ms) for r in back] == [
+        (693, 7, "Raise Ally", 9000)
+    ]

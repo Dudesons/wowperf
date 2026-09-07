@@ -11,7 +11,9 @@ from markupsafe import escape
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_externals,
     load_season_data,
+    load_self_resurrections,
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
@@ -87,8 +89,19 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     report = build_report(
         loaded, findings, speed, parse, subject, None, "2026-09-05 00:00", defensives,
         load_consumables(),
+        externals=load_externals(),
+        self_resurrections=load_self_resurrections(),
     )
     html = render(report)
+
+    # Every death on a real run renders a recap: a timeline, three availability
+    # groups, and one return line with its badge.
+    for recap in report.deaths:
+        assert recap.timeline, f"{recap.player}: no timeline"
+        assert [group.title for group in recap.availability] == [
+            "Defensives", "Consumables", "Teammates' externals"
+        ]
+        assert recap.came_back and recap.came_back_badge is not None
 
     # The report's one hard promise: it opens from disk, offline, forever. Checked by
     # what the page can execute or load, not by whether a URL string appears at all —

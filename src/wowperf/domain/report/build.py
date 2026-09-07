@@ -3,22 +3,40 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.analysis.consumables import consumables_up_at
-from wowperf.domain.analysis.defensives import RUN_UP_SECONDS, defensives_up_at
 from wowperf.domain.analysis.players import display_names, summarise_players
+from wowperf.domain.analysis.recap import (
+    ABSENT,
+    ABSORB,
+    COOLDOWN,
+    HEAL,
+    HIT,
+    PRESSED,
+    READY,
+    RELEASED,
+    RESURRECTED,
+    SELF_RESURRECTED,
+    UNSEEN,
+    AbilityState,
+    RecapEvent,
+    availability_at,
+    recap_timeline,
+    return_of,
+)
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.model import (
+    AvailabilityGroup,
+    AvailabilityRow,
     Badge,
-    DamageRow,
     DeathCard,
     Header,
     LedgerRow,
     PlayerCard,
     Provenance,
+    RecapRow,
     Report,
     Section,
     SectionState,
@@ -26,7 +44,7 @@ from wowperf.domain.report.model import (
     TimelineBlock,
     TimelineTrack,
 )
-from wowperf.domain.season import Consumables, Defensives
+from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
 SPEED_UNAVAILABLE_ID = "compare.speed.unavailable"
 PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
@@ -280,7 +298,7 @@ CONSUMABLE_CAVEAT = (
     "The log shows only what was drunk, so this says nothing was on cooldown, "
     "not that one was carried."
 )
-"""Why the line above it is weaker than the defensive line that looks identical.
+"""Printed under the consumable rows, qualifying every "ready" among them.
 
 It sits on the card rather than in the ledger because that is where a reader
 draws the conclusion, and the honest sentence has to be next to the claim it
@@ -288,84 +306,160 @@ qualifies rather than several screens below it.
 """
 
 
+HEALTH_METHOD = (
+    "Health on a death card is reconstructed: the log states a player's health only on their "
+    "own casts, so between readings each hit is subtracted and each heal added, and the next "
+    "reading replaces the running value. The column is badged derived for that reason."
+)
+
+NO_HEALTH_READING = (
+    "The log carries no health reading for this player before the death, so the health "
+    "column is empty."
+)
+
+NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
+
+NO_CONSUMABLE_DATA = (
+    "No consumable can be judged here: either none is listed for this run, or the death came "
+    "too early for the log to show one's cooldown."
+)
+
+
+def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapRow:
+    if event.kind == HIT:
+        detail = f"{event.amount:,} to health"
+        if event.absorbed:
+            detail += f", {event.absorbed:,} absorbed"
+    elif event.kind == ABSORB:
+        detail = f"{event.amount:,} soaked"
+    elif event.kind == HEAL:
+        healer = names.get(event.source_id or -1, "an unknown source")
+        detail = f"+{event.amount:,} from {healer}"
+    else:
+        detail = ""
+    return RecapRow(
+        seconds_before=f"{(death.timestamp_ms - event.timestamp_ms) / 1000:.1f} s",
+        kind=event.kind,
+        ability=event.ability_name,
+        detail=detail,
+        health="" if event.health_percent is None else f"{event.health_percent}%",
+        health_percent=event.health_percent,
+    )
+
+
+def _availability_row(state: AbilityState, names: dict[int, str]) -> AvailabilityRow:
+    if state.state == PRESSED:
+        detail = f"{state.seconds:.1f} s before death"
+    elif state.state == COOLDOWN:
+        detail = f"at most {state.seconds:.0f} s left"
+    elif state.state == READY and state.seconds is not None:
+        detail = f"ready, for at least {state.seconds:.1f} s"
+    elif state.state == READY:
+        detail = "ready"
+    elif state.state == UNSEEN:
+        detail = "not seen this run"
+    else:
+        detail = ""
+    return AvailabilityRow(
+        ability=state.name,
+        state=state.state,
+        owner=names.get(state.owner_id, "") if state.owner_id is not None else "",
+        detail=detail,
+    )
+
+
+def _group(
+    title: str,
+    states: tuple[AbilityState, ...] | None,
+    names: dict[int, str],
+    empty_note: str,
+    caveat: str = "",
+) -> AvailabilityGroup:
+    """A group with rows carries the badge and any caveat; an empty one says why it is empty."""
+    if not states:
+        return AvailabilityGroup(title=title, note=empty_note)
+    return AvailabilityGroup(
+        title=title,
+        rows=tuple(_availability_row(state, names) for state in states),
+        badge=badge_for(Confidence.INFERRED),
+        note=caveat,
+    )
+
+
+def _came_back(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrections,
+               names: dict[int, str]) -> tuple[str, Badge]:
+    back = return_of(loaded, death, self_resurrections)
+    if back.kind == RESURRECTED:
+        caster = names.get(back.caster_id or -1, "a teammate")
+        return (
+            f"Resurrected by {caster} with {back.ability_name}, "
+            f"{back.seconds_after:.1f} s after death.",
+            badge_for(Confidence.MEASURED),
+        )
+    if back.kind == SELF_RESURRECTED:
+        return (
+            f"Self-resurrected with {back.ability_name}, {back.seconds_after:.1f} s after death.",
+            badge_for(Confidence.MEASURED),
+        )
+    if back.kind == RELEASED:
+        return (
+            f"Released; first action against an enemy {back.seconds_after:.1f} s after death.",
+            badge_for(Confidence.DERIVED),
+        )
+    assert back.kind == ABSENT
+    return ("Not seen acting again this run.", badge_for(Confidence.MEASURED))
+
+
 def build_deaths(
-    loaded: LoadedRun, defensives: Defensives, consumables: Consumables
+    loaded: LoadedRun,
+    defensives: Defensives,
+    consumables: Consumables,
+    externals: Externals = Externals(),
+    self_resurrections: SelfResurrections = SelfResurrections(),
 ) -> tuple[DeathCard, ...]:
-    """One card per death, oldest first, each expanded into its last ten seconds.
+    """One recap per death, oldest first.
 
-    Built from events rather than findings: no finding carries the damage
-    run-up, which is the reason this section exists at all.
-
-    The same run-up window decides which defensives and consumables were
-    available, so the card shows the damage and the answers the player had to it
-    side by side.
+    Built from events rather than findings: no finding carries the run-up,
+    the health readings or the return, which is the reason this section
+    exists at all. The same run-up window decides the timeline and the
+    availability, so the card shows the damage and the answers side by side.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
-    names_by_actor = display_names(loaded.run)
+    names = display_names(loaded.run)
     cards = []
     for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
-        window_start = death.timestamp_ms - RUN_UP_SECONDS * 1000
-        hits = sorted(
-            (
-                hit
-                for hit in loaded.damage_taken
-                if hit.actor_id == death.actor_id
-                and window_start <= hit.timestamp_ms <= death.timestamp_ms
-            ),
-            key=lambda hit: hit.timestamp_ms,
-        )
         player = players_by_id.get(death.actor_id)
-        # An actor missing from the roster has no spec to look up, so nothing is
-        # checked for them rather than nothing being available.
-        known = (
-            defensives.for_spec(player.class_name, player.spec) if player is not None else ()
+        timeline = tuple(
+            _recap_row(event, death, names) for event in recap_timeline(loaded, death)
         )
+        has_health = any(row.health_percent is not None for row in timeline)
+        at = availability_at(
+            loaded, death, defensives, consumables, externals,
+            visible_from_ms=_run_start_ms(loaded.run),
+        )
+        spec = f"{player.class_name} {player.spec}" if player else "this player"
+        came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)
         cards.append(
             DeathCard(
                 # Falls back to the raw event name only for an actor id that is not
                 # on the roster at all, which `display_names` cannot disambiguate.
-                player=names_by_actor.get(death.actor_id, death.player_name),
+                player=names.get(death.actor_id, death.player_name),
                 class_name=player.class_name if player else "unknown class",
                 when=_when(death, loaded.run),
                 killing_blow=death.killing_blow,
-                defensives_checked=bool(known),
-                defensives_available=defensives_up_at(
-                    loaded.casts, known, death.actor_id, death.timestamp_ms
-                ),
+                timeline=timeline,
                 # Every other fact on this card is read straight from the log.
-                # This one is reconstructed, and says so in the same words the
-                # ledger uses.
-                defensives_badge=badge_for(Confidence.INFERRED) if known else None,
-                # Gated on the roster like the defensives above: the findings
-                # file iterates the roster, so a claim here about an actor it
-                # cannot identify would be a claim the findings do not make.
-                consumables_checked=bool(consumables.categories and player is not None),
-                consumables_available=(
-                    consumables_up_at(
-                        loaded.casts,
-                        consumables.categories,
-                        death.actor_id,
-                        death.timestamp_ms,
-                        visible_from_ms=_run_start_ms(loaded.run),
-                    )
-                    if player is not None
-                    else ()
-                ),
-                consumables_badge=(
-                    badge_for(Confidence.INFERRED)
-                    if consumables.categories and player is not None
-                    else None
-                ),
-                consumables_caveat=CONSUMABLE_CAVEAT,
-                last_ten_seconds=tuple(
-                    DamageRow(
-                        seconds_before=(
-                            f"{(death.timestamp_ms - hit.timestamp_ms) / 1000:.1f}s before"
-                        ),
-                        ability=hit.ability_name,
-                        amount=f"{hit.amount:,}",
-                    )
-                    for hit in hits
+                # The health column is reconstructed, and says so in the same
+                # words the ledger uses.
+                health_badge=badge_for(Confidence.DERIVED) if has_health else None,
+                health_note="" if has_health or not timeline else NO_HEALTH_READING,
+                came_back=came_back,
+                came_back_badge=came_back_badge,
+                availability=(
+                    _group("Defensives", at.own, names, f"No data file covers {spec}."),
+                    _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA,
+                           CONSUMABLE_CAVEAT),
+                    _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS),
                 ),
             )
         )
@@ -637,6 +731,8 @@ def build_report(
     fetched_at: str,
     defensives: Defensives,
     consumables: Consumables,
+    externals: Externals = Externals(),
+    self_resurrections: SelfResurrections = SelfResurrections(),
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -645,7 +741,9 @@ def build_report(
     player being analysed, from our own roster — it decides whose card carries
     the spell-and-talent and uptime comparison rows. `defensives` is passed in
     rather than read here for the same reason the clock is: the data file is an
-    adapter's job to load.
+    adapter's job to load. `externals` and `self_resurrections` are data files
+    too, loaded by the same adapter; they default to empty so a caller without
+    them still builds every other section.
     """
     timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
 
@@ -674,6 +772,9 @@ def build_report(
     players = build_players(loaded, findings, parse, subject, titles_by_id)
     placed_ids = _placed_finding_ids(ledger_decomposition, placed_rows, players)
 
+    deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)
+    methods = (HEALTH_METHOD,) if any(card.health_badge for card in deaths) else ()
+
     return Report(
         header=_header(loaded),
         narrative=narrative,
@@ -684,7 +785,7 @@ def build_report(
         ),
         route=route_section,
         route_rows=placed_rows["route_rows"],
-        deaths=build_deaths(loaded, defensives, consumables),
+        deaths=deaths,
         death_rows=placed_rows["death_rows"],
         interrupts=placed_rows["interrupts"],
         players=players,
@@ -701,5 +802,6 @@ def build_report(
                 _reference_url(parse.row.report_code, parse.row.fight_id) if parse else None
             ),
             withheld=tuple(withheld),
+            methods=methods,
         ),
     )

@@ -142,7 +142,8 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
 
     event_payloads: dict[str, dict[str, Any]] = {
         "Casts": events_payload(
-            [{"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000}]
+            [{"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000,
+              "hitPoints": 61200, "maxHitPoints": 99000}]
         ),
         "Deaths": events_payload(
             [{"type": "death", "sourceID": -1, "targetID": 693, "timestamp": 5000}]
@@ -164,6 +165,14 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
         "DamageTaken": events_payload(
             [{"type": "damage", "abilityGameID": 500, "targetID": 693, "amount": 1000,
               "timestamp": 4000}]
+        ),
+        "Healing": events_payload(
+            [{"type": "heal", "abilityGameID": 774, "sourceID": 5, "targetID": 693,
+              "amount": 9100, "timestamp": 4500}]
+        ),
+        "Resurrects": events_payload(
+            [{"type": "resurrect", "abilityGameID": 61999, "sourceID": 7, "targetID": 693,
+              "timestamp": 9000}]
         ),
     }
 
@@ -222,6 +231,7 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert set(load_calls) == {
         "Fights", "Affixes", "Abilities", "Casts", "Deaths",
         "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors", "Talents",
+        "Healing", "Resurrects",
     }
 
 
@@ -233,7 +243,7 @@ def test_a_get_after_a_load_costs_nothing() -> None:
     repository.load("abc123", 36)
     assert sorted(set(calls)) == [
         "Abilities", "Actors", "Affixes", "Casts", "DamageTaken", "Deaths",
-        "EnemyCasts", "EnemyDeaths", "Fights", "Interrupts", "Talents",
+        "EnemyCasts", "EnemyDeaths", "Fights", "Healing", "Interrupts", "Resurrects", "Talents",
     ]
 
     calls.clear()
@@ -250,6 +260,51 @@ def test_a_loaded_run_carries_every_stream() -> None:
     assert [interrupt.interrupted_ability_id for interrupt in loaded.interrupts] == [400]
     assert [death.actor_id for death in loaded.enemy_deaths] == [702]
     assert [taken.amount for taken in loaded.damage_taken] == [1000]
+
+
+def test_load_fetches_a_healing_window_per_death_and_the_fight_s_resurrections(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+    loaded = repository.load("abc123", None)
+    assert calls.count("Healing") == 1
+    assert calls.count("Resurrects") == 1
+    assert [(h.ability_id, h.amount) for h in loaded.healing] == [(774, 9100)]
+    assert [(r.caster_id, r.actor_id) for r in loaded.resurrections] == [(7, 693)]
+
+
+def test_load_reads_health_samples_off_the_casts(tmp_path: Path) -> None:
+    loaded = recording_repository([], tmp_path).load("abc123", None)
+    assert [(s.hit_points, s.max_hit_points) for s in loaded.health_samples] == [(61200, 99000)]
+
+
+def test_the_healing_window_is_bounded_by_the_death_and_resurrects_span_the_fight(
+    tmp_path: Path,
+) -> None:
+    """The healing window ends at the death; resurrections are asked for once, fight-wide."""
+    from wowperf.adapters.wcl.queries import HEALING_QUERY, RESURRECTS_QUERY
+
+    repository = recording_repository([], tmp_path)
+    repository.load("abc123", None)
+    healing_key = cache_key(
+        HEALING_QUERY,
+        {"code": "abc123", "fightId": 36, "actorId": 693,
+         "startTime": 5000.0 - 10_000, "endTime": 5000.0},
+    )
+    resurrects_key = cache_key(
+        RESURRECTS_QUERY,
+        {"code": "abc123", "fightId": 36, "startTime": 0.0, "endTime": 1920000.0},
+    )
+    miss = {"miss": "the repository did not cache this window"}
+    assert repository.cache.get_or_fetch(healing_key, lambda: miss) != miss
+    assert repository.cache.get_or_fetch(resurrects_key, lambda: miss) != miss
+
+
+def test_the_casts_query_asks_for_the_casters_resources() -> None:
+    from wowperf.adapters.wcl.queries import CASTS_QUERY
+
+    assert "includeResources: true" in CASTS_QUERY
 
 
 def test_a_run_carries_its_affix_names_from_game_data(tmp_path: Path) -> None:

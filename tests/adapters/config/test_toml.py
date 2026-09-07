@@ -216,3 +216,57 @@ def test_no_ability_is_both_a_defensive_and_a_throughput_cooldown_for_one_spec()
         if overlap:
             clashes.append((key, sorted(overlap)))
     assert clashes == [], f"listed as both defensive and throughput: {clashes}"
+
+
+def test_the_committed_externals_file_parses_and_names_healer_externals() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_EXTERNALS_PATH, load_externals
+
+    externals = load_externals(DEFAULT_EXTERNALS_PATH)
+    names = {ability.name for _, abilities in externals.entries for ability in abilities}
+    assert {"Pain Suppression", "Ironbark", "Life Cocoon", "Guardian Spirit"} <= names
+    assert externals.for_spec("Bard", "Jazz") == ()
+
+
+def test_every_external_has_a_positive_cooldown_and_a_valid_spec_key() -> None:
+    from wowperf.adapters.config.toml import load_externals
+
+    for key, abilities in load_externals().entries:
+        class_name, _, spec = key.partition("/")
+        assert class_name in WCL_CLASS_NAMES and spec, f"spec key can never match: {key}"
+        for ability in abilities:
+            assert ability.cooldown_seconds > 0, f"{key}: {ability.name} has no cooldown"
+            assert ability.charges >= 1
+
+
+def test_the_committed_resurrections_file_lists_self_resurrection_spells() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_RESURRECTIONS_PATH, load_self_resurrections
+
+    spells = load_self_resurrections(DEFAULT_RESURRECTIONS_PATH)
+    assert spells.ability_ids, "the file lists no spell at all"
+    assert len(set(spells.ability_ids)) == len(spells.ability_ids)
+
+
+def test_no_ability_lives_in_two_of_the_three_cooldown_files_for_one_spec() -> None:
+    """Defensives, throughput cooldowns and externals ask three different questions.
+
+    An ability answering two of them at once would be judged twice and could
+    disagree with itself; the judgement of which file owns it is made once, in
+    the data.
+    """
+    from wowperf.adapters.config.toml import (
+        load_defensives,
+        load_externals,
+        load_throughput_cooldowns,
+    )
+
+    owners: dict[tuple[str, int], list[str]] = {}
+    for label, loaded in (
+        ("defensive", load_defensives()),
+        ("throughput", load_throughput_cooldowns()),
+        ("external", load_externals()),
+    ):
+        for key, abilities in loaded.entries:
+            for ability in abilities:
+                owners.setdefault((key, ability.ability_id), []).append(label)
+    clashes = {k: v for k, v in owners.items() if len(v) > 1}
+    assert clashes == {}, f"listed in more than one file: {clashes}"

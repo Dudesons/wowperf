@@ -14,8 +14,11 @@ from wowperf.adapters.wcl.ingest import (
     build_deaths,
     build_enemy_cast_rows,
     build_enemy_deaths,
+    build_healing,
+    build_health_samples,
     build_interrupts,
     build_player_auras,
+    build_resurrections,
     build_run,
     select_keystone_fight,
 )
@@ -31,10 +34,14 @@ from wowperf.adapters.wcl.queries import (
     ENEMY_CASTS_QUERY,
     ENEMY_DEATHS_QUERY,
     FIGHTS_QUERY,
+    HEALING_QUERY,
     INTERRUPTS_QUERY,
+    RESURRECTS_QUERY,
     talents_query,
 )
+from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.events import HealingEvent
 from wowperf.domain.model import LoadedRun, Run
 
 
@@ -209,6 +216,9 @@ class WclRunRepository:
         interrupt_events = fetch_all_events(self._query, INTERRUPTS_QUERY, event_variables)
         enemy_death_events = fetch_all_events(self._query, ENEMY_DEATHS_QUERY, event_variables)
         damage_taken_events = fetch_all_events(self._query, DAMAGE_TAKEN_QUERY, event_variables)
+        resurrections = build_resurrections(
+            fetch_all_events(self._query, RESURRECTS_QUERY, event_variables), ability_names
+        )
 
         casts = build_casts(cast_events, run, ability_names)
         deaths = build_deaths(death_events, run, casts, ability_names)
@@ -221,6 +231,24 @@ class WclRunRepository:
         )
         damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
 
+        # One healing window per death, scoped to the dying player and bounded
+        # to the run-up the death card shows. Resurrections are fetched once
+        # above, fight-wide, because the All stream ignores `targetID` while a
+        # server-side filter on `type = 'resurrect'` costs one point for the
+        # whole fight rather than one point per death.
+        healing: list[HealingEvent] = []
+        for death in deaths:
+            scoped = {
+                "code": report_code,
+                "fightId": run.fight_id,
+                "actorId": death.actor_id,
+                "startTime": float(death.timestamp_ms - RUN_UP_SECONDS * 1000),
+                "endTime": float(death.timestamp_ms),
+            }
+            healing.extend(
+                build_healing(fetch_all_events(self._query, HEALING_QUERY, scoped), ability_names)
+            )
+
         return LoadedRun(
             run=run,
             casts=casts,
@@ -229,6 +257,9 @@ class WclRunRepository:
             interrupts=interrupts,
             enemy_deaths=enemy_deaths,
             damage_taken=damage_taken,
+            health_samples=build_health_samples(cast_events),
+            healing=tuple(healing),
+            resurrections=resurrections,
         )
 
     def auras(self, report_code: str, fight_id: int, actor_id: int) -> PlayerAuras:

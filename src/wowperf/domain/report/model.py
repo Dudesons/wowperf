@@ -90,41 +90,69 @@ class Timeline(Frozen):
     block_height: float = 0.0
 
 
-class DamageRow(Frozen):
+class RecapRow(Frozen):
+    """One event of a death's last seconds, formatted.
+
+    `kind` is one of "hit", "absorb", "heal", "cast": a row class the template
+    maps to colour and to nothing else. `health` is the reconstructed health
+    after the event as "62%", or "" before the first reading; `health_percent`
+    is the same figure as a number, so the template can draw a bar without
+    computing one. A share of the player's own health, never a duration.
+    """
+
     seconds_before: str
+    kind: str
     ability: str
-    amount: str
+    detail: str = ""
+    health: str = ""
+    health_percent: int | None = None
+
+
+class AvailabilityRow(Frozen):
+    """One saving tool at the death. `state` is "pressed", "ready", "cooldown" or "unseen"."""
+
+    ability: str
+    state: str
+    owner: str = ""
+    detail: str = ""
+
+
+class AvailabilityGroup(Frozen):
+    """One of the three availability groups: own defensives, consumables, teammates' externals.
+
+    A group with rows carries the inferred badge. A group with none and a
+    `note` is empty for one of two reasons: a spec absent from a file, which
+    the tool could say nothing about at all, or — for consumables — every
+    category's cooldown window reaching back before the run began, which is a
+    group that was checked and still has nothing to show. Either way the note
+    says why; rendering both as blank would merge them with a checked group
+    that found rows in the ready state.
+    """
+
+    title: str
+    rows: tuple[AvailabilityRow, ...] = ()
+    badge: Badge | None = None
+    note: str = ""
 
 
 class DeathCard(Frozen):
-    """One death, with the damage that caused it and what the player still had.
+    """One death as a recap: what killed the player, what was up, how they came back.
 
-    `defensives_checked` and `defensives_available` are two facts, not one.
-    An empty list under a checked spec says nothing was off cooldown, which
-    exonerates the player; an unchecked spec says the data file does not cover
-    them and the tool knows nothing. Rendering both as a blank would turn the
-    second into the first.
-
-    The consumable pair is shaped the same way but is a weaker claim, and
-    `consumables_caveat` is why it must not read like the defensive one. A
-    defensive is only named once the player has demonstrably cast it; a
-    consumable never proves it was carried, because the log records one only
-    when it is drunk. In practice `consumables_checked` is false only for a
-    death by an actor missing from the roster.
+    Every string is formatted by the builder. `health_badge` is None when no
+    row carries health and `health_note` then says why. `came_back` is one of
+    the four return lines and always carries its badge.
     """
 
     player: str
     class_name: str
     when: str
     killing_blow: str
-    last_ten_seconds: tuple[DamageRow, ...] = ()
-    defensives_checked: bool = False
-    defensives_available: tuple[str, ...] = ()
-    defensives_badge: Badge | None = None
-    consumables_checked: bool = False
-    consumables_available: tuple[str, ...] = ()
-    consumables_badge: Badge | None = None
-    consumables_caveat: str = ""
+    timeline: tuple[RecapRow, ...] = ()
+    health_badge: Badge | None = None
+    health_note: str = ""
+    came_back: str = ""
+    came_back_badge: Badge | None = None
+    availability: tuple[AvailabilityGroup, ...] = ()
 
 
 class PlayerCard(Frozen):
@@ -168,6 +196,9 @@ class Provenance(Frozen):
     speed_reference_url: str | None = None
     parse_reference_url: str | None = None
     withheld: tuple[str, ...] = ()
+    # Methods the page relied on that a reader might dispute, stated once here
+    # rather than on every card: today, how a death card's health column is built.
+    methods: tuple[str, ...] = ()
 
 
 class Report(Frozen):

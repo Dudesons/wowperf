@@ -87,7 +87,8 @@ abilities = [
   { ability_id = 61336, name = "Survival Instincts", cooldown_seconds = 180.0 },
   { ability_id = 22842, name = "Frenzied Regeneration", cooldown_seconds = 36.0 },
   { ability_id = 108238, name = "Renewal", cooldown_seconds = 90.0 },
-  { ability_id = 102342, name = "Ironbark", cooldown_seconds = 90.0 },
+  # Ironbark is cast on an ally, not the caster's own answer to dying: it
+  # lives in externals.toml, which is what a teammate could press.
 ]
 
 ["Evoker/Augmentation"]
@@ -188,24 +189,25 @@ abilities = [
 abilities = [
   { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
   { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
-  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+  # Lay on Hands can be cast on any ally, not only the caster: it lives in
+  # externals.toml, which is what a teammate could press for this player too.
 ]
 
 ["Paladin/Protection"]
 abilities = [
   { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
   { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
-  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
   { ability_id = 31850, name = "Ardent Defender", cooldown_seconds = 90.0 },
   { ability_id = 86659, name = "Guardian of Ancient Kings", cooldown_seconds = 180.0 },
   { ability_id = 387174, name = "Eye of Tyr", cooldown_seconds = 60.0 },
+  # Lay on Hands: see Paladin/Holy above.
 ]
 
 ["Paladin/Retribution"]
 abilities = [
   { ability_id = 498, name = "Divine Protection", cooldown_seconds = 60.0 },
   { ability_id = 642, name = "Divine Shield", cooldown_seconds = 300.0 },
-  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+  # Lay on Hands: see Paladin/Holy above.
 ]
 
 ["Priest/Discipline"]

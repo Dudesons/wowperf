@@ -48,6 +48,9 @@ covers it otherwise.
 | `hostilityType` | `table` argument | 2026-09-05 | yes |
 | `sourceID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `table` argument | 2026-09-05 | yes |
+| `targetID` | `events` argument | 2026-09-07 | yes |
+| `includeResources` | `events` argument | 2026-09-07 | yes |
+| `filterExpression` | `events` argument | 2026-09-07 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -149,6 +152,8 @@ table below supersedes them.
 | Player deaths | 2026-09-04 | `dataType: Deaths` (default hostility) | `death` | `abilityGameID` (always 0), `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always -1), `targetID`, `timestamp`, `type` |
 | Enemy deaths | 2026-09-04 | `dataType: Deaths, hostilityType: Enemies` | `death` | `abilityGameID`, `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID`, `targetID`, `targetInstance`, `targetMarker`, `timestamp`, `type` |
 | Damage taken | 2026-09-04 | `dataType: DamageTaken, hostilityType: Friendlies` | `damage` | `abilityGameID`, `absorbed`, `amount`, `blocked`, `buffs`, `fight`, `hitType`, `isAoE`, `mitigated`, `sourceID`, `sourceInstance`, `sourceMarker`, `targetID`, `tick`, `timestamp`, `type`, `unmitigatedAmount` |
+| Healing received | 2026-09-07 | `dataType: Healing, targetID: <actor>`, per death over the run-up | `heal`, `absorbed`, `removebuff` | `heal`: `abilityGameID`, `amount`, `sourceID`, `targetID`, `timestamp`. `absorbed`: as `heal`, plus `extraAbilityGameID` (the hit that was soaked) and `attackerID`. `removebuff` is dropped. |
+| Resurrections | 2026-09-07 | `dataType: All, filterExpression: "type = 'resurrect'"`, once for the whole fight | `resurrect` only | `abilityGameID` (the spell), `sourceID` (the caster), `targetID` (the revived player), `timestamp`. |
 
 - `sourceInstance` is absent when the instance is the first one; treat a missing value as `0`
   on both sides of any comparison. Two copies of one NPC are `(sourceID, sourceInstance)`.
@@ -179,9 +184,14 @@ work can start from facts.
   the events they are the source of — their `cast` and `resourcechange` events, which did carry
   `hitPoints` — not from the hits they took.
 - **`dataType: Healing` scoped by `targetID`** returns `heal` events, `absorbed` events (a shield
-  soaking a hit, with `extraAbilityGameID` naming the absorbing aura) and `removebuff` events.
-  Observed keys: `abilityGameID`, `amount`, `attackerID`, `buffs`, `extraAbilityGameID`, `fight`,
-  `sourceID`, `targetID`, `timestamp`, `type`. No `overheal` key appeared.
+  soaking a hit) and `removebuff` events. Observed keys: `abilityGameID`, `amount`, `attackerID`,
+  `buffs`, `extraAbilityGameID`, `fight`, `sourceID`, `targetID`, `timestamp`, `type`. No
+  `overheal` key appeared. **On an `absorbed` row, `abilityGameID` is the shield and
+  `extraAbilityGameID` is the hit it soaked** — corrected 2026-09-07 against 43 rows over four
+  deaths, where `abilityGameID` resolved to Prismatic Barrier, Refractive Images, Soulcoil Barrier
+  and Beacon of the Savior while `extraAbilityGameID` resolved to Searing Magma, Frozen Tempest,
+  Primal Echo and Seriously Sharp Seashell. The 2026-09-06 note here had the two the other way
+  round.
 - **`table(dataType: Deaths, fightIDs: [Int])`** returns `{entries: [...]}`, one entry per death,
   with `name`, `id`, `guid`, `type`, `icon`, `timestamp`, `fight`, `deathWindow`, `overkill`,
   `killingBlow {name, guid, type, abilityIcon}`, `damage {total, totalReduced, activeTime,
@@ -207,6 +217,37 @@ work can start from facts.
   types by `npcCountMap` under-prices a pack with several copies of one mob. Forces a pull
   actually awarded come from the enemy death events in its window, which is what
   `analysis/trash.py` already does.
+
+**Measured 2026-09-07 for the recap**, same report and fight, into a fresh cache. Every figure is
+net of the `rateLimitData` query used to read it, which costs 1.00 point of its own.
+
+- **Casts with `includeResources: true`, whole fight, `hostilityType: Friendlies`:** 2.59 points
+  over 2 pages and 10716 rows, against 2.00 points for the same window without it. The flag costs
+  about 0.30 a page. 9259 of the rows carry both `hitPoints` and `maxHitPoints`; 1457 carry
+  neither. A carrying row also holds `absorb`, `itemLevel`, `classResources` and the player's
+  secondary stats.
+- **`dataType: Healing` scoped by `targetID`, one ten-second window:** 1.00 point, 7 to 46 rows
+  per death, never paginated. **The scoping works**: across all four deaths, no returned row
+  targeted another actor.
+- **`dataType: All` scoped by `targetID` does *not* filter.** A sixty-second window asked for one
+  player returned 7087 rows, of which 428 targeted them and 6355 touched neither them nor their
+  target. It is the whole group's stream with the argument ignored, and it paginates.
+- **`filterExpression: "type = 'resurrect'"` on `dataType: All` does filter**, server-side and
+  cheaply: over the whole 31-minute fight it returned the one `resurrect` row for 1.00 point and
+  no next page. Unfiltered, the same stream costs 29 points over 29 pages. One filtered query per
+  fight replaces a scoped query per death.
+- **A self-resurrection, on this run.** Player 694 died at 1121.0 s into the fight and returned
+  1.5 s later. The stream shows `225080` applied as a debuff at the moment of death and removed
+  1.5 s after, and at that same moment a `cast` of `21169` by player 694 with `targetID: -1` —
+  no `resurrect` row accompanies any of it. The report's ability table names both `225080` and
+  `21169` and never `20608`, the spell database's Shaman ability. A self-resurrection is
+  therefore recognised from the cast of a listed spell, not from a `resurrect` row with
+  `sourceID == targetID`.
+- **A whole compared analysis with the recap costs 44.29 points of 3600**, measured 2026-09-07
+  on a cold cache for this report and fight, the figure as the command reports it and so
+  including the two quota reads it makes itself. About thirty-five of those points predate the
+  recap. The rest is one healing window per death, one resurrections query for the fight, and
+  the resource flag on the casts.
 
 ## Aura tables
 

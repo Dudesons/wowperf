@@ -10,7 +10,10 @@ from wowperf.domain.events import (
     Death,
     EnemyCastRow,
     EnemyDeath,
+    HealingEvent,
+    HealthSample,
     InterruptEvent,
+    Resurrection,
 )
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
@@ -347,9 +350,86 @@ def build_damage_taken(
                 amount=int(amount),
                 timestamp_ms=event["timestamp"],
                 pull_index=pull_index_at(run, event["timestamp"]),
+                health_damage=int(event.get("amount") or 0),
+                absorbed=int(event.get("absorbed") or 0),
             )
         )
     return tuple(taken)
+
+
+def build_health_samples(events: list[dict[str, Any]]) -> tuple[HealthSample, ...]:
+    """One reading per cast that carried the caster's hit points.
+
+    `includeResources` attaches `hitPoints` and `maxHitPoints` to an event for
+    its source actor. A cast carrying neither produces no sample rather than a
+    zero — a zero would read as a dead player — and a `begincast` is not a cast.
+    """
+    samples = []
+    for event in events:
+        if event.get("type") != "cast" or "sourceID" not in event:
+            continue
+        hit_points = event.get("hitPoints")
+        max_hit_points = event.get("maxHitPoints")
+        if hit_points is None or max_hit_points is None or int(max_hit_points) <= 0:
+            continue
+        samples.append(
+            HealthSample(
+                actor_id=event["sourceID"],
+                timestamp_ms=event["timestamp"],
+                hit_points=int(hit_points),
+                max_hit_points=int(max_hit_points),
+            )
+        )
+    return tuple(samples)
+
+
+def build_healing(
+    events: list[dict[str, Any]], ability_names: dict[int, str]
+) -> tuple[HealingEvent, ...]:
+    """Heals landing on a player and hits their shields soaked, from a `Healing` stream.
+
+    A `heal` names the healing spell in `abilityGameID`. An `absorbed` event
+    names the shield that soaked it in `abilityGameID` and the hit it soaked in
+    `extraAbilityGameID`; the shield is what a recap wants to show, so that is
+    the ability the event keeps. The stream's `removebuff` rows are not healing.
+    """
+    healing = []
+    for event in events:
+        kind = event.get("type")
+        if kind not in ("heal", "absorbed"):
+            continue
+        ability_id = int(event["abilityGameID"])
+        source_id_value = event.get("sourceID")
+        source_id = int(source_id_value) if source_id_value is not None else -1
+        healing.append(
+            HealingEvent(
+                actor_id=event["targetID"],
+                source_id=source_id,
+                ability_id=ability_id,
+                ability_name=_ability_name(ability_names, ability_id),
+                amount=int(event.get("amount") or 0),
+                timestamp_ms=event["timestamp"],
+                absorbed=kind == "absorbed",
+            )
+        )
+    return tuple(healing)
+
+
+def build_resurrections(
+    events: list[dict[str, Any]], ability_names: dict[int, str]
+) -> tuple[Resurrection, ...]:
+    """Every `resurrect` row of a stream: who was brought back, by whom, with what."""
+    return tuple(
+        Resurrection(
+            actor_id=event["targetID"],
+            caster_id=event["sourceID"],
+            ability_id=event["abilityGameID"],
+            ability_name=_ability_name(ability_names, event["abilityGameID"]),
+            timestamp_ms=event["timestamp"],
+        )
+        for event in events
+        if event.get("type") == "resurrect"
+    )
 
 
 def _aura_rows(report: dict[str, Any], alias: str) -> list[dict[str, Any]]:
