@@ -48,6 +48,9 @@ covers it otherwise.
 | `hostilityType` | `table` argument | 2026-09-05 | yes |
 | `sourceID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `table` argument | 2026-09-05 | yes |
+| `targetID` | `events` argument | 2026-09-07 | yes |
+| `includeResources` | `events` argument | 2026-09-07 | no |
+| `filterExpression` | `events` argument | 2026-09-07 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -179,9 +182,14 @@ work can start from facts.
   the events they are the source of — their `cast` and `resourcechange` events, which did carry
   `hitPoints` — not from the hits they took.
 - **`dataType: Healing` scoped by `targetID`** returns `heal` events, `absorbed` events (a shield
-  soaking a hit, with `extraAbilityGameID` naming the absorbing aura) and `removebuff` events.
-  Observed keys: `abilityGameID`, `amount`, `attackerID`, `buffs`, `extraAbilityGameID`, `fight`,
-  `sourceID`, `targetID`, `timestamp`, `type`. No `overheal` key appeared.
+  soaking a hit) and `removebuff` events. Observed keys: `abilityGameID`, `amount`, `attackerID`,
+  `buffs`, `extraAbilityGameID`, `fight`, `sourceID`, `targetID`, `timestamp`, `type`. No
+  `overheal` key appeared. **On an `absorbed` row, `abilityGameID` is the shield and
+  `extraAbilityGameID` is the hit it soaked** — corrected 2026-09-07 against 43 rows over four
+  deaths, where `abilityGameID` resolved to Prismatic Barrier, Refractive Images, Soulcoil Barrier
+  and Beacon of the Savior while `extraAbilityGameID` resolved to Searing Magma, Frozen Tempest,
+  Primal Echo and Seriously Sharp Seashell. The 2026-09-06 note here had the two the other way
+  round.
 - **`table(dataType: Deaths, fightIDs: [Int])`** returns `{entries: [...]}`, one entry per death,
   with `name`, `id`, `guid`, `type`, `icon`, `timestamp`, `fight`, `deathWindow`, `overkill`,
   `killingBlow {name, guid, type, abilityIcon}`, `damage {total, totalReduced, activeTime,
@@ -207,6 +215,29 @@ work can start from facts.
   types by `npcCountMap` under-prices a pack with several copies of one mob. Forces a pull
   actually awarded come from the enemy death events in its window, which is what
   `analysis/trash.py` already does.
+
+**Measured 2026-09-07 for the recap**, same report and fight, into a fresh cache. Every figure is
+net of the `rateLimitData` query used to read it, which costs 1.00 point of its own.
+
+- **Casts with `includeResources: true`, whole fight, `hostilityType: Friendlies`:** 2.59 points
+  over 2 pages and 10716 rows, against 2.00 points for the same window without it. The flag costs
+  about 0.30 a page. 9259 of the rows carry both `hitPoints` and `maxHitPoints`; 1457 carry
+  neither. A carrying row also holds `absorb`, `itemLevel`, `classResources` and the player's
+  secondary stats.
+- **`dataType: Healing` scoped by `targetID`, one ten-second window:** 1.00 point, 7 to 46 rows
+  per death, never paginated. **The scoping works**: across all four deaths, no returned row
+  targeted another actor.
+- **`dataType: All` scoped by `targetID` does *not* filter.** A sixty-second window asked for one
+  player returned 7087 rows, of which 428 targeted them and 6355 touched neither them nor their
+  target. It is the whole group's stream with the argument ignored, and it paginates.
+- **`filterExpression: "type = 'resurrect'"` on `dataType: All` does filter**, server-side and
+  cheaply: over the whole 31-minute fight it returned the one `resurrect` row for 1.00 point and
+  no next page. Unfiltered, the same stream costs 29 points over 29 pages. One filtered query per
+  fight replaces a scoped query per death.
+- **No self-resurrection was observed on this run.** The fight holds exactly one `resurrect` row,
+  `Raise Ally` cast by another player, `sourceID` 7 and `targetID` 694, 1.9 s after the death.
+  Nothing shows what a self-resurrection emits, so a self-resurrection is recognised from the cast
+  of a listed spell, not from a `resurrect` row with `sourceID == targetID`.
 
 ## Aura tables
 
