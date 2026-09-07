@@ -513,9 +513,13 @@ def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
 def test_the_defensives_group_carries_its_confidence_badge() -> None:
     # The only inferred claim on a card whose other facts are all measured. Without
     # a badge a reader has no way to tell it is reconstructed rather than logged.
+    # Scoped to the group's own heading: the finding card in the same section
+    # carries an inferred badge too, and would answer for a missing one here.
     section = deaths_section(a_page_with(owns_barrier(10_000)))
-    assert "badge-inferred" in section
-    assert 'href="#provenance"' in section
+    heading = re.search(r'<p class="avail-title">Defensives.*?</p>', section, re.S)
+    assert heading is not None
+    assert "badge-inferred" in heading.group()
+    assert 'href="#provenance"' in heading.group()
 
 
 def a_page_with_consumables(cast: CastEvent | None = None) -> str:

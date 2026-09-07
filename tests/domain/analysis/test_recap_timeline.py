@@ -121,6 +121,22 @@ def test_a_heal_is_capped_at_the_maximum_and_an_absorb_changes_nothing() -> None
     assert percents == [100, 100]
 
 
+def test_a_cast_with_no_reading_beside_it_leaves_the_running_health_alone() -> None:
+    # A cast is on the timeline for what the player was doing, not for what it
+    # cost them. Only a reading of their own moves the value, and this cast
+    # carries none: every other test pairs its cast with a sample.
+    events = (
+        RecapEvent(kind=HIT, timestamp_ms=51_000, ability_name="x", amount=10_000),
+        RecapEvent(kind=CAST, timestamp_ms=53_000, ability_name="y"),
+        RecapEvent(kind=HIT, timestamp_ms=55_000, ability_name="x", amount=10_000),
+    )
+    samples = (a_sample(50_000, 100_000),)
+
+    percents = [event.health_percent for event in with_health(events, samples, 50_000)]
+
+    assert percents == [90, 90, 80]
+
+
 def test_a_reading_inside_the_window_replaces_the_running_value() -> None:
     # The arithmetic drifted (a missed event), the reading wins, silently.
     events = (

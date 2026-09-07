@@ -103,7 +103,8 @@ def with_health(
     that the first reading inside it; rows before any anchor carry no value.
     Walking forward, a hit subtracts what reached health, a heal adds its
     amount capped at the sampled maximum, an absorb changes nothing because the
-    shield took it, and a reading replaces the running value outright. When a
+    shield took it, a cast changes nothing because it is there for what the
+    player was doing, and a reading replaces the running value outright. When a
     reading disagrees with the arithmetic the reading wins and nothing is said:
     the drift came from an event the log did not carry, and the reading is the
     only fact available. `samples` must be sorted by time.

@@ -195,6 +195,32 @@ def test_the_rendered_geometry_matches_what_build_timeline_computed() -> None:
     assert f'y="{timeline.ours.baseline_y}"' in html
 
 
+def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class() -> None:
+    # The template maps a kind and a state to a class and to nothing else, so
+    # the eight names below are the whole of what tells the rows apart on screen.
+    card = DeathCard(
+        player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+        killing_blow="Frigid Roar",
+        timeline=tuple(
+            RecapRow(seconds_before="1.0 s", kind=kind, ability=kind.title())
+            for kind in ("hit", "absorb", "heal", "cast")
+        ),
+        availability=(
+            AvailabilityGroup(title="Defensives", rows=tuple(
+                AvailabilityRow(ability=state.title(), state=state)
+                for state in ("pressed", "ready", "cooldown", "unseen")
+            )),
+        ),
+    )
+
+    html = render(a_report(deaths=(card,)))
+
+    assert [kind for kind in ("hit", "absorb", "heal", "cast")
+            if f'<tr class="{kind}">' not in html] == []
+    assert [state for state in ("pressed", "ready", "cooldown", "unseen")
+            if f'<li class="{state}">' not in html] == []
+
+
 def test_a_death_card_with_no_timeline_prints_the_note_the_builder_wrote() -> None:
     # Deliberately not the builder's own wording: the template must print the
     # card's note rather than a sentence of its own.

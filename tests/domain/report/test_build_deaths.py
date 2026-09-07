@@ -481,11 +481,11 @@ def test_a_self_resurrection_is_worded_as_the_players_own() -> None:
     # listed spell id is what tells that apart from a release and a run back.
     loaded = a_loaded_with((), ()).model_copy(update={
         "deaths": (a_death(1, 60_000).model_copy(update={"seconds_until_next_action": 25.0}),),
-        "casts": (CastEvent(actor_id=1, ability_id=20608, ability_name="Reincarnation",
+        "casts": (CastEvent(actor_id=1, ability_id=21169, ability_name="Reincarnation",
                             timestamp_ms=78_000),),
     })
     card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES, NO_EXTERNALS,
-                        SelfResurrections(ability_ids=(20608,)))[0]
+                        SelfResurrections(ability_ids=(21169,)))[0]
     assert card.came_back == "Self-resurrected with Reincarnation, 18.0 s after death."
     assert card.came_back_badge is not None and card.came_back_badge.label == "measured"
 
