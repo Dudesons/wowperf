@@ -12,7 +12,7 @@ from wowperf.domain.analysis.recap import (
 from wowperf.domain.events import Death, Resurrection
 from wowperf.domain.season import SelfResurrections
 
-REINCARNATION = SelfResurrections(ability_ids=(20608,))
+REINCARNATION = SelfResurrections(ability_ids=(21169,))
 
 
 def dead(at_ms: int = 60_000, back_after: float | None = None) -> Death:
@@ -39,7 +39,7 @@ def test_a_resurrection_event_by_the_player_themselves_is_a_self_resurrection() 
 
 
 def test_a_listed_spell_cast_by_the_dead_player_is_a_self_resurrection() -> None:
-    cast = a_cast(66_000, ability="Reincarnation").model_copy(update={"ability_id": 20608})
+    cast = a_cast(66_000, ability="Reincarnation").model_copy(update={"ability_id": 21169})
     back = return_of(loaded(casts=(cast,)), dead(back_after=15.0), REINCARNATION)
     assert (back.kind, back.seconds_after, back.ability_name) == (
         SELF_RESURRECTED, 6.0, "Reincarnation"

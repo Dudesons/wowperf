@@ -6,12 +6,13 @@
 # exposes it. Every id was read from the game's own spell data on the date below,
 # one spell at a time, and the name returned had to match the spell intended.
 #
-# The Shaman's Reincarnation is the only entry. Its name resolves to two ids:
-# 20608 (below), categorised "Shaman Abilities" and carrying a patch history
-# through Shadowlands, and 21169, which shares the same description word for
-# word but is categorised "Uncategorized Spells" and flagged "Not In Spellbook"
-# — a legacy duplicate never granted to a live character. 20608 is the one a
-# Shaman actually has to cast.
+# The Shaman's Reincarnation is the only entry. The report's own ability table
+# names two Reincarnations, 225080 and 21169, and never names 20608 at all. The
+# cast a dead Shaman makes to bring themselves back carries 21169; 225080 is
+# the cooldown debuff the death applies and the cast removes, not a spell the
+# recap matches against. The id below was read from the log's own ability
+# table and event stream rather than only from the spell database, because the
+# log is what this code matches against.
 #
 # The resurrection a Soulstone grants its bearer is deliberately absent. Every
 # id its name resolves to (20707, 95750, 231811) is tagged "Requires Warlock" —
@@ -26,5 +27,5 @@
 verified = "2026-09-07"
 
 ability_ids = [
-  20608,  # Reincarnation
+  21169,  # Reincarnation
 ]

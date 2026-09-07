@@ -236,10 +236,13 @@ net of the `rateLimitData` query used to read it, which costs 1.00 point of its 
   cheaply: over the whole 31-minute fight it returned the one `resurrect` row for 1.00 point and
   no next page. Unfiltered, the same stream costs 29 points over 29 pages. One filtered query per
   fight replaces a scoped query per death.
-- **No self-resurrection was observed on this run.** The fight holds exactly one `resurrect` row,
-  `Raise Ally` cast by another player, `sourceID` 7 and `targetID` 694, 1.9 s after the death.
-  Nothing shows what a self-resurrection emits, so a self-resurrection is recognised from the cast
-  of a listed spell, not from a `resurrect` row with `sourceID == targetID`.
+- **A self-resurrection, on this run.** Player 694 died at 1121.0 s into the fight and returned
+  1.5 s later. The stream shows `225080` applied as a debuff at the moment of death and removed
+  1.5 s after, and at that same moment a `cast` of `21169` by player 694 with `targetID: -1` —
+  no `resurrect` row accompanies any of it. The report's ability table names both `225080` and
+  `21169` and never `20608`, the spell database's Shaman ability. A self-resurrection is
+  therefore recognised from the cast of a listed spell, not from a `resurrect` row with
+  `sourceID == targetID`.
 
 ## Aura tables
 
