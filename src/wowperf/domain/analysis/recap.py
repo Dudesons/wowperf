@@ -213,8 +213,13 @@ def state_of(
             name=name, state=COOLDOWN, owner_id=owner_id,
             seconds=math.ceil((frees_at - death_ms) / 1000),
         )
-    before = [press.timestamp_ms for press in presses if press.timestamp_ms <= death_ms]
-    ready_since = max(before) + cooldown_ms if before else None
+    # A charge comes free when the oldest of the last `charges` presses
+    # recharges. An ability pressed fewer times than it has charges was never
+    # fully spent, so it was ready throughout and says nothing about since when.
+    before = sorted(press.timestamp_ms for press in presses if press.timestamp_ms <= death_ms)
+    ready_since = (
+        before[len(before) - charges] + cooldown_ms if len(before) >= charges else None
+    )
     ready_for = (
         (death_ms - ready_since) / 1000
         if ready_since is not None and ready_since >= run_up_start

@@ -75,6 +75,25 @@ def test_a_second_charge_keeps_an_ability_ready_until_both_are_spent() -> None:
     assert (two.state, two.seconds) == (COOLDOWN, 5)
 
 
+def test_a_charge_never_spent_says_nothing_about_since_when() -> None:
+    # Two charges, one press: a charge was never spent, so the ability was
+    # ready throughout the run-up and there is nothing to say about since when.
+    state = state_of((press(194679, DEATH_MS - 20_000),), "Rune Tap", 25.0, 2, DEATH_MS)
+    assert (state.state, state.seconds) == (READY, None)
+
+
+def test_readiness_comes_from_the_charge_that_recharged_not_the_last_press() -> None:
+    # Two charges, both spent: a charge comes free when the OLDER of the two
+    # presses recharges, not when the most recent one does. Pressed 32 s and
+    # 22 s before death on a 25 s cooldown, the older press's charge frees up
+    # 32 - 25 = 7 s before death, and that is the lower bound reported.
+    state = state_of(
+        (press(194679, DEATH_MS - 32_000), press(194679, DEATH_MS - 22_000)),
+        "Rune Tap", 25.0, 2, DEATH_MS,
+    )
+    assert (state.state, state.seconds) == (READY, 7.0)
+
+
 def test_an_external_counts_as_pressed_only_when_cast_on_the_dying_player() -> None:
     on_them = state_of((press(102342, 57_000, actor_id=2, target_id=1),), "Ironbark", 90.0, 1,
                        DEATH_MS, owner_id=2, on_target=1)
