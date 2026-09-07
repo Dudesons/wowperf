@@ -246,8 +246,9 @@ was false beside a penalty four times larger. The cost is now measured from the 
 player's first cast aimed at another actor — a `targetID` that is neither absent nor the player
 themselves — which is the first moment they affected the fight again. The detail no longer
 compares the figure to the timer penalty; the time decomposition already counts that separately.
-How a player came back — a `resurrect` event targeting them, a self-resurrection cast, or a
-respawn with no event at all — is recorded by the death recap in a later phase, not here.
+How a player came back — a `resurrect` event targeting them, a self-resurrection, or a release
+with no event at all — is recorded on the death card by `2026-09-07-death-recap-design.md` §4.4,
+using this same anchor for a release.
 
 ### 5.3 Missed interrupts — `derived`
 
@@ -376,6 +377,10 @@ silent for the first.
 The data file covers every specialisation as of 2026-09-05. A spec absent from it produces no claim
 in either place, which is the correct behaviour and also the feature's main limit.
 
+*Amended 2026-09-07:* on the death card the two-state answer becomes four — pressed in the run-up,
+ready, on cooldown with an upper bound, not seen this run — and teammates' externals join it, each
+with its owner named. The finding keeps its wording. See `2026-09-07-death-recap-design.md` §4.3.
+
 ### 5.9 Healing consumables at a death — `inferred`
 
 *Added 2026-09-05.*
@@ -424,6 +429,10 @@ judged at all.
 **It fires on very nearly every death**, because most players drink neither consumable in most
 runs. That is the honest consequence of the design and not a defect, but it means the claim
 carries little information on its own, and `mplus-analysis` says so where a reader will meet it.
+
+*Amended 2026-09-07:* on the death card the two-state answer becomes four — pressed in the run-up,
+ready, on cooldown with an upper bound, not seen this run — and teammates' externals join it, each
+with its owner named. The finding keeps its wording. See `2026-09-07-death-recap-design.md` §4.3.
 
 ### 5.10 Throughput cooldowns — `inferred`
 

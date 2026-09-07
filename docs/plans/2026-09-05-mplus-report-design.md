@@ -149,7 +149,15 @@ class DeathCard(Frozen):
     when: str                # "12:04, pull 5"
     killing_blow: str
     last_ten_seconds: tuple[DamageRow, ...] = ()
+```
 
+*Amended 2026-09-07:* `DamageRow` and this `DeathCard` are superseded by the recap card of
+`2026-09-07-death-recap-design.md` §5: a `RecapRow` timeline with a reconstructed health column,
+three `AvailabilityGroup`s (own defensives, consumables, teammates' externals) of four-state
+`AvailabilityRow`s, and one return line with its badge. `Provenance` gains `methods`, the
+sentences a reader might dispute, stated once — today the health reconstruction.
+
+```python
 class PlayerCard(Frozen):
     name: str
     class_name: str          # rendered as text, never colour alone
@@ -239,6 +247,10 @@ downtime, trash and confound findings that the ledger of losses used to rank on 
 Summary's "Biggest losses" heading appears only when a timed loss exists. Which section sits
 under which tab is fixed in `2026-09-06-report-tabs-design.md` §2; the heading count in §10 is
 superseded by that document's §7.1.
+
+*Amended 2026-09-07:* row 5 is fed by `loaded.deaths`, `loaded.damage_taken`, `loaded.healing`,
+`loaded.health_samples`, `loaded.resurrections`, and the defensives, consumables and externals
+data files. See `2026-09-07-death-recap-design.md`.
 
 ### 5.1 The header's percentile is not built, and why
 

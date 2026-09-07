@@ -67,6 +67,16 @@ to the dying player with `targetID`, so each returns a handful of rows:
   player as `targetID`. The window ends at the return because a resurrection that revived the
   player necessarily precedes their first action; anything later belongs to a later death.
 
+*Amended 2026-09-07:* the first bullet's field roles are reversed. On an `absorbed` row,
+`abilityGameID` names the shield and `extraAbilityGameID` names the hit it soaked — measured
+across 43 rows over four deaths on 2026-09-07 and recorded in `.claude/skills/wcl-api/SKILL.md`.
+
+*Amended 2026-09-07:* the second bullet's query does not work as specified. `targetID` is ignored
+on `dataType: All`: a sixty-second window asked for one player returned 7087 rows, of which 428
+touched them. What ships instead is one query per fight with
+`filterExpression: "type = 'resurrect'"`, which returns every resurrection in a 31-minute fight
+for one point and no pagination.
+
 Every query is cached and its `rateLimitData` recorded like every other. The plan's first task
 measures, on the real run, what casts with resources and the two scoped queries cost, and records
 the figures with dates in the wcl-api skill before any later task depends on them.
@@ -125,13 +135,22 @@ old record collapsed into one.
 keep them alive: Pain Suppression, Ironbark, Blessing of Sacrifice, Life Cocoon and the like. The
 file has the shape of `data/defensives.toml` — a `verified` date, then one table per `"Class/Spec"`
 holding `ability_id`, `name`, `cooldown_seconds` and an optional `charges` — and the same rules:
-base cooldowns without talent reductions, every id verified against the API's ability lookup on the
-dated day, and a spec absent from the file produces no claim.
+base cooldowns without talent reductions, every id ~~verified against the API's ability lookup on
+the dated day~~ **verified from the game's own spell data on the dated day, the way
+`data/defensives.toml` was** *(corrected 2026-09-07 — no such API lookup exists; an id that has
+to match what the log itself emits, as `data/resurrections.toml`'s does, is verified against the
+log instead, see §3.4)*, and a spec absent from the file produces no claim.
 
 In the domain, `ExternalAbility(CooldownAbility)` and `Externals` mirror `DefensiveAbility` and
 `Defensives`, with the same `for_spec`. The loader gains `load_externals`. The existing test that
 forbids one ability in both the defensive and the throughput file for one spec is extended to
 three files: an ability lives in at most one of them.
+
+*Amended 2026-09-07:* this changed existing behaviour, not only added a rule. Ironbark and Lay on
+Hands were personal defensives in `data/defensives.toml` and are now externals: Druid/Restoration,
+Paladin/Holy, Paladin/Protection and Paladin/Retribution no longer produce a "defensive never
+pressed" finding for them, and a death card judges each as a teammate's tool rather than the
+player's own.
 
 ### 3.4 Telling a self-resurrection from a release
 
@@ -147,6 +166,16 @@ for a paired `resurrect` event, so the plan's spike settles the mechanism:
   dead player, after the death and before any other cast of theirs, is a self-resurrection.
 
 Either way the domain sees a `Resurrection` whose caster is the player themselves.
+
+*Amended 2026-09-07:* the log does not emit a `resurrect` event for a self-resurrection, so the
+first branch above never fires and the second is what ships. A player on the measured fight died
+and came back 1.5 seconds later with Reincarnation, and the log carries no `resurrect` row for
+it — only a `cast` of the spell and the cooldown debuff around it. A self-resurrection is
+therefore recognised from the cast of a listed spell, and `data/resurrections.toml` holds that
+list. The id in the file is the one the log emits, `21169`, not the one the spell database offers
+for the Shaman ability, because an id matched against log events has to come from the log. The
+Soulstone's self-resurrection is deliberately absent: no id could be verified as one the bearer
+casts, so a Soulstone save reads as a release.
 
 ## 4. The computation
 
@@ -197,6 +226,16 @@ with its owner's display name. Each ability lands in exactly one of four states:
 | ready | fewer presses than `charges` fall in `[death − cooldown, death]` | "ready" |
 | on cooldown | otherwise; the bound is `last press + cooldown − death`, rounded up to a whole second | "at most 14 s left" |
 | not seen this run | its owner never cast it in the fight | "not seen this run" |
+
+*Amended 2026-09-07:* a **ready** row whose readiness arrived inside the run-up says for how long,
+as a lower bound — "ready, for at least 4 s" — because base cooldowns are longer than talented
+ones, so the true moment was no later. Without this, an ability that came off cooldown mid-burst
+would read exactly like one ready all along.
+
+*Amended 2026-09-07:* a group with no rows says why it is empty, and that line is not the caveat
+that qualifies rows that are present — the two purposes share one field. For consumables the
+group can be empty two ways: nothing is listed for the run, or every category's cooldown window
+reaches back before the run began. The line names both without claiming which.
 
 "Not seen this run" is listed and never judged, for the reason the postmortem design §5.8 gives:
 a talent not taken looks exactly like a button never pressed. "Ready" for an external means the

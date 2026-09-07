@@ -119,6 +119,27 @@ fight and a potion drunk before the pull is invisible. And combat and mana potio
 at all — they stopped sharing a cooldown with health potions in patch 9.0, so their absence from
 the data is deliberate and carries no meaning.
 
+## What a death recap can honestly say
+
+Each death card carries a timeline of the last ten seconds, the state of every saving tool, and a
+return line. Three of its claims need care.
+
+**The health column is reconstructed**, badged `derived`. The log states a player's health only on
+their own casts; between readings each hit is subtracted and each heal added, and the next reading
+replaces the running value. Write "was around", never a flat figure, and expect the column to be
+empty for a player who never cast in the window.
+
+**A remaining cooldown is an upper bound.** "At most 14 s left" means the base cooldown says so;
+a talent or a reset could have made it ready. "Ready, for at least 4 s" is the mirror: a lower
+bound. "Not seen this run" is a fact about the log, not about the player — a talent not taken
+looks the same. An external marked ready is a fact about a teammate's cooldown; the report draws
+no finding from it, and neither should you.
+
+**"Released" is a reading, not an event.** A resurrection is logged; a release is not. The card
+says "released" when no resurrection preceded the player's first action against an enemy, and
+gives that action as the return time, which is the same anchor the death cost uses. It is badged
+`derived` for that reason. "Not seen acting again this run" means exactly that.
+
 ## Why damage goes unranked
 
 Warcraft Logs deliberately exports no per-boss Mythic+ damage metric, because the unit of
