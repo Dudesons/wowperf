@@ -93,6 +93,12 @@ class DamageTakenEvent(Frozen):
     A Warcraft Logs damage event's `amount` excludes what was absorbed, so a
     fully absorbed hit reads zero. `unmitigatedAmount` is the honest answer to
     "how hard did this hit", which is what the per-ability comparison asks.
+
+    `health_damage` is that `amount`: what reached the player's health after
+    mitigation and absorption, which is what a health curve subtracts.
+    `absorbed` is what a shield soaked. A fully absorbed hit therefore reads as
+    unmitigated damage above zero, health damage zero, and absorbed equal to
+    the shield's share — three facts, not one.
     """
 
     actor_id: int
@@ -101,3 +107,50 @@ class DamageTakenEvent(Frozen):
     amount: int
     timestamp_ms: int
     pull_index: int | None = None
+    health_damage: int = 0
+    absorbed: int = 0
+
+
+class HealthSample(Frozen):
+    """The player's own health, read off an event they were the source of.
+
+    Only events a player causes carry their hit points; the hits they take do
+    not. A health curve is therefore a sequence of these, sparse wherever the
+    player was idle, and the recap reconstructs the gaps.
+    """
+
+    actor_id: int
+    timestamp_ms: int
+    hit_points: int
+    max_hit_points: int
+
+
+class HealingEvent(Frozen):
+    """One heal landing on a player, or one hit a shield on them soaked.
+
+    `absorbed` tells the two apart. A heal restores `amount` health. An absorb
+    prevented `amount` damage without touching health, and `ability_name` then
+    names the shield that soaked it rather than a heal.
+    """
+
+    actor_id: int
+    source_id: int
+    ability_id: int
+    ability_name: str
+    amount: int
+    timestamp_ms: int
+    absorbed: bool = False
+
+
+class Resurrection(Frozen):
+    """A dead player brought back by a spell.
+
+    `caster_id` equal to `actor_id` is a self-resurrection. A player who
+    released and ran back has no record here at all: the log emits nothing.
+    """
+
+    actor_id: int
+    caster_id: int
+    ability_id: int
+    ability_name: str
+    timestamp_ms: int

@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for the run structure: pull classification, durations and signatures.
 # ABOUTME: These models are pure data, so the tests cover only the derived properties.
 
-from wowperf.domain.model import EnemyNpc, Player, Pull, Run
+from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 
 
 def a_pull(index: int, start_ms: int, end_ms: int, encounter_id: int = 0,
@@ -20,7 +20,7 @@ def a_pull(index: int, start_ms: int, end_ms: int, encounter_id: int = 0,
     )
 
 
-def a_run(pulls: tuple[Pull, ...]) -> Run:
+def a_run(pulls: tuple[Pull, ...] = ()) -> Run:
     return Run(
         report_code="abc123",
         fight_id=1,
@@ -101,3 +101,8 @@ def test_a_run_carries_the_encounter_it_can_be_compared_against() -> None:
 
 def test_a_run_without_an_owner_says_so_rather_than_guessing() -> None:
     assert a_run(pulls=()).owner_name is None
+
+
+def test_a_loaded_run_defaults_every_recap_stream_to_empty() -> None:
+    loaded = LoadedRun(run=a_run())
+    assert (loaded.health_samples, loaded.healing, loaded.resurrections) == ((), (), ())

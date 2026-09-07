@@ -11,7 +11,10 @@ from wowperf.domain.events import (
     Death,
     EnemyCastRow,
     EnemyDeath,
+    HealingEvent,
+    HealthSample,
     InterruptEvent,
+    Resurrection,
 )
 
 
@@ -124,3 +127,8 @@ class LoadedRun(Frozen):
     interrupts: tuple[InterruptEvent, ...] = ()
     enemy_deaths: tuple[EnemyDeath, ...] = ()
     damage_taken: tuple[DamageTakenEvent, ...] = ()
+    # The three streams the death recap reads. Health samples come off the
+    # player's own casts; healing and resurrections are fetched per death.
+    health_samples: tuple[HealthSample, ...] = ()
+    healing: tuple[HealingEvent, ...] = ()
+    resurrections: tuple[Resurrection, ...] = ()
