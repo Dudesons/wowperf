@@ -49,7 +49,7 @@ covers it otherwise.
 | `sourceID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `events` argument | 2026-09-07 | yes |
-| `includeResources` | `events` argument | 2026-09-07 | no |
+| `includeResources` | `events` argument | 2026-09-07 | yes |
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
@@ -152,6 +152,8 @@ table below supersedes them.
 | Player deaths | 2026-09-04 | `dataType: Deaths` (default hostility) | `death` | `abilityGameID` (always 0), `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID` (always -1), `targetID`, `timestamp`, `type` |
 | Enemy deaths | 2026-09-04 | `dataType: Deaths, hostilityType: Enemies` | `death` | `abilityGameID`, `fight`, `killerID`, `killerInstance`, `killingAbilityGameID`, `sourceID`, `targetID`, `targetInstance`, `targetMarker`, `timestamp`, `type` |
 | Damage taken | 2026-09-04 | `dataType: DamageTaken, hostilityType: Friendlies` | `damage` | `abilityGameID`, `absorbed`, `amount`, `blocked`, `buffs`, `fight`, `hitType`, `isAoE`, `mitigated`, `sourceID`, `sourceInstance`, `sourceMarker`, `targetID`, `tick`, `timestamp`, `type`, `unmitigatedAmount` |
+| Healing received | 2026-09-07 | `dataType: Healing, targetID: <actor>`, per death over the run-up | `heal`, `absorbed`, `removebuff` | `heal`: `abilityGameID`, `amount`, `sourceID`, `targetID`, `timestamp`. `absorbed`: as `heal`, plus `extraAbilityGameID` (the hit that was soaked) and `attackerID`. `removebuff` is dropped. |
+| Resurrections | 2026-09-07 | `dataType: All, filterExpression: "type = 'resurrect'"`, once for the whole fight | `resurrect` only | `abilityGameID` (the spell), `sourceID` (the caster), `targetID` (the revived player), `timestamp`. |
 
 - `sourceInstance` is absent when the instance is the first one; treat a missing value as `0`
   on both sides of any comparison. Two copies of one NPC are `(sourceID, sourceInstance)`.

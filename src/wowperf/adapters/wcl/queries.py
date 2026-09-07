@@ -87,6 +87,10 @@ query Deaths($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float
 }
 """
 
+# `includeResources` attaches the caster's own hitPoints and maxHitPoints to each
+# cast, the only health reading the log offers for a player; the hits they take
+# carry none for the target. See the wcl-api skill, "The event stream, probed
+# for a death recap".
 CASTS_QUERY = """
 query Casts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
   reportData {
@@ -97,6 +101,7 @@ query Casts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!
         fightIDs: [$fightId]
         startTime: $startTime
         endTime: $endTime
+        includeResources: true
         limit: 10000
       ) {
         data
@@ -189,6 +194,57 @@ query DamageTaken($code: String!, $fightId: Int!, $startTime: Float!, $endTime: 
         fightIDs: [$fightId]
         startTime: $startTime
         endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+# Issued once per death, bounded to one actor and a few seconds, so it returns
+# a handful of rows. Scoping by `targetID` is what keeps a ten-death run from
+# paying for ten full streams; the healing stream honours that scoping.
+HEALING_QUERY = """
+query Healing(
+  $code: String!, $fightId: Int!, $actorId: Int!, $startTime: Float!, $endTime: Float!
+) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Healing
+        fightIDs: [$fightId]
+        targetID: $actorId
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
+# `resurrect` events live only in the All stream: there is no Resurrects data
+# type. That stream ignores `targetID`, so it is narrowed by a server-side
+# filter on the event type instead, and asked once for the whole fight rather
+# than once per death.
+RESURRECTS_QUERY = """
+query Resurrects(
+  $code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!
+) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: All
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        filterExpression: "type = 'resurrect'"
         limit: 10000
       ) {
         data
