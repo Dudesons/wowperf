@@ -73,7 +73,7 @@ across 43 rows over four deaths on 2026-09-07 and recorded in `.claude/skills/wc
 
 *Amended 2026-09-07:* the second bullet's query does not work as specified. `targetID` is ignored
 on `dataType: All`: a sixty-second window asked for one player returned 7087 rows, of which 428
-touched them. What ships instead is one query per fight with
+targeted them. What ships instead is one query per fight with
 `filterExpression: "type = 'resurrect'"`, which returns every resurrection in a 31-minute fight
 for one point and no pagination.
 
