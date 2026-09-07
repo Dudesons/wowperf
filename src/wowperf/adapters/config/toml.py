@@ -35,6 +35,37 @@ def _read(path: Path) -> dict[str, object]:
         return tomllib.load(handle)
 
 
+def _load_cooldowns[AbilityT: CooldownAbility](
+    path: Path, ability: type[AbilityT]
+) -> tuple[tuple[str, tuple[AbilityT, ...]], ...]:
+    """Read a file of cooldowns grouped by class and specialisation.
+
+    The defensives, the externals and the throughput cooldowns hold the same
+    four fields under the same spec keys and differ only in the record they
+    build, so all three are read here. A top-level key that is not a table is
+    the `verified` date, which the domain does not use.
+    """
+    entries: list[tuple[str, tuple[AbilityT, ...]]] = []
+    for key, value in _read(path).items():
+        if not isinstance(value, dict):
+            continue
+        entries.append(
+            (
+                key,
+                tuple(
+                    ability(
+                        ability_id=int(item["ability_id"]),
+                        name=str(item["name"]),
+                        cooldown_seconds=float(item["cooldown_seconds"]),
+                        charges=int(item.get("charges", 1)),
+                    )
+                    for item in value.get("abilities") or ()
+                ),
+            )
+        )
+    return tuple(entries)
+
+
 def load_season_data(path: Path = DEFAULT_SEASON_PATH) -> SeasonData:
     """Read the season timer constants."""
     penalty = _read(path)["death_penalty"]
@@ -48,52 +79,12 @@ def load_season_data(path: Path = DEFAULT_SEASON_PATH) -> SeasonData:
 
 def load_defensives(path: Path = DEFAULT_DEFENSIVES_PATH) -> Defensives:
     """Read the hand-maintained defensive cooldown list."""
-    raw = _read(path)
-    entries = []
-    for key, value in raw.items():
-        if not isinstance(value, dict):
-            continue  # the top-level `verified` date
-        abilities = value.get("abilities") or []
-        entries.append(
-            (
-                key,
-                tuple(
-                    DefensiveAbility(
-                        ability_id=int(item["ability_id"]),
-                        name=str(item["name"]),
-                        cooldown_seconds=float(item["cooldown_seconds"]),
-                        charges=int(item.get("charges", 1)),
-                    )
-                    for item in abilities
-                ),
-            )
-        )
-    return Defensives(entries=tuple(entries))
+    return Defensives(entries=_load_cooldowns(path, DefensiveAbility))
 
 
 def load_externals(path: Path = DEFAULT_EXTERNALS_PATH) -> Externals:
     """Read the hand-maintained list of cooldowns cast on other players."""
-    raw = _read(path)
-    entries = []
-    for key, value in raw.items():
-        if not isinstance(value, dict):
-            continue  # the top-level `verified` date
-        abilities = value.get("abilities") or []
-        entries.append(
-            (
-                key,
-                tuple(
-                    ExternalAbility(
-                        ability_id=int(item["ability_id"]),
-                        name=str(item["name"]),
-                        cooldown_seconds=float(item["cooldown_seconds"]),
-                        charges=int(item.get("charges", 1)),
-                    )
-                    for item in abilities
-                ),
-            )
-        )
-    return Externals(entries=tuple(entries))
+    return Externals(entries=_load_cooldowns(path, ExternalAbility))
 
 
 def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
@@ -139,17 +130,4 @@ def load_self_resurrections(path: Path = DEFAULT_RESURRECTIONS_PATH) -> SelfResu
 
 def load_throughput_cooldowns(path: Path = DEFAULT_THROUGHPUT_PATH) -> ThroughputCooldowns:
     """Throughput cooldowns per class and specialisation, from the committed TOML file."""
-    raw = _read(path)
-    entries = []
-    for key, block in raw.items():
-        if not isinstance(block, dict):
-            continue
-        entries.append(
-            (
-                key,
-                tuple(
-                    CooldownAbility(**ability) for ability in block.get("abilities", ())
-                ),
-            )
-        )
-    return ThroughputCooldowns(entries=tuple(entries))
+    return ThroughputCooldowns(entries=_load_cooldowns(path, CooldownAbility))
