@@ -353,7 +353,9 @@ def _availability_row(state: AbilityState, names: dict[int, str]) -> Availabilit
     elif state.state == COOLDOWN:
         detail = f"at most {state.seconds:.0f} s left"
     elif state.state == READY and state.seconds is not None:
-        detail = f"for at least {state.seconds:.1f} s"
+        detail = f"ready, for at least {state.seconds:.1f} s"
+    elif state.state == READY:
+        detail = "ready"
     elif state.state == UNSEEN:
         detail = "not seen this run"
     else:

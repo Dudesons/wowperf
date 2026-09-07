@@ -121,9 +121,12 @@ class AvailabilityGroup(Frozen):
     """One of the three availability groups: own defensives, consumables, teammates' externals.
 
     A group with rows carries the inferred badge. A group with none and a
-    `note` is a group the tool could say nothing about — a spec absent from a
-    file — which is not the same as a checked group that found nothing: that
-    one has rows in the ready state. Rendering both as blank would merge them.
+    `note` is empty for one of two reasons: a spec absent from a file, which
+    the tool could say nothing about at all, or — for consumables — every
+    category's cooldown window reaching back before the run began, which is a
+    group that was checked and still has nothing to show. Either way the note
+    says why; rendering both as blank would merge them with a checked group
+    that found rows in the ready state.
     """
 
     title: str

@@ -3,6 +3,7 @@
 
 import math
 
+from wowperf.domain.analysis.consumables import consumable_window_start
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import CastEvent, Death, HealthSample
@@ -184,7 +185,9 @@ def state_of(
     Never pressed in the fight is UNSEEN: a talent not taken looks exactly like
     a button never pressed, so it is listed and not judged. A press inside the
     run-up is PRESSED — for an external, only a press on the dying player
-    (`on_target`), since a cast on someone else was a use, not a save. With
+    (`on_target`) or with no target at all, since an untargeted cast covers an
+    area or the whole group rather than aiming at one player, while a cast on
+    someone else was a use, not a save. With
     `charges` or more presses inside one base cooldown before the death the
     ability is on COOLDOWN, and the bound is when the oldest of those presses
     frees its charge, rounded up. Otherwise READY.
@@ -200,7 +203,10 @@ def state_of(
         press.timestamp_ms
         for press in presses
         if run_up_start <= press.timestamp_ms <= death_ms
-        and (on_target is None or press.target_id == on_target)
+        # A cast with no target (Power Word: Barrier, Spirit Link Totem, Rallying
+        # Cry) hits an area or the whole group rather than one player, so it has no
+        # other player it could have been for and counts here too.
+        and (on_target is None or press.target_id in (on_target, None))
     ]
     if in_run_up:
         return AbilityState(
@@ -291,7 +297,7 @@ def availability_at(
         drinks = tuple(
             consumable_state(presses_of(death.actor_id, category.ability_ids), category, death_ms)
             for category in consumables.categories
-            if death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
+            if consumable_window_start(category, death_ms) >= visible_from_ms
         )
 
     mates = []

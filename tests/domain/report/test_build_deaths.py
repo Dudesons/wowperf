@@ -305,7 +305,9 @@ def test_the_availability_groups_come_in_order_with_their_badges_and_notes() -> 
     assert [(r.ability, r.state, r.detail) for r in own.rows] == [
         ("Icebound Fortitude", "unseen", "not seen this run")
     ]
-    assert [(r.ability, r.state, r.detail) for r in drinks.rows] == [("healthstone", "ready", "")]
+    assert [(r.ability, r.state, r.detail) for r in drinks.rows] == [
+        ("healthstone", "ready", "ready")
+    ]
     assert drinks.note == CONSUMABLE_CAVEAT
     assert [(r.ability, r.owner, r.state, r.detail) for r in mates.rows] == [
         ("Ironbark", "Leafy", "cooldown", "at most 40 s left")
@@ -334,7 +336,7 @@ def test_a_pressed_row_and_a_ready_for_row_carry_one_decimal() -> None:
     )),))
     own = build_deaths(loaded, defensives, NO_CONSUMABLES)[0].availability[0]
     assert [(r.state, r.detail) for r in own.rows] == [
-        ("pressed", "3.4 s before death"), ("ready", "for at least 4.0 s")
+        ("pressed", "3.4 s before death"), ("ready", "ready, for at least 4.0 s")
     ]
 
 

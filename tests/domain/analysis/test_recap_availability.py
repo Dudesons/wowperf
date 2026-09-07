@@ -94,6 +94,29 @@ def test_readiness_comes_from_the_charge_that_recharged_not_the_last_press() -> 
     assert (state.state, state.seconds) == (READY, 7.0)
 
 
+def test_readiness_uses_the_oldest_of_the_last_charges_presses_not_the_oldest_of_the_run() -> None:
+    # Two charges, 25 s cooldown, pressed three times: 200 s, 32 s and 20 s before death.
+    # The 200 s press is old enough to be irrelevant -- both charges had long since
+    # recharged by the time the other two presses happened, and neither the run-up nor
+    # the cooldown window reaches back that far. What decides readiness is the second-
+    # oldest of the three, the 32 s press, because it is the older of the last two
+    # presses and so the one whose recharge freed the last charge that had been spent:
+    # 32 - 25 = 7 s before death, inside the ten-second run-up, so a lower bound is
+    # reported. Using the 200 s press instead (the oldest of the whole run) would push
+    # readiness outside the run-up and report nothing; using the 20 s press instead
+    # (the most recent) would put readiness after the death and report a negative
+    # duration -- the defect corrected in dc4934d.
+    state = state_of(
+        (
+            press(194679, DEATH_MS - 200_000),
+            press(194679, DEATH_MS - 32_000),
+            press(194679, DEATH_MS - 20_000),
+        ),
+        "Rune Tap", 25.0, 2, DEATH_MS,
+    )
+    assert (state.state, state.seconds) == (READY, 7.0)
+
+
 def test_an_external_counts_as_pressed_only_when_cast_on_the_dying_player() -> None:
     on_them = state_of((press(102342, 57_000, actor_id=2, target_id=1),), "Ironbark", 90.0, 1,
                        DEATH_MS, owner_id=2, on_target=1)
@@ -101,6 +124,19 @@ def test_an_external_counts_as_pressed_only_when_cast_on_the_dying_player() -> N
                         DEATH_MS, owner_id=2, on_target=1)
     assert (on_them.state, on_them.owner_id) == (PRESSED, 2)
     assert (on_other.state, on_other.seconds) == (COOLDOWN, 87)
+
+
+def test_an_untargeted_external_reads_as_pressed_for_the_dying_player() -> None:
+    # Power Word: Barrier, Spirit Link Totem and Rallying Cry cover an area or the
+    # whole group, and the log writes target_id=None for them. An untargeted cast
+    # has no other player it could have been for, so it must not fall through to
+    # the cooldown branch the way a cast aimed at someone else does.
+    untargeted = state_of((press(97462, 57_000, actor_id=2, target_id=None),), "Rallying Cry",
+                          180.0, 1, DEATH_MS, owner_id=2, on_target=1)
+    on_other = state_of((press(97462, 57_000, actor_id=2, target_id=3),), "Rallying Cry",
+                        180.0, 1, DEATH_MS, owner_id=2, on_target=1)
+    assert (untargeted.state, untargeted.owner_id) == (PRESSED, 2)
+    assert (on_other.state, on_other.seconds) == (COOLDOWN, 177)
 
 
 def test_a_consumable_never_drunk_is_ready_because_no_talent_gates_a_potion() -> None:

@@ -315,6 +315,11 @@ class DeathCard(Frozen):
 Every string is formatted by the builder. `kind` and `state` are closed vocabularies the template
 maps to CSS classes and to nothing else.
 
+*Amended 2026-09-07:* `AvailabilityRow.detail` carries the word "ready" — "ready" alone, or
+"ready, for at least 4 s" — rather than leaving it empty, so the state a defensive card exists to
+show never rests on colour alone. §4.3's table of states governs here: this section's comment
+originally showed an empty detail for a ready row with no lower bound, which contradicted it.
+
 ## 6. Template and CSS
 
 Inside `<section id="tab-deaths">`, each card keeps its head — player, killing blow, when — and

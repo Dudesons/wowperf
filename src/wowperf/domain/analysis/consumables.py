@@ -11,6 +11,15 @@ from wowperf.domain.model import Run
 from wowperf.domain.season import ConsumableCategory, Consumables
 
 
+def consumable_window_start(category: ConsumableCategory, death_ms: int) -> float:
+    """When a press would have to fall for this category still to be on cooldown at the death.
+
+    A death earlier in the run than this cannot be judged at all: the log begins
+    after the window opens, so silence about the category proves nothing.
+    """
+    return death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000
+
+
 def consumables_up_at(
     casts: tuple[CastEvent, ...],
     categories: tuple[ConsumableCategory, ...],
@@ -52,12 +61,10 @@ def consumables_up_at(
         category.name
         for category in categories
         if any(ability_id in drank for ability_id in category.ability_ids)
-        and death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
+        and consumable_window_start(category, death_ms) >= visible_from_ms
         and not any(
             cast.ability_id in category.ability_ids
-            and death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000
-            <= cast.timestamp_ms
-            <= death_ms
+            and consumable_window_start(category, death_ms) <= cast.timestamp_ms <= death_ms
             for cast in ours
         )
     )
