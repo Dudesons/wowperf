@@ -1,10 +1,13 @@
 # ABOUTME: One death's recap: the last seconds as a timeline with a reconstructed health column,
 # ABOUTME: the state of every saving tool at the death, and how the player came back. Pure.
 
+import math
+
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.base import Frozen
-from wowperf.domain.events import Death, HealthSample
+from wowperf.domain.events import CastEvent, Death, HealthSample
 from wowperf.domain.model import LoadedRun
+from wowperf.domain.season import ConsumableCategory, Consumables, Defensives, Externals
 
 HIT = "hit"
 ABSORB = "absorb"
@@ -122,3 +125,174 @@ def with_health(
         )
         rows.append(event.model_copy(update={"health_percent": percent}))
     return tuple(rows)
+
+
+PRESSED = "pressed"
+READY = "ready"
+COOLDOWN = "cooldown"
+UNSEEN = "unseen"
+
+
+class AbilityState(Frozen):
+    """One saving tool at the moment of death.
+
+    `seconds` means one thing per state. PRESSED: how many seconds before the
+    death its owner cast it. COOLDOWN: the upper bound left, in whole seconds.
+    READY: how long it had been ready when that fell inside the run-up, a lower
+    bound, else None. UNSEEN: always None. `owner_id` is None for the dying
+    player's own abilities and a teammate's actor id for an external.
+    """
+
+    name: str
+    state: str
+    owner_id: int | None = None
+    seconds: float | None = None
+
+
+class AvailabilityAt(Frozen):
+    """The three groups of a death's availability column.
+
+    `own` and `consumables` are None when the tool has nothing to say — a spec
+    absent from the data file, an actor off the roster — which is not the same
+    as an empty tuple, where everything was checked and listed. Externals are
+    one tuple over every teammate, empty when no teammate's spec is listed.
+    """
+
+    own: tuple[AbilityState, ...] | None = None
+    consumables: tuple[AbilityState, ...] | None = None
+    externals: tuple[AbilityState, ...] = ()
+
+
+def state_of(
+    presses: tuple[CastEvent, ...],
+    name: str,
+    cooldown_seconds: float,
+    charges: int,
+    death_ms: int,
+    *,
+    owner_id: int | None = None,
+    on_target: int | None = None,
+) -> AbilityState:
+    """Which of the four states one ability was in at the death.
+
+    Never pressed in the fight is UNSEEN: a talent not taken looks exactly like
+    a button never pressed, so it is listed and not judged. A press inside the
+    run-up is PRESSED — for an external, only a press on the dying player
+    (`on_target`), since a cast on someone else was a use, not a save. With
+    `charges` or more presses inside one base cooldown before the death the
+    ability is on COOLDOWN, and the bound is when the oldest of those presses
+    frees its charge, rounded up. Otherwise READY.
+
+    Every figure is bounded the safe way: the log records no cooldown reset,
+    charge refresh or talent reduction, so the true remaining time is at most
+    the bound and the true ready moment is no later than the one computed.
+    """
+    if not presses:
+        return AbilityState(name=name, state=UNSEEN, owner_id=owner_id)
+    run_up_start = death_ms - RUN_UP_SECONDS * 1000
+    in_run_up = [
+        press.timestamp_ms
+        for press in presses
+        if run_up_start <= press.timestamp_ms <= death_ms
+        and (on_target is None or press.target_id == on_target)
+    ]
+    if in_run_up:
+        return AbilityState(
+            name=name, state=PRESSED, owner_id=owner_id,
+            seconds=(death_ms - max(in_run_up)) / 1000,
+        )
+    cooldown_ms = cooldown_seconds * 1000
+    recent = sorted(
+        press.timestamp_ms
+        for press in presses
+        if death_ms - cooldown_ms <= press.timestamp_ms <= death_ms
+    )
+    if len(recent) >= charges:
+        frees_at = recent[len(recent) - charges] + cooldown_ms
+        return AbilityState(
+            name=name, state=COOLDOWN, owner_id=owner_id,
+            seconds=math.ceil((frees_at - death_ms) / 1000),
+        )
+    before = [press.timestamp_ms for press in presses if press.timestamp_ms <= death_ms]
+    ready_since = max(before) + cooldown_ms if before else None
+    ready_for = (
+        (death_ms - ready_since) / 1000
+        if ready_since is not None and ready_since >= run_up_start
+        else None
+    )
+    return AbilityState(name=name, state=READY, owner_id=owner_id, seconds=ready_for)
+
+
+def consumable_state(
+    presses: tuple[CastEvent, ...], category: ConsumableCategory, death_ms: int
+) -> AbilityState:
+    """A consumable category's state: as an ability's, except that never drunk is READY.
+
+    No talent gates a potion, so silence is not ambiguity here — the caveat
+    that the log never proves one was carried stays on the card instead.
+    """
+    state = state_of(presses, category.name, category.cooldown_seconds, 1, death_ms)
+    if state.state == UNSEEN:
+        return AbilityState(name=category.name, state=READY)
+    return state
+
+
+def availability_at(
+    loaded: LoadedRun,
+    death: Death,
+    defensives: Defensives,
+    consumables: Consumables,
+    externals: Externals,
+    visible_from_ms: int,
+) -> AvailabilityAt:
+    """The player's own defensives, the consumables, and every teammate's externals.
+
+    A consumable category is judged only when its whole window lies inside the
+    fight (`visible_from_ms`), the rule `consumables_up_at` applies: a potion
+    drunk before the timer started is invisible. Externals come in roster
+    order, each carrying its owner.
+    """
+    players = {player.actor_id: player for player in loaded.run.players}
+    player = players.get(death.actor_id)
+    death_ms = death.timestamp_ms
+
+    def presses_of(actor_id: int, ability_ids: tuple[int, ...]) -> tuple[CastEvent, ...]:
+        return tuple(
+            cast
+            for cast in loaded.casts
+            if cast.actor_id == actor_id and cast.ability_id in ability_ids
+        )
+
+    own = None
+    if player is not None:
+        known = defensives.for_spec(player.class_name, player.spec)
+        if known:
+            own = tuple(
+                state_of(
+                    presses_of(death.actor_id, (ability.ability_id,)),
+                    ability.name, ability.cooldown_seconds, ability.charges, death_ms,
+                )
+                for ability in known
+            )
+
+    drinks = None
+    if player is not None and consumables.categories:
+        drinks = tuple(
+            consumable_state(presses_of(death.actor_id, category.ability_ids), category, death_ms)
+            for category in consumables.categories
+            if death_ms - (category.cooldown_seconds + RUN_UP_SECONDS) * 1000 >= visible_from_ms
+        )
+
+    mates = []
+    for mate in loaded.run.players:
+        if mate.actor_id == death.actor_id:
+            continue
+        for ability in externals.for_spec(mate.class_name, mate.spec):
+            mates.append(
+                state_of(
+                    presses_of(mate.actor_id, (ability.ability_id,)),
+                    ability.name, ability.cooldown_seconds, ability.charges, death_ms,
+                    owner_id=mate.actor_id, on_target=death.actor_id,
+                )
+            )
+    return AvailabilityAt(own=own, consumables=drinks, externals=tuple(mates))
