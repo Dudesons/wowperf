@@ -446,6 +446,26 @@ def test_the_return_line_is_worded_per_outcome_and_badged() -> None:
     ]
 
 
+def test_an_actor_whose_id_is_zero_is_named_like_any_other() -> None:
+    # Zero is falsy, and both the healer and the resurrecting teammate are
+    # looked up by id. Neither may fall through to the anonymous wording.
+    naught = Player(actor_id=0, name="Naught", class_name="Priest", spec="Holy", item_level=680)
+    loaded = LoadedRun(
+        run=a_run(players=(a_player(), naught), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 60_000).model_copy(update={"seconds_until_next_action": 12.0}),),
+        damage_taken=(a_hit(1, 55_000, "Snowdrift", 10_000),),
+        healing=(HealingEvent(actor_id=1, source_id=0, ability_id=2061,
+                              ability_name="Flash Heal", amount=9_000, timestamp_ms=56_000),),
+        resurrections=(Resurrection(actor_id=1, caster_id=0, ability_id=61999,
+                                    ability_name="Raise Ally", timestamp_ms=68_000),),
+    )
+
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+    assert [row.detail for row in card.timeline if row.kind == "heal"] == ["+9,000 from Naught"]
+    assert card.came_back == "Resurrected by Naught with Raise Ally, 8.0 s after death."
+
+
 def test_a_self_resurrection_is_worded_as_the_players_own() -> None:
     # No resurrect event: the log records a self-resurrection cast, and the
     # listed spell id is what tells that apart from a release and a run back.

@@ -333,7 +333,8 @@ def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapR
     elif event.kind == ABSORB:
         detail = f"{event.amount:,} soaked"
     elif event.kind == HEAL:
-        healer = names.get(event.source_id or -1, "an unknown source")
+        source = event.source_id
+        healer = "an unknown source" if source is None else names.get(source, "an unknown source")
         detail = f"+{event.amount:,} from {healer}"
     else:
         detail = ""
@@ -390,7 +391,8 @@ def _came_back(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrec
                names: dict[int, str]) -> tuple[str, Badge]:
     back = return_of(loaded, death, self_resurrections)
     if back.kind == RESURRECTED:
-        caster = names.get(back.caster_id or -1, "a teammate")
+        caster_id = back.caster_id
+        caster = "a teammate" if caster_id is None else names.get(caster_id, "a teammate")
         return (
             f"Resurrected by {caster} with {back.ability_name}, "
             f"{back.seconds_after:.1f} s after death.",
