@@ -1,0 +1,30 @@
+# ABOUTME: Spells a dead player casts to bring themselves back to life.
+# ABOUTME: Read by the death recap to tell a self-resurrection from a release.
+#
+# A player who comes back with no resurrect event in the log either released and
+# ran back, or cast one of these. The list is short and maintained by hand: no API
+# exposes it. Every id was read from the game's own spell data on the date below,
+# one spell at a time, and the name returned had to match the spell intended.
+#
+# The Shaman's Reincarnation is the only entry. Its name resolves to two ids:
+# 20608 (below), categorised "Shaman Abilities" and carrying a patch history
+# through Shadowlands, and 21169, which shares the same description word for
+# word but is categorised "Uncategorized Spells" and flagged "Not In Spellbook"
+# — a legacy duplicate never granted to a live character. 20608 is the one a
+# Shaman actually has to cast.
+#
+# The resurrection a Soulstone grants its bearer is deliberately absent. Every
+# id its name resolves to (20707, 95750, 231811) is tagged "Requires Warlock" —
+# the caster's own cooldown, cast by the Warlock on the ally, living or dead —
+# not something the bearer casts on themselves. The one id whose tooltip
+# describes an automatic self-cast by the bearer, 18976 ("A Soulstone is used
+# automatically upon death..."), carries a mismatched icon, vanilla-era
+# percentages, and no patch history: a defunct relic, not the live spell. No id
+# verifiably names a bearer-cast self-resurrection, so none is listed; a
+# Soulstone save that reaches the recap without a matching `resurrect` event
+# reads as a release rather than as a wrong guess.
+verified = "2026-09-07"
+
+ability_ids = [
+  20608,  # Reincarnation
+]

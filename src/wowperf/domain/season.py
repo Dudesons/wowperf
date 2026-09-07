@@ -100,6 +100,18 @@ class Consumables(Frozen):
     categories: tuple[ConsumableCategory, ...] = ()
 
 
+class SelfResurrections(Frozen):
+    """Spells a dead player casts to bring themselves back.
+
+    A player who returns without a resurrect event either released or cast one
+    of these; the list is what tells the two apart. Empty when the log itself
+    records a self-resurrection as a resurrect event, in which case nothing
+    here is consulted.
+    """
+
+    ability_ids: tuple[int, ...] = ()
+
+
 class Roles(Frozen):
     """Which specialisations tank and which heal, as "Class/Spec" entries.
 

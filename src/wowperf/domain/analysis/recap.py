@@ -7,7 +7,13 @@ from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import CastEvent, Death, HealthSample
 from wowperf.domain.model import LoadedRun
-from wowperf.domain.season import ConsumableCategory, Consumables, Defensives, Externals
+from wowperf.domain.season import (
+    ConsumableCategory,
+    Consumables,
+    Defensives,
+    Externals,
+    SelfResurrections,
+)
 
 HIT = "hit"
 ABSORB = "absorb"
@@ -301,3 +307,82 @@ def availability_at(
                 )
             )
     return AvailabilityAt(own=own, consumables=drinks, externals=tuple(mates))
+
+
+RESURRECTED = "resurrected"
+SELF_RESURRECTED = "self_resurrected"
+RELEASED = "released"
+ABSENT = "absent"
+
+
+class Return(Frozen):
+    """How and when the player came back, before formatting.
+
+    `seconds_after` is from the death to the resurrection, or for a release to
+    the player's first action against another actor — the anchor the death
+    cost already uses, so the two figures agree by construction.
+    """
+
+    kind: str
+    seconds_after: float | None = None
+    caster_id: int | None = None
+    ability_name: str = ""
+
+
+def return_of(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrections) -> Return:
+    """Exactly one of four outcomes, in this precedence.
+
+    A resurrect event targeting the player after the death and before their
+    first action names how they came back: by a teammate, or by themselves
+    when the caster is the player. Failing that, a cast of a listed
+    self-resurrection spell in the same window is a self-resurrection. Failing
+    that, a first action means they released, and no action at all means the
+    log never saw them act again. A resurrection after the first action is a
+    later death's and is ignored.
+    """
+    death_ms = death.timestamp_ms
+    back_by = (
+        death_ms + death.seconds_until_next_action * 1000
+        if death.seconds_until_next_action is not None
+        else None
+    )
+
+    def in_window(timestamp_ms: int) -> bool:
+        return timestamp_ms > death_ms and (back_by is None or timestamp_ms <= back_by)
+
+    revivals = sorted(
+        (
+            revival
+            for revival in loaded.resurrections
+            if revival.actor_id == death.actor_id and in_window(revival.timestamp_ms)
+        ),
+        key=lambda revival: revival.timestamp_ms,
+    )
+    if revivals:
+        first = revivals[0]
+        return Return(
+            kind=SELF_RESURRECTED if first.caster_id == death.actor_id else RESURRECTED,
+            seconds_after=(first.timestamp_ms - death_ms) / 1000,
+            caster_id=first.caster_id,
+            ability_name=first.ability_name,
+        )
+    own_spells = sorted(
+        (
+            cast
+            for cast in loaded.casts
+            if cast.actor_id == death.actor_id
+            and cast.ability_id in self_resurrections.ability_ids
+            and in_window(cast.timestamp_ms)
+        ),
+        key=lambda cast: cast.timestamp_ms,
+    )
+    if own_spells:
+        return Return(
+            kind=SELF_RESURRECTED,
+            seconds_after=(own_spells[0].timestamp_ms - death_ms) / 1000,
+            caster_id=death.actor_id,
+            ability_name=own_spells[0].ability_name,
+        )
+    if death.seconds_until_next_action is not None:
+        return Return(kind=RELEASED, seconds_after=death.seconds_until_next_action)
+    return Return(kind=ABSENT)

@@ -238,6 +238,14 @@ def test_every_external_has_a_positive_cooldown_and_a_valid_spec_key() -> None:
             assert ability.charges >= 1
 
 
+def test_the_committed_resurrections_file_lists_self_resurrection_spells() -> None:
+    from wowperf.adapters.config.toml import DEFAULT_RESURRECTIONS_PATH, load_self_resurrections
+
+    spells = load_self_resurrections(DEFAULT_RESURRECTIONS_PATH)
+    assert spells.ability_ids, "the file lists no spell at all"
+    assert len(set(spells.ability_ids)) == len(spells.ability_ids)
+
+
 def test_no_ability_lives_in_two_of_the_three_cooldown_files_for_one_spec() -> None:
     """Defensives, throughput cooldowns and externals ask three different questions.
 
