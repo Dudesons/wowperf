@@ -41,8 +41,29 @@ from wowperf.adapters.wcl.queries import (
 )
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.events import HealingEvent
+from wowperf.domain.events import Death, HealingEvent
 from wowperf.domain.model import LoadedRun, Run
+
+
+def healing_windows(deaths: Sequence[Death]) -> list[tuple[int, int, int]]:
+    """One `(actor, start, end)` window per stretch of a player's run-ups.
+
+    Two deaths of the same player less than the run-up apart share the seconds
+    before the later one. Asking for a window per death would fetch those
+    seconds twice, and every heal in them would then reach both cards twice
+    over, health column included. Merged windows are still cut back to one
+    run-up per death by the timeline that reads them.
+    """
+    run_up_ms = int(RUN_UP_SECONDS * 1000)
+    windows: list[tuple[int, int, int]] = []
+    for death in sorted(deaths, key=lambda death: (death.actor_id, death.timestamp_ms)):
+        start, end = death.timestamp_ms - run_up_ms, death.timestamp_ms
+        if windows and windows[-1][0] == death.actor_id and start <= windows[-1][2]:
+            actor, opened, _ = windows[-1]
+            windows[-1] = (actor, opened, end)
+        else:
+            windows.append((death.actor_id, start, end))
+    return windows
 
 
 class WclRunRepository:
@@ -231,19 +252,19 @@ class WclRunRepository:
         )
         damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
 
-        # One healing window per death, scoped to the dying player and bounded
-        # to the run-up the death card shows. Resurrections are fetched once
-        # above, fight-wide, because the All stream ignores `targetID` while a
-        # server-side filter on `type = 'resurrect'` costs one point for the
-        # whole fight rather than one point per death.
+        # One healing window per stretch of run-ups, scoped to the dying player.
+        # Resurrections are fetched once above, fight-wide, because the All
+        # stream ignores `targetID` while a server-side filter on
+        # `type = 'resurrect'` costs one point for the whole fight rather than
+        # one point per death.
         healing: list[HealingEvent] = []
-        for death in deaths:
+        for actor_id, start, end in healing_windows(deaths):
             scoped = {
                 "code": report_code,
                 "fightId": run.fight_id,
-                "actorId": death.actor_id,
-                "startTime": float(death.timestamp_ms - RUN_UP_SECONDS * 1000),
-                "endTime": float(death.timestamp_ms),
+                "actorId": actor_id,
+                "startTime": float(start),
+                "endTime": float(end),
             }
             healing.extend(
                 build_healing(fetch_all_events(self._query, HEALING_QUERY, scoped), ability_names)

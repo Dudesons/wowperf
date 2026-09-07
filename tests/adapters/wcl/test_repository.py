@@ -102,14 +102,17 @@ def operation_name(body: dict[str, Any]) -> str:
     return query.split("query ")[1].split("(")[0].split("{")[0].strip()
 
 
-def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
+def recording_repository(
+    calls: list[str], tmp_path: Path | None = None, deaths: list[dict[str, Any]] | None = None
+) -> WclRunRepository:
     """Build one repository whose mock transport records every GraphQL operation name.
 
     The repository is backed by one cache directory that persists for its whole
     lifetime, as a real caller's would — so a `get` issued after a `load` on the
     same repository sees whatever `load` already cached, rather than starting cold.
     `tmp_path` is optional: the whole-load tests do not need a fresh directory
-    injected by pytest, so one is created on demand.
+    injected by pytest, so one is created on demand. `deaths` replaces the single
+    death row, for the tests that need two of them.
 
     Each of the six event streams gets its own small, distinguishable payload —
     a real field swap in `repository.py` (e.g. assigning `interrupts` the
@@ -146,7 +149,7 @@ def recording_repository(calls: list[str], tmp_path: Path | None = None) -> WclR
               "hitPoints": 61200, "maxHitPoints": 99000}]
         ),
         "Deaths": events_payload(
-            [{"type": "death", "sourceID": -1, "targetID": 693, "timestamp": 5000}]
+            deaths or [{"type": "death", "sourceID": -1, "targetID": 693, "timestamp": 5000}]
         ),
         "EnemyCasts": events_payload(
             [{"type": "cast", "sourceID": 699, "abilityGameID": 200, "timestamp": 3000}]
@@ -299,6 +302,40 @@ def test_the_healing_window_is_bounded_by_the_death_and_resurrects_span_the_figh
     miss = {"miss": "the repository did not cache this window"}
     assert repository.cache.get_or_fetch(healing_key, lambda: miss) != miss
     assert repository.cache.get_or_fetch(resurrects_key, lambda: miss) != miss
+
+
+def test_two_deaths_inside_one_run_up_share_a_single_healing_window(tmp_path: Path) -> None:
+    """Overlapping run-ups are asked for once, so no heal reaches a card twice.
+
+    A window per death would fetch the seconds the two share twice over, and
+    both cards would then count every heal in them twice, health column and all.
+    """
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path, deaths=two_deaths(5000, 8000))
+
+    loaded = repository.load("abc123", None)
+
+    assert [death.timestamp_ms for death in loaded.deaths] == [5000, 8000]
+    assert calls.count("Healing") == 1
+    assert [(heal.ability_id, heal.timestamp_ms) for heal in loaded.healing] == [(774, 4500)]
+
+
+def test_two_deaths_further_apart_than_the_run_up_keep_their_own_windows(tmp_path: Path) -> None:
+    """They share no second, so merging must not reach across the gap between them."""
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path, deaths=two_deaths(5000, 70_000))
+
+    repository.load("abc123", None)
+
+    assert calls.count("Healing") == 2
+
+
+def two_deaths(first_ms: int, second_ms: int) -> list[dict[str, Any]]:
+    """Two deaths of the fixture's one player, at the times the caller names."""
+    return [
+        {"type": "death", "sourceID": -1, "targetID": 693, "timestamp": first_ms},
+        {"type": "death", "sourceID": -1, "targetID": 693, "timestamp": second_ms},
+    ]
 
 
 def test_the_casts_query_asks_for_the_casters_resources() -> None:
