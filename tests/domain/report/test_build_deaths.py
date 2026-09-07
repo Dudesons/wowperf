@@ -18,7 +18,12 @@ from wowperf.domain.events import (
     Resurrection,
 )
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import CONSUMABLE_CAVEAT, build_deaths, build_report
+from wowperf.domain.report.build import (
+    CONSUMABLE_CAVEAT,
+    NO_CONSUMABLE_DATA,
+    build_deaths,
+    build_report,
+)
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -377,6 +382,31 @@ def test_a_consumable_still_on_cooldown_states_an_upper_bound_never_a_value() ->
     assert [(row.state, row.detail) for row in drinks.rows] == [
         ("cooldown", "at most 100 s left")
     ]
+
+
+def test_an_empty_consumables_group_says_why_instead_of_the_caveat() -> None:
+    # Two different situations produce an empty group: no consumable is listed
+    # for the run at all, or every category's cooldown window reaches back
+    # before the run began. Neither is "checked and found nothing on
+    # cooldown", so the caveat — which qualifies rows that are there — must
+    # not appear over an empty list.
+    empty = build_deaths(a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES,
+                         NO_CONSUMABLES)[0].availability[1]
+    assert empty.rows == ()
+    assert empty.note == NO_CONSUMABLE_DATA
+    assert empty.note != CONSUMABLE_CAVEAT
+
+    loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
+        update={
+            "casts": (
+                CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                          timestamp_ms=1_000, pull_index=0),
+            )
+        }
+    )
+    filled = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0].availability[1]
+    assert filled.rows != ()
+    assert filled.note == CONSUMABLE_CAVEAT
 
 
 def test_an_actor_not_on_the_roster_gets_no_consumable_rows_either() -> None:

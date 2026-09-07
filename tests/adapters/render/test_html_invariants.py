@@ -70,7 +70,8 @@ def minimal_loaded() -> LoadedRun:
         deaths=(Death(player_name="Uglymage", actor_id=1, timestamp_ms=50_000,
                       killing_blow="Frigid Roar", pull_index=0),),
         damage_taken=(DamageTakenEvent(actor_id=1, ability_id=2, ability_name="Snowdrift",
-                                       amount=82_410, timestamp_ms=45_000, pull_index=0),),
+                                       amount=82_410, health_damage=82_410,
+                                       timestamp_ms=45_000, pull_index=0),),
     )
 
 
@@ -533,7 +534,7 @@ def a_page_with_consumables(cast: CastEvent | None = None) -> str:
 
 def test_a_death_card_names_a_consumable_whose_cooldown_was_clear() -> None:
     # A potion drunk at 10s: proof the category is theirs, and outside the
-    # window, which opens at 390s for a death at 400s.
+    # window, which opens at 100s for a death at 400s given the 300s cooldown.
     drunk_early = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
                             timestamp_ms=10_000, pull_index=0)
     section = deaths_section(a_page_with_consumables(drunk_early))

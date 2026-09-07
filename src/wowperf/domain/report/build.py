@@ -298,7 +298,7 @@ CONSUMABLE_CAVEAT = (
     "The log shows only what was drunk, so this says nothing was on cooldown, "
     "not that one was carried."
 )
-"""Why the line above it is weaker than the defensive line that looks identical.
+"""Printed under the consumable rows, qualifying every "ready" among them.
 
 It sits on the card rather than in the ledger because that is where a reader
 draws the conclusion, and the honest sentence has to be next to the claim it
@@ -318,6 +318,11 @@ NO_HEALTH_READING = (
 )
 
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
+
+NO_CONSUMABLE_DATA = (
+    "No consumable can be judged here: either none is listed for this run, or the death came "
+    "too early for the log to show one's cooldown."
+)
 
 
 def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapRow:
@@ -362,16 +367,20 @@ def _availability_row(state: AbilityState, names: dict[int, str]) -> Availabilit
 
 
 def _group(
-    title: str, states: tuple[AbilityState, ...] | None, names: dict[int, str], note: str
+    title: str,
+    states: tuple[AbilityState, ...] | None,
+    names: dict[int, str],
+    empty_note: str,
+    caveat: str = "",
 ) -> AvailabilityGroup:
-    """A group with rows carries the badge; a group with nothing to say carries the note."""
+    """A group with rows carries the badge and any caveat; an empty one says why it is empty."""
     if not states:
-        return AvailabilityGroup(title=title, note=note)
+        return AvailabilityGroup(title=title, note=empty_note)
     return AvailabilityGroup(
         title=title,
         rows=tuple(_availability_row(state, names) for state in states),
         badge=badge_for(Confidence.INFERRED),
-        note=note if title == "Consumables" else "",
+        note=caveat,
     )
 
 
@@ -446,7 +455,8 @@ def build_deaths(
                 came_back_badge=came_back_badge,
                 availability=(
                     _group("Defensives", at.own, names, f"No data file covers {spec}."),
-                    _group("Consumables", at.consumables, names, CONSUMABLE_CAVEAT),
+                    _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA,
+                           CONSUMABLE_CAVEAT),
                     _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS),
                 ),
             )
