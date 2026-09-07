@@ -1,0 +1,85 @@
+# ABOUTME: Cooldowns a player casts on someone else to keep them alive, by class and spec.
+# ABOUTME: Read by the death recap to list what teammates had for the dying player.
+#
+# No API exposes this list or the cooldowns, so both are maintained by hand and dated.
+# A spec absent from this file simply produces no external rows for that teammate.
+#
+# An ability must not appear here and in defensives.toml or throughput_cooldowns.toml
+# for the same spec: the three files ask different questions, and a test enforces it.
+#
+# Cooldowns are base values in seconds, without talent reductions. A longer cooldown
+# makes an external read as unavailable more often, which understates what was up
+# and cannot produce a false accusation.
+#
+# Every ability id and cooldown here was read from the game's own spell data on the
+# date below, one spell at a time, and the name returned had to match the ability
+# intended. An id that matches nothing fails silently forever, so recall is not enough.
+verified = "2026-09-07"
+
+
+["Priest/Discipline"]
+abilities = [
+  { ability_id = 33206, name = "Pain Suppression", cooldown_seconds = 180.0 },
+  { ability_id = 62618, name = "Power Word: Barrier", cooldown_seconds = 180.0 },
+]
+
+["Priest/Holy"]
+abilities = [
+  { ability_id = 47788, name = "Guardian Spirit", cooldown_seconds = 180.0 },
+]
+
+["Druid/Restoration"]
+abilities = [
+  { ability_id = 102342, name = "Ironbark", cooldown_seconds = 90.0 },
+]
+
+["Monk/Mistweaver"]
+abilities = [
+  { ability_id = 116849, name = "Life Cocoon", cooldown_seconds = 120.0 },
+]
+
+["Shaman/Restoration"]
+abilities = [
+  { ability_id = 98008, name = "Spirit Link Totem", cooldown_seconds = 180.0 },
+]
+
+["Evoker/Preservation"]
+abilities = [
+  { ability_id = 357170, name = "Time Dilation", cooldown_seconds = 60.0 },
+]
+
+["Paladin/Holy"]
+abilities = [
+  { ability_id = 1022, name = "Blessing of Protection", cooldown_seconds = 300.0 },
+  { ability_id = 6940, name = "Blessing of Sacrifice", cooldown_seconds = 120.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+]
+
+["Paladin/Protection"]
+abilities = [
+  { ability_id = 1022, name = "Blessing of Protection", cooldown_seconds = 300.0 },
+  { ability_id = 6940, name = "Blessing of Sacrifice", cooldown_seconds = 120.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+]
+
+["Paladin/Retribution"]
+abilities = [
+  { ability_id = 1022, name = "Blessing of Protection", cooldown_seconds = 300.0 },
+  { ability_id = 6940, name = "Blessing of Sacrifice", cooldown_seconds = 120.0 },
+  { ability_id = 633, name = "Lay on Hands", cooldown_seconds = 600.0 },
+]
+
+["Warrior/Arms"]
+abilities = [
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+]
+
+["Warrior/Fury"]
+abilities = [
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+]
+
+["Warrior/Protection"]
+abilities = [
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+]

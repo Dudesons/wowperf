@@ -4,7 +4,7 @@
 import pytest
 from pydantic import ValidationError
 
-from wowperf.domain.season import DefensiveAbility, Roles, SeasonData
+from wowperf.domain.season import DefensiveAbility, ExternalAbility, Externals, Roles, SeasonData
 
 
 def a_season() -> SeasonData:
@@ -53,3 +53,11 @@ def test_role_of_reads_the_spec_lists_and_defaults_to_damage() -> None:
     assert roles.role_of("Paladin", "Holy") == "healer"
     assert roles.role_of("Mage", "Arcane") == "damage"
     assert Roles().role_of("DeathKnight", "Blood") == "damage"
+
+
+def test_externals_resolve_per_spec_and_default_to_none_listed() -> None:
+    cocoon = ExternalAbility(ability_id=1, name="Life Cocoon", cooldown_seconds=120.0)
+    externals = Externals(entries=(("Monk/Mistweaver", (cocoon,)),))
+    assert externals.for_spec("Monk", "Mistweaver") == (cocoon,)
+    assert externals.for_spec("Monk", "Windwalker") == ()
+    assert Externals().for_spec("Monk", "Mistweaver") == ()

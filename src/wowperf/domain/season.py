@@ -55,6 +55,30 @@ class Defensives(Frozen):
         return ()
 
 
+class ExternalAbility(CooldownAbility):
+    """One cooldown a player casts on someone else to keep them alive."""
+
+
+class Externals(Frozen):
+    """Externals per class and specialisation, keyed like the defensives.
+
+    Kept apart from the defensives because the question differs: a defensive
+    is the dying player's own answer, an external is a teammate's, and the
+    death card names the owner of every external so nobody reads "Ironbark
+    ready" as a button the dying player could have pressed.
+    """
+
+    entries: tuple[tuple[str, tuple[ExternalAbility, ...]], ...] = ()
+
+    def for_spec(self, class_name: str, spec: str) -> tuple[ExternalAbility, ...]:
+        """The known externals for a class/spec, or `()` if the list has none."""
+        wanted = f"{class_name}/{spec}"
+        for key, abilities in self.entries:
+            if key == wanted:
+                return abilities
+        return ()
+
+
 class ConsumableCategory(Frozen):
     """Healing consumables that share one cooldown.
 

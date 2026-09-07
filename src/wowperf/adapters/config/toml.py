@@ -10,6 +10,8 @@ from wowperf.domain.season import (
     CooldownAbility,
     DefensiveAbility,
     Defensives,
+    ExternalAbility,
+    Externals,
     Roles,
     SeasonData,
     ThroughputCooldowns,
@@ -21,6 +23,7 @@ DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
 DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
+DEFAULT_EXTERNALS_PATH = DATA_DIR / "externals.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -64,6 +67,31 @@ def load_defensives(path: Path = DEFAULT_DEFENSIVES_PATH) -> Defensives:
             )
         )
     return Defensives(entries=tuple(entries))
+
+
+def load_externals(path: Path = DEFAULT_EXTERNALS_PATH) -> Externals:
+    """Read the hand-maintained list of cooldowns cast on other players."""
+    raw = _read(path)
+    entries = []
+    for key, value in raw.items():
+        if not isinstance(value, dict):
+            continue  # the top-level `verified` date
+        abilities = value.get("abilities") or []
+        entries.append(
+            (
+                key,
+                tuple(
+                    ExternalAbility(
+                        ability_id=int(item["ability_id"]),
+                        name=str(item["name"]),
+                        cooldown_seconds=float(item["cooldown_seconds"]),
+                        charges=int(item.get("charges", 1)),
+                    )
+                    for item in abilities
+                ),
+            )
+        )
+    return Externals(entries=tuple(entries))
 
 
 def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
