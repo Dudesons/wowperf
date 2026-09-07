@@ -8,10 +8,12 @@ from pydantic import BaseModel, ValidationError
 
 from wowperf.domain.report import model as report_model
 from wowperf.domain.report.model import (
+    AvailabilityRow,
     DeathCard,
     Header,
     PlayerCard,
     Provenance,
+    RecapRow,
     Report,
     Section,
     SectionState,
@@ -114,14 +116,18 @@ def test_a_player_card_declares_a_class_name_field_independent_of_colour() -> No
     assert fields["colour"].annotation is str
 
 
-def test_a_death_card_can_carry_no_damage_rows() -> None:
-    card = DeathCard(
-        player="Dudesons",
-        class_name="DeathKnight",
-        when="12:04, pull 5",
-        killing_blow="Frigid Roar",
-    )
-    assert card.last_ten_seconds == ()
+def test_a_death_card_can_carry_no_timeline_and_no_availability() -> None:
+    card = DeathCard(player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar")
+    assert (card.timeline, card.availability, card.came_back) == ((), (), "")
+
+
+def test_a_recap_row_and_an_availability_row_are_closed_vocabularies_plus_strings() -> None:
+    row = RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                   detail="82,410 to health", health="61%", health_percent=61)
+    state = AvailabilityRow(ability="Ironbark", owner="Leafy", state="cooldown",
+                            detail="at most 14 s left")
+    assert row.health_percent == 61 and state.owner == "Leafy"
 
 
 def test_a_timeline_track_defaults_to_no_blocks() -> None:

@@ -17,9 +17,12 @@ from wowperf.adapters.render.html import render
 from wowperf.domain.report import build as build_module
 from wowperf.domain.report.build import build_report, build_timeline
 from wowperf.domain.report.model import (
-    DamageRow,
+    AvailabilityGroup,
+    AvailabilityRow,
+    Badge,
     DeathCard,
     PlayerCard,
+    RecapRow,
     Section,
     SectionState,
     Timeline,
@@ -192,22 +195,48 @@ def test_the_rendered_geometry_matches_what_build_timeline_computed() -> None:
     assert f'y="{timeline.ours.baseline_y}"' in html
 
 
-def test_a_death_card_shows_the_run_up() -> None:
+def test_a_death_card_renders_its_recap() -> None:
     card = DeathCard(
         player="Dudesons",
         class_name="DeathKnight",
         when="12:04, pull 5",
         killing_blow="Frigid Roar",
-        last_ten_seconds=(
-            DamageRow(seconds_before="5.8s before", ability="Snowdrift", amount="82,410"),
+        timeline=(
+            RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                     detail="82,410 to health", health="61%", health_percent=61),
+        ),
+        health_badge=Badge(label="derived", tint="badge-derived"),
+        came_back="Released; first action against an enemy 34.2 s after death.",
+        came_back_badge=Badge(label="derived", tint="badge-derived"),
+        availability=(
+            AvailabilityGroup(title="Defensives", rows=(
+                AvailabilityRow(ability="Icebound Fortitude", state="cooldown",
+                                detail="at most 14 s left"),
+            ), badge=Badge(label="inferred", tint="badge-inferred")),
+            AvailabilityGroup(title="Consumables", note="nothing judged"),
+            AvailabilityGroup(title="Teammates' externals", rows=(
+                AvailabilityRow(ability="Ironbark", owner="Leafy", state="ready"),
+            ), badge=Badge(label="inferred", tint="badge-inferred")),
         ),
     )
     # Escaped on comparison: real ability names commonly carry an apostrophe
     # (e.g. "Nature's Wrath"), which autoescape would transform.
     html = render(a_report(deaths=(card,)))
-    assert str(escape("Frigid Roar")) in html
-    assert str(escape("Snowdrift")) in html
-    assert "5.8s before" in html
+    deaths = html[html.index('<h2 id="deaths">'):html.index('<h2 id="interrupts">')]
+    assert str(escape("Frigid Roar")) in deaths
+    assert '<tr class="hit">' in deaths and str(escape("Snowdrift")) in deaths
+    assert 'style="width: 61%"' in deaths and "61%" in deaths
+    assert "34.2 s after death" in deaths
+    assert '<li class="cooldown">' in deaths and "at most 14 s left" in deaths
+    assert "Leafy" in deaths and "nothing judged" in deaths
+    assert deaths.count('href="#provenance"') >= 4  # health, return, two groups
+
+
+def test_the_provenance_lists_the_methods_the_builder_named() -> None:
+    report = a_report()
+    provenance = report.provenance.model_copy(update={"methods": ("Health is reconstructed.",)})
+    html = render(report.model_copy(update={"provenance": provenance}))
+    assert "Health is reconstructed." in html[html.index('<h2 id="provenance">'):]
 
 
 def test_a_run_with_no_deaths_says_so_rather_than_showing_an_empty_heading() -> None:

@@ -14,8 +14,10 @@ from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
+    load_externals,
     load_roles,
     load_season_data,
+    load_self_resurrections,
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
@@ -397,6 +399,8 @@ def analyze(
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
                 defensives,
                 consumables,
+                externals=load_externals(),
+                self_resurrections=load_self_resurrections(),
             )
         ),
         encoding="utf-8",

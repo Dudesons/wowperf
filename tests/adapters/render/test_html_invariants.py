@@ -23,7 +23,14 @@ from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
-from wowperf.domain.report.model import Header, Provenance, Timeline, TimelineBlock, TimelineTrack
+from wowperf.domain.report.model import (
+    Header,
+    Provenance,
+    RecapRow,
+    Timeline,
+    TimelineBlock,
+    TimelineTrack,
+)
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -360,6 +367,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (TimelineBlock, "x"),
     (TimelineBlock, "width"),
     (TimelineTrack, "baseline_y"),
+    (RecapRow, "health_percent"),  # a share of the player's own health, not a duration
 }
 
 
@@ -474,27 +482,34 @@ def a_page_with(cast: CastEvent) -> str:
     )
 
 
-def test_a_death_card_names_the_defensives_that_were_available() -> None:
-    # Cast at 10s, outside the window that opens at 15s for a 25s cooldown.
+AVAILABILITY_ROW = r'<li class="(pressed|ready|cooldown|unseen)">'
+"""One row of an availability group. An evidence bullet is also an `<li>` and carries no
+class, so matching on the class is what tells a judged tool from a finding's evidence."""
+
+
+def test_a_death_card_names_the_defensives_it_judged() -> None:
+    # Cast at 10s, its 25s cooldown elapsed before the window opens at 40s.
     section = deaths_section(a_page_with(owns_barrier(10_000)))
-    assert "Defensives off cooldown: Prismatic Barrier" in section
+    assert "Prismatic Barrier" in section
+    assert '<li class="ready">' in section
 
 
-def test_a_death_card_says_so_when_nothing_was_off_cooldown() -> None:
+def test_a_defensive_pressed_inside_the_run_up_reads_as_pressed() -> None:
     # Cast at 45s, inside the window that ends at the death at 50s.
     section = deaths_section(a_page_with(owns_barrier(45_000)))
-    assert "Defensives off cooldown: none" in section
-    assert "Prismatic Barrier" not in section
+    assert '<li class="pressed">' in section
+    assert "5.0 s before death" in section
 
 
 def test_an_unchecked_spec_makes_no_claim_either_way() -> None:
-    # The silence a reader must not mistake for "nothing was up".
+    # The silence a reader must not mistake for "nothing was up": the group
+    # states why it is empty instead of listing an ability in any state.
     section = deaths_section(a_page(NO_DEFENSIVES))
-    assert "Defensives off cooldown" not in section
-    assert "off cooldown" not in section
+    assert "No data file covers Mage Arcane." in section
+    assert not re.search(AVAILABILITY_ROW, section)
 
 
-def test_the_defensives_line_carries_its_confidence_badge() -> None:
+def test_the_defensives_group_carries_its_confidence_badge() -> None:
     # The only inferred claim on a card whose other facts are all measured. Without
     # a badge a reader has no way to tell it is reconstructed rather than logged.
     section = deaths_section(a_page_with(owns_barrier(10_000)))
@@ -516,17 +531,18 @@ def a_page_with_consumables(cast: CastEvent | None = None) -> str:
     )
 
 
-def test_a_death_card_names_the_consumables_whose_cooldown_was_clear() -> None:
+def test_a_death_card_names_a_consumable_whose_cooldown_was_clear() -> None:
     # A potion drunk at 10s: proof the category is theirs, and outside the
-    # window, which opens at 90s for a 300s cooldown and a death at 400s.
+    # window, which opens at 390s for a death at 400s.
     drunk_early = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
                             timestamp_ms=10_000, pull_index=0)
     section = deaths_section(a_page_with_consumables(drunk_early))
-    assert "Healing consumable cooldowns clear: health potion" in section
+    assert "health potion" in section
+    assert '<li class="ready">' in section
 
 
-def test_the_consumable_line_carries_its_caveat_beside_it() -> None:
-    # It looks identical to the defensive line above it and is a weaker claim:
+def test_the_consumable_group_carries_its_caveat_beside_it() -> None:
+    # It looks identical to the defensive group beside it and is a weaker claim:
     # a defensive is only named once the player demonstrably cast it, while a
     # consumable never proves it was carried. Without the caveat next to it, a
     # reader concludes the player had a potion and did not drink it.
@@ -534,17 +550,20 @@ def test_the_consumable_line_carries_its_caveat_beside_it() -> None:
     assert "not that one was carried" in section
 
 
-def test_a_death_card_says_so_when_every_consumable_was_on_cooldown() -> None:
+def test_a_consumable_still_on_cooldown_shows_its_upper_bound() -> None:
+    # Drunk at 200s with a 300s cooldown: a charge is free at 500s, so 100 s is
+    # a ceiling the log cannot better, never a remaining time.
     drunk = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
-                      timestamp_ms=395_000, pull_index=0)
+                      timestamp_ms=200_000, pull_index=0)
     section = deaths_section(a_page_with_consumables(drunk))
-    assert "Healing consumable cooldowns clear: none" in section
+    assert '<li class="cooldown">' in section
+    assert "at most 100 s left" in section
 
 
-def test_a_page_with_no_consumable_data_makes_no_claim_either_way() -> None:
+def test_a_page_with_no_consumable_data_names_no_consumable() -> None:
     section = deaths_section(a_page(NO_DEFENSIVES))
-    assert "Healing consumable" not in section
-    assert "not that one was carried" not in section
+    assert "health potion" not in section
+    assert not re.search(AVAILABILITY_ROW, section)
 
 
 def test_every_pointer_targets_an_anchor_that_exists() -> None:

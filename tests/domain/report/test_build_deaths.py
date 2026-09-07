@@ -1,5 +1,5 @@
-# ABOUTME: Behaviour tests for the deaths section: ordered by time, expanded into the last ten
-# ABOUTME: seconds. Built from raw events, not findings, since no finding carries the run-up.
+# ABOUTME: Behaviour tests for the deaths section: one recap per death, ordered by time, holding
+# ABOUTME: a formatted timeline, three availability groups and a return line. Built from events.
 
 from tests.domain.report.test_build_frame import (
     FETCHED,
@@ -9,15 +9,28 @@ from tests.domain.report.test_build_frame import (
     a_run,
 )
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
-from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    HealingEvent,
+    HealthSample,
+    Resurrection,
+)
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import build_deaths, build_report
+from wowperf.domain.report.build import CONSUMABLE_CAVEAT, build_deaths, build_report
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
     DefensiveAbility,
     Defensives,
+    ExternalAbility,
+    Externals,
+    SelfResurrections,
 )
+
+NO_EXTERNALS = Externals()
+IRONBARK = ExternalAbility(ability_id=102342, name="Ironbark", cooldown_seconds=90.0)
 
 
 def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
@@ -37,11 +50,14 @@ def a_death(actor_id: int, at_ms: int, blow: str = "Frigid Roar") -> Death:
 
 
 def a_hit(actor_id: int, at_ms: int, ability: str, amount: int) -> DamageTakenEvent:
+    # `health_damage` matches `amount` here: nothing in these fixtures is
+    # absorbed, so what the hit was worth is also what reached health.
     return DamageTakenEvent(
         actor_id=actor_id,
         ability_id=1,
         ability_name=ability,
         amount=amount,
+        health_damage=amount,
         timestamp_ms=at_ms,
         pull_index=0,
     )
@@ -93,41 +109,83 @@ def test_the_run_up_holds_only_hits_on_the_player_who_died() -> None:
     hits = (a_hit(1, 55_000, "Frigid Roar", 900), a_hit(2, 55_000, "Snowdrift", 800))
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits),
         NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert [row.ability for row in card.last_ten_seconds] == ["Frigid Roar"]
+    assert [row.ability for row in card.timeline] == ["Frigid Roar"]
 
 
 def test_the_run_up_stops_ten_seconds_before_the_death() -> None:
     hits = (a_hit(1, 45_000, "Old news", 100), a_hit(1, 55_000, "Frigid Roar", 900))
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits),
         NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert [row.ability for row in card.last_ten_seconds] == ["Frigid Roar"]
+    assert [row.ability for row in card.timeline] == ["Frigid Roar"]
 
 
 def test_the_run_up_excludes_hits_landing_after_the_death() -> None:
     hits = (a_hit(1, 55_000, "Frigid Roar", 900), a_hit(1, 61_000, "Posthumous", 100))
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits),
         NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert [row.ability for row in card.last_ten_seconds] == ["Frigid Roar"]
+    assert [row.ability for row in card.timeline] == ["Frigid Roar"]
 
 
 def test_the_run_up_runs_oldest_first_so_it_reads_as_a_story() -> None:
     hits = (a_hit(1, 58_000, "Second", 200), a_hit(1, 52_000, "First", 100))
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits),
         NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert [row.ability for row in card.last_ten_seconds] == ["First", "Second"]
+    assert [row.ability for row in card.timeline] == ["First", "Second"]
 
 
 def test_each_hit_says_how_long_before_the_death_it_landed() -> None:
     loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Roar", 900),))
     card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert card.last_ten_seconds[0].seconds_before == "5.8s before"
+    assert card.timeline[0].seconds_before == "5.8 s"
 
 
 def test_a_hits_amount_is_formatted_with_thousands_separators() -> None:
     hits = (a_hit(1, 54_200, "Snowdrift", 82_410),)
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), hits),
         NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert card.last_ten_seconds[0].amount == "82,410"
+    assert card.timeline[0].detail == "82,410 to health"
+
+
+def test_the_timeline_rows_are_formatted_and_carry_their_kind() -> None:
+    hits = (a_hit(1, 54_200, "Snowdrift", 82_410),)
+    loaded = a_loaded_with((a_death(1, 60_000),), hits).model_copy(update={
+        "health_samples": (HealthSample(actor_id=1, timestamp_ms=50_000, hit_points=100_000,
+                                        max_hit_points=100_000),),
+        "healing": (HealingEvent(actor_id=1, source_id=1, ability_id=7, ability_name="Death Strike",
+                                 amount=9_100, timestamp_ms=55_000),),
+    })
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert [(r.seconds_before, r.kind, r.ability, r.detail, r.health) for r in card.timeline] == [
+        ("5.8 s", "hit", "Snowdrift", "82,410 to health", "18%"),
+        ("5.0 s", "heal", "Death Strike", "+9,100 from Dudesons", "27%"),
+    ]
+    assert card.health_badge is not None and card.health_badge.label == "derived"
+    assert card.health_note == ""
+
+
+def test_a_hit_that_a_shield_partly_soaked_says_so() -> None:
+    hit = a_hit(1, 55_000, "Snowdrift", 10_000).model_copy(update={"absorbed": 4_000})
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), (hit,)), NO_DEFENSIVES,
+                        NO_CONSUMABLES)[0]
+    assert card.timeline[0].detail == "10,000 to health, 4,000 absorbed"
+
+
+def test_an_absorb_row_names_the_shield_and_what_it_soaked() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "healing": (HealingEvent(actor_id=1, source_id=2, ability_id=17,
+                                 ability_name="Power Word: Shield", amount=12_000,
+                                 timestamp_ms=55_000, absorbed=True),),
+    })
+    row = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].timeline[0]
+    assert (row.kind, row.ability, row.detail) == ("absorb", "Power Word: Shield", "12,000 soaked")
+
+
+def test_without_a_health_reading_the_column_is_empty_and_the_card_says_why() -> None:
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), (a_hit(1, 55_000, "x", 1),)),
+                        NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert card.timeline[0].health == "" and card.timeline[0].health_percent is None
+    assert card.health_badge is None
+    assert "no health reading" in card.health_note
 
 
 def test_cards_come_in_the_order_the_deaths_happened() -> None:
@@ -197,36 +255,82 @@ def owns_icebound(at_ms: int) -> tuple[CastEvent, ...]:
     )
 
 
-def test_a_card_names_the_defensives_that_were_off_cooldown() -> None:
+def test_a_card_lists_a_defensive_that_was_off_cooldown_as_ready() -> None:
     # Pressed after the rez, so the ability is demonstrably theirs and the cast
     # falls outside the window that ends at the death.
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
         update={"casts": owns_icebound(70_000)}
     )
-    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
-    assert card.defensives_checked is True
-    assert card.defensives_available == ("Icebound Fortitude",)
+    own = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].availability[0]
+    assert [(row.ability, row.state) for row in own.rows] == [("Icebound Fortitude", "ready")]
+    assert own.badge is not None
 
 
-def test_a_card_says_the_defensives_were_checked_even_when_none_were_up() -> None:
-    # "Nothing was off cooldown" exonerates the player, and is as worth showing
-    # as the accusation. It must not be renderable as the same blank as an
-    # unknown spec.
+def test_a_defensive_pressed_in_the_run_up_reads_as_pressed_not_as_a_blank() -> None:
+    # "It was used" exonerates the player, and is as worth showing as the
+    # accusation. It must not be renderable as the same blank as an unknown spec.
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
         update={"casts": owns_icebound(55_000)}
     )
-    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
-    assert card.defensives_checked is True
-    assert card.defensives_available == ()
+    own = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].availability[0]
+    assert [(row.state, row.detail) for row in own.rows] == [("pressed", "5.0 s before death")]
+    assert own.badge is not None
 
 
-def test_a_spec_the_data_file_does_not_cover_is_marked_unchecked() -> None:
-    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
-        update={"casts": owns_icebound(70_000)}
+def test_the_availability_groups_come_in_order_with_their_badges_and_notes() -> None:
+    dude, tree = a_player(), Player(actor_id=2, name="Leafy", class_name="Druid",
+                                    spec="Restoration", item_level=680)
+    loaded = LoadedRun(
+        run=a_run(players=(dude, tree), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 200_000),),
+        casts=(CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                         timestamp_ms=150_000, target_id=3),),
     )
-    card = build_deaths(loaded, Defensives(entries=()), NO_CONSUMABLES)[0]
-    assert card.defensives_checked is False
-    assert card.defensives_available == ()
+    defensives = Defensives(entries=(("DeathKnight/Blood", (
+        DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0),
+    )),))
+    consumables = Consumables(categories=(
+        ConsumableCategory(name="healthstone", cooldown_seconds=60.0, ability_ids=(6262,)),
+    ))
+    card = build_deaths(loaded, defensives, consumables,
+                        externals=Externals(entries=(("Druid/Restoration", (IRONBARK,)),)))[0]
+    own, drinks, mates = card.availability
+    assert [g.title for g in card.availability] == ["Defensives", "Consumables",
+                                                    "Teammates' externals"]
+    assert [(r.ability, r.state, r.detail) for r in own.rows] == [
+        ("Icebound Fortitude", "unseen", "not seen this run")
+    ]
+    assert [(r.ability, r.state, r.detail) for r in drinks.rows] == [("healthstone", "ready", "")]
+    assert drinks.note == CONSUMABLE_CAVEAT
+    assert [(r.ability, r.owner, r.state, r.detail) for r in mates.rows] == [
+        ("Ironbark", "Leafy", "cooldown", "at most 40 s left")
+    ]
+    assert all(g.badge is not None and g.badge.label == "inferred" for g in card.availability)
+
+
+def test_a_spec_no_file_covers_gets_a_note_and_no_badge_rather_than_an_empty_list() -> None:
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES,
+                        NO_CONSUMABLES)[0]
+    own, drinks, mates = card.availability
+    assert own.rows == () and own.badge is None and "DeathKnight Blood" in own.note
+    assert drinks.rows == () and drinks.badge is None
+    assert mates.rows == () and mates.badge is None and "No teammate" in mates.note
+
+
+def test_a_pressed_row_and_a_ready_for_row_carry_one_decimal() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "casts": (CastEvent(actor_id=1, ability_id=48792, ability_name="IBF", timestamp_ms=56_600),
+                  CastEvent(actor_id=1, ability_id=194679, ability_name="Rune Tap",
+                            timestamp_ms=60_000 - 29_000)),
+    })
+    defensives = Defensives(entries=(("DeathKnight/Blood", (
+        DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0),
+        DefensiveAbility(ability_id=194679, name="Rune Tap", cooldown_seconds=25.0),
+    )),))
+    own = build_deaths(loaded, defensives, NO_CONSUMABLES)[0].availability[0]
+    assert [(r.state, r.detail) for r in own.rows] == [
+        ("pressed", "3.4 s before death"), ("ready", "for at least 4.0 s")
+    ]
 
 
 POTIONS = Consumables(
@@ -243,7 +347,7 @@ POTIONS = Consumables(
 LATE_ENOUGH_MS = 400_000
 
 
-def test_a_card_names_the_consumables_that_were_off_cooldown() -> None:
+def test_a_card_lists_a_consumable_whose_cooldown_was_clear_as_ready() -> None:
     # Drunk early, outside the window, so the category is theirs to speak about.
     loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
         update={
@@ -253,41 +357,87 @@ def test_a_card_names_the_consumables_that_were_off_cooldown() -> None:
             )
         }
     )
-    card = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0]
-    assert card.consumables_checked is True
-    assert card.consumables_available == ("health potion",)
+    drinks = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0].availability[1]
+    assert [(row.ability, row.state) for row in drinks.rows] == [("health potion", "ready")]
+    assert drinks.badge is not None
 
 
-def test_a_card_says_so_when_every_consumable_was_on_cooldown() -> None:
+def test_a_consumable_still_on_cooldown_states_an_upper_bound_never_a_value() -> None:
+    # Drunk at 200s with a 300s cooldown, so a charge is free at 500s: the log
+    # records no cooldown reduction, which makes 100 s a ceiling and not a figure.
     loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
         update={
             "casts": (
                 CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
-                          timestamp_ms=LATE_ENOUGH_MS - 5_000, pull_index=0),
+                          timestamp_ms=200_000, pull_index=0),
             )
         }
     )
-    card = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0]
-    assert card.consumables_checked is True
-    assert card.consumables_available == ()
+    drinks = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0].availability[1]
+    assert [(row.state, row.detail) for row in drinks.rows] == [
+        ("cooldown", "at most 100 s left")
+    ]
 
 
-def test_a_card_with_no_consumable_data_is_marked_unchecked() -> None:
-    card = build_deaths(
-        a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, Consumables()
-    )[0]
-    assert card.consumables_checked is False
-    assert card.consumables_available == ()
-
-
-def test_an_actor_not_on_the_roster_is_unchecked_for_consumables_too() -> None:
+def test_an_actor_not_on_the_roster_gets_no_consumable_rows_either() -> None:
     # The findings file iterates the roster, so it says nothing for an actor it
     # cannot identify. The card must not claim more than the findings do.
     card = build_deaths(
         a_loaded_with((a_death(99, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES, POTIONS
     )[0]
-    assert card.consumables_checked is False
-    assert card.consumables_available == ()
+    own, drinks, _ = card.availability
+    assert own.rows == () and own.badge is None
+    assert drinks.rows == () and drinks.badge is None
+
+
+def test_the_return_line_is_worded_per_outcome_and_badged() -> None:
+    dude, thrall = a_player(), Player(actor_id=3, name="Thrall", class_name="DeathKnight",
+                                      spec="Unholy", item_level=680)
+    base = LoadedRun(run=a_run(players=(dude, thrall), pulls=(a_pull(0, 0, 120_000),)))
+    raised = base.model_copy(update={
+        "deaths": (a_death(1, 60_000).model_copy(update={"seconds_until_next_action": 12.0}),),
+        "resurrections": (Resurrection(actor_id=1, caster_id=3, ability_id=61999,
+                                       ability_name="Raise Ally", timestamp_ms=68_000),),
+    })
+    released = base.model_copy(update={
+        "deaths": (a_death(1, 60_000).model_copy(update={"seconds_until_next_action": 34.2}),),
+    })
+    gone = base.model_copy(update={"deaths": (a_death(1, 60_000),)})
+    cards = [
+        build_deaths(run, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+        for run in (raised, released, gone)
+    ]
+    assert [(c.came_back, c.came_back_badge.label) for c in cards] == [  # type: ignore[union-attr]
+        ("Resurrected by Thrall with Raise Ally, 8.0 s after death.", "measured"),
+        ("Released; first action against an enemy 34.2 s after death.", "derived"),
+        ("Not seen acting again this run.", "measured"),
+    ]
+
+
+def test_a_self_resurrection_is_worded_as_the_players_own() -> None:
+    # No resurrect event: the log records a self-resurrection cast, and the
+    # listed spell id is what tells that apart from a release and a run back.
+    loaded = a_loaded_with((), ()).model_copy(update={
+        "deaths": (a_death(1, 60_000).model_copy(update={"seconds_until_next_action": 25.0}),),
+        "casts": (CastEvent(actor_id=1, ability_id=20608, ability_name="Reincarnation",
+                            timestamp_ms=78_000),),
+    })
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES, NO_EXTERNALS,
+                        SelfResurrections(ability_ids=(20608,)))[0]
+    assert card.came_back == "Self-resurrected with Reincarnation, 18.0 s after death."
+    assert card.came_back_badge is not None and card.came_back_badge.label == "measured"
+
+
+def test_the_provenance_states_the_health_method_only_when_a_card_has_a_health_column() -> None:
+    with_reading = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 55_000, "x", 1),)).model_copy(
+        update={"health_samples": (HealthSample(actor_id=1, timestamp_ms=1, hit_points=1,
+                                                max_hit_points=1),)})
+    report = build_report(with_reading, (), None, None, a_player(), None, FETCHED,
+                          NO_DEFENSIVES, NO_CONSUMABLES)
+    assert any("reconstructed" in line for line in report.provenance.methods)
+    bare = build_report(a_loaded_with((), ()), (), None, None, a_player(), None, FETCHED,
+                        NO_DEFENSIVES, NO_CONSUMABLES)
+    assert bare.provenance.methods == ()
 
 
 def test_death_findings_are_placed_under_deaths_not_observations() -> None:
