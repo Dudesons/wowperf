@@ -76,7 +76,10 @@ not a figure.
 what to change. Hedge where the finding is inferred.
 
 **Echo finding titles, never ids.** A title is prose a reader can scan down the page and find;
-`compare.route.skipped.2` means nothing to them.
+`compare.route.skipped.2` means nothing to them. One exception: an aggregate title states its
+denominator — "4 of 5 fast runs skipped the pack at pull 7" — and the digit ban forbids echoing
+that. Name such a finding by the `quantifier` the findings file gave it and its subject: "most of
+the fast runs skipped a pack you spent time on".
 
 **It renders as plain text.** Escaped and pre-wrapped, not Markdown. Asterisks arrive as asterisks.
 

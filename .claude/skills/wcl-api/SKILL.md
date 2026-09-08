@@ -94,15 +94,17 @@ One approximation and one measurement:
 
 - A full compared analysis costs roughly **28 points of 3600** — an order of magnitude observed
   across this project's own compared runs, not a controlled measurement. No single reading stands
-  behind it and its composition is not recorded. It is the reason not to loop, not a number to
-  budget against.
+  behind it and its composition is not recorded. It predates sampling and describes one reference
+  per axis, not five. It is the reason not to loop, not a number to budget against.
 - A roster query, four aura tables and a `rateLimitData` read together spent **12.02 points of
   3600** (2026-09-05).
 - A full sampled compared analysis — five speed references and five parse references, both
   leaderboards, and an aura fetch for every parse member — spent **83.39 points of 3600**
-  (2026-09-08), against `docs/plans/2026-09-08-sampling-design.md`'s own projection of ~111 for
-  the same shape. All ten candidates loaded cleanly with no exclusion and no retry, which this
-  measurement's lower cost is the likely explanation for.
+  (2026-09-08). Conditions: one cold run, one dungeon, one keystone level; all ten candidates
+  loaded, none excluded and none retried. `docs/plans/2026-09-08-sampling-design.md` projects ~111
+  for that shape, so the reading came in about a quarter under. Nothing explains the gap: per-query
+  cost was never instrumented, and one reading is not a measurement of a trend. Budget against 111
+  and treat 83 as the only figure anyone has actually observed.
 
 ## Mythic+ in the schema
 

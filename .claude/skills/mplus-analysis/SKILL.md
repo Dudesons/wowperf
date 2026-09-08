@@ -199,7 +199,7 @@ play.
 
 ## The confounds the comparison declares rather than corrects
 
-A reference run is a different group on a different key. The comparison states its confounds
+The references are five other groups on other keys. The comparison states its confounds
 instead of adjusting for them, because adjusting would invent a number:
 
 - **Group composition.** Which packs can be held, which mechanics are trivial, and how much damage
@@ -208,24 +208,31 @@ instead of adjusting for them, because adjusting would invent a number:
   uncorrected, and equal item level no longer implies a similar stat profile.
 - **Keystone level.** Enemy health scales about 10% a level and compounds, so anything shaped like
   a duration means something different on each side of a gap. `compare.duration` is what this
-  gates: at a level gap it becomes "Completion times are not compared", carries no seconds, and
-  `compare.confound.keystone_level` states the gap beside it. Pull composition, pull order, packs
-  skipped, deaths, missed interrupts and between-pull downtime do not depend on how much health a
-  mob had, so they are still compared. A reference more than one level away is never offered at
-  all.
+  gates: with fewer than three references at our own keystone level it becomes "Completion times
+  are not compared", carries no seconds, and `compare.confound.keystone_level` counts how many sat
+  elsewhere. Pull composition, pull order, packs skipped, deaths, missed interrupts and
+  between-pull downtime do not depend on how much health a mob had, so they are still compared. A
+  reference more than one level away is never offered at all.
 - **Pull segmentation.** Warcraft Logs records a chain of packs fought without a break as one
-  pull. Alignment matches a pull to every separate pull it covers, and the route summary says how
-  many of our trash pulls found a counterpart. When fewer than half did, `compare.route.unaligned`
-  appears and no `compare.route.skipped.*` or `compare.route.extra.*` finding does: the two logs
-  cut the route differently, and an unmatched pull is not a skipped pack. Say that, not "the
-  reference skipped it".
+  pull. Alignment matches a pull to every separate pull it covers. A reference whose route lined
+  up with fewer than half of our trash pulls is dropped from the skipped-pack counts outright, and
+  `compare.route.summary` states how many were left to price a skip against — which is why route
+  rows can carry a smaller denominator than tempo rows on the same page. No
+  `compare.route.unaligned` finding marks that exclusion; read the summary's own count, and never
+  read a reference's silence as agreement. `compare.route.unaligned` survives only below the
+  floor, where one reference is stated pairwise: there it means the two logs cut the route
+  differently, and an unmatched pull is not a skipped pack. Say that, not "the reference skipped
+  it".
 - **The spell rate comparison is scoped to boss pulls**, the one stretch where two runs fought the
   same encounter, so it says nothing about trash. The "never cast it" finding is the exception: it
   checks the whole of our run, boss and trash, before claiming a spell is absent.
-- **The parse reference is a different character.** A spell missing from our run is "either a
+- **The parse references are five other characters.** A spell missing from our run is "either a
   talent not taken or a button not pressed; the log cannot tell which" — a prompt to check a
-  build, not a verdict on it. The uptime comparison matches by exact ability, so a gap can also
-  mean a different item of the same kind, or gear this player does not own.
+  build, not a verdict on it. The uptime comparison matches by exact ability, so a gap can still
+  mean a different item of the same kind. It no longer means gear one player happens to own: an
+  uptime gap is reported only where at least three of the parses carried that aura, which a
+  single proc or a single trinket cannot reach. `compare.talents` is the one row still drawn from
+  a single reference — the top-ranked parse, whose report its evidence links to.
 
 When a comparison was withheld, the report says why in the tool's own words — a
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not
@@ -241,7 +248,10 @@ and a `quantifier`.
 
 `comparison.references` lists every candidate the sample considered, loaded or not, each carrying
 its `axis` (`speed` or `parse`), a link to the report, and — for one that was not used — the
-reason. `sample_size` gives the count actually aggregated per axis. `comparison.compared` is
+reason. `sample_size` gives how many references loaded per axis. It is not the denominator of any
+one finding: eligibility is decided per finding — our own keystone level for a duration, a route
+that lined up for a skipped pack, aura data for an uptime — so the "4 of 5" in a title is the only
+count that describes what that finding was drawn from. `comparison.compared` is
 `false` in two different situations, and the findings tell them apart. Under `--no-compare` the
 comparison never ran, so no `compare.*` finding exists at all and `references` is empty. When a
 leaderboard returned nothing, `compare.speed.unavailable` or `compare.parse.unavailable` is there
@@ -253,7 +263,8 @@ can be absent while the other is not.
 
 The `title` is prose written for a reader. The `id` is a machine identifier. When you want to
 point a reader at a finding, echo its title — they can find it on the page. An id means nothing to
-them.
+them. An aggregate title carries its denominator, and so carries digits the narrative may not
+write; name such a finding by its `quantifier` and its subject instead of echoing the title.
 
 The page groups the findings under six tabs, so when you point a reader at one, you can also say
 where to look. Summary holds the three decomposition rows, up to five pointers at the biggest

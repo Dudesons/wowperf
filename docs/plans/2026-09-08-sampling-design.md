@@ -44,6 +44,13 @@ five references per axis every kept report would name ten strangers and their nu
 link still reaches everything a reader needs to audit a claim. A name written into a file is
 greppable and poolable; a link is a pointer.
 
+*Amended 2026-09-08:* this rule and §5's "every median states its range" collide, and the range
+wins. `compare.duration` emits `range 1290s to 1350s` and `compare.deaths` emits `range 0 to 2`,
+which are two members' durations and two members' death counts. What stays forbidden is the
+*tabulation*: a figure listed against the reference it came from. A range endpoint is
+unattributed — five report codes sit beside it and nothing says which one either endpoint belongs
+to — so it cannot be attached to a run and pooled, which is the whole of what this rule guards.
+
 **The reference cache stays shared, and says so.** Keying it per analysed run was considered and
 rejected: quota no longer forbids it, but the same reference fetched under several keys is several
 copies, so per-run keying holds *more* of other people's logs on disk at once, not less. It buys a
