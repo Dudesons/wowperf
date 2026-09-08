@@ -7,7 +7,7 @@ from wowperf.domain.comparison.confounds import declare_confounds
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells, compare_talents
-from wowperf.domain.comparison.tempo import compare_tempo
+from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.uptime import compare_uptime
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -62,7 +62,7 @@ def compare(
     else:
         first_speed = speed.members[0]
         findings += compare_route_sample(ours.run, speed, forces_by_pull(ours.enemy_deaths))
-        findings += compare_tempo(ours, first_speed, first_speed.comparability)
+        findings += compare_tempo_sample(ours, speed)
         findings += declare_confounds(ours, first_speed, first_speed.comparability)
 
     if not parse_members:
