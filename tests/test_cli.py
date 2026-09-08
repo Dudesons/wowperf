@@ -17,9 +17,10 @@ from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
-from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, _samples, app
+from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, _fetch_parse_auras, _samples, app
 from wowperf.domain.comparison.alignment import Alignment
-from wowperf.domain.comparison.sample import SAMPLE_SIZE
+from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.model import Player, Run
 from wowperf.domain.report.build import DECOMPOSITION_IDS, NESTS_INSIDE
 
@@ -1040,6 +1041,16 @@ OUR_RUN = Run(
 )
 SUBJECT = OUR_RUN.players[0]
 
+# A second roster member, distinct from `SUBJECT`, so a test can pin "excludes
+# a candidate containing one of our teammates" apart from "excludes a
+# candidate containing the analysed player" — every other roster-exclusion
+# test below gives `OUR_RUN` a single-player roster, which cannot tell the
+# two apart.
+OUR_TEAMMATE = Player(
+    actor_id=2, name="Shieldmate", class_name="Warrior", spec="Protection", item_level=300
+)
+OUR_RUN_WITH_TEAMMATE = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players, OUR_TEAMMATE)})
+
 
 def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[str, Any]:
     return {
@@ -1257,6 +1268,30 @@ def test_a_candidate_whose_roster_holds_one_of_our_characters_is_skipped(tmp_pat
     assert excluded.reason
 
 
+def test_a_candidate_whose_roster_holds_one_of_our_teammates_is_skipped(tmp_path: Path) -> None:
+    """The self-match check reads the whole roster (`run.players`, plural), not
+    only the analysed player's own name — "the fast runs did this" would still
+    be a small lie if one of them fielded a teammate rather than the player
+    under analysis. Uses `OUR_RUN_WITH_TEAMMATE` because `OUR_RUN` itself has a
+    single-player roster and so cannot distinguish this case from
+    `test_a_candidate_whose_roster_holds_one_of_our_characters_is_skipped`."""
+    fights_by_code = {
+        "cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",)),
+        # The second row's roster carries our teammate's name, not SUBJECT's own.
+        "teammate": _candidate_fights_payload("teammate", roster=(OUR_TEAMMATE.name,)),
+    }
+    rows = [_candidate_speed_row("cleanrun"), _candidate_speed_row("teammate")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN_WITH_TEAMMATE, SUBJECT)
+
+    assert all(member.row.report_code != "teammate" for member in speed.members)
+    excluded = next(record for record in records if record.report_code == "teammate")
+    assert excluded.loaded is True
+    assert excluded.reason == "the roster includes one of our own characters"
+
+
 def test_a_candidate_that_failed_to_load_is_recorded_with_its_reason(tmp_path: Path) -> None:
     fights_by_code = {"cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",))}
     rows = [_candidate_speed_row("brokenrun"), _candidate_speed_row("cleanrun")]
@@ -1430,6 +1465,172 @@ def test_each_speed_member_carries_its_own_comparability_and_alignment(tmp_path:
     assert member.comparability.our_level == 16
     assert member.comparability.their_level == 15
     assert isinstance(member.alignment, Alignment)
+
+
+# ---------------------------------------------------------------------------
+# `_fetch_parse_auras`: every parse member's own aura data, and our own side's,
+# fetched at most once. Before this fix, `cli.analyze` fetched auras for only
+# `parse_sample.members[0]`, so `ParseSample.aura_eligible` could never hold
+# more than one member and `compare_uptime_sample`'s aggregate path
+# (`MIN_SAMPLE_FOR_AGGREGATE`) was dead code against a real run. Exercised
+# directly against `ParseMember`/`ParseSample` values built in memory, with a
+# `WclRunRepository` backed by a mock transport that records every `AuraTable`
+# query it answers.
+# ---------------------------------------------------------------------------
+
+
+def _member_run(actor_id: int, name: str) -> Run:
+    """A minimal reference run whose roster holds exactly one player, for
+    `find_player` to resolve (or fail to resolve) a `ParseRow`'s character
+    name against."""
+    return Run(
+        report_code="irrelevant",
+        fight_id=1,
+        dungeon_name="Den of Nalorakk",
+        encounter_id=12660,
+        keystone_level=16,
+        affix_ids=(9, 10, 147),
+        keystone_time_ms=1000000,
+        keystone_bonus=1,
+        count_reached=100,
+        count_required=100,
+        npc_counts=(),
+        players=(
+            Player(actor_id=actor_id, name=name, class_name="Mage", spec="Arcane", item_level=300),
+        ),
+        pulls=(),
+    )
+
+
+def _parse_member(code: str, actor_id: int, roster_name: str, row_name: str) -> ParseMember:
+    """One parse member whose row names `row_name` and whose own roster names
+    `roster_name` — the same name for a resolvable counterpart, different
+    names to reproduce a leaderboard row `find_player` can never resolve."""
+    return ParseMember(
+        row=ParseRow(
+            report_code=code,
+            fight_id=1,
+            keystone_level=16,
+            duration_ms=1000000,
+            character_name=row_name,
+            class_name="Mage",
+            spec="Arcane",
+        ),
+        run=_member_run(actor_id, roster_name),
+        comparability=Comparability(our_level=16, their_level=16),
+    )
+
+
+def _aura_repository(
+    tmp_path: Path, subdir: str, calls: list[tuple[str, int, int]]
+) -> WclRunRepository:
+    """A `WclRunRepository` that answers only `AuraTable`, with empty-but-valid
+    aura tables, recording each query's (report_code, fight_id, actor_id) so a
+    caller can assert on exactly which aura queries fired and how many times —
+    not merely on the outcome."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        variables = json.loads(request.content)["variables"]
+        calls.append((variables["code"], variables["fightId"], variables["actorId"]))
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "reportData": {
+                        "report": {
+                            "onSelf": {"data": {"auras": [], "totalTime": 0}},
+                            "onTargets": {"data": {"auras": [], "totalTime": 0}},
+                        }
+                    }
+                }
+            },
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return WclRunRepository(client, DiskCache(tmp_path / subdir))
+
+
+def test_every_resolvable_parse_member_fetches_its_own_auras(tmp_path: Path) -> None:
+    """A five-member parse sample, each member's own roster naming exactly the
+    player its row does, so every counterpart resolves — proving the fetch is
+    no longer scoped to the sample's top member alone."""
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(tmp_path, "references", aura_calls)
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    sample = ParseSample(
+        members=tuple(
+            _parse_member(f"ref{i}", 100 + i, f"Player{i}", f"Player{i}") for i in range(5)
+        )
+    )
+
+    updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+
+    assert len(updated.aura_eligible) == 5
+    assert our_auras is not None
+
+
+def test_our_auras_is_fetched_exactly_once_across_every_member(tmp_path: Path) -> None:
+    """`our_auras` is our own player's data, shared across every member inside
+    `compare_uptime_sample` — not a per-member fetch. Asserts on the fake's
+    call count, not just on the result, so a regression that re-fetched it per
+    member would be caught even though every member's own auras would still
+    end up populated either way."""
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(tmp_path, "references", aura_calls)
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    sample = ParseSample(
+        members=tuple(
+            _parse_member(f"ref{i}", 100 + i, f"Player{i}", f"Player{i}") for i in range(5)
+        )
+    )
+
+    _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+
+    our_side_calls = [call for call in aura_calls if call[0] == OUR_RUN.report_code]
+    assert len(our_side_calls) == 1
+    assert len(aura_calls) == 6  # 5 counterparts + our own side, fetched once
+
+
+def test_a_member_whose_counterpart_cannot_be_resolved_keeps_auras_none(tmp_path: Path) -> None:
+    """One member's row names a player its own roster does not contain —
+    `find_player` can never resolve them, so that member's `auras` stays
+    `None` — while a second, resolvable member still gets its own aura data.
+    A member that cannot resolve must not block the ones that can."""
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(tmp_path, "references", aura_calls)
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    resolvable = _parse_member("ref0", 101, "Player0", "Player0")
+    ghost = _parse_member("ref1", 102, "Player1", "Ghost")
+    sample = ParseSample(members=(resolvable, ghost))
+
+    updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+
+    by_code = {member.row.report_code: member for member in updated.members}
+    assert by_code["ref0"].auras is not None
+    assert by_code["ref1"].auras is None
+    assert our_auras is not None
+    # One counterpart query (ref0) plus our own side, fetched once — the
+    # unresolvable member costs no query at all, ours included.
+    assert len(aura_calls) == 2
+
+
+def test_no_member_resolving_fetches_our_own_auras_not_at_all(tmp_path: Path) -> None:
+    """When not one member's counterpart can be resolved, `our_auras` is never
+    fetched either — there is nothing for it to be compared against."""
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(tmp_path, "references", aura_calls)
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    ghost = _parse_member("ref0", 101, "Player0", "Ghost")
+    sample = ParseSample(members=(ghost,))
+
+    updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+
+    assert updated.members[0].auras is None
+    assert our_auras is None
+    assert aura_calls == []
 
 
 def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> None:

@@ -372,6 +372,56 @@ def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> P
         return None
 
 
+def _fetch_parse_auras(
+    sample: ParseSample,
+    ours: WclRunRepository,
+    references: WclRunRepository,
+    our_run: Run,
+    subject: Player,
+) -> tuple[ParseSample, PlayerAuras | None]:
+    """Every parse member's own aura data, and our own side's, fetched at most once.
+
+    A member's counterpart is resolved from that member's own roster,
+    `find_player(member.run, member.row.character_name)`, before paying for
+    its aura query: when the reference's own roster does not contain the
+    player its leaderboard row names, `find_player` can never resolve them,
+    and fetching first would pay for a query with no use. A member whose
+    counterpart cannot be resolved, or whose aura fetch fails (`_auras`
+    returns `None`), keeps `auras=None` — `compare_uptime_sample` already
+    states how many references had no aura data, rather than the whole
+    comparison being discarded.
+
+    `our_auras` is our own player's data, shared across every member inside
+    `compare_uptime_sample` — not a per-member fetch — so it is fetched
+    exactly once, the first time any counterpart resolves at all. A sample in
+    which no member's counterpart resolves fetches it not at all.
+    """
+    our_auras: PlayerAuras | None = None
+    our_auras_fetched = False
+    updated_members: list[ParseMember] = []
+    for member in sample.members:
+        their_player = find_player(member.run, member.row.character_name)
+        if their_player is None:
+            updated_members.append(member)
+            continue
+        if not our_auras_fetched:
+            our_auras = _auras(ours, our_run.report_code, our_run.fight_id, subject.actor_id)
+            our_auras_fetched = True
+        updated_members.append(
+            member.model_copy(
+                update={
+                    "auras": _auras(
+                        references,
+                        member.row.report_code,
+                        member.row.fight_id,
+                        their_player.actor_id,
+                    )
+                }
+            )
+        )
+    return sample.model_copy(update={"members": tuple(updated_members)}), our_auras
+
+
 def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]) -> str:
     """Explain the rule once, then list every line that breaks it."""
     lines = "\n".join(f"  line {number}: {line}" for number, line in offending)
@@ -455,30 +505,9 @@ def analyze(
                 rankings, references, loaded.run, subject
             )
 
-            our_auras = None
-            if parse_sample.members:
-                top = parse_sample.members[0]
-                # Resolve the counterpart before paying for our own aura fetch: when
-                # the reference's own roster does not contain the player the
-                # leaderboard row names, find_player can never resolve them, and
-                # fetching our side first would pay for a query with no use once
-                # that failure is discovered.
-                their_player = find_player(top.run, top.row.character_name)
-                if their_player is not None:
-                    our_auras = _auras(
-                        repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
-                    )
-                    top = top.model_copy(
-                        update={
-                            "auras": _auras(
-                                references, top.row.report_code, top.row.fight_id,
-                                their_player.actor_id,
-                            )
-                        }
-                    )
-                    parse_sample = parse_sample.model_copy(
-                        update={"members": (top, *parse_sample.members[1:])}
-                    )
+            parse_sample, our_auras = _fetch_parse_auras(
+                parse_sample, repository, references, loaded.run, subject
+            )
 
             speed = _top_speed_reference(speed_sample)
             parse = _top_parse_reference(parse_sample)
