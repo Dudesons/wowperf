@@ -103,7 +103,10 @@ def operation_name(body: dict[str, Any]) -> str:
 
 
 def recording_repository(
-    calls: list[str], tmp_path: Path | None = None, deaths: list[dict[str, Any]] | None = None
+    calls: list[str],
+    tmp_path: Path | None = None,
+    deaths: list[dict[str, Any]] | None = None,
+    affixes_payloads: list[dict[str, Any]] | None = None,
 ) -> WclRunRepository:
     """Build one repository whose mock transport records every GraphQL operation name.
 
@@ -112,7 +115,9 @@ def recording_repository(
     same repository sees whatever `load` already cached, rather than starting cold.
     `tmp_path` is optional: the whole-load tests do not need a fresh directory
     injected by pytest, so one is created on demand. `deaths` replaces the single
-    death row, for the tests that need two of them.
+    death row, for the tests that need two of them. `affixes_payloads` replaces
+    the one well-formed affix table with a cycle of answers, for a test that
+    needs the affix fetch itself to keep failing.
 
     Each of the six event streams gets its own small, distinguishable payload —
     a real field swap in `repository.py` (e.g. assigning `interrupts` the
@@ -127,6 +132,9 @@ def recording_repository(
             "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
         }
     }
+    affixes_answers = (
+        itertools.cycle(affixes_payloads) if affixes_payloads is not None else None
+    )
     all_actors: dict[str, Any] = {
         "reportData": {
             "report": {
@@ -191,7 +199,8 @@ def recording_repository(
         if name == "Actors":
             return httpx.Response(200, json={"data": all_actors})
         if name == "Affixes":
-            return httpx.Response(200, json={"data": affixes})
+            answer = next(affixes_answers) if affixes_answers is not None else affixes
+            return httpx.Response(200, json={"data": answer})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -378,6 +387,24 @@ def test_from_cache_reflects_a_partial_hit_before_becoming_a_full_one(tmp_path: 
 
     _, second_parse_load = repository.load_parse_reference("abc123", None)
     assert second_parse_load is True
+
+
+def test_a_degraded_affix_fetch_counts_as_a_miss_in_the_from_cache_aggregate(
+    tmp_path: Path,
+) -> None:
+    """A malformed affix table is never cached (see
+    `test_a_malformed_affix_table_degrades_to_ids_and_caches_nothing`), so a
+    reference whose affix fetch keeps failing must never report
+    `from_cache=True` just because every other query it took happened to
+    already be warm from an earlier load of the same report.
+    """
+    bad_affixes: dict[str, Any] = {"reportData": {}}
+    repository = recording_repository([], tmp_path, affixes_payloads=[bad_affixes])
+
+    repository.load_speed_reference("abc123", None)  # warms every query but Affixes
+    _, from_cache = repository.load_speed_reference("abc123", None)
+
+    assert from_cache is False
 
 
 def test_load_reads_health_samples_off_the_casts(tmp_path: Path) -> None:
