@@ -4,7 +4,7 @@
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import _run_seconds, badge_for, build_report, format_seconds
-from wowperf.domain.report.model import SectionState
+from wowperf.domain.report.model import ReferenceRecord, SectionState
 from wowperf.domain.season import Consumables, Defensives
 
 FETCHED = "2026-09-05 14:02"
@@ -174,6 +174,47 @@ def test_provenance_carries_the_report_code_and_the_fetch_time() -> None:
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.provenance.report_code == "abc123"
     assert report.provenance.fetched_at == FETCHED
+
+
+def _a_record(index: int, *, loaded: bool = True, reason: str = "") -> ReferenceRecord:
+    return ReferenceRecord(
+        report_code=f"ref{index}", fight_id=index, keystone_level=16,
+        url=f"https://www.warcraftlogs.com/reports/ref{index}?fight={index}", axis="speed",
+        loaded=loaded, reason=reason,
+    )
+
+
+def test_provenance_lists_every_candidate_considered() -> None:
+    # Five loaded, two that failed: every row `_samples` weighed reaches the
+    # report, not only the ones that ended up in the sample.
+    records = (
+        *(_a_record(i) for i in range(5)),
+        _a_record(5, loaded=False, reason="this is the run under analysis"),
+        _a_record(6, loaded=False, reason="the report failed to load"),
+    )
+    report = build_report(
+        a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        reference_records=records,
+    )
+    assert report.provenance.references == records
+    assert len(report.provenance.references) == 7
+
+
+def test_provenance_carries_no_reference_character_name() -> None:
+    # `ReferenceRecord` has no field to hold a name in the first place (see
+    # `test_a_reference_record_has_no_field_for_a_name_a_duration_or_a_death_count`
+    # in test_model.py); this proves that `build_report`'s own wiring carries
+    # the records through unchanged, over the whole serialised record rather
+    # than one field, without smuggling anything else in beside it.
+    record = _a_record(0, loaded=False, reason="the roster includes one of our own characters")
+    report = build_report(
+        a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        reference_records=(record,),
+    )
+    for reference in report.provenance.references:
+        dumped = reference.model_dump_json()
+        assert "Stonewake" not in dumped  # a_player()'s own name
+        assert "Fastclear" not in dumped  # a plausible reference character name
 
 
 def test_seconds_format_as_minutes_and_seconds() -> None:

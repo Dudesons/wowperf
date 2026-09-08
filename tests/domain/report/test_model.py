@@ -92,8 +92,6 @@ def test_a_report_holds_every_section() -> None:
             report_code="abc123",
             fight_id=36,
             fetched_at="2026-09-05 14:02",
-            speed_reference_url=None,
-            parse_reference_url=None,
         ),
     )
     assert report.narrative is None

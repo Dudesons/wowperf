@@ -496,12 +496,14 @@ def analyze(
         subject = _resolve_player(loaded.run, player)
         speed: SpeedReference | None = None
         parse: ParseReference | None = None
+        speed_sample: SpeedSample | None = None
+        reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
-            # Every candidate `_samples` weighed comes back as `reference_records`;
-            # serialising them into the findings JSON and the report's provenance
-            # is Task 14's job, not this one's.
-            speed_sample, parse_sample, _reference_records = _samples(
+            # Every candidate `_samples` weighed comes back as `reference_records`,
+            # carried onto the report's provenance below; serialising them into the
+            # findings JSON too is Task 14's job, not this one's.
+            speed_sample, parse_sample, reference_records = _samples(
                 rankings, references, loaded.run, subject
             )
 
@@ -587,6 +589,8 @@ def analyze(
                 consumables,
                 externals=load_externals(),
                 self_resurrections=load_self_resurrections(),
+                speed_sample=speed_sample,
+                reference_records=reference_records,
             )
         ),
         encoding="utf-8",

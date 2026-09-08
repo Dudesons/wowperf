@@ -104,6 +104,8 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
         load_consumables(),
         externals=load_externals(),
         self_resurrections=load_self_resurrections(),
+        speed_sample=speed_sample,
+        reference_records=reference_records,
     )
     html = render(report)
 

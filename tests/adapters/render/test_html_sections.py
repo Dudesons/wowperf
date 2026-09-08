@@ -13,6 +13,7 @@ from tests.domain.report.test_build_frame import (
     a_run,
 )
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
+from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
 from wowperf.domain.report import build as build_module
 from wowperf.domain.report.build import build_report, build_timeline
@@ -175,7 +176,7 @@ def test_changing_timeline_height_moves_the_tick_geometry_together(
     # together, without touching the template.
     monkeypatch.setattr(build_module, "TIMELINE_HEIGHT", 300.0)
     run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    timeline = build_module.build_timeline(run, run, PRESENT)
+    timeline = build_module.build_timeline(run, a_sample(a_member(run, run)), PRESENT)
     assert timeline.height == 300.0
     assert timeline.tick_y2 == 300.0 - 32.0
     assert timeline.tick_label_y == 300.0 - 16.0
@@ -188,7 +189,7 @@ def test_changing_timeline_height_moves_the_tick_geometry_together(
 
 def test_the_rendered_geometry_matches_what_build_timeline_computed() -> None:
     run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    timeline = build_timeline(run, run, PRESENT)
+    timeline = build_timeline(run, a_sample(a_member(run, run)), PRESENT)
     html = render(a_report(timeline=timeline))
     assert timeline.ours is not None
     assert f'y1="{timeline.tick_y1}"' in html

@@ -355,12 +355,10 @@ never be summed.</p>
 <h2 id="provenance">Provenance</h2>
 <p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
 fetched {{ report.provenance.fetched_at }}.</p>
-{% if report.provenance.speed_reference_url %}
-<p class="sub"><a href="{{ report.provenance.speed_reference_url }}">Speed reference run</a></p>
-{% endif %}
-{% if report.provenance.parse_reference_url %}
-<p class="sub"><a href="{{ report.provenance.parse_reference_url }}">Parse reference run</a></p>
-{% endif %}
+{% for record in report.provenance.references %}
+<p class="sub"><a href="{{ record.url }}">{{ record.axis|capitalize }} candidate, +{{ record.keystone_level }}
+(report {{ record.report_code }}, fight {{ record.fight_id }})</a>{% if record.reason %} <span class="withheld">— not used: {{ record.reason }}</span>{% endif %}</p>
+{% endfor %}
 {% for line in report.provenance.withheld %}
 <p class="withheld">{{ line }}</p>
 {% endfor %}

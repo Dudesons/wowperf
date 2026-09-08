@@ -22,8 +22,8 @@ from wowperf.domain.analysis.recap import (
     recap_timeline,
     return_of,
 )
-from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import ParseReference, SpeedReference
+from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -37,6 +37,7 @@ from wowperf.domain.report.model import (
     PlayerCard,
     Provenance,
     RecapRow,
+    ReferenceRecord,
     Report,
     Section,
     SectionState,
@@ -216,38 +217,52 @@ def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
     return tuple(marks)
 
 
-def _timeline_caption(label: str, seconds: float) -> str:
+def _timeline_caption(label: str, seconds: float, suffix: str = "") -> str:
     """State which span this caption measures, not just its length.
 
     `seconds` spans the first pull's start to the last pull's end. The
     header states a different, longer figure — `keystone_time_seconds`,
     which also counts the trip to the first pack and Blizzard's death
     penalties. Naming the span here keeps a reader from seeing two numbers
-    for the same run and assuming one of them is wrong.
+    for the same run and assuming one of them is wrong. `suffix`, when
+    given, names the sample size a reference track was drawn from, so a
+    reader never mistakes one picture for the whole sample.
     """
     formatted = format_seconds(seconds)
     assert formatted is not None  # a float input always formats to a string
-    return f"{label} — {formatted} from first pull to last"
+    base = f"{label} — {formatted} from first pull to last"
+    return f"{base}, {suffix}" if suffix else base
 
 
-def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
+def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> Timeline:
     """Both runs on one elapsed-time axis, scaled so the longer one fills the width.
 
     The space between blocks is travel. That is why this layout exists: a
     per-pull table compares durations, and durations are rarely where a
     Mythic+ run loses its time.
+
+    Drawn from `sample.duration_eligible`'s best-aligned member — highest
+    `Alignment.matched_share`, compared pairwise and never averaged — and from
+    no one else: a member outside that subset sits at a different keystone
+    level, where `compare.duration` already refuses to print a number, and a
+    picture of its pull lengths would draw exactly what that finding withheld.
+    No track is drawn when the subset is empty. The member's `Alignment` was
+    computed once, when the sample was built, and is used as-is here rather
+    than recomputed.
     """
-    if section.state is SectionState.WITHHELD or theirs is None:
+    if section.state is SectionState.WITHHELD or sample is None or not sample.duration_eligible:
         return Timeline(section=section, width=TIMELINE_WIDTH, height=TIMELINE_HEIGHT)
+
+    member = max(sample.duration_eligible, key=lambda candidate: candidate.alignment.matched_share)
+    theirs = member.run
 
     our_seconds = _run_seconds(ours)
     their_seconds = _run_seconds(theirs)
     longest = max(our_seconds, their_seconds)
     scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
 
-    alignment = align_pulls(ours, theirs)
-    our_kinds = {index: "extra" for index in alignment.only_ours}
-    their_kinds = {index: "skipped" for index in alignment.only_theirs}
+    our_kinds = {index: "extra" for index in member.alignment.only_ours}
+    their_kinds = {index: "skipped" for index in member.alignment.only_theirs}
 
     return Timeline(
         section=section,
@@ -257,7 +272,9 @@ def build_timeline(ours: Run, theirs: Run | None, section: Section) -> Timeline:
             blocks=_blocks(ours, our_kinds, scale, _run_start_ms(ours)),
         ),
         theirs=TimelineTrack(
-            caption=_timeline_caption("Reference", their_seconds),
+            caption=_timeline_caption(
+                "Reference", their_seconds, suffix=f"one of {len(sample.members)} fast runs"
+            ),
             baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(
                 theirs,
@@ -659,10 +676,6 @@ def _header(loaded: LoadedRun) -> Header:
     )
 
 
-def _reference_url(report_code: str, fight_id: int) -> str:
-    return REPORT_URL.format(code=report_code, fight=fight_id)
-
-
 def parent_of(finding_id: str) -> str | None:
     """The figure this one is already contained by, if any."""
     for prefix, parent in NESTS_INSIDE:
@@ -738,6 +751,8 @@ def build_report(
     consumables: Consumables,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
+    speed_sample: SpeedSample | None = None,
+    reference_records: tuple[ReferenceRecord, ...] = (),
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -749,6 +764,13 @@ def build_report(
     adapter's job to load. `externals` and `self_resurrections` are data files
     too, loaded by the same adapter; they default to empty so a caller without
     them still builds every other section.
+
+    `speed` alone still decides whether a speed comparison ran at all — the
+    timeline and route sections stay gated on it. `speed_sample` is the full
+    sample the timeline draws its best-aligned duration-eligible member from;
+    a caller with no sample still gets a report, just with an empty timeline.
+    `reference_records` is every candidate `_samples` weighed, loaded or not —
+    carried onto the provenance unchanged, a link and never a figure.
     """
     timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
 
@@ -785,9 +807,7 @@ def build_report(
         narrative=narrative,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
-        timeline=build_timeline(
-            loaded.run, speed.loaded.run if speed else None, timeline_section
-        ),
+        timeline=build_timeline(loaded.run, speed_sample, timeline_section),
         route=route_section,
         route_rows=placed_rows["route_rows"],
         deaths=deaths,
@@ -800,12 +820,7 @@ def build_report(
             report_code=loaded.run.report_code,
             fight_id=loaded.run.fight_id,
             fetched_at=fetched_at,
-            speed_reference_url=(
-                _reference_url(speed.row.report_code, speed.row.fight_id) if speed else None
-            ),
-            parse_reference_url=(
-                _reference_url(parse.row.report_code, parse.row.fight_id) if parse else None
-            ),
+            references=reference_records,
             withheld=tuple(withheld),
             methods=methods,
         ),

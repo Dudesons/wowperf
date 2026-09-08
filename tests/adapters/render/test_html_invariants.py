@@ -16,9 +16,11 @@ from tests.domain.report.test_build_frame import (
     a_pull,
     a_run,
 )
+from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
+from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -161,6 +163,24 @@ def rich_speed_reference() -> SpeedReference:
     )
 
 
+def rich_speed_sample() -> SpeedSample:
+    # The sample build_timeline draws from: one member, sharing our keystone level,
+    # wrapping the same reference run `rich_speed_reference` already names.
+    reference = rich_speed_reference()
+    return SpeedSample(
+        members=(a_member(rich_loaded().run, reference.loaded.run, level=16, code="ref001"),)
+    )
+
+
+def rich_reference_records() -> tuple[ReferenceRecord, ...]:
+    return (
+        ReferenceRecord(
+            report_code="ref001", fight_id=7, keystone_level=16,
+            url="https://www.warcraftlogs.com/reports/ref001?fight=7", axis="speed",
+        ),
+    )
+
+
 def rich_findings() -> tuple[Finding, ...]:
     return (
         Finding(
@@ -186,8 +206,11 @@ def rich_html() -> str:
     # player card is withheld, giving the page a withheld section as well.
     return render(
         build_report(
-            rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED
-        , NO_DEFENSIVES, NO_CONSUMABLES)
+            rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED,
+            NO_DEFENSIVES, NO_CONSUMABLES,
+            speed_sample=rich_speed_sample(),
+            reference_records=rich_reference_records(),
+        )
     )
 
 

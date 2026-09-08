@@ -214,8 +214,9 @@ class Provenance(Frozen):
     report_code: str
     fight_id: int
     fetched_at: str
-    speed_reference_url: str | None = None
-    parse_reference_url: str | None = None
+    # Every candidate the comparison weighed, loaded or not, in the order `_samples`
+    # considered it. A link and never a figure — see `ReferenceRecord`.
+    references: tuple[ReferenceRecord, ...] = ()
     withheld: tuple[str, ...] = ()
     # Methods the page relied on that a reader might dispute, stated once here
     # rather than on every card: today, how a death card's health column is built.

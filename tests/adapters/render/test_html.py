@@ -9,6 +9,7 @@ from wowperf.domain.report.model import (
     Header,
     LedgerRow,
     Provenance,
+    ReferenceRecord,
     Report,
     Section,
     SectionState,
@@ -141,8 +142,16 @@ def test_provenance_links_each_reference_run_when_its_url_is_present() -> None:
                 report_code="abc123",
                 fight_id=36,
                 fetched_at="2026-09-05 14:02",
-                speed_reference_url="https://www.warcraftlogs.com/reports/speed1?fight=1",
-                parse_reference_url="https://www.warcraftlogs.com/reports/parse1?fight=2",
+                references=(
+                    ReferenceRecord(
+                        report_code="speed1", fight_id=1, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/speed1?fight=1", axis="speed",
+                    ),
+                    ReferenceRecord(
+                        report_code="parse1", fight_id=2, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/parse1?fight=2", axis="parse",
+                    ),
+                ),
             )
         )
     )
@@ -150,7 +159,48 @@ def test_provenance_links_each_reference_run_when_its_url_is_present() -> None:
     assert 'href="https://www.warcraftlogs.com/reports/parse1?fight=2"' in html
 
 
-def test_provenance_renders_no_reference_link_when_the_url_is_absent() -> None:
+def test_provenance_states_why_a_candidate_was_not_used() -> None:
+    html = render(
+        a_report(
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                references=(
+                    ReferenceRecord(
+                        report_code="speed1", fight_id=1, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/speed1?fight=1", axis="speed",
+                        loaded=False, reason="this is the run under analysis",
+                    ),
+                ),
+            )
+        )
+    )
+    assert "this is the run under analysis" in html
+
+
+def test_a_reference_records_reason_cannot_smuggle_markup() -> None:
+    html = render(
+        a_report(
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                references=(
+                    ReferenceRecord(
+                        report_code="speed1", fight_id=1, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/speed1?fight=1", axis="speed",
+                        loaded=False, reason="<img onerror=x>",
+                    ),
+                ),
+            )
+        )
+    )
+    assert "<img onerror=x>" not in html
+    assert "&lt;img" in html
+
+
+def test_provenance_renders_no_reference_link_when_none_were_considered() -> None:
     html = render(a_report())
     assert "reference run" not in html.lower()
     assert "warcraftlogs.com/reports/" not in html
