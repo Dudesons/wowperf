@@ -110,14 +110,14 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
         ),
         pulls=pulls,
     )
 
 
-def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Uglymage") -> Death:
+def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Emberkin") -> Death:
     return Death(
         player_name=name, actor_id=actor_id, timestamp_ms=at_ms,
         killing_blow="Shadow Bolt", pull_index=0, seconds_until_next_action=4.0,
@@ -127,7 +127,7 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Uglymage") -
 def test_a_death_with_a_defensive_available_is_a_finding() -> None:
     findings = analyse_defensives_at_death(a_run(), owns_both(), DEFENSIVES, (a_death(),))
     assert len(findings) == 1
-    assert findings[0].id == "defensives.unused.Uglymage"
+    assert findings[0].id == "defensives.unused.Emberkin"
     assert findings[0].confidence is Confidence.INFERRED
     # No honest number of seconds attaches to a button not pressed.
     assert findings[0].seconds_lost is None
@@ -186,11 +186,11 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
     run = run.model_copy(
         update={
             "players": run.players
-            + (Player(actor_id=12, name="Uglymage", class_name="Mage", spec="Arcane",
+            + (Player(actor_id=12, name="Emberkin", class_name="Mage", spec="Arcane",
                       item_level=300),)
         }
     )
     casts = owns_both(11) + owns_both(12)
     deaths = (a_death(actor_id=11), a_death(actor_id=12))
     ids = {finding.id for finding in analyse_defensives_at_death(run, casts, DEFENSIVES, deaths)}
-    assert ids == {"defensives.unused.Uglymage.11", "defensives.unused.Uglymage.12"}
+    assert ids == {"defensives.unused.Emberkin.11", "defensives.unused.Emberkin.12"}

@@ -17,7 +17,7 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=744, count_required=729, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
             Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
                    item_level=311),
@@ -37,7 +37,7 @@ def a_death(
 def test_the_total_cost_is_the_measured_time_not_played() -> None:
     findings = analyse_deaths(
         a_run(),
-        (a_death("Uglymage", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, 12.5)),
+        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, 12.5)),
     )
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.seconds_lost == 32.5
@@ -46,7 +46,7 @@ def test_the_total_cost_is_the_measured_time_not_played() -> None:
 
 def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
     findings = analyse_deaths(
-        a_run(), (a_death("Uglymage", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, None))
+        a_run(), (a_death("Emberkin", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, None))
     )
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.seconds_lost == 20.0
@@ -55,7 +55,7 @@ def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
 
 def test_a_wholly_unmeasured_run_of_deaths_reports_no_total_cost_rather_than_zero() -> None:
     findings = analyse_deaths(
-        a_run(), (a_death("Uglymage", 11, 1_000, None), a_death("Sublime", 12, 40_000, None))
+        a_run(), (a_death("Emberkin", 11, 1_000, None), a_death("Sublime", 12, 40_000, None))
     )
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.seconds_lost is None
@@ -71,17 +71,17 @@ def test_deaths_close_together_are_reported_as_one_chain() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 30_000, 10.0),
+            a_death("Emberkin", 11, 30_000, 10.0),
             a_death("Sublime", 12, 33_000, 8.0),
         ),
     )
     chain = next(f for f in findings if f.id.startswith("deaths.chain."))
     assert chain.seconds_lost == 18.0
-    assert "Uglymage" in chain.detail
+    assert "Emberkin" in chain.detail
     assert chain.confidence is Confidence.MEASURED
     # Pull 0 starts at 0ms: 30_000ms and 33_000ms are 30s and 33s into it.
     assert chain.evidence == (
-        "Uglymage at pull 0, 30s in to Molten Scar",
+        "Emberkin at pull 0, 30s in to Molten Scar",
         "Sublime at pull 0, 33s in to Molten Scar",
     )
 
@@ -90,7 +90,7 @@ def test_deaths_far_apart_are_reported_separately() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 1_000, 10.0),
+            a_death("Emberkin", 11, 1_000, 10.0),
             a_death("Sublime", 12, 200_000, 8.0),
         ),
     )
@@ -102,17 +102,17 @@ def test_a_repeat_dier_is_named() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 1_000, 10.0),
-            a_death("Uglymage", 11, 200_000, 8.0),
+            a_death("Emberkin", 11, 1_000, 10.0),
+            a_death("Emberkin", 11, 200_000, 8.0),
         ),
     )
-    repeat = next(f for f in findings if f.id == "deaths.repeat.Uglymage")
+    repeat = next(f for f in findings if f.id == "deaths.repeat.Emberkin")
     assert repeat.seconds_lost == 18.0
     assert "2" in repeat.detail
 
 
 def test_a_single_death_is_reported_alone_with_correct_grammar() -> None:
-    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 10.0),))
+    findings = analyse_deaths(a_run(), (a_death("Emberkin", 11, 1_000, 10.0),))
     assert [f.id for f in findings if f.id.startswith("deaths.chain.")] == []
     assert [f.id for f in findings if f.id.startswith("deaths.repeat.")] == []
     singles = [f for f in findings if f.id.startswith("deaths.single.")]
@@ -126,7 +126,7 @@ def test_a_single_death_is_reported_alone_with_correct_grammar() -> None:
 
 
 def test_a_wholly_unmeasured_death_reports_no_seconds_lost_rather_than_zero() -> None:
-    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, None),))
+    findings = analyse_deaths(a_run(), (a_death("Emberkin", 11, 1_000, None),))
     single = next(f for f in findings if f.id == "deaths.single.0")
     assert single.seconds_lost is None
     assert "cannot be measured" in single.detail
@@ -136,7 +136,7 @@ def test_a_chain_of_wholly_unmeasured_deaths_reports_no_seconds_lost() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 30_000, None),
+            a_death("Emberkin", 11, 30_000, None),
             a_death("Sublime", 12, 33_000, None),
         ),
     )
@@ -156,9 +156,9 @@ def a_run_with_duplicate_names() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=744, count_required=729, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
-            Player(actor_id=12, name="Uglymage", class_name="Shaman", spec="Elemental",
+            Player(actor_id=12, name="Emberkin", class_name="Shaman", spec="Elemental",
                    item_level=311),
         ),
         pulls=pulls,
@@ -169,17 +169,17 @@ def test_repeat_dying_players_sharing_a_name_are_kept_separate() -> None:
     findings = analyse_deaths(
         a_run_with_duplicate_names(),
         (
-            a_death("Uglymage", 11, 1_000, 10.0),
-            a_death("Uglymage", 12, 100_000, 5.0),
-            a_death("Uglymage", 11, 200_000, 8.0),
-            a_death("Uglymage", 12, 300_000, 3.0),
+            a_death("Emberkin", 11, 1_000, 10.0),
+            a_death("Emberkin", 12, 100_000, 5.0),
+            a_death("Emberkin", 11, 200_000, 8.0),
+            a_death("Emberkin", 12, 300_000, 3.0),
         ),
     )
     repeats = [f for f in findings if f.id.startswith("deaths.repeat.")]
     assert len(repeats) == 2
 
-    actor_11 = next(f for f in repeats if f.id == "deaths.repeat.Uglymage.11")
-    actor_12 = next(f for f in repeats if f.id == "deaths.repeat.Uglymage.12")
+    actor_11 = next(f for f in repeats if f.id == "deaths.repeat.Emberkin.11")
+    actor_12 = next(f for f in repeats if f.id == "deaths.repeat.Emberkin.12")
     assert actor_11.id != actor_12.id
 
     assert "2" in actor_11.detail
@@ -202,9 +202,9 @@ def test_a_transitive_chain_groups_all_three_deaths() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 0, 10.0),
+            a_death("Emberkin", 11, 0, 10.0),
             a_death("Sublime", 12, 9_000, 8.0),
-            a_death("Uglymage", 11, 17_000, 5.0),
+            a_death("Emberkin", 11, 17_000, 5.0),
         ),
     )
     chains = [f for f in findings if f.id.startswith("deaths.chain.")]
@@ -214,7 +214,7 @@ def test_a_transitive_chain_groups_all_three_deaths() -> None:
 
 
 def test_the_total_does_not_claim_to_exceed_the_timer_penalty() -> None:
-    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 3.0),))
+    findings = analyse_deaths(a_run(), (a_death("Emberkin", 11, 1_000, 3.0),))
     total = next(f for f in findings if f.id == "deaths.total")
     assert "longer than the timer penalty" not in total.detail
     assert "cast at another actor" in total.detail
@@ -227,7 +227,7 @@ def test_a_death_outside_every_pull_is_reported_without_inventing_one() -> None:
     offset (meaningless across an evening-long log) or attributing the death to
     a pull it did not happen in.
     """
-    findings = analyse_deaths(a_run(), (a_death("Uglymage", 11, 1_000, 10.0, pull_index=None),))
+    findings = analyse_deaths(a_run(), (a_death("Emberkin", 11, 1_000, 10.0, pull_index=None),))
     single = next(f for f in findings if f.id == "deaths.single.0")
     assert single.evidence == ("outside any pull",)
     assert single.pull_index is None

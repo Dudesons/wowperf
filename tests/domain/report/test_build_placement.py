@@ -11,7 +11,7 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import PLACEMENTS, build_report, place_rows
 from wowperf.domain.report.model import LedgerRow, Report
 
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 
 def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -> Finding:
@@ -56,7 +56,7 @@ FAMILY_HOMES = {
     "compare.confound.affixes": "route_rows",
     "deaths.single.0": "death_rows",
     "deaths.chain.0": "death_rows",
-    "deaths.repeat.Uglymage": "death_rows",
+    "deaths.repeat.Emberkin": "death_rows",
     "defensives.unused.45438": "death_rows",
     "consumables.unused.6262": "death_rows",
     "consumables.never.6262": "death_rows",
@@ -65,7 +65,7 @@ FAMILY_HOMES = {
     "interrupts.summary": "interrupts",
     "compare.interrupts": "interrupts",
     "compare.parse.unavailable": "group_rows",
-    "defensives.Uglymage.45438": "group_rows",
+    "defensives.Emberkin.45438": "group_rows",
     "defensives.ceiling.45438": "group_rows",
     "throughput.alignment.12345": "group_rows",
     "throughput.ceiling.12345": "group_rows",

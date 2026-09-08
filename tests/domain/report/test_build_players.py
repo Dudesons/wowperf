@@ -26,7 +26,7 @@ def titles(findings: tuple[Finding, ...]) -> dict[str, str]:
     return {finding.id: finding.title for finding in findings}
 
 
-def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
     )
@@ -79,7 +79,7 @@ def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None
 
 def test_one_card_per_player() -> None:
     cards = build_players(a_loaded(), (), None, a_player(), {})
-    assert [card.name for card in cards] == ["Dudesons"]
+    assert [card.name for card in cards] == ["Stonewake"]
 
 
 def test_two_players_sharing_a_name_get_disambiguated_card_names() -> None:
@@ -103,7 +103,7 @@ def test_an_unknown_class_still_gets_a_colour_rather_than_an_empty_string() -> N
 
 
 def test_a_card_carries_its_players_damage_findings() -> None:
-    findings = (a_finding("players.damage.0", title="Dudesons took 2.3x the group median"),)
+    findings = (a_finding("players.damage.0", title="Stonewake took 2.3x the group median"),)
     card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
     assert ids(card.damage_rows) == ["players.damage.0"]
 
@@ -119,7 +119,7 @@ def test_a_damage_rows_title_and_detail_are_the_findings_own_unchanged() -> None
     )
     finding = a_finding(
         "players.damage.0",
-        title="Dudesons took 2.3x the group median from Rending Slash",
+        title="Stonewake took 2.3x the group median from Rending Slash",
         detail=detail,
     )
     findings = (finding,)
@@ -183,10 +183,10 @@ def test_the_subjects_card_gets_the_comparison_rows_when_a_parse_reference_exist
 
 
 def test_a_non_subject_players_card_gets_no_comparison_rows() -> None:
-    loaded = a_loaded(players=(a_player(1, "Dudesons"), a_player(2, "Other")))
+    loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
     cards = build_players(
-        loaded, findings, a_parse("Dudesons"), a_player(1, "Dudesons"), titles(findings)
+        loaded, findings, a_parse("Stonewake"), a_player(1, "Stonewake"), titles(findings)
     )
     other_card = next(card for card in cards if card.name == "Other")
     assert other_card.spell_and_talent_rows == ()
@@ -197,12 +197,12 @@ def test_the_comparison_rows_land_on_the_subject_not_a_namesake() -> None:
     # own players -- a different character in a different log. Matching by
     # actor id, not name, keeps the rows off that namesake and on the
     # analysed player's own card.
-    loaded = a_loaded(players=(a_player(1, "Dudesons"), a_player(2, "Other")))
+    loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
     cards = build_players(
-        loaded, findings, a_parse("Dudesons"), a_player(2, "Other"), titles(findings)
+        loaded, findings, a_parse("Stonewake"), a_player(2, "Other"), titles(findings)
     )
-    namesake_card = next(card for card in cards if card.name == "Dudesons")
+    namesake_card = next(card for card in cards if card.name == "Stonewake")
     subject_card = next(card for card in cards if card.name == "Other")
     assert namesake_card.spell_and_talent_rows == ()
     assert ids(subject_card.spell_and_talent_rows) == ["compare.spells.missing.0"]
@@ -249,7 +249,7 @@ def test_a_single_death_is_worded_in_the_singular() -> None:
     loaded = a_loaded()
     loaded_with_death = LoadedRun(
         run=loaded.run,
-        deaths=(Death(player_name="Dudesons", actor_id=1, timestamp_ms=1_000,
+        deaths=(Death(player_name="Stonewake", actor_id=1, timestamp_ms=1_000,
                       killing_blow="Frigid Roar", pull_index=0),),
     )
     card = build_players(loaded_with_death, (), None, a_player(), {})[0]
@@ -261,9 +261,9 @@ def test_multiple_deaths_are_worded_in_the_plural() -> None:
     loaded_with_deaths = LoadedRun(
         run=loaded.run,
         deaths=(
-            Death(player_name="Dudesons", actor_id=1, timestamp_ms=1_000,
+            Death(player_name="Stonewake", actor_id=1, timestamp_ms=1_000,
                   killing_blow="Frigid Roar", pull_index=0),
-            Death(player_name="Dudesons", actor_id=1, timestamp_ms=2_000,
+            Death(player_name="Stonewake", actor_id=1, timestamp_ms=2_000,
                   killing_blow="Frigid Roar", pull_index=0),
         ),
     )
@@ -275,7 +275,7 @@ def test_a_single_interrupt_is_worded_in_the_singular() -> None:
     loaded = a_loaded()
     loaded_with_interrupt = LoadedRun(
         run=loaded.run,
-        interrupts=(InterruptEvent(player_name="Dudesons", actor_id=1,
+        interrupts=(InterruptEvent(player_name="Stonewake", actor_id=1,
                                     interrupted_ability_id=1, target_id=1,
                                     target_instance=0, timestamp_ms=1_000, pull_index=0),),
     )
@@ -288,9 +288,9 @@ def test_multiple_interrupts_are_worded_in_the_plural() -> None:
     loaded_with_interrupts = LoadedRun(
         run=loaded.run,
         interrupts=(
-            InterruptEvent(player_name="Dudesons", actor_id=1, interrupted_ability_id=1,
+            InterruptEvent(player_name="Stonewake", actor_id=1, interrupted_ability_id=1,
                             target_id=1, target_instance=0, timestamp_ms=1_000, pull_index=0),
-            InterruptEvent(player_name="Dudesons", actor_id=1, interrupted_ability_id=2,
+            InterruptEvent(player_name="Stonewake", actor_id=1, interrupted_ability_id=2,
                             target_id=1, target_instance=0, timestamp_ms=2_000, pull_index=0),
         ),
     )

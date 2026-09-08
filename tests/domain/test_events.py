@@ -50,7 +50,7 @@ def test_an_enemy_cast_that_was_kicked_names_the_interrupter() -> None:
         ability_id=1238440,
         ability_name="Molten Scar",
         started_ms=1000,
-        interrupted_by="Uglymage",
+        interrupted_by="Emberkin",
     )
     assert cast.was_kicked is True
     assert cast.landed is False

@@ -16,7 +16,7 @@ REINCARNATION = SelfResurrections(ability_ids=(21169,))
 
 
 def dead(at_ms: int = 60_000, back_after: float | None = None) -> Death:
-    return Death(player_name="Dudesons", actor_id=1, timestamp_ms=at_ms, killing_blow="x",
+    return Death(player_name="Stonewake", actor_id=1, timestamp_ms=at_ms, killing_blow="x",
                  pull_index=0, seconds_until_next_action=back_after)
 
 

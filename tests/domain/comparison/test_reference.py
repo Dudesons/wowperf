@@ -33,14 +33,14 @@ def test_a_parse_row_names_the_character_it_belongs_to() -> None:
         fight_id=16,
         keystone_level=16,
         duration_ms=1_399_143,
-        character_name="Críms",
+        character_name="Bríala",
         class_name="Mage",
         spec="Arcane",
         affix_ids=(9, 10, 147),
         score=435.17,
         medal="silver",
     )
-    assert row.character_name == "Críms"
+    assert row.character_name == "Bríala"
     assert row.duration_seconds == 1399.143
 
 

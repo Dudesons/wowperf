@@ -43,7 +43,7 @@ def a_loaded_run() -> LoadedRun:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=120, count_required=100, npc_counts=((100, 60),),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -57,7 +57,7 @@ def a_loaded_run() -> LoadedRun:
             CastEvent(actor_id=11, ability_id=45438, ability_name="Ice Block",
                       timestamp_ms=40_000, pull_index=0),
         ),
-        deaths=(Death(player_name="Uglymage", actor_id=11, timestamp_ms=30_000,
+        deaths=(Death(player_name="Emberkin", actor_id=11, timestamp_ms=30_000,
                       killing_blow="Molten Scar", pull_index=0,
                       seconds_until_next_action=22.0),),
         enemy_cast_rows=(
@@ -144,7 +144,7 @@ def test_an_empty_run_analyses_without_raising() -> None:
 
 
 def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
-    # Uglymage casts Ice Block at 40s, which proves it is talented, and dies at
+    # Emberkin casts Ice Block at 40s, which proves it is talented, and dies at
     # 30s with it off cooldown. The availability analyser must contribute
     # alongside the never-pressed one it sits beside.
     ids = {
@@ -153,7 +153,7 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
             a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
         )
     }
-    assert "defensives.unused.Uglymage" in ids
+    assert "defensives.unused.Emberkin" in ids
 
 
 CONSUMABLES = Consumables(
@@ -169,7 +169,7 @@ CONSUMABLES = Consumables(
 
 
 def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
-    # Uglymage drinks nothing all run and dies, so the consumable analyser must
+    # Emberkin drinks nothing all run and dies, so the consumable analyser must
     # contribute alongside the defensive ones.
     # Drunk once early, so the category is one the tool may speak about at all.
     loaded = a_loaded_run()
@@ -181,7 +181,7 @@ def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
         loaded.model_copy(update={"casts": drank}),
         SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns(),
     )
-    assert "consumables.unused.Uglymage" in {finding.id for finding in findings}
+    assert "consumables.unused.Emberkin" in {finding.id for finding in findings}
 
 
 def test_the_alignment_analyser_reaches_the_ranked_list() -> None:

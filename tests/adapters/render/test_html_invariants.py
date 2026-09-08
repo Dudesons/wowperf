@@ -42,7 +42,7 @@ GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
 # The player being analysed, from our own roster -- never a reference run's top
 # parser, which names a different character in a different log (item 1).
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 # "losses" renders only when a timed loss exists; the minimal fixture has two.
 SECTION_ORDER = [
@@ -57,7 +57,7 @@ def minimal_loaded() -> LoadedRun:
             players=(
                 Player(
                     actor_id=1,
-                    name="Uglymage",
+                    name="Emberkin",
                     class_name="Mage",
                     spec="Arcane",
                     item_level=680,
@@ -67,7 +67,7 @@ def minimal_loaded() -> LoadedRun:
         ),
         casts=(CastEvent(actor_id=1, ability_id=1, ability_name="Arcane Blast",
                          timestamp_ms=10_000, pull_index=0),),
-        deaths=(Death(player_name="Uglymage", actor_id=1, timestamp_ms=50_000,
+        deaths=(Death(player_name="Emberkin", actor_id=1, timestamp_ms=50_000,
                       killing_blow="Frigid Roar", pull_index=0),),
         damage_taken=(DamageTakenEvent(actor_id=1, ability_id=2, ability_name="Snowdrift",
                                        amount=82_410, health_damage=82_410,
@@ -105,7 +105,7 @@ def minimal_findings() -> tuple[Finding, ...]:
         # invariants below exercise the rows beneath the Deaths section.
         Finding(
             id="defensives.unused.0",
-            title="Uglymage died with Ice Block available",
+            title="Emberkin died with Ice Block available",
             detail="Cast earlier in the run, and its cooldown had elapsed by the killing blow.",
             confidence=Confidence.INFERRED,
         ),
@@ -134,9 +134,9 @@ def rich_loaded() -> LoadedRun:
     return LoadedRun(
         run=a_run(
             players=(
-                Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane",
+                Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane",
                        item_level=680),
-                Player(actor_id=2, name="Dudesons", class_name="DeathKnight", spec="Blood",
+                Player(actor_id=2, name="Stonewake", class_name="DeathKnight", spec="Blood",
                        item_level=675),
             ),
             pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 200_000, encounter_id=12825)),

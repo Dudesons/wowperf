@@ -73,7 +73,7 @@ def a_loaded(
         if n < kicked:
             interrupts.append(
                 InterruptEvent(
-                    player_name="Uglymage",
+                    player_name="Emberkin",
                     actor_id=693,
                     interrupted_ability_id=1000,
                     target_id=500 + n,
@@ -84,7 +84,7 @@ def a_loaded(
     return LoadedRun(
         run=run,
         deaths=tuple(
-            Death(player_name="Uglymage", actor_id=693, timestamp_ms=n, killing_blow="X")
+            Death(player_name="Emberkin", actor_id=693, timestamp_ms=n, killing_blow="X")
             for n in range(deaths)
         ),
         enemy_cast_rows=tuple(rows),

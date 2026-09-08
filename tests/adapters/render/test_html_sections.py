@@ -199,7 +199,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
     # The template maps a kind and a state to a class and to nothing else, so
     # the eight names below are the whole of what tells the rows apart on screen.
     card = DeathCard(
-        player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+        player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
         killing_blow="Frigid Roar",
         timeline=tuple(
             RecapRow(seconds_before="1.0 s", kind=kind, ability=kind.title())
@@ -224,7 +224,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
 def test_a_death_card_with_no_timeline_prints_the_note_the_builder_wrote() -> None:
     # Deliberately not the builder's own wording: the template must print the
     # card's note rather than a sentence of its own.
-    card = DeathCard(player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar", timeline_note="Nothing reached this player.")
 
     html = render(a_report(deaths=(card,)))
@@ -234,7 +234,7 @@ def test_a_death_card_with_no_timeline_prints_the_note_the_builder_wrote() -> No
 
 def test_a_death_card_renders_its_recap() -> None:
     card = DeathCard(
-        player="Dudesons",
+        player="Stonewake",
         class_name="DeathKnight",
         when="12:04, pull 5",
         killing_blow="Frigid Roar",
@@ -291,7 +291,7 @@ def test_the_interrupts_section_renders_its_rows() -> None:
 
 def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
     card = PlayerCard(
-        name="Dudesons",
+        name="Stonewake",
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
@@ -306,7 +306,7 @@ def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
 
 def test_a_player_cards_withheld_comparison_states_its_reason() -> None:
     card = PlayerCard(
-        name="Dudesons",
+        name="Stonewake",
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
@@ -325,13 +325,13 @@ def test_a_run_with_no_players_says_so_rather_than_showing_an_empty_heading() ->
 def test_death_findings_render_inside_the_deaths_section() -> None:
     html = render(build_report(a_loaded(), (
         a_finding(
-            "defensives.unused.Uglymage",
-            title="Uglymage died once with a defensive available",
+            "defensives.unused.Emberkin",
+            title="Emberkin died once with a defensive available",
         ),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     deaths_start = html.index('<h2 id="deaths">')
     interrupts_start = html.index('<h2 id="interrupts">')
-    title_at = html.index("Uglymage died once with a defensive available")
+    title_at = html.index("Emberkin died once with a defensive available")
     assert deaths_start < title_at < interrupts_start
 
 
@@ -375,9 +375,9 @@ def test_group_rows_render_inside_the_players_section() -> None:
     # Observations sits in the Summary panel, ahead of Players, so the section
     # that follows Players in document order is Provenance.
     html = render(build_report(a_loaded(), (
-        a_finding("throughput.alignment.1", title="Uglymage had a cooldown ready and unpressed"),
+        a_finding("throughput.alignment.1", title="Emberkin had a cooldown ready and unpressed"),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     players_start = html.index('<h2 id="players">')
     provenance_start = html.index('<h2 id="provenance">')
-    title_at = html.index("Uglymage had a cooldown ready and unpressed")
+    title_at = html.index("Emberkin had a cooldown ready and unpressed")
     assert players_start < title_at < provenance_start

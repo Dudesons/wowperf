@@ -21,11 +21,11 @@ from wowperf.domain.events import (
 from wowperf.domain.model import LoadedRun, Player
 
 DEATH_MS = 60_000
-DUDE = Player(actor_id=1, name="Dudesons", class_name="DeathKnight", spec="Blood", item_level=680)
+DUDE = Player(actor_id=1, name="Stonewake", class_name="DeathKnight", spec="Blood", item_level=680)
 
 
 def a_death(at_ms: int = DEATH_MS, actor_id: int = 1) -> Death:
-    return Death(player_name="Dudesons", actor_id=actor_id, timestamp_ms=at_ms,
+    return Death(player_name="Stonewake", actor_id=actor_id, timestamp_ms=at_ms,
                  killing_blow="Frigid Roar", pull_index=0)
 
 

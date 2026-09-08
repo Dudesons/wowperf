@@ -16,7 +16,7 @@ from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 
 OURS = Player(
     actor_id=693,
-    name="Uglymage",
+    name="Emberkin",
     class_name="Mage",
     spec="Arcane",
     item_level=318,
@@ -24,7 +24,7 @@ OURS = Player(
 )
 THEIRS = Player(
     actor_id=11,
-    name="Críms",
+    name="Bríala",
     class_name="Mage",
     spec="Arcane",
     item_level=330,
@@ -77,7 +77,7 @@ def a_loaded(
             npc_counts=((2, 12),),
             players=players,
             pulls=pulls,
-            owner_name="uglymage",
+            owner_name="emberkin",
         ),
         casts=casts,
     )
@@ -112,7 +112,7 @@ def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
             fight_id=16,
             keystone_level=16,
             duration_ms=1_399_143,
-            character_name="Críms",
+            character_name="Bríala",
             class_name="Mage",
             spec="Arcane",
         ),
@@ -175,8 +175,8 @@ def a_comparable_pair_with_auras() -> tuple[LoadedRun, Player, SpeedReference, P
 
 
 def test_a_player_is_found_whatever_the_case() -> None:
-    assert find_player(our_run().run, "uglymage") is OURS
-    assert find_player(our_run().run, "UGLYMAGE") is OURS
+    assert find_player(our_run().run, "emberkin") is OURS
+    assert find_player(our_run().run, "EMBERKIN") is OURS
     assert find_player(our_run().run, "Nobody") is None
 
 

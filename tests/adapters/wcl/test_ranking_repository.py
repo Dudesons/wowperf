@@ -31,7 +31,7 @@ def speed_row(level: int, code: str = "aaa111") -> dict[str, object]:
 
 def parse_row(level: int) -> dict[str, object]:
     return {
-        "name": "Críms",
+        "name": "Bríala",
         "class": "Mage",
         "spec": "Arcane",
         "duration": 1399143,
@@ -113,7 +113,7 @@ def test_top_parses_pass_the_class_and_spec_through(tmp_path: Path) -> None:
     )
 
     assert calls == [15]
-    assert rows[0].character_name == "Críms"
+    assert rows[0].character_name == "Bríala"
     assert rows[0].spec == "Arcane"
 
 

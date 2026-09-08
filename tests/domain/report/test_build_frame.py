@@ -17,7 +17,7 @@ NO_DEFENSIVES = Defensives(entries=())
 """The report tests whose subject is not defensives. Says the tool checked nothing."""
 
 
-def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
     )

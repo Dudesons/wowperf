@@ -9,7 +9,7 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import POINTER_COUNT, build_report
 from wowperf.domain.report.model import LedgerRow, Report
 
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 
 def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -> Finding:

@@ -18,7 +18,7 @@ from wowperf.adapters.wcl.ingest import (
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 ABILITY_NAMES = {1238440: "Molten Scar", 1241214: "Searing Wave", 47528: "Kick"}
-PLAYERS = {693: "Uglymage"}
+PLAYERS = {693: "Emberkin"}
 RECAP_NAMES = {1238440: "Molten Scar", 17: "Power Word: Shield", 774: "Rejuvenation",
                61999: "Raise Ally"}
 
@@ -36,7 +36,7 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(9, 10, 147), keystone_time_ms=1_909_000,
         keystone_bonus=1, count_reached=744, count_required=729,
         npc_counts=((241874, 5), (244889, 35)),
-        players=(Player(actor_id=693, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -72,7 +72,7 @@ def test_only_interrupt_rows_become_interrupts() -> None:
     ]
     interrupts = build_interrupts(events, a_run(), PLAYERS)
     assert len(interrupts) == 1
-    assert interrupts[0].player_name == "Uglymage"
+    assert interrupts[0].player_name == "Emberkin"
     assert interrupts[0].interrupted_ability_id == 1241214
     assert interrupts[0].target_instance == 1
     assert interrupts[0].pull_index == 1

@@ -47,7 +47,7 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
             Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
                    item_level=311),
@@ -140,7 +140,7 @@ def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
 
 
 def test_two_players_of_the_same_spec_are_reported_independently() -> None:
-    # Uglymage's Prismatic Barrier press also qualifies for a ceiling finding
+    # Emberkin's Prismatic Barrier press also qualifies for a ceiling finding
     # (§5.7); scope this assertion to the never-cast claims it was written to
     # check, both of which belong to Othermage, who cast nothing at all.
     run = a_run()
@@ -155,7 +155,7 @@ def test_two_players_of_the_same_spec_are_reported_independently() -> None:
 
 def test_same_named_players_get_distinct_finding_ids() -> None:
     run = a_run()
-    twin = Player(actor_id=99, name="Uglymage", class_name="Mage", spec="Arcane",
+    twin = Player(actor_id=99, name="Emberkin", class_name="Mage", spec="Arcane",
                   item_level=300)
     run = run.model_copy(update={"players": run.players + (twin,)})
     findings = analyse_defensives(run, (), DEFENSIVES, ())

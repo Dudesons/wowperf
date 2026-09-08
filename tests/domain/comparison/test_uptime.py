@@ -11,7 +11,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
 
 
-def a_player(name: str = "Dudesons", actor_id: int = 7) -> Player:
+def a_player(name: str = "Stonewake", actor_id: int = 7) -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=315
     )

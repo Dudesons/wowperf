@@ -137,8 +137,8 @@ def test_a_null_spec_leaves_the_player_on_the_roster_with_no_spec() -> None:
         "code": "abc123",
         "masterData": {
             "actors": [
-                {"id": 693, "name": "Uglymage", "subType": "Mage"},
-                {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
+                {"id": 693, "name": "Emberkin", "subType": "Mage"},
+                {"id": 7, "name": "Stonewake", "subType": "DeathKnight"},
             ]
         },
     }
@@ -150,19 +150,19 @@ def test_a_null_spec_leaves_the_player_on_the_roster_with_no_spec() -> None:
     run = build_run(report_payload, fight)
 
     by_name = {player.name: player for player in run.players}
-    assert set(by_name) == {"Uglymage", "Dudesons"}
-    assert by_name["Dudesons"].spec == ""
-    assert by_name["Dudesons"].class_name == "DeathKnight"
+    assert set(by_name) == {"Emberkin", "Stonewake"}
+    assert by_name["Stonewake"].spec == ""
+    assert by_name["Stonewake"].class_name == "DeathKnight"
     # The neighbouring player must be unaffected: the arrays are index-aligned,
     # so a null must not shift what anyone else is read as.
-    assert by_name["Uglymage"].spec == "Arcane"
+    assert by_name["Emberkin"].spec == "Arcane"
 
 
 def test_a_null_item_level_leaves_the_player_on_the_roster() -> None:
     # Same array, same nullability, same reasoning.
     report_payload = {
         "code": "abc123",
-        "masterData": {"actors": [{"id": 693, "name": "Uglymage", "subType": "Mage"}]},
+        "masterData": {"actors": [{"id": 693, "name": "Emberkin", "subType": "Mage"}]},
     }
     fight = a_minimal_fight()
     fight["friendlyPlayers"] = [693]
@@ -194,14 +194,14 @@ def a_minimal_fight() -> dict[str, object]:
 def test_build_run_reads_the_encounter_and_the_owner_off_the_report() -> None:
     report = {
         "code": "abc123",
-        "owner": {"name": "dudesons"},
+        "owner": {"name": "stonewake"},
         "masterData": {"actors": []},
     }
 
     run = build_run(report, a_minimal_fight())
 
     assert run.encounter_id == 12825
-    assert run.owner_name == "dudesons"
+    assert run.owner_name == "stonewake"
 
 
 def test_build_run_survives_a_report_with_no_owner() -> None:
@@ -221,7 +221,7 @@ def test_a_fight_with_no_encounter_id_fails_loudly() -> None:
 def test_a_player_has_no_talent_string_until_one_is_fetched() -> None:
     report = {
         "code": "abc123",
-        "masterData": {"actors": [{"id": 693, "name": "Uglymage", "subType": "Mage"}]},
+        "masterData": {"actors": [{"id": 693, "name": "Emberkin", "subType": "Mage"}]},
     }
     fight = a_minimal_fight()
     fight["friendlyPlayers"] = [693]
@@ -236,8 +236,8 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
         "code": "abc123",
         "masterData": {
             "actors": [
-                {"id": 693, "name": "Uglymage", "subType": "Mage"},
-                {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
+                {"id": 693, "name": "Emberkin", "subType": "Mage"},
+                {"id": 7, "name": "Stonewake", "subType": "DeathKnight"},
             ]
         },
     }
@@ -249,8 +249,8 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
     run = build_run(report, fight, talents={693: "C4DAAAAA", 7: "CoPAAAAA"})
 
     by_name = {player.name: player for player in run.players}
-    assert by_name["Uglymage"].talent_import_string == "C4DAAAAA"
-    assert by_name["Dudesons"].talent_import_string == "CoPAAAAA"
+    assert by_name["Emberkin"].talent_import_string == "C4DAAAAA"
+    assert by_name["Stonewake"].talent_import_string == "CoPAAAAA"
 
 
 def test_the_talents_query_asks_for_one_alias_per_actor() -> None:

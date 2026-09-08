@@ -187,7 +187,7 @@ ANALYZE_FIGHTS_PAYLOAD: dict[str, Any] = {
             ],
             "masterData": {
                 "actors": [
-                    {"id": 693, "name": "Uglymage", "subType": "Mage", "server": "Hyjal"},
+                    {"id": 693, "name": "Emberkin", "subType": "Mage", "server": "Hyjal"},
                 ]
             },
         }
@@ -203,7 +203,7 @@ PARSE_REFERENCE_FIGHT = 16
 # The parse reference's own roster fixture must carry an actor under this same name —
 # see `build_analyze_transport`'s `fights_by_code` — or `find_player` can never resolve
 # the counterpart and the counterpart's aura fetch silently never fires.
-PARSE_REFERENCE_CHARACTER_NAME = "Críms"
+PARSE_REFERENCE_CHARACTER_NAME = "Bríala"
 
 
 def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str, Any]:
@@ -286,7 +286,7 @@ def _broken_parse_row(code: str, fight_id: int) -> dict[str, Any]:
 
 
 def build_analyze_transport(
-    player_name: str = "Uglymage",
+    player_name: str = "Emberkin",
     *,
     bracket_data: int = 16,
     rankings: list[dict[str, Any]] | None = None,
@@ -507,7 +507,7 @@ def _invoke(tmp_path: Path, extra_args: list[str], transport: httpx.MockTranspor
         )
 
 
-def invoke_analyze(tmp_path: Path, player_name: str = "Uglymage", *extra_args: str) -> Any:
+def invoke_analyze(tmp_path: Path, player_name: str = "Emberkin", *extra_args: str) -> Any:
     """Invoke `analyze abc123` against the mock transport, writing into tmp_path/out."""
     return _invoke(tmp_path, list(extra_args), build_analyze_transport(player_name))
 
@@ -580,7 +580,7 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
         "keystone_level": 16,
         "keystone_time_seconds": 1909.0,
         "in_time": True,
-        "player": "Uglymage",
+        "player": "Emberkin",
         "comparison": payload["comparison"],
         "findings_are_ranked_not_additive": payload["findings_are_ranked_not_additive"],
         "findings": payload["findings"],
@@ -636,11 +636,11 @@ def test_analyze_reports_a_missing_data_file_as_a_message_not_a_traceback(
 def test_analyze_writes_non_ascii_player_names_intact(tmp_path: Path) -> None:
     """A real roster contains non-ASCII names; the write must not mangle them,
     the way `fetch` had to reconfigure stdout to survive a cp1252 console."""
-    result = invoke_analyze(tmp_path, player_name="Бубатурбина")
+    result = invoke_analyze(tmp_path, player_name="Кириллица")
     assert result.exit_code == 0, result.output
     written = tmp_path / "out" / "abc123-36.findings.json"
     raw = written.read_bytes()
-    assert "Бубатурбина".encode() in raw
+    assert "Кириллица".encode() in raw
 
 
 def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
@@ -655,7 +655,7 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     fights = json.loads(FIXTURE.read_text(encoding="utf-8"))
     report = fights["reportData"]["report"]
     report["fights"][1]["name"] = "Подземелье"
-    report["masterData"]["actors"][0]["name"] = "Бубатурбина"
+    report["masterData"]["actors"][0]["name"] = "Кириллица"
     affixes: dict[str, Any] = {
         "gameData": {
             "affixes": [{"id": 9, "name": "Tyrannical"}, {"id": 10, "name": "Fortified"}]
@@ -697,15 +697,15 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     # raw bytes as UTF-8 to check what actually reached the stream.
     payload = json.loads(result.stdout_bytes.decode("utf-8"))
     assert payload["dungeon_name"] == "Подземелье"
-    assert payload["players"][0]["name"] == "Бубатурбина"
+    assert payload["players"][0]["name"] == "Кириллица"
 
 
 def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, "--player", "Uglymage")
+    result = run_analyze(tmp_path, "--player", "Emberkin")
 
     assert result.exit_code == 0
     payload = written_findings(tmp_path)
-    assert payload["player"] == "Uglymage"
+    assert payload["player"] == "Emberkin"
     assert payload["comparison"]["compared"] is True
     assert payload["comparison"]["speed_reference"]["report_code"]
     assert any(f["id"].startswith("compare.") for f in payload["findings"])
@@ -719,7 +719,7 @@ def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: 
     """
     calls: list[str] = []
 
-    result = run_analyze(tmp_path, "--player", "Uglymage", calls=calls)
+    result = run_analyze(tmp_path, "--player", "Emberkin", calls=calls)
 
     assert result.exit_code == 0, result.output
     # More than one Casts proves references were loaded at all, so the counts
@@ -767,7 +767,7 @@ def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, "--player", "Nobody")
 
     assert result.exit_code == 1
-    assert "Uglymage" in result.output
+    assert "Emberkin" in result.output
 
 
 def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
@@ -775,7 +775,7 @@ def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
     result = run_analyze(tmp_path)
 
     assert result.exit_code == 0
-    assert written_findings(tmp_path)["player"] == "Uglymage"
+    assert written_findings(tmp_path)["player"] == "Emberkin"
 
 
 def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:
@@ -793,7 +793,7 @@ def test_a_reference_that_fails_to_load_falls_through_to_the_next_row(tmp_path: 
         speed_rows=[_broken_speed_row("brokenspeed1", 901), _speed_row(16)],
         parse_rows=[_broken_parse_row("brokenparse1", 902), _parse_row(16)],
     )
-    result = _invoke(tmp_path, ["--player", "Uglymage"], transport)
+    result = _invoke(tmp_path, ["--player", "Emberkin"], transport)
 
     assert result.exit_code == 0, result.output
     payload = written_findings(tmp_path)
@@ -841,7 +841,7 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     This test pins the contract to fixed literals so a future swap (e.g. class_name
     and spec) would fail, not silently produce wrong output on screen.
     """
-    result = run_analyze(tmp_path, "--player", "Uglymage")
+    result = run_analyze(tmp_path, "--player", "Emberkin")
 
     assert result.exit_code == 0
     payload = written_findings(tmp_path)
@@ -857,7 +857,7 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     assert payload["comparison"]["parse_reference"]["report_code"] == "37FzMg9pVPH6fnJT"
     assert payload["comparison"]["parse_reference"]["fight_id"] == 16
     assert payload["comparison"]["parse_reference"]["keystone_level"] == 16
-    assert payload["comparison"]["parse_reference"]["character_name"] == "Críms"
+    assert payload["comparison"]["parse_reference"]["character_name"] == "Bríala"
     assert payload["comparison"]["parse_reference"]["class_name"] == "Mage"
     assert payload["comparison"]["parse_reference"]["spec"] == "Arcane"
     assert payload["comparison"]["parse_reference"]["medal"] == "silver"

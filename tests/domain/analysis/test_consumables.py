@@ -122,7 +122,7 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
         ),
         pulls=pulls,
@@ -131,7 +131,7 @@ def a_run() -> Run:
 
 def a_death(actor_id: int = 11, at_ms: int = DEATH_MS) -> Death:
     return Death(
-        player_name="Uglymage", actor_id=actor_id, timestamp_ms=at_ms,
+        player_name="Emberkin", actor_id=actor_id, timestamp_ms=at_ms,
         killing_blow="Shadow Bolt", pull_index=0, seconds_until_next_action=4.0,
     )
 
@@ -139,7 +139,7 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS) -> Death:
 def test_a_death_with_a_consumable_available_is_a_finding() -> None:
     findings = analyse_consumables_at_death(a_run(), drank_both(), CONSUMABLES, (a_death(),))
     assert len(findings) == 1
-    assert findings[0].id == "consumables.unused.Uglymage"
+    assert findings[0].id == "consumables.unused.Emberkin"
     assert findings[0].confidence is Confidence.INFERRED
     assert findings[0].seconds_lost is None
 
@@ -184,7 +184,7 @@ def test_a_player_who_died_having_used_nothing_is_told_so_once() -> None:
         a_run(), (), CONSUMABLES, (a_death(at_ms=300_000), a_death(at_ms=380_000))
     )
     assert len(findings) == 1
-    assert findings[0].id == "consumables.never.Uglymage"
+    assert findings[0].id == "consumables.never.Emberkin"
     assert findings[0].confidence is Confidence.INFERRED
     assert "health potion" in findings[0].title and "healthstone" in findings[0].title
 

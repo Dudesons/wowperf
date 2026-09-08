@@ -39,7 +39,7 @@ NO_EXTERNALS = Externals()
 IRONBARK = ExternalAbility(ability_id=102342, name="Ironbark", cooldown_seconds=90.0)
 
 
-def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
     )
@@ -47,7 +47,7 @@ def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
 
 def a_death(actor_id: int, at_ms: int, blow: str = "Frigid Roar") -> Death:
     return Death(
-        player_name="Dudesons",
+        player_name="Stonewake",
         actor_id=actor_id,
         timestamp_ms=at_ms,
         killing_blow=blow,
@@ -83,7 +83,7 @@ def test_a_run_with_no_deaths_yields_no_cards() -> None:
 
 def test_a_death_names_the_player_and_the_killing_blow() -> None:
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert card.player == "Dudesons"
+    assert card.player == "Stonewake"
     assert card.killing_blow == "Frigid Roar"
 
 
@@ -163,7 +163,7 @@ def test_the_timeline_rows_are_formatted_and_carry_their_kind() -> None:
     card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
     assert [(r.seconds_before, r.kind, r.ability, r.detail, r.health) for r in card.timeline] == [
         ("5.8 s", "hit", "Snowdrift", "82,410 to health", "18%"),
-        ("5.0 s", "heal", "Death Strike", "+9,100 from Dudesons", "27%"),
+        ("5.0 s", "heal", "Death Strike", "+9,100 from Stonewake", "27%"),
     ]
     assert card.health_badge is not None and card.health_badge.label == "derived"
     assert card.health_note == ""
@@ -210,7 +210,7 @@ def test_a_deaths_time_is_measured_from_the_runs_start_not_from_report_zero() ->
         pulls=(a_pull(0, 1_800_000, 1_860_000),),
     )
     death = Death(
-        player_name="Dudesons", actor_id=1, timestamp_ms=1_830_000,
+        player_name="Stonewake", actor_id=1, timestamp_ms=1_830_000,
         killing_blow="Frigid Roar", pull_index=0,
     )
     card = build_deaths(LoadedRun(run=run, deaths=(death,)), NO_DEFENSIVES, NO_CONSUMABLES)[0]
@@ -222,7 +222,7 @@ def test_a_deaths_time_is_measured_from_the_runs_start_not_from_report_zero() ->
 def test_a_death_before_the_first_pull_does_not_go_negative() -> None:
     run = a_run(players=(a_player(),), pulls=(a_pull(0, 1_800_000, 1_860_000),))
     death = Death(
-        player_name="Dudesons", actor_id=1, timestamp_ms=1_700_000,
+        player_name="Stonewake", actor_id=1, timestamp_ms=1_700_000,
         killing_blow="Frigid Roar", pull_index=None,
     )
     card = build_deaths(LoadedRun(run=run, deaths=(death,)), NO_DEFENSIVES, NO_CONSUMABLES)[0]
@@ -232,7 +232,7 @@ def test_a_death_before_the_first_pull_does_not_go_negative() -> None:
 def test_a_death_in_a_run_with_no_pulls_does_not_crash() -> None:
     run = a_run(players=(a_player(),), pulls=())
     death = Death(
-        player_name="Dudesons", actor_id=1, timestamp_ms=5_000,
+        player_name="Stonewake", actor_id=1, timestamp_ms=5_000,
         killing_blow="Frigid Roar", pull_index=None,
     )
     card = build_deaths(LoadedRun(run=run, deaths=(death,)), NO_DEFENSIVES, NO_CONSUMABLES)[0]
@@ -505,25 +505,25 @@ def test_the_provenance_states_the_health_method_only_when_a_card_has_a_health_c
 def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     findings = (
         a_finding(
-            "defensives.unused.Uglymage",
-            title="Uglymage died once with a defensive available",
+            "defensives.unused.Emberkin",
+            title="Emberkin died once with a defensive available",
         ),
         a_finding(
-            "consumables.unused.Uglymage",
-            title="Uglymage died once with no healing consumable on cooldown",
+            "consumables.unused.Emberkin",
+            title="Emberkin died once with no healing consumable on cooldown",
         ),
         a_finding(
-            "consumables.never.Uglymage",
-            title="Uglymage died once and used no health potion",
+            "consumables.never.Emberkin",
+            title="Emberkin died once and used no health potion",
         ),
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert [row.finding_id for row in report.death_rows] == [
-        "defensives.unused.Uglymage",
-        "consumables.unused.Uglymage",
-        "consumables.never.Uglymage",
+        "defensives.unused.Emberkin",
+        "consumables.unused.Emberkin",
+        "consumables.never.Emberkin",
     ]
     assert [row.finding_id for row in report.route_rows] == ["trash.pull.0"]
     assert report.observations == ()

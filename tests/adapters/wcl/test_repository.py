@@ -75,7 +75,7 @@ FIGHTS_PAYLOAD: dict[str, Any] = {
             ],
             "masterData": {
                 "actors": [
-                    {"id": 693, "name": "Uglymage", "subType": "Mage", "server": "Hyjal"},
+                    {"id": 693, "name": "Emberkin", "subType": "Mage", "server": "Hyjal"},
                 ]
             },
         }

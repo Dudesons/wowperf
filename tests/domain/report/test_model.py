@@ -117,7 +117,7 @@ def test_a_player_card_declares_a_class_name_field_independent_of_colour() -> No
 
 
 def test_a_death_card_can_carry_no_timeline_and_no_availability() -> None:
-    card = DeathCard(player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar")
     assert (card.timeline, card.availability, card.came_back) == ((), (), "")
 

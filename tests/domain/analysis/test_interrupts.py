@@ -17,7 +17,7 @@ def row(at: int, is_start: bool, instance: int = 0, ability: int = SPELL) -> Ene
 
 
 def kick(at: int, instance: int = 0, ability: int = SPELL) -> InterruptEvent:
-    return InterruptEvent(player_name="Uglymage", actor_id=693,
+    return InterruptEvent(player_name="Emberkin", actor_id=693,
                           interrupted_ability_id=ability, target_id=699,
                           target_instance=instance, timestamp_ms=at, pull_index=0)
 
@@ -37,7 +37,7 @@ def test_a_start_followed_by_a_completion_landed() -> None:
 def test_a_start_followed_by_a_kick_was_interrupted() -> None:
     casts = reconstruct_enemy_casts((row(1000, True),), (kick(1800),))
     assert casts[0].was_kicked is True
-    assert casts[0].interrupted_by == "Uglymage"
+    assert casts[0].interrupted_by == "Emberkin"
     assert casts[0].landed is False
 
 
@@ -117,7 +117,7 @@ def test_a_cast_never_carries_both_a_completion_and_a_kick() -> None:
     by_ability = {cast.ability_id: cast for cast in casts}
 
     kick_first = by_ability[SPELL]
-    assert kick_first.interrupted_by == "Uglymage"
+    assert kick_first.interrupted_by == "Emberkin"
     assert kick_first.completed_ms is None
 
     completion_first = by_ability[OTHER]
@@ -125,7 +125,7 @@ def test_a_cast_never_carries_both_a_completion_and_a_kick() -> None:
     assert completion_first.interrupted_by is None
 
     tie = by_ability[THIRD]
-    assert tie.interrupted_by == "Uglymage"
+    assert tie.interrupted_by == "Emberkin"
     assert tie.completed_ms is None
 
 

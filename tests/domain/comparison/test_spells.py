@@ -12,10 +12,10 @@ from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
-OURS = Player(actor_id=693, name="Uglymage", class_name="Mage", spec="Arcane", item_level=318)
+OURS = Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane", item_level=318)
 THEIRS = Player(
     actor_id=11,
-    name="Críms",
+    name="Bríala",
     class_name="Mage",
     spec="Arcane",
     item_level=330,
@@ -106,7 +106,7 @@ def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
         ),
     )
 
-    findings = compare_spells(ours, OURS, theirs, "Críms")
+    findings = compare_spells(ours, OURS, theirs, "Bríala")
     missing = [f for f in findings if f.id.startswith("compare.spells.missing.")]
 
     assert len(missing) == 1
@@ -128,7 +128,7 @@ def test_an_ability_we_cast_only_on_trash_still_counts_as_cast() -> None:
     )
 
     missing = [
-        f for f in compare_spells(ours, OURS, theirs, "Críms")
+        f for f in compare_spells(ours, OURS, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing.")
     ]
 
@@ -146,7 +146,7 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, theirs, "Críms")
+        f for f in compare_spells(ours, OURS, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -167,7 +167,7 @@ def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, theirs, "Críms")
+        f for f in compare_spells(ours, OURS, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -178,7 +178,7 @@ def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() ->
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
     theirs = a_loaded(THEIRS, (trash_pull(0, 60.0),), ())
 
-    findings = compare_spells(ours, OURS, theirs, "Críms")
+    findings = compare_spells(ours, OURS, theirs, "Bríala")
 
     assert any(f.id == "compare.spells.unavailable" for f in findings)
 
@@ -215,6 +215,6 @@ def test_every_finding_id_is_unique() -> None:
         tuple(cast(11, 100 + n, f"Spell {n}", n * 1_000, 0) for n in range(8) for _ in range(4)),
     )
 
-    ids = [f.id for f in compare_spells(ours, OURS, theirs, "Críms")]
+    ids = [f.id for f in compare_spells(ours, OURS, theirs, "Bríala")]
 
     assert len(ids) == len(set(ids))

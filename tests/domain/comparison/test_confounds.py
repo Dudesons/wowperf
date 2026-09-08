@@ -48,8 +48,8 @@ def a_loaded(
 
 
 ROSTER = (
-    player("Dudesons", "DeathKnight", "Blood"),
-    player("Uglymage", "Mage", "Arcane"),
+    player("Stonewake", "DeathKnight", "Blood"),
+    player("Emberkin", "Mage", "Arcane"),
 )
 
 
@@ -115,7 +115,7 @@ def test_a_small_item_level_gap_is_not_worth_a_banner() -> None:
 
 
 def test_a_different_group_composition_is_declared() -> None:
-    theirs = (player("Dudesons", "Warrior", "Protection"), player("Uglymage", "Mage", "Arcane"))
+    theirs = (player("Stonewake", "Warrior", "Protection"), player("Emberkin", "Mage", "Arcane"))
 
     findings = declare_confounds(a_loaded(ROSTER), a_loaded(theirs), SAME_LEVEL)
 

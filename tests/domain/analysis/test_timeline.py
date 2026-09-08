@@ -29,7 +29,7 @@ def a_run(keystone_level: int = 16) -> Run:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=keystone_level, affix_ids=(), keystone_time_ms=300_000,
         keystone_bonus=1, count_reached=744, count_required=729, npc_counts=(),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -46,7 +46,7 @@ def a_pull(
 
 
 def a_death(timestamp_ms: int) -> Death:
-    return Death(player_name="Uglymage", actor_id=11, timestamp_ms=timestamp_ms,
+    return Death(player_name="Emberkin", actor_id=11, timestamp_ms=timestamp_ms,
                  killing_blow="Molten Scar")
 
 

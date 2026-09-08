@@ -22,7 +22,7 @@ def a_run(reached: int, required: int = 100) -> Run:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=reached, count_required=required, npc_counts=(),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -49,7 +49,7 @@ def a_run_with_pulls(pulls: tuple[Pull, ...], reached: int, required: int = 100)
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=reached, count_required=required, npc_counts=(),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )

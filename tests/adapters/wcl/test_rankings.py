@@ -35,7 +35,7 @@ SPEED_ROW = {
 }
 
 PARSE_ROW = {
-    "name": "Críms",
+    "name": "Bríala",
     "class": "Mage",
     "spec": "Arcane",
     "amount": -319999564.8270117,
@@ -122,7 +122,7 @@ def test_a_parse_row_becomes_the_domains_own_shape() -> None:
     assert row.report_code == "37FzMg9pVPH6fnJT"
     assert row.fight_id == 16
     assert row.keystone_level == 16
-    assert row.character_name == "Críms"
+    assert row.character_name == "Bríala"
     assert row.class_name == "Mage"
     assert row.spec == "Arcane"
     assert row.score == pytest.approx(435.17298828125)

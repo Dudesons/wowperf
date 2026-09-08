@@ -17,7 +17,7 @@ def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -
     )
 
 
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 
 def a_loaded() -> LoadedRun:
@@ -29,7 +29,7 @@ def test_a_finding_no_section_claims_reaches_observations() -> None:
     # no "players.damage." and no comparison prefix — findings that belong in
     # observations, the catch-all section.
     findings = (
-        a_finding("healing.overheal.0", title="Uglymage overhealed by 40%"),
+        a_finding("healing.overheal.0", title="Emberkin overhealed by 40%"),
         a_finding("dispels.missed.0", title="Two curses went undispelled"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
@@ -55,7 +55,7 @@ def test_a_finding_claimed_by_interrupts_does_not_also_reach_observations() -> N
 
 
 def test_a_finding_claimed_by_a_players_damage_row_does_not_also_reach_observations() -> None:
-    findings = (a_finding("players.damage.0", title="Uglymage took 2.3x the group median"),)
+    findings = (a_finding("players.damage.0", title="Emberkin took 2.3x the group median"),)
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert report.observations == ()
@@ -71,13 +71,13 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         a_finding("compare.duration", seconds=120.0, title="Total gap"),
         a_finding("time.gap.0", seconds=41.0, title="A 41 second gap"),
         a_finding("interrupts.summary", title="Three casts uninterrupted"),
-        a_finding("players.damage.0", title="Uglymage took 2.3x the group median"),
+        a_finding("players.damage.0", title="Emberkin took 2.3x the group median"),
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
-        a_finding("defensives.Uglymage.45438", title="Uglymage never cast Ice Block"),
+        a_finding("defensives.Emberkin.45438", title="Emberkin never cast Ice Block"),
         # A death-family finding, so the union below covers the Deaths rows too.
-        a_finding("defensives.unused.0", title="Uglymage died with Ice Block available"),
+        a_finding("defensives.unused.0", title="Emberkin died with Ice Block available"),
         # A finding no PLACEMENTS prefix matches, so the catch-all is exercised too.
-        a_finding("healing.overheal.0", title="Uglymage overhealed"),
+        a_finding("healing.overheal.0", title="Emberkin overhealed"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
