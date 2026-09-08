@@ -4,7 +4,7 @@
 from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.confounds import declare_confounds
-from wowperf.domain.comparison.route import compare_route
+from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo
@@ -48,10 +48,9 @@ def compare(
     leaderboard offered nothing to compare against.
     """
     findings: list[Finding] = []
-    speed_members = speed.members if speed else ()
     parse_members = parse.members if parse else ()
 
-    if not speed_members:
+    if speed is None or not speed.members:
         findings.append(
             _unavailable(
                 "compare.speed.unavailable",
@@ -61,10 +60,8 @@ def compare(
             )
         )
     else:
-        first_speed = speed_members[0]
-        findings += compare_route(
-            ours.run, first_speed.run, first_speed.alignment, forces_by_pull(ours.enemy_deaths)
-        )
+        first_speed = speed.members[0]
+        findings += compare_route_sample(ours.run, speed, forces_by_pull(ours.enemy_deaths))
         findings += compare_tempo(ours, first_speed, first_speed.comparability)
         findings += declare_confounds(ours, first_speed, first_speed.comparability)
 

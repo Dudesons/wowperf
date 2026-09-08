@@ -2,10 +2,13 @@
 # ABOUTME: The headline is what a faster group skipped, priced with our own clock.
 
 from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, align_pulls
+from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.route import (
     MAX_PACKS_REPORTED,
     compare_route,
+    compare_route_sample,
 )
+from wowperf.domain.comparison.sample import SpeedMember, SpeedSample
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, Pull, Run
 
@@ -204,16 +207,6 @@ def test_a_single_enemy_pack_is_singular_in_skipped_evidence() -> None:
     assert "1 enemies" not in skipped.evidence
 
 
-def test_a_single_reordered_pack_is_singular_and_uses_was() -> None:
-    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
-    theirs = a_run((a_pull(0, (2,)), a_pull(1, (1,))))
-
-    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
-                               "compare.route.order")[0]
-
-    assert order.title == "1 pack was taken in a different order"
-
-
 def test_only_the_worst_packs_are_reported() -> None:
     # Eight packs they skipped, each one second shorter than the last, beside
     # ten both routes share — one full pull clear of the threshold this test
@@ -235,16 +228,6 @@ def test_only_the_worst_packs_are_reported() -> None:
         return value if value is not None else float("-inf")
 
     assert seconds == sorted(seconds, key=as_sortable, reverse=True)
-
-
-def test_a_reordered_route_is_reported_once() -> None:
-    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
-    theirs = a_run((a_pull(0, (2,)), a_pull(1, (1,)), a_pull(2, (3,))))
-
-    order = findings_by_prefix(compare_route(ours, theirs, align_pulls(ours, theirs), {}),
-                               "compare.route.order")
-
-    assert len(order) <= 1
 
 
 def test_identical_routes_report_only_the_summary() -> None:
@@ -313,3 +296,195 @@ def test_every_finding_id_is_unique() -> None:
     ids = [finding.id for finding in compare_route(ours, theirs, align_pulls(ours, theirs), {})]
 
     assert len(ids) == len(set(ids))
+
+
+# --- compare_route_sample -------------------------------------------------
+#
+# Eight trash pulls, indices 0..7, each fighting one enemy type it alone
+# fights (game id = index + 1). Pull 7 runs 42s; every other pull runs the
+# 60s default. A member is built by aligning one of these fixtures against
+# OUR_RUN, so `only_ours` / `only_theirs` land on exactly the indices the
+# fixture omits or adds.
+
+OUR_RUN = a_run(tuple(a_pull(i, (i + 1,), seconds=42.0 if i == 7 else 60.0) for i in range(8)))
+
+
+def a_speed_row(report_code: str = "REF1", fight_id: int = 1) -> SpeedRow:
+    return SpeedRow(
+        report_code=report_code,
+        fight_id=fight_id,
+        keystone_level=16,
+        duration_ms=1_000_000,
+        deaths=0,
+    )
+
+
+def member_missing(indices: tuple[int, ...], report_code: str = "REF1") -> SpeedMember:
+    """A reference that fought every one of our packs except the ones named."""
+    theirs = a_run(tuple(a_pull(i, (i + 1,)) for i in range(8) if i not in indices))
+    return SpeedMember(
+        row=a_speed_row(report_code=report_code),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(OUR_RUN, theirs),
+    )
+
+
+def member_missing_pull_7(report_code: str = "REF1") -> SpeedMember:
+    return member_missing((7,), report_code=report_code)
+
+
+def member_full(report_code: str = "REF1") -> SpeedMember:
+    return member_missing((), report_code=report_code)
+
+
+def member_with_extra_pack(report_code: str = "REF1") -> SpeedMember:
+    """A reference that fought every one of our packs, plus one we never pulled."""
+    theirs = a_run(
+        (
+            *tuple(a_pull(i, (i + 1,)) for i in range(8)),
+            a_pull(8, (99,), name="Bonus Pack"),
+        )
+    )
+    return SpeedMember(
+        row=a_speed_row(report_code=report_code),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(OUR_RUN, theirs),
+    )
+
+
+def member_reordered(report_code: str = "REF1") -> SpeedMember:
+    """A reference that fought every one of our packs, with pulls 0 and 1 swapped."""
+    theirs = a_run(
+        (
+            a_pull(0, (2,)),
+            a_pull(1, (1,)),
+            *tuple(a_pull(i, (i + 1,)) for i in range(2, 8)),
+        )
+    )
+    return SpeedMember(
+        row=a_speed_row(report_code=report_code),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(OUR_RUN, theirs),
+    )
+
+
+def test_a_wholly_empty_sample_produces_no_findings() -> None:
+    # `SpeedSample()` with no members at all is the type's own zero-argument
+    # default. `service.compare()` already says "nothing to compare against"
+    # once, as `compare.speed.unavailable`; this must not crash, and must not
+    # say it again.
+    findings = compare_route_sample(OUR_RUN, SpeedSample(), forces={})
+
+    assert findings == []
+
+
+def test_a_pack_every_reference_skipped_is_counted_in_the_title() -> None:
+    sample = SpeedSample(
+        members=(member_missing_pull_7(), member_missing_pull_7(), member_missing_pull_7())
+    )
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert skipped.title == "3 of 3 fast runs skipped the pack at pull 7"
+    assert skipped.quantifier == "every"
+    assert skipped.confidence is Confidence.MEASURED
+
+
+def test_the_price_of_a_skipped_pack_is_our_own_pull_duration() -> None:
+    sample = SpeedSample(
+        members=(member_missing_pull_7(), member_missing_pull_7(), member_missing_pull_7())
+    )
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert skipped.seconds_lost == 42.0
+
+
+def test_a_pack_only_some_references_skipped_says_so() -> None:
+    # Two of five route-eligible members skipped pull 7. 2 of 3 would round up
+    # to "most" under quantifier_for, so five members are used to land on the
+    # "some" wording this test is about.
+    sample = SpeedSample(
+        members=(
+            member_missing_pull_7(),
+            member_missing_pull_7(),
+            member_full(),
+            member_full(),
+            member_full(),
+        )
+    )
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert skipped.title == "2 of 5 fast runs skipped the pack at pull 7"
+    assert skipped.quantifier == "some"
+
+
+def test_below_the_floor_the_pairwise_wording_is_used() -> None:
+    sample = SpeedSample(members=(member_missing_pull_7(),))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert skipped.title == "The reference skipped the pack at pull 7"
+    assert any("too few comparable references to aggregate" in line for line in skipped.evidence)
+
+
+def test_no_finding_reports_a_different_pull_order() -> None:
+    sample = SpeedSample(members=(member_reordered(), member_reordered(), member_reordered()))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    assert not any(f.id == "compare.route.order" for f in findings)
+
+
+def test_the_summary_states_our_count_against_the_samples_observed_range() -> None:
+    sample = SpeedSample(members=(member_missing((7,)), member_missing((6, 7)), member_full()))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    summary = next(f for f in findings if f.id == "compare.route.summary")
+    assert summary.title == "We pulled 8 packs; the 3 fast runs pulled 6 to 8"
+    assert summary.confidence is Confidence.MEASURED
+
+
+def test_extra_packs_are_reported_pairwise_against_the_first_eligible_member_only() -> None:
+    # Two members share the same extra pack. If it were counted across the
+    # sample this would read "2 of 3"; instead it stays one finding, named to
+    # the first eligible member alone.
+    sample = SpeedSample(
+        members=(
+            member_with_extra_pack(report_code="EXTRA1"),
+            member_with_extra_pack(report_code="EXTRA2"),
+            member_full(),
+        )
+    )
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    extra = findings_by_prefix(findings, "compare.route.extra.")
+    assert len(extra) == 1
+    assert "EXTRA1" in extra[0].detail
+    assert "EXTRA2" not in extra[0].detail
+
+
+def test_the_extra_finding_names_a_run_not_a_report_code_as_the_subject() -> None:
+    # A report code is not a player identity, but it should not be the
+    # grammatical subject of "killed" either -- a run does the killing, and
+    # the identifiers stay available to a reader in parentheses. Matches the
+    # wording `compare_route`'s own pairwise block uses ("They killed a
+    # pack...").
+    sample = SpeedSample(
+        members=(member_with_extra_pack(report_code="REF1"), member_full(), member_full())
+    )
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    extra = findings_by_prefix(findings, "compare.route.extra.")[0]
+    assert extra.detail.startswith("One fast run (report REF1, fight 1) killed a pack")

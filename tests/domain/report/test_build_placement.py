@@ -48,7 +48,6 @@ FAMILY_HOMES = {
     "compare.route.skipped.0": "route_rows",
     "compare.route.extra.0": "route_rows",
     "compare.route.summary": "route_rows",
-    "compare.route.order": "route_rows",
     "compare.route.unaligned": "route_rows",
     "compare.speed.unavailable": "route_rows",
     "trash.overage": "route_rows",

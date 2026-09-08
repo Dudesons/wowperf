@@ -8,6 +8,7 @@ from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
 from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
 from wowperf.domain.events import CastEvent, Death, EnemyCastRow, InterruptEvent
+from wowperf.domain.findings import Finding
 from wowperf.domain.model import Run
 
 SAMPLE_SIZE = 5
@@ -108,3 +109,14 @@ class ParseSample(_Sample):
         that row stays one player's build.
         """
         return self.members[0] if self.members else None
+
+
+def too_few(findings: list[Finding], eligible: int) -> list[Finding]:
+    """Say plainly that a statistic was not computed, rather than computing a bad one."""
+    note = (
+        f"only {eligible} comparable reference{'s' if eligible != 1 else ''}; "
+        "too few comparable references to aggregate"
+    )
+    return [
+        finding.model_copy(update={"evidence": (*finding.evidence, note)}) for finding in findings
+    ]
