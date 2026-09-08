@@ -56,7 +56,11 @@ rejected: quota no longer forbids it, but the same reference fetched under sever
 copies, so per-run keying holds *more* of other people's logs on disk at once, not less. It buys a
 posture rather than a smaller footprint. What was actually wrong was that the reuse was invisible,
 in a report that otherwise discloses every candidate it considered. Provenance now records that a
-reference was served from cache and when it was fetched.
+reference was served from cache.
+
+*Amended 2026-09-08:* ruling R15 deleted `ReferenceRecord.fetched_at`, because nothing in the
+loader chain surfaces a cache entry's timestamp and a field that always reads empty is worse than
+an absent one.
 
 **Composition is counted, not prescribed.** §6.6 of the approved design declares confounds rather
 than correcting for them. Under a sample, "the two groups were not the same composition" sharpens
@@ -380,9 +384,9 @@ nullable pair of ints on a type used by five sections is not free and waits unti
 
 **`Provenance` is where the real change lands.** `speed_reference_url` and `parse_reference_url`
 become a sequence of a small frozen record per candidate *considered*: report code, fight, keystone
-level, URL, whether it loaded, the reason if not, and whether it was served from cache and when it
-was fetched. `withheld: tuple[str, ...]` keeps its present job; the per-finding exclusions would
-swamp it and belong on the findings.
+level, URL, whether it loaded, the reason if not, and whether it was served from cache.
+`withheld: tuple[str, ...]` keeps its present job; the per-finding exclusions would swamp it and
+belong on the findings.
 
 ### One consequence of the persistence decision
 

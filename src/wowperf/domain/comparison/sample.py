@@ -124,8 +124,9 @@ def too_few(findings: list[Finding], eligible: int) -> list[Finding]:
     nothing had been compared at all.
     """
     note = (
-        f"one reference, not an aggregate: {eligible} of the sample "
-        f"were comparable, below the floor of {MIN_SAMPLE_FOR_AGGREGATE}"
+        f"a single reference, not an aggregate: {eligible} of the sample "
+        f"{'was' if eligible == 1 else 'were'} comparable, below the floor of "
+        f"{MIN_SAMPLE_FOR_AGGREGATE}"
     )
     return [
         finding.model_copy(update={"evidence": (*finding.evidence, note)}) for finding in findings

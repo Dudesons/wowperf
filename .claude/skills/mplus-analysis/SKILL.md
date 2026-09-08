@@ -229,10 +229,12 @@ instead of adjusting for them, because adjusting would invent a number:
 - **The parse references are five other characters.** A spell missing from our run is "either a
   talent not taken or a button not pressed; the log cannot tell which" — a prompt to check a
   build, not a verdict on it. The uptime comparison matches by exact ability, so a gap can still
-  mean a different item of the same kind. It no longer means gear one player happens to own: an
-  uptime gap is reported only where at least three of the parses carried that aura, which a
-  single proc or a single trinket cannot reach. `compare.talents` is the one row still drawn from
-  a single reference — the top-ranked parse, whose report its evidence links to.
+  mean a different item of the same kind. On the aggregate path it no longer means gear one
+  player happens to own: an uptime gap is reported only where at least three of the parses
+  carried that aura, which a single proc or a single trinket cannot reach. Below that floor, the
+  comparison falls back to a single reference stated pairwise, where a gap can still mean gear
+  this player does not own. `compare.talents` is the one row still drawn from a single
+  reference — the top-ranked parse, whose report its evidence links to.
 
 When a comparison was withheld, the report says why in the tool's own words — a
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not

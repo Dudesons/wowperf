@@ -436,6 +436,17 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     assert any("below the floor of" in line for line in skipped.evidence)
 
 
+def test_below_the_floor_one_eligible_member_reads_as_singular_english() -> None:
+    # eligible == 1 must read "1 of the sample was comparable", not "were" — and
+    # not as "one reference ... 1 of the sample", which restates the same count twice.
+    sample = SpeedSample(members=(member_missing_pull_7(),))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert any("1 of the sample was comparable" in line for line in skipped.evidence)
+
+
 def test_no_finding_reports_a_different_pull_order() -> None:
     sample = SpeedSample(members=(member_reordered(), member_reordered(), member_reordered()))
 
