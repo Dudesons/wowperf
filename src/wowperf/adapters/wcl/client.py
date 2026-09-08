@@ -7,8 +7,9 @@ from typing import Any, cast
 import httpx
 
 from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.errors import WclError
-from wowperf.adapters.wcl.queries import RATE_LIMIT_QUERY
+from wowperf.adapters.wcl.queries import RATE_LIMIT_QUERY, with_rate_limit
 from wowperf.domain.base import Frozen
 
 CLIENT_ENDPOINT = "https://www.warcraftlogs.com/api/v2/client"
@@ -40,11 +41,18 @@ class WclClient:
         self._tokens = tokens
         self._http = http
         self._endpoint = endpoint
+        self._costs = CostLedger()
+
+    @property
+    def costs(self) -> CostLedger:
+        """What every query this client sent has cost."""
+        return self._costs
 
     def execute(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
+        instrumented = with_rate_limit(query)
         response = self._http.post(
             self._endpoint,
-            json={"query": query, "variables": variables or {}},
+            json={"query": instrumented, "variables": variables or {}},
             headers={"Authorization": f"Bearer {self._tokens.token()}"},
         )
         if response.status_code == httpx.codes.TOO_MANY_REQUESTS:
@@ -76,7 +84,25 @@ class WclClient:
                 f"Warcraft Logs returned a 200 response with a null 'data' block "
                 f"for {_operation_name(query)}{on_report}"
             )
-        return cast(dict[str, Any], data)
+
+        payload_data = cast(dict[str, Any], data)
+        self._record_quota(query, payload_data.get("rateLimitData"))
+        if instrumented != query:
+            # We added the block, so we take it back out. `_fetch` hands this
+            # payload straight to the cache, where an entry lives for a day or
+            # forever; a block left in would freeze an hour-old counter into it.
+            payload_data.pop("rateLimitData", None)
+        return payload_data
+
+    def _record_quota(self, query: str, block: Any) -> None:
+        """Note what this query's own quota reading said, if it carried a usable one.
+
+        A missing or malformed block is passed over in silence rather than
+        raised: instrumentation must never be the reason a query stops working.
+        `rate_limit`, whose whole purpose is the reading, still fails loudly.
+        """
+        if isinstance(block, dict) and isinstance(block.get("pointsSpentThisHour"), int | float):
+            self._costs.record(_operation_name(query), float(block["pointsSpentThisHour"]))
 
     def rate_limit(self) -> RateLimit:
         data = self.execute(RATE_LIMIT_QUERY).get("rateLimitData")

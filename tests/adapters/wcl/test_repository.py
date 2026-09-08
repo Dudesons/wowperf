@@ -722,3 +722,48 @@ def test_two_different_actors_do_not_collide_in_the_cache(tmp_path: Path) -> Non
     repository.auras("abc123", 36, 8)
 
     assert len(calls) == 2, "a different actor is a different query"
+
+
+def _quota_carrying_repository(tmp_path: Path) -> WclRunRepository:
+    """A repository whose every response carries a quota block, as the live API's now do."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        body = json.loads(request.content)
+        # A degraded affix table caches nothing and so is refetched every time,
+        # which would make the second run below look like a miss for the wrong
+        # reason. This one parses.
+        if operation_name(body) == "Affixes":
+            payload: dict[str, Any] = {"gameData": {"affixes": [{"id": 9, "name": "Tyrannical"}]}}
+        else:
+            payload = dict(FIGHTS_PAYLOAD)
+        payload["rateLimitData"] = {
+            "limitPerHour": 3600,
+            "pointsSpentThisHour": 5.0,
+            "pointsResetIn": 900,
+        }
+        return httpx.Response(200, json={"data": payload})
+
+    return a_repository(handler, tmp_path)
+
+
+def test_the_cache_never_stores_the_quota_block(tmp_path: Path) -> None:
+    """An entry lives for a day or forever, so a counter stored in one goes stale
+    and would then be handed back as though it were current."""
+    _quota_carrying_repository(tmp_path).get("abc123", None)
+
+    entries = list(tmp_path.glob("*.json"))
+    assert entries, "nothing was cached, so the assertion below would prove nothing"
+    for entry in entries:
+        assert "rateLimitData" not in entry.read_text(encoding="utf-8")
+
+
+def test_a_cache_hit_records_no_reading_because_it_spent_no_points(tmp_path: Path) -> None:
+    repository = _quota_carrying_repository(tmp_path)
+    repository.get("abc123", None)
+    after_first_run = len(repository.client.costs.costs())
+
+    repository.get("abc123", None)
+
+    assert len(repository.client.costs.costs()) == after_first_run

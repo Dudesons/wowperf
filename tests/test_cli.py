@@ -44,6 +44,17 @@ def quota_response(spent: float) -> httpx.Response:
     )
 
 
+def operation_name(query: str) -> str:
+    """The GraphQL operation name.
+
+    Every query now also selects `rateLimitData`, so only the name distinguishes
+    a quota read from a real query that happens to carry its own reading. An
+    operation takes variables or it does not, so the name ends at whichever of
+    `(` or `{` follows it.
+    """
+    return query.split("query ")[1].split("(")[0].split("{")[0].strip()
+
+
 def build_transport(quota: list[float]) -> httpx.MockTransport:
     """Answer the fights query from the fixture and report a rising point count."""
     fights = json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -56,12 +67,9 @@ def build_transport(quota: list[float]) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        query = json.loads(request.content)["query"]
-        if "rateLimitData" in query:
+        name = operation_name(json.loads(request.content)["query"])
+        if name == "RateLimit":
             return quota_response(quota.pop(0))
-        # An operation takes variables or it does not, so the name ends at
-        # whichever of `(` or `{` follows it.
-        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if name == "Affixes":
             return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})
@@ -127,7 +135,7 @@ def test_an_unreadable_report_is_reported_as_a_message_not_a_traceback(
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        if "rateLimitData" in json.loads(request.content)["query"]:
+        if operation_name(json.loads(request.content)["query"]) == "RateLimit":
             return quota_response(100.0)
         return httpx.Response(200, json={"data": {"reportData": {"report": None}}})
 
@@ -693,12 +701,9 @@ def test_fetch_prints_non_ascii_names_intact_on_a_non_utf8_console(
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        query = json.loads(request.content)["query"]
-        if "rateLimitData" in query:
+        name = operation_name(json.loads(request.content)["query"])
+        if name == "RateLimit":
             return quota_response(100.0)
-        # An operation takes variables or it does not, so the name ends at
-        # whichever of `(` or `{` follows it.
-        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if name == "Affixes":
             return httpx.Response(200, json={"data": affixes})
         return httpx.Response(200, json={"data": fights})

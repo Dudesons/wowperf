@@ -115,3 +115,60 @@ def test_the_rate_limit_is_read_from_the_api_not_assumed() -> None:
         12.5,
         900,
     )
+
+
+def _capturing_client(payload: dict[str, object]) -> tuple[WclClient, dict[str, str]]:
+    seen: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        seen["body"] = request.content.decode("utf-8")
+        return httpx.Response(200, json=payload)
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    return WclClient(TokenProvider("id", "secret", http), http), seen
+
+
+QUOTA = {"limitPerHour": 3600, "pointsSpentThisHour": 8.01, "pointsResetIn": 900}
+
+
+def test_a_query_goes_out_carrying_the_quota_block() -> None:
+    client, seen = _capturing_client({"data": {"rateLimitData": QUOTA, "hello": "world"}})
+
+    client.execute("query Hello { hello }")
+
+    assert "rateLimitData" in seen["body"]
+
+
+def test_the_quota_block_never_reaches_the_caller_and_so_never_reaches_the_cache() -> None:
+    """`_fetch` hands this payload straight to DiskCache, which keeps it for a day
+    or forever. A block left in would freeze an hour-old counter into the entry."""
+    client, _ = _capturing_client({"data": {"rateLimitData": QUOTA, "hello": "world"}})
+
+    assert client.execute("query Hello { hello }") == {"hello": "world"}
+
+
+def test_the_reading_is_recorded_against_the_operation_that_carried_it() -> None:
+    client, _ = _capturing_client({"data": {"rateLimitData": QUOTA, "hello": "world"}})
+
+    client.execute("query Hello { hello }")
+
+    assert client.costs.pending() == "Hello"
+
+
+def test_a_response_without_a_quota_block_records_nothing_and_is_returned_intact() -> None:
+    """Instrumentation must never be the reason a query stops working."""
+    client, _ = _capturing_client({"data": {"hello": "world"}})
+
+    assert client.execute("query Hello { hello }") == {"hello": "world"}
+    assert client.costs.pending() is None
+
+
+def test_reading_the_quota_directly_still_returns_it_and_also_records_it() -> None:
+    client, _ = _capturing_client({"data": {"rateLimitData": QUOTA}})
+
+    reading = client.rate_limit()
+
+    assert reading.points_spent_this_hour == 8.01
+    assert client.costs.pending() == "RateLimit"
