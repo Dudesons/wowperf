@@ -23,6 +23,7 @@ from wowperf.adapters.config.toml import (
 from wowperf.adapters.render.html import render
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
+from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
@@ -132,6 +133,35 @@ def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
     )
 
 
+def _cost_breakdown(costs: CostLedger) -> str:
+    """What this command's points went on, dearest operation first.
+
+    Every query now carries its own quota reading, and a reading reports the
+    spend before that query is billed. So the last query of a run is still
+    unpriced when this is written: the closing note says which one it was,
+    rather than leaving the total quietly short of the sentence above.
+    """
+    rows = costs.by_operation()
+    if not rows:
+        return ""
+
+    width = max(len(row.operation) for row in rows)
+    lines = ["Where they went:"]
+    lines += [
+        f"  {row.operation:<{width}}  {row.calls:>3} "
+        f"{'call' if row.calls == 1 else 'calls':<5}  {row.points:>8.2f} points"
+        for row in rows
+    ]
+
+    pending = costs.pending()
+    if pending is not None:
+        lines.append(
+            f"  {pending} ran last, so its own cost is missing: a query's cost is "
+            "only known once the next one runs."
+        )
+    return "\n".join(lines)
+
+
 @app.command()
 def fetch(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -160,7 +190,14 @@ def fetch(
         raise typer.Exit(1) from error
 
     typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository)
     typer.echo(run.model_dump_json(indent=2))
+
+
+def _echo_cost_breakdown(repository: WclRunRepository) -> None:
+    breakdown = _cost_breakdown(repository.client.costs)
+    if breakdown:
+        typer.echo(breakdown, err=True)
 
 
 def _resolve_player(run: Run, requested: str | None) -> Player:
@@ -556,6 +593,7 @@ def analyze(
     )
     typer.echo(f"report written to {report_file}")
     typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository)
 
 
 if __name__ == "__main__":

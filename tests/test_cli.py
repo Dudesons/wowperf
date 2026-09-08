@@ -14,10 +14,17 @@ from typer.testing import CliRunner
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
-from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, _fetch_parse_auras, _samples, app
+from wowperf.cli import (
+    FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    _cost_breakdown,
+    _fetch_parse_auras,
+    _samples,
+    app,
+)
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
@@ -55,8 +62,32 @@ def operation_name(query: str) -> str:
     return query.split("query ")[1].split("(")[0].split("{")[0].strip()
 
 
-def build_transport(quota: list[float]) -> httpx.MockTransport:
-    """Answer the fights query from the fixture and report a rising point count."""
+def build_transport(quota: list[float], step: float = 1.0) -> httpx.MockTransport:
+    """Answer the fights query from the fixture and report a rising point count.
+
+    Every response carries a quota block, as the live API's do now that each
+    query selects one: the explicit reads report `quota` in order, and each real
+    query reports a counter climbing from the first of them by `step`.
+    """
+    running = quota[0] if quota else 0.0
+
+    def carrying_quota(payload: dict[str, Any]) -> httpx.Response:
+        nonlocal running
+        running += step
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    **payload,
+                    "rateLimitData": {
+                        "limitPerHour": 3600,
+                        "pointsSpentThisHour": running,
+                        "pointsResetIn": 900,
+                    },
+                }
+            },
+        )
+
     fights = json.loads(FIXTURE.read_text(encoding="utf-8"))
     affixes: dict[str, Any] = {
         "gameData": {
@@ -70,9 +101,7 @@ def build_transport(quota: list[float]) -> httpx.MockTransport:
         name = operation_name(json.loads(request.content)["query"])
         if name == "RateLimit":
             return quota_response(quota.pop(0))
-        if name == "Affixes":
-            return httpx.Response(200, json={"data": affixes})
-        return httpx.Response(200, json={"data": fights})
+        return carrying_quota(affixes if name == "Affixes" else fights)
 
     return httpx.MockTransport(handler)
 
@@ -449,14 +478,13 @@ def build_analyze_transport(
             },
         )
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    running = quota[0] if quota else 0.0
+
+    def answer(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
         body = json.loads(request.content)
-        query = body["query"]
-        # An operation takes variables or it does not, so the name ends at
-        # whichever of `(` or `{` follows it.
-        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        name = operation_name(body["query"])
         if calls is not None:
             calls.append(name)
         if name == "RateLimit":
@@ -517,6 +545,33 @@ def build_analyze_transport(
                 200, json={"data": empty_auras}
             )
         return httpx.Response(200, json={"data": empty_events})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Every answer leaves carrying a quota block, as the live API's now do.
+
+        The explicit quota reads keep reporting `quota` in order, so the spent
+        sentence is unchanged; every other query reports a counter climbing from
+        the first of them, which is what gives the breakdown something to say.
+        """
+        nonlocal running
+        response = answer(request)
+        if response.status_code != httpx.codes.OK:
+            # A fixture standing in for a 500 carries no JSON to add a block to,
+            # and the real API sends no reading with a failure either.
+            return response
+
+        payload = response.json()
+        data = payload.get("data")
+        if not isinstance(data, dict) or "rateLimitData" in data:
+            return response
+
+        running += 1.0
+        data["rateLimitData"] = {
+            "limitPerHour": 3600,
+            "pointsSpentThisHour": running,
+            "pointsResetIn": 900,
+        }
+        return httpx.Response(response.status_code, json=payload)
 
     return httpx.MockTransport(handler)
 
@@ -591,6 +646,16 @@ def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "points spent, including the cost of these two quota reads" in result.stderr
     assert "of 3600 remain this hour" in result.stderr
+
+
+def test_analyze_prints_which_operations_the_points_went_on(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--no-compare")
+    assert result.exit_code == 0, result.output
+
+    normalised = " ".join(result.stderr.split())
+    assert "Where they went:" in normalised
+    assert "Fights" in normalised and "points" in normalised
+    assert "ran last, so its own cost is missing" in normalised
 
 
 def test_every_written_finding_carries_a_confidence(tmp_path: Path) -> None:
@@ -1864,3 +1929,38 @@ def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None
     runner = CliRunner()
     assert "--throughput-ceiling" in runner.invoke(app, ["analyze", "--help"]).output
     assert "--throughput-ceiling" not in runner.invoke(app, ["fetch", "--help"]).output
+
+
+def test_the_breakdown_names_each_operation_its_calls_and_its_points() -> None:
+    ledger = CostLedger()
+    ledger.record("Fights", 100.0)
+    ledger.record("Casts", 102.0)
+    ledger.record("Casts", 103.5)
+    ledger.record("RateLimit", 112.5)
+
+    # Column padding is presentation; pinning it would make this brittle without
+    # protecting anything. The order, counts, plural and rounding are the claims.
+    lines = [" ".join(line.split()) for line in _cost_breakdown(ledger).splitlines()]
+
+    assert lines == [
+        "Where they went:",
+        "Casts 2 calls 10.50 points",
+        "Fights 1 call 2.00 points",
+        "RateLimit ran last, so its own cost is missing: a query's cost is only known "
+        "once the next one runs.",
+    ]
+
+
+def test_the_breakdown_of_an_empty_ledger_is_empty() -> None:
+    """--no-compare on a fully cached run can spend nothing worth listing."""
+    assert _cost_breakdown(CostLedger()) == ""
+
+
+def test_fetch_prints_where_the_points_went(wired_cli: None, tmp_path: Path) -> None:
+    result = runner.invoke(app, ["fetch", "abc123", "--cache-dir", str(tmp_path / "cache")])
+
+    assert result.exit_code == 0, result.output
+    normalised = " ".join(result.stderr.split())
+    assert "Where they went:" in normalised
+    assert "Affixes 1 call 10.50 points" in normalised
+    assert "RateLimit ran last" in normalised
