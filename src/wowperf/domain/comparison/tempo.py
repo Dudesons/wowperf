@@ -4,11 +4,12 @@
 from wowperf.domain.analysis.interrupts import reconstruct_enemy_casts
 from wowperf.domain.analysis.timeline import gaps_between_pulls
 from wowperf.domain.comparison.reference import Comparability
+from wowperf.domain.comparison.sample import SpeedMember
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun
 
 
-def _downtime_seconds(loaded: LoadedRun) -> float:
+def _downtime_seconds(loaded: LoadedRun | SpeedMember) -> float:
     """Seconds spent between pulls — walking, not fighting.
 
     Reuses the timeline analyser's definition so the report never carries two
@@ -17,7 +18,7 @@ def _downtime_seconds(loaded: LoadedRun) -> float:
     return sum(gap.seconds for gap in gaps_between_pulls(loaded.run))
 
 
-def _kick_counts(loaded: LoadedRun) -> tuple[int, int]:
+def _kick_counts(loaded: LoadedRun | SpeedMember) -> tuple[int, int]:
     """(kicked, landed) enemy casts, by the documented reconstruction rule."""
     casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
     kicked = sum(1 for cast in casts if cast.was_kicked)
@@ -25,7 +26,9 @@ def _kick_counts(loaded: LoadedRun) -> tuple[int, int]:
     return kicked, landed
 
 
-def compare_tempo(ours: LoadedRun, theirs: LoadedRun, rule: Comparability) -> list[Finding]:
+def compare_tempo(
+    ours: LoadedRun, theirs: LoadedRun | SpeedMember, rule: Comparability
+) -> list[Finding]:
     """The group-axis comparisons that are not about the route."""
     findings: list[Finding] = []
 

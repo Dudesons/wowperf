@@ -1,12 +1,11 @@
-# ABOUTME: Runs every comparison against the two reference runs and ranks what they find.
+# ABOUTME: Runs every comparison against the two reference samples and ranks what they find.
 # ABOUTME: Deliberately dull: all the judgement lives in the comparison modules, none of it here.
 
 from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.confounds import declare_confounds
-from wowperf.domain.comparison.reference import Comparability, ParseReference, SpeedReference
 from wowperf.domain.comparison.route import compare_route
+from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo
 from wowperf.domain.comparison.uptime import compare_uptime
@@ -39,14 +38,20 @@ def _unavailable(finding_id: str, title: str, detail: str) -> Finding:
 def compare(
     ours: LoadedRun,
     our_player: Player,
-    speed: SpeedReference | None,
-    parse: ParseReference | None,
+    speed: SpeedSample | None,
+    parse: ParseSample | None,
     our_auras: PlayerAuras | None = None,
 ) -> list[Finding]:
-    """Every comparison, one ranked list."""
-    findings: list[Finding] = []
+    """Every comparison, one ranked list.
 
-    if speed is None:
+    An empty sample and no sample at all mean the same thing to a reader: the
+    leaderboard offered nothing to compare against.
+    """
+    findings: list[Finding] = []
+    speed_members = speed.members if speed else ()
+    parse_members = parse.members if parse else ()
+
+    if not speed_members:
         findings.append(
             _unavailable(
                 "compare.speed.unavailable",
@@ -56,19 +61,14 @@ def compare(
             )
         )
     else:
-        rule = Comparability(
-            our_level=ours.run.keystone_level, their_level=speed.loaded.run.keystone_level
-        )
+        first_speed = speed_members[0]
         findings += compare_route(
-            ours.run,
-            speed.loaded.run,
-            align_pulls(ours.run, speed.loaded.run),
-            forces_by_pull(ours.enemy_deaths),
+            ours.run, first_speed.run, first_speed.alignment, forces_by_pull(ours.enemy_deaths)
         )
-        findings += compare_tempo(ours, speed.loaded, rule)
-        findings += declare_confounds(ours, speed.loaded, rule)
+        findings += compare_tempo(ours, first_speed, first_speed.comparability)
+        findings += declare_confounds(ours, first_speed, first_speed.comparability)
 
-    if parse is None:
+    if not parse_members:
         findings.append(
             _unavailable(
                 "compare.parse.unavailable",
@@ -78,17 +78,18 @@ def compare(
             )
         )
     else:
-        findings += compare_spells(ours, our_player, parse.loaded, parse.row.character_name)
+        first_parse = parse_members[0]
+        findings += compare_spells(ours, our_player, first_parse, first_parse.row.character_name)
         findings += compare_talents(
-            our_player, find_player(parse.loaded.run, parse.row.character_name)
+            our_player, find_player(first_parse.run, first_parse.row.character_name)
         )
         findings += compare_uptime(
             ours.run,
             our_auras,
             our_player,
-            parse.loaded.run,
-            parse.auras,
-            parse.row.character_name,
+            first_parse.run,
+            first_parse.auras,
+            first_parse.row.character_name,
         )
 
     return rank_findings(findings)

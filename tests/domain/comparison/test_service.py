@@ -2,6 +2,7 @@
 # ABOUTME: Guards the two things only the service can get wrong: a missing reference, and a name.
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import (
     Comparability,
     ParseReference,
@@ -9,6 +10,7 @@ from wowperf.domain.comparison.reference import (
     SpeedReference,
     SpeedRow,
 )
+from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
@@ -105,6 +107,25 @@ def a_speed_reference(level: int = 16) -> SpeedReference:
     )
 
 
+def a_speed_member(level: int = 16) -> SpeedMember:
+    """`a_speed_reference` wrapped as the member a one-member `SpeedSample` carries."""
+    reference = a_speed_reference(level=level)
+    theirs_run = reference.loaded.run
+    return SpeedMember(
+        row=reference.row,
+        run=theirs_run,
+        comparability=Comparability(our_level=16, their_level=level),
+        alignment=align_pulls(our_run().run, theirs_run),
+        deaths=reference.loaded.deaths,
+        enemy_cast_rows=reference.loaded.enemy_cast_rows,
+        interrupts=reference.loaded.interrupts,
+    )
+
+
+def a_speed_sample(level: int = 16) -> SpeedSample:
+    return SpeedSample(members=(a_speed_member(level=level),))
+
+
 def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
     return ParseReference(
         row=ParseRow(
@@ -136,6 +157,22 @@ def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
     )
 
 
+def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
+    """`a_parse_reference` wrapped as the member a one-member `ParseSample` carries."""
+    reference = a_parse_reference(auras=auras)
+    return ParseMember(
+        row=reference.row,
+        run=reference.loaded.run,
+        comparability=Comparability(our_level=16, their_level=reference.row.keystone_level),
+        casts=reference.loaded.casts,
+        auras=reference.auras,
+    )
+
+
+def a_parse_sample(auras: PlayerAuras | None = None) -> ParseSample:
+    return ParseSample(members=(a_parse_member(auras=auras),))
+
+
 # OURS's boss pull in our_run() runs 400_000-460_000ms; the parse reference's runs
 # 0-60_000ms. Both are 60s, so a 90-point uptime gap on the same ability clears
 # UPTIME_GAP_FRACTION regardless of which side's window backs the fraction.
@@ -165,13 +202,13 @@ THEIR_AURAS = PlayerAuras(
 )
 
 
-def a_comparable_pair_with_auras() -> tuple[LoadedRun, Player, SpeedReference, ParseReference]:
+def a_comparable_pair_with_auras() -> tuple[LoadedRun, Player, SpeedSample, ParseSample]:
     """The usual comparable pair, with aura data riding along on the parse side.
 
     Extends `a_parse_reference` rather than a parallel fixture, so the boss pull
     that grounds the aura windows can't drift out of sync with the plain one.
     """
-    return our_run(), OURS, a_speed_reference(), a_parse_reference(auras=THEIR_AURAS)
+    return our_run(), OURS, a_speed_sample(), a_parse_sample(auras=THEIR_AURAS)
 
 
 def test_a_player_is_found_whatever_the_case() -> None:
@@ -181,7 +218,7 @@ def test_a_player_is_found_whatever_the_case() -> None:
 
 
 def test_every_comparison_contributes() -> None:
-    findings = compare(our_run(), OURS, a_speed_reference(), a_parse_reference())
+    findings = compare(our_run(), OURS, a_speed_sample(), a_parse_sample())
     prefixes = {".".join(finding.id.split(".")[:2]) for finding in findings}
 
     assert {
@@ -195,33 +232,33 @@ def test_every_comparison_contributes() -> None:
 
 
 def test_findings_come_back_ranked() -> None:
-    findings = compare(our_run(), OURS, a_speed_reference(), a_parse_reference())
+    findings = compare(our_run(), OURS, a_speed_sample(), a_parse_sample())
     timed = [f.seconds_lost for f in findings if f.seconds_lost is not None]
 
     assert timed == sorted(timed, reverse=True)
 
 
 def test_every_finding_id_is_unique() -> None:
-    ids = [f.id for f in compare(our_run(), OURS, a_speed_reference(), a_parse_reference())]
+    ids = [f.id for f in compare(our_run(), OURS, a_speed_sample(), a_parse_sample())]
 
     assert len(ids) == len(set(ids))
 
 
 def test_every_finding_carries_a_badge() -> None:
-    findings = compare(our_run(), OURS, a_speed_reference(), a_parse_reference())
+    findings = compare(our_run(), OURS, a_speed_sample(), a_parse_sample())
 
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
 
 
 def test_no_speed_reference_is_a_finding_not_a_crash() -> None:
-    findings = compare(our_run(), OURS, None, a_parse_reference())
+    findings = compare(our_run(), OURS, None, a_parse_sample())
 
     assert any(f.id == "compare.speed.unavailable" for f in findings)
     assert not any(f.id.startswith("compare.route.") for f in findings)
 
 
 def test_no_parse_reference_is_a_finding_not_a_crash() -> None:
-    findings = compare(our_run(), OURS, a_speed_reference(), None)
+    findings = compare(our_run(), OURS, a_speed_sample(), None)
 
     assert any(f.id == "compare.parse.unavailable" for f in findings)
     assert not any(f.id.startswith("compare.spells.") for f in findings)
@@ -235,7 +272,7 @@ def test_neither_reference_still_produces_a_usable_list() -> None:
 
 
 def test_a_reference_at_another_level_withholds_the_duration() -> None:
-    findings = compare(our_run(), OURS, a_speed_reference(level=17), None)
+    findings = compare(our_run(), OURS, a_speed_sample(level=17), None)
     duration = next(f for f in findings if f.id == "compare.duration")
 
     assert duration.seconds_lost is None
@@ -266,3 +303,24 @@ def test_no_parse_reference_means_no_uptime_findings_at_all() -> None:
 
     assert [i for i in ids if i.startswith("compare.uptime.")] == []
     assert "compare.parse.unavailable" in ids
+
+
+def test_an_empty_speed_sample_reports_the_speed_comparison_unavailable() -> None:
+    findings = compare(
+        ours=our_run(), our_player=OURS, speed=SpeedSample(), parse=None, our_auras=None
+    )
+
+    assert any(finding.id == "compare.speed.unavailable" for finding in findings)
+
+
+def test_a_one_member_sample_compares_against_that_member() -> None:
+    findings = compare(
+        ours=our_run(),
+        our_player=OURS,
+        speed=SpeedSample(members=(a_speed_member(),)),
+        parse=None,
+        our_auras=None,
+    )
+
+    assert any(finding.id == "compare.route.summary" for finding in findings)
+    assert not any(finding.id == "compare.speed.unavailable" for finding in findings)

@@ -4,6 +4,7 @@
 from collections import Counter
 
 from wowperf.domain.comparison.reference import Comparability
+from wowperf.domain.comparison.sample import SpeedMember
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 
@@ -30,7 +31,7 @@ def _augmentation_evokers(players: tuple[Player, ...]) -> tuple[str, ...]:
 
 
 def declare_confounds(
-    ours: LoadedRun, theirs: LoadedRun, rule: Comparability
+    ours: LoadedRun, theirs: LoadedRun | SpeedMember, rule: Comparability
 ) -> list[Finding]:
     """The differences a reader must hold in mind while reading every other finding."""
     findings: list[Finding] = []

@@ -29,7 +29,9 @@ from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.comparison.reference import ParseReference, SpeedReference
+from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.reference import Comparability, ParseReference, SpeedReference
+from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import Player, Run
@@ -212,6 +214,58 @@ def _references(
     return speed, parse
 
 
+def _speed_sample(speed: SpeedReference | None, ours: Run) -> SpeedSample | None:
+    """Wrap the one speed reference `_references` found into a one-member sample.
+
+    Task 12 replaces this with a real sample of up to `SAMPLE_SIZE` references
+    fetched from the leaderboard; until then, `compare` always sees exactly the
+    single candidate `_references` already fetched.
+    """
+    if speed is None:
+        return None
+    theirs = speed.loaded
+    return SpeedSample(
+        members=(
+            SpeedMember(
+                row=speed.row,
+                run=theirs.run,
+                comparability=Comparability(
+                    our_level=ours.keystone_level, their_level=theirs.run.keystone_level
+                ),
+                alignment=align_pulls(ours, theirs.run),
+                deaths=theirs.deaths,
+                enemy_cast_rows=theirs.enemy_cast_rows,
+                interrupts=theirs.interrupts,
+            ),
+        )
+    )
+
+
+def _parse_sample(parse: ParseReference | None, ours: Run) -> ParseSample | None:
+    """Wrap the one parse reference `_references` found into a one-member sample.
+
+    Task 12 replaces this with a real sample of up to `SAMPLE_SIZE` references
+    fetched from the leaderboard; until then, `compare` always sees exactly the
+    single candidate `_references` already fetched.
+    """
+    if parse is None:
+        return None
+    theirs = parse.loaded
+    return ParseSample(
+        members=(
+            ParseMember(
+                row=parse.row,
+                run=theirs.run,
+                comparability=Comparability(
+                    our_level=ours.keystone_level, their_level=theirs.run.keystone_level
+                ),
+                casts=theirs.casts,
+                auras=parse.auras,
+            ),
+        )
+    )
+
+
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
     """One player's auras, or None if they cannot be had.
 
@@ -331,7 +385,11 @@ def analyze(
                     )
 
             findings += compare(
-                ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
+                ours=loaded,
+                our_player=subject,
+                speed=_speed_sample(speed, loaded.run),
+                parse=_parse_sample(parse, loaded.run),
+                our_auras=our_auras,
             )
             findings = rank_findings(findings)
         after = repository.rate_limit()

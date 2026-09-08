@@ -19,8 +19,10 @@ from wowperf.adapters.config.toml import (
 from wowperf.adapters.render.html import render
 from wowperf.cli import (
     _auras,
+    _parse_sample,
     _references,
     _resolve_player,
+    _speed_sample,
     build_reference_repositories,
     build_repository,
 )
@@ -77,7 +79,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
             )
 
     findings += compare(
-        ours=loaded, our_player=subject, speed=speed, parse=parse, our_auras=our_auras
+        ours=loaded,
+        our_player=subject,
+        speed=_speed_sample(speed, loaded.run),
+        parse=_parse_sample(parse, loaded.run),
+        our_auras=our_auras,
     )
     findings = rank_findings(findings)
 

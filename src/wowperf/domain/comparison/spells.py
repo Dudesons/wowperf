@@ -1,6 +1,7 @@
 # ABOUTME: Compares one player's boss-pull casts and talent build against a top parse.
 # ABOUTME: Boss pulls only: across trash an ability ratio measures the route, not the player.
 
+from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -37,7 +38,7 @@ def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[in
     return {event.ability_id for event in casts if event.actor_id == actor_id}
 
 
-def _their_actor_id(theirs: LoadedRun, their_name: str) -> int | None:
+def _their_actor_id(theirs: LoadedRun | ParseMember, their_name: str) -> int | None:
     folded = their_name.casefold()
     for player in theirs.run.players:
         if player.name.casefold() == folded:
@@ -46,7 +47,7 @@ def _their_actor_id(theirs: LoadedRun, their_name: str) -> int | None:
 
 
 def compare_spells(
-    ours: LoadedRun, our_player: Player, theirs: LoadedRun, their_name: str
+    ours: LoadedRun, our_player: Player, theirs: LoadedRun | ParseMember, their_name: str
 ) -> list[Finding]:
     """What the reference player cast on bosses that we did not, and how often."""
     their_actor_id = _their_actor_id(theirs, their_name)

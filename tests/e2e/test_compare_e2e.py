@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.cli import build_reference_repositories, build_repository
+from wowperf.cli import (
+    _parse_sample,
+    _speed_sample,
+    build_reference_repositories,
+    build_repository,
+)
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP, ParseReference, SpeedReference
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import Confidence
@@ -65,7 +70,12 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
             row=parse_row, loaded=references.load(parse_row.report_code, parse_row.fight_id)
         )
 
-    findings = compare(loaded, subject, speed_reference, parse_reference)
+    findings = compare(
+        loaded,
+        subject,
+        _speed_sample(speed_reference, loaded.run),
+        _parse_sample(parse_reference, loaded.run),
+    )
 
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
