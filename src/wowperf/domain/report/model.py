@@ -191,6 +191,25 @@ class Header(Frozen):
     result: str = ""
 
 
+class ReferenceRecord(Frozen):
+    """One candidate the comparison considered, whether or not it was used.
+
+    Carries a link and never a figure: the findings JSON and this report are
+    kept forever, and a file that tabulates other players' durations and death
+    counts is the corpus the 24-hour reference cache exists to avoid.
+    """
+
+    report_code: str
+    fight_id: int
+    keystone_level: int
+    url: str
+    axis: str
+    loaded: bool = True
+    reason: str = ""
+    from_cache: bool = False
+    fetched_at: str = ""
+
+
 class Provenance(Frozen):
     report_code: str
     fight_id: int

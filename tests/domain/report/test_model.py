@@ -14,6 +14,7 @@ from wowperf.domain.report.model import (
     PlayerCard,
     Provenance,
     RecapRow,
+    ReferenceRecord,
     Report,
     Section,
     SectionState,
@@ -132,3 +133,36 @@ def test_a_recap_row_and_an_availability_row_are_closed_vocabularies_plus_string
 
 def test_a_timeline_track_defaults_to_no_blocks() -> None:
     assert TimelineTrack(caption="Ours — 31:48").blocks == ()
+
+
+def test_a_reference_record_defaults_to_loaded_and_used() -> None:
+    """A record with no reason and no cache flag reads as a clean, fresh success —
+    the shape every non-excluded, non-cached candidate leaves behind."""
+    record = ReferenceRecord(
+        report_code="abc123", fight_id=36, keystone_level=16,
+        url="https://www.warcraftlogs.com/reports/abc123?fight=36", axis="speed",
+    )
+    assert record.loaded is True
+    assert record.reason == ""
+    assert record.from_cache is False
+    assert record.fetched_at == ""
+
+
+def test_a_reference_record_has_no_field_for_a_name_a_duration_or_a_death_count() -> None:
+    # A closed field set is what keeps a `ReferenceRecord` a link rather than a
+    # tabulation: there is no field this test would need to police for a stray
+    # character name, a duration, or a death count, because none exists to fill.
+    assert set(ReferenceRecord.model_fields) == {
+        "report_code", "fight_id", "keystone_level", "url", "axis", "loaded", "reason",
+        "from_cache", "fetched_at",
+    }
+
+
+def test_a_reference_record_states_why_it_was_not_used() -> None:
+    record = ReferenceRecord(
+        report_code="abc123", fight_id=36, keystone_level=16,
+        url="https://www.warcraftlogs.com/reports/abc123?fight=36", axis="speed",
+        loaded=False, reason="this is the run under analysis",
+    )
+    assert record.loaded is False
+    assert record.reason == "this is the run under analysis"

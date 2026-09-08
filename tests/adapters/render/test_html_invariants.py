@@ -27,6 +27,7 @@ from wowperf.domain.report.model import (
     Header,
     Provenance,
     RecapRow,
+    ReferenceRecord,
     Timeline,
     TimelineBlock,
     TimelineTrack,
@@ -357,6 +358,8 @@ def test_every_withheld_section_gives_a_reason() -> None:
 NUMBERS_THAT_ARE_NOT_TOTALS = {
     (Header, "keystone_level"),  # a difficulty tier, not a duration
     (Provenance, "fight_id"),  # an id, not a duration
+    (ReferenceRecord, "fight_id"),  # an id, not a duration
+    (ReferenceRecord, "keystone_level"),  # a difficulty tier, not a duration
     (Timeline, "width"),
     (Timeline, "height"),
     (Timeline, "tick_y1"),
