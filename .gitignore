@@ -4,8 +4,18 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
+.mypy_cache/
 /cache/
 out/
+
+# Other players' logs, fetched for one comparison and never warehoused. These
+# were local-only excludes, which protect one machine and not a clone.
+spike-cache/
+
+# Scratch belonging to a worktree or to a subagent run, not to the project.
+.claude/worktrees/
+.superpowers/
+
 .python-version.local
 
 # PyCharm project config, local to whoever opened the repo
