@@ -48,11 +48,15 @@ class ParseMember(Frozen):
 
     Absent auras are a real state, not a failure: `compare.uptime.unavailable`
     reports it.
+
+    There is deliberately no `comparability`: nothing on the parse axis is
+    shaped like a duration. Casts are compared as rates per minute of boss time
+    and auras as fractions of it, and both mean the same thing at any keystone
+    level, so the rule that gates `compare.duration` has nothing to gate here.
     """
 
     row: ParseRow
     run: Run
-    comparability: Comparability
     casts: tuple[CastEvent, ...] = ()
     auras: PlayerAuras | None = None
 

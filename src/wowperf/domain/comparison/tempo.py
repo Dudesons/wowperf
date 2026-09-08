@@ -30,12 +30,20 @@ def _downtime_seconds(loaded: LoadedRun | SpeedMember) -> float:
 
     Reuses the timeline analyser's definition so the report never carries two
     different numbers for the same idea.
+
+    The union is real polymorphism, not scaffolding left over from the
+    conversion to samples: every caller passes our own `LoadedRun` for one side
+    and a `SpeedMember` for the other, and the two share the only field read
+    here. No public comparison function accepts it.
     """
     return sum(gap.seconds for gap in gaps_between_pulls(loaded.run))
 
 
 def _kick_counts(loaded: LoadedRun | SpeedMember) -> tuple[int, int]:
-    """(kicked, landed) enemy casts, by the documented reconstruction rule."""
+    """(kicked, landed) enemy casts, by the documented reconstruction rule.
+
+    Both arms of the union are passed in practice, as in `_downtime_seconds`.
+    """
     casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
     kicked = sum(1 for cast in casts if cast.was_kicked)
     landed = sum(1 for cast in casts if cast.landed)

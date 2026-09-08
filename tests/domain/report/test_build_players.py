@@ -2,7 +2,7 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
-from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
@@ -55,7 +55,6 @@ def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseSample:
                     spec="Blood",
                 ),
                 run=a_loaded().run,
-                comparability=Comparability(our_level=16, their_level=16),
             ),
         )
     )

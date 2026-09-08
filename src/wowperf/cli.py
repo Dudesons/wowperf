@@ -314,14 +314,7 @@ def _samples(
             continue
         records.append(_record(parse_row, "parse", loaded=True, from_cache=from_cache))
         parse_members.append(
-            ParseMember(
-                row=parse_row,
-                run=theirs.run,
-                comparability=Comparability(
-                    our_level=run.keystone_level, their_level=theirs.run.keystone_level
-                ),
-                casts=theirs.casts,
-            )
+            ParseMember(row=parse_row, run=theirs.run, casts=theirs.casts)
         )
 
     return (

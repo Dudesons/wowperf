@@ -1,3 +1,6 @@
+# ABOUTME: Behaviour tests for the three statistics a sample of reference runs may state.
+# ABOUTME: Median and range only, and each refuses an empty sample in its own words.
+
 import pytest
 
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
@@ -12,12 +15,17 @@ def test_the_median_of_an_even_count_is_the_midpoint_of_the_two_middles() -> Non
 
 
 def test_an_empty_sample_has_no_median() -> None:
-    with pytest.raises(ValueError):
+    # Matched on the guard's own words, not on the type: statistics.median([])
+    # raises StatisticsError, a ValueError subclass, so a bare pytest.raises
+    # would pass with the guard deleted and prove nothing about it.
+    with pytest.raises(ValueError, match="a sample with no members has no median"):
         median([])
 
 
 def test_an_empty_sample_has_no_range() -> None:
-    with pytest.raises(ValueError):
+    # min([]) raises ValueError too, so this matches the guard's own words for
+    # the same reason the median test above does.
+    with pytest.raises(ValueError, match="a sample with no members has no range"):
         observed_range([])
 
 

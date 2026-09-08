@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for the individual comparison: which spells and which build.
 # ABOUTME: Everything here is restricted to boss pulls, where the encounter is the same fight.
 
-from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import (
     MIN_CASTS_TO_COMPARE,
@@ -87,7 +87,6 @@ def a_member(
             spec=player.spec,
         ),
         run=loaded.run,
-        comparability=Comparability(our_level=16, their_level=level),
         casts=loaded.casts,
     )
 
@@ -350,6 +349,28 @@ def test_an_ability_seen_in_too_few_members_is_not_reported() -> None:
     findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
 
     assert not any(str(RUNE_OF_POWER) in f.title for f in findings)
+
+
+def test_a_rate_gap_seen_in_too_few_members_is_not_reported() -> None:
+    """The mirror of the missing-ability threshold, on the rate branch. Two
+    parses casting something ten times a minute is two players' build, not a
+    pattern, and a median of two is a mean of two."""
+    two_of_five = ParseSample(
+        members=(
+            a_parse_member("Bríala", 11, {METEOR: 12}),
+            a_parse_member("Dawnseeker", 12, {METEOR: 12}),
+            a_parse_member("Emberfall", 13, {}),
+            a_parse_member("Frostwhisper", 14, {}),
+            a_parse_member("Glimmerose", 15, {}),
+        )
+    )
+    # The fixture's own premise: one short of the threshold, at a gap that would
+    # otherwise be reported (12 casts over 60s against our own 2).
+    assert 2 < MIN_MEMBERS_WITH_ABILITY
+
+    findings = compare_spells_sample(OURS_LOADED, OURS, two_of_five)
+
+    assert not any(f.id.startswith("compare.spells.rate.") for f in findings)
 
 
 def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:

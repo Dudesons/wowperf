@@ -141,7 +141,6 @@ def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
             spec="Arcane",
         ),
         run=theirs.run,
-        comparability=Comparability(our_level=16, their_level=16),
         casts=theirs.casts,
         auras=auras,
     )

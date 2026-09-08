@@ -265,7 +265,6 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
             character_name=name, class_name="Mage", spec="Arcane",
         ),
         run=theirs,
-        comparability=Comparability(our_level=16, their_level=16),
         casts=rate_casts + missing_casts,
         auras=auras,
     )
@@ -323,6 +322,26 @@ def test_every_count_finding_states_its_denominator_in_its_title() -> None:
     assert counted, "the fixture must produce at least one aggregate finding"
     for finding in counted:
         assert re.search(r"\b\d+ of \d+\b", finding.title), finding.id
+
+
+def test_no_count_finding_renders_its_share_of_the_sample_as_a_percentage() -> None:
+    """At five references "80%" invents precision the sample does not have, and a
+    reader cannot tell it apart from a percentage measured inside a run.
+
+    Scoped to the count families deliberately. A rate or an uptime measured
+    within one run — `compare.interrupts`, `compare.uptime.*` — is a real
+    percentage of that run's own time and states one on purpose; only a share
+    *of the sample* is banned from wearing one.
+    """
+    findings = compare(
+        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
+    )
+
+    counted = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES) and f.quantifier]
+    assert counted, "the fixture must produce at least one aggregate finding"
+    for finding in counted:
+        assert "%" not in finding.title, finding.id
+        assert not any("%" in line for line in finding.evidence), finding.id
 
 
 def test_every_median_finding_states_its_range_in_its_evidence() -> None:

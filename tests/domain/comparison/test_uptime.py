@@ -2,7 +2,7 @@
 # ABOUTME: The interesting cases are a missing reference, a small sample, and a gap below cut-off.
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
-from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.uptime import (
     UPTIME_GAP_FRACTION,
@@ -297,7 +297,6 @@ def a_sample_member(
             spec="Blood",
         ),
         run=run,
-        comparability=Comparability(our_level=16, their_level=16),
         auras=player_auras,
     )
 
@@ -349,6 +348,20 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
     assert gap.seconds_lost is None
     # A median title states no count for a digit-free narrative to echo.
     assert gap.quantifier == ""
+
+
+def test_no_reference_player_is_named_in_a_sampled_uptime_finding() -> None:
+    """An aggregate uptime is a claim about a population, the same as a sampled
+    spell finding, so no member's character name may reach the page. The one
+    place a name still appears is the below-floor pairwise fallback, which is a
+    single reference's own comparison and says so."""
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    assert findings, "the fixture must produce at least one aggregate finding"
+    for name in ("Bríala", "Dawnseeker", "Emberfall", "Frostwhisper", "Glimmerose"):
+        assert all(name not in finding.title for finding in findings)
+        assert all(name not in finding.detail for finding in findings)
+        assert all(name not in line for finding in findings for line in finding.evidence)
 
 
 def test_members_without_aura_data_are_reported_not_silently_dropped() -> None:
@@ -469,7 +482,6 @@ def test_the_inert_on_target_plumbing_still_reports_a_gap_in_the_sample_if_ever_
                 spec="Blood",
             ),
             run=run,
-            comparability=Comparability(our_level=16, their_level=16),
             auras=auras,
         )
 
