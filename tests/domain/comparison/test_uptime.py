@@ -2,10 +2,13 @@
 # ABOUTME: The interesting cases are a missing reference, a small sample, and a gap below cut-off.
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.uptime import (
     UPTIME_GAP_FRACTION,
     boss_windows,
     compare_uptime,
+    compare_uptime_sample,
 )
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
@@ -253,3 +256,223 @@ def test_an_aura_both_sides_carried_still_reports_a_real_gap() -> None:
     findings = compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
 
     assert ids(findings, "compare.uptime.self.") == ["compare.uptime.self.0"]
+
+
+# --- compare_uptime_sample ---------------------------------------------------
+
+ICEBOUND = 194879
+"""Carried by only 2 of the 5 members below: below MIN_SAMPLE_FOR_AGGREGATE, reported nowhere."""
+
+
+def a_sample_member(
+    name: str, actor_id: int, auras: tuple[tuple[int, str, int], ...] | None
+) -> ParseMember:
+    """A parse-sample member on a BOSS-shaped pull matching OUR_RUN's.
+
+    `auras` is (ability_id, name, end_ms) triples, each an on-self band running from 0 to
+    end_ms — a fraction of BOSS's 100_000ms window. `None` means no aura data at all, the
+    state `aura_eligible` excludes.
+    """
+    player = a_player(name, actor_id)
+    run = a_run(BOSS, player=player)
+    player_auras = (
+        PlayerAuras(
+            actor_id=actor_id,
+            on_self=tuple(
+                an_aura(ability_id, aura_name, (0, end_ms))
+                for ability_id, aura_name, end_ms in auras
+            ),
+        )
+        if auras is not None
+        else None
+    )
+    return ParseMember(
+        row=ParseRow(
+            report_code=f"REF{actor_id}",
+            fight_id=1,
+            keystone_level=16,
+            duration_ms=100_000,
+            character_name=name,
+            class_name="DeathKnight",
+            spec="Blood",
+        ),
+        run=run,
+        comparability=Comparability(our_level=16, their_level=16),
+        auras=player_auras,
+    )
+
+
+SUBJECT = a_player()
+OUR_RUN = a_run(BOSS)
+OUR_AURAS = PlayerAuras(
+    actor_id=7,
+    on_self=(
+        an_aura(391477, "Coagulopathy", (0, 20_000)),
+        an_aura(ICEBOUND, "Icebound Fortitude", (0, 10_000)),
+    ),
+)
+
+# Four of five carry Coagulopathy, at fractions whose median clears both
+# MIN_UPTIME_FRACTION and UPTIME_GAP_FRACTION against OUR_AURAS's 20%. Two of
+# those four also carry Icebound Fortitude — one short of the floor, so that
+# gap must not surface no matter how wide it looks. The fifth carries no aura
+# data at all.
+SAMPLE_OF_FIVE = ParseSample(
+    members=(
+        a_sample_member(
+            "Bríala",
+            11,
+            ((391477, "Coagulopathy", 90_000), (ICEBOUND, "Icebound Fortitude", 90_000)),
+        ),
+        a_sample_member(
+            "Dawnseeker",
+            12,
+            ((391477, "Coagulopathy", 80_000), (ICEBOUND, "Icebound Fortitude", 85_000)),
+        ),
+        a_sample_member("Emberfall", 13, ((391477, "Coagulopathy", 70_000),)),
+        a_sample_member("Frostwhisper", 14, ((391477, "Coagulopathy", 60_000),)),
+        a_sample_member("Glimmerose", 15, None),
+    )
+)
+
+SAMPLE_WITHOUT_AURAS = ParseSample(
+    members=tuple(member.model_copy(update={"auras": None}) for member in SAMPLE_OF_FIVE.members)
+)
+
+
+def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert "median of 4 top parses" in gap.title
+    assert gap.confidence is Confidence.DERIVED
+    assert gap.seconds_lost is None
+    # A median title states no count for a digit-free narrative to echo.
+    assert gap.quantifier == ""
+
+
+def test_members_without_aura_data_are_reported_not_silently_dropped() -> None:
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert "1 of 5 references had no aura data" in gap.evidence
+
+
+def test_the_detail_no_longer_blames_a_single_players_gear() -> None:
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert "gear this player does not own" not in gap.detail
+
+
+def test_an_ability_carried_by_too_few_parses_is_not_reported() -> None:
+    """Icebound Fortitude reaches only 2 of the 5 members — one short of the floor
+    the sample relies on to filter out a one-off proc — so it must not be reported
+    even though both carriers are far above OUR_AURAS's 10% on it."""
+    assert 2 < MIN_SAMPLE_FOR_AGGREGATE
+
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    assert not any(str(ICEBOUND) in line for f in findings for line in f.evidence)
+    assert not any("Icebound Fortitude" in f.title for f in findings)
+
+
+def test_no_aura_data_at_all_still_reports_unavailable() -> None:
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_WITHOUT_AURAS)
+
+    assert findings[0].id == "compare.uptime.unavailable"
+
+
+def test_a_wholly_empty_sample_produces_no_findings() -> None:
+    # `service.compare()` already says "nothing to compare against" once, as
+    # `compare.parse.unavailable`; this must not crash, and must not repeat it.
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, ParseSample())
+
+    assert findings == []
+
+
+def test_below_the_floor_the_pairwise_wording_is_used() -> None:
+    below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
+
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, below_floor)
+
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert "Bríala" in gap.title
+    assert any("too few comparable references to aggregate" in line for line in gap.evidence)
+
+
+def test_our_own_missing_aura_data_is_unavailable_even_with_an_aggregate_sample() -> None:
+    """The sample has plenty of aura-eligible members; the failure is ours, not
+    the sample's, so this must not read as "too few comparable references"."""
+    findings = compare_uptime_sample(OUR_RUN, None, SUBJECT, SAMPLE_OF_FIVE)
+
+    assert findings[0].id == "compare.uptime.unavailable"
+    assert not any(
+        "too few comparable references" in line for line in findings[0].evidence
+    )
+
+
+def test_our_own_run_with_no_boss_pulls_is_unavailable_even_with_an_aggregate_sample() -> None:
+    """A run with no boss pulls has nothing to divide by on our side; the sample is
+    otherwise well above the floor, so this must not read as "too few comparable
+    references" either — the gap is ours, not the sample's."""
+    ours_without_boss_pulls = a_run(TRASH)
+
+    findings = compare_uptime_sample(ours_without_boss_pulls, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+
+    assert findings[0].id == "compare.uptime.unavailable"
+    assert not any(
+        "too few comparable references" in line for line in findings[0].evidence
+    )
+
+
+def test_every_finding_id_is_unique_over_the_sample() -> None:
+    ids_ = [f.id for f in compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)]
+
+    assert len(ids_) == len(set(ids_))
+
+
+def test_the_inert_on_target_plumbing_still_reports_a_gap_in_the_sample_if_ever_fed_data() -> None:
+    """`on_targets` is always empty against the live API (2026-09-05,
+    `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one caster"), so
+    this path never fires in production, in the sample the same way it never fires pairwise.
+    It is kept as correct code for a query that returns nothing today. This test hand-builds
+    `on_targets` data rather than exercising the real query, so it covers the plumbing, not a
+    working feature.
+    """
+
+    def a_target_member(name: str, actor_id: int, end_ms: int) -> ParseMember:
+        run = a_run(BOSS, player=a_player(name, actor_id))
+        auras = PlayerAuras(
+            actor_id=actor_id, on_targets=(an_aura(55095, "Frost Fever", (0, end_ms)),)
+        )
+        return ParseMember(
+            row=ParseRow(
+                report_code=f"TGT{actor_id}",
+                fight_id=1,
+                keystone_level=16,
+                duration_ms=100_000,
+                character_name=name,
+                class_name="DeathKnight",
+                spec="Blood",
+            ),
+            run=run,
+            comparability=Comparability(our_level=16, their_level=16),
+            auras=auras,
+        )
+
+    sample = ParseSample(
+        members=(
+            a_target_member("Alpha", 21, 90_000),
+            a_target_member("Beta", 22, 80_000),
+            a_target_member("Gamma", 23, 70_000),
+        )
+    )
+    our_target_auras = PlayerAuras(
+        actor_id=7, on_targets=(an_aura(55095, "Frost Fever", (0, 10_000)),)
+    )
+
+    findings = compare_uptime_sample(OUR_RUN, our_target_auras, SUBJECT, sample)
+
+    assert ids(findings, "compare.uptime.target.") == ["compare.uptime.target.0"]
+    assert ids(findings, "compare.uptime.self.") == []

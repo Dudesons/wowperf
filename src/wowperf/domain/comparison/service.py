@@ -8,7 +8,7 @@ from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo_sample
-from wowperf.domain.comparison.uptime import compare_uptime
+from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 
@@ -79,13 +79,6 @@ def compare(
         findings += compare_talents(
             our_player, find_player(top.run, top.row.character_name)
         )
-        findings += compare_uptime(
-            ours.run,
-            our_auras,
-            our_player,
-            top.run,
-            top.auras,
-            top.row.character_name,
-        )
+        findings += compare_uptime_sample(ours.run, our_auras, our_player, parse)
 
     return rank_findings(findings)
