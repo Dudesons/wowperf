@@ -23,17 +23,35 @@ another actor, because a respawned player casts self-only spells while running b
 The findings file says this itself, in `findings_are_ranked_not_additive`. It is the single
 easiest way to produce a confident wrong number, so it is worth restating:
 
-- `compare.duration` is the total gap against the reference run. When it carries a figure, that
-  figure already contains every other `seconds_lost` in the file. It carries none — `null` — in
-  two cases: a keystone-level gap withheld the comparison, or we finished no slower than the
-  reference.
+- `compare.duration` is the total gap against the median of the sample. It does not contain the
+  other figures below: the median prices one quantity — the sample as a whole — while every other
+  `seconds_lost` figure is priced against a particular run's own route, so the numbers overlap
+  without either containing the other. It carries none — `null` — in two cases: a keystone-level
+  gap withheld the comparison, or we finished no slower than the sample.
 - `time.gap.*` and `compare.downtime` both nest inside `time.residual`.
 - `deaths.single.*`, `deaths.chain.*` and `deaths.repeat.*` nest inside `deaths.total`.
 - `compare.route.skipped.*` overlaps the waste `trash.overage` already reports.
 
-Adding any two of those together produces a number larger than the run. The report labels every
-nested row "Already counted inside …" for exactly this reason, and a test holds that label set
-and the warning above in step, so neither can drift from the other.
+Summing a nested pair double-counts the piece they share. Summing `compare.duration` with anything
+else is a different mistake: the two figures are priced on different bases and were never meant to
+combine into a total at all. The report labels every nested row "Already counted inside …" for
+exactly this reason, and a test holds that label set and the warning above in step, so neither can
+drift from the other.
+
+## The quantifier is the narrative's only count
+
+The narrative states no numbers at all — `analyze --narrative` refuses a file that contains a
+single digit. An aggregate finding carries a `quantifier` for exactly this: one of `every`,
+`most`, `about half`, `some`, or empty, already computed from the sample so the narrative can echo
+it rather than calculate one of its own.
+
+Use only the quantifier a finding was given, and only on that finding. Reaching for "most" because
+a ratio in the evidence looks high, or carrying one finding's word onto a different finding, is
+reading a number off the page and writing it back in words — the exact thing the digit ban exists
+to stop.
+
+An empty quantifier means the finding is not an aggregate over a sample at all — one reference's
+own figure, say — and there is no "how many agreed" to have an opinion about. Say nothing.
 
 ## What each confidence badge licenses you to say
 
@@ -217,17 +235,21 @@ invent a better-sounding one.
 
 `out/<code>-<fight>.findings.json` carries the run's metadata (`report_code`, `fight_id`,
 `dungeon_name`, `keystone_level`, `keystone_time_seconds`, `in_time`, `player`), a `comparison`
-block holding both reference runs when they were fetched, the `findings_are_ranked_not_additive`
-warning, and the findings themselves — each with an `id`, a `title`, a `detail`, a `confidence`, a
-`seconds_lost`, an `evidence` list and a `pull_index`.
+block, the `findings_are_ranked_not_additive` warning, and the findings themselves — each with an
+`id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `pull_index`
+and a `quantifier`.
 
-`comparison.compared` is `false` and both references are `null` in two different situations, and
-the findings tell them apart. Under `--no-compare` the comparison never ran, so no `compare.*`
-finding exists at all. When a leaderboard returned nothing, `compare.speed.unavailable` or
-`compare.parse.unavailable` is there to say so. Both differ again from a comparison that ran and
-was withheld, which leaves its findings in place with `seconds_lost: null` and the reason in the
-`detail`. The route, tempo, duration and confound findings hang off the speed reference; spells,
-talents and uptime hang off the parse reference. One can be absent while the other is not.
+`comparison.references` lists every candidate the sample considered, loaded or not, each carrying
+its `axis` (`speed` or `parse`), a link to the report, and — for one that was not used — the
+reason. `sample_size` gives the count actually aggregated per axis. `comparison.compared` is
+`false` in two different situations, and the findings tell them apart. Under `--no-compare` the
+comparison never ran, so no `compare.*` finding exists at all and `references` is empty. When a
+leaderboard returned nothing, `compare.speed.unavailable` or `compare.parse.unavailable` is there
+to say so instead, and `references` may still list candidates that were tried and failed to load.
+Both differ again from a comparison that ran and was withheld, which leaves its findings in place
+with `seconds_lost: null` and the reason in the `detail`. The route, tempo, duration and confound
+findings hang off the speed sample; spells, talents and uptime hang off the parse sample. One axis
+can be absent while the other is not.
 
 The `title` is prose written for a reader. The `id` is a machine identifier. When you want to
 point a reader at a finding, echo its title — they can find it on the page. An id means nothing to

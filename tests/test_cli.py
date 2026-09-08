@@ -735,8 +735,46 @@ def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
     payload = written_findings(tmp_path)
     assert payload["player"] == "Emberkin"
     assert payload["comparison"]["compared"] is True
-    assert payload["comparison"]["speed_reference"]["report_code"]
+    assert payload["comparison"]["sample_size"] == {"speed": 1, "parse": 1}
+    assert any(reference["report_code"] for reference in payload["comparison"]["references"])
     assert any(f["id"].startswith("compare.") for f in payload["findings"])
+
+
+def test_the_findings_json_names_no_reference_character(tmp_path: Path) -> None:
+    """The comparison block carries a link, never who ran the reference: the
+    findings file is kept forever, and a table of other players' names is
+    exactly the corpus the reference cache exists to avoid accumulating.
+
+    Scoped to the comparison block rather than the whole file: the below-floor
+    spells fallback (see `compare_spells_sample`'s docstring) is a documented,
+    unrelated exception that still names one reference player in its own
+    finding, kept deliberately because there it is one pairwise comparison,
+    not a population claim drawn from the sample.
+
+    Dumped with `ensure_ascii=False`: the default `ensure_ascii=True` would
+    escape "Bríala" to `\\u00ed` and let the name's presence pass unnoticed.
+    """
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0
+    payload = written_findings(tmp_path)
+    dumped = json.dumps(payload["comparison"], ensure_ascii=False)
+    assert PARSE_REFERENCE_CHARACTER_NAME not in dumped
+    assert SPEED_REFERENCE_CHARACTER_NAME not in dumped
+
+
+def test_every_reference_in_the_json_carries_a_url_and_no_duration(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0
+    payload = written_findings(tmp_path)
+    references = payload["comparison"]["references"]
+    assert references, "the fixture must produce at least one reference to make this a real test"
+    for reference in references:
+        assert reference["url"].startswith("https://www.warcraftlogs.com/reports/")
+        assert "duration_seconds" not in reference
+        assert "character_name" not in reference
+        assert "medal" not in reference
 
 
 def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: Path) -> None:
@@ -765,7 +803,8 @@ def test_no_compare_skips_both_references(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
-    assert payload["comparison"]["speed_reference"] is None
+    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": 0}
+    assert payload["comparison"]["references"] == []
     assert not any(f["id"].startswith("compare.") for f in payload["findings"])
 
 
@@ -826,8 +865,11 @@ def test_a_reference_that_fails_to_load_falls_through_to_the_next_row(tmp_path: 
     assert result.exit_code == 0, result.output
     payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is True
-    assert payload["comparison"]["speed_reference"]["report_code"] == SPEED_REFERENCE_CODE
-    assert payload["comparison"]["parse_reference"]["report_code"] == PARSE_REFERENCE_CODE
+    references = payload["comparison"]["references"]
+    loaded_speed = [r["report_code"] for r in references if r["axis"] == "speed" and r["loaded"]]
+    loaded_parse = [r["report_code"] for r in references if r["axis"] == "parse" and r["loaded"]]
+    assert loaded_speed == [SPEED_REFERENCE_CODE]
+    assert loaded_parse == [PARSE_REFERENCE_CODE]
 
 
 def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -> None:
@@ -848,8 +890,8 @@ def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -
     assert result.exit_code == 0, result.output
     payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
-    assert payload["comparison"]["speed_reference"] is None
-    assert payload["comparison"]["parse_reference"] is None
+    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": 0}
+    assert all(not r["loaded"] for r in payload["comparison"]["references"])
     assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
 
 
@@ -863,32 +905,46 @@ def test_an_empty_leaderboard_degrades_to_no_comparison(tmp_path: Path) -> None:
 
 
 def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
-    """Asserts the values in speed_reference and parse_reference, not just their keys.
+    """Asserts the values in the references list, not just their keys.
 
     The fixture's mock data is chosen to match the task brief's specimen values.
-    This test pins the contract to fixed literals so a future swap (e.g. class_name
-    and spec) would fail, not silently produce wrong output on screen.
+    This test pins the contract to fixed literals so a future swap (e.g. report
+    code or keystone level) would fail, not silently produce wrong output on
+    screen.
     """
     result = run_analyze(tmp_path, "--player", "Emberkin")
 
     assert result.exit_code == 0
     payload = written_findings(tmp_path)
+    references = {r["axis"]: r for r in payload["comparison"]["references"]}
 
-    # speed_reference fields
-    assert payload["comparison"]["speed_reference"]["report_code"] == "71cv4MRdNCp8ZFjG"
-    assert payload["comparison"]["speed_reference"]["fight_id"] == 28
-    assert payload["comparison"]["speed_reference"]["keystone_level"] == 16
-    assert payload["comparison"]["speed_reference"]["duration_seconds"] == 1379.452
-    assert payload["comparison"]["speed_reference"]["medal"] == "silver"
+    speed_reference = references["speed"]
+    assert speed_reference["report_code"] == "71cv4MRdNCp8ZFjG"
+    assert speed_reference["fight_id"] == 28
+    assert speed_reference["keystone_level"] == 16
+    assert (
+        speed_reference["url"] == "https://www.warcraftlogs.com/reports/71cv4MRdNCp8ZFjG?fight=28"
+    )
+    assert speed_reference["loaded"] is True
+    assert speed_reference["reason"] == ""
+    assert set(speed_reference.keys()) == {
+        "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
+        "from_cache",
+    }
 
-    # parse_reference fields
-    assert payload["comparison"]["parse_reference"]["report_code"] == "37FzMg9pVPH6fnJT"
-    assert payload["comparison"]["parse_reference"]["fight_id"] == 16
-    assert payload["comparison"]["parse_reference"]["keystone_level"] == 16
-    assert payload["comparison"]["parse_reference"]["character_name"] == "Bríala"
-    assert payload["comparison"]["parse_reference"]["class_name"] == "Mage"
-    assert payload["comparison"]["parse_reference"]["spec"] == "Arcane"
-    assert payload["comparison"]["parse_reference"]["medal"] == "silver"
+    parse_reference = references["parse"]
+    assert parse_reference["report_code"] == "37FzMg9pVPH6fnJT"
+    assert parse_reference["fight_id"] == 16
+    assert parse_reference["keystone_level"] == 16
+    assert (
+        parse_reference["url"] == "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=16"
+    )
+    assert parse_reference["loaded"] is True
+    assert parse_reference["reason"] == ""
+    assert set(parse_reference.keys()) == {
+        "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
+        "from_cache",
+    }
 
 
 def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: Path) -> None:

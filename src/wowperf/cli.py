@@ -66,9 +66,10 @@ accumulates (RPGLogs terms §5d). Our own run's responses never expire.
 """
 
 FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
-    "findings are ranked by seconds_lost, not additive: compare.duration is the "
-    "total gap against the reference and already contains every other seconds_lost "
-    "figure in this report; time.gap.* and compare.downtime both nest inside "
+    "findings are ranked by seconds_lost, not additive: compare.duration measures the "
+    "gap against the median of the sample, while every other seconds_lost figure is "
+    "priced against a particular run's route, so the two overlap without one "
+    "containing the other; time.gap.* and compare.downtime both nest inside "
     "time.residual; deaths.single.*, deaths.chain.* and deaths.repeat.* all nest "
     "inside deaths.total; and compare.route.skipped.* overlaps the waste "
     "trash.overage already reports"
@@ -497,12 +498,13 @@ def analyze(
         speed: SpeedReference | None = None
         parse: ParseReference | None = None
         speed_sample: SpeedSample | None = None
+        parse_sample: ParseSample | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
             # Every candidate `_samples` weighed comes back as `reference_records`,
-            # carried onto the report's provenance below; serialising them into the
-            # findings JSON too is Task 14's job, not this one's.
+            # carried onto both the report's provenance below and the comparison
+            # block of the findings JSON.
             speed_sample, parse_sample, reference_records = _samples(
                 rankings, references, loaded.run, subject
             )
@@ -538,30 +540,23 @@ def analyze(
         "player": subject.name,
         "comparison": {
             "compared": speed is not None or parse is not None,
-            "speed_reference": (
+            "sample_size": {
+                "speed": len(speed_sample.members) if speed_sample else 0,
+                "parse": len(parse_sample.members) if parse_sample else 0,
+            },
+            "references": [
                 {
-                    "report_code": speed.row.report_code,
-                    "fight_id": speed.row.fight_id,
-                    "keystone_level": speed.row.keystone_level,
-                    "duration_seconds": speed.row.duration_seconds,
-                    "medal": speed.row.medal,
+                    "axis": record.axis,
+                    "report_code": record.report_code,
+                    "fight_id": record.fight_id,
+                    "keystone_level": record.keystone_level,
+                    "url": record.url,
+                    "loaded": record.loaded,
+                    "reason": record.reason,
+                    "from_cache": record.from_cache,
                 }
-                if speed
-                else None
-            ),
-            "parse_reference": (
-                {
-                    "report_code": parse.row.report_code,
-                    "fight_id": parse.row.fight_id,
-                    "keystone_level": parse.row.keystone_level,
-                    "character_name": parse.row.character_name,
-                    "class_name": parse.row.class_name,
-                    "spec": parse.row.spec,
-                    "medal": parse.row.medal,
-                }
-                if parse
-                else None
-            ),
+                for record in reference_records
+            ],
         },
         "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
         "findings": [finding.model_dump(mode="json") for finding in findings],

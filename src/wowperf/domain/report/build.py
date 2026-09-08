@@ -72,8 +72,10 @@ NESTS_INSIDE = (
 
 Stated rather than inferred: the relationships come from what the analysers
 measure, and they change when an analyser changes, not when a report renders.
-`compare.duration` contains every figure here and is a decomposition row rather
-than a parent — repeating it on every line would be noise.
+`compare.duration` measures the gap against the median of the sample, while
+every figure here is priced against this run's own route, so the two overlap
+without one containing the other; it is a decomposition row rather than a
+parent, so repeating it on every line would be noise.
 
 Entries must stay mutually non-overlapping: `parent_of` resolves by first match
 in tuple order, so a broader prefix placed ahead of a narrower one would
