@@ -1,4 +1,4 @@
-# ABOUTME: GraphQL query text for the Warcraft Logs v2 client API, one constant per query.
+# ABOUTME: GraphQL query text for the Warcraft Logs v2 client API, and the quota-block splice.
 # ABOUTME: Every field here is verified against the published schema; do not add unverified ones.
 
 import re
@@ -18,8 +18,20 @@ QUOTA_BLOCK = "rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }"
 
 # A named operation, with or without a variable list, up to the brace opening its
 # top-level selection set. Every query here is named; an anonymous one is left
-# alone rather than guessed at.
-_OPERATION_HEADER = re.compile(r"query\s+\w+\s*(?:\([^)]*\))?\s*\{")
+# alone rather than guessed at. The header must open its own line, so that a
+# comment reading `# query Foo {` is not mistaken for the operation itself.
+_OPERATION_HEADER = re.compile(r"^[ \t]*query\s+(\w+)\s*(?:\([^)]*\))?\s*\{", re.MULTILINE)
+
+
+def operation_name(query: str) -> str | None:
+    """The name of the operation, or None where this is not a shape we recognise.
+
+    One pattern names the operation and finds where the quota block goes, so a
+    recorded cost can never be filed under a different name from the one whose
+    query carried the block.
+    """
+    header = _OPERATION_HEADER.search(query)
+    return header.group(1) if header else None
 
 
 def with_rate_limit(query: str) -> str:

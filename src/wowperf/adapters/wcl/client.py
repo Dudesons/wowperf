@@ -1,7 +1,6 @@
 # ABOUTME: POSTs GraphQL to the Warcraft Logs client API and surfaces its errors as exceptions.
 # ABOUTME: Point cost per query is undocumented, so quota is read from the API, never assumed.
 
-import re
 from typing import Any, cast
 
 import httpx
@@ -9,16 +8,15 @@ import httpx
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.errors import WclError
-from wowperf.adapters.wcl.queries import RATE_LIMIT_QUERY, with_rate_limit
+from wowperf.adapters.wcl.queries import RATE_LIMIT_QUERY, operation_name, with_rate_limit
 from wowperf.domain.base import Frozen
 
 CLIENT_ENDPOINT = "https://www.warcraftlogs.com/api/v2/client"
 
 
 def _operation_name(query: str) -> str:
-    """Best-effort GraphQL operation name, for naming a query in an error message."""
-    match = re.search(r"query\s+(\w+)", query)
-    return match.group(1) if match else "an unnamed query"
+    """Best-effort GraphQL operation name, for error messages and for cost rows."""
+    return operation_name(query) or "an unnamed query"
 
 
 class RateLimitExceeded(WclError):
@@ -42,6 +40,7 @@ class WclClient:
         self._http = http
         self._endpoint = endpoint
         self._costs = CostLedger()
+        self._reading: dict[str, Any] | None = None
 
     @property
     def costs(self) -> CostLedger:
@@ -86,12 +85,14 @@ class WclClient:
             )
 
         payload_data = cast(dict[str, Any], data)
-        self._record_quota(query, payload_data.get("rateLimitData"))
-        if instrumented != query:
-            # We added the block, so we take it back out. `_fetch` hands this
-            # payload straight to the cache, where an entry lives for a day or
-            # forever; a block left in would freeze an hour-old counter into it.
-            payload_data.pop("rateLimitData", None)
+        # Always taken out, whoever asked for it. `_fetch` hands this payload
+        # straight to the cache, where an entry lives for a day or forever, and a
+        # counter stored there would be served back as though it were current.
+        # Keying the removal on whether we spliced would leave a query that
+        # selects the quota itself carrying one.
+        block = payload_data.pop("rateLimitData", None)
+        self._reading = block if isinstance(block, dict) else None
+        self._record_quota(query, block)
         return payload_data
 
     def _record_quota(self, query: str, block: Any) -> None:
@@ -105,8 +106,11 @@ class WclClient:
             self._costs.record(_operation_name(query), float(block["pointsSpentThisHour"]))
 
     def rate_limit(self) -> RateLimit:
-        data = self.execute(RATE_LIMIT_QUERY).get("rateLimitData")
-        if not isinstance(data, dict):
+        # `execute` strips the block out of every payload, so the reading it set
+        # aside for this call is where the answer is.
+        self.execute(RATE_LIMIT_QUERY)
+        data = self._reading
+        if data is None:
             raise WclError("The rate limit response is missing rateLimitData")
 
         missing = [

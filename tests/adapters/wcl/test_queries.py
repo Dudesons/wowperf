@@ -66,3 +66,16 @@ def test_every_query_in_the_module_carries_the_block_as_its_first_selection() ->
             unspliced[name] = query.strip().splitlines()[0]
 
     assert unspliced == {}
+
+
+def test_a_comment_that_looks_like_a_header_is_not_mistaken_for_the_operation() -> None:
+    """Splicing at the comment would put the block outside any operation and
+    break a query that was perfectly valid before we touched it."""
+    query = "# query Bar {\nquery Foo { hello }"
+
+    assert queries.operation_name(query) == "Foo"
+    assert with_rate_limit(query) == f"# query Bar {{\nquery Foo {{\n  {BLOCK} hello }}"
+
+
+def test_an_operation_with_no_recognisable_header_has_no_name() -> None:
+    assert queries.operation_name("query { hello }") is None

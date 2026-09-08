@@ -3,6 +3,10 @@
 
 from wowperf.domain.base import Frozen
 
+# A reset drops the counter by hundreds of points. Anything smaller than this is
+# float noise on a query that was genuinely free, not the start of a new hour.
+_ROLLOVER = 1e-9
+
 
 class QueryCost(Frozen):
     operation: str
@@ -43,20 +47,28 @@ class CostLedger:
         priced: list[QueryCost] = []
         pairs = zip(self._readings, self._readings[1:], strict=False)
         for (operation, spent), (_, following) in pairs:
-            if following < spent:
+            if following < spent - _ROLLOVER:
                 # Points reset on a fixed one-hour cycle. This pair straddles a
                 # reset, so its difference is not a cost of anything.
                 continue
-            priced.append(QueryCost(operation=operation, points=round(following - spent, 2)))
+            points = round(max(following - spent, 0.0), 2)
+            priced.append(QueryCost(operation=operation, points=points))
         return priced
 
     def by_operation(self) -> list[OperationCost]:
-        """One row per operation, dearest first, so a reader starts at what to cut."""
+        """One row per operation, dearest first, so a reader starts at what to cut.
+
+        `calls` counts every call, priced or not. A run reads the quota twice and
+        prices one of them, and a row claiming a single call would be a plainer
+        lie than a row whose points fall short of its calls.
+        """
         calls: dict[str, int] = {}
         points: dict[str, float] = {}
+        for operation, _ in self._readings:
+            calls[operation] = calls.get(operation, 0) + 1
+            points.setdefault(operation, 0.0)
         for cost in self.costs():
-            calls[cost.operation] = calls.get(cost.operation, 0) + 1
-            points[cost.operation] = points.get(cost.operation, 0.0) + cost.points
+            points[cost.operation] += cost.points
 
         return sorted(
             (

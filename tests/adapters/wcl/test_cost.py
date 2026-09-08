@@ -39,6 +39,7 @@ def test_repeated_operations_are_summed_and_counted() -> None:
     assert ledger.by_operation() == [
         OperationCost(operation="Casts", calls=2, points=4.50),
         OperationCost(operation="Fights", calls=1, points=1.00),
+        OperationCost(operation="RateLimit", calls=1, points=0.00),
     ]
 
 
@@ -48,7 +49,7 @@ def test_the_costliest_operation_is_reported_first() -> None:
     ledger.record("Dear", 1.00)
     ledger.record("RateLimit", 9.00)
 
-    assert [entry.operation for entry in ledger.by_operation()] == ["Dear", "Cheap"]
+    assert [entry.operation for entry in ledger.by_operation()] == ["Dear", "Cheap", "RateLimit"]
 
 
 def test_an_hour_rollover_drops_the_pair_rather_than_recording_a_negative_cost() -> None:
@@ -71,3 +72,25 @@ def test_the_trailing_operation_is_named_as_the_one_still_unpriced() -> None:
 
     ledger.record("RateLimit", 5.01)
     assert ledger.pending() == "RateLimit"
+
+
+def test_calls_counts_every_call_including_one_whose_cost_is_still_unknown() -> None:
+    """A run reads the quota twice. Counting only priced calls would say once."""
+    ledger = CostLedger()
+    ledger.record("RateLimit", 0.0)
+    ledger.record("Fights", 1.0)
+    ledger.record("RateLimit", 3.0)
+
+    assert ledger.by_operation() == [
+        OperationCost(operation="Fights", calls=1, points=2.00),
+        OperationCost(operation="RateLimit", calls=2, points=1.00),
+    ]
+
+
+def test_float_noise_is_not_mistaken_for_an_hour_rollover() -> None:
+    """A genuinely free query can read back a hair below the reading before it."""
+    ledger = CostLedger()
+    ledger.record("Free", 0.1 + 0.2)
+    ledger.record("Next", 0.3)
+
+    assert ledger.costs() == [QueryCost(operation="Free", points=0.0)]

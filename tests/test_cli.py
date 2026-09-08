@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.rankings import bracket_for
@@ -22,6 +22,7 @@ from wowperf.cli import (
     FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     _cost_breakdown,
     _fetch_parse_auras,
+    _quota_sentence,
     _samples,
     app,
 )
@@ -54,7 +55,7 @@ def quota_response(spent: float) -> httpx.Response:
 def operation_name(query: str) -> str:
     """The GraphQL operation name.
 
-    Every query now also selects `rateLimitData`, so only the name distinguishes
+    Every query also selects `rateLimitData`, so only the name distinguishes
     a quota read from a real query that happens to carry its own reading. An
     operation takes variables or it does not, so the name ends at whichever of
     `(` or `{` follows it.
@@ -65,9 +66,9 @@ def operation_name(query: str) -> str:
 def build_transport(quota: list[float], step: float = 1.0) -> httpx.MockTransport:
     """Answer the fights query from the fixture and report a rising point count.
 
-    Every response carries a quota block, as the live API's do now that each
-    query selects one: the explicit reads report `quota` in order, and each real
-    query reports a counter climbing from the first of them by `step`.
+    Every response carries a quota block, as the live API's do when each query
+    selects one: the explicit reads report `quota` in order, and each real query
+    reports a counter climbing from the first of them by `step`.
     """
     running = quota[0] if quota else 0.0
 
@@ -348,7 +349,6 @@ def build_analyze_transport(
     aura_response: httpx.Response | None = None,
     boss_pull_reports: tuple[str, ...] = (),
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
-    quota: list[float] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -396,13 +396,11 @@ def build_analyze_transport(
     `build_player_auras` reads), in place of the default empty-but-valid tables
     — letting a caller give the two players aura data that actually differs.
 
-    Also answers `RateLimit` with a rising point count, mirroring `build_transport`:
-    `quota` defaults to `[100.0, 128.0]`, enough for the two reads `analyze` takes
-    (before the run is fetched, and after the comparison), so every existing test
-    keeps working without passing it.
+    Every answer, `RateLimit` included, carries a quota block off one rising
+    counter. Two counters would let the closing read fall below the reading before
+    it, which the ledger would take for an hour rollover — silently dropping the
+    last query and putting the printed table out of step with the spent sentence.
     """
-    if quota is None:
-        quota = [100.0, 128.0]
     reference_roster_name = {
         SPEED_REFERENCE_CODE: SPEED_REFERENCE_CHARACTER_NAME,
         PARSE_REFERENCE_CODE: PARSE_REFERENCE_CHARACTER_NAME,
@@ -478,7 +476,7 @@ def build_analyze_transport(
             },
         )
 
-    running = quota[0] if quota else 0.0
+    running = 100.0
 
     def answer(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
@@ -488,7 +486,8 @@ def build_analyze_transport(
         if calls is not None:
             calls.append(name)
         if name == "RateLimit":
-            return quota_response(quota.pop(0))
+            # The block the wrapper adds below is the whole answer.
+            return httpx.Response(200, json={"data": {}})
         if name == "Fights":
             code = body["variables"]["code"]
             payload = fights_by_code.get(code, {"reportData": {"report": None}})
@@ -547,12 +546,7 @@ def build_analyze_transport(
         return httpx.Response(200, json={"data": empty_events})
 
     def handler(request: httpx.Request) -> httpx.Response:
-        """Every answer leaves carrying a quota block, as the live API's now do.
-
-        The explicit quota reads keep reporting `quota` in order, so the spent
-        sentence is unchanged; every other query reports a counter climbing from
-        the first of them, which is what gives the breakdown something to say.
-        """
+        """Every answer leaves carrying a quota block, as the live API's do."""
         nonlocal running
         response = answer(request)
         if response.status_code != httpx.codes.OK:
@@ -655,7 +649,7 @@ def test_analyze_prints_which_operations_the_points_went_on(tmp_path: Path) -> N
     normalised = " ".join(result.stderr.split())
     assert "Where they went:" in normalised
     assert "Fights" in normalised and "points" in normalised
-    assert "ran last, so its own cost is missing" in normalised
+    assert "ran last, so one of its calls is unpriced" in normalised
 
 
 def test_every_written_finding_carries_a_confidence(tmp_path: Path) -> None:
@@ -1946,8 +1940,9 @@ def test_the_breakdown_names_each_operation_its_calls_and_its_points() -> None:
         "Where they went:",
         "Casts 2 calls 10.50 points",
         "Fights 1 call 2.00 points",
-        "RateLimit ran last, so its own cost is missing: a query's cost is only known "
-        "once the next one runs.",
+        "RateLimit 1 call 0.00 points",
+        "RateLimit ran last, so one of its calls is unpriced: a query's cost is only "
+        "known once the next one runs.",
     ]
 
 
@@ -1985,4 +1980,36 @@ def test_the_breakdown_accounts_for_exactly_the_points_the_sentence_reports(
     tabled = [float(points) for points in re.findall(r"([\d.]+) points\b", normalised)[1:]]
 
     assert tabled, "the table listed nothing, so this proves nothing"
+    assert round(sum(tabled), 2) == float(spent)
+
+
+def test_a_quota_sentence_across_an_hour_boundary_reports_no_spend() -> None:
+    """Points reset on a fixed one-hour cycle. Subtracting across the reset used
+    to print a negative spend, which the cost table beside it already refuses."""
+    before = RateLimit(limit_per_hour=3600, points_spent_this_hour=3550.0, points_reset_in=5)
+    after = RateLimit(limit_per_hour=3600, points_spent_this_hour=40.0, points_reset_in=3595)
+
+    sentence = _quota_sentence(before, after)
+
+    assert "-" not in sentence
+    assert "reset" in sentence
+    assert "3560.00 of 3600 remain" in sentence
+
+
+def test_a_compared_analyze_accounts_for_every_point_it_reports(tmp_path: Path) -> None:
+    """The same invariant as for `fetch`, on the run that issues thirty queries.
+
+    The two figures come from different arithmetic — one subtraction of readings
+    against a sum of per-query differences — so they agree only if every point
+    lands on exactly one operation. A run this long is also the one where an
+    off-by-one, a dropped pair or a miscounted call has room to hide.
+    """
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    normalised = " ".join(result.stderr.split())
+    [spent] = re.findall(r"Rate limit: ([\d.]+) points spent", normalised)
+    tabled = [float(points) for points in re.findall(r"([\d.]+) points", normalised)[1:]]
+
+    assert len(tabled) > 5, "a compared run touches many operations; this listed few"
     assert round(sum(tabled), 2) == float(spent)

@@ -127,8 +127,15 @@ def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
     optimistic by that same unbilled amount; the figure is the API's own and is
     not adjusted, because the API does not say what the read cost.
     """
-    spent = after.points_spent_this_hour - before.points_spent_this_hour
     remaining = after.limit_per_hour - after.points_spent_this_hour
+    if after.points_spent_this_hour < before.points_spent_this_hour:
+        return (
+            "Rate limit: the hourly counter reset while this command ran, so what it spent "
+            f"cannot be read from it; {remaining:.2f} of {after.limit_per_hour} remain "
+            "this hour."
+        )
+
+    spent = after.points_spent_this_hour - before.points_spent_this_hour
     return (
         f"Rate limit: {spent:.2f} points spent, the opening quota read included and the "
         f"closing one not; {remaining:.2f} of {after.limit_per_hour} remain this hour."
@@ -138,14 +145,14 @@ def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
 def _cost_breakdown(costs: CostLedger) -> str:
     """What this command's points went on, dearest operation first.
 
-    Every query now carries its own quota reading, and a reading reports the
-    spend before that query is billed. So the last query of a run is still
-    unpriced when this is written: the closing note says which one it was,
-    rather than leaving the total quietly short of the sentence above.
+    A reading reports the spend before its own query is billed, so the last query
+    of a run is unpriced when this is written. The closing note names it, rather
+    than leaving a row quietly short of the calls it claims.
     """
-    rows = costs.by_operation()
-    if not rows:
+    if not costs.costs():
         return ""
+
+    rows = costs.by_operation()
 
     width = max(len(row.operation) for row in rows)
     lines = ["Where they went:"]
@@ -158,8 +165,8 @@ def _cost_breakdown(costs: CostLedger) -> str:
     pending = costs.pending()
     if pending is not None:
         lines.append(
-            f"  {pending} ran last, so its own cost is missing: a query's cost is "
-            "only known once the next one runs."
+            f"  {pending} ran last, so one of its calls is unpriced: a query's cost "
+            "is only known once the next one runs."
         )
     return "\n".join(lines)
 
@@ -192,12 +199,12 @@ def fetch(
         raise typer.Exit(1) from error
 
     typer.echo(_quota_sentence(before, after), err=True)
-    _echo_cost_breakdown(repository)
+    _echo_cost_breakdown(repository.client.costs)
     typer.echo(run.model_dump_json(indent=2))
 
 
-def _echo_cost_breakdown(repository: WclRunRepository) -> None:
-    breakdown = _cost_breakdown(repository.client.costs)
+def _echo_cost_breakdown(costs: CostLedger) -> None:
+    breakdown = _cost_breakdown(costs)
     if breakdown:
         typer.echo(breakdown, err=True)
 
@@ -595,7 +602,7 @@ def analyze(
     )
     typer.echo(f"report written to {report_file}")
     typer.echo(_quota_sentence(before, after), err=True)
-    _echo_cost_breakdown(repository)
+    _echo_cost_breakdown(repository.client.costs)
 
 
 if __name__ == "__main__":

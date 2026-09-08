@@ -725,7 +725,7 @@ def test_two_different_actors_do_not_collide_in_the_cache(tmp_path: Path) -> Non
 
 
 def _quota_carrying_repository(tmp_path: Path) -> WclRunRepository:
-    """A repository whose every response carries a quota block, as the live API's now do."""
+    """A repository whose every response carries a quota block, as the live API's do."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":

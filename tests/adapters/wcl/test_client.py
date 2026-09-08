@@ -172,3 +172,19 @@ def test_reading_the_quota_directly_still_returns_it_and_also_records_it() -> No
 
     assert reading.points_spent_this_hour == 8.01
     assert client.costs.pending() == "RateLimit"
+
+
+def test_a_quota_block_we_did_not_add_is_kept_out_of_the_payload_all_the_same() -> None:
+    """The response decides what is stripped, never the request.
+
+    A query selecting the quota itself is left unspliced. If the strip were keyed
+    on whether we spliced, such a query would keep its counter, and routing it
+    through the cache would freeze that counter into an entry living for a day or
+    forever — the one outcome this whole mechanism exists to avoid.
+    """
+    client, _ = _capturing_client({"data": {"rateLimitData": QUOTA, "hello": "world"}})
+
+    payload = client.execute("query Hello { rateLimitData { limitPerHour } hello }")
+
+    assert payload == {"hello": "world"}
+    assert client.costs.pending() == "Hello"
