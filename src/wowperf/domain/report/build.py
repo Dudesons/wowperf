@@ -583,6 +583,35 @@ def _field_for(finding_id: str) -> str | None:
     return next((field for prefix, field in PLACEMENTS if finding_id.startswith(prefix)), None)
 
 
+def collapse_repeated_details(rows: Sequence[LedgerRow]) -> tuple[LedgerRow, ...]:
+    """Hoist the explanation a run of neighbouring rows shares onto the run's first row.
+
+    A run is two or more consecutive rows whose `detail` is the same non-empty
+    string. Findings of one family routinely differ in their figures and agree
+    word for word on what those figures mean, and the same paragraph under four
+    cards teaches a reader to stop reading it.
+
+    Order never changes. It is the ranking `rank_findings` settled, and
+    gathering equal details from across a tab would both reorder the tab and
+    put the note over rows that never carried that explanation.
+    """
+    collapsed: list[LedgerRow] = []
+    start = 0
+    while start < len(rows):
+        detail = rows[start].detail
+        end = start + 1
+        while end < len(rows) and rows[end].detail == detail:
+            end += 1
+        run = rows[start:end]
+        if detail and len(run) > 1:
+            collapsed.append(run[0].model_copy(update={"detail": "", "group_note": detail}))
+            collapsed.extend(row.model_copy(update={"detail": ""}) for row in run[1:])
+        else:
+            collapsed.extend(run)
+        start = end
+    return tuple(collapsed)
+
+
 def place_rows(
     findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
 ) -> dict[str, tuple[LedgerRow, ...]]:
@@ -600,7 +629,7 @@ def place_rows(
         field = _field_for(finding.id)
         if field is not None:
             placed[field].append(_ledger_row(finding, titles_by_id))
-    return {field: tuple(rows) for field, rows in placed.items()}
+    return {field: collapse_repeated_details(rows) for field, rows in placed.items()}
 
 
 POINTER_COUNT = 5
@@ -669,10 +698,12 @@ def build_players(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
     ):
         display_name = names_by_actor[summary.actor_id]
-        mine = tuple(
-            _ledger_row(finding, titles_by_id)
-            for finding in damage
-            if finding.title.startswith(f"{display_name} took ")
+        mine = collapse_repeated_details(
+            [
+                _ledger_row(finding, titles_by_id)
+                for finding in damage
+                if finding.title.startswith(f"{display_name} took ")
+            ]
         )
         is_subject = summary.actor_id == subject.actor_id
         stats_line = (
@@ -691,7 +722,9 @@ def build_players(
                 damage_rows=mine,
                 spell_and_talent=comparison_section,
                 spell_and_talent_rows=(
-                    tuple(_ledger_row(finding, titles_by_id) for finding in comparison)
+                    collapse_repeated_details(
+                        [_ledger_row(finding, titles_by_id) for finding in comparison]
+                    )
                     if is_subject
                     else ()
                 ),
@@ -775,8 +808,8 @@ def build_observations(
     emitting a new finding family reaches the page automatically instead of
     being silently dropped until someone adds its prefix to a whitelist.
     """
-    return tuple(
-        _ledger_row(finding, titles_by_id) for finding in findings if finding.id not in placed_ids
+    return collapse_repeated_details(
+        [_ledger_row(finding, titles_by_id) for finding in findings if finding.id not in placed_ids]
     )
 
 

@@ -32,7 +32,16 @@ class Badge(Frozen):
 
 
 class LedgerRow(Frozen):
-    """One finding, formatted for display."""
+    """One finding, formatted for display.
+
+    `group_note` carries the explanation shared by a run of neighbouring rows
+    that all gave the same one, and is set on the run's first row only; those
+    rows then hold no `detail` of their own. Several findings of one family
+    often differ in their figures and agree word for word on what the figures
+    mean, and a reader who meets that paragraph four times learns to skip it.
+    Which rows form a run is decided in `build.py`, so the template renders
+    whichever of the two fields it is given and chooses nothing.
+    """
 
     finding_id: str
     title: str
@@ -41,6 +50,7 @@ class LedgerRow(Frozen):
     seconds: str | None = None
     nests_inside: str | None = None
     evidence: tuple[str, ...] = ()
+    group_note: str = ""
 
 
 class TimelineBlock(Frozen):

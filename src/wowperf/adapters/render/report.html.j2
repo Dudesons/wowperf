@@ -41,6 +41,8 @@ p { margin: 0 0 10px; }
 .badge-derived { background: var(--badge-derived); }
 .badge-inferred { background: var(--badge-inferred); }
 .detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+.group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
+  border-left: 2px solid var(--line); }
 .evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
 .evidence li::before { content: "· "; }
 .nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
@@ -111,13 +113,18 @@ p { margin: 0 0 10px; }
 </nav>
 
 {% macro ledger_row(row) %}
+{% if row.group_note %}
+<p class="group-note">{{ row.group_note }}</p>
+{% endif %}
 <div class="card" id="finding-{{ row.finding_id }}">
   <div class="row-head">
     <h3>{{ row.title }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
     <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
   </div>
+  {% if row.detail %}
   <p class="detail">{{ row.detail }}</p>
+  {% endif %}
   {% if row.nests_inside %}
   <p class="nests">Already counted inside {{ row.nests_inside }}.</p>
   {% endif %}
