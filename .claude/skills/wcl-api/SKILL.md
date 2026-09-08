@@ -98,6 +98,11 @@ One approximation and one measurement:
   budget against.
 - A roster query, four aura tables and a `rateLimitData` read together spent **12.02 points of
   3600** (2026-09-05).
+- A full sampled compared analysis — five speed references and five parse references, both
+  leaderboards, and an aura fetch for every parse member — spent **83.39 points of 3600**
+  (2026-09-08), against `docs/plans/2026-09-08-sampling-design.md`'s own projection of ~111 for
+  the same shape. All ten candidates loaded cleanly with no exclusion and no retry, which this
+  measurement's lower cost is the likely explanation for.
 
 ## Mythic+ in the schema
 
