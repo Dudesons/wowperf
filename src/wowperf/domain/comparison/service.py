@@ -6,7 +6,7 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
-from wowperf.domain.comparison.spells import compare_spells, compare_talents
+from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.uptime import compare_uptime
 from wowperf.domain.findings import Confidence, Finding, rank_findings
@@ -48,7 +48,6 @@ def compare(
     leaderboard offered nothing to compare against.
     """
     findings: list[Finding] = []
-    parse_members = parse.members if parse else ()
 
     if speed is None or not speed.members:
         findings.append(
@@ -64,7 +63,7 @@ def compare(
         findings += compare_tempo_sample(ours, speed)
         findings += declare_confounds_sample(ours, speed)
 
-    if not parse_members:
+    if parse is None or not parse.members:
         findings.append(
             _unavailable(
                 "compare.parse.unavailable",
@@ -74,18 +73,19 @@ def compare(
             )
         )
     else:
-        first_parse = parse_members[0]
-        findings += compare_spells(ours, our_player, first_parse, first_parse.row.character_name)
+        top = parse.top
+        assert top is not None  # parse.members is non-empty here, so a top member exists
+        findings += compare_spells_sample(ours, our_player, parse)
         findings += compare_talents(
-            our_player, find_player(first_parse.run, first_parse.row.character_name)
+            our_player, find_player(top.run, top.row.character_name)
         )
         findings += compare_uptime(
             ours.run,
             our_auras,
             our_player,
-            first_parse.run,
-            first_parse.auras,
-            first_parse.row.character_name,
+            top.run,
+            top.auras,
+            top.row.character_name,
         )
 
     return rank_findings(findings)

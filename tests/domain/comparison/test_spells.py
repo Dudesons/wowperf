@@ -1,11 +1,15 @@
 # ABOUTME: Behaviour tests for the individual comparison: which spells and which build.
 # ABOUTME: Everything here is restricted to boss pulls, where the encounter is the same fight.
 
+from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import (
     MIN_CASTS_TO_COMPARE,
+    MIN_MEMBERS_WITH_ABILITY,
     boss_casts,
     boss_seconds,
     compare_spells,
+    compare_spells_sample,
     compare_talents,
 )
 from wowperf.domain.events import CastEvent
@@ -62,6 +66,32 @@ def a_loaded(player: Player, pulls: tuple[Pull, ...], casts: tuple[CastEvent, ..
     return LoadedRun(run=run, casts=casts)
 
 
+def a_member(
+    player: Player,
+    pulls: tuple[Pull, ...],
+    casts: tuple[CastEvent, ...],
+    *,
+    report_code: str = "REF1",
+    level: int = 16,
+) -> ParseMember:
+    """A parse reference wrapping `a_loaded`, for the tests that need a `ParseMember`."""
+    loaded = a_loaded(player, pulls, casts)
+    return ParseMember(
+        row=ParseRow(
+            report_code=report_code,
+            fight_id=1,
+            keystone_level=level,
+            duration_ms=1_909_000,
+            character_name=player.name,
+            class_name=player.class_name,
+            spec=player.spec,
+        ),
+        run=loaded.run,
+        comparability=Comparability(our_level=16, their_level=level),
+        casts=loaded.casts,
+    )
+
+
 def cast(actor_id: int, ability_id: int, name: str, at_ms: int, pull: int | None) -> CastEvent:
     return CastEvent(
         actor_id=actor_id,
@@ -96,7 +126,7 @@ def test_boss_casts_ignore_trash_and_other_players() -> None:
 
 def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
     ours = a_loaded(OURS, (boss_pull(0, 120.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
-    theirs = a_loaded(
+    theirs = a_member(
         THEIRS,
         (boss_pull(0, 120.0),),
         (
@@ -121,7 +151,7 @@ def test_an_ability_we_cast_only_on_trash_still_counts_as_cast() -> None:
         (boss_pull(0, 120.0), trash_pull(1, 60.0)),
         (cast(693, 153626, "Arcane Orb", 200_000, 1),),
     )
-    theirs = a_loaded(
+    theirs = a_member(
         THEIRS,
         (boss_pull(0, 120.0),),
         tuple(cast(11, 153626, "Arcane Orb", n * 1_000, 0) for n in range(4)),
@@ -139,7 +169,7 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
     ours = a_loaded(
         OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),)
     )
-    theirs = a_loaded(
+    theirs = a_member(
         THEIRS,
         (boss_pull(0, 60.0),),
         tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(6)),
@@ -157,7 +187,7 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
 
 def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
-    theirs = a_loaded(
+    theirs = a_member(
         THEIRS,
         (boss_pull(0, 60.0),),
         tuple(
@@ -176,7 +206,7 @@ def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
 
 def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() -> None:
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
-    theirs = a_loaded(THEIRS, (trash_pull(0, 60.0),), ())
+    theirs = a_member(THEIRS, (trash_pull(0, 60.0),), ())
 
     findings = compare_spells(ours, OURS, theirs, "Bríala")
 
@@ -209,12 +239,115 @@ def test_a_missing_build_says_the_comparison_could_not_be_made() -> None:
 
 def test_every_finding_id_is_unique() -> None:
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
-    theirs = a_loaded(
+    theirs = a_member(
         THEIRS,
         (boss_pull(0, 60.0),),
         tuple(cast(11, 100 + n, f"Spell {n}", n * 1_000, 0) for n in range(8) for _ in range(4)),
     )
 
     ids = [f.id for f in compare_spells(ours, OURS, theirs, "Bríala")]
+
+    assert len(ids) == len(set(ids))
+
+
+# --- compare_spells_sample --------------------------------------------------
+
+SHIFTING_POWER = 314791
+"""Cast by 4 of the 5 members below, never by OURS: the set-difference case."""
+
+RUNE_OF_POWER = 116011
+"""Cast by only 2 of the 5 members below: below MIN_MEMBERS_WITH_ABILITY, reported nowhere."""
+
+METEOR = 153561
+"""Cast by both sides, at a rate gap wide enough to report: the median-rate case."""
+
+
+def a_parse_member(
+    name: str, actor_id: int, casts_by_ability: dict[int, int], *, boss_seconds_: float = 60.0
+) -> ParseMember:
+    """A sample member who casts each ability in `casts_by_ability` that many times,
+    on the one boss pull that grounds their `boss_seconds`."""
+    player = Player(actor_id=actor_id, name=name, class_name="Mage", spec="Arcane",
+                     item_level=320)
+    casts = tuple(
+        cast(actor_id, ability_id, f"Ability {ability_id}", n * 1_000, 0)
+        for ability_id, count in casts_by_ability.items()
+        for n in range(count)
+    )
+    return a_member(player, (boss_pull(0, boss_seconds_),), casts)
+
+
+# Five top parses. Four cast Shifting Power (3 times each) and Meteor (varying
+# rates); only two cast Rune of Power. The fifth member casts none of the three.
+SAMPLE_OF_FIVE = ParseSample(
+    members=(
+        a_parse_member("Bríala", 11, {SHIFTING_POWER: 3, METEOR: 6, RUNE_OF_POWER: 3}),
+        a_parse_member("Dawnseeker", 12, {SHIFTING_POWER: 3, METEOR: 8, RUNE_OF_POWER: 3}),
+        a_parse_member("Emberfall", 13, {SHIFTING_POWER: 3, METEOR: 4}),
+        a_parse_member("Frostwhisper", 14, {SHIFTING_POWER: 3, METEOR: 10}),
+        a_parse_member("Glimmerose", 15, {}),
+    )
+)
+
+OURS_LOADED = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),) * 2)
+
+
+def test_a_spell_most_top_parses_cast_and_we_never_did_is_counted() -> None:
+    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+
+    missing = next(f for f in findings if f.id == "compare.spells.missing.0")
+    assert missing.title == (
+        "4 of 5 top parses cast Ability 314791 on bosses; Emberkin never did"
+    )
+    assert missing.quantifier == "most"
+    assert missing.confidence is Confidence.MEASURED
+
+
+def test_no_reference_player_is_named_in_a_sampled_spell_finding() -> None:
+    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+
+    for name in ("Bríala", "Dawnseeker", "Emberfall", "Frostwhisper", "Glimmerose"):
+        assert all(name not in finding.title for finding in findings)
+        assert all(name not in line for finding in findings for line in finding.evidence)
+
+
+def test_an_ability_seen_in_too_few_members_is_not_reported() -> None:
+    # Rune of Power is cast by 2 of the 5 members, one short of the threshold.
+    assert 2 < MIN_MEMBERS_WITH_ABILITY
+
+    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+
+    assert not any(str(RUNE_OF_POWER) in f.title for f in findings)
+
+
+def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
+    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+
+    rate = next(f for f in findings if f.id == "compare.spells.rate.0")
+    assert "median of 4 top parses cast" in rate.title
+    assert rate.confidence is Confidence.DERIVED
+    assert any("range" in line for line in rate.evidence)
+
+
+def test_a_wholly_empty_sample_produces_no_findings() -> None:
+    # `service.compare()` already says "nothing to compare against" once, as
+    # `compare.parse.unavailable`; this must not crash, and must not repeat it.
+    findings = compare_spells_sample(OURS_LOADED, OURS, ParseSample())
+
+    assert findings == []
+
+
+def test_below_the_floor_the_pairwise_wording_is_used() -> None:
+    below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
+
+    findings = compare_spells_sample(OURS_LOADED, OURS, below_floor)
+
+    missing = next(f for f in findings if f.id == "compare.spells.missing.0")
+    assert "Bríala" in missing.title
+    assert any("too few comparable references to aggregate" in line for line in missing.evidence)
+
+
+def test_every_finding_id_is_unique_over_the_sample() -> None:
+    ids = [f.id for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)]
 
     assert len(ids) == len(set(ids))
