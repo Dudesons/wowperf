@@ -17,14 +17,25 @@ cleanup.
 leaving 3401. The instruction to stop below 3000 remaining never came close to binding, so nothing
 here is truncated.
 
+**Correction, 2026-09-08, later the same day.** Per-query instrumentation landed after this was
+written and settled how a reading relates to its query: a reading reports the spend *before* that
+query is billed. Under that convention §2's cross-check had charged two quota reads to a figure
+that can hold only one, so its residual is **15.30**, not the 14.30 first written, and §1's method
+subtracts the *opening* read rather than the closing one. Nothing measured changes. §3's fixed
+subtotal in particular stands at 23.06: the two reads really do cost the hour two points, even
+though a single before/after difference can never see the second. See "Every query reports its own
+cost" in `.claude/skills/wcl-api/SKILL.md`.
+
 ---
 
 ## 1. Method, and what is measured versus extrapolated
 
 Every figure below is a difference between two `rateLimitData` readings taken either side of a
-single query, with the 1.00-point cost of the closing read subtracted. **A `rateLimitData` query
+single query, with the 1.00-point cost of the opening read subtracted. **A `rateLimitData` query
 costs exactly 1.00 point**: three consecutive reads gave deltas of 1.00 and 1.00 (2026-09-08),
-confirming the figure the `wcl-api` skill already carries.
+confirming the figure the `wcl-api` skill already carries. A reading reports the spend before its
+own query is billed, so the opening read's point falls inside the difference and the closing
+read's falls outside: one read to subtract, never two.
 
 Four fetches, in order, each into a cache that was cold for everything it needed:
 
@@ -99,11 +110,12 @@ What the shape says:
 and 15.70, with 13.58 as the floor for a deathless reference. A reference used on the *parse* side
 also needs its aura table, measured at **2.00**, so 16.5.
 
-A third, independent check falls out of step 2. The full cold analysis cost 41.38, of which 19.06
-was the analysed run, 2.02 the two leaderboards, 2.00 our aura table, 2.00 the reference's aura
-table and 2.00 the command's own two quota reads. The residual — the reference's own load,
-including its one-off affix re-fetch — is **14.30**, which sits between the two directly measured
-figures.
+A third, independent check falls out of step 2. The full cold analysis cost 41.38 as the command
+reports it, of which 19.06 was the analysed run, 2.02 the two leaderboards, 2.00 our aura table,
+2.00 the reference's aura table and 1.00 the command's own quota reads — two reads costing a point
+each, but only the opening one falling inside a before/after difference. The residual — the
+reference's own load, including its one-off affix re-fetch — is **15.30**, which sits between the
+two directly measured figures, though near the top of that range rather than in the middle of it.
 
 ---
 
@@ -120,8 +132,13 @@ figures.
 | `Affixes`, re-fetched into the references cache | 1.00 |
 | **Shared-across-references subtotal** | **3.02** |
 
+Both subtotals are points the hour actually loses, the two quota reads included at a point each.
+A single before/after difference reports one less, which is why §2's cross-check divides 41.38 and
+not 42.38.
+
 A same-day re-run costs **2.00** — the two quota reads and nothing else — because the main cache is
-permanent and the references cache holds for 24 hours. The narrative re-run the `analyzing-a-run`
+permanent and the references cache holds for 24 hours. The command prints 1.00 for such a run,
+measured on a fully warm cache, for the same reason. The narrative re-run the `analyzing-a-run`
 skill relies on is therefore free at any N.
 
 ---
@@ -186,10 +203,12 @@ distribution; the exemplar parse stays an exemplar):
 | 5 | 181.1 | 5.0% | 19 |
 | 10 | 336.1 | 9.3% | 10 |
 
-**Today's actual measurement was 41.38, not 57.1**, and the reason matters. On this run the speed
-leaderboard's first loadable row and the parse leaderboard's first loadable row named **the same
-report and the same fight** (`6L2XcjtJyRZkfYFb` fight 3), so the second reference was a cache hit
-and cost only its aura table. Today's N = 1 is therefore 41.38 when the two coincide and 57.1 when
+**Today's actual measurement was 41.38, not 57.1**, and the reason matters. The two also differ by
+a point in basis: 41.38 is what the command printed, while the projections count both quota reads,
+so today's run cost the hour 42.38. On this run the speed leaderboard's first loadable row and the
+parse leaderboard's first loadable row named **the same report and the same fight**
+(`6L2XcjtJyRZkfYFb` fight 3), so the second reference was a cache hit
+and cost only its aura table. Today's N = 1 is therefore 42.38 when the two coincide and 57.1 when
 they do not. Both are real; the brief should quote 57.1 as the baseline, because a sample makes the
 coincidence vanishingly unlikely.
 
@@ -360,15 +379,17 @@ belong under **Rate limit**, after the existing measurements. Each is written as
 
 - **A whole compared analysis, re-measured 2026-09-08 on a cold cache for report
   `6Kx1P9GbNXrcLdHa` fight 36, cost 41.38 points of 3600** — the figure as the command reports it,
-  including its own two quota reads. The 44.29 recorded on 2026-09-07 for the same command and
-  fight differs because the leaderboard named a different reference run that day; the reference's
+  and so including one of the two quota reads it makes itself, never both. The real spend is
+  42.38. The 44.29 recorded on 2026-09-07 for the same command and fight differs because the
+  leaderboard named a different reference run that day; the reference's
   own load is the term that moves. Expect a spread of a few points across days for an unchanged
   command.
 
 - **Composition of that 41.38, priced query by query on 2026-09-08:** the analysed run's cold load
   19.06 over 17 queries; `FightRankings` 1.01 and `CharacterRankings` 1.01; two aura tables at 2.00
-  each; the command's two quota reads 2.00; and 14.30 for the one reference run, which served as
-  both the speed and the parse reference because both leaderboards named the same report and fight.
+  each; the command's quota reads 1.00 as that difference sees them; and 15.30 for the one
+  reference run, which served as both the speed and the parse reference because both leaderboards
+  named the same report and fight.
 
 - **One reference run, loaded cold, costs 13.58 to 15.70 points** (measured 2026-09-08 on
   `71cv4MRdNCp8ZFjG` fight 28 with no deaths, 11 queries, and `37FzMg9pVPH6fnJT` fight 16 with two

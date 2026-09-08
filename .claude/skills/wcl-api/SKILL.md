@@ -319,9 +319,9 @@ net of the `rateLimitData` query used to read it, which costs 1.00 point of its 
   `sourceID == targetID`.
 - **A whole compared analysis with the recap costs 44.29 points of 3600**, measured 2026-09-07
   on a cold cache for this report and fight, the figure as the command reports it and so
-  including the two quota reads it makes itself. About thirty-five of those points predate the
-  recap. The rest is one healing window per death, one resurrections query for the fight, and
-  the resource flag on the casts.
+  including one of the two quota reads it makes itself, never both — see "Every query reports its
+  own cost" above. About thirty-five of those points predate the recap. The rest is one healing
+  window per death, one resurrections query for the fight, and the resource flag on the casts.
 
 ## Aura tables
 
