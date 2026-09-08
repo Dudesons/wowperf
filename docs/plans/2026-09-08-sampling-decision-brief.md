@@ -8,6 +8,27 @@ Written 2026-09-08, against `master` at `7af17b1`.
 
 ---
 
+## Changed since this was written
+
+The reference loader was partly trimmed on 2026-09-08, after this brief and the companion
+measurement were finished. `WclRunRepository.load_reference` now stops before the four streams no
+comparison reads — damage taken, enemy deaths, healing and resurrections — which the measurement
+priced at 8.5 of a reference's 14.5 points and 4.5 of its 4.8 MB. The findings for the run this
+project is built against are byte-identical before and after.
+
+**One further split was identified and deliberately deferred to this design.** The two references
+need different subsets, and `load_reference` currently hands both the union: a speed reference
+still fetches its casts, which only `compare_spells` reads and only on the parse side, and a parse
+reference still fetches deaths, enemy casts and interrupts, which only `compare_tempo` reads and
+only on the speed side. Splitting is worth about four points and three megabytes per compared
+analysis today, and roughly five times that once a sample of speed references each skips its own
+cast stream — the largest single stream a reference carries.
+
+It was left undone because this design decides the shape of reference loading, and doing it twice
+is waste. Whatever this design settles on should settle that with it. The disk figure matters to
+§7 as well as to cost: the less of another player's log that reaches disk, the smaller the
+question §7 is asking.
+
 ## What I read
 
 - `docs/plans/2026-09-03-mplus-postmortem-design.md` — §3.3 caching, §6.1–6.7 comparison.
