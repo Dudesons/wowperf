@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.events import CastEvent
@@ -303,8 +304,8 @@ def _rate_sample(
             Finding(
                 id=f"compare.spells.rate.{rank}",
                 title=(
-                    f"The median of {len(rates)} top parses cast {name} {their_median:.1f} "
-                    f"times a minute on bosses; {our_player.name} casts it {our_rate:.1f}"
+                    f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
+                    f"minute on bosses; {our_player.name} casts it {our_rate:.1f}"
                 ),
                 detail=(
                     "Both rates are casts per minute of boss-pull time, which is the one "
@@ -325,10 +326,19 @@ def _rate_sample(
     return findings
 
 
-def compare_talents(our_player: Player, their_player: Player | None) -> list[Finding]:
-    """Whether the two builds differ, and the string needed to import theirs."""
+def compare_talents(
+    our_player: Player, their_player: Player | None, their_row: ParseRow
+) -> list[Finding]:
+    """Whether the two builds differ, and the string needed to import theirs.
+
+    The one row still drawn from a single reference: a build has no mean and no
+    mode this project can compute. It names the top-ranked parse rather than
+    the player who ran it, and links to that report, because a reader asked to
+    copy a stranger's build is the one reader who must be able to trace it.
+    """
     ours = our_player.talent_import_string
     theirs = their_player.talent_import_string if their_player else None
+    source = REPORT_URL.format(code=their_row.report_code, fight=their_row.fight_id)
 
     if ours is None or theirs is None:
         return [
@@ -345,6 +355,7 @@ def compare_talents(our_player: Player, their_player: Player | None) -> list[Fin
                 evidence=(
                     f"ours {'present' if ours else 'absent'}",
                     f"theirs {'present' if theirs else 'absent'}",
+                    f"top-ranked parse: {source}",
                 ),
             )
         ]
@@ -353,25 +364,31 @@ def compare_talents(our_player: Player, their_player: Player | None) -> list[Fin
         return [
             Finding(
                 id="compare.talents",
-                title="The talent build matches the reference",
-                detail="Both players imported the same build, so nothing here needs changing.",
+                title="The talent build matches the top-ranked parse",
+                detail=(
+                    "Both players imported the same build, so nothing here needs changing. "
+                    "This is one player's build, not the sample's: a talent string has no "
+                    "median, so the row names the top-ranked parse alone."
+                ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
-                evidence=("identical import strings",),
+                evidence=("identical import strings", f"top-ranked parse: {source}"),
             )
         ]
 
     return [
         Finding(
             id="compare.talents",
-            title="The talent build differs from the reference",
+            title="The talent build differs from the top-ranked parse",
             detail=(
                 "The import codes differ. They are opaque, so the difference is not spelled out "
-                "here — paste the reference's string into the game to see it laid out on the "
-                "tree. A different build is not automatically a worse one."
+                "here — paste the other string into the game to see it laid out on the tree. "
+                "This is one player's build, not the sample's: a talent string has no median, "
+                "so the row names the top-ranked parse alone, and a different build is not "
+                "automatically a worse one."
             ),
             confidence=Confidence.MEASURED,
             seconds_lost=None,
-            evidence=(f"theirs: {theirs}", f"ours: {ours}"),
+            evidence=(f"theirs: {theirs}", f"ours: {ours}", f"top-ranked parse: {source}"),
         )
     ]

@@ -213,9 +213,21 @@ def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() ->
     assert any(f.id == "compare.spells.unavailable" for f in findings)
 
 
+TOP_PARSE_ROW = ParseRow(
+    report_code="TOPREF",
+    fight_id=7,
+    keystone_level=16,
+    duration_ms=1_909_000,
+    character_name=THEIRS.name,
+    class_name=THEIRS.class_name,
+    spec=THEIRS.spec,
+)
+TOP_PARSE_URL = "https://www.warcraftlogs.com/reports/TOPREF?fight=7"
+
+
 def test_a_different_build_is_reported_with_their_string() -> None:
     finding = compare_talents(OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}),
-                              THEIRS)[0]
+                              THEIRS, TOP_PARSE_ROW)[0]
 
     assert finding.id == "compare.talents"
     assert finding.confidence is Confidence.MEASURED
@@ -225,16 +237,36 @@ def test_a_different_build_is_reported_with_their_string() -> None:
 def test_an_identical_build_reports_that_it_matches() -> None:
     same = OURS.model_copy(update={"talent_import_string": "CoPAAAAA"})
 
-    finding = compare_talents(same, THEIRS)[0]
+    finding = compare_talents(same, THEIRS, TOP_PARSE_ROW)[0]
 
     assert "matches" in finding.title.lower()
 
 
 def test_a_missing_build_says_the_comparison_could_not_be_made() -> None:
-    finding = compare_talents(OURS, THEIRS)[0]
+    finding = compare_talents(OURS, THEIRS, TOP_PARSE_ROW)[0]
 
     assert "not" in finding.detail.lower()
     assert finding.seconds_lost is None
+
+
+def test_the_talent_row_links_the_top_parse_and_names_no_player() -> None:
+    """The one row that asks a reader to copy a stranger's build. It stays
+    single-reference — a build has no median — so it must be traceable, and the
+    trace is a link: a name written into a file is greppable and poolable."""
+    builds = (
+        (OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}), THEIRS),
+        (OURS.model_copy(update={"talent_import_string": "CoPAAAAA"}), THEIRS),
+        (OURS, THEIRS),
+    )
+
+    for ours, theirs in builds:
+        finding = compare_talents(ours, theirs, TOP_PARSE_ROW)[0]
+
+        assert f"top-ranked parse: {TOP_PARSE_URL}" in finding.evidence
+        assert THEIRS.name not in finding.title
+        assert THEIRS.name not in finding.detail
+        assert not any(THEIRS.name in line for line in finding.evidence)
+        assert "the reference" not in finding.title.lower()
 
 
 def test_every_finding_id_is_unique() -> None:
@@ -324,7 +356,7 @@ def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
     findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
 
     rate = next(f for f in findings if f.id == "compare.spells.rate.0")
-    assert "median of 4 top parses cast" in rate.title
+    assert "4 top parses cast" in rate.title and "a median" in rate.title
     assert rate.confidence is Confidence.DERIVED
     assert any("range" in line for line in rate.evidence)
 
@@ -344,7 +376,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
     missing = next(f for f in findings if f.id == "compare.spells.missing.0")
     assert "Bríala" in missing.title
-    assert any("too few comparable references to aggregate" in line for line in missing.evidence)
+    assert any("below the floor of" in line for line in missing.evidence)
 
 
 def test_every_finding_id_is_unique_over_the_sample() -> None:

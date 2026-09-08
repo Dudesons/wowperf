@@ -31,6 +31,7 @@ from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import (
+    REPORT_URL,
     Comparability,
     ParseReference,
     ParseRow,
@@ -47,7 +48,7 @@ from wowperf.domain.comparison.sample import (
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
-from wowperf.domain.report.build import REPORT_URL, build_report
+from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.urls import parse_report_url

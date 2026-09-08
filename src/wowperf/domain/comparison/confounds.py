@@ -29,7 +29,14 @@ def _mean_item_level(players: tuple[Player, ...]) -> float:
 
 
 def _composition(players: tuple[Player, ...]) -> Counter[str]:
-    return Counter(f"{player.class_name} {player.spec}" for player in players)
+    """Specs counted by the name a player would say out loud: "Augmentation Evoker".
+
+    Spec before class, because that is the order every finding here reads the
+    name in and the order the report's own prose uses. Reversing it at the
+    point of use would need to split a two-word class ("Death Knight") from a
+    two-word spec ("Beast Mastery"), which no whitespace rule can do.
+    """
+    return Counter(f"{player.spec} {player.class_name}" for player in players)
 
 
 def _augmentation_evokers(players: tuple[Player, ...]) -> tuple[str, ...]:
@@ -281,8 +288,8 @@ def _confound_item_level(ours: LoadedRun, members: Sequence[SpeedMember]) -> Fin
     return Finding(
         id="compare.confound.item_level",
         title=(
-            f"Our group averages {our_ilvl:.0f} item level; the {total} fast runs average "
-            f"{their_median:.0f} item level"
+            f"Our group averages {our_ilvl:.0f} item level; the median of {total} fast runs "
+            f"is {their_median:.0f}"
         ),
         detail=(
             "Item level is the only gear difference this tool can see. Tier count, trinkets "

@@ -253,7 +253,7 @@ def _unaugmented_pair(tag: str, item_level: int) -> tuple[Player, Player]:
 OURS = a_loaded(ROSTER)
 """Our side of every `declare_confounds_sample` test: the plain two-player ROSTER."""
 
-# Four of five rosters bring an Evoker Augmentation we never have; two of five sit a
+# Four of five rosters bring an Augmentation Evoker we never have; two of five sit a
 # keystone level above ours; group item levels of 630-634 sit far above our roster's 318.
 SAMPLE_OF_FIVE_WITH_AUGMENTATION = SpeedSample(
     members=(
@@ -271,7 +271,7 @@ def test_a_spec_every_fast_run_brought_and_we_did_not_is_counted() -> None:
 
     composition = next(f for f in confounds if f.id == "compare.confound.composition")
     assert (
-        composition.title == "4 of 5 fast runs brought an Evoker Augmentation; your group did not"
+        composition.title == "4 of 5 fast runs brought an Augmentation Evoker; your group did not"
     )
     assert composition.quantifier == "most"
     assert composition.seconds_lost is None
@@ -307,7 +307,7 @@ def test_item_level_is_compared_against_the_median_of_the_group_means() -> None:
     confounds = declare_confounds_sample(OURS, SAMPLE_OF_FIVE_WITH_AUGMENTATION)
     item_level = next(f for f in confounds if f.id == "compare.confound.item_level")
 
-    assert "the 5 fast runs average 632 item level" in item_level.title
+    assert "the median of 5 fast runs is 632" in item_level.title
     assert item_level.confidence is Confidence.DERIVED
     assert any("630" in line and "634" in line for line in item_level.evidence)
 
@@ -340,6 +340,23 @@ def test_the_affixes_confound_counts_rosters_that_matched_our_set() -> None:
     assert "2 of 3 fast runs shared our affix set" in affixes.evidence
 
 
+def test_an_affix_set_no_fast_run_shared_is_quantified_as_none() -> None:
+    """The one aggregate that really does reach zero. "none" is the word parallel
+    to "every", and a narrative that may write no digits needs one to use."""
+    sample = SpeedSample(
+        members=tuple(
+            a_sample_member(ROSTER, level=16, report_code=f"fast{tag}", affix_ids=(9, 10, 999))
+            for tag in "ABC"
+        )
+    )
+
+    findings = declare_confounds_sample(OURS, sample)
+    affixes = next(f for f in findings if f.id == "compare.confound.affixes")
+
+    assert affixes.title == "0 of 3 fast runs ran your affix set"
+    assert affixes.quantifier == "none"
+
+
 def test_a_wholly_empty_sample_declares_nothing() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.speed.unavailable`; this must not crash, and must not repeat it.
@@ -360,7 +377,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
     keystone = next(f for f in findings if f.id == "compare.confound.keystone_level")
     assert "+17" in keystone.title
-    assert any("too few comparable references to aggregate" in line for line in keystone.evidence)
+    assert any("below the floor of" in line for line in keystone.evidence)
 
 
 def test_when_no_spec_is_absent_from_ours_the_old_composition_title_is_kept() -> None:

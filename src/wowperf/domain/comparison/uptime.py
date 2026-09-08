@@ -66,6 +66,22 @@ def _unavailable(
     )
 
 
+def _no_reference_auras(total: int) -> Finding:
+    """Not one reference came back with aura data, which decides it on its own."""
+    return Finding(
+        id="compare.uptime.unavailable",
+        title="Buff and debuff uptime could not be compared",
+        detail=(
+            "An uptime comparison needs aura data from a reference to compare ours against, "
+            "and no reference in the sample returned any. No uptime numbers are reported "
+            "rather than numbers from one side."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=(f"{count_phrase(0, total)} references returned aura data",),
+    )
+
+
 def _gap_findings(
     kind: str,
     ours: dict[int, tuple[str, float]],
@@ -195,6 +211,15 @@ def compare_uptime_sample(
     eligible = sample.aura_eligible
     aggregable = sample.can_aggregate(eligible)
 
+    if not eligible:
+        # The reference side alone settles it, and saying so is the only honest
+        # answer available: `cli._fetch_parse_auras` fetches our own aura data
+        # once any member's counterpart resolves, so when not one member has
+        # aura data our own may never have been asked for. Delegating to
+        # `compare_uptime` here would report "our aura data absent" for a query
+        # that was never issued.
+        return [_no_reference_auras(len(sample.members))]
+
     if our_auras is None or boss_seconds(ours) <= 0 or not aggregable:
         # Below the floor, or our own side has nothing to compute a fraction from
         # either way: one reference is all that can honestly be reported, and
@@ -287,9 +312,8 @@ def _gap_findings_sample(
             Finding(
                 id=f"compare.uptime.{kind}.{rank}",
                 title=(
-                    f"The median of {len(carried)} top parses kept {name} up for "
-                    f"{their_median:.0%} of boss time {where}; {our_player.name} "
-                    f"{our_fraction:.0%}"
+                    f"{len(carried)} top parses kept {name} up a median {their_median:.0%} "
+                    f"of boss time {where}; {our_player.name} {our_fraction:.0%}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "

@@ -41,9 +41,15 @@ def quantifier_for(matching: int, total: int) -> str:
     The narrative file is refused if it contains a digit, so a count cannot
     reach the reader through it. Computing the word here keeps the reading of
     the ratio in tested Python: the narrative echoes, it does not calculate.
+
+    "none" is a real aggregate and gets its own word, parallel to "every":
+    `compare.confound.affixes` fires precisely when no reference shared our
+    affix set. Only a sample with no members at all yields nothing to say.
     """
-    if total <= 0 or matching <= 0:
+    if total <= 0:
         return ""
+    if matching <= 0:
+        return "none"
     if matching == total:
         return "every"
     if matching * 2 > total:

@@ -5,6 +5,14 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.model import LoadedRun
 
+REPORT_URL = "https://www.warcraftlogs.com/reports/{code}?fight={fight}"
+"""A link to the run a leaderboard row points at.
+
+The one identifier a reference may keep forever. A character name is greppable
+and poolable; a link is a pointer, and it reaches everything a reader needs to
+audit a claim made against that run.
+"""
+
 MAX_LEVEL_GAP = 1
 """A reference further than this from our keystone level is not offered at all.
 

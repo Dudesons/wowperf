@@ -55,8 +55,6 @@ NO_COMPARISON_RAN = (
     "No reference run was fetched for this analysis, so there is nothing to compare against."
 )
 
-REPORT_URL = "https://www.warcraftlogs.com/reports/{code}?fight={fight}"
-
 DECOMPOSITION_IDS = ("compare.duration", "time.residual", "deaths.total")
 """Figures that contain others. They head the ledger; everything else is ranked beneath."""
 

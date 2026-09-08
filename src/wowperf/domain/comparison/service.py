@@ -77,7 +77,7 @@ def compare(
         assert top is not None  # parse.members is non-empty here, so a top member exists
         findings += compare_spells_sample(ours, our_player, parse)
         findings += compare_talents(
-            our_player, find_player(top.run, top.row.character_name)
+            our_player, find_player(top.run, top.row.character_name), top.row
         )
         findings += compare_uptime_sample(ours.run, our_auras, our_player, parse)
 

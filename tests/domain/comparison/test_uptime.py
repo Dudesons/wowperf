@@ -344,7 +344,7 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
-    assert "median of 4 top parses" in gap.title
+    assert "4 top parses kept" in gap.title and "a median" in gap.title
     assert gap.confidence is Confidence.DERIVED
     assert gap.seconds_lost is None
     # A median title states no count for a digit-free narrative to echo.
@@ -383,6 +383,18 @@ def test_no_aura_data_at_all_still_reports_unavailable() -> None:
     assert findings[0].id == "compare.uptime.unavailable"
 
 
+def test_no_reference_aura_data_blames_the_references_and_not_our_own_side() -> None:
+    """`cli._fetch_parse_auras` asks for our own aura data only once a member's
+    counterpart resolves, so with no member carrying auras our own query may
+    never have been issued. Reporting "our aura data absent" would name a
+    failure that never happened."""
+    findings = compare_uptime_sample(OUR_RUN, None, SUBJECT, SAMPLE_WITHOUT_AURAS)
+
+    assert findings[0].id == "compare.uptime.unavailable"
+    assert "0 of 5 references returned aura data" in findings[0].evidence
+    assert not any("our aura data" in line for line in findings[0].evidence)
+
+
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.parse.unavailable`; this must not crash, and must not repeat it.
@@ -398,17 +410,17 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     assert "Bríala" in gap.title
-    assert any("too few comparable references to aggregate" in line for line in gap.evidence)
+    assert any("below the floor of" in line for line in gap.evidence)
 
 
 def test_our_own_missing_aura_data_is_unavailable_even_with_an_aggregate_sample() -> None:
     """The sample has plenty of aura-eligible members; the failure is ours, not
-    the sample's, so this must not read as "too few comparable references"."""
+    the sample's, so this must not read as "below the floor of"."""
     findings = compare_uptime_sample(OUR_RUN, None, SUBJECT, SAMPLE_OF_FIVE)
 
     assert findings[0].id == "compare.uptime.unavailable"
     assert not any(
-        "too few comparable references" in line for line in findings[0].evidence
+        "below the floor of" in line for line in findings[0].evidence
     )
 
 
@@ -422,7 +434,7 @@ def test_our_own_run_with_no_boss_pulls_is_unavailable_even_with_an_aggregate_sa
 
     assert findings[0].id == "compare.uptime.unavailable"
     assert not any(
-        "too few comparable references" in line for line in findings[0].evidence
+        "below the floor of" in line for line in findings[0].evidence
     )
 
 

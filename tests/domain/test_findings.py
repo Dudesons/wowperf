@@ -48,8 +48,11 @@ def test_findings_without_a_time_cost_rank_last_in_stable_order() -> None:
         (1, 5, "some"),
         (2, 4, "about half"),
         (3, 4, "most"),
-        (0, 5, ""),
+        # A sample every member of which disagreed is still an aggregate, and
+        # "none" is the word for it. Only an empty sample has nothing to say.
+        (0, 5, "none"),
         (1, 0, ""),
+        (0, 0, ""),
     ],
 )
 def test_the_quantifier_reads_the_ratio(matching: int, total: int, expected: str) -> None:

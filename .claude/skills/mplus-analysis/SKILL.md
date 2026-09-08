@@ -42,8 +42,8 @@ drift from the other.
 
 The narrative states no numbers at all — `analyze --narrative` refuses a file that contains a
 single digit. An aggregate finding carries a `quantifier` for exactly this: one of `every`,
-`most`, `about half`, `some`, or empty, already computed from the sample so the narrative can echo
-it rather than calculate one of its own.
+`most`, `about half`, `some`, `none`, or empty, already computed from the sample so the narrative
+can echo it rather than calculate one of its own.
 
 Use only the quantifier a finding was given, and only on that finding. Reaching for "most" because
 a ratio in the evidence looks high, or carrying one finding's word onto a different finding, is

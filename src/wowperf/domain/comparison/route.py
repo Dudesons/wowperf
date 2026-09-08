@@ -163,16 +163,26 @@ def compare_route_sample(
         first = eligible[0] if eligible else sample.members[0]
         return too_few(compare_route(ours, first.run, first.alignment, forces), len(eligible))
 
-    findings = [_summary(ours, eligible), *_skipped(ours, eligible, forces)]
+    findings = [
+        _summary(ours, eligible, len(sample.members)),
+        *_skipped(ours, eligible, forces),
+    ]
     findings += _extra_from(eligible[0], ours)
     return findings
 
 
-def _summary(ours: Run, eligible: Sequence[SpeedMember]) -> Finding:
-    """Our pull count against the range the sample actually pulled.
+def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Finding:
+    """Our pull count against the range the sample actually pulled, and who was counted.
 
     A pull count is a routing choice, not a measurement with sampling noise to
     average away, so the sample states its spread rather than a mean.
+
+    `sampled` is the whole sample, `eligible` the part of it whose route lined
+    up with ours. This is the only place that difference is disclosed: an
+    ineligible member is dropped from the skipped-pack counts and raises no
+    finding of its own, so without the line below a reader would meet route
+    rows denominated in three beside tempo rows denominated in five and have
+    nothing to explain the gap.
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
@@ -185,12 +195,14 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember]) -> Finding:
         detail=(
             "Pack counts are compared as a range, not averaged: how a route is cut into pulls "
             "is a routing choice, and a mean over routing choices is not a statistic a reader "
-            "can act on."
+            "can act on. Only a reference whose pulls lined up with ours can price a pack as "
+            "skipped, so every skipped-pack row below is counted over those references and not "
+            "over the whole sample."
         ),
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=(
-            f"{total} fast runs compared",
+            f"{count_phrase(total, sampled)} references aligned well enough to price a skip",
             f"observed range {low:.0f} to {high:.0f} packs",
         ),
     )
@@ -213,6 +225,11 @@ def _skipped(
         for index in counts
         if (pull := _pull_by_index(ours, index)) is not None and not pull.is_boss
     ]
+    # Agreement first, price second, where the pairwise version sorted on price
+    # alone. A pack one reference skipped is a coincidence whatever it cost; a
+    # pack four skipped is a route decision. The cap can therefore push an
+    # expensive pack with one vote off the page behind five cheap packs with
+    # five, which is the intended trade: the finding's warrant is the count.
     skippable.sort(key=lambda row: (row[1], row[0].duration_seconds), reverse=True)
 
     total = len(eligible)

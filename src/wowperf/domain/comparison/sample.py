@@ -112,10 +112,16 @@ class ParseSample(_Sample):
 
 
 def too_few(findings: list[Finding], eligible: int) -> list[Finding]:
-    """Say plainly that a statistic was not computed, rather than computing a bad one."""
+    """Say plainly that a statistic was not computed, rather than computing a bad one.
+
+    Stated as what the finding above it is, not as what it is not: at
+    `eligible` zero the comparison was still made, against a reference that
+    cleared no filter, and "only 0 comparable references" would read as though
+    nothing had been compared at all.
+    """
     note = (
-        f"only {eligible} comparable reference{'s' if eligible != 1 else ''}; "
-        "too few comparable references to aggregate"
+        f"one reference, not an aggregate: {eligible} of the sample "
+        f"were comparable, below the floor of {MIN_SAMPLE_FOR_AGGREGATE}"
     )
     return [
         finding.model_copy(update={"evidence": (*finding.evidence, note)}) for finding in findings

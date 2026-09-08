@@ -433,7 +433,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
     skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
     assert skipped.title == "The reference skipped the pack at pull 7"
-    assert any("too few comparable references to aggregate" in line for line in skipped.evidence)
+    assert any("below the floor of" in line for line in skipped.evidence)
 
 
 def test_no_finding_reports_a_different_pull_order() -> None:
@@ -452,6 +452,36 @@ def test_the_summary_states_our_count_against_the_samples_observed_range() -> No
     summary = next(f for f in findings if f.id == "compare.route.summary")
     assert summary.title == "We pulled 8 packs; the 3 fast runs pulled 6 to 8"
     assert summary.confidence is Confidence.MEASURED
+    assert "3 of 3 references aligned well enough to price a skip" in summary.evidence
+
+
+def test_the_summary_discloses_how_many_of_the_sample_could_price_a_skip() -> None:
+    """A member whose route did not line up is dropped from every skipped-pack
+    count and raises no finding of its own, so the summary is the only place a
+    reader can learn why route rows carry a smaller denominator than tempo rows
+    on the same page."""
+    stranger = member_missing((3, 4, 5, 6, 7), report_code="ODD")
+    sample = SpeedSample(
+        members=(
+            member_missing_pull_7(),
+            member_missing_pull_7(),
+            member_missing_pull_7(),
+            stranger,
+            stranger,
+        )
+    )
+    # The fixture's own premise: two of the five matched 3 of our 8 trash pulls.
+    assert len(sample.route_eligible) == 3
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+    summary = next(f for f in findings if f.id == "compare.route.summary")
+    assert "3 of 5 references aligned well enough to price a skip" in summary.evidence
+    # The count is over the eligible three, not the whole five, even though the
+    # two dropped members also never pulled pack 7.
+    skipped = next(f for f in findings if f.id == "compare.route.skipped.0")
+    assert skipped.title == "3 of 3 fast runs skipped the pack at pull 7"
+    assert not any(f.id == "compare.route.unaligned" for f in findings)
 
 
 def test_extra_packs_are_reported_pairwise_against_the_first_eligible_member_only() -> None:

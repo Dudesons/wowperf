@@ -242,7 +242,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
     deaths = one(findings, "compare.deaths")
     assert deaths.title == "We died 4 times, the reference died 1"
-    assert any("too few comparable references to aggregate" in line for line in deaths.evidence)
+    assert any("below the floor of" in line for line in deaths.evidence)
 
 
 def test_downtime_is_stated_against_the_median_with_its_range() -> None:
