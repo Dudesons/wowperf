@@ -7,6 +7,7 @@ __pycache__/
 .mypy_cache/
 /cache/
 out/
+dist/
 
 # Other players' logs, fetched for one comparison and never warehoused. These
 # were local-only excludes, which protect one machine and not a clone.

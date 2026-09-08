@@ -1,0 +1,61 @@
+# The gate from CLAUDE.md, run on every push and pull request. Until now the
+# repository had no CI and no git hook, so the gate was whatever a person
+# remembered to type.
+#
+# The end-to-end tests are not here and should not be: they hit the real
+# Warcraft Logs API, need credentials, and spend an hourly quota of 3600 points
+# shared with real work. `-m 'not e2e'` in pyproject.toml already excludes them,
+# so `uv run pytest` is the offline suite and this workflow needs no secrets.
+name: gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  # A second push to the same branch makes the first run's answer worthless.
+  group: gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install dependencies
+        # --locked fails rather than re-resolving, so a pyproject.toml edited
+        # without relocking is caught here instead of drifting quietly.
+        run: uv sync --locked
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Test
+        run: uv run pytest
+
+      - name: Build the wheel and check it carries the template
+        # The report template is not a .py file, so it reaches the wheel only
+        # through the force-include in pyproject.toml. Every test runs from the
+        # source tree and would pass with that line deleted; an installed
+        # wowperf would then fail at the moment it rendered a report.
+        run: |
+          uv build --wheel --out-dir dist
+          uv run python -c "
+          import glob, sys, zipfile
+          wheel = sorted(glob.glob('dist/*.whl'))[-1]
+          names = zipfile.ZipFile(wheel).namelist()
+          if 'wowperf/adapters/render/report.html.j2' not in names:
+              sys.exit(f'{wheel} does not carry the report template')
+          print(f'{wheel} carries the report template')
+          "
