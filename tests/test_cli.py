@@ -597,6 +597,7 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
+            "quantifier",
         }
 
 

@@ -30,6 +30,27 @@ class Finding(Frozen):
     seconds_lost: float | None = None
     evidence: tuple[str, ...] = ()
     pull_index: int | None = None
+    # The word a digit-free narrative may use in place of this finding's count.
+    # Empty on any finding that is not an aggregate over a sample.
+    quantifier: str = ""
+
+
+def quantifier_for(matching: int, total: int) -> str:
+    """The word a digit-free narrative may use for `matching of total`.
+
+    The narrative file is refused if it contains a digit, so a count cannot
+    reach the reader through it. Computing the word here keeps the reading of
+    the ratio in tested Python: the narrative echoes, it does not calculate.
+    """
+    if total <= 0 or matching <= 0:
+        return ""
+    if matching == total:
+        return "every"
+    if matching * 2 > total:
+        return "most"
+    if matching * 2 == total:
+        return "about half"
+    return "some"
 
 
 def rank_findings(findings: Iterable[Finding]) -> list[Finding]:

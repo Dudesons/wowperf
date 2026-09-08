@@ -4,7 +4,7 @@
 import pytest
 from pydantic import ValidationError
 
-from wowperf.domain.findings import Confidence, Finding, rank_findings
+from wowperf.domain.findings import Confidence, Finding, quantifier_for, rank_findings
 
 
 def a_finding(finding_id: str, seconds_lost: float | None) -> Finding:
@@ -36,3 +36,31 @@ def test_findings_without_a_time_cost_rank_last_in_stable_order() -> None:
         ]
     )
     assert [finding.id for finding in ranked] == ["timed", "untimed_first", "untimed_second"]
+
+
+@pytest.mark.parametrize(
+    ("matching", "total", "expected"),
+    [
+        (5, 5, "every"),
+        (4, 5, "most"),
+        (3, 5, "most"),
+        (2, 5, "some"),
+        (1, 5, "some"),
+        (2, 4, "about half"),
+        (3, 4, "most"),
+        (0, 5, ""),
+        (1, 0, ""),
+    ],
+)
+def test_the_quantifier_reads_the_ratio(matching: int, total: int, expected: str) -> None:
+    assert quantifier_for(matching, total) == expected
+
+
+def test_a_finding_carries_no_quantifier_unless_it_is_given_one() -> None:
+    finding = Finding(
+        id="compare.route.skipped.0",
+        title="4 of 5 fast runs skipped the pack at pull 7",
+        detail="",
+        confidence=Confidence.MEASURED,
+    )
+    assert finding.quantifier == ""
