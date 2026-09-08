@@ -277,36 +277,107 @@ def test_load_fetches_a_healing_window_per_death_and_the_fight_s_resurrections(
     assert [(r.caster_id, r.actor_id) for r in loaded.resurrections] == [(7, 693)]
 
 
-def test_a_reference_fetches_only_the_streams_the_comparison_reads(tmp_path: Path) -> None:
-    """A reference run is read for five fields, so it pays for five fields.
-
-    Damage taken, enemy deaths, healing and resurrections exist for our own
-    analysers and death cards. No comparison consults them on a reference, and
-    each one is a query and a slice of cache spent on nothing.
+def test_a_speed_reference_fetches_only_the_streams_the_speed_comparisons_read(
+    tmp_path: Path,
+) -> None:
+    """Route, tempo and confounds read a speed member's run, deaths, enemy casts and
+    interrupts (`grep -rn "member\\.|theirs\\." src/wowperf/domain/comparison/`).
+    Casts, talents, damage taken, enemy deaths, healing and resurrections exist for
+    our own analysers and death cards or for the parse axis; fetching any of them
+    for a speed reference spends points and cache on data nothing here reads.
     """
     calls: list[str] = []
     repository = recording_repository(calls, tmp_path)
 
-    repository.load_reference("abc123", None)
+    repository.load_speed_reference("abc123", None)
 
     assert sorted(set(calls)) == [
-        "Abilities", "Affixes", "Casts", "Deaths", "EnemyCasts", "Fights", "Interrupts", "Talents"
+        "Abilities", "Affixes", "Deaths", "EnemyCasts", "Fights", "Interrupts"
     ]
 
 
-def test_a_reference_carries_the_comparison_streams_and_leaves_the_rest_empty(
-    tmp_path: Path,
-) -> None:
-    loaded = recording_repository([], tmp_path).load_reference("abc123", None)
+def test_a_speed_reference_carries_its_streams_and_leaves_the_rest_empty(tmp_path: Path) -> None:
+    loaded, _ = recording_repository([], tmp_path).load_speed_reference("abc123", None)
 
-    assert [cast.ability_id for cast in loaded.casts] == [100]
     assert [death.actor_id for death in loaded.deaths] == [693]
     assert [row.ability_id for row in loaded.enemy_cast_rows] == [200]
     assert [row.interrupted_ability_id for row in loaded.interrupts] == [400]
+    assert loaded.casts == ()
     assert loaded.damage_taken == ()
     assert loaded.enemy_deaths == ()
     assert loaded.healing == ()
     assert loaded.resurrections == ()
+
+
+def test_a_speed_reference_reports_whether_it_was_served_entirely_from_cache(
+    tmp_path: Path,
+) -> None:
+    repository = recording_repository([], tmp_path)
+
+    _, first = repository.load_speed_reference("abc123", None)
+    assert first is False
+
+    _, second = repository.load_speed_reference("abc123", None)
+    assert second is True
+
+
+def test_a_parse_reference_fetches_only_the_streams_the_parse_comparisons_read(
+    tmp_path: Path,
+) -> None:
+    """spells and compare_talents read a parse member's run and casts; compare_talents
+    reaches `top.run.players[...].talent_import_string`, which is why talents is
+    fetched even though it names no field of its own on `ParseMember` — grepping
+    `member\\.|theirs\\.` alone misses it, because the read goes through `top.run`,
+    not a `member.` attribute. Deaths, enemy casts and interrupts are the speed
+    axis's queries and are never fetched here.
+    """
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load_parse_reference("abc123", None)
+
+    assert sorted(set(calls)) == ["Abilities", "Affixes", "Casts", "Fights", "Talents"]
+
+
+def test_a_parse_reference_carries_its_streams_and_leaves_the_rest_empty(tmp_path: Path) -> None:
+    loaded, _ = recording_repository([], tmp_path).load_parse_reference("abc123", None)
+
+    assert [cast.ability_id for cast in loaded.casts] == [100]
+    assert loaded.deaths == ()
+    assert loaded.enemy_cast_rows == ()
+    assert loaded.interrupts == ()
+    assert loaded.damage_taken == ()
+    assert loaded.enemy_deaths == ()
+    assert loaded.healing == ()
+    assert loaded.resurrections == ()
+
+
+def test_a_parse_reference_reports_whether_it_was_served_entirely_from_cache(
+    tmp_path: Path,
+) -> None:
+    repository = recording_repository([], tmp_path)
+
+    _, first = repository.load_parse_reference("abc123", None)
+    assert first is False
+
+    _, second = repository.load_parse_reference("abc123", None)
+    assert second is True
+
+
+def test_from_cache_reflects_a_partial_hit_before_becoming_a_full_one(tmp_path: Path) -> None:
+    """Fights, Affixes and Abilities are warmed by an earlier speed load, but Casts
+    and Talents are still new to a first parse load of the same report. This proves
+    the aggregate catches a mixed result, not only the all-hit or all-miss case a
+    flag copied from the first or the last query would also get right by accident.
+    """
+    repository = recording_repository([], tmp_path)
+    repository.load_speed_reference("abc123", None)
+
+    _, first_parse_load = repository.load_parse_reference("abc123", None)
+    assert first_parse_load is False
+
+    _, second_parse_load = repository.load_parse_reference("abc123", None)
+    assert second_parse_load is True
 
 
 def test_load_reads_health_samples_off_the_casts(tmp_path: Path) -> None:
@@ -332,8 +403,10 @@ def test_the_healing_window_is_bounded_by_the_death_and_resurrects_span_the_figh
         {"code": "abc123", "fightId": 36, "startTime": 0.0, "endTime": 1920000.0},
     )
     miss = {"miss": "the repository did not cache this window"}
-    assert repository.cache.get_or_fetch(healing_key, lambda: miss) != miss
-    assert repository.cache.get_or_fetch(resurrects_key, lambda: miss) != miss
+    healing_payload, _ = repository.cache.get_or_fetch(healing_key, lambda: miss)
+    resurrects_payload, _ = repository.cache.get_or_fetch(resurrects_key, lambda: miss)
+    assert healing_payload != miss
+    assert resurrects_payload != miss
 
 
 def test_two_deaths_inside_one_run_up_share_a_single_healing_window(tmp_path: Path) -> None:

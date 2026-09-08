@@ -2,7 +2,7 @@
 # ABOUTME: Satisfies the RunRepository port so services never learn where a run came from.
 
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
@@ -44,6 +44,10 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death, HealingEvent
 from wowperf.domain.model import LoadedRun, Run
 
+# `full` loads everything our own run needs. `speed` and `parse` are the two
+# trimmed reference profiles, each fetching only the streams its own axis reads.
+_Profile = Literal["full", "speed", "parse"]
+
 
 def healing_windows(deaths: Sequence[Death]) -> list[tuple[int, int, int]]:
     """One `(actor, start, end)` window per stretch of a player's run-ups.
@@ -79,11 +83,21 @@ class WclRunRepository:
     def cache(self) -> DiskCache:
         return self._cache
 
-    def _query(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        payload = self._cache.get_or_fetch(
+    def _query(
+        self, query: str, variables: dict[str, Any], hits: list[bool] | None = None
+    ) -> dict[str, Any]:
+        """Run one query through the cache, recording a hit or a miss when `hits` is given.
+
+        `hits` is a list local to one `_load` call, not adapter state: two
+        concurrent loads must not race a shared "was that a hit" flag, so the
+        aggregate is threaded through explicitly instead of stored on `self`.
+        """
+        payload, hit = self._cache.get_or_fetch(
             cache_key(query, variables),
             lambda: self._fetch(query, variables),
         )
+        if hits is not None:
+            hits.append(hit)
         # Also checked on the way out of the cache, so an entry written by an
         # older build still reports the problem instead of subscripting None.
         self._require_report(payload, variables)
@@ -124,10 +138,10 @@ class WclRunRepository:
         """Read the quota straight from the API; a cached reading would be worthless."""
         return self._client.rate_limit()
 
-    def _report(self, report_code: str) -> dict[str, Any]:
+    def _report(self, report_code: str, hits: list[bool] | None = None) -> dict[str, Any]:
         return cast(
             dict[str, Any],
-            self._query(FIGHTS_QUERY, {"code": report_code})["reportData"]["report"],
+            self._query(FIGHTS_QUERY, {"code": report_code}, hits)["reportData"]["report"],
         )
 
     def _fetch_affixes(self) -> dict[str, Any]:
@@ -138,7 +152,9 @@ class WclRunRepository:
             raise WclError("The affixes response did not carry gameData.affixes as expected")
         return payload
 
-    def _affix_names(self, affix_ids: Sequence[int]) -> tuple[str, ...]:
+    def _affix_names(
+        self, affix_ids: Sequence[int], hits: list[bool] | None = None
+    ) -> tuple[str, ...]:
         """Affix names from game data, with the bare id for anything unlisted.
 
         Goes to the cache and the client directly rather than through `_query`:
@@ -157,11 +173,18 @@ class WclRunRepository:
         if not affix_ids:
             return ()
         try:
-            payload = self._cache.get_or_fetch(cache_key(AFFIXES_QUERY, {}), self._fetch_affixes)
+            payload, hit = self._cache.get_or_fetch(
+                cache_key(AFFIXES_QUERY, {}), self._fetch_affixes
+            )
         except WclError as error:
             if isinstance(error, RateLimitExceeded):
                 raise
+            # A degrade is not a reuse: a real attempt was made and it failed.
+            if hits is not None:
+                hits.append(False)
             return tuple(str(affix_id) for affix_id in affix_ids)
+        if hits is not None:
+            hits.append(hit)
         rows = payload["gameData"]["affixes"]
         names = {int(row["id"]): str(row["name"]) for row in rows}
         return tuple(names.get(affix_id, str(affix_id)) for affix_id in affix_ids)
@@ -172,14 +195,16 @@ class WclRunRepository:
         run = build_run(report, select_keystone_fight(report["fights"], fight_id))
         return run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
 
-    def _actor_game_ids(self, report_code: str) -> dict[int, int]:
+    def _actor_game_ids(
+        self, report_code: str, hits: list[bool] | None = None
+    ) -> dict[int, int]:
         """Map every actor in the report to its game id, so an enemy death always resolves.
 
         A death can target a Pet actor as well as an NPC one: a dungeon mechanic
         that encases a player is modelled as a hostile pet owned by that player.
         Fetching every actor, not only type "NPC", is what makes that resolve.
         """
-        payload = self._query(ACTORS_QUERY, {"code": report_code})
+        payload = self._query(ACTORS_QUERY, {"code": report_code}, hits)
         report = payload["reportData"]["report"]
         master = report.get("masterData") or {}
         actors = master.get("actors")
@@ -187,7 +212,9 @@ class WclRunRepository:
             raise WclError(f"Report {report_code} returned no masterData.actors block")
         return {actor["id"]: actor["gameID"] for actor in actors}
 
-    def _talents(self, report_code: str, fight: dict[str, Any]) -> dict[int, str]:
+    def _talents(
+        self, report_code: str, fight: dict[str, Any], hits: list[bool] | None = None
+    ) -> dict[int, str]:
         """The talent import string per player, keyed by actor id.
 
         A player with no recorded build is left out rather than given an empty
@@ -198,7 +225,7 @@ class WclRunRepository:
             return {}
 
         payload = self._query(
-            talents_query(actor_ids), {"code": report_code, "fightId": fight["id"]}
+            talents_query(actor_ids), {"code": report_code, "fightId": fight["id"]}, hits
         )
         fights = payload["reportData"]["report"]["fights"] or [{}]
         codes = fights[0]
@@ -210,29 +237,72 @@ class WclRunRepository:
 
     def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
         """Every stream the analysers and the death cards read."""
-        return self._load(report_code, fight_id, full=True)
+        loaded, _ = self._load(report_code, fight_id, profile="full")
+        return loaded
 
-    def load_reference(self, report_code: str, fight_id: int | None) -> LoadedRun:
-        """Only the streams a comparison reads off a reference run.
+    def load_speed_reference(
+        self, report_code: str, fight_id: int | None
+    ) -> tuple[LoadedRun, bool]:
+        """Only the streams a speed comparison reads off a reference run: run, deaths,
+        enemy casts and interrupts.
 
-        A reference is consulted for its run, its casts, its deaths, its enemy
-        casts and its interrupts. Damage taken, enemy deaths, healing and
-        resurrections exist for our own analysers and death cards, and fetching
-        them for a reference spends points and cache on data no finding reads.
+        Casts are not fetched. `build_deaths` still takes a cast stream to time
+        how long a death kept the player out of the fight, but an empty one only
+        costs that one reading (`Death.seconds_until_next_action`), which no
+        speed comparison reads — route, tempo and confounds count
+        `len(member.deaths)`, nothing finer. Talents are not fetched either:
+        none of those three read a player's build.
 
-        The fields left behind are empty tuples, which read the same as "this run
-        had none". Nothing consults them today; a comparison that started to
-        would be reading absence as fact, and must call `load` instead.
+        The fields left behind are empty tuples, which read the same as "this
+        run had none". Nothing consults them today; a comparison that started
+        to would be reading absence as fact, and must call `load` instead.
+        `SpeedMember` carries no field for them at all, so that mistake cannot
+        be made.
+
+        The second element is true only when every query this reference took
+        was served from the cache, so a caller can tell a reused reference from
+        one that was actually fetched.
         """
-        return self._load(report_code, fight_id, full=False)
+        return self._load(report_code, fight_id, profile="speed")
 
-    def _load(self, report_code: str, fight_id: int | None, *, full: bool) -> LoadedRun:
-        report = self._report(report_code)
+    def load_parse_reference(
+        self, report_code: str, fight_id: int | None
+    ) -> tuple[LoadedRun, bool]:
+        """Only the streams a parse comparison reads off a reference run: run and casts.
+
+        Talents are fetched even though neither `LoadedRun` nor `ParseMember`
+        names a field for them: they ride inside `run.players[].talent_import_string`,
+        which `compare_talents` reads off the top parse member's run to name the
+        build a reader should copy. Skipping the query would not remove a field
+        nothing reads — it would make the one thing that does read it silently
+        report every build as absent.
+
+        Deaths, enemy casts and interrupts are not fetched. The fields left
+        behind are empty tuples, which read the same as "this run had none".
+        Nothing consults them today; a comparison that started to would be
+        reading absence as fact, and must call `load` instead. `ParseMember`
+        carries no field for them at all, so that mistake cannot be made.
+
+        The second element is true only when every query this reference took
+        was served from the cache, so a caller can tell a reused reference from
+        one that was actually fetched.
+        """
+        return self._load(report_code, fight_id, profile="parse")
+
+    def _load(
+        self, report_code: str, fight_id: int | None, *, profile: _Profile
+    ) -> tuple[LoadedRun, bool]:
+        hits: list[bool] = []
+        report = self._report(report_code, hits)
         fight = select_keystone_fight(report["fights"], fight_id)
-        run = build_run(report, fight, self._talents(report_code, fight))
-        run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids)})
+        # Route, tempo and confounds never read a player's talent build, so a
+        # speed reference leaves the aliased per-player talentImportCode query
+        # unfetched; build_run accepts no talents just as readily as some.
+        talents = {} if profile == "speed" else self._talents(report_code, fight, hits)
+        run = build_run(report, fight, talents)
+        run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids, hits)})
 
-        abilities = self._query(ABILITIES_QUERY, {"code": report_code})
+        abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
         try:
             ability_names = {
                 ability["gameID"]: ability["name"]
@@ -249,33 +319,44 @@ class WclRunRepository:
             "startTime": float(fight["startTime"]),
             "endTime": float(fight["endTime"]),
         }
-        cast_events = fetch_all_events(self._query, CASTS_QUERY, event_variables)
-        death_events = fetch_all_events(self._query, DEATHS_QUERY, event_variables)
-        enemy_cast_events = fetch_all_events(self._query, ENEMY_CASTS_QUERY, event_variables)
-        interrupt_events = fetch_all_events(self._query, INTERRUPTS_QUERY, event_variables)
+
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables, hits)
+
+        if profile == "parse":
+            cast_events = fetch_all_events(query, CASTS_QUERY, event_variables)
+            loaded = LoadedRun(run=run, casts=build_casts(cast_events, run, ability_names))
+            return loaded, all(hits)
+
+        death_events = fetch_all_events(query, DEATHS_QUERY, event_variables)
+        enemy_cast_events = fetch_all_events(query, ENEMY_CASTS_QUERY, event_variables)
+        interrupt_events = fetch_all_events(query, INTERRUPTS_QUERY, event_variables)
+        # A speed reference never fetches its own cast stream either, even
+        # though build_deaths below takes one: it only uses it to time how long
+        # a death kept the player out (seconds_until_next_action), a reading no
+        # speed comparison reads. An empty tuple costs that one reading and
+        # nothing else.
+        cast_events = (
+            fetch_all_events(query, CASTS_QUERY, event_variables) if profile == "full" else []
+        )
         casts = build_casts(cast_events, run, ability_names)
         deaths = build_deaths(death_events, run, casts, ability_names)
         player_names = {player.actor_id: player.name for player in run.players}
         enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run, ability_names)
         interrupts = build_interrupts(interrupt_events, run, player_names)
 
-        if not full:
-            return LoadedRun(
-                run=run,
-                casts=casts,
-                deaths=deaths,
-                enemy_cast_rows=enemy_cast_rows,
-                interrupts=interrupts,
-                # Free: the readings ride on the casts already fetched above.
-                health_samples=build_health_samples(cast_events),
+        if profile == "speed":
+            loaded = LoadedRun(
+                run=run, deaths=deaths, enemy_cast_rows=enemy_cast_rows, interrupts=interrupts
             )
+            return loaded, all(hits)
 
-        enemy_death_events = fetch_all_events(self._query, ENEMY_DEATHS_QUERY, event_variables)
-        damage_taken_events = fetch_all_events(self._query, DAMAGE_TAKEN_QUERY, event_variables)
+        enemy_death_events = fetch_all_events(query, ENEMY_DEATHS_QUERY, event_variables)
+        damage_taken_events = fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables)
         resurrections = build_resurrections(
-            fetch_all_events(self._query, RESURRECTS_QUERY, event_variables), ability_names
+            fetch_all_events(query, RESURRECTS_QUERY, event_variables), ability_names
         )
-        actor_game_ids = self._actor_game_ids(report_code)
+        actor_game_ids = self._actor_game_ids(report_code, hits)
         enemy_deaths = build_enemy_deaths(
             enemy_death_events, run, actor_game_ids, dict(run.npc_count_map)
         )
@@ -296,10 +377,10 @@ class WclRunRepository:
                 "endTime": float(end),
             }
             healing.extend(
-                build_healing(fetch_all_events(self._query, HEALING_QUERY, scoped), ability_names)
+                build_healing(fetch_all_events(query, HEALING_QUERY, scoped), ability_names)
             )
 
-        return LoadedRun(
+        loaded = LoadedRun(
             run=run,
             casts=casts,
             deaths=deaths,
@@ -311,6 +392,7 @@ class WclRunRepository:
             healing=tuple(healing),
             resurrections=resurrections,
         )
+        return loaded, all(hits)
 
     def auras(self, report_code: str, fight_id: int, actor_id: int) -> PlayerAuras:
         """Buff and debuff uptime for one player of one fight.
