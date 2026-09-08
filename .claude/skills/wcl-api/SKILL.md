@@ -126,8 +126,8 @@ This holds only while requests are sequential. They are — the loaders are plai
 nothing enforces it, and concurrent fetches would interleave the readings and misattribute every
 cost after the first.
 
-**A full sampled compared analysis, cold cache, same report and fight, 2026-09-08: 84.23 points
-of 3600**, composed as the command now prints it.
+**A full sampled compared analysis, cold cache, same report and fight, 2026-09-08: 83.39 points
+of 3600**, composed as the command prints it.
 
 | Operation | Calls | Points | Mean |
 | --- | --- | --- | --- |
@@ -136,30 +136,40 @@ of 3600**, composed as the command now prints it.
 | `AuraTable` | 6 | 12.00 | 2.00 |
 | `Abilities` | 7 | 7.00 | 1.00 |
 | `Casts` | 7 | 7.00 | 1.00 |
-| `Deaths` | 6 | 6.39 | 1.07 |
+| `Deaths` | 6 | 6.00 | 1.00 |
 | `EnemyCasts` | 6 | 6.00 | 1.00 |
 | `Interrupts` | 6 | 6.00 | 1.00 |
 | `Healing` | 4 | 4.00 | 1.00 |
 | `Affixes` | 2 | 2.00 | 1.00 |
-| `DamageTaken` | 1 | 1.45 | 1.45 |
 | `CharacterRankings` | 1 | 1.01 | 1.01 |
 | `FightRankings` | 1 | 1.01 | 1.01 |
-| `Actors`, `EnemyDeaths`, `Resurrects`, `RateLimit` | 1 each | 1.00 each | 1.00 |
+| `Actors`, `DamageTaken`, `EnemyDeaths`, `Resurrects` | 1 each | 1.00 each | 1.00 |
+| `RateLimit` | 2 | 1.00 | — |
 
-The mean is the column that lies: only the totals were measured. `Deaths` at 6.39 over six calls
-proves per-call cost varies within an operation, so read a mean as a rate and not as a price.
-The closing quota read is missing from the total, because nothing followed it to price it.
+`RateLimit` shows two calls against one point because the closing read has nothing after it to
+price it. The mean is the column to distrust elsewhere too: only the totals were measured, and a
+second cold run of the same shape came to **84.23**, differing from this one in exactly two rows
+— `Deaths` at 6.39 rather than 6.00, and `DamageTaken` at 1.45 rather than 1.00. So a handful of
+queries carry fractions that move between runs, and a mean is a rate rather than a price.
 
-**Most queries cost 1.00 and nothing costs much above 2.** The 83.39 reading and this 84.23 one
-describe the same shape a day apart, so about a point of run-to-run variation is normal. What
-this table adds is the composition, not the total: the ~111 the sampling design projects can now
-be checked against real per-query prices rather than argued about.
+**That 83.39 is the same figure this file already recorded for the same shape before any
+instrumentation existed.** Selecting the block is therefore free at the scale of a whole run, not
+only across the two queries the controlled probe compared.
+
+**Most queries cost 1.00 and nothing costs much above 2.** What the table adds is the
+composition, not the total: the ~111 the sampling design projects can now be checked against real
+per-query prices rather than argued about.
 
 **A contradiction for a human to settle.** `CASTS_QUERY` always sends `includeResources: true`,
 and all seven cast pages here cost 7.00 points together — 1.00 each, since any variation would
 have to cancel exactly. The 2026-09-07 note below records 2.59 points for two such pages, about
 1.30 each, against 2.00 for the same window without the flag. Both readings cannot be right.
 Nothing in this project depends on which is, so it is recorded rather than resolved.
+
+The off-by-one is **not** the explanation, so do not reach for it. The older method read the
+quota before and after and subtracted the read's own 1.00, and under the reading described above
+that arithmetic yields the query's true cost: the opening read's point falls inside the
+difference and the closing read's does not.
 
 ## Mythic+ in the schema
 
