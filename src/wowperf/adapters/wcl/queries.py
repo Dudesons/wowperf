@@ -1,6 +1,7 @@
 # ABOUTME: GraphQL query text for the Warcraft Logs v2 client API, one constant per query.
 # ABOUTME: Every field here is verified against the published schema; do not add unverified ones.
 
+import re
 from collections.abc import Sequence
 
 RATE_LIMIT_QUERY = """
@@ -12,6 +13,31 @@ query RateLimit {
   }
 }
 """
+
+QUOTA_BLOCK = "rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }"
+
+# A named operation, with or without a variable list, up to the brace opening its
+# top-level selection set. Every query here is named; an anonymous one is left
+# alone rather than guessed at.
+_OPERATION_HEADER = re.compile(r"query\s+\w+\s*(?:\([^)]*\))?\s*\{")
+
+
+def with_rate_limit(query: str) -> str:
+    """The same query, selecting the quota block first, so it reports its own cost.
+
+    `rateLimitData` is a top-level `Query` field, and asking for it alongside the
+    real work is free: two queries cost 3.01 points with the block and 3.01
+    without, measured 2026-09-08. A query that already selects it, or whose shape
+    this does not recognise, goes out unchanged — instrumentation must never be
+    the reason a query stops working.
+    """
+    if "rateLimitData" in query:
+        return query
+    header = _OPERATION_HEADER.search(query)
+    if header is None:
+        return query
+    return f"{query[: header.end()]}\n  {QUOTA_BLOCK}{query[header.end() :]}"
+
 
 # Argument-free and game-wide, so one cached response serves every run.
 AFFIXES_QUERY = """
