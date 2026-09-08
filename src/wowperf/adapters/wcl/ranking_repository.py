@@ -23,10 +23,11 @@ class WclRankingRepository:
         self._cache = cache
 
     def _query(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
-        return self._cache.get_or_fetch(
+        payload, _ = self._cache.get_or_fetch(
             cache_key(query, variables),
             lambda: self._client.execute(query, variables),
         )
+        return payload
 
     @staticmethod
     def _levels_to_try(keystone_level: int) -> Sequence[int]:

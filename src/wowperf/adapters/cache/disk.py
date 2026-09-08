@@ -55,11 +55,14 @@ class DiskCache:
                 # first, which is the outcome wanted anyway.
                 continue
 
-    def get_or_fetch(self, key: str, fetch: Callable[[], dict[str, Any]]) -> dict[str, Any]:
+    def get_or_fetch(
+        self, key: str, fetch: Callable[[], dict[str, Any]]
+    ) -> tuple[dict[str, Any], bool]:
+        """The payload for `key`, and whether it came from disk rather than a fresh fetch."""
         path = self._directory / f"{key}.json"
         try:
             if path.exists() and not self._expired(path):
-                return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+                return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8"))), True
         except OSError:
             # Another process sharing the directory may have removed the entry
             # between the check and the stat or read that follows it. A vanished
@@ -68,7 +71,7 @@ class DiskCache:
 
         value = fetch()
         self._write_atomically(path, json.dumps(value))
-        return value
+        return value, False
 
     def _write_atomically(self, path: Path, text: str) -> None:
         """Write through a temporary neighbour and rename it into place.

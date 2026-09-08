@@ -27,8 +27,8 @@ def test_a_second_call_is_served_from_disk_without_fetching(tmp_path: Path) -> N
         return {"value": 42}
 
     cache = DiskCache(tmp_path)
-    assert cache.get_or_fetch("k", fetch) == {"value": 42}
-    assert cache.get_or_fetch("k", fetch) == {"value": 42}
+    assert cache.get_or_fetch("k", fetch) == ({"value": 42}, False)
+    assert cache.get_or_fetch("k", fetch) == ({"value": 42}, True)
     assert len(calls) == 1
 
 
@@ -38,7 +38,7 @@ def test_a_fresh_cache_over_the_same_directory_still_hits(tmp_path: Path) -> Non
     def fail() -> dict[str, object]:
         raise AssertionError("should have been served from disk")
 
-    assert DiskCache(tmp_path).get_or_fetch("k", fail) == {"value": 42}
+    assert DiskCache(tmp_path).get_or_fetch("k", fail) == ({"value": 42}, True)
 
 
 def test_a_written_entry_is_complete_and_leaves_no_temporary_behind(tmp_path: Path) -> None:
@@ -57,14 +57,14 @@ def test_an_entry_older_than_max_age_is_fetched_again(tmp_path: Path) -> None:
         return {"at": clock[0]}
 
     cache = DiskCache(tmp_path, max_age_seconds=60, now=lambda: clock[0])
-    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    assert cache.get_or_fetch("k", fetch) == ({"at": 1_000.0}, False)
     clock[0] = 1_030.0
-    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    assert cache.get_or_fetch("k", fetch) == ({"at": 1_000.0}, True)
     clock[0] = 1_060.0
-    assert cache.get_or_fetch("k", fetch) == {"at": 1_000.0}
+    assert cache.get_or_fetch("k", fetch) == ({"at": 1_000.0}, True)
     assert len(calls) == 1
     clock[0] = 1_061.0
-    assert cache.get_or_fetch("k", fetch) == {"at": 1_061.0}
+    assert cache.get_or_fetch("k", fetch) == ({"at": 1_061.0}, False)
     assert len(calls) == 2
 
 
@@ -113,10 +113,10 @@ def test_get_or_fetch_refetches_an_entry_removed_between_exists_and_stat(tmp_pat
         return 1_000.0
 
     cache = DiskCache(tmp_path, max_age_seconds=60, now=now_and_remove_once)
-    assert cache.get_or_fetch("k", lambda: {"v": 1}) == {"v": 1}
+    assert cache.get_or_fetch("k", lambda: {"v": 1}) == ({"v": 1}, False)
 
     remove_next[0] = True
-    assert cache.get_or_fetch("k", lambda: {"v": 2}) == {"v": 2}
+    assert cache.get_or_fetch("k", lambda: {"v": 2}) == ({"v": 2}, False)
 
 
 def test_a_cache_without_a_max_age_keeps_everything(tmp_path: Path) -> None:
@@ -126,7 +126,7 @@ def test_a_cache_without_a_max_age_keeps_everything(tmp_path: Path) -> None:
     clock[0] = 10**9
     assert DiskCache(tmp_path, now=lambda: clock[0]).get_or_fetch(
         "k", lambda: {"v": 2}
-    ) == {"v": 1}
+    ) == ({"v": 1}, True)
 
 
 def test_an_interrupted_write_never_becomes_a_cache_entry(tmp_path: Path) -> None:
