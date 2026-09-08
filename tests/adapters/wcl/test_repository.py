@@ -277,6 +277,38 @@ def test_load_fetches_a_healing_window_per_death_and_the_fight_s_resurrections(
     assert [(r.caster_id, r.actor_id) for r in loaded.resurrections] == [(7, 693)]
 
 
+def test_a_reference_fetches_only_the_streams_the_comparison_reads(tmp_path: Path) -> None:
+    """A reference run is read for five fields, so it pays for five fields.
+
+    Damage taken, enemy deaths, healing and resurrections exist for our own
+    analysers and death cards. No comparison consults them on a reference, and
+    each one is a query and a slice of cache spent on nothing.
+    """
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load_reference("abc123", None)
+
+    assert sorted(set(calls)) == [
+        "Abilities", "Affixes", "Casts", "Deaths", "EnemyCasts", "Fights", "Interrupts", "Talents"
+    ]
+
+
+def test_a_reference_carries_the_comparison_streams_and_leaves_the_rest_empty(
+    tmp_path: Path,
+) -> None:
+    loaded = recording_repository([], tmp_path).load_reference("abc123", None)
+
+    assert [cast.ability_id for cast in loaded.casts] == [100]
+    assert [death.actor_id for death in loaded.deaths] == [693]
+    assert [row.ability_id for row in loaded.enemy_cast_rows] == [200]
+    assert [row.interrupted_ability_id for row in loaded.interrupts] == [400]
+    assert loaded.damage_taken == ()
+    assert loaded.enemy_deaths == ()
+    assert loaded.healing == ()
+    assert loaded.resurrections == ()
+
+
 def test_load_reads_health_samples_off_the_casts(tmp_path: Path) -> None:
     loaded = recording_repository([], tmp_path).load("abc123", None)
     assert [(s.hit_points, s.max_hit_points) for s in loaded.health_samples] == [(61200, 99000)]

@@ -711,6 +711,26 @@ def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
     assert any(f["id"].startswith("compare.") for f in payload["findings"])
 
 
+def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: Path) -> None:
+    """Our own run loads every stream. A reference loads only the five that are read.
+
+    Counted at the boundary rather than in the repository, because the saving is
+    only real if the command actually asks for references the trimmed way.
+    """
+    calls: list[str] = []
+
+    result = run_analyze(tmp_path, "--player", "Uglymage", calls=calls)
+
+    assert result.exit_code == 0, result.output
+    # More than one Casts proves references were loaded at all, so the counts
+    # of one below are a trimmed reference and not an absent one.
+    assert calls.count("Casts") > 1
+    assert calls.count("DamageTaken") == 1
+    assert calls.count("EnemyDeaths") == 1
+    assert calls.count("Resurrects") == 1
+    assert calls.count("Actors") == 1
+
+
 def test_no_compare_skips_both_references(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, "--no-compare")
 

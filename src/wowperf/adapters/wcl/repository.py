@@ -209,6 +209,24 @@ class WclRunRepository:
         }
 
     def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
+        """Every stream the analysers and the death cards read."""
+        return self._load(report_code, fight_id, full=True)
+
+    def load_reference(self, report_code: str, fight_id: int | None) -> LoadedRun:
+        """Only the streams a comparison reads off a reference run.
+
+        A reference is consulted for its run, its casts, its deaths, its enemy
+        casts and its interrupts. Damage taken, enemy deaths, healing and
+        resurrections exist for our own analysers and death cards, and fetching
+        them for a reference spends points and cache on data no finding reads.
+
+        The fields left behind are empty tuples, which read the same as "this run
+        had none". Nothing consults them today; a comparison that started to
+        would be reading absence as fact, and must call `load` instead.
+        """
+        return self._load(report_code, fight_id, full=False)
+
+    def _load(self, report_code: str, fight_id: int | None, *, full: bool) -> LoadedRun:
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
         run = build_run(report, fight, self._talents(report_code, fight))
@@ -235,17 +253,28 @@ class WclRunRepository:
         death_events = fetch_all_events(self._query, DEATHS_QUERY, event_variables)
         enemy_cast_events = fetch_all_events(self._query, ENEMY_CASTS_QUERY, event_variables)
         interrupt_events = fetch_all_events(self._query, INTERRUPTS_QUERY, event_variables)
-        enemy_death_events = fetch_all_events(self._query, ENEMY_DEATHS_QUERY, event_variables)
-        damage_taken_events = fetch_all_events(self._query, DAMAGE_TAKEN_QUERY, event_variables)
-        resurrections = build_resurrections(
-            fetch_all_events(self._query, RESURRECTS_QUERY, event_variables), ability_names
-        )
-
         casts = build_casts(cast_events, run, ability_names)
         deaths = build_deaths(death_events, run, casts, ability_names)
         player_names = {player.actor_id: player.name for player in run.players}
         enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run, ability_names)
         interrupts = build_interrupts(interrupt_events, run, player_names)
+
+        if not full:
+            return LoadedRun(
+                run=run,
+                casts=casts,
+                deaths=deaths,
+                enemy_cast_rows=enemy_cast_rows,
+                interrupts=interrupts,
+                # Free: the readings ride on the casts already fetched above.
+                health_samples=build_health_samples(cast_events),
+            )
+
+        enemy_death_events = fetch_all_events(self._query, ENEMY_DEATHS_QUERY, event_variables)
+        damage_taken_events = fetch_all_events(self._query, DAMAGE_TAKEN_QUERY, event_variables)
+        resurrections = build_resurrections(
+            fetch_all_events(self._query, RESURRECTS_QUERY, event_variables), ability_names
+        )
         actor_game_ids = self._actor_game_ids(report_code)
         enemy_deaths = build_enemy_deaths(
             enemy_death_events, run, actor_game_ids, dict(run.npc_count_map)

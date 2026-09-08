@@ -190,7 +190,7 @@ def _references(
         if row.report_code == run.report_code and row.fight_id == run.fight_id:
             continue
         try:
-            loaded = runs.load(row.report_code, row.fight_id)
+            loaded = runs.load_reference(row.report_code, row.fight_id)
         except (IngestError, WclError):
             continue
         speed = SpeedReference(row=row, loaded=loaded)
@@ -203,7 +203,7 @@ def _references(
         if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
             continue
         try:
-            loaded = runs.load(parse_row.report_code, parse_row.fight_id)
+            loaded = runs.load_reference(parse_row.report_code, parse_row.fight_id)
         except (IngestError, WclError):
             continue
         parse = ParseReference(row=parse_row, loaded=loaded)
