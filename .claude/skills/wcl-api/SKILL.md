@@ -102,9 +102,64 @@ One approximation and one measurement:
   leaderboards, and an aura fetch for every parse member — spent **83.39 points of 3600**
   (2026-09-08). Conditions: one cold run, one dungeon, one keystone level; all ten candidates
   loaded, none excluded and none retried. `docs/plans/2026-09-08-sampling-design.md` projects ~111
-  for that shape, so the reading came in about a quarter under. Nothing explains the gap: per-query
-  cost was never instrumented, and one reading is not a measurement of a trend. Budget against 111
-  and treat 83 as the only figure anyone has actually observed.
+  for that shape, so the reading came in about a quarter under.
+
+## Every query reports its own cost
+
+Measured 2026-09-08. `rateLimitData` is a top-level `Query` field, so it can be selected
+alongside the real work in one round trip, and `with_rate_limit` in
+`src/wowperf/adapters/wcl/queries.py` now splices it into every named operation the project
+sends.
+
+**The block is free.** Two real queries cost **3.01 points with it and 3.01 without** — a plain
+`Fights` at 2.01 and a plain `Affixes` at 1.00, then the same pair aliased. Instrumenting every
+query therefore costs nothing, which is the only reason to do it at all.
+
+**A reading reports the spend before its own query is billed.** So a query's cost is the *next*
+reading minus its own, and the last query of a sequence stays unpriced until something follows
+it. A probe's whole sequence reconciled to the hundredth under that reading and under no other:
+an aliased `Fights` reported 8.01, exactly what the queries before it had left behind.
+Attributing a reading to the query that carried it would shift every figure onto its neighbour
+and still look entirely plausible.
+
+This holds only while requests are sequential. They are — the loaders are plain loops — but
+nothing enforces it, and concurrent fetches would interleave the readings and misattribute every
+cost after the first.
+
+**A full sampled compared analysis, cold cache, same report and fight, 2026-09-08: 84.23 points
+of 3600**, composed as the command now prints it.
+
+| Operation | Calls | Points | Mean |
+| --- | --- | --- | --- |
+| `Fights` | 7 | 14.07 | 2.01 |
+| `Talents` | 6 | 12.30 | 2.05 |
+| `AuraTable` | 6 | 12.00 | 2.00 |
+| `Abilities` | 7 | 7.00 | 1.00 |
+| `Casts` | 7 | 7.00 | 1.00 |
+| `Deaths` | 6 | 6.39 | 1.07 |
+| `EnemyCasts` | 6 | 6.00 | 1.00 |
+| `Interrupts` | 6 | 6.00 | 1.00 |
+| `Healing` | 4 | 4.00 | 1.00 |
+| `Affixes` | 2 | 2.00 | 1.00 |
+| `DamageTaken` | 1 | 1.45 | 1.45 |
+| `CharacterRankings` | 1 | 1.01 | 1.01 |
+| `FightRankings` | 1 | 1.01 | 1.01 |
+| `Actors`, `EnemyDeaths`, `Resurrects`, `RateLimit` | 1 each | 1.00 each | 1.00 |
+
+The mean is the column that lies: only the totals were measured. `Deaths` at 6.39 over six calls
+proves per-call cost varies within an operation, so read a mean as a rate and not as a price.
+The closing quota read is missing from the total, because nothing followed it to price it.
+
+**Most queries cost 1.00 and nothing costs much above 2.** The 83.39 reading and this 84.23 one
+describe the same shape a day apart, so about a point of run-to-run variation is normal. What
+this table adds is the composition, not the total: the ~111 the sampling design projects can now
+be checked against real per-query prices rather than argued about.
+
+**A contradiction for a human to settle.** `CASTS_QUERY` always sends `includeResources: true`,
+and all seven cast pages here cost 7.00 points together — 1.00 each, since any variation would
+have to cancel exactly. The 2026-09-07 note below records 2.59 points for two such pages, about
+1.30 each, against 2.00 for the same window without the flag. Both readings cannot be right.
+Nothing in this project depends on which is, so it is recorded rather than resolved.
 
 ## Mythic+ in the schema
 
@@ -230,7 +285,9 @@ net of the `rateLimitData` query used to read it, which costs 1.00 point of its 
 
 - **Casts with `includeResources: true`, whole fight, `hostilityType: Friendlies`:** 2.59 points
   over 2 pages and 10716 rows, against 2.00 points for the same window without it. The flag costs
-  about 0.30 a page. 9259 of the rows carry both `hitPoints` and `maxHitPoints`; 1457 carry
+  about 0.30 a page. **Disputed** — per-query instrumentation priced seven such pages at 1.00 each
+  on 2026-09-08; see "Every query reports its own cost" above. 9259 of the rows carry both
+  `hitPoints` and `maxHitPoints`; 1457 carry
   neither. A carrying row also holds `absorb`, `itemLevel`, `classResources` and the player's
   secondary stats.
 - **`dataType: Healing` scoped by `targetID`, one ten-second window:** 1.00 point, 7 to 46 rows
