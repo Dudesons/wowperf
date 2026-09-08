@@ -120,16 +120,18 @@ def build_reference_repositories(
 def _quota_sentence(before: RateLimit, after: RateLimit) -> str:
     """State the cost of a command's own queries, quota read before and after.
 
-    Point cost per query is undocumented, so both commands read the quota
-    before and after their work. The reading itself is a query too, so the
-    difference also counts the cost of these two quota reads, not only the
-    work between them.
+    Point cost per query is undocumented, so both commands read the quota before
+    and after their work. A reading reports the spend before its own query is
+    billed, measured 2026-09-08, so the difference covers the opening read and
+    everything after it, but never the closing read's own cost. `remaining` is
+    optimistic by that same unbilled amount; the figure is the API's own and is
+    not adjusted, because the API does not say what the read cost.
     """
     spent = after.points_spent_this_hour - before.points_spent_this_hour
     remaining = after.limit_per_hour - after.points_spent_this_hour
     return (
-        f"Rate limit: {spent:.2f} points spent, including the cost of these two "
-        f"quota reads themselves; {remaining:.2f} of {after.limit_per_hour} remain this hour."
+        f"Rate limit: {spent:.2f} points spent, the opening quota read included and the "
+        f"closing one not; {remaining:.2f} of {after.limit_per_hour} remain this hour."
     )
 
 

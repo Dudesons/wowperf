@@ -193,7 +193,7 @@ def test_fetch_prints_the_run_on_stdout_and_the_quota_on_stderr(
 
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["dungeon_name"] == "Murder Row"
-    assert "12.50 points spent, including the cost of these two quota reads" in result.stderr
+    assert "12.50 points spent, the opening quota read included" in result.stderr
     assert "3487.50 of 3600 remain" in result.stderr
 
 
@@ -644,7 +644,7 @@ def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
 def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, "--no-compare")
     assert result.exit_code == 0, result.output
-    assert "points spent, including the cost of these two quota reads" in result.stderr
+    assert "points spent, the opening quota read included and the closing one" in result.stderr
     assert "of 3600 remain this hour" in result.stderr
 
 
@@ -1964,3 +1964,25 @@ def test_fetch_prints_where_the_points_went(wired_cli: None, tmp_path: Path) -> 
     assert "Where they went:" in normalised
     assert "Affixes 1 call 10.50 points" in normalised
     assert "RateLimit ran last" in normalised
+
+
+def test_the_breakdown_accounts_for_exactly_the_points_the_sentence_reports(
+    wired_cli: None, tmp_path: Path
+) -> None:
+    """The two figures come from different arithmetic and must still agree.
+
+    The sentence subtracts one quota reading from another. The table sums a
+    difference per query. They match only if every point is attributed to
+    exactly one operation — and their agreement is what shows the sentence
+    counts the opening quota read but not the closing one, since the table
+    cannot price its own last query.
+    """
+    result = runner.invoke(app, ["fetch", "abc123", "--cache-dir", str(tmp_path / "cache")])
+    assert result.exit_code == 0, result.output
+
+    normalised = " ".join(result.stderr.split())
+    [spent] = re.findall(r"Rate limit: ([\d.]+) points spent", normalised)
+    tabled = [float(points) for points in re.findall(r"([\d.]+) points\b", normalised)[1:]]
+
+    assert tabled, "the table listed nothing, so this proves nothing"
+    assert round(sum(tabled), 2) == float(spent)
