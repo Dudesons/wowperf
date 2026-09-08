@@ -55,6 +55,7 @@ def a_timeline() -> Timeline:
                               kind="skipped", css_class="block-skipped"),
             ),
         ),
+        legend=build_module.COMPARED_TIMELINE_LEGEND,
         ticks=((46.0, "0:00"), (240.0, "10:00")),
         width=680.0,
         height=208.0,
@@ -166,6 +167,20 @@ def test_the_timeline_legend_names_all_three_marks() -> None:
     assert "boss pull" in html
     assert "we pulled" in html and "reference run skipped" in html
     assert "reference run pulled" in html and "we skipped" in html
+
+
+def test_a_lone_track_renders_its_own_legend_and_not_the_compared_one() -> None:
+    """The legend is written in build.py, so the template prints whichever one it
+    was given: a page with no reference track must not carry a legend explaining
+    marks no block on it wears."""
+    lone = a_timeline().model_copy(
+        update={"theirs": None, "legend": build_module.LONE_TIMELINE_LEGEND}
+    )
+
+    html = render(a_report(timeline=lone))
+
+    assert "no reference in the sample ran our keystone level" in html
+    assert "reference run skipped" not in html
 
 
 def test_changing_timeline_height_moves_the_tick_geometry_together(

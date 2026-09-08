@@ -159,6 +159,36 @@ def test_provenance_links_each_reference_run_when_its_url_is_present() -> None:
     assert 'href="https://www.warcraftlogs.com/reports/parse1?fight=2"' in html
 
 
+def test_provenance_says_which_references_were_reused_from_cache() -> None:
+    """The reference cache is shared across analyses, so a reference may not have
+    been fetched for this report at all. A page that discloses every candidate it
+    weighed must disclose that too, or the reuse stays invisible."""
+    html = render(
+        a_report(
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                references=(
+                    ReferenceRecord(
+                        report_code="cached", fight_id=1, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/cached?fight=1", axis="speed",
+                        from_cache=True,
+                    ),
+                    ReferenceRecord(
+                        report_code="fresh", fight_id=2, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/fresh?fight=2", axis="speed",
+                    ),
+                ),
+            )
+        )
+    )
+    cached, fresh = html.split("reports/cached?fight=1")[1].split("reports/fresh?fight=2")[:2]
+
+    assert "reused from cache" in cached
+    assert "reused from cache" not in fresh
+
+
 def test_provenance_states_why_a_candidate_was_not_used() -> None:
     html = render(
         a_report(

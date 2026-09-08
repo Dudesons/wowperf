@@ -143,7 +143,6 @@ def test_a_reference_record_defaults_to_loaded_and_used() -> None:
     assert record.loaded is True
     assert record.reason == ""
     assert record.from_cache is False
-    assert record.fetched_at == ""
 
 
 def test_a_reference_record_has_no_field_for_a_name_a_duration_or_a_death_count() -> None:
@@ -152,7 +151,7 @@ def test_a_reference_record_has_no_field_for_a_name_a_duration_or_a_death_count(
     # character name, a duration, or a death count, because none exists to fill.
     assert set(ReferenceRecord.model_fields) == {
         "report_code", "fight_id", "keystone_level", "url", "axis", "loaded", "reason",
-        "from_cache", "fetched_at",
+        "from_cache",
     }
 
 

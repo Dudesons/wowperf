@@ -21,8 +21,6 @@ from wowperf.cli import (
     _auras,
     _resolve_player,
     _samples,
-    _top_parse_reference,
-    _top_speed_reference,
     build_reference_repositories,
     build_repository,
 )
@@ -82,9 +80,6 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
                 update={"members": (top, *parse_sample.members[1:])}
             )
 
-    speed = _top_speed_reference(speed_sample)
-    parse = _top_parse_reference(parse_sample)
-
     findings += compare(
         ours=loaded,
         our_player=subject,
@@ -100,11 +95,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     assert findings, "The analysis produced no findings at all"
 
     report = build_report(
-        loaded, findings, speed, parse, subject, None, "2026-09-05 00:00", defensives,
+        loaded, findings, speed_sample, parse_sample, subject, None, "2026-09-05 00:00",
+        defensives,
         load_consumables(),
         externals=load_externals(),
         self_resurrections=load_self_resurrections(),
-        speed_sample=speed_sample,
         reference_records=reference_records,
     )
     html = render(report)
@@ -155,7 +150,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # player's own card, never a namesake's card. The code matches by actor id,
     # not by name, to avoid routing comparison rows to the wrong player when
     # names collide.
-    if parse is not None:
+    if parse_sample.members:
         comparison_ids = {
             finding.id
             for finding in findings

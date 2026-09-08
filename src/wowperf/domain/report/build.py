@@ -22,8 +22,7 @@ from wowperf.domain.analysis.recap import (
     recap_timeline,
     return_of,
 )
-from wowperf.domain.comparison.reference import ParseReference, SpeedReference
-from wowperf.domain.comparison.sample import SpeedSample
+from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -111,6 +110,24 @@ OURS_BASELINE_Y = 58.0
 THEIRS_BASELINE_Y = 132.0
 """The y at which the reference track's blocks and caption sit."""
 
+COMPARED_TIMELINE_LEGEND = (
+    "A thin outline marks a boss pull. A heavier outline marks a pack we pulled that the "
+    "reference run skipped. A dashed, unfilled block is a pack the reference run pulled that "
+    "we skipped."
+)
+"""What the marks mean when a reference track is drawn beside ours."""
+
+LONE_TIMELINE_LEGEND = (
+    "A thin outline marks a boss pull. Only this run is drawn: no reference in the sample ran "
+    "our keystone level, and a pull lasts a different length of time at every level, so there "
+    "is nothing here to compare against."
+)
+"""Why the second track is missing, said where a reader would look for it.
+
+The marks that describe a reference — the heavier and dashed outlines — are
+left out rather than explained, because no block on the page carries one.
+"""
+
 
 def badge_for(confidence: Confidence) -> Badge:
     """A word and a palette token. The word is what a reader without colour sees."""
@@ -131,6 +148,15 @@ def format_seconds(seconds: float | None) -> str | None:
 
 def _finding_by_id(findings: Sequence[Finding], finding_id: str) -> Finding | None:
     return next((finding for finding in findings if finding.id == finding_id), None)
+
+
+def _sampled(sample: SpeedSample | ParseSample | None) -> bool:
+    """Whether a comparison actually had a reference to run against.
+
+    No sample at all (`--no-compare`) and a sample the leaderboard could not
+    fill are the same thing to every section that gates on one.
+    """
+    return sample is not None and bool(sample.members)
 
 
 def _section_for(findings: Sequence[Finding], unavailable_id: str, present: bool) -> Section:
@@ -241,28 +267,52 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
     per-pull table compares durations, and durations are rarely where a
     Mythic+ run loses its time.
 
-    Drawn from `sample.duration_eligible`'s best-aligned member — highest
-    `Alignment.matched_share`, compared pairwise and never averaged — and from
-    no one else: a member outside that subset sits at a different keystone
-    level, where `compare.duration` already refuses to print a number, and a
-    picture of its pull lengths would draw exactly what that finding withheld.
-    No track is drawn when the subset is empty. The member's `Alignment` was
-    computed once, when the sample was built, and is used as-is here rather
-    than recomputed.
+    The reference track is drawn from `sample.duration_eligible`'s best-aligned
+    member — highest `Alignment.matched_share`, compared pairwise and never
+    averaged — and from no one else: a member outside that subset sits at a
+    different keystone level, where `compare.duration` already refuses to print
+    a number, and a picture of its pull lengths would draw exactly what that
+    finding withheld. The member's `Alignment` was computed once, when the
+    sample was built, and is used as-is here rather than recomputed.
+
+    Our own track is drawn either way. Its blocks and the travel between them
+    are measured on our own log and mean the same thing whether or not anyone
+    else ran this keystone level; withholding them because no reference was
+    comparable would hide a fact to protect a comparison that was never needed
+    to state it. `legend` then says why the second track is missing.
     """
-    if section.state is SectionState.WITHHELD or sample is None or not sample.duration_eligible:
+    if section.state is SectionState.WITHHELD:
         return Timeline(section=section, width=TIMELINE_WIDTH, height=TIMELINE_HEIGHT)
 
-    member = max(sample.duration_eligible, key=lambda candidate: candidate.alignment.matched_share)
-    theirs = member.run
+    eligible = sample.duration_eligible if sample is not None else ()
+    member = (
+        max(eligible, key=lambda candidate: candidate.alignment.matched_share)
+        if eligible
+        else None
+    )
 
     our_seconds = _run_seconds(ours)
-    their_seconds = _run_seconds(theirs)
+    their_seconds = _run_seconds(member.run) if member is not None else 0.0
     longest = max(our_seconds, their_seconds)
     scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
 
-    our_kinds = {index: "extra" for index in member.alignment.only_ours}
-    their_kinds = {index: "skipped" for index in member.alignment.only_theirs}
+    our_kinds = {index: "extra" for index in member.alignment.only_ours} if member else {}
+
+    theirs_track = None
+    if member is not None and sample is not None:
+        theirs_track = TimelineTrack(
+            caption=_timeline_caption(
+                "Reference", their_seconds, suffix=f"one of {len(sample.members)} fast runs"
+            ),
+            baseline_y=THEIRS_BASELINE_Y,
+            blocks=_blocks(
+                member.run,
+                {index: "skipped" for index in member.alignment.only_theirs},
+                scale,
+                _run_start_ms(member.run),
+                track_class="block-theirs",
+            ),
+        )
 
     return Timeline(
         section=section,
@@ -271,19 +321,8 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
             baseline_y=OURS_BASELINE_Y,
             blocks=_blocks(ours, our_kinds, scale, _run_start_ms(ours)),
         ),
-        theirs=TimelineTrack(
-            caption=_timeline_caption(
-                "Reference", their_seconds, suffix=f"one of {len(sample.members)} fast runs"
-            ),
-            baseline_y=THEIRS_BASELINE_Y,
-            blocks=_blocks(
-                theirs,
-                their_kinds,
-                scale,
-                _run_start_ms(theirs),
-                track_class="block-theirs",
-            ),
-        ),
+        theirs=theirs_track,
+        legend=COMPARED_TIMELINE_LEGEND if theirs_track else LONE_TIMELINE_LEGEND,
         ticks=_ticks(longest, scale),
         width=TIMELINE_WIDTH,
         height=TIMELINE_HEIGHT,
@@ -589,7 +628,7 @@ def build_summary_pointers(
 def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
-    parse: ParseReference | None,
+    parse: ParseSample | None,
     subject: Player,
     titles_by_id: dict[str, str],
 ) -> tuple[PlayerCard, ...]:
@@ -604,12 +643,14 @@ def build_players(
     `name` is the roster's disambiguated display name, not the raw one: two
     players who share a display name must never render as two identical-
     looking cards. `subject` is the player being analysed, from our own
-    roster — never `parse.row.character_name`, which names the reference
-    run's top parser, a different character in a different log. Matching by
-    `actor_id` rather than name also keeps two players who share a display
-    name from both receiving the comparison rows.
+    roster — never a reference's own top parser, a different character in a
+    different log. Matching by `actor_id` rather than name also keeps two
+    players who share a display name from both receiving the comparison rows.
+
+    `parse` decides one thing here and reads nothing off its members: whether
+    a parse comparison ran at all.
     """
-    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
+    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, _sampled(parse))
     names_by_actor = display_names(loaded.run)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
@@ -742,8 +783,8 @@ def build_observations(
 def build_report(
     loaded: LoadedRun,
     findings: Sequence[Finding],
-    speed: SpeedReference | None,
-    parse: ParseReference | None,
+    speed: SpeedSample | None,
+    parse: ParseSample | None,
     subject: Player,
     narrative: str | None,
     fetched_at: str,
@@ -751,7 +792,6 @@ def build_report(
     consumables: Consumables,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
-    speed_sample: SpeedSample | None = None,
     reference_records: tuple[ReferenceRecord, ...] = (),
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
@@ -765,24 +805,27 @@ def build_report(
     too, loaded by the same adapter; they default to empty so a caller without
     them still builds every other section.
 
-    `speed` alone still decides whether a speed comparison ran at all — the
-    timeline and route sections stay gated on it. `speed_sample` is the full
-    sample the timeline draws its best-aligned duration-eligible member from;
-    a caller with no sample still gets a report, just with an empty timeline.
+    `speed` and `parse` are the samples themselves, not a pick from them: the
+    timeline draws its best-aligned duration-eligible member out of `speed`,
+    and both gate their sections on whether the leaderboard filled them at all.
+    A single reference reconstructed for this signature would have to carry
+    empty streams, and a reader of `speed.members[0].deaths` would then be told
+    a fast run died nobody with no complaint from the type checker.
     `reference_records` is every candidate `_samples` weighed, loaded or not —
     carried onto the provenance unchanged, a link and never a figure.
     """
-    timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
+    compared_speed = _sampled(speed)
+    timeline_section = _section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
 
     withheld: list[str] = []
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 
-    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, parse is not None)
+    comparison_section = _section_for(findings, PARSE_UNAVAILABLE_ID, _sampled(parse))
     if comparison_section.state is SectionState.WITHHELD:
         withheld.append(f"Spell and talent comparison: {comparison_section.reason}")
 
-    route_section = _section_for(findings, SPEED_UNAVAILABLE_ID, speed is not None)
+    route_section = _section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
     if route_section.state is SectionState.WITHHELD:
         withheld.append(f"Route and tempo: {route_section.reason}")
 
@@ -807,7 +850,7 @@ def build_report(
         narrative=narrative,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
-        timeline=build_timeline(loaded.run, speed_sample, timeline_section),
+        timeline=build_timeline(loaded.run, speed, timeline_section),
         route=route_section,
         route_rows=placed_rows["route_rows"],
         deaths=deaths,

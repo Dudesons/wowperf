@@ -79,6 +79,10 @@ class Timeline(Frozen):
     section: Section
     ours: TimelineTrack | None = None
     theirs: TimelineTrack | None = None
+    # What the marks on the blocks mean, or why only one track is drawn. Written
+    # here rather than in the template because it depends on whether a reference
+    # was drawable, which is a judgement the renderer must not make.
+    legend: str = ""
     ticks: tuple[tuple[float, str], ...] = ()
     width: float = 0.0
     height: float = 0.0
@@ -206,8 +210,10 @@ class ReferenceRecord(Frozen):
     axis: str
     loaded: bool = True
     reason: str = ""
+    # Every query this reference needed was already on disk, so nothing was
+    # fetched for it. The reference cache is shared across analyses, and this
+    # is where a report that discloses every candidate discloses that too.
     from_cache: bool = False
-    fetched_at: str = ""
 
 
 class Provenance(Frozen):

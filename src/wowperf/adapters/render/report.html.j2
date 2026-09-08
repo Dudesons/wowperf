@@ -163,9 +163,7 @@ never be summed.</p>
 <p class="withheld">{{ report.timeline.section.reason }}</p>
 {% else %}
 <p class="sub">Blocks are pulls. The space between them is travel.</p>
-<p class="legend">A thin outline marks a boss pull. A heavier outline marks a pack we pulled
-that the reference run skipped. A dashed, unfilled block is a pack the reference run pulled
-that we skipped.</p>
+<p class="legend">{{ report.timeline.legend }}</p>
 <svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}">
   <title>Both runs on one elapsed-time axis</title>
   {% for x, label in report.timeline.ticks %}
@@ -357,7 +355,7 @@ never be summed.</p>
 fetched {{ report.provenance.fetched_at }}.</p>
 {% for record in report.provenance.references %}
 <p class="sub"><a href="{{ record.url }}">{{ record.axis|capitalize }} candidate, +{{ record.keystone_level }}
-(report {{ record.report_code }}, fight {{ record.fight_id }})</a>{% if record.reason %} <span class="withheld">— not used: {{ record.reason }}</span>{% endif %}</p>
+(report {{ record.report_code }}, fight {{ record.fight_id }})</a>{% if record.from_cache %} <span class="legend">— reused from cache, not re-fetched</span>{% endif %}{% if record.reason %} <span class="withheld">— not used: {{ record.reason }}</span>{% endif %}</p>
 {% endfor %}
 {% for line in report.provenance.withheld %}
 <p class="withheld">{{ line }}</p>

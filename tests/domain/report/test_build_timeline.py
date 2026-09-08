@@ -14,7 +14,14 @@ from wowperf.domain.comparison.alignment import Alignment, align_pulls
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import SpeedMember, SpeedSample
 from wowperf.domain.model import Run
-from wowperf.domain.report.build import TRACK_X0, TRACK_X1, build_report, build_timeline
+from wowperf.domain.report.build import (
+    COMPARED_TIMELINE_LEGEND,
+    LONE_TIMELINE_LEGEND,
+    TRACK_X0,
+    TRACK_X1,
+    build_report,
+    build_timeline,
+)
 from wowperf.domain.report.model import Section, SectionState
 
 PRESENT = Section(state=SectionState.PRESENT)
@@ -163,17 +170,46 @@ def test_without_a_speed_reference_build_report_leaves_the_tracks_empty() -> Non
     assert report.timeline.ours is None
 
 
-def test_the_timeline_is_withheld_when_no_member_shares_our_keystone_level() -> None:
-    # A section that is otherwise PRESENT (some speed reference was fetched) still
-    # withholds the picture when nothing in the sample is duration-eligible: the
-    # `compare.duration` finding already refuses to print a number for a keystone
-    # gap, and drawing pull lengths anyway would contradict it.
+def test_no_reference_track_is_drawn_when_no_member_shares_our_keystone_level() -> None:
+    # `compare.duration` already refuses to print a number across a keystone gap,
+    # and drawing that member's pull lengths anyway would contradict it. Our own
+    # track survives: it is measured on our own log and says the same thing
+    # whether or not anyone comparable ran the dungeon.
     ours = a_run(pulls=(a_pull(0, 0, 60_000),))
     theirs = a_run(pulls=(a_pull(0, 0, 60_000),))
     sample = a_sample(a_member(ours, theirs, level=15))
     timeline = build_timeline(ours, sample, PRESENT)
     assert timeline.theirs is None
-    assert timeline.ours is None
+    assert timeline.ours is not None
+    assert timeline.ours.blocks
+
+
+def test_a_lone_track_says_why_there_is_nothing_to_compare_it_against() -> None:
+    # A PRESENT section with no reference track once drew a heading, a legend
+    # describing reference blocks, and an empty box. The legend now states the
+    # keystone-level reason instead, and never describes a mark no block wears.
+    ours = a_run(pulls=(a_pull(0, 0, 60_000),))
+    theirs = a_run(pulls=(a_pull(0, 0, 60_000),))
+    sample = a_sample(a_member(ours, theirs, level=15))
+
+    timeline = build_timeline(ours, sample, PRESENT)
+
+    assert timeline.legend == LONE_TIMELINE_LEGEND
+    assert "keystone level" in timeline.legend
+    assert "skipped" not in timeline.legend
+
+
+def test_a_compared_timeline_keeps_the_legend_that_describes_both_tracks() -> None:
+    ours = a_run(pulls=(a_pull(0, 0, 60_000),))
+    timeline = build_timeline(ours, a_sample(a_member(ours, ours)), PRESENT)
+
+    assert timeline.legend == COMPARED_TIMELINE_LEGEND
+
+
+def test_a_withheld_timeline_offers_no_legend_to_render() -> None:
+    timeline = build_timeline(a_run(), None, WITHHELD)
+
+    assert timeline.legend == ""
 
 
 def test_a_single_duration_eligible_member_among_off_level_ones_is_still_drawn() -> None:

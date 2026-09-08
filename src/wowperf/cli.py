@@ -33,9 +33,7 @@ from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.reference import (
     REPORT_URL,
     Comparability,
-    ParseReference,
     ParseRow,
-    SpeedReference,
     SpeedRow,
 )
 from wowperf.domain.comparison.sample import (
@@ -47,7 +45,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
@@ -333,30 +331,6 @@ def _samples(
     )
 
 
-def _top_speed_reference(sample: SpeedSample) -> SpeedReference | None:
-    """The sample's best-ranked member, in the single-reference shape the report
-    and the findings JSON still describe a speed comparison in.
-
-    Only `.row` and `.loaded.run` are ever read back off a `SpeedReference`
-    downstream, so the reconstructed `LoadedRun` need not restate the streams
-    already spent building the member — `build_timeline` reads the run for its
-    own pulls, nothing else.
-    """
-    if not sample.members:
-        return None
-    top = sample.members[0]
-    return SpeedReference(row=top.row, loaded=LoadedRun(run=top.run))
-
-
-def _top_parse_reference(sample: ParseSample) -> ParseReference | None:
-    """The sample's top parse, in the single-reference shape the report and the
-    findings JSON still describe a parse comparison in. See `_top_speed_reference`."""
-    top = sample.top
-    if top is None:
-        return None
-    return ParseReference(row=top.row, loaded=LoadedRun(run=top.run), auras=top.auras)
-
-
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
     """One player's auras, or None if they cannot be had.
 
@@ -496,8 +470,6 @@ def analyze(
         )
 
         subject = _resolve_player(loaded.run, player)
-        speed: SpeedReference | None = None
-        parse: ParseReference | None = None
         speed_sample: SpeedSample | None = None
         parse_sample: ParseSample | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
@@ -513,9 +485,6 @@ def analyze(
             parse_sample, our_auras = _fetch_parse_auras(
                 parse_sample, repository, references, loaded.run, subject
             )
-
-            speed = _top_speed_reference(speed_sample)
-            parse = _top_parse_reference(parse_sample)
 
             findings += compare(
                 ours=loaded,
@@ -540,7 +509,9 @@ def analyze(
         "in_time": run.keystone_bonus >= 1,
         "player": subject.name,
         "comparison": {
-            "compared": speed is not None or parse is not None,
+            "compared": bool(
+                (speed_sample and speed_sample.members) or (parse_sample and parse_sample.members)
+            ),
             "sample_size": {
                 "speed": len(speed_sample.members) if speed_sample else 0,
                 "parse": len(parse_sample.members) if parse_sample else 0,
@@ -576,8 +547,8 @@ def analyze(
             build_report(
                 loaded,
                 findings,
-                speed,
-                parse,
+                speed_sample,
+                parse_sample,
                 subject,
                 narrative_text,
                 datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -585,7 +556,6 @@ def analyze(
                 consumables,
                 externals=load_externals(),
                 self_resurrections=load_self_resurrections(),
-                speed_sample=speed_sample,
                 reference_records=reference_records,
             )
         ),

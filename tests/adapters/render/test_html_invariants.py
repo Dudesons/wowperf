@@ -19,7 +19,6 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
-from wowperf.domain.comparison.reference import SpeedReference, SpeedRow
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
@@ -147,28 +146,17 @@ def rich_loaded() -> LoadedRun:
     )
 
 
-def rich_speed_reference() -> SpeedReference:
+def rich_speed_sample() -> SpeedSample:
     # A reference run makes the timeline present (so it renders its SVG) and
-    # gives provenance a Warcraft Logs link to the reference report.
+    # gives provenance a Warcraft Logs link to the reference report. One member,
+    # sharing our keystone level, so `build_timeline` draws both tracks.
     reference_run = a_run(
         report_code="ref001",
         fight_id=7,
         pulls=(a_pull(0, 0, 55_000), a_pull(1, 105_000, 190_000, encounter_id=12825)),
     )
-    return SpeedReference(
-        row=SpeedRow(
-            report_code="ref001", fight_id=7, keystone_level=16, duration_ms=190_000, deaths=0
-        ),
-        loaded=LoadedRun(run=reference_run),
-    )
-
-
-def rich_speed_sample() -> SpeedSample:
-    # The sample build_timeline draws from: one member, sharing our keystone level,
-    # wrapping the same reference run `rich_speed_reference` already names.
-    reference = rich_speed_reference()
     return SpeedSample(
-        members=(a_member(rich_loaded().run, reference.loaded.run, level=16, code="ref001"),)
+        members=(a_member(rich_loaded().run, reference_run, level=16, code="ref001"),)
     )
 
 
@@ -202,13 +190,12 @@ def rich_findings() -> tuple[Finding, ...]:
 
 
 def rich_html() -> str:
-    # No ParseReference is passed, so the spell-and-talent comparison on each
+    # No parse sample is passed, so the spell-and-talent comparison on each
     # player card is withheld, giving the page a withheld section as well.
     return render(
         build_report(
-            rich_loaded(), rich_findings(), rich_speed_reference(), None, SUBJECT, None, FETCHED,
+            rich_loaded(), rich_findings(), rich_speed_sample(), None, SUBJECT, None, FETCHED,
             NO_DEFENSIVES, NO_CONSUMABLES,
-            speed_sample=rich_speed_sample(),
             reference_records=rich_reference_records(),
         )
     )

@@ -2,7 +2,8 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
-from wowperf.domain.comparison.reference import ParseReference, ParseRow
+from wowperf.domain.comparison.reference import Comparability, ParseRow
+from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -38,18 +39,25 @@ def a_loaded(players: tuple[Player, ...] | None = None) -> LoadedRun:
     )
 
 
-def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseReference:
-    return ParseReference(
-        row=ParseRow(
-            report_code="def456",
-            fight_id=12,
-            keystone_level=16,
-            duration_ms=1_000_000,
-            character_name=character_name,
-            class_name="DeathKnight",
-            spec="Blood",
-        ),
-        loaded=a_loaded(),
+def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseSample:
+    """A one-member parse sample. `build_players` reads nothing off a member;
+    it only asks whether the parse comparison ran at all."""
+    return ParseSample(
+        members=(
+            ParseMember(
+                row=ParseRow(
+                    report_code="def456",
+                    fight_id=12,
+                    keystone_level=16,
+                    duration_ms=1_000_000,
+                    character_name=character_name,
+                    class_name="DeathKnight",
+                    spec="Blood",
+                ),
+                run=a_loaded().run,
+                comparability=Comparability(our_level=16, their_level=16),
+            ),
+        )
     )
 
 

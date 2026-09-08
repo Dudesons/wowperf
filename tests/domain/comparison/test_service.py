@@ -3,13 +3,7 @@
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.comparison.reference import (
-    Comparability,
-    ParseReference,
-    ParseRow,
-    SpeedReference,
-    SpeedRow,
-)
+from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.events import CastEvent
@@ -89,8 +83,14 @@ def our_run() -> LoadedRun:
     return a_loaded((OURS,), (a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (9,), boss=True)))
 
 
-def a_speed_reference(level: int = 16) -> SpeedReference:
-    return SpeedReference(
+def a_speed_member(level: int = 16) -> SpeedMember:
+    """The member a one-member `SpeedSample` carries: one fast run at `level`."""
+    theirs = a_loaded(
+        (SPEED_TEAM_MEMBER,),
+        (a_pull(0, (1,)), a_pull(1, (9,), boss=True)),
+        level=level,
+    )
+    return SpeedMember(
         row=SpeedRow(
             report_code="71cv4MRdNCp8ZFjG",
             fight_id=28,
@@ -99,26 +99,12 @@ def a_speed_reference(level: int = 16) -> SpeedReference:
             deaths=0,
             medal="silver",
         ),
-        loaded=a_loaded(
-            (SPEED_TEAM_MEMBER,),
-            (a_pull(0, (1,)), a_pull(1, (9,), boss=True)),
-            level=level,
-        ),
-    )
-
-
-def a_speed_member(level: int = 16) -> SpeedMember:
-    """`a_speed_reference` wrapped as the member a one-member `SpeedSample` carries."""
-    reference = a_speed_reference(level=level)
-    theirs_run = reference.loaded.run
-    return SpeedMember(
-        row=reference.row,
-        run=theirs_run,
+        run=theirs.run,
         comparability=Comparability(our_level=16, their_level=level),
-        alignment=align_pulls(our_run().run, theirs_run),
-        deaths=reference.loaded.deaths,
-        enemy_cast_rows=reference.loaded.enemy_cast_rows,
-        interrupts=reference.loaded.interrupts,
+        alignment=align_pulls(our_run().run, theirs.run),
+        deaths=theirs.deaths,
+        enemy_cast_rows=theirs.enemy_cast_rows,
+        interrupts=theirs.interrupts,
     )
 
 
@@ -126,8 +112,25 @@ def a_speed_sample(level: int = 16) -> SpeedSample:
     return SpeedSample(members=(a_speed_member(level=level),))
 
 
-def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
-    return ParseReference(
+def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
+    """The member a one-member `ParseSample` carries: one top parse of our own spec."""
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull(0, (9,), boss=True),),
+        casts=(
+            # Cast on a boss pull, by an ability id OURS never casts anywhere in
+            # our_run() — the set-difference branch of compare_spells needs no
+            # minimum count, unlike the rate-gap branch.
+            CastEvent(
+                actor_id=THEIRS.actor_id,
+                ability_id=190319,
+                ability_name="Combustion",
+                timestamp_ms=10_000,
+                pull_index=0,
+            ),
+        ),
+    )
+    return ParseMember(
         row=ParseRow(
             report_code="37FzMg9pVPH6fnJT",
             fight_id=16,
@@ -137,35 +140,10 @@ def a_parse_reference(auras: PlayerAuras | None = None) -> ParseReference:
             class_name="Mage",
             spec="Arcane",
         ),
-        loaded=a_loaded(
-            (THEIRS,),
-            (a_pull(0, (9,), boss=True),),
-            casts=(
-                # Cast on a boss pull, by an ability id OURS never casts anywhere in
-                # our_run() — the set-difference branch of compare_spells needs no
-                # minimum count, unlike the rate-gap branch.
-                CastEvent(
-                    actor_id=THEIRS.actor_id,
-                    ability_id=190319,
-                    ability_name="Combustion",
-                    timestamp_ms=10_000,
-                    pull_index=0,
-                ),
-            ),
-        ),
+        run=theirs.run,
+        comparability=Comparability(our_level=16, their_level=16),
+        casts=theirs.casts,
         auras=auras,
-    )
-
-
-def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
-    """`a_parse_reference` wrapped as the member a one-member `ParseSample` carries."""
-    reference = a_parse_reference(auras=auras)
-    return ParseMember(
-        row=reference.row,
-        run=reference.loaded.run,
-        comparability=Comparability(our_level=16, their_level=reference.row.keystone_level),
-        casts=reference.loaded.casts,
-        auras=reference.auras,
     )
 
 
@@ -205,7 +183,7 @@ THEIR_AURAS = PlayerAuras(
 def a_comparable_pair_with_auras() -> tuple[LoadedRun, Player, SpeedSample, ParseSample]:
     """The usual comparable pair, with aura data riding along on the parse side.
 
-    Extends `a_parse_reference` rather than a parallel fixture, so the boss pull
+    Extends `a_parse_member` rather than a parallel fixture, so the boss pull
     that grounds the aura windows can't drift out of sync with the plain one.
     """
     return our_run(), OURS, a_speed_sample(), a_parse_sample(auras=THEIR_AURAS)

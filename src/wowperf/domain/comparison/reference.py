@@ -1,9 +1,7 @@
 # ABOUTME: What a reference run is, and which comparisons a keystone-level gap invalidates.
 # ABOUTME: Pure value objects; fetching a reference is an adapter's job, not this module's.
 
-from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
-from wowperf.domain.model import LoadedRun
 
 REPORT_URL = "https://www.warcraftlogs.com/reports/{code}?fight={fight}"
 """A link to the run a leaderboard row points at.
@@ -57,22 +55,6 @@ class ParseRow(Frozen):
     @property
     def duration_seconds(self) -> float:
         return self.duration_ms / 1000
-
-
-class SpeedReference(Frozen):
-    """A speed leaderboard row together with the run it points at."""
-
-    row: SpeedRow
-    loaded: LoadedRun
-
-
-class ParseReference(Frozen):
-    """A score leaderboard row together with the run it points at."""
-
-    row: ParseRow
-    loaded: LoadedRun
-    # Absent is a real state, not a failure: `compare.uptime.unavailable` reports it.
-    auras: PlayerAuras | None = None
 
 
 class Comparability(Frozen):
