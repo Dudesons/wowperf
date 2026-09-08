@@ -11,7 +11,16 @@ import pytest
 from markupsafe import escape
 from typer.testing import CliRunner
 
-from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, app
+from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
+from wowperf.adapters.wcl.rankings import bracket_for
+from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.cli import FINDINGS_ARE_RANKED_NOT_ADDITIVE, _samples, app
+from wowperf.domain.comparison.alignment import Alignment
+from wowperf.domain.comparison.sample import SAMPLE_SIZE
+from wowperf.domain.model import Player, Run
 from wowperf.domain.report.build import DECOMPOSITION_IDS, NESTS_INSIDE
 
 runner = CliRunner()
@@ -204,6 +213,11 @@ PARSE_REFERENCE_FIGHT = 16
 # see `build_analyze_transport`'s `fights_by_code` — or `find_player` can never resolve
 # the counterpart and the counterpart's aura fetch silently never fires.
 PARSE_REFERENCE_CHARACTER_NAME = "Bríala"
+# The speed reference's own roster fixture carries an actor under this name rather
+# than under the analysed player's own name: `_samples` now excludes a candidate
+# whose roster holds one of our own characters, and the speed reference must
+# survive that check in every test that does not deliberately exercise it.
+SPEED_REFERENCE_CHARACTER_NAME = "Speedrunner"
 
 
 def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str, Any]:
@@ -351,11 +365,13 @@ def build_analyze_transport(
     """
     if quota is None:
         quota = [100.0, 128.0]
+    reference_roster_name = {
+        SPEED_REFERENCE_CODE: SPEED_REFERENCE_CHARACTER_NAME,
+        PARSE_REFERENCE_CODE: PARSE_REFERENCE_CHARACTER_NAME,
+    }
     fights_by_code = {
         code: _fights_payload_for(
-            code,
-            fight_id,
-            PARSE_REFERENCE_CHARACTER_NAME if code == PARSE_REFERENCE_CODE else player_name,
+            code, fight_id, reference_roster_name.get(code, player_name)
         )
         for code, fight_id in (
             ("abc123", 36),
@@ -400,7 +416,15 @@ def build_analyze_transport(
     if parse_rows is None:
         parse_rows = [_parse_row(bracket_data)] if rankings is None else rankings
 
-    def rankings_response(field: str, rows: list[dict[str, Any]]) -> httpx.Response:
+    def rankings_response(
+        field: str, rows: list[dict[str, Any]], requested_bracket: int
+    ) -> httpx.Response:
+        # The run under analysis is always a +16, so its own bracket is the only
+        # one these rows belong to; every other bracket `_samples`' widening now
+        # tries (to fill the sample past what one bracket offers) must answer
+        # empty, or a fixture built for a single row would fail the live
+        # bracket-convention assertion the moment it widened past that row.
+        matching = rows if requested_bracket == bracket_for(16) else []
         return httpx.Response(
             200,
             json={
@@ -409,7 +433,7 @@ def build_analyze_transport(
                         "encounter": {
                             "id": 12660,
                             "name": "Den of Nalorakk",
-                            field: {"page": 1, "hasMorePages": False, "rankings": rows},
+                            field: {"page": 1, "hasMorePages": False, "rankings": matching},
                         }
                     }
                 }
@@ -448,9 +472,11 @@ def build_analyze_transport(
                 },
             )
         if name == "FightRankings":
-            return rankings_response("fightRankings", speed_rows)
+            return rankings_response("fightRankings", speed_rows, body["variables"]["bracket"])
         if name == "CharacterRankings":
-            return rankings_response("characterRankings", parse_rows)
+            return rankings_response(
+                "characterRankings", parse_rows, body["variables"]["bracket"]
+            )
         if name == "AuraTable":
             code = body["variables"]["code"]
             if aura_rows_by_code is not None and code in aura_rows_by_code:
@@ -985,6 +1011,425 @@ def test_a_non_429_http_failure_on_the_aura_query_still_writes_the_report(tmp_pa
 
     assert result.exit_code == 0, result.output
     assert "compare.uptime.unavailable" in ids
+
+
+# ---------------------------------------------------------------------------
+# `_samples`: drawing up to `SAMPLE_SIZE` references per axis, and recording
+# every candidate the leaderboard offered along the way. Exercised directly,
+# against a `WclRankingRepository`/`WclRunRepository` pair backed by a mock
+# transport, rather than through the full `analyze` command: what matters here
+# is the sampling and exclusion logic, not argument parsing or file output.
+# ---------------------------------------------------------------------------
+
+OUR_RUN = Run(
+    report_code="abc123",
+    fight_id=36,
+    dungeon_name="Den of Nalorakk",
+    encounter_id=12660,
+    keystone_level=16,
+    affix_ids=(9, 10, 147),
+    keystone_time_ms=1909000,
+    keystone_bonus=1,
+    count_reached=744,
+    count_required=729,
+    npc_counts=(),
+    players=(
+        Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=300),
+    ),
+    pulls=(),
+)
+SUBJECT = OUR_RUN.players[0]
+
+
+def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[str, Any]:
+    return {
+        "duration": 1000000,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "deaths": 0,
+        "bracketData": level,
+        "affixes": [9, 10, 147],
+        "team": [{"class": "Warrior", "spec": "Protection"}],
+        "medal": "silver",
+        "score": 400.0,
+    }
+
+
+def _candidate_parse_row(
+    code: str, fight_id: int = 1, level: int = 16, character_name: str = "Someone"
+) -> dict[str, Any]:
+    return {
+        "name": character_name,
+        "class": "Mage",
+        "spec": "Arcane",
+        "duration": 1000000,
+        "report": {"code": code, "fightID": fight_id, "startTime": 1},
+        "bracketData": level,
+        "affixes": [9, 10, 147],
+        "medal": "silver",
+        "score": 400.0,
+    }
+
+
+def _candidate_fights_payload(
+    code: str,
+    fight_id: int = 1,
+    roster: tuple[str, ...] = ("Someone",),
+    keystone_level: int = 16,
+) -> dict[str, Any]:
+    actors = [
+        {"id": index + 1, "name": name, "subType": "Mage", "server": "Hyjal"}
+        for index, name in enumerate(roster)
+    ]
+    return {
+        "reportData": {
+            "report": {
+                "code": code,
+                "title": "Keys",
+                "startTime": 0,
+                "endTime": 1000000,
+                "owner": {"name": roster[0].lower()},
+                "fights": [
+                    {
+                        "id": fight_id,
+                        "name": "Den of Nalorakk",
+                        "encounterID": 12660,
+                        "startTime": 0,
+                        "endTime": 1000000,
+                        "kill": True,
+                        "keystoneLevel": keystone_level,
+                        "keystoneAffixes": [9, 10, 147],
+                        "keystoneTime": 900000,
+                        "keystoneBonus": 1,
+                        "countReached": 100,
+                        "countRequired": 100,
+                        "npcCountMap": {},
+                        "friendlyPlayers": [actor["id"] for actor in actors],
+                        "friendlySpecs": ["Arcane"] * len(actors),
+                        "friendlyItemLevels": [300] * len(actors),
+                        "dungeonPulls": [],
+                    }
+                ],
+                "masterData": {"actors": actors},
+            }
+        }
+    }
+
+
+def _samples_run_repository(
+    tmp_path: Path, fights_by_code: dict[str, dict[str, Any]]
+) -> WclRunRepository:
+    """A `WclRunRepository` whose Fights query answers from `fights_by_code`; a
+    code it does not recognise answers "report not found", reproducing a
+    leaderboard row that fails to load. Every other query answers with the
+    emptiest shape the speed and parse profiles accept."""
+    abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
+    actors_payload: dict[str, Any] = {"reportData": {"report": {"masterData": {"actors": []}}}}
+    affixes_payload: dict[str, Any] = {"gameData": {"affixes": [{"id": 9, "name": "Tyrannical"}]}}
+    empty_events: dict[str, Any] = {
+        "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        body = json.loads(request.content)
+        query = body["query"]
+        name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
+        if name == "Fights":
+            code = body["variables"]["code"]
+            payload = fights_by_code.get(code, {"reportData": {"report": None}})
+            return httpx.Response(200, json={"data": payload})
+        if name == "Abilities":
+            return httpx.Response(200, json={"data": abilities})
+        if name == "Actors":
+            return httpx.Response(200, json={"data": actors_payload})
+        if name == "Affixes":
+            return httpx.Response(200, json={"data": affixes_payload})
+        if name == "Talents":
+            return httpx.Response(
+                200, json={"data": {"reportData": {"report": {"fights": [{"id": 1}]}}}}
+            )
+        return httpx.Response(200, json={"data": empty_events})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return WclRunRepository(client, DiskCache(tmp_path / "runs"))
+
+
+def _samples_ranking_repository(
+    tmp_path: Path,
+    speed_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
+    parse_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
+) -> WclRankingRepository:
+    """A `WclRankingRepository` answering FightRankings/CharacterRankings by
+    whichever bracket the query actually asked for, so a fixture with rows in
+    only one bracket does not fail `assert_bracket` the moment `_samples`
+    widens past it looking for more."""
+    speed_by_bracket = speed_rows_by_bracket or {}
+    parse_by_bracket = parse_rows_by_bracket or {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
+        body = json.loads(request.content)
+        variables = body["variables"]
+        bracket = variables["bracket"]
+        is_parse = "className" in variables
+        field = "characterRankings" if is_parse else "fightRankings"
+        rows = (parse_by_bracket if is_parse else speed_by_bracket).get(bracket, [])
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    "worldData": {
+                        "encounter": {
+                            "id": 12660,
+                            "name": "Den of Nalorakk",
+                            field: {"page": 1, "hasMorePages": False, "rankings": rows},
+                        }
+                    }
+                }
+            },
+        )
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return WclRankingRepository(client, DiskCache(tmp_path / "rankings"))
+
+
+def test_the_sample_stops_at_the_configured_size(tmp_path: Path) -> None:
+    codes = [f"ref{i}" for i in range(SAMPLE_SIZE + 1)]
+    fights_by_code = {
+        code: _candidate_fights_payload(code, roster=(f"Player{i}",))
+        for i, code in enumerate(codes)
+    }
+    rankings = _samples_ranking_repository(
+        tmp_path,
+        speed_rows_by_bracket={bracket_for(16): [_candidate_speed_row(code) for code in codes]},
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert len(speed.members) == SAMPLE_SIZE
+    # The row past the sample size was never even weighed, once the sample was full.
+    assert len([record for record in records if record.axis == "speed"]) == SAMPLE_SIZE
+
+
+def test_our_own_run_is_never_a_member(tmp_path: Path) -> None:
+    codes = [f"ref{i}" for i in range(SAMPLE_SIZE)]
+    fights_by_code = {
+        code: _candidate_fights_payload(code, roster=(f"Player{i}",))
+        for i, code in enumerate(codes)
+    }
+    rows = [_candidate_speed_row(OUR_RUN.report_code, OUR_RUN.fight_id)] + [
+        _candidate_speed_row(code) for code in codes
+    ]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert all(member.row.report_code != OUR_RUN.report_code for member in speed.members)
+    self_record = next(record for record in records if record.report_code == OUR_RUN.report_code)
+    assert self_record.loaded is False
+    assert self_record.reason
+
+
+def test_a_candidate_whose_roster_holds_one_of_our_characters_is_skipped(tmp_path: Path) -> None:
+    fights_by_code = {
+        "cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",)),
+        # The second leaderboard row's roster contains SUBJECT's own name.
+        "sameplayer": _candidate_fights_payload("sameplayer", roster=(SUBJECT.name,)),
+    }
+    rows = [_candidate_speed_row("cleanrun"), _candidate_speed_row("sameplayer")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert all(member.row.report_code != "sameplayer" for member in speed.members)
+    assert len(speed.members) == 1
+    excluded = next(record for record in records if record.report_code == "sameplayer")
+    # The load itself succeeded — the roster is what got it rejected — so it is
+    # recorded as loaded, with the reason carrying the actual verdict.
+    assert excluded.loaded is True
+    assert excluded.reason
+
+
+def test_a_candidate_that_failed_to_load_is_recorded_with_its_reason(tmp_path: Path) -> None:
+    fights_by_code = {"cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",))}
+    rows = [_candidate_speed_row("brokenrun"), _candidate_speed_row("cleanrun")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    failed = next(
+        record for record in records if not record.loaded and record.report_code == "brokenrun"
+    )
+    assert failed.reason
+
+
+def test_a_short_leaderboard_yields_a_short_sample_rather_than_an_error(tmp_path: Path) -> None:
+    fights_by_code = {
+        "ref0": _candidate_fights_payload("ref0", roster=("Player0",)),
+        "ref1": _candidate_fights_payload("ref1", roster=("Player1",)),
+    }
+    rows = [_candidate_speed_row("ref0"), _candidate_speed_row("ref1")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert len(speed.members) == 2
+
+
+def test_a_narrow_bracket_widens_to_the_next_one_to_fill_the_sample(tmp_path: Path) -> None:
+    fights_by_code = {
+        code: _candidate_fights_payload(code, roster=(name,))
+        for code, name in (
+            ("near0", "PlayerA"), ("near1", "PlayerB"), ("far0", "PlayerC"),
+            ("far1", "PlayerD"), ("far2", "PlayerE"),
+        )
+    }
+    rankings = _samples_ranking_repository(
+        tmp_path,
+        speed_rows_by_bracket={
+            bracket_for(16): [_candidate_speed_row("near0"), _candidate_speed_row("near1")],
+            # One level down from our own, which is what `_samples` asks
+            # `fastest_runs` to widen into once the first bracket falls short
+            # of `SAMPLE_SIZE`.
+            bracket_for(15): [
+                _candidate_speed_row("far0", level=15),
+                _candidate_speed_row("far1", level=15),
+                _candidate_speed_row("far2", level=15),
+            ],
+        },
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert len(speed.members) == SAMPLE_SIZE
+    assert {member.row.report_code for member in speed.members} == {
+        "near0", "near1", "far0", "far1", "far2",
+    }
+
+
+def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
+    """One fixture exercising all four outcomes on the parse axis: our own run,
+    a load failure, a roster self-match, and a clean member — proving the
+    parse loop was actually wired the same way as the speed loop, not merely
+    written to look the same."""
+    fights_by_code = {
+        "selfmatch": _candidate_fights_payload("selfmatch", roster=(SUBJECT.name,)),
+        "cleanparse": _candidate_fights_payload("cleanparse", roster=("Someone",)),
+    }
+    rows = [
+        _candidate_parse_row(OUR_RUN.report_code, OUR_RUN.fight_id),
+        _candidate_parse_row("brokenparse"),
+        _candidate_parse_row("selfmatch"),
+        _candidate_parse_row("cleanparse"),
+    ]
+    rankings = _samples_ranking_repository(tmp_path, parse_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert [member.row.report_code for member in parse.members] == ["cleanparse"]
+
+    by_code = {record.report_code: record for record in records if record.axis == "parse"}
+    assert by_code[OUR_RUN.report_code].loaded is False
+    assert by_code[OUR_RUN.report_code].reason == "this is the run under analysis"
+    assert by_code["brokenparse"].loaded is False
+    assert by_code["brokenparse"].reason
+    assert by_code["selfmatch"].loaded is True
+    assert by_code["selfmatch"].reason
+    assert by_code["cleanparse"].loaded is True
+    assert by_code["cleanparse"].reason == ""
+    assert by_code["cleanparse"].from_cache is False
+
+
+def test_the_parse_sample_also_stops_at_the_configured_size(tmp_path: Path) -> None:
+    codes = [f"parseref{i}" for i in range(SAMPLE_SIZE + 1)]
+    fights_by_code = {
+        code: _candidate_fights_payload(code, roster=(f"ParsePlayer{i}",))
+        for i, code in enumerate(codes)
+    }
+    rankings = _samples_ranking_repository(
+        tmp_path,
+        parse_rows_by_bracket={
+            bracket_for(16): [_candidate_parse_row(code) for code in codes]
+        },
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    assert len(parse.members) == SAMPLE_SIZE
+    assert len([record for record in records if record.axis == "parse"]) == SAMPLE_SIZE
+
+
+def test_a_fresh_candidate_is_recorded_as_not_from_the_cache(tmp_path: Path) -> None:
+    fights_by_code = {"cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",))}
+    rows = [_candidate_speed_row("cleanrun")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    [record] = records
+    assert record.from_cache is False
+
+
+def test_a_reused_candidate_is_recorded_as_served_from_the_cache(tmp_path: Path) -> None:
+    fights_by_code = {"cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",))}
+    rows = [_candidate_speed_row("cleanrun")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    [record] = records
+    assert record.from_cache is True
+
+
+def test_a_record_names_its_report_fight_level_axis_and_url(tmp_path: Path) -> None:
+    fights_by_code = {"cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",))}
+    rows = [_candidate_speed_row("cleanrun", fight_id=7)]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    [record] = records
+    assert record.report_code == "cleanrun"
+    assert record.fight_id == 7
+    assert record.keystone_level == 16
+    assert record.axis == "speed"
+    assert record.url == "https://www.warcraftlogs.com/reports/cleanrun?fight=7"
+
+
+def test_each_speed_member_carries_its_own_comparability_and_alignment(tmp_path: Path) -> None:
+    # One level below ours, so `Comparability` has something other than a zero
+    # gap to report — reached by `_samples`' own widening, the same as a real
+    # short bracket would be, rather than asserting on a bracket 16 rows can
+    # never legitimately arrive on.
+    fights_by_code = {
+        "cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",), keystone_level=15)
+    }
+    rows = [_candidate_speed_row("cleanrun", level=15)]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(15): rows})
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    [member] = speed.members
+    assert member.comparability.our_level == 16
+    assert member.comparability.their_level == 15
+    assert isinstance(member.alignment, Alignment)
 
 
 def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> None:

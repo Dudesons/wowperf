@@ -30,12 +30,25 @@ from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.comparison.reference import Comparability, ParseReference, SpeedReference
-from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
+from wowperf.domain.comparison.reference import (
+    Comparability,
+    ParseReference,
+    ParseRow,
+    SpeedReference,
+    SpeedRow,
+)
+from wowperf.domain.comparison.sample import (
+    SAMPLE_SIZE,
+    ParseMember,
+    ParseSample,
+    SpeedMember,
+    SpeedSample,
+)
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
-from wowperf.domain.model import Player, Run
-from wowperf.domain.report.build import build_report
+from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.report.build import REPORT_URL, build_report
+from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.urls import parse_report_url
 
@@ -168,102 +181,178 @@ def _resolve_player(run: Run, requested: str | None) -> Player:
     )
 
 
-def _references(
+def _record(
+    row: SpeedRow | ParseRow,
+    axis: str,
+    *,
+    loaded: bool,
+    reason: str = "",
+    from_cache: bool = False,
+) -> ReferenceRecord:
+    """One leaderboard row's outcome, in the shape the report is allowed to keep forever.
+
+    `row` gives up only its code, fight and level — never the team, the
+    character name or the score a `SpeedRow`/`ParseRow` also carries, which is
+    what keeps a `ReferenceRecord` a link rather than a tabulation of another
+    player's run.
+    """
+    return ReferenceRecord(
+        report_code=row.report_code,
+        fight_id=row.fight_id,
+        keystone_level=row.keystone_level,
+        url=REPORT_URL.format(code=row.report_code, fight=row.fight_id),
+        axis=axis,
+        loaded=loaded,
+        reason=reason,
+        from_cache=from_cache,
+    )
+
+
+def _samples(
     rankings: WclRankingRepository,
     runs: WclRunRepository,
     run: Run,
     subject: Player,
-) -> tuple[SpeedReference | None, ParseReference | None]:
-    """The two reference runs, or None where the leaderboard had nothing to offer.
+) -> tuple[SpeedSample, ParseSample, tuple[ReferenceRecord, ...]]:
+    """Up to `SAMPLE_SIZE` references per axis, and a record of every row weighed.
 
-    A candidate row whose report fails to load — deleted, private, an
-    unfinished fight, or a roster gap in its master data — is skipped rather
-    than fatal: falling through to the next row (and to None once the
-    leaderboard is exhausted) keeps a broken reference from discarding the
-    findings already computed for the run under analysis. The leaderboard
-    query itself is not guarded here: a `BracketMismatch` there means the
-    bracket convention this tool relies on has changed, and that must still
-    stop the command.
+    A row is skipped, never fatal, for three reasons, and every one of them is
+    recorded rather than silently dropped: it is our own report and fight
+    (comparing a run against itself would report a perfect route and teach the
+    reader nothing); its report failed to load — deleted, private, an
+    unfinished fight, or a roster gap in its master data; or, once loaded, its
+    roster names one of our own characters. That last check can only run after
+    the load, because the roster arrives with the run and not with the
+    leaderboard row — so a self-match still costs one fetch. The alternative is
+    worse: at `SAMPLE_SIZE` references instead of one, a reference that is
+    quietly the analysed player's own other run is no longer a rounding error,
+    and "the fast runs did this" would be a small lie if one of them is you.
+
+    The leaderboard query itself is not guarded here: a `BracketMismatch` there
+    means the bracket convention this tool relies on has changed, and that
+    must still stop the command.
+
+    Each speed member's `Comparability` and pull alignment are built once,
+    here, and stored on the member — not recomputed by whatever renders the
+    sample afterwards.
     """
-    speed = None
-    for row in rankings.fastest_runs(run.encounter_id, run.keystone_level):
-        # Comparing a run against itself would report a perfect route and teach
-        # the reader nothing.
+    our_names = frozenset(player.name.casefold() for player in run.players)
+    records: list[ReferenceRecord] = []
+
+    speed_members: list[SpeedMember] = []
+    for row in rankings.fastest_runs(run.encounter_id, run.keystone_level, minimum=SAMPLE_SIZE):
+        if len(speed_members) >= SAMPLE_SIZE:
+            break
         if row.report_code == run.report_code and row.fight_id == run.fight_id:
+            records.append(
+                _record(row, "speed", loaded=False, reason="this is the run under analysis")
+            )
             continue
         try:
-            loaded, _ = runs.load_speed_reference(row.report_code, row.fight_id)
-        except (IngestError, WclError):
+            theirs, from_cache = runs.load_speed_reference(row.report_code, row.fight_id)
+        except (IngestError, WclError) as error:
+            records.append(_record(row, "speed", loaded=False, reason=str(error)))
             continue
-        speed = SpeedReference(row=row, loaded=loaded)
-        break
-
-    parse = None
-    for parse_row in rankings.top_parses(
-        run.encounter_id, run.keystone_level, subject.class_name, subject.spec
-    ):
-        if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+        if any(player.name.casefold() in our_names for player in theirs.run.players):
+            records.append(
+                _record(
+                    row,
+                    "speed",
+                    loaded=True,
+                    reason="the roster includes one of our own characters",
+                    from_cache=from_cache,
+                )
+            )
             continue
-        try:
-            loaded, _ = runs.load_parse_reference(parse_row.report_code, parse_row.fight_id)
-        except (IngestError, WclError):
-            continue
-        parse = ParseReference(row=parse_row, loaded=loaded)
-        break
-
-    return speed, parse
-
-
-def _speed_sample(speed: SpeedReference | None, ours: Run) -> SpeedSample | None:
-    """Wrap the one speed reference `_references` found into a one-member sample.
-
-    Task 12 replaces this with a real sample of up to `SAMPLE_SIZE` references
-    fetched from the leaderboard; until then, `compare` always sees exactly the
-    single candidate `_references` already fetched.
-    """
-    if speed is None:
-        return None
-    theirs = speed.loaded
-    return SpeedSample(
-        members=(
+        records.append(_record(row, "speed", loaded=True, from_cache=from_cache))
+        speed_members.append(
             SpeedMember(
-                row=speed.row,
+                row=row,
                 run=theirs.run,
                 comparability=Comparability(
-                    our_level=ours.keystone_level, their_level=theirs.run.keystone_level
+                    our_level=run.keystone_level, their_level=theirs.run.keystone_level
                 ),
-                alignment=align_pulls(ours, theirs.run),
+                alignment=align_pulls(run, theirs.run),
                 deaths=theirs.deaths,
                 enemy_cast_rows=theirs.enemy_cast_rows,
                 interrupts=theirs.interrupts,
-            ),
+            )
         )
-    )
 
-
-def _parse_sample(parse: ParseReference | None, ours: Run) -> ParseSample | None:
-    """Wrap the one parse reference `_references` found into a one-member sample.
-
-    Task 12 replaces this with a real sample of up to `SAMPLE_SIZE` references
-    fetched from the leaderboard; until then, `compare` always sees exactly the
-    single candidate `_references` already fetched.
-    """
-    if parse is None:
-        return None
-    theirs = parse.loaded
-    return ParseSample(
-        members=(
+    parse_members: list[ParseMember] = []
+    for parse_row in rankings.top_parses(
+        run.encounter_id,
+        run.keystone_level,
+        subject.class_name,
+        subject.spec,
+        minimum=SAMPLE_SIZE,
+    ):
+        if len(parse_members) >= SAMPLE_SIZE:
+            break
+        if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+            records.append(
+                _record(parse_row, "parse", loaded=False, reason="this is the run under analysis")
+            )
+            continue
+        try:
+            theirs, from_cache = runs.load_parse_reference(
+                parse_row.report_code, parse_row.fight_id
+            )
+        except (IngestError, WclError) as error:
+            records.append(_record(parse_row, "parse", loaded=False, reason=str(error)))
+            continue
+        if any(player.name.casefold() in our_names for player in theirs.run.players):
+            records.append(
+                _record(
+                    parse_row,
+                    "parse",
+                    loaded=True,
+                    reason="the roster includes one of our own characters",
+                    from_cache=from_cache,
+                )
+            )
+            continue
+        records.append(_record(parse_row, "parse", loaded=True, from_cache=from_cache))
+        parse_members.append(
             ParseMember(
-                row=parse.row,
+                row=parse_row,
                 run=theirs.run,
                 comparability=Comparability(
-                    our_level=ours.keystone_level, their_level=theirs.run.keystone_level
+                    our_level=run.keystone_level, their_level=theirs.run.keystone_level
                 ),
                 casts=theirs.casts,
-                auras=parse.auras,
-            ),
+            )
         )
+
+    return (
+        SpeedSample(members=tuple(speed_members)),
+        ParseSample(members=tuple(parse_members)),
+        tuple(records),
     )
+
+
+def _top_speed_reference(sample: SpeedSample) -> SpeedReference | None:
+    """The sample's best-ranked member, in the single-reference shape the report
+    and the findings JSON still describe a speed comparison in.
+
+    Only `.row` and `.loaded.run` are ever read back off a `SpeedReference`
+    downstream, so the reconstructed `LoadedRun` need not restate the streams
+    already spent building the member — `build_timeline` reads the run for its
+    own pulls, nothing else.
+    """
+    if not sample.members:
+        return None
+    top = sample.members[0]
+    return SpeedReference(row=top.row, loaded=LoadedRun(run=top.run))
+
+
+def _top_parse_reference(sample: ParseSample) -> ParseReference | None:
+    """The sample's top parse, in the single-reference shape the report and the
+    findings JSON still describe a parse comparison in. See `_top_speed_reference`."""
+    top = sample.top
+    if top is None:
+        return None
+    return ParseReference(row=top.row, loaded=LoadedRun(run=top.run), auras=top.auras)
 
 
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
@@ -359,36 +448,46 @@ def analyze(
         parse: ParseReference | None = None
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
-            speed, parse = _references(rankings, references, loaded.run, subject)
+            # Every candidate `_samples` weighed comes back as `reference_records`;
+            # serialising them into the findings JSON and the report's provenance
+            # is Task 14's job, not this one's.
+            speed_sample, parse_sample, _reference_records = _samples(
+                rankings, references, loaded.run, subject
+            )
 
             our_auras = None
-            if parse is not None:
+            if parse_sample.members:
+                top = parse_sample.members[0]
                 # Resolve the counterpart before paying for our own aura fetch: when
                 # the reference's own roster does not contain the player the
                 # leaderboard row names, find_player can never resolve them, and
                 # fetching our side first would pay for a query with no use once
                 # that failure is discovered.
-                their_player = find_player(parse.loaded.run, parse.row.character_name)
+                their_player = find_player(top.run, top.row.character_name)
                 if their_player is not None:
                     our_auras = _auras(
                         repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
                     )
-                    parse = parse.model_copy(
+                    top = top.model_copy(
                         update={
                             "auras": _auras(
-                                references,
-                                parse.loaded.run.report_code,
-                                parse.loaded.run.fight_id,
+                                references, top.row.report_code, top.row.fight_id,
                                 their_player.actor_id,
                             )
                         }
                     )
+                    parse_sample = parse_sample.model_copy(
+                        update={"members": (top, *parse_sample.members[1:])}
+                    )
+
+            speed = _top_speed_reference(speed_sample)
+            parse = _top_parse_reference(parse_sample)
 
             findings += compare(
                 ours=loaded,
                 our_player=subject,
-                speed=_speed_sample(speed, loaded.run),
-                parse=_parse_sample(parse, loaded.run),
+                speed=speed_sample,
+                parse=parse_sample,
                 our_auras=our_auras,
             )
             findings = rank_findings(findings)

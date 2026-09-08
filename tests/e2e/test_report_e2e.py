@@ -19,10 +19,10 @@ from wowperf.adapters.config.toml import (
 from wowperf.adapters.render.html import render
 from wowperf.cli import (
     _auras,
-    _parse_sample,
-    _references,
     _resolve_player,
-    _speed_sample,
+    _samples,
+    _top_parse_reference,
+    _top_speed_reference,
     build_reference_repositories,
     build_repository,
 )
@@ -58,31 +58,38 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # is exercised against real data instead of only offline fixtures.
     subject = _resolve_player(loaded.run, None)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
-    speed, parse = _references(rankings, references, loaded.run, subject)
+    speed_sample, parse_sample, reference_records = _samples(
+        rankings, references, loaded.run, subject
+    )
+    assert reference_records, "no candidate was weighed at all"
 
     our_auras = None
-    if parse is not None:
-        their_player = find_player(parse.loaded.run, parse.row.character_name)
+    if parse_sample.members:
+        top = parse_sample.members[0]
+        their_player = find_player(top.run, top.row.character_name)
         if their_player is not None:
             our_auras = _auras(
                 repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
             )
-            parse = parse.model_copy(
+            top = top.model_copy(
                 update={
                     "auras": _auras(
-                        references,
-                        parse.loaded.run.report_code,
-                        parse.loaded.run.fight_id,
-                        their_player.actor_id,
+                        references, top.row.report_code, top.row.fight_id, their_player.actor_id
                     )
                 }
             )
+            parse_sample = parse_sample.model_copy(
+                update={"members": (top, *parse_sample.members[1:])}
+            )
+
+    speed = _top_speed_reference(speed_sample)
+    parse = _top_parse_reference(parse_sample)
 
     findings += compare(
         ours=loaded,
         our_player=subject,
-        speed=_speed_sample(speed, loaded.run),
-        parse=_parse_sample(parse, loaded.run),
+        speed=speed_sample,
+        parse=parse_sample,
         our_auras=our_auras,
     )
     findings = rank_findings(findings)

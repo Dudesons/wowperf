@@ -6,13 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.cli import (
-    _parse_sample,
-    _speed_sample,
-    build_reference_repositories,
-    build_repository,
-)
-from wowperf.domain.comparison.reference import MAX_LEVEL_GAP, ParseReference, SpeedReference
+from wowperf.cli import _samples, build_reference_repositories, build_repository
+from wowperf.domain.comparison.reference import MAX_LEVEL_GAP
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import Confidence
 from wowperf.urls import parse_report_url
@@ -40,42 +35,18 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
         player.talent_import_string for player in loaded.run.players
     ), "at least one player should carry a talent import string"
 
-    speed_rows = rankings.fastest_runs(loaded.run.encounter_id, loaded.run.keystone_level)
-    assert speed_rows, "the speed leaderboard should have a run for this dungeon"
+    speed_sample, parse_sample, records = _samples(rankings, references, loaded.run, subject)
+    assert speed_sample.members, "the speed leaderboard should have a run for this dungeon"
+    assert records, "no candidate was weighed at all"
 
     # The bracket convention is asserted inside the repository; this checks the
     # consequence a reader depends on, which is that we got the key we asked for.
     assert all(
-        abs(row.keystone_level - loaded.run.keystone_level) <= MAX_LEVEL_GAP for row in speed_rows
+        abs(member.row.keystone_level - loaded.run.keystone_level) <= MAX_LEVEL_GAP
+        for member in speed_sample.members
     )
 
-    parse_rows = rankings.top_parses(
-        loaded.run.encounter_id, loaded.run.keystone_level, subject.class_name, subject.spec
-    )
-
-    speed = None
-    for row in speed_rows:
-        if (row.report_code, row.fight_id) != (loaded.run.report_code, loaded.run.fight_id):
-            speed = row
-            break
-    assert speed is not None
-
-    speed_reference = SpeedReference(
-        row=speed, loaded=references.load(speed.report_code, speed.fight_id)
-    )
-    parse_reference = None
-    if parse_rows:
-        parse_row = parse_rows[0]
-        parse_reference = ParseReference(
-            row=parse_row, loaded=references.load(parse_row.report_code, parse_row.fight_id)
-        )
-
-    findings = compare(
-        loaded,
-        subject,
-        _speed_sample(speed_reference, loaded.run),
-        _parse_sample(parse_reference, loaded.run),
-    )
+    findings = compare(loaded, subject, speed_sample, parse_sample)
 
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
@@ -84,6 +55,7 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
     timed = [f.seconds_lost for f in findings if f.seconds_lost is not None]
     assert timed == sorted(timed, reverse=True)
 
-    # Both reference runs must actually be the same dungeon we ran.
-    assert speed_reference.loaded.run.encounter_id == loaded.run.encounter_id
-    assert speed_reference.loaded.run.pulls, "a reference with no pulls cannot be a route"
+    # The reference run must actually be the same dungeon we ran.
+    top_speed = speed_sample.members[0]
+    assert top_speed.run.encounter_id == loaded.run.encounter_id
+    assert top_speed.run.pulls, "a reference with no pulls cannot be a route"

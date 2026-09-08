@@ -107,6 +107,54 @@ def test_a_bracket_that_lies_stops_the_run(tmp_path: Path) -> None:
         repository(tmp_path, {15: [speed_row(11)]}, []).fastest_runs(12825, 16)
 
 
+def test_a_minimum_above_the_first_bracket_s_count_widens_to_the_next_one(
+    tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+    rows = repository(
+        tmp_path, {15: [speed_row(16, "aaa111")], 14: [speed_row(15, "bbb222")]}, calls
+    ).fastest_runs(12825, 16, minimum=2)
+
+    assert calls == [15, 14]
+    assert [row.report_code for row in rows] == ["aaa111", "bbb222"]
+
+
+def test_a_bracket_that_already_meets_the_minimum_does_not_widen(tmp_path: Path) -> None:
+    calls: list[int] = []
+    repository(
+        tmp_path, {15: [speed_row(16, "aaa111"), speed_row(16, "ccc333")]}, calls
+    ).fastest_runs(12825, 16, minimum=2)
+
+    assert calls == [15]
+
+
+def test_the_default_minimum_is_one_row(tmp_path: Path) -> None:
+    calls: list[int] = []
+    repository(tmp_path, {15: [speed_row(16)]}, calls).fastest_runs(12825, 16)
+
+    assert calls == [15]
+
+
+def test_widening_stops_once_every_level_has_been_tried_even_short_of_the_minimum(
+    tmp_path: Path,
+) -> None:
+    calls: list[int] = []
+    rows = repository(tmp_path, {15: [speed_row(16)]}, calls).fastest_runs(12825, 16, minimum=5)
+
+    assert calls == [15, 14, 16]
+    assert len(rows) == 1
+
+
+def test_top_parses_also_takes_a_minimum(tmp_path: Path) -> None:
+    calls: list[int] = []
+    rows = repository(
+        tmp_path, {15: [parse_row(16)], 14: [parse_row(15)]}, calls
+    ).top_parses(12825, 16, "Mage", "Arcane", minimum=2)
+
+    assert calls == [15, 14]
+    assert len(rows) == 2
+
+
 def test_top_parses_pass_the_class_and_spec_through(tmp_path: Path) -> None:
     calls: list[int] = []
     rows = repository(tmp_path, {15: [parse_row(16)]}, calls).top_parses(
