@@ -44,6 +44,15 @@ class Alignment(Frozen):
         return len(matched_trash) / self.our_trash_count
 
 
+MIN_ALIGNED_SHARE = 0.5
+"""Below this share of our trash pulls with a counterpart, no pack is priced as skipped.
+
+When the two logs cut the route into pulls differently, an unmatched pull is not
+a skipped pack; it is a segmentation difference, and pricing it would put the
+largest wrong number on the page at the top of the ledger.
+"""
+
+
 def _types(pull: Pull) -> frozenset[int]:
     return frozenset(enemy.game_id for enemy in pull.enemies)
 

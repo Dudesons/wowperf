@@ -3,20 +3,12 @@
 
 from collections.abc import Mapping
 
-from wowperf.domain.comparison.alignment import Alignment
+from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Pull, Run
 
 MAX_PACKS_REPORTED = 5
 """Beyond five packs a reader stops reading and starts skimming."""
-
-MIN_ALIGNED_SHARE = 0.5
-"""Below this share of our trash pulls with a counterpart, no pack is priced as skipped.
-
-When the two logs cut the route into pulls differently, an unmatched pull is not
-a skipped pack; it is a segmentation difference, and pricing it would put the
-largest wrong number on the page at the top of the ledger.
-"""
 
 
 def _pull_by_index(run: Run, index: int) -> Pull | None:

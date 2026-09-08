@@ -1,10 +1,9 @@
 # ABOUTME: Behaviour tests for turning a route alignment into findings a reader can act on.
 # ABOUTME: The headline is what a faster group skipped, priced with our own clock.
 
-from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, align_pulls
 from wowperf.domain.comparison.route import (
     MAX_PACKS_REPORTED,
-    MIN_ALIGNED_SHARE,
     compare_route,
 )
 from wowperf.domain.findings import Confidence, Finding
