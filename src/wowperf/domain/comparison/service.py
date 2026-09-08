@@ -3,7 +3,7 @@
 
 from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.comparison.confounds import declare_confounds
+from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells, compare_talents
@@ -60,10 +60,9 @@ def compare(
             )
         )
     else:
-        first_speed = speed.members[0]
         findings += compare_route_sample(ours.run, speed, forces_by_pull(ours.enemy_deaths))
         findings += compare_tempo_sample(ours, speed)
-        findings += declare_confounds(ours, first_speed, first_speed.comparability)
+        findings += declare_confounds_sample(ours, speed)
 
     if not parse_members:
         findings.append(
