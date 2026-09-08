@@ -14,7 +14,7 @@ from wowperf.adapters.wcl.rankings import (
     build_speed_rows,
     rankings_block,
 )
-from wowperf.domain.comparison.reference import ParseRow, SpeedRow
+from wowperf.domain.comparison.reference import MAX_LEVEL_GAP, ParseRow, SpeedRow
 
 
 class WclRankingRepository:
@@ -30,8 +30,11 @@ class WclRankingRepository:
 
     @staticmethod
     def _levels_to_try(keystone_level: int) -> Sequence[int]:
-        """Our level first, then one either side — §6.2 accepts a gap of one."""
-        return (keystone_level, keystone_level - 1, keystone_level + 1)
+        """Our level first, then outwards a gap at a time, to `MAX_LEVEL_GAP`."""
+        levels = [keystone_level]
+        for gap in range(1, MAX_LEVEL_GAP + 1):
+            levels += [keystone_level - gap, keystone_level + gap]
+        return tuple(levels)
 
     def _rows(self, query: str, variables: dict[str, Any], level: int) -> list[dict[str, Any]]:
         payload = self._query(query, {**variables, "bracket": bracket_for(level), "page": 1})

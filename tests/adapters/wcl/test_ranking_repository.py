@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.wcl import ranking_repository
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import BracketMismatch, WclError
@@ -143,3 +144,13 @@ def test_a_repeated_lookup_is_served_from_the_cache(tmp_path: Path) -> None:
     subject.fastest_runs(12825, 16)
 
     assert calls == [15]
+
+
+def test_the_levels_tried_come_from_the_gap_constant(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ranking_repository, "MAX_LEVEL_GAP", 2)
+
+    assert WclRankingRepository._levels_to_try(16) == (16, 15, 17, 14, 18)
+
+
+def test_one_gap_reproduces_our_level_then_one_either_side() -> None:
+    assert WclRankingRepository._levels_to_try(16) == (16, 15, 17)
