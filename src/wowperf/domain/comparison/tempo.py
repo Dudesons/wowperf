@@ -249,7 +249,7 @@ def _interrupts_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Find
     denominator drift from the number of members the median was drawn from.
     """
     our_kicked, our_landed = _kick_counts(ours)
-    shares = []
+    shares: list[float] = []
     for member in members:
         kicked, landed = _kick_counts(member)
         resolved = kicked + landed
