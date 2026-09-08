@@ -94,15 +94,15 @@ the fast runs skipped a pack you spent time on".
 
 > Your losses are route, not execution. The largest figure on this page is time spent outside
 > pulls, and every one of the biggest ranked losses beneath it is a gap between packs — the group
-> was travelling or waiting, not fighting. Underneath that, you pulled packs the faster reference
-> run skipped, which is why the trash overage and the skipped-pack findings both appear: the same
+> was travelling or waiting, not fighting. Underneath that, you pulled packs most of the fast runs
+> skipped, which is why the trash overage and the skipped-pack findings both appear: the same
 > detour, reported from either side.
 >
 > Deaths barely register beside it, and nothing in the damage findings suggests a mechanical
 > problem worth fixing before the route is.
 >
 > Treat the missing-talent finding as a prompt rather than a verdict — the spell comparison runs on
-> boss pulls only, and the reference is a different character on a different key.
+> boss pulls only, and the parses it counts belong to other characters on other keys.
 
 ## When it goes wrong
 
@@ -113,12 +113,13 @@ the fast runs skipped a pack you spent time on".
   no keystone fight, a depleted or abandoned key, or a fight id that is not one, each fails with a
   message saying which. A report holding several keys fails asking for `--fight`, since neither
   `--fight` nor a fight number in the URL picked one out.
-- **A reference could not be fetched.** The report still renders, with the affected sections
-  withheld and stating the tool's own reason. The speed reference and the parse reference fail
-  independently: one can be missing while the other is not. Say so rather than pretending the
+- **A reference could not be fetched.** One candidate failing shrinks a denominator rather than
+  withholding anything; the provenance lists it with the reason. A whole axis coming back empty is
+  the case that withholds sections, and the two axes fail independently: the route and tempo half
+  can be missing while the spell and talent half is not. Say which, rather than pretending the
   comparison ran.
-- **Quota.** The budget is 3600 points an hour and a full compared analysis costs roughly 28 —
-  an order of magnitude observed across this project's runs, not a measurement, and the reason not
-  to loop rather than a number to budget against. `wcl-api` holds what is actually known. Fetching
-  other people's reports in bulk is separately forbidden: reference runs are fetched for one
-  comparison and cached, never warehoused.
+- **Quota.** The budget is 3600 points an hour and a full sampled compared analysis cost 83.39
+  on the one cold run anyone has measured, against a projection of about 111. `wcl-api` holds
+  that row and its conditions. It is the reason not to loop. Fetching other people's reports in
+  bulk is separately forbidden: reference runs are fetched for one comparison and cached, never
+  warehoused.
