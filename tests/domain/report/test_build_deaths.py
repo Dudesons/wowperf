@@ -582,3 +582,15 @@ def test_a_recap_row_carries_the_ability_id_the_page_draws_an_icon_from() -> Non
         a_loaded_with((a_death(1, 60_000),), hits), NO_DEFENSIVES, NO_CONSUMABLES
     )[0]
     assert card.timeline[0].ability_id == hits[0].ability_id
+
+
+def test_a_recap_row_for_an_ability_id_of_zero_carries_none_not_zero() -> None:
+    # Zero is the log's sentinel for "named no ability", not an ability of its
+    # own. The ability dictionary maps zero to "Unknown Ability" with a real
+    # icon file, so a bare zero on the row would draw art beside a hit nobody
+    # identified; None is the only value that says the row has no ability.
+    hit = a_hit(1, 54_200, "Snowdrift", 82_410).model_copy(update={"ability_id": 0})
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), (hit,)), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.timeline[0].ability_id is None

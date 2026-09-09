@@ -185,9 +185,13 @@ def test_readings_in_window_returns_them_oldest_first() -> None:
 
 
 def test_each_timeline_row_carries_the_ability_it_names() -> None:
+    # Each stream's helper hardcodes its own ability id (hit 1, heal 7, cast
+    # 9), distinct from one another so a row built from the wrong stream's id
+    # cannot pass by coincidence.
     run = loaded(
         damage_taken=(a_hit(55_000, 10_000),),
-        casts=(a_cast(56_000),),
+        healing=(a_heal(56_000, 5_000),),
+        casts=(a_cast(57_000),),
     )
     rows = recap_timeline(run, a_death())
-    assert [(row.kind, row.ability_id) for row in rows] == [(HIT, 1), (CAST, 9)]
+    assert [(row.kind, row.ability_id) for row in rows] == [(HIT, 1), (HEAL, 7), (CAST, 9)]
