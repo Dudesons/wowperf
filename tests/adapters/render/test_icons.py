@@ -120,6 +120,17 @@ def test_a_200_that_is_not_an_image_is_a_miss(tmp_path: Path) -> None:
     assert source.data_uri(1) is None
 
 
+def test_a_non_200_status_with_an_image_content_type_is_still_a_miss(tmp_path: Path) -> None:
+    # Both halves of the check must hold: an image content type on a server
+    # error is not embedded, just as a 200 with the wrong content type is not.
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    asked: list[str] = []
+    responses = {url: (500, "image/jpeg", JPEG)}
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+    assert asked == [url]
+
+
 def test_a_missing_icon_is_asked_for_once_and_then_remembered(tmp_path: Path) -> None:
     url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
     asked: list[str] = []
