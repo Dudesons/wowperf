@@ -24,7 +24,7 @@ from wowperf.domain.analysis.recap import (
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
-from wowperf.domain.report.frame import badge_for, format_seconds, run_start_ms
+from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
 from wowperf.domain.report.health_curve import build_health_curve
 from wowperf.domain.report.model import (
     AvailabilityGroup,
@@ -215,6 +215,7 @@ def build_deaths(
                 health_curve=build_health_curve(
                     events, readings_in_window(loaded, death), death
                 ),
+                timeline_summary=f"{len(timeline)} {plural(len(timeline), 'event')}",
                 timeline_note="" if timeline else NO_TIMELINE_EVENT,
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
                 came_back=came_back,

@@ -558,3 +558,19 @@ def test_the_curve_omits_the_anchor_reading_taken_before_the_run_up_opened() -> 
     curve = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].health_curve
     assert curve is not None
     assert [reading.percent for reading in curve.readings] == [40]
+
+
+def test_the_recap_table_is_labelled_with_how_many_events_it_holds() -> None:
+    hits = (a_hit(1, 54_200, "Snowdrift", 82_410), a_hit(1, 55_000, "Snowdrift", 900))
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), hits), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.timeline_summary == "2 events"
+
+
+def test_a_recap_table_holding_one_event_is_labelled_in_the_singular() -> None:
+    hits = (a_hit(1, 54_200, "Snowdrift", 82_410),)
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), hits), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.timeline_summary == "1 event"

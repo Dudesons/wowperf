@@ -21,7 +21,12 @@ from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
     Badge,
+    CurveGuide,
+    CurvePoint,
+    CurveReading,
+    CurveTick,
     DeathCard,
+    HealthCurve,
     PlayerCard,
     RecapRow,
     Section,
@@ -398,3 +403,68 @@ def test_group_rows_render_inside_the_players_section() -> None:
     provenance_start = html.index('<h2 id="provenance">')
     title_at = html.index("Emberkin had a cooldown ready and unpressed")
     assert players_start < title_at < provenance_start
+
+
+def a_curve() -> HealthCurve:
+    return HealthCurve(
+        width=680.0,
+        height=148.0,
+        plot_x0=40.0,
+        plot_x1=668.0,
+        label_x=34.0,
+        tick_label_y=136.0,
+        points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=668.0, y=116.0)),
+        readings=(CurveReading(x=40.0, y=14.0, percent=100),),
+        ticks=(CurveTick(x=40.0, label="10 s"), CurveTick(x=668.0, label="death")),
+        guides=(CurveGuide(y=14.0, label="100%"), CurveGuide(y=116.0, label="0%")),
+        reading_legend="A dot is a health reading the log stated.",
+        line_legend="Between dots the line is arithmetic.",
+        line_badge=Badge(label="derived", tint="badge-derived"),
+        reading_badge=Badge(label="measured", tint="badge-measured"),
+    )
+
+
+def a_card(**changes: object) -> DeathCard:
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", timeline_summary="2 events",
+                     timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                                        health="61%", health_percent=61),))
+    return card.model_copy(update=changes)
+
+
+def deaths_of(card: DeathCard) -> str:
+    html = render(a_report(deaths=(card,)))
+    return html[html.index('<h2 id="deaths">'):html.index('<h2 id="interrupts">')]
+
+
+def test_a_death_card_draws_its_health_curve_as_inline_svg() -> None:
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "40.0,14.0" in deaths and "668.0,116.0" in deaths
+    assert '<circle' in deaths and 'cx="40.0"' in deaths
+    assert "10 s" in deaths and "death" in deaths
+    assert "100%" in deaths and "0%" in deaths
+
+
+def test_the_curve_prints_the_legend_and_both_badges_the_builder_wrote() -> None:
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "A dot is a health reading the log stated." in deaths
+    assert "Between dots the line is arithmetic." in deaths
+    assert "measured" in deaths and "derived" in deaths
+
+
+def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> None:
+    curve = a_curve().model_copy(
+        update={"readings": (), "reading_badge": None, "reading_legend": ""}
+    )
+    deaths = deaths_of(a_card(health_curve=curve))
+    assert "<circle" not in deaths
+    assert "measured" not in deaths
+
+
+def test_a_death_card_with_no_curve_emits_no_svg_at_all() -> None:
+    assert "<polyline" not in deaths_of(a_card())
+
+
+def test_the_recap_table_sits_behind_a_summary_naming_its_size() -> None:
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "<details" in deaths and "<summary>2 events</summary>" in deaths

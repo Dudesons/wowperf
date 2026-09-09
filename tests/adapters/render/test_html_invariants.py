@@ -393,6 +393,10 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     # misread as a total.
     (HealthCurve, "width"),
     (HealthCurve, "height"),
+    (HealthCurve, "plot_x0"),
+    (HealthCurve, "plot_x1"),
+    (HealthCurve, "label_x"),
+    (HealthCurve, "tick_label_y"),
     (CurvePoint, "x"),
     (CurvePoint, "y"),
     (CurveReading, "x"),

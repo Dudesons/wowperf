@@ -1,6 +1,36 @@
 {# ABOUTME: The Deaths panel: one recap per death, and the death costs beneath them. #}
 {# ABOUTME: A recap says what was pressed and what was ready, never what should have been. #}
 {% from "_macros.html.j2" import ledger_row %}
+{% macro health_curve(curve) %}
+<svg class="hp-curve" width="100%" viewBox="0 0 {{ curve.width }} {{ curve.height }}">
+  <title>Health through the seconds before the death</title>
+  {% for guide in curve.guides %}
+  <line class="hp-guide" x1="{{ curve.plot_x0 }}" y1="{{ guide.y }}"
+        x2="{{ curve.plot_x1 }}" y2="{{ guide.y }}"></line>
+  <text class="hp-axis hp-health" x="{{ curve.label_x }}" y="{{ guide.y }}">{{ guide.label }}</text>
+  {% endfor %}
+  {% for tick in curve.ticks %}
+  <text class="hp-axis hp-time" x="{{ tick.x }}" y="{{ curve.tick_label_y }}">{{ tick.label }}</text>
+  {% endfor %}
+  <polyline class="hp-line" points="
+    {%- for point in curve.points %}
+    {{ point.x }},{{ point.y }}
+    {%- endfor %}"></polyline>
+  {% for reading in curve.readings %}
+  <circle class="hp-reading" cx="{{ reading.x }}" cy="{{ reading.y }}" r="2.5">
+    <title>{{ reading.percent }}% stated by the log</title>
+  </circle>
+  {% endfor %}
+</svg>
+{% if curve.reading_legend %}
+<p class="legend">{{ curve.reading_legend }}
+  {%- if curve.reading_badge %} <a class="badge {{ curve.reading_badge.tint }}"
+     href="#provenance">{{ curve.reading_badge.label }}</a>{% endif %}</p>
+{% endif %}
+<p class="legend">{{ curve.line_legend }}
+  {%- if curve.line_badge %} <a class="badge {{ curve.line_badge.tint }}"
+     href="#provenance">{{ curve.line_badge.label }}</a>{% endif %}</p>
+{% endmacro %}
 <section class="panel" data-tab-panel="main" id="tab-deaths">
 
 <h2 id="deaths">Deaths</h2>
@@ -14,9 +44,14 @@
     <span class="death-when">{{ death.when }}</span>
   </div>
   <p class="detail">{{ death.class_name }}</p>
+  {% if death.health_curve %}
+  {{ health_curve(death.health_curve) }}
+  {% endif %}
   <div class="recap">
     <div class="recap-timeline">
       {% if death.timeline %}
+      <details class="events">
+      <summary>{{ death.timeline_summary }}</summary>
       <table class="timeline">
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
@@ -32,12 +67,13 @@
         {% endfor %}
         </tbody>
       </table>
-      {% elif death.timeline_note %}
-      <p class="sub">{{ death.timeline_note }}</p>
-      {% endif %}
       {% if death.health_badge %}
       <p class="nests">Health after each event
         <a class="badge {{ death.health_badge.tint }}" href="#provenance">{{ death.health_badge.label }}</a></p>
+      {% endif %}
+      </details>
+      {% elif death.timeline_note %}
+      <p class="sub">{{ death.timeline_note }}</p>
       {% endif %}
       {% if death.health_note %}
       <p class="nests">{{ death.health_note }}</p>

@@ -167,11 +167,16 @@ class HealthCurve(Frozen):
 
     width: float
     height: float
+    plot_x0: float
+    plot_x1: float
+    label_x: float
+    tick_label_y: float
     points: tuple[CurvePoint, ...] = ()
     readings: tuple[CurveReading, ...] = ()
     ticks: tuple[CurveTick, ...] = ()
     guides: tuple[CurveGuide, ...] = ()
-    legend: str = ""
+    reading_legend: str = ""
+    line_legend: str = ""
     line_badge: Badge | None = None
     reading_badge: Badge | None = None
 
@@ -206,10 +211,12 @@ class AvailabilityGroup(Frozen):
 class DeathCard(Frozen):
     """One death as a recap: what killed the player, what was up, how they came back.
 
-    Every string is formatted by the builder. `timeline_note` says why the
-    timeline is empty when it is. `health_badge` is None when no row carries
-    health and `health_note` then says why. `came_back` is one of the four
-    return lines and always carries its badge.
+    Every string is formatted by the builder. `timeline_summary` labels the table
+    with what it holds and `timeline_note` says why it is empty when it is.
+    `health_badge` is None when no row carries health and `health_note` then says
+    why; `health_curve` is None on that same condition, so a card never draws an
+    axis with no line on it. `came_back` is one of the four return lines and
+    always carries its badge.
     """
 
     player: str
@@ -217,6 +224,7 @@ class DeathCard(Frozen):
     when: str
     killing_blow: str
     timeline: tuple[RecapRow, ...] = ()
+    timeline_summary: str = ""
     timeline_note: str = ""
     health_badge: Badge | None = None
     health_curve: HealthCurve | None = None

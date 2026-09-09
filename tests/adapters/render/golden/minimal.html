@@ -82,6 +82,18 @@ p { margin: 0 0 10px; }
 .timeline tr.cast td { color: var(--ink-faint); }
 .hp { position: relative; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
 .hp-bar { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--badge-measured); }
+.hp-curve { display: block; margin: 10px 0 2px; }
+.hp-guide { stroke: var(--line); stroke-width: 1; }
+.hp-axis { fill: var(--ink-faint); font-size: 11px; }
+.hp-health { text-anchor: end; dominant-baseline: middle; }
+.hp-time { text-anchor: middle; }
+/* The line takes the derived tint and the dots the measured one, so a mark's colour
+   and the badge beneath it name the same claim. */
+.hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
+  stroke-linejoin: round; }
+.hp-reading { fill: var(--badge-measured); }
+details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
+  padding: 2px 0; }
 .avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
 .avail ul { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
 .avail li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0;
@@ -174,6 +186,8 @@ never be summed.</p>
   <p class="detail">Mage</p>
   <div class="recap">
     <div class="recap-timeline">
+      <details class="events">
+      <summary>1 event</summary>
       <table class="timeline">
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
@@ -185,6 +199,7 @@ never be summed.</p>
         </tr>
         </tbody>
       </table>
+      </details>
       <p class="nests">The log carries no health reading for this player before the death, so the health column is empty.</p>
       <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
            href="#provenance">measured</a></p>

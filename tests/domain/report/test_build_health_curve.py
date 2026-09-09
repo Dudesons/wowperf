@@ -4,12 +4,14 @@
 from tests.domain.analysis.test_recap_timeline import a_death, a_sample
 from wowperf.domain.analysis.recap import HIT, RecapEvent
 from wowperf.domain.report.health_curve import (
-    CURVE_LEGEND,
+    DEATH_TICK,
+    LINE_LEGEND,
     PLOT_BOTTOM,
     PLOT_TOP,
     PLOT_X0,
     PLOT_X1,
-    UNANCHORED_LEGEND,
+    READING_LEGEND,
+    UNANCHORED_LINE_LEGEND,
     build_health_curve,
 )
 from wowperf.domain.report.model import HealthCurve
@@ -112,7 +114,7 @@ def test_the_readings_and_the_line_carry_their_own_badges() -> None:
     assert curve is not None
     assert curve.line_badge is not None and curve.line_badge.label == "derived"
     assert curve.reading_badge is not None and curve.reading_badge.label == "measured"
-    assert curve.legend == CURVE_LEGEND
+    assert (curve.reading_legend, curve.line_legend) == (READING_LEGEND, LINE_LEGEND)
 
 
 def test_a_curve_with_no_reading_of_its_own_claims_no_measurement() -> None:
@@ -121,4 +123,24 @@ def test_a_curve_with_no_reading_of_its_own_claims_no_measurement() -> None:
     curve = build_health_curve((an_event(55_000, 30),), (), a_death())
     assert curve is not None
     assert curve.reading_badge is None
-    assert curve.legend == UNANCHORED_LEGEND
+    assert curve.reading_legend == ""
+    assert curve.line_legend == UNANCHORED_LINE_LEGEND
+
+
+def test_the_axis_labels_sit_clear_of_the_plot() -> None:
+    # The template is handed these extents rather than the module's constants, and
+    # a label placed inside the plot would cross the line it is there to label.
+    curve = build_health_curve((an_event(55_000, 30),), (), a_death())
+    assert curve is not None
+    assert curve.label_x < curve.plot_x0 < curve.plot_x1
+    assert curve.tick_label_y > curve.guides[-1].y
+
+
+def test_the_time_labels_fit_inside_the_viewbox() -> None:
+    # The rightmost label is centred on the axis's end, so half of it hangs past
+    # that point and a plot drawn to the viewBox's edge clips the word "death".
+    # The margin asked for here is a whole label wide rather than half of one, so
+    # the last label is clear of the edge rather than touching it.
+    curve = build_health_curve((an_event(55_000, 30),), (), a_death())
+    assert curve is not None
+    assert curve.width - curve.plot_x1 >= len(DEATH_TICK) * 5

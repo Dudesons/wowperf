@@ -16,12 +16,21 @@ from wowperf.domain.report.model import (
 CURVE_WIDTH = 680.0
 CURVE_HEIGHT = 148.0
 PLOT_X0 = 40.0
-"""Where the plot's left edge sits, leaving the y labels room outside it."""
-PLOT_X1 = 668.0
+"""Where the plot's left edge sits, leaving the health labels room outside it."""
+PLOT_X1 = 648.0
+"""Where its right edge sits, short of the viewBox so the last time label fits.
+
+That label is centred on the axis's end, so half its width hangs past this
+point. A plot drawn to the viewBox's own edge clips the word "death".
+"""
 PLOT_TOP = 14.0
 """The y of full health. The gap above it keeps a line at 100% off the viewBox edge."""
 PLOT_BOTTOM = 116.0
 """The y of no health, with the x labels below it."""
+LABEL_X = 34.0
+"""Where the health labels end, right-aligned into the margin left of the plot."""
+TICK_LABEL_Y = 136.0
+"""The baseline of the time labels, below the plot and inside the viewBox."""
 
 PRECISION = 1
 """Coordinates are rounded to a tenth of a viewBox unit.
@@ -36,22 +45,24 @@ a pixel at the width this is drawn.
 TICK_SECONDS = 2.0
 """One time label every two seconds of the run-up: five of them plus the death."""
 
-CURVE_LEGEND = (
-    "A dot is a health reading the log stated. Between dots the line is arithmetic: "
-    "each hit subtracted, each heal added."
-)
-"""What the two marks mean, said beside them rather than in the provenance section.
+READING_LEGEND = "A dot is a health reading the log stated."
+"""What a dot is, said beside the dots rather than in the provenance section.
 
-A line is the most trusted shape on a page, and six of every seven points on this
-one are computed. The sentence sits next to the drawing because that is where a
-reader decides how much to believe it.
+A line is the most trusted shape on a page and about six of every seven points
+on this one are computed, so each half of the drawing is graded where a reader
+meets it.
 """
 
-UNANCHORED_LEGEND = (
-    "The log stated this player's health at no moment this axis covers, so every point "
-    "on the line is arithmetic from the last reading before it."
+LINE_LEGEND = (
+    "Between dots the line is arithmetic: each hit subtracted, each heal added."
 )
-"""Said instead of the legend above when the run-up carried no reading of its own.
+"""What joins the dots, and the claim the derived badge grades."""
+
+UNANCHORED_LINE_LEGEND = (
+    "The log stated this player's health at no moment this axis covers, so the whole "
+    "line is arithmetic from the last reading before it."
+)
+"""Said instead of the two sentences above when the run-up carried no reading.
 
 Naming dots that are not drawn would have a reader hunting the axis for a
 measurement it does not hold.
@@ -147,11 +158,16 @@ def build_health_curve(
     return HealthCurve(
         width=CURVE_WIDTH,
         height=CURVE_HEIGHT,
+        plot_x0=PLOT_X0,
+        plot_x1=PLOT_X1,
+        label_x=LABEL_X,
+        tick_label_y=TICK_LABEL_Y,
         points=_step(plotted, start_ms, span_ms),
         readings=tuple(dots),
         ticks=_ticks(span_ms),
         guides=_guides(),
-        legend=CURVE_LEGEND if dots else UNANCHORED_LEGEND,
+        reading_legend=READING_LEGEND if dots else "",
+        line_legend=LINE_LEGEND if dots else UNANCHORED_LINE_LEGEND,
         line_badge=badge_for(Confidence.DERIVED),
         reading_badge=badge_for(Confidence.MEASURED) if dots else None,
     )
