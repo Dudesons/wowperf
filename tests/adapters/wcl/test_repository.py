@@ -107,6 +107,7 @@ def recording_repository(
     tmp_path: Path | None = None,
     deaths: list[dict[str, Any]] | None = None,
     affixes_payloads: list[dict[str, Any]] | None = None,
+    abilities_rows: list[dict[str, Any]] | None = None,
 ) -> WclRunRepository:
     """Build one repository whose mock transport records every GraphQL operation name.
 
@@ -117,14 +118,18 @@ def recording_repository(
     injected by pytest, so one is created on demand. `deaths` replaces the single
     death row, for the tests that need two of them. `affixes_payloads` replaces
     the one well-formed affix table with a cycle of answers, for a test that
-    needs the affix fetch itself to keep failing.
+    needs the affix fetch itself to keep failing. `abilities_rows` replaces the
+    empty ability dictionary, for the tests that need a real row with a `gameID`,
+    `name` and `icon`.
 
     Each of the six event streams gets its own small, distinguishable payload —
     a real field swap in `repository.py` (e.g. assigning `interrupts` the
     `enemy_cast_rows` builder's result, or `damage_taken` the `deaths` builder's)
     must make a test built on this fixture fail.
     """
-    abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
+    abilities: dict[str, Any] = {
+        "reportData": {"report": {"masterData": {"abilities": abilities_rows or []}}}
+    }
     # Deliberately short of the fixture's third affix, 147, so the fallback to
     # the bare id is exercised by every test built on this fixture.
     affixes: dict[str, Any] = {
@@ -261,6 +266,26 @@ def test_a_get_after_a_load_costs_nothing() -> None:
     calls.clear()
     repository.get("abc123", 36)
     assert calls == []
+
+
+def test_a_loaded_run_carries_each_abilitys_icon_file_name(tmp_path: Path) -> None:
+    repository = recording_repository(
+        [],
+        tmp_path,
+        abilities_rows=[{"gameID": 48792, "name": "Icebound Fortitude", "icon": "spell_x.jpg"}],
+    )
+    loaded = repository.load("CODE", 36)
+    assert loaded.ability_icon_map[48792] == "spell_x.jpg"
+
+
+def test_an_ability_with_no_icon_contributes_no_pair(tmp_path: Path) -> None:
+    repository = recording_repository(
+        [],
+        tmp_path,
+        abilities_rows=[{"gameID": 48792, "name": "Icebound Fortitude", "icon": None}],
+    )
+    loaded = repository.load("CODE", 36)
+    assert dict(loaded.ability_icon_map) == {}
 
 
 def test_a_loaded_run_carries_every_stream() -> None:

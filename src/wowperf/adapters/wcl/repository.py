@@ -304,10 +304,13 @@ class WclRunRepository:
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
         try:
-            ability_names = {
-                ability["gameID"]: ability["name"]
-                for ability in abilities["reportData"]["report"]["masterData"]["abilities"]
-            }
+            rows = abilities["reportData"]["report"]["masterData"]["abilities"]
+            ability_names = {ability["gameID"]: ability["name"] for ability in rows}
+            ability_icons = tuple(
+                (ability["gameID"], ability["icon"])
+                for ability in rows
+                if ability.get("icon")
+            )
         except (KeyError, TypeError) as error:
             raise WclError(
                 "The abilities response did not carry masterData.abilities as expected"
@@ -347,7 +350,11 @@ class WclRunRepository:
 
         if profile == "speed":
             loaded = LoadedRun(
-                run=run, deaths=deaths, enemy_cast_rows=enemy_cast_rows, interrupts=interrupts
+                run=run,
+                deaths=deaths,
+                enemy_cast_rows=enemy_cast_rows,
+                interrupts=interrupts,
+                ability_icons=ability_icons,
             )
             return loaded, all(hits)
 
@@ -391,6 +398,7 @@ class WclRunRepository:
             health_samples=build_health_samples(cast_events),
             healing=tuple(healing),
             resurrections=resurrections,
+            ability_icons=ability_icons,
         )
         return loaded, all(hits)
 

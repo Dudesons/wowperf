@@ -133,3 +133,13 @@ class LoadedRun(Frozen):
     health_samples: tuple[HealthSample, ...] = ()
     healing: tuple[HealingEvent, ...] = ()
     resurrections: tuple[Resurrection, ...] = ()
+    # Icon file names by ability game id, straight from the report's own ability
+    # dictionary. A tuple of pairs, not a dict, so a LoadedRun stays immutable and
+    # hashable; read it through ability_icon_map. A file name is data of the same
+    # kind as an ability name, so carrying it performs no I/O.
+    ability_icons: tuple[tuple[int, str], ...] = ()
+
+    @property
+    def ability_icon_map(self) -> Mapping[int, str]:
+        """Icon file names by ability game id, as a read-only mapping."""
+        return MappingProxyType(dict(self.ability_icons))

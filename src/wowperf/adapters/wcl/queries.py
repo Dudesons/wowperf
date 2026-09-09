@@ -155,7 +155,7 @@ query Abilities($code: String!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       masterData(translate: true) {
-        abilities { gameID name }
+        abilities { gameID name icon }
       }
     }
   }

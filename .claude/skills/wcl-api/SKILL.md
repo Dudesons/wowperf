@@ -35,6 +35,7 @@ covers it otherwise.
 | `enemyNPCs` | `ReportDungeonPull` | 2026-09-03 | yes |
 | `gameID` | `ReportDungeonPull.enemyNPCs` | 2026-09-03 | yes |
 | `masterData` | `Report` | 2026-09-03 | yes |
+| `icon` | `ReportAbility` | 2026-09-09 | yes |
 | `allowUnlisted` | `reportData.report` argument | 2026-09-03 | yes |
 | `rateLimitData` | `Query` | 2026-09-04 | yes |
 | `limitPerHour` | `RateLimitData` | 2026-09-04 | yes |
@@ -237,6 +238,11 @@ table below supersedes them.
   `masterData.actors` → `gameID` → `npcCountMap[str(gameID)]`. `masterData.actors` accepts
   `type: "NPC"`, and `ReportActor` carries `gameID, icon, id, name, petOwner, server, subType,
   type`.
+- **`ReportAbility` carries exactly `gameID`, `icon`, `name` and `type`** — introspected
+  against the live schema 2026-09-09. There is no description, no cooldown and no tooltip
+  text on it. `icon` is a bare lower-case file name ending `.jpg`, e.g.
+  `spell_holy_magicalsentry.jpg`; all 2511 rows of one report carried one, and three carried
+  a literal `?cachebust` suffix naming a file the other rows also named.
 
 ## The event stream, probed for a death recap
 

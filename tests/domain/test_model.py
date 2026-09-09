@@ -106,3 +106,14 @@ def test_a_run_without_an_owner_says_so_rather_than_guessing() -> None:
 def test_a_loaded_run_defaults_every_recap_stream_to_empty() -> None:
     loaded = LoadedRun(run=a_run())
     assert (loaded.health_samples, loaded.healing, loaded.resurrections) == ((), (), ())
+
+
+def test_a_loaded_run_reads_its_icon_pairs_as_a_mapping() -> None:
+    loaded = LoadedRun(
+        run=a_run(), ability_icons=((48792, "spell_deathknight_iceboundfortitude.jpg"),)
+    )
+    assert loaded.ability_icon_map[48792] == "spell_deathknight_iceboundfortitude.jpg"
+
+
+def test_a_loaded_run_with_no_icon_pairs_reads_an_empty_mapping() -> None:
+    assert dict(LoadedRun(run=a_run()).ability_icon_map) == {}
