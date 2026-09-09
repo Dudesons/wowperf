@@ -122,6 +122,60 @@ class RecapRow(Frozen):
     health_percent: int | None = None
 
 
+class CurvePoint(Frozen):
+    """One corner of the health curve, in viewBox units. All arithmetic happened in the builder."""
+
+    x: float
+    y: float
+
+
+class CurveReading(Frozen):
+    """One health reading the log stated, drawn apart from the line that joins the events.
+
+    The line is arithmetic — hits subtracted, heals added — between moments the
+    log actually reported a figure. These are those moments, so they carry the
+    measured badge while the line carries the derived one, and a dot sitting off
+    the line is the drift between the two made visible rather than resolved in
+    silence.
+    """
+
+    x: float
+    y: float
+    percent: int
+
+
+class CurveTick(Frozen):
+    """One mark on the health curve's time axis: where it sits and what it says."""
+
+    x: float
+    label: str
+
+
+class CurveGuide(Frozen):
+    """One horizontal line across the health curve, and the health it stands for."""
+
+    y: float
+    label: str
+
+
+class HealthCurve(Frozen):
+    """A death's health across the run-up, as coordinates the template only prints.
+
+    A card carries None rather than an empty curve when no event of the run-up
+    reported health: an axis with no line on it reads as a flat line at zero.
+    """
+
+    width: float
+    height: float
+    points: tuple[CurvePoint, ...] = ()
+    readings: tuple[CurveReading, ...] = ()
+    ticks: tuple[CurveTick, ...] = ()
+    guides: tuple[CurveGuide, ...] = ()
+    legend: str = ""
+    line_badge: Badge | None = None
+    reading_badge: Badge | None = None
+
+
 class AvailabilityRow(Frozen):
     """One saving tool at the death. `state` is "pressed", "ready", "cooldown" or "unseen"."""
 
@@ -165,6 +219,7 @@ class DeathCard(Frozen):
     timeline: tuple[RecapRow, ...] = ()
     timeline_note: str = ""
     health_badge: Badge | None = None
+    health_curve: HealthCurve | None = None
     health_note: str = ""
     came_back: str = ""
     came_back_badge: Badge | None = None

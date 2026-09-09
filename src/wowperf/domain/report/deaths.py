@@ -17,6 +17,7 @@ from wowperf.domain.analysis.recap import (
     AbilityState,
     RecapEvent,
     availability_at,
+    readings_in_window,
     recap_timeline,
     return_of,
 )
@@ -24,6 +25,7 @@ from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.frame import badge_for, format_seconds, run_start_ms
+from wowperf.domain.report.health_curve import build_health_curve
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
@@ -188,9 +190,8 @@ def build_deaths(
     cards = []
     for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
         player = players_by_id.get(death.actor_id)
-        timeline = tuple(
-            _recap_row(event, death, names) for event in recap_timeline(loaded, death)
-        )
+        events = recap_timeline(loaded, death)
+        timeline = tuple(_recap_row(event, death, names) for event in events)
         has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
             loaded, death, defensives, consumables, externals,
@@ -211,6 +212,9 @@ def build_deaths(
                 # The health column is reconstructed, and says so in the same
                 # words the ledger uses.
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
+                health_curve=build_health_curve(
+                    events, readings_in_window(loaded, death), death
+                ),
                 timeline_note="" if timeline else NO_TIMELINE_EVENT,
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
                 came_back=came_back,

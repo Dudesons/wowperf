@@ -527,3 +527,34 @@ def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     ]
     assert [row.finding_id for row in report.route_rows] == ["trash.pull.0"]
     assert report.observations == ()
+
+
+def a_reading(at_ms: int, hit_points: int, maximum: int = 100_000) -> HealthSample:
+    return HealthSample(
+        actor_id=1, timestamp_ms=at_ms, hit_points=hit_points, max_hit_points=maximum
+    )
+
+
+def test_a_death_card_carries_a_health_curve_when_the_run_up_reported_health() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    loaded = loaded.model_copy(update={"health_samples": (a_reading(50_000, 100_000),)})
+    curve = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].health_curve
+    assert curve is not None
+    assert [reading.percent for reading in curve.readings] == [100]
+
+
+def test_a_death_card_carries_no_curve_when_nothing_reported_health() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    assert build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].health_curve is None
+
+
+def test_the_curve_omits_the_anchor_reading_taken_before_the_run_up_opened() -> None:
+    # The reading at 49 s anchors the arithmetic but belongs to a moment the
+    # axis does not cover, so drawing it would put a dot outside its own scale.
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 10_000),))
+    loaded = loaded.model_copy(
+        update={"health_samples": (a_reading(49_000, 100_000), a_reading(55_000, 40_000))}
+    )
+    curve = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].health_curve
+    assert curve is not None
+    assert [reading.percent for reading in curve.readings] == [40]

@@ -8,6 +8,7 @@ from wowperf.domain.analysis.recap import (
     HEAL,
     HIT,
     RecapEvent,
+    readings_in_window,
     recap_timeline,
     with_health,
 )
@@ -166,3 +167,18 @@ def test_recap_timeline_reads_only_the_dying_players_samples() -> None:
         health_samples=(a_sample(50_000, 50_000, actor_id=3), a_sample(50_000, 100_000)),
     )
     assert recap_timeline(run, a_death())[0].health_percent == 90
+
+
+def test_readings_in_window_keeps_only_the_dying_players_samples() -> None:
+    run = loaded(health_samples=(a_sample(55_000, 40_000, actor_id=3), a_sample(55_000, 90_000)))
+    assert readings_in_window(run, a_death()) == (a_sample(55_000, 90_000),)
+
+
+def test_readings_in_window_drops_the_anchor_taken_before_the_window_opens() -> None:
+    run = loaded(health_samples=(a_sample(49_999, 90_000), a_sample(50_000, 80_000)))
+    assert readings_in_window(run, a_death()) == (a_sample(50_000, 80_000),)
+
+
+def test_readings_in_window_returns_them_oldest_first() -> None:
+    run = loaded(health_samples=(a_sample(58_000, 20_000), a_sample(52_000, 90_000)))
+    assert [s.timestamp_ms for s in readings_in_window(run, a_death())] == [52_000, 58_000]

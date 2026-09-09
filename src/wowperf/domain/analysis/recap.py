@@ -49,6 +49,27 @@ def window_start(death: Death) -> int:
     return int(death.timestamp_ms - RUN_UP_SECONDS * 1000)
 
 
+def readings_in_window(loaded: LoadedRun, death: Death) -> tuple[HealthSample, ...]:
+    """The dying player's own health readings inside the run-up, oldest first.
+
+    `with_health` also consults the latest reading taken before the window
+    opens, as the anchor its arithmetic starts from. That one is deliberately
+    absent here: it was read at a moment the card does not draw, and plotting
+    it would place a measurement outside the axis it belongs to.
+    """
+    start, end = window_start(death), death.timestamp_ms
+    return tuple(
+        sorted(
+            (
+                sample
+                for sample in loaded.health_samples
+                if sample.actor_id == death.actor_id and start <= sample.timestamp_ms <= end
+            ),
+            key=lambda sample: sample.timestamp_ms,
+        )
+    )
+
+
 def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
     """Every event of the run-up where the player was hit, shielded, healed, or acted."""
     start, end, actor = window_start(death), death.timestamp_ms, death.actor_id
