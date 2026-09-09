@@ -30,6 +30,12 @@ class Finding(Frozen):
     seconds_lost: float | None = None
     evidence: tuple[str, ...] = ()
     pull_index: int | None = None
+    # The ability this finding is about, for the icon the page draws at its name.
+    # `ability_id` is None on a finding that names no single ability; `ability_name`
+    # is the same spelling the title uses, so locating it there is never a guess
+    # about which words are the spell.
+    ability_id: int | None = None
+    ability_name: str = ""
     # The word a digit-free narrative may use in place of this finding's count.
     # Empty on any finding that is not an aggregate over a sample.
     quantifier: str = ""

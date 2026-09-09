@@ -184,6 +184,8 @@ def analyse_interrupts(
                     f"{damage:,} unmitigated damage attributed",
                     "unmitigated: before absorbs and mitigation",
                 ),
+                ability_id=ability_id,
+                ability_name=names[ability_id],
             )
         )
     return findings

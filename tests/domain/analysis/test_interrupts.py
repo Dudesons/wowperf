@@ -188,3 +188,13 @@ def test_the_summary_title_pluralises_a_single_landed_cast_correctly() -> None:
     findings = analyse_interrupts(casts, ())
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.title == "1 cast landed, 0 were kicked"
+
+
+def test_an_unkicked_ability_finding_names_the_ability_it_is_about() -> None:
+    # An unkicked cast that completed and was followed by damage is what makes
+    # an `interrupts.ability.` finding at all.
+    casts = reconstruct_enemy_casts((row(1_000, True), row(3_000, False)), ())
+    findings = analyse_interrupts(casts, (hit(3_100, 5_000),))
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert ability.ability_id == SPELL
+    assert ability.ability_name in ability.title
