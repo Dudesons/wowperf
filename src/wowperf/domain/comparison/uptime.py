@@ -137,6 +137,8 @@ def _gap_findings(
                     f"ours over {our_seconds:.0f}s of boss pulls",
                     f"theirs over {their_seconds:.0f}s of boss pulls",
                 ),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
     return findings
@@ -332,6 +334,8 @@ def _gap_findings_sample(
                     f"range {low:.0%} to {high:.0%} across {len(carried)} top parses",
                     f"{count_phrase(missing_aura_data, total)} references had no aura data",
                 ),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
     return findings

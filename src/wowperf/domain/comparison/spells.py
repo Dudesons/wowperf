@@ -123,6 +123,8 @@ def compare_spells(
                     f"{count} casts across {their_boss_seconds:.0f}s of their boss pulls",
                     "zero casts in the whole of our run",
                 ),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
 
@@ -159,6 +161,8 @@ def compare_spells(
                     f"ours over {our_boss_seconds:.0f}s of boss pulls",
                     f"theirs over {their_boss_seconds:.0f}s of boss pulls",
                 ),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
 
@@ -267,6 +271,8 @@ def _missing_sample(
                     "zero casts in the whole of our run",
                 ),
                 quantifier=quantifier_for(matching, total),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
     return findings
@@ -321,6 +327,8 @@ def _rate_sample(
                     f"range {low:.1f} to {high:.1f} casts a minute across "
                     f"{len(rates)} top parses",
                 ),
+                ability_id=ability_id,
+                ability_name=name,
             )
         )
     return findings

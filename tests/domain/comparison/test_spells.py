@@ -404,3 +404,55 @@ def test_every_finding_id_is_unique_over_the_sample() -> None:
     ids = [f.id for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)]
 
     assert len(ids) == len(set(ids))
+
+
+def test_a_missing_spell_finding_names_the_ability_against_one_reference() -> None:
+    ours = a_loaded(OURS, (boss_pull(0, 120.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 120.0),),
+        (
+            cast(11, 30451, "Arcane Blast", 1_000, 0),
+            cast(11, 153626, "Arcane Orb", 2_000, 0),
+            cast(11, 153626, "Arcane Orb", 3_000, 0),
+        ),
+    )
+    missing = next(
+        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        if f.id.startswith("compare.spells.missing.")
+    )
+    assert missing.ability_id == 153626
+    assert missing.ability_name in missing.title
+
+
+def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
+    ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(6)),
+    )
+    rate = next(
+        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    )
+    assert rate.ability_id == 30451
+    assert rate.ability_name in rate.title
+
+
+def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
+    missing = next(
+        f for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+        if f.id.startswith("compare.spells.missing.")
+    )
+    assert missing.ability_id == SHIFTING_POWER
+    assert missing.ability_name in missing.title
+
+
+def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
+    rate = next(
+        f for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+        if f.id.startswith("compare.spells.rate.")
+    )
+    assert rate.ability_id == METEOR
+    assert rate.ability_name in rate.title

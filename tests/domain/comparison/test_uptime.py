@@ -500,3 +500,25 @@ def test_the_inert_on_target_plumbing_still_reports_a_gap_in_the_sample_if_ever_
 
     assert ids(findings, "compare.uptime.target.") == ["compare.uptime.target.0"]
     assert ids(findings, "compare.uptime.self.") == []
+
+
+def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
+    gap = next(
+        f for f in compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
+        if f.id.startswith("compare.uptime.")
+    )
+    assert gap.ability_id == 391477
+    assert gap.ability_name in gap.title
+
+
+def test_an_uptime_gap_finding_names_the_aura_across_the_sample() -> None:
+    gap = next(
+        f for f in compare_uptime_sample(OUR_RUN, OUR_AURAS, SUBJECT, SAMPLE_OF_FIVE)
+        if f.id.startswith("compare.uptime.")
+    )
+    assert gap.ability_id == 391477
+    assert gap.ability_name in gap.title
