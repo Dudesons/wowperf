@@ -25,11 +25,12 @@ from wowperf.cli import (
     _quota_sentence,
     _samples,
     app,
+    build_icons,
 )
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
-from wowperf.domain.model import Player, Run
+from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
 
 runner = CliRunner()
@@ -1913,6 +1914,72 @@ def test_an_icon_store_that_cannot_be_created_says_so_on_stderr(
     result = _analyze_with_an_unusable_icon_store(monkeypatch, tmp_path)
     assert result.exit_code == 0, result.output
     assert "writing the report without icons" in result.stderr
+
+
+def a_minimal_run() -> Run:
+    """A run barely enough to construct: one player, no pulls, nothing fetched."""
+    return _member_run(693, "Emberkin")
+
+
+def _parse_row_model() -> ParseRow:
+    """A parse leaderboard row barely enough to construct, unrelated to any roster."""
+    return ParseRow(
+        report_code="ref1",
+        fight_id=1,
+        keystone_level=16,
+        duration_ms=1_000_000,
+        character_name="Stonewake",
+        class_name="Mage",
+        spec="Arcane",
+    )
+
+
+def test_the_resolver_knows_an_icon_named_only_by_a_reference_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A comparison finding names an ability our player never cast, so its file
+    name is in the reference's dictionary and in no other."""
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        assert url.endswith("/spell_ice_nova.jpg")
+        return httpx.Response(
+            200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake"
+        )
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    ours = LoadedRun(run=a_minimal_run())
+    theirs = ParseMember(
+        row=_parse_row_model(),
+        run=a_minimal_run(),
+        ability_icons=((157997, "spell_ice_nova.jpg"),),
+    )
+    icons = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
+
+    assert icons is not None  # build_icons returns None only when the store fails
+    assert icons.data_uri(157997) is not None
+
+
+def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> None:
+    ours = LoadedRun(run=a_minimal_run(), ability_icons=((1, "ours.jpg"),))
+    theirs = ParseMember(
+        row=_parse_row_model(), run=a_minimal_run(), ability_icons=((1, "theirs.jpg"),)
+    )
+    asked: list[str] = []
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        asked.append(url)
+        return httpx.Response(
+            200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake"
+        )
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(httpx, "get", fake_get)
+        resolver = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
+        assert resolver is not None
+        resolver.data_uri(1)
+
+    assert asked == ["https://render.worldofwarcraft.com/eu/icons/36/ours.jpg"]
 
 
 def test_an_out_directory_that_cannot_be_created_fails_without_a_traceback(

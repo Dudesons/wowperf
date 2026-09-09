@@ -328,7 +328,11 @@ class WclRunRepository:
 
         if profile == "parse":
             cast_events = fetch_all_events(query, CASTS_QUERY, event_variables)
-            loaded = LoadedRun(run=run, casts=build_casts(cast_events, run, ability_names))
+            loaded = LoadedRun(
+                run=run,
+                casts=build_casts(cast_events, run, ability_names),
+                ability_icons=ability_icons,
+            )
             return loaded, all(hits)
 
         death_events = fetch_all_events(query, DEATHS_QUERY, event_variables)

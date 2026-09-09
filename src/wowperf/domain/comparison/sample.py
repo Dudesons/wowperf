@@ -59,6 +59,10 @@ class ParseMember(Frozen):
     run: Run
     casts: tuple[CastEvent, ...] = ()
     auras: PlayerAuras | None = None
+    # Icon file names by ability game id, from this reference's own report. A
+    # comparison names abilities our player never cast, which are therefore in
+    # no dictionary but this one.
+    ability_icons: tuple[tuple[int, str], ...] = ()
 
 
 class _Sample(Frozen):

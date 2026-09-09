@@ -386,6 +386,15 @@ def test_a_parse_reference_carries_its_streams_and_leaves_the_rest_empty(tmp_pat
     assert loaded.resurrections == ()
 
 
+def test_a_parse_reference_carries_each_abilitys_icon_file_name(tmp_path: Path) -> None:
+    repository = recording_repository(
+        [], tmp_path,
+        abilities_rows=[{"gameID": 157997, "name": "Ice Nova", "icon": "spell_x.jpg"}],
+    )
+    loaded, _ = repository.load_parse_reference("abc123", None)
+    assert loaded.ability_icon_map[157997] == "spell_x.jpg"
+
+
 def test_a_parse_reference_reports_whether_it_was_served_entirely_from_cache(
     tmp_path: Path,
 ) -> None:

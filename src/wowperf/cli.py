@@ -111,7 +111,9 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
 ICON_CACHE_SUBDIR = "icons"
 
 
-def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons | None:
+def build_icons(
+    loaded: LoadedRun, parse_sample: ParseSample | None, cache_dir: Path
+) -> BlizzardIcons | None:
     """Icons for one run: its own ability dictionary, and a store that keeps them for good.
 
     None when the store cannot be created, which `render` already understands as
@@ -123,6 +125,11 @@ def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons | None:
     Unlike a single icon the CDN does not serve, which is silent by design, this
     costs every icon on the page for a local reason the reader can act on, so it
     is said out loud rather than leaving them a report that merely looks plain.
+
+    A comparison names an ability our player never cast, so that ability's file
+    name is in the reference's own dictionary and in no other. Ours is overlaid
+    last: where both name an id they name the same file, so the order settles
+    determinism rather than correctness.
     """
     try:
         store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
@@ -142,7 +149,11 @@ def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons | None:
             return 0, "", b""
         return response.status_code, response.headers.get("content-type", ""), response.content
 
-    return BlizzardIcons(loaded.ability_icon_map, store, fetch)
+    names: dict[int, str] = {}
+    for member in parse_sample.members if parse_sample else ():
+        names.update(member.ability_icons)
+    names.update(loaded.ability_icon_map)
+    return BlizzardIcons(names, store, fetch)
 
 
 def build_reference_repositories(
@@ -398,7 +409,12 @@ def _samples(
             continue
         records.append(_record(parse_row, "parse", loaded=True, from_cache=from_cache))
         parse_members.append(
-            ParseMember(row=parse_row, run=theirs.run, casts=theirs.casts)
+            ParseMember(
+                row=parse_row,
+                run=theirs.run,
+                casts=theirs.casts,
+                ability_icons=theirs.ability_icons,
+            )
         )
 
     return (
@@ -640,7 +656,7 @@ def analyze(
                     self_resurrections=load_self_resurrections(),
                     reference_records=reference_records,
                 ),
-                icons=build_icons(loaded, cache_dir),
+                icons=build_icons(loaded, parse_sample, cache_dir),
             ),
             encoding="utf-8",
         )
