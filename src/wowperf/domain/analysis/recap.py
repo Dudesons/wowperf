@@ -44,6 +44,19 @@ class RecapEvent(Frozen):
     health_percent: int | None = None
 
 
+def health_percent(hit_points: int, max_hit_points: int) -> int | None:
+    """A health figure as a share of the maximum, or None when the maximum is unusable.
+
+    Clamped to nought and a hundred. The arithmetic between two readings can
+    overshoot either end — a hit landing after the log stopped reporting, a heal
+    the reconstruction double-counts — and a figure outside the range would be a
+    claim the log never made.
+    """
+    if max_hit_points <= 0:
+        return None
+    return max(0, min(100, round(100 * hit_points / max_hit_points)))
+
+
 def window_start(death: Death) -> int:
     """Where the run-up opens: the same constant the availability rule reads."""
     return int(death.timestamp_ms - RUN_UP_SECONDS * 1000)
@@ -147,11 +160,7 @@ def with_health(
                 running -= event.amount
             elif event.kind == HEAL:
                 running = min(running + event.amount, maximum)
-        percent = (
-            None
-            if running is None or maximum <= 0
-            else max(0, min(100, round(100 * running / maximum)))
-        )
+        percent = None if running is None else health_percent(running, maximum)
         rows.append(event.model_copy(update={"health_percent": percent}))
     return tuple(rows)
 

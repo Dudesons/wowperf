@@ -1,7 +1,7 @@
 # ABOUTME: One death's health across the run-up, in viewBox units the template only prints.
 # ABOUTME: A step between events, and the log's own readings drawn apart from that arithmetic.
 
-from wowperf.domain.analysis.recap import RecapEvent, window_start
+from wowperf.domain.analysis.recap import RecapEvent, health_percent, window_start
 from wowperf.domain.events import Death, HealthSample
 from wowperf.domain.findings import Confidence
 from wowperf.domain.report.frame import badge_for
@@ -147,9 +147,9 @@ def build_health_curve(
         return None
     dots = []
     for sample in readings:
-        if sample.max_hit_points <= 0:
+        percent = health_percent(sample.hit_points, sample.max_hit_points)
+        if percent is None:
             continue
-        percent = max(0, min(100, round(100 * sample.hit_points / sample.max_hit_points)))
         dots.append(
             CurveReading(
                 x=_x(sample.timestamp_ms, start_ms, span_ms), y=_y(percent), percent=percent
