@@ -127,6 +127,7 @@ def _availability_row(state: AbilityState, names: dict[int, str]) -> Availabilit
         state=state.state,
         owner=names.get(state.owner_id, "") if state.owner_id is not None else "",
         detail=detail,
+        ability_id=state.ability_id,
     )
 
 

@@ -325,6 +325,12 @@ def test_a_spec_no_file_covers_gets_a_note_and_no_badge_rather_than_an_empty_lis
     assert mates.rows == () and mates.badge is None and "No teammate" in mates.note
 
 
+def test_an_availability_row_carries_the_ability_id_it_names() -> None:
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), BLOOD, NO_CONSUMABLES)[0]
+    defensives = card.availability[0]
+    assert [row.ability_id for row in defensives.rows] == [48792]
+
+
 def test_a_pressed_row_and_a_ready_for_row_carry_one_decimal() -> None:
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
         "casts": (CastEvent(actor_id=1, ability_id=48792, ability_name="IBF", timestamp_ms=56_600),

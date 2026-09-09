@@ -25,6 +25,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
+    AvailabilityRow,
     CurveGuide,
     CurvePoint,
     CurveReading,
@@ -388,6 +389,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (TimelineTrack, "baseline_y"),
     (RecapRow, "health_percent"),  # a share of the player's own health, not a duration
     (RecapRow, "ability_id"),  # a spell's identity, not a duration
+    (AvailabilityRow, "ability_id"),  # a spell's identity, not a duration
     # The health curve's geometry. Every one of these is a viewBox coordinate
     # computed in `health_curve.py`: a position on a fixed axis rather than a
     # quantity, so a column of them summed would mean nothing a reader could

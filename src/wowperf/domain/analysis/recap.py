@@ -186,11 +186,16 @@ class AbilityState(Frozen):
     READY: how long it had been ready when that fell inside the run-up, a lower
     bound, else None. UNSEEN: always None. `owner_id` is None for the dying
     player's own abilities and a teammate's actor id for an external.
+
+    `ability_id` is the game id this state was judged from, and None for a
+    consumable: a category is a cooldown group holding several ids, and no one
+    of them is the item.
     """
 
     name: str
     state: str
     owner_id: int | None = None
+    ability_id: int | None = None
     seconds: float | None = None
 
 
@@ -217,6 +222,7 @@ def state_of(
     *,
     owner_id: int | None = None,
     on_target: int | None = None,
+    ability_id: int | None = None,
 ) -> AbilityState:
     """Which of the four states one ability was in at the death.
 
@@ -235,7 +241,7 @@ def state_of(
     the bound and the true ready moment is no later than the one computed.
     """
     if not presses:
-        return AbilityState(name=name, state=UNSEEN, owner_id=owner_id)
+        return AbilityState(name=name, state=UNSEEN, owner_id=owner_id, ability_id=ability_id)
     run_up_start = death_ms - RUN_UP_SECONDS * 1000
     in_run_up = [
         press.timestamp_ms
@@ -248,7 +254,7 @@ def state_of(
     ]
     if in_run_up:
         return AbilityState(
-            name=name, state=PRESSED, owner_id=owner_id,
+            name=name, state=PRESSED, owner_id=owner_id, ability_id=ability_id,
             seconds=(death_ms - max(in_run_up)) / 1000,
         )
     cooldown_ms = cooldown_seconds * 1000
@@ -260,7 +266,7 @@ def state_of(
     if len(recent) >= charges:
         frees_at = recent[len(recent) - charges] + cooldown_ms
         return AbilityState(
-            name=name, state=COOLDOWN, owner_id=owner_id,
+            name=name, state=COOLDOWN, owner_id=owner_id, ability_id=ability_id,
             seconds=math.ceil((frees_at - death_ms) / 1000),
         )
     # A charge comes free when the oldest of the last `charges` presses
@@ -275,7 +281,9 @@ def state_of(
         if ready_since is not None and ready_since >= run_up_start
         else None
     )
-    return AbilityState(name=name, state=READY, owner_id=owner_id, seconds=ready_for)
+    return AbilityState(
+        name=name, state=READY, owner_id=owner_id, ability_id=ability_id, seconds=ready_for
+    )
 
 
 def consumable_state(
@@ -326,6 +334,7 @@ def availability_at(
                 state_of(
                     presses_of(death.actor_id, (ability.ability_id,)),
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
+                    ability_id=ability.ability_id,
                 )
                 for ability in known
             )
@@ -348,6 +357,7 @@ def availability_at(
                     presses_of(mate.actor_id, (ability.ability_id,)),
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
                     owner_id=mate.actor_id, on_target=death.actor_id,
+                    ability_id=ability.ability_id,
                 )
             )
     return AvailabilityAt(own=own, consumables=drinks, externals=tuple(mates))

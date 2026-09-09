@@ -188,12 +188,17 @@ class HealthCurve(Frozen):
 
 
 class AvailabilityRow(Frozen):
-    """One saving tool at the death. `state` is "pressed", "ready", "cooldown" or "unseen"."""
+    """One saving tool at the death. `state` is "pressed", "ready", "cooldown" or "unseen".
+
+    `ability_id` is None on a consumable row, which names a cooldown group
+    rather than one item, so those rows carry no icon.
+    """
 
     ability: str
     state: str
     owner: str = ""
     detail: str = ""
+    ability_id: int | None = None
 
 
 class AvailabilityGroup(Frozen):

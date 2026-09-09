@@ -169,6 +169,27 @@ def test_availability_groups_own_defensives_consumables_and_teammates_externals(
     ]
 
 
+def test_a_defensives_state_carries_the_ability_id_it_was_judged_from() -> None:
+    at = availability_at(
+        loaded(), a_death(), Defensives(entries=(("DeathKnight/Blood", (ICEBOUND,)),)),
+        Consumables(), Externals(), visible_from_ms=0,
+    )
+    assert at.own is not None
+    assert [state.ability_id for state in at.own] == [48792]
+
+
+def test_a_consumable_state_carries_no_ability_id() -> None:
+    # Drunk inside the run-up, so the state is PRESSED and flows straight out
+    # of `state_of` rather than through the UNSEEN override, which is the path
+    # that would carry an id through if one were ever passed in.
+    at = availability_at(
+        loaded(casts=(press(6262, 195_000),)), a_death(at_ms=200_000), Defensives(),
+        Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
+    )
+    assert at.consumables is not None
+    assert all(state.ability_id is None for state in at.consumables)
+
+
 def test_a_spec_absent_from_a_file_yields_none_for_that_group_not_an_empty_list() -> None:
     at = availability_at(loaded(), a_death(), Defensives(), Consumables(), Externals(),
                          visible_from_ms=0)
