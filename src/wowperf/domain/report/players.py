@@ -7,7 +7,13 @@ from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.frame import PARSE_UNAVAILABLE_ID, format_seconds, sampled, section_for
+from wowperf.domain.report.frame import (
+    PARSE_UNAVAILABLE_ID,
+    format_seconds,
+    plural,
+    sampled,
+    section_for,
+)
 from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard
 
@@ -28,11 +34,6 @@ COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
 
 def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
-
-
-def _plural(count: int, singular: str) -> str:
-    """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
-    return singular if count == 1 else f"{singular}s"
 
 
 def build_players(
@@ -88,10 +89,10 @@ def build_players(
         )
         is_subject = summary.actor_id == subject.actor_id
         stats_line = (
-            f"{summary.casts_in_pulls} {_plural(summary.casts_in_pulls, 'cast')} "
+            f"{summary.casts_in_pulls} {plural(summary.casts_in_pulls, 'cast')} "
             f"in {total_pulls} of pulls · "
-            f"{summary.deaths} {_plural(summary.deaths, 'death')} · "
-            f"{summary.interrupts} {_plural(summary.interrupts, 'interrupt')}"
+            f"{summary.deaths} {plural(summary.deaths, 'death')} · "
+            f"{summary.interrupts} {plural(summary.interrupts, 'interrupt')}"
         )
         cards.append(
             PlayerCard(

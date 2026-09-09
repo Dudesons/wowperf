@@ -17,6 +17,11 @@ NO_COMPARISON_RAN = (
 )
 
 
+def plural(count: int, singular: str) -> str:
+    """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
+    return singular if count == 1 else f"{singular}s"
+
+
 def badge_for(confidence: Confidence) -> Badge:
     """A word and a palette token. The word is what a reader without colour sees."""
     return Badge(label=str(confidence), tint=f"badge-{confidence}")
