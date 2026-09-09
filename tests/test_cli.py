@@ -1267,13 +1267,19 @@ def _candidate_fights_payload(
 
 
 def _samples_run_repository(
-    tmp_path: Path, fights_by_code: dict[str, dict[str, Any]]
+    tmp_path: Path,
+    fights_by_code: dict[str, dict[str, Any]],
+    abilities_rows: list[dict[str, Any]] | None = None,
 ) -> WclRunRepository:
     """A `WclRunRepository` whose Fights query answers from `fights_by_code`; a
     code it does not recognise answers "report not found", reproducing a
     leaderboard row that fails to load. Every other query answers with the
-    emptiest shape the speed and parse profiles accept."""
-    abilities: dict[str, Any] = {"reportData": {"report": {"masterData": {"abilities": []}}}}
+    emptiest shape the speed and parse profiles accept. `abilities_rows`
+    replaces the empty ability dictionary, for the test that needs a
+    reference's own Abilities query to carry a real `gameID` and `icon`."""
+    abilities: dict[str, Any] = {
+        "reportData": {"report": {"masterData": {"abilities": abilities_rows or []}}}
+    }
     actors_payload: dict[str, Any] = {"reportData": {"report": {"masterData": {"actors": []}}}}
     affixes_payload: dict[str, Any] = {"gameData": {"affixes": [{"id": 9, "name": "Tyrannical"}]}}
     empty_events: dict[str, Any] = {
@@ -1605,6 +1611,31 @@ def test_each_speed_member_carries_its_own_comparability_and_alignment(tmp_path:
     assert member.comparability.our_level == 16
     assert member.comparability.their_level == 15
     assert isinstance(member.alignment, Alignment)
+
+
+def test_a_parse_members_ability_icons_come_from_its_own_reference_report(
+    tmp_path: Path,
+) -> None:
+    """`ParseMember.ability_icons` is the one seam carrying `LoadedRun.ability_icons`
+    -- what `load_parse_reference` read off a reference's own Abilities query --
+    into `build_icons`'s merge (`cli.py`'s `ability_icons=theirs.ability_icons`).
+    Every other icon test hand-builds a `ParseMember` with `ability_icons=`
+    already set, which jumps straight over this line: deleting it leaves this
+    test the only one that notices, because `ParseMember.ability_icons`
+    defaults to `()` and the assertion below would then fail."""
+    fights_by_code = {"cleanparse": _candidate_fights_payload("cleanparse", roster=("Someone",))}
+    rows = [_candidate_parse_row("cleanparse")]
+    rankings = _samples_ranking_repository(tmp_path, parse_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(
+        tmp_path,
+        fights_by_code,
+        abilities_rows=[{"gameID": 157997, "name": "Ice Nova", "icon": "spell_ice_nova.jpg"}],
+    )
+
+    _speed, parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+
+    [member] = parse.members
+    assert member.ability_icons == ((157997, "spell_ice_nova.jpg"),)
 
 
 # ---------------------------------------------------------------------------

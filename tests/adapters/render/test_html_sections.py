@@ -669,3 +669,84 @@ def test_an_ability_named_only_inside_a_player_card_is_embedded() -> None:
     html = render(a_report(players=(card,)),
                   icons=FakeIcons({157997: "data:image/jpeg;base64,BBB"}))
     assert ".i-157997 { background-image: url(data:image/jpeg;base64,BBB); }" in html
+
+
+# `ledger_row` is imported `with context` in five templates, because it reads
+# `icons_by_id` off the caller's own template context rather than an argument:
+# without that import, `row.ability_id in icons_by_id` silently evaluates false
+# inside the macro instead of raising, and no span draws anywhere on that tab.
+# `test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence` above is
+# the only test proving a span (not merely the CSS rule `_icon_uris` emits in
+# Python, which needs no template at all) is actually drawn for a finding row,
+# and it only exercises `_interrupts.html.j2`. The four tests below do the same
+# proof for the other four templates that import the macro `with context`.
+
+
+def test_an_icon_is_drawn_at_the_ability_a_death_row_names() -> None:
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
+                       title_ability="Ice Block", ability_id=45438)
+    html = render(a_report(death_rows=(row,)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    expected = (
+        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        "Ice Block"
+    )
+    assert expected in html
+
+
+def test_an_icon_is_drawn_at_the_ability_a_group_row_names() -> None:
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
+                       title_ability="Ice Block", ability_id=45438)
+    html = render(a_report(group_rows=(row,)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    expected = (
+        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        "Ice Block"
+    )
+    assert expected in html
+
+
+def test_an_icon_is_drawn_at_the_ability_a_route_row_names() -> None:
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
+                       title_ability="Ice Block", ability_id=45438)
+    html = render(a_report(route_rows=(row,)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    expected = (
+        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        "Ice Block"
+    )
+    assert expected in html
+
+
+def test_an_icon_is_drawn_at_the_ability_a_summary_ledger_row_names() -> None:
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
+                       title_ability="Ice Block", ability_id=45438)
+    html = render(a_report(ledger_decomposition=(row,)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    expected = (
+        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        "Ice Block"
+    )
+    assert expected in html
+
+
+def test_a_findings_ability_icon_survives_finding_through_build_report_to_render() -> None:
+    """No other test takes a `Finding` all the way through `ledger_row` ->
+    `build_report` -> `render`: the view-model tests in `test_ledger.py` stop at
+    `LedgerRow`, and every render test above starts from a hand-written
+    `LedgerRow`, with a hand-typed seam between the two halves. This is the one
+    test that walks the whole path: a `Finding` naming an ability in, its icon
+    span in the rendered HTML out."""
+    finding = a_finding(
+        "interrupts.missed.0", title="Emberkin missed an Ice Block interrupt"
+    ).model_copy(update={"ability_id": 45438, "ability_name": "Ice Block"})
+    report = build_report(a_loaded(), (finding,), None, None, SUBJECT, None, FETCHED,
+                           NO_DEFENSIVES, NO_CONSUMABLES)
+
+    html = render(report, icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+
+    assert '<span class="icon i-45438" aria-hidden="true"></span>' in html
