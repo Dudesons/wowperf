@@ -74,6 +74,25 @@ def parent_of(finding_id: str) -> str | None:
     return None
 
 
+def _split_title(finding: Finding) -> tuple[str, str, str]:
+    """A finding's title cut at the ability it names, or whole when it cannot be.
+
+    The cut is made only when the name appears exactly once. Absent, the
+    analyser and its own title disagree; twice, and there is no way to say
+    which one a reader means. Either way the row keeps its whole title and
+    draws no icon, which is the same silent fallback every other missing icon
+    already uses.
+
+    The identity always comes from `ability_id`. The name only locates a
+    substring already known to be there, so this recovers nothing from prose.
+    """
+    name = finding.ability_name
+    if finding.ability_id is None or not name or finding.title.count(name) != 1:
+        return finding.title, "", ""
+    before, after = finding.title.split(name)
+    return before, name, after
+
+
 def ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
     """Format one finding for display.
 
@@ -83,9 +102,16 @@ def ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
     `None` — a pointer to a row that is not on the page is worse than silence.
     """
     parent_id = parent_of(finding.id)
+    before, ability, after = _split_title(finding)
     return LedgerRow(
         finding_id=finding.id,
         title=finding.title,
+        title_before=before,
+        title_ability=ability,
+        title_after=after,
+        # Set only when the cut succeeded, so one field answers both "where does
+        # the icon go" and "is there one at all".
+        ability_id=finding.ability_id if ability else None,
         detail=finding.detail,
         badge=badge_for(finding.confidence),
         seconds=format_seconds(finding.seconds_lost),

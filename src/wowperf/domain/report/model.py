@@ -41,10 +41,22 @@ class LedgerRow(Frozen):
     mean, and a reader who meets that paragraph four times learns to skip it.
     Which rows form a run is decided in `build.py`, so the template renders
     whichever of the two fields it is given and chooses nothing.
+
+    `title` is the whole sentence and is what the compact summary pointer
+    renders. The three `title_*` fields are that same sentence cut at the
+    ability the finding names, for the card that draws an icon there:
+    `title_before + title_ability + title_after == title` always holds. When
+    the sentence was not cut, `title_before` carries all of it, the other two
+    are empty, and `ability_id` is None, so the card has one shape to render
+    and nothing to draw.
     """
 
     finding_id: str
     title: str
+    title_before: str = ""
+    title_ability: str = ""
+    title_after: str = ""
+    ability_id: int | None = None
     detail: str
     badge: Badge
     seconds: str | None = None
