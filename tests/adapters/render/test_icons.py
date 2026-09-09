@@ -1,7 +1,11 @@
 # ABOUTME: The rules that decide what an icon file name is, and the store that keeps the bytes.
 # ABOUTME: No network: every rule here is decided before a request would be made.
 
+import os
 from pathlib import Path
+from unittest import mock
+
+import pytest
 
 from wowperf.adapters.render.icons import IconStore, icon_filename
 
@@ -26,6 +30,10 @@ def test_a_name_that_is_not_a_jpg_is_refused() -> None:
     assert icon_filename("") is None
 
 
+def test_a_name_with_uppercase_letters_is_refused() -> None:
+    assert icon_filename("Spell_Holy_MagicalSentry.jpg") is None
+
+
 def test_the_store_reads_back_what_it_wrote(tmp_path: Path) -> None:
     store = IconStore(tmp_path)
     store.write("spell_a.jpg", b"\xff\xd8bytes")
@@ -43,3 +51,21 @@ def test_a_recorded_miss_is_remembered_so_it_is_asked_for_once(tmp_path: Path) -
     store.write_miss("spell_a.jpg")
     assert store.known_miss("spell_a.jpg") is True
     assert store.read("spell_a.jpg") is None
+
+
+def test_an_interrupted_write_never_becomes_a_stored_icon(tmp_path: Path) -> None:
+    """Content reaches the store only through the rename, so a torn write cannot be read.
+
+    A process killed mid-write cannot be staged from inside the process. This
+    drives the same seam instead: the rename fails, and nothing observable is
+    left behind under the name nor as a stray temporary. This is the one
+    failure mode the store never self-heals from: it expires nothing, so a
+    leaked partial file would sit there and be embedded in every future report.
+    """
+    store = IconStore(tmp_path)
+
+    with mock.patch.object(os, "replace", side_effect=OSError("interrupted")):
+        with pytest.raises(OSError, match="interrupted"):
+            store.write("spell_a.jpg", b"\xff\xd8bytes")
+
+    assert list(tmp_path.iterdir()) == []
