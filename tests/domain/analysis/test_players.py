@@ -35,7 +35,7 @@ def cast(actor_id: int, at: int, pull_index: int | None = 0) -> CastEvent:
 
 def hit(actor_id: int, amount: int, ability: int = 500) -> DamageTakenEvent:
     return DamageTakenEvent(actor_id=actor_id, ability_id=ability,
-                            ability_name="Molten Scar", amount=amount,
+                            ability_name=f"Ability {ability}", amount=amount,
                             timestamp_ms=1_000, pull_index=0)
 
 
@@ -164,8 +164,8 @@ def test_damage_outlier_players_sharing_a_name_are_distinguished_in_the_title() 
     assert len(outliers) == 2
     titles = {f.title for f in outliers}
     assert titles == {
-        "Alpha (actor 0) took 30.0x the group median from Molten Scar",
-        "Alpha (actor 5) took 30.0x the group median from Molten Scar",
+        "Alpha (actor 0) took 30.0x the group median from Ability 500",
+        "Alpha (actor 5) took 30.0x the group median from Ability 500",
     }
 
 
@@ -177,7 +177,7 @@ def test_a_damage_outlier_finding_names_the_ability_that_hit() -> None:
     findings = analyse_players(run, (), (), (), damage)
     outlier = next(f for f in findings if f.id.startswith("players.damage."))
     assert outlier.ability_id == 500
-    assert outlier.ability_name == "Molten Scar"
+    assert outlier.ability_name == "Ability 500"
 
 
 def test_damage_outliers_are_ordered_by_multiple_of_the_median_not_amount() -> None:

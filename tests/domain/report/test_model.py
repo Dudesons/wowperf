@@ -2,6 +2,7 @@
 # ABOUTME: The model is pure data; anything that decides something belongs in build.py.
 
 import inspect
+from typing import get_args, get_origin
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -50,18 +51,6 @@ def a_ledger_row(**changes: object) -> LedgerRow:
         badge=Badge(label="measured", tint="badge-measured"),
     )
     return row.model_copy(update=changes)
-
-
-def a_player_card(**changes: object) -> PlayerCard:
-    card = PlayerCard(
-        name="Bríala",
-        class_name="Mage",
-        spec="Frost",
-        colour="class-mage",
-        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
-        spell_and_talent=a_section(),
-    )
-    return card.model_copy(update=changes)
 
 
 def a_report(**changes: object) -> Report:
@@ -217,24 +206,53 @@ def test_a_reference_record_states_why_it_was_not_used() -> None:
 def test_all_ledger_rows_reaches_every_field_that_holds_them() -> None:
     """A tenth section that holds findings must be reached, or its icons vanish.
 
-    The fields are discovered by introspection rather than listed here, so
-    adding one and forgetting to name it in `all_ledger_rows` fails this test
-    instead of silently losing that section's icons.
+    The fields are discovered by walking every type `view_model_types()`
+    returns, not by naming `Report` and `PlayerCard` here -- a third container
+    gaining a `tuple[LedgerRow, ...]` field is found the same way a fourth or
+    fifth would be, and fails this test if `all_ledger_rows` was never taught
+    to reach it, instead of escaping an introspection that only ever checked
+    two classes.
     """
     expected: set[str] = set()
     report_changes: dict[str, object] = {}
-    for name, field in Report.model_fields.items():
-        if field.annotation == tuple[LedgerRow, ...]:
-            report_changes[name] = (a_ledger_row(finding_id=f"report.{name}"),)
-            expected.add(f"report.{name}")
-    card_changes: dict[str, object] = {}
-    for name, field in PlayerCard.model_fields.items():
-        if field.annotation == tuple[LedgerRow, ...]:
-            card_changes[name] = (a_ledger_row(finding_id=f"card.{name}"),)
-            expected.add(f"card.{name}")
+    nested: dict[type[BaseModel], dict[str, object]] = {}
+
+    for model_type in view_model_types():
+        row_fields = [
+            name
+            for name, field in model_type.model_fields.items()
+            if field.annotation == tuple[LedgerRow, ...]
+        ]
+        if not row_fields:
+            continue
+        changes: dict[str, object] = {}
+        for name in row_fields:
+            finding_id = f"{model_type.__name__}.{name}"
+            changes[name] = (a_ledger_row(finding_id=finding_id),)
+            expected.add(finding_id)
+        if model_type is Report:
+            report_changes.update(changes)
+        else:
+            nested[model_type] = changes
 
     assert expected, "introspection found no row-bearing fields, so this proves nothing"
-    report = a_report().model_copy(
-        update={**report_changes, "players": (a_player_card().model_copy(update=card_changes),)}
-    )
+
+    report = a_report().model_copy(update=report_changes)
+    for model_type, changes in nested.items():
+        container_field = next(
+            (
+                name
+                for name, field in Report.model_fields.items()
+                if get_origin(field.annotation) is tuple
+                and get_args(field.annotation) == (model_type, Ellipsis)
+            ),
+            None,
+        )
+        assert container_field is not None, (
+            f"{model_type.__name__} holds a row-bearing field but is not nested "
+            "under any tuple field of Report this test knows how to fill"
+        )
+        instance = model_type.model_construct(**changes)  # type: ignore[arg-type]
+        report = report.model_copy(update={container_field: (instance,)})
+
     assert {row.finding_id for row in all_ledger_rows(report)} == expected

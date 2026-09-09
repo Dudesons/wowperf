@@ -114,7 +114,8 @@ ICON_CACHE_SUBDIR = "icons"
 def build_icons(
     loaded: LoadedRun, parse_sample: ParseSample | None, cache_dir: Path
 ) -> BlizzardIcons | None:
-    """Icons for one run: its own ability dictionary, and a store that keeps them for good.
+    """Icons for one run: its own ability dictionary, the parse sample's, and a store
+    that keeps them for good.
 
     None when the store cannot be created, which `render` already understands as
     a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s

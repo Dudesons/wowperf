@@ -245,8 +245,8 @@ invent a better-sounding one.
 `out/<code>-<fight>.findings.json` carries the run's metadata (`report_code`, `fight_id`,
 `dungeon_name`, `keystone_level`, `keystone_time_seconds`, `in_time`, `player`), a `comparison`
 block, the `findings_are_ranked_not_additive` warning, and the findings themselves — each with an
-`id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `pull_index`
-and a `quantifier`.
+`id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `pull_index`,
+an `ability_id`, an `ability_name` and a `quantifier`.
 
 `comparison.references` lists every candidate the sample considered, loaded or not, each carrying
 its `axis` (`speed` or `parse`), a link to the report, and — for one that was not used — the
