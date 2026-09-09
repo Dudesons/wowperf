@@ -33,11 +33,15 @@ class RecapEvent(Frozen):
     `absorbed` on a hit is the share a shield took beside the health damage.
     `health_percent` is the reconstructed health after the event, or None
     before the first reading.
+
+    `ability_id` is the game id of the ability named, which the page uses to
+    draw its icon. Zero means the log named no ability for this row.
     """
 
     kind: str
     timestamp_ms: int
     ability_name: str
+    ability_id: int = 0
     amount: int = 0
     absorbed: int = 0
     source_id: int | None = None
@@ -94,6 +98,7 @@ def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
                     kind=HIT,
                     timestamp_ms=hit.timestamp_ms,
                     ability_name=hit.ability_name,
+                    ability_id=hit.ability_id,
                     amount=hit.health_damage,
                     absorbed=hit.absorbed,
                 )
@@ -105,6 +110,7 @@ def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
                     kind=ABSORB if heal.absorbed else HEAL,
                     timestamp_ms=heal.timestamp_ms,
                     ability_name=heal.ability_name,
+                    ability_id=heal.ability_id,
                     amount=heal.amount,
                     source_id=heal.source_id,
                 )
@@ -113,7 +119,8 @@ def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
         if cast.actor_id == actor and start <= cast.timestamp_ms <= end:
             events.append(
                 RecapEvent(
-                    kind=CAST, timestamp_ms=cast.timestamp_ms, ability_name=cast.ability_name
+                    kind=CAST, timestamp_ms=cast.timestamp_ms, ability_name=cast.ability_name,
+                    ability_id=cast.ability_id,
                 )
             )
     events.sort(key=lambda event: (event.timestamp_ms, KIND_ORDER[event.kind]))

@@ -182,3 +182,12 @@ def test_readings_in_window_drops_the_anchor_taken_before_the_window_opens() -> 
 def test_readings_in_window_returns_them_oldest_first() -> None:
     run = loaded(health_samples=(a_sample(58_000, 20_000), a_sample(52_000, 90_000)))
     assert [s.timestamp_ms for s in readings_in_window(run, a_death())] == [52_000, 58_000]
+
+
+def test_each_timeline_row_carries_the_ability_it_names() -> None:
+    run = loaded(
+        damage_taken=(a_hit(55_000, 10_000),),
+        casts=(a_cast(56_000),),
+    )
+    rows = recap_timeline(run, a_death())
+    assert [(row.kind, row.ability_id) for row in rows] == [(HIT, 1), (CAST, 9)]

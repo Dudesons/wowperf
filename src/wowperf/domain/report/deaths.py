@@ -105,6 +105,7 @@ def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapR
         detail=detail,
         health="" if event.health_percent is None else f"{event.health_percent}%",
         health_percent=event.health_percent,
+        ability_id=event.ability_id or None,
     )
 
 

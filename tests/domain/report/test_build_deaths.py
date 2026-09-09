@@ -574,3 +574,11 @@ def test_a_recap_table_holding_one_event_is_labelled_in_the_singular() -> None:
         a_loaded_with((a_death(1, 60_000),), hits), NO_DEFENSIVES, NO_CONSUMABLES
     )[0]
     assert card.timeline_summary == "1 event"
+
+
+def test_a_recap_row_carries_the_ability_id_the_page_draws_an_icon_from() -> None:
+    hits = (a_hit(1, 54_200, "Snowdrift", 82_410),)
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), hits), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.timeline[0].ability_id == hits[0].ability_id

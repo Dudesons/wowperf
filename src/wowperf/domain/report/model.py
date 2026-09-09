@@ -112,6 +112,11 @@ class RecapRow(Frozen):
     after the event as "62%", or "" before the first reading; `health_percent`
     is the same figure as a number, so the template can draw a bar without
     computing one. A share of the player's own health, never a duration.
+
+    `ability_id` names the ability for an icon, or is None where the log named
+    none. Zero is never used: the ability dictionary maps zero to "Unknown
+    Ability" with a real icon file, so a zero would draw art beside a row
+    nobody identified.
     """
 
     seconds_before: str
@@ -120,6 +125,7 @@ class RecapRow(Frozen):
     detail: str = ""
     health: str = ""
     health_percent: int | None = None
+    ability_id: int | None = None
 
 
 class CurvePoint(Frozen):
