@@ -513,10 +513,32 @@ def test_an_ability_drawn_many_times_is_embedded_once() -> None:
 
 
 def test_rendering_without_an_icon_source_is_the_page_as_it_was() -> None:
-    card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
-                                     ability_id=42),))
-    assert render(a_report(deaths=(card,))) == render(a_report(deaths=(card,)), icons=None)
-    assert "background-image" not in render(a_report(deaths=(card,)))
+    # All three icon sites carry an id at once, against the same card with
+    # every one of those ids left None. Nothing resolves either way -- there
+    # is no IconSource at all -- so the two pages must render byte-identical:
+    # an id nothing can turn into bytes is exactly as inert as no id.
+    with_ids = a_card(
+        killing_blow_id=77,
+        timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                            ability_id=42),),
+        availability=(
+            AvailabilityGroup(title="Defensives", rows=(
+                AvailabilityRow(ability="Icebound Fortitude", state="ready", ability_id=99),
+            )),
+        ),
+    )
+    without_ids = with_ids.model_copy(update={
+        "killing_blow_id": None,
+        "timeline": (RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                               ability_id=None),),
+        "availability": (
+            AvailabilityGroup(title="Defensives", rows=(
+                AvailabilityRow(ability="Icebound Fortitude", state="ready", ability_id=None),
+            )),
+        ),
+    })
+    assert render(a_report(deaths=(with_ids,))) == render(a_report(deaths=(without_ids,)))
+    assert "background-image" not in render(a_report(deaths=(with_ids,)))
 
 
 def test_an_icon_is_drawn_beside_the_killing_blow_in_the_heading() -> None:
