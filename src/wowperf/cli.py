@@ -21,6 +21,7 @@ from wowperf.adapters.config.toml import (
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
+from wowperf.adapters.render.icons import BlizzardIcons, IconStore
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -46,7 +47,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
-from wowperf.domain.model import Player, Run
+from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
@@ -104,6 +105,21 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     return WclRunRepository(
         WclClient(TokenProvider(client_id, client_secret, http), http),
         DiskCache(cache_dir),
+    )
+
+
+ICON_CACHE_SUBDIR = "icons"
+
+
+def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons:
+    """Icons for one run: its own ability dictionary, and a store that keeps them for good."""
+
+    def fetch(url: str) -> tuple[int, str, bytes]:
+        response = httpx.get(url, timeout=30.0, follow_redirects=True)
+        return response.status_code, response.headers.get("content-type", ""), response.content
+
+    return BlizzardIcons(
+        loaded.ability_icon_map, IconStore(cache_dir / ICON_CACHE_SUBDIR), fetch
     )
 
 
@@ -596,7 +612,8 @@ def analyze(
                 externals=load_externals(),
                 self_resurrections=load_self_resurrections(),
                 reference_records=reference_records,
-            )
+            ),
+            icons=build_icons(loaded, cache_dir),
         ),
         encoding="utf-8",
     )

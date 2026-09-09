@@ -349,6 +349,8 @@ def build_analyze_transport(
     aura_response: httpx.Response | None = None,
     boss_pull_reports: tuple[str, ...] = (),
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+    abilities: list[dict[str, Any]] | None = None,
+    death_events: list[dict[str, Any]] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -396,6 +398,12 @@ def build_analyze_transport(
     `build_player_auras` reads), in place of the default empty-but-valid tables
     — letting a caller give the two players aura data that actually differs.
 
+    `abilities` answers `Abilities` with the rows given (each a `gameID`,
+    `name` and `icon`) in place of the default empty dictionary, and
+    `death_events` answers `Deaths` with the raw events given in place of the
+    default empty stream — together letting a caller put a real death, with a
+    real killing blow, on the report a death card is built from.
+
     Every answer, `RateLimit` included, carries a quota block off one rising
     counter. Two counters would let the closing read fall below the reading before
     it, which the ledger would take for an hour rollover — silently dropping the
@@ -422,7 +430,7 @@ def build_analyze_transport(
         ]
 
     abilities_payload: dict[str, Any] = {
-        "reportData": {"report": {"masterData": {"abilities": []}}}
+        "reportData": {"report": {"masterData": {"abilities": abilities or []}}}
     }
     actors_payload: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"actors": [{"id": 699, "gameID": 241874}]}}}
@@ -438,6 +446,11 @@ def build_analyze_transport(
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+    deaths_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {"events": {"data": death_events or [], "nextPageTimestamp": None}}
+        }
     }
     empty_auras: dict[str, Any] = {
         "reportData": {
@@ -494,6 +507,8 @@ def build_analyze_transport(
             return httpx.Response(200, json={"data": payload})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities_payload})
+        if name == "Deaths":
+            return httpx.Response(200, json={"data": deaths_payload})
         if name == "Actors":
             return httpx.Response(200, json={"data": actors_payload})
         if name == "Affixes":
@@ -605,6 +620,8 @@ def run_analyze(
     aura_response: httpx.Response | None = None,
     boss_pull_reports: tuple[str, ...] = (),
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+    abilities: list[dict[str, Any]] | None = None,
+    death_events: list[dict[str, Any]] | None = None,
 ) -> Any:
     """Invoke `analyze abc123`, mocking the report queries and both leaderboards."""
     transport = build_analyze_transport(
@@ -613,6 +630,8 @@ def run_analyze(
         calls=calls,
         aura_response=aura_response,
         boss_pull_reports=boss_pull_reports,
+        abilities=abilities,
+        death_events=death_events,
         aura_rows_by_code=aura_rows_by_code,
     )
     return _invoke(tmp_path, list(extra_args), transport)
@@ -1758,6 +1777,46 @@ def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> No
     written = tmp_path / "out" / "abc123-36.html"
     assert written.exists()
     assert written.read_text(encoding="utf-8").lstrip().lower().startswith("<!doctype html>")
+
+
+KILLING_BLOW_ABILITY_ID = 1234
+KILLING_BLOW_ICON = "spell_frost_frostbolt02.jpg"
+
+
+def test_analyze_writes_a_report_whose_icons_are_embedded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The CLI wires a real `BlizzardIcons` into `render`, built from the run's own
+    ability dictionary: a death card's killing blow draws its icon embedded as a
+    data URI, never linked to the CDN it came from. `httpx.Client` is not what
+    `build_icons`' fetcher calls, so `httpx.get` is stubbed here directly — the
+    stubbed CDN answers every request with the same fake image; the point is
+    that the CLI wires an icon source in at all, not what image it returns."""
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = run_analyze(
+        tmp_path,
+        abilities=[
+            {"gameID": KILLING_BLOW_ABILITY_ID, "name": "Frostbolt", "icon": KILLING_BLOW_ICON}
+        ],
+        death_events=[
+            {
+                "type": "death",
+                "targetID": 693,
+                "timestamp": 4000,
+                "killingAbilityGameID": KILLING_BLOW_ABILITY_ID,
+            }
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "url(data:image/jpeg;base64," in html
+    assert "url(http" not in html
 
 
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
