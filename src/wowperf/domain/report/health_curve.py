@@ -157,7 +157,7 @@ def build_health_curve(
         for event in events
         if event.health_percent is not None
     ]
-    if not plotted or span_ms <= 0:
+    if not plotted:
         return None
     dots = []
     for sample in readings:
