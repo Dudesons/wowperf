@@ -1,13 +1,14 @@
 # ABOUTME: The rules that decide what an icon file name is, and the store that keeps the bytes.
 # ABOUTME: No network: every rule here is decided before a request would be made.
 
+import base64
 import os
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from wowperf.adapters.render.icons import IconStore, icon_filename
+from wowperf.adapters.render.icons import BlizzardIcons, IconStore, icon_filename
 
 
 def test_a_plain_icon_name_is_accepted() -> None:
@@ -69,3 +70,76 @@ def test_an_interrupted_write_never_becomes_a_stored_icon(tmp_path: Path) -> Non
             store.write("spell_a.jpg", b"\xff\xd8bytes")
 
     assert list(tmp_path.iterdir()) == []
+
+
+JPEG = b"\xff\xd8\xff\xe0jpegbytes"
+
+
+def a_source(
+    tmp_path: Path,
+    filenames: dict[int, str],
+    responses: dict[str, tuple[int, str, bytes]],
+    asked: list[str] | None = None,
+) -> BlizzardIcons:
+    def fetch(url: str) -> tuple[int, str, bytes]:
+        if asked is not None:
+            asked.append(url)
+        return responses.get(url, (404, "text/html", b""))
+
+    return BlizzardIcons(filenames, IconStore(tmp_path), fetch)
+
+
+def test_an_ability_the_dictionary_names_is_embedded(tmp_path: Path) -> None:
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    source = a_source(tmp_path, {1: "spell_a.jpg"}, {url: (200, "image/jpeg", JPEG)})
+    assert source.data_uri(1) == "data:image/jpeg;base64," + base64.b64encode(JPEG).decode()
+
+
+def test_an_ability_the_dictionary_does_not_name_draws_nothing(tmp_path: Path) -> None:
+    assert a_source(tmp_path, {}, {}).data_uri(1) is None
+
+
+def test_ability_zero_draws_nothing_even_though_it_names_a_file(tmp_path: Path) -> None:
+    # The dictionary maps zero to "Unknown Ability" and gives it a real axe icon.
+    # Drawing it would put art beside a row nobody identified.
+    url = "https://render.worldofwarcraft.com/eu/icons/36/inv_axe_02.jpg"
+    source = a_source(tmp_path, {0: "inv_axe_02.jpg"}, {url: (200, "image/jpeg", JPEG)})
+    assert source.data_uri(0) is None
+
+
+def test_a_refusal_carrying_xml_is_a_miss_and_is_never_embedded(tmp_path: Path) -> None:
+    # Blizzard answers an absent icon with 403 and an XML body, not a 404.
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    source = a_source(tmp_path, {1: "spell_a.jpg"}, {url: (403, "application/xml", b"<Error/>")})
+    assert source.data_uri(1) is None
+
+
+def test_a_200_that_is_not_an_image_is_a_miss(tmp_path: Path) -> None:
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    source = a_source(tmp_path, {1: "spell_a.jpg"}, {url: (200, "text/html", b"<html>")})
+    assert source.data_uri(1) is None
+
+
+def test_a_missing_icon_is_asked_for_once_and_then_remembered(tmp_path: Path) -> None:
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    asked: list[str] = []
+    responses = {url: (403, "application/xml", b"<Error/>")}
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+    assert asked == [url]
+
+
+def test_a_stored_icon_is_not_asked_for_again(tmp_path: Path) -> None:
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    asked: list[str] = []
+    responses = {url: (200, "image/jpeg", JPEG)}
+    a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1)
+    a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1)
+    assert asked == [url]
+
+
+def test_a_name_the_rule_refuses_is_never_requested(tmp_path: Path) -> None:
+    asked: list[str] = []
+    source = a_source(tmp_path, {1: "../escape.jpg"}, {}, asked)
+    assert source.data_uri(1) is None
+    assert asked == []
