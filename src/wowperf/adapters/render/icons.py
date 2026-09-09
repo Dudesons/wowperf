@@ -99,17 +99,31 @@ class BlizzardIcons:
         self._fetch = fetch
 
     def data_uri(self, ability_id: int) -> str | None:
-        name = self._name_of(ability_id)
-        if name is None:
-            return None
-        payload = self._store.read(name)
-        if payload is None:
-            if self._store.known_miss(name):
+        """An id, resolved to bytes -- or None, for any reason including a store that failed.
+
+        Every store method below this point touches the filesystem: `read`'s
+        `is_file`-then-`read_bytes`, `known_miss`'s stat, and `write` and
+        `write_miss`'s rename, each racing a neighbouring process that can
+        remove or lock the file between the check and the access. On Windows
+        an on-access scanner holding a file open turns that race into a
+        PermissionError. None of it is worth a report over: a byte store that
+        failed is a miss like any other, resolved here at the port boundary
+        rather than guarded separately in each method it could interrupt.
+        """
+        try:
+            name = self._name_of(ability_id)
+            if name is None:
                 return None
-            payload = self._download(name)
-        if payload is None:
+            payload = self._store.read(name)
+            if payload is None:
+                if self._store.known_miss(name):
+                    return None
+                payload = self._download(name)
+            if payload is None:
+                return None
+            return "data:image/jpeg;base64," + base64.b64encode(payload).decode()
+        except OSError:
             return None
-        return "data:image/jpeg;base64," + base64.b64encode(payload).decode()
 
     def _name_of(self, ability_id: int) -> str | None:
         if ability_id == UNKNOWN_ABILITY:

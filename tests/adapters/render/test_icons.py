@@ -172,3 +172,17 @@ def test_a_name_the_rule_refuses_is_never_requested(tmp_path: Path) -> None:
     source = a_source(tmp_path, {1: "../escape.jpg"}, {}, asked)
     assert source.data_uri(1) is None
     assert asked == []
+
+
+def test_a_failing_byte_store_draws_nothing_rather_than_crashing_the_run(tmp_path: Path) -> None:
+    """A store method raising OSError is a miss like any other, never a crash.
+
+    `render(...)` runs after the findings file is already written and outside
+    `analyze`'s own try/except, so an exception here would surface as a
+    traceback after the run has already reported success. On Windows this is
+    not theoretical: an on-access antivirus scanner holding a file open turns
+    a read or a rename into a PermissionError, an OSError subclass.
+    """
+    source = a_source(tmp_path, {1: "spell_a.jpg"}, {})
+    with mock.patch.object(IconStore, "read", side_effect=OSError("locked")):
+        assert source.data_uri(1) is None
