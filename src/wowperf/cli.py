@@ -111,8 +111,24 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
 ICON_CACHE_SUBDIR = "icons"
 
 
-def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons:
-    """Icons for one run: its own ability dictionary, and a store that keeps them for good."""
+def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons | None:
+    """Icons for one run: its own ability dictionary, and a store that keeps them for good.
+
+    None when the store cannot be created, which `render` already understands as
+    a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s
+    own try/except and after the findings have been written, so a cache directory
+    this machine will not give us must not end a run holding a finished analysis
+    -- icons are decorative, and the page names every ability with or without one.
+
+    Unlike a single icon the CDN does not serve, which is silent by design, this
+    costs every icon on the page for a local reason the reader can act on, so it
+    is said out loud rather than leaving them a report that merely looks plain.
+    """
+    try:
+        store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
+    except OSError as error:
+        typer.secho(f"writing the report without icons: {error}", err=True, fg="yellow")
+        return None
 
     def fetch(url: str) -> tuple[int, str, bytes]:
         # Status 0 tells `BlizzardIcons` that no HTTP response arrived at all --
@@ -126,9 +142,7 @@ def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons:
             return 0, "", b""
         return response.status_code, response.headers.get("content-type", ""), response.content
 
-    return BlizzardIcons(
-        loaded.ability_icon_map, IconStore(cache_dir / ICON_CACHE_SUBDIR), fetch
-    )
+    return BlizzardIcons(loaded.ability_icon_map, store, fetch)
 
 
 def build_reference_repositories(

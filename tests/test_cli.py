@@ -1853,6 +1853,68 @@ def test_a_failed_icon_fetch_does_not_abort_the_run(
     assert "url(data:image" not in html
 
 
+def _analyze_with_an_unusable_icon_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
+    """Run `analyze` with a file sitting where the icon cache directory belongs.
+
+    `IconStore` creates its directory when it is constructed, and a file of the
+    same name makes that `mkdir` raise however permissive its flags are -- the
+    same shape of failure as a directory the process may not write to, without
+    needing a permission this suite cannot portably arrange. The stubbed CDN
+    answers every request with a real image, so an icon missing from the page
+    can only be the store's doing.
+    """
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "icons").write_text("a file, where a directory belongs", encoding="utf-8")
+
+    return run_analyze(
+        tmp_path,
+        abilities=[
+            {"gameID": KILLING_BLOW_ABILITY_ID, "name": "Frostbolt", "icon": KILLING_BLOW_ICON}
+        ],
+        death_events=[
+            {
+                "type": "death",
+                "targetID": 693,
+                "timestamp": 4000,
+                "killingAbilityGameID": KILLING_BLOW_ABILITY_ID,
+            }
+        ],
+    )
+
+
+def test_an_icon_store_that_cannot_be_created_does_not_abort_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The store is built as an argument to `render`, which runs after `analyze`'s own
+    try/except has closed and after the findings file has been written. Icons are
+    decorative, so a cache directory that cannot be created costs the page its art and
+    nothing else: the report is still written, and it still names the ability."""
+    result = _analyze_with_an_unusable_icon_store(monkeypatch, tmp_path)
+    assert result.exit_code == 0, result.output
+
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "url(data:image" not in html
+    assert "Frostbolt" in html
+
+
+def test_an_icon_store_that_cannot_be_created_says_so_on_stderr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """One icon Blizzard does not serve is silent by design: the page draws the name and
+    the reader loses nothing they could act on. A store that cannot be created costs
+    every icon on the page at once, for a reason on this machine that the reader can
+    fix, so that one is said out loud rather than left to look like a plain report."""
+    result = _analyze_with_an_unusable_icon_store(monkeypatch, tmp_path)
+    assert result.exit_code == 0, result.output
+    assert "writing the report without icons" in result.stderr
+
+
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
     """Mirrors `test_the_page_executes_only_its_own_script` in `test_html_invariants.py`: an
     `href` to the reference run on warcraftlogs.com is a link the reader may follow,
