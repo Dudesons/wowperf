@@ -1007,6 +1007,7 @@ def test_the_resolver_knows_an_icon_named_only_by_a_reference_report(
     )
     icons = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
 
+    assert icons is not None  # build_icons returns None only when the store fails
     assert icons.data_uri(157997) is not None
 
 
@@ -1025,7 +1026,9 @@ def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> N
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(httpx, "get", fake_get)
-        build_icons(ours, ParseSample(members=(theirs,)), tmp_path).data_uri(1)
+        resolver = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
+        assert resolver is not None
+        resolver.data_uri(1)
 
     assert asked == ["https://render.worldofwarcraft.com/eu/icons/36/ours.jpg"]
 ```
@@ -1034,31 +1037,34 @@ def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> N
 
 - [ ] **Step 7: Merge the maps in the CLI**
 
-Change `build_icons` to:
+`build_icons` currently reads `def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons | None:` — it returns `None` when the store cannot be created, and its `fetch` closure carries a `try/except httpx.HTTPError` returning a status-`0` sentinel. **Leave both of those exactly as they are.** Change only the signature and the map it hands to `BlizzardIcons`:
 
 ```python
 def build_icons(
     loaded: LoadedRun, parse_sample: ParseSample | None, cache_dir: Path
-) -> BlizzardIcons:
-    """Icons for one run and for the parses it is compared against.
+) -> BlizzardIcons | None:
+```
 
-    A comparison finding names an ability our player never cast, so its file
-    name is in the reference's dictionary and not in ours. Ours is overlaid
+Extend its docstring with:
+
+```
+    A comparison names an ability our player never cast, so that ability's file
+    name is in the reference's own dictionary and in no other. Ours is overlaid
     last: where both name an id they name the same file, so the order settles
     determinism rather than correctness.
-    """
+```
 
-    def fetch(url: str) -> tuple[int, str, bytes]:
-        ...  # unchanged
+Then replace the final `return` with:
 
+```python
     names: dict[int, str] = {}
     for member in parse_sample.members if parse_sample else ():
         names.update(member.ability_icons)
     names.update(loaded.ability_icon_map)
-    return BlizzardIcons(names, IconStore(cache_dir / ICON_CACHE_SUBDIR), fetch)
+    return BlizzardIcons(names, store, fetch)
 ```
 
-Leave the `fetch` closure exactly as it is, including its `try/except httpx.HTTPError` and the status-`0` sentinel. Update the call site to pass `parse_sample`.
+`store` is the local the existing `try/except OSError` block already binds. At the call site, `icons=build_icons(loaded, cache_dir)` becomes `icons=build_icons(loaded, parse_sample, cache_dir)` — `parse_sample` is already in scope there, since `build_report` is handed it two lines above.
 
 - [ ] **Step 8: Run it and watch it pass**
 
