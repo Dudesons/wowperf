@@ -611,34 +611,43 @@ def analyze(
         "findings": [finding.model_dump(mode="json") for finding in findings],
     }
 
-    out.mkdir(parents=True, exist_ok=True)
     written = out / f"{run.report_code}-{run.fight_id}.findings.json"
-    # Real rosters contain non-ASCII names; write_text's default encoding is
-    # locale-dependent (commonly cp1252 on Windows) and would raise on them.
-    written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    typer.echo(f"{len(findings)} findings written to {written}")
-
     report_file = out / f"{run.report_code}-{run.fight_id}.html"
-    report_file.write_text(
-        render(
-            build_report(
-                loaded,
-                findings,
-                speed_sample,
-                parse_sample,
-                subject,
-                narrative_text,
-                datetime.now().strftime("%Y-%m-%d %H:%M"),
-                defensives,
-                consumables,
-                externals=load_externals(),
-                self_resurrections=load_self_resurrections(),
-                reference_records=reference_records,
+    # A guard of its own, because this phase fails differently from the one
+    # above: nothing here can be degraded or retried, and a failure can arrive
+    # after the findings have been written and announced. `OSError` alone --
+    # the API errors the first block names cannot reach a filesystem write.
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        # Real rosters contain non-ASCII names; write_text's default encoding is
+        # locale-dependent (commonly cp1252 on Windows) and would raise on them.
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        typer.echo(f"{len(findings)} findings written to {written}")
+
+        report_file.write_text(
+            render(
+                build_report(
+                    loaded,
+                    findings,
+                    speed_sample,
+                    parse_sample,
+                    subject,
+                    narrative_text,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    defensives,
+                    consumables,
+                    externals=load_externals(),
+                    self_resurrections=load_self_resurrections(),
+                    reference_records=reference_records,
+                ),
+                icons=build_icons(loaded, cache_dir),
             ),
-            icons=build_icons(loaded, cache_dir),
-        ),
-        encoding="utf-8",
-    )
+            encoding="utf-8",
+        )
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
     typer.echo(f"report written to {report_file}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)

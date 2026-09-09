@@ -1915,6 +1915,62 @@ def test_an_icon_store_that_cannot_be_created_says_so_on_stderr(
     assert "writing the report without icons" in result.stderr
 
 
+def test_an_out_directory_that_cannot_be_created_fails_without_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """Unlike the icons, the output is the run: there is no degraded page to fall back
+    to, so this ends the run. It ends it the way every other failure does -- one red
+    line naming the path -- rather than as the traceback the unguarded write phase gave.
+
+    A file where the directory belongs makes `mkdir` raise however permissive its
+    flags are, which is the same shape of failure as a directory this process may not
+    create, without needing a permission the suite cannot portably arrange.
+    """
+    (tmp_path / "reports").write_text("a file, where a directory belongs", encoding="utf-8")
+
+    result = run_analyze(tmp_path, "--no-compare", "--out", str(tmp_path / "reports"))
+
+    assert result.exit_code == 1
+    assert "reports" in result.stderr
+    assert "Traceback" not in result.output
+    assert not isinstance(result.exception, OSError)
+
+
+def test_a_findings_file_that_cannot_be_written_fails_without_a_traceback(
+    tmp_path: Path,
+) -> None:
+    """A directory standing where the findings file goes makes the write raise -- an
+    `IsADirectoryError` here, a `PermissionError` on Windows, both `OSError`. It stands
+    in for the disk being full or the volume read-only, neither of which a test can ask
+    for, and it reaches the same handler."""
+    (tmp_path / "out" / "abc123-36.findings.json").mkdir(parents=True)
+
+    result = run_analyze(tmp_path, "--no-compare")
+
+    assert result.exit_code == 1
+    assert "abc123-36.findings.json" in result.stderr
+    assert "Traceback" not in result.output
+    assert not isinstance(result.exception, OSError)
+
+
+def test_a_report_that_cannot_be_written_fails_after_the_findings_were_written(
+    tmp_path: Path,
+) -> None:
+    """The findings land, the page does not. This is the one that matters: the run has
+    already told the reader where the findings went, so the failure has to arrive as a
+    statement about the page rather than as a traceback under a success line."""
+    (tmp_path / "out" / "abc123-36.html").mkdir(parents=True)
+
+    result = run_analyze(tmp_path, "--no-compare")
+
+    assert result.exit_code == 1
+    assert (tmp_path / "out" / "abc123-36.findings.json").is_file()
+    assert "findings written to" in result.stdout
+    assert "abc123-36.html" in result.stderr
+    assert "Traceback" not in result.output
+    assert not isinstance(result.exception, OSError)
+
+
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
     """Mirrors `test_the_page_executes_only_its_own_script` in `test_html_invariants.py`: an
     `href` to the reference run on warcraftlogs.com is a link the reader may follow,
