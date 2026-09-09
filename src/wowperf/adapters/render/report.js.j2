@@ -1,0 +1,57 @@
+{# ABOUTME: The page's only script: it shows and hides panels and follows a fragment link. #}
+{# ABOUTME: No network, no library, no state beyond which panel is visible. #}
+(function () {
+  document.documentElement.classList.add("js");
+
+  function show(panel) {
+    var group = panel.getAttribute("data-tab-panel");
+    var panels = document.querySelectorAll('[data-tab-panel="' + group + '"]');
+    var buttons = document.querySelectorAll('[data-tab-group="' + group + '"] [data-tab-for]');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.toggle("active", panels[i] === panel);
+    }
+    for (var j = 0; j < buttons.length; j++) {
+      var on = buttons[j].getAttribute("data-tab-for") === panel.id;
+      buttons[j].classList.toggle("active", on);
+      buttons[j].setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  function reveal(target) {
+    var panels = [];
+    for (var node = target; node && node !== document.body; node = node.parentElement) {
+      if (node.hasAttribute("data-tab-panel")) { panels.unshift(node); }
+    }
+    for (var i = 0; i < panels.length; i++) { show(panels[i]); }
+    return panels.length > 0;
+  }
+
+  function resolve() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var target = id ? document.getElementById(id) : null;
+    if (target && reveal(target) && !target.hasAttribute("data-tab-panel")) {
+      target.scrollIntoView();
+    }
+  }
+
+  var buttons = document.querySelectorAll("[data-tab-for]");
+  for (var b = 0; b < buttons.length; b++) {
+    buttons[b].addEventListener("click", function (event) {
+      var panel = document.getElementById(event.currentTarget.getAttribute("data-tab-for"));
+      if (panel) {
+        show(panel);
+        history.replaceState(null, "", "#" + panel.id);
+      }
+    });
+  }
+
+  var groups = document.querySelectorAll("[data-tab-group]");
+  for (var g = 0; g < groups.length; g++) {
+    var first = groups[g].querySelector("[data-tab-for]");
+    var panel = first ? document.getElementById(first.getAttribute("data-tab-for")) : null;
+    if (panel) { show(panel); }
+  }
+  window.addEventListener("hashchange", resolve);
+  window.addEventListener("load", resolve);
+  resolve();
+})();

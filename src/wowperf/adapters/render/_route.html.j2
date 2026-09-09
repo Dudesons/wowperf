@@ -1,0 +1,20 @@
+{# ABOUTME: The Route and tempo panel: the two-track timeline and what the route cost. #}
+{# ABOUTME: Withheld without a speed reference; rows needing no reference still render. #}
+{% from "_macros.html.j2" import ledger_row %}
+<section class="panel" data-tab-panel="main" id="tab-route">
+
+<h2 id="route">Route and tempo</h2>
+{% if report.route.state.value == "withheld" %}
+<p class="withheld">{{ report.route.reason }}</p>
+{% endif %}
+{% if report.route_rows %}
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.route_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% elif report.route.state.value != "withheld" %}
+<p class="sub">Nothing to report.</p>
+{% endif %}
+
+</section>

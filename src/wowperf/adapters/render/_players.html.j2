@@ -1,0 +1,37 @@
+{# ABOUTME: The Players panel: one card per player, carrying their measured facts. #}
+{# ABOUTME: Damage reads against the group median, never as avoidable. #}
+{% from "_macros.html.j2" import ledger_row %}
+<section class="panel" data-tab-panel="main" id="tab-players">
+
+<h2 id="players">Players</h2>
+{% if not report.players %}
+<p class="sub">No players.</p>
+{% endif %}
+{% for player in report.players %}
+<div class="card">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--{{ player.colour }})"></span>
+    <h3>{{ player.name }}</h3>
+    <span class="sub">{{ player.class_name }} {{ player.spec }}</span>
+  </div>
+  <p class="stats">{{ player.stats_line }}</p>
+  {% for row in player.damage_rows %}
+  {{ ledger_row(row) }}
+  {% endfor %}
+  {% if player.spell_and_talent.state.value == "withheld" %}
+  <p class="withheld">{{ player.spell_and_talent.reason }}</p>
+  {% endif %}
+  {% for row in player.spell_and_talent_rows %}
+  {{ ledger_row(row) }}
+  {% endfor %}
+</div>
+{% endfor %}
+
+{% if report.group_rows %}
+<p class="sub">Group. Per-player rates, until each finds its player.</p>
+{% for row in report.group_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% endif %}
+
+</section>

@@ -1,0 +1,66 @@
+{# ABOUTME: The Summary panel: the narrative, the decomposition, and the biggest costs. #}
+{# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
+{% from "_macros.html.j2" import ledger_row, pointer %}
+<section class="panel" data-tab-panel="main" id="tab-summary">
+
+{% if report.narrative %}
+<h2 id="narrative">What this run says</h2>
+<div class="narrative">{{ report.narrative }}</div>
+<p class="legend">Interpretation, written from the findings below.</p>
+{% endif %}
+
+<h2 id="ledger">Where the time went</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.ledger_decomposition %}
+{{ ledger_row(row) }}
+{% endfor %}
+
+{% if report.summary_pointers %}
+<h2 id="losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+{% for row in report.summary_pointers %}
+{{ pointer(row) }}
+{% endfor %}
+{% endif %}
+
+<h2 id="timeline">Aligned timeline</h2>
+{% if report.timeline.section.state.value == "withheld" %}
+<p class="withheld">{{ report.timeline.section.reason }}</p>
+{% else %}
+<p class="sub">Blocks are pulls. The space between them is travel.</p>
+<p class="legend">{{ report.timeline.legend }}</p>
+<svg width="100%" viewBox="0 0 {{ report.timeline.width }} {{ report.timeline.height }}">
+  <title>Both runs on one elapsed-time axis</title>
+  {% for x, label in report.timeline.ticks %}
+  <line class="tick" x1="{{ x }}" y1="{{ report.timeline.tick_y1 }}" x2="{{ x }}"
+        y2="{{ report.timeline.tick_y2 }}"></line>
+  <text class="tick-label" x="{{ x }}" y="{{ report.timeline.tick_label_y }}"
+        text-anchor="middle">{{ label }}</text>
+  {% endfor %}
+  {% for track in [report.timeline.ours, report.timeline.theirs] %}
+  {% if track %}
+  <text class="track-label" x="{{ report.timeline.caption_x }}" y="{{ track.baseline_y }}"
+        dy="{{ report.timeline.caption_dy }}">{{ track.caption }}</text>
+  {% for block in track.blocks %}
+  <rect x="{{ block.x }}" y="{{ track.baseline_y }}" width="{{ block.width }}"
+        height="{{ report.timeline.block_height }}" rx="2" class="{{ block.css_class }}">
+    <title>{{ block.label }}</title>
+  </rect>
+  {% endfor %}
+  {% endif %}
+  {% endfor %}
+</svg>
+{% endif %}
+
+<h2 id="observations">Other findings</h2>
+{% if report.observations %}
+<p class="sub">Findings no other section claimed.</p>
+{% for row in report.observations %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% else %}
+<p class="sub">Nothing else measured.</p>
+{% endif %}
+
+</section>

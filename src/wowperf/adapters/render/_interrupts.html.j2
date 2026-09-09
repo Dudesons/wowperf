@@ -1,0 +1,14 @@
+{# ABOUTME: The Interrupts panel: the casts that went through and what they cost. #}
+{# ABOUTME: One card per finding, in the order the ranking already fixed. #}
+{% from "_macros.html.j2" import ledger_row %}
+<section class="panel" data-tab-panel="main" id="tab-interrupts">
+
+<h2 id="interrupts">Interrupts</h2>
+{% if not report.interrupts %}
+<p class="sub">Nothing to report.</p>
+{% endif %}
+{% for row in report.interrupts %}
+{{ ledger_row(row) }}
+{% endfor %}
+
+</section>

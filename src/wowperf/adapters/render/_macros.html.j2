@@ -1,0 +1,31 @@
+{# ABOUTME: The two shapes a finding takes on the page: a full card, and a link to one. #}
+{# ABOUTME: Each renders whichever fields it is handed; build.py decided what they hold. #}
+{% macro ledger_row(row) %}
+{% if row.group_note %}
+<p class="group-note">{{ row.group_note }}</p>
+{% endif %}
+<div class="card" id="finding-{{ row.finding_id }}">
+  <div class="row-head">
+    <h3>{{ row.title }}</h3>
+    {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
+    <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
+  </div>
+  {% if row.detail %}
+  <p class="detail">{{ row.detail }}</p>
+  {% endif %}
+  {% if row.nests_inside %}
+  <p class="nests">Already counted inside {{ row.nests_inside }}.</p>
+  {% endif %}
+  {% if row.evidence %}
+  <ul class="evidence">{% for item in row.evidence %}<li>{{ item }}</li>{% endfor %}</ul>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro pointer(row) %}
+<a class="pointer" href="#finding-{{ row.finding_id }}">
+  <span class="pointer-title">{{ row.title }}</span>
+  <span class="cost">{{ row.seconds }}</span>
+  <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
+</a>
+{% endmacro %}

@@ -392,11 +392,13 @@ def test_the_report_carries_no_total_row() -> None:
     #     already formatted as a string on `LedgerRow.seconds`, so the only
     #     numeric fields left are an id, a difficulty tier and a handful of SVG
     #     coordinates, all named on the allowlist above; and
-    # (2) the template holds no Jinja `{% set %}` accumulator that could total
+    # (2) no template holds a Jinja `{% set %}` accumulator that could total
     #     figures on its own, whether spelled as an obvious `|sum`/`sum(` call
-    #     or a hand-rolled running total in a loop variable.
+    #     or a hand-rolled running total in a loop variable. Every template in
+    #     the render directory is read, so a partial is covered the moment it
+    #     exists rather than when someone remembers to name it here.
     # It does NOT prove no total is computed anywhere in the codebase -- only
-    # that the report's own view model and template have nowhere to hold or
+    # that the report's own view model and templates have nowhere to hold or
     # build one.
     report = build_report(
         minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
@@ -423,12 +425,16 @@ def test_the_report_carries_no_total_row() -> None:
                     "on the allowlist explaining why it cannot hold a total"
                 )
 
-    template = (
-        Path(__file__).parents[3] / "src" / "wowperf" / "adapters" / "render" / "report.html.j2"
-    ).read_text(encoding="utf-8")
-    assert "|sum" not in template
-    assert "sum(" not in template
-    assert "{% set" not in template
+    render_dir = Path(__file__).parents[3] / "src" / "wowperf" / "adapters" / "render"
+    templates = sorted(render_dir.glob("*.j2"))
+    # A glob that matched nothing would let every assertion below pass without
+    # reading a line of markup, so the count is checked before the content is.
+    assert len(templates) >= 2, f"only {len(templates)} template(s) under {render_dir}"
+    for path in templates:
+        source = path.read_text(encoding="utf-8")
+        assert "|sum" not in source, path.name
+        assert "sum(" not in source, path.name
+        assert "{% set" not in source, path.name
 
 
 def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) -> None:

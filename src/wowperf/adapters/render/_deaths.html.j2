@@ -1,0 +1,86 @@
+{# ABOUTME: The Deaths panel: one recap per death, and the death costs beneath them. #}
+{# ABOUTME: A recap says what was pressed and what was ready, never what should have been. #}
+{% from "_macros.html.j2" import ledger_row %}
+<section class="panel" data-tab-panel="main" id="tab-deaths">
+
+<h2 id="deaths">Deaths</h2>
+{% if not report.deaths %}
+<p class="sub">No deaths.</p>
+{% endif %}
+{% for death in report.deaths %}
+<div class="card">
+  <div class="row-head">
+    <h3>{{ death.player }} — {{ death.killing_blow }}</h3>
+    <span class="death-when">{{ death.when }}</span>
+  </div>
+  <p class="detail">{{ death.class_name }}</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      {% if death.timeline %}
+      <table class="timeline">
+        <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
+        <tbody>
+        {% for row in death.timeline %}
+        <tr class="{{ row.kind }}">
+          <td>{{ row.seconds_before }}</td>
+          <td>{{ row.ability }}</td>
+          <td>{{ row.detail }}</td>
+          <td class="hp">
+            {%- if row.health_percent is not none %}<span class="hp-bar" style="width: {{ row.health_percent }}%"></span>{% endif -%}
+            {{ row.health }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% elif death.timeline_note %}
+      <p class="sub">{{ death.timeline_note }}</p>
+      {% endif %}
+      {% if death.health_badge %}
+      <p class="nests">Health after each event
+        <a class="badge {{ death.health_badge.tint }}" href="#provenance">{{ death.health_badge.label }}</a></p>
+      {% endif %}
+      {% if death.health_note %}
+      <p class="nests">{{ death.health_note }}</p>
+      {% endif %}
+      {% if death.came_back %}
+      <p class="detail">{{ death.came_back }}
+        {%- if death.came_back_badge %} <a class="badge {{ death.came_back_badge.tint }}"
+           href="#provenance">{{ death.came_back_badge.label }}</a>{% endif %}</p>
+      {% endif %}
+    </div>
+    <div class="recap-availability">
+      {% for group in death.availability %}
+      <div class="avail">
+        <p class="avail-title">{{ group.title }}
+          {%- if group.badge %} <a class="badge {{ group.badge.tint }}"
+             href="#provenance">{{ group.badge.label }}</a>{% endif %}</p>
+        {% if group.rows %}
+        <ul>
+          {% for row in group.rows %}
+          <li class="{{ row.state }}">
+            <span class="avail-name">{{ row.ability }}
+              {%- if row.owner %} <span class="owner">{{ row.owner }}</span>{% endif %}</span>
+            <span class="avail-detail">{{ row.detail }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if group.note %}
+        <p class="nests">{{ group.note }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% if report.death_rows %}
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+{% for row in report.death_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+{% endif %}
+
+</section>

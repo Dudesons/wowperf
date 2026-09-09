@@ -44,18 +44,24 @@ jobs:
       - name: Test
         run: uv run pytest
 
-      - name: Build the wheel and check it carries the template
-        # The report template is not a .py file, so it reaches the wheel only
-        # through the force-include in pyproject.toml. Every test runs from the
-        # source tree and would pass with that line deleted; an installed
-        # wowperf would then fail at the moment it rendered a report.
+      - name: Build the wheel and check it carries every template
+        # None of the report's templates is a .py file, and every test runs from
+        # the source tree, where they are present however the wheel is
+        # configured. An installed wowperf missing one fails at the moment it
+        # renders a report, so the wheel is opened here and its contents
+        # compared against the render directory rather than a list kept by hand.
         run: |
           uv build --wheel --out-dir dist
           uv run python -c "
-          import glob, sys, zipfile
+          import glob, pathlib, sys, zipfile
           wheel = sorted(glob.glob('dist/*.whl'))[-1]
-          names = zipfile.ZipFile(wheel).namelist()
-          if 'wowperf/adapters/render/report.html.j2' not in names:
-              sys.exit(f'{wheel} does not carry the report template')
-          print(f'{wheel} carries the report template')
+          names = set(zipfile.ZipFile(wheel).namelist())
+          render = pathlib.Path('src/wowperf/adapters/render')
+          assets = [p for p in sorted(render.iterdir()) if p.is_file() and p.suffix != '.py']
+          if not assets:
+              sys.exit(f'no templates found under {render}')
+          missing = [str(p) for p in assets if p.relative_to('src').as_posix() not in names]
+          if missing:
+              sys.exit(f'{wheel} is missing {len(missing)}: ' + ', '.join(missing))
+          print(f'{wheel} carries all {len(assets)} template files')
           "
