@@ -111,8 +111,9 @@ def display_names(run: Run) -> dict[int, str]:
 
 def _damage_outliers(
     run: Run, damage_taken: tuple[DamageTakenEvent, ...], roles: Roles
-) -> list[tuple[int, str, str, int, float]]:
-    """(actor id, player name, ability name, amount, multiple of the median), worst first.
+) -> list[tuple[int, int, str, str, int, float]]:
+    """(actor id, ability id, player name, ability name, amount, multiple of the median),
+    worst first.
 
     Keyed by actor id throughout, not display name, so two players sharing a
     name are never conflated. The caller disambiguates the title with the
@@ -148,13 +149,14 @@ def _damage_outliers(
                 outliers.append(
                     (
                         actor_id,
+                        ability_id,
                         names.get(actor_id, f"Actor {actor_id}"),
                         ability_names[ability_id],
                         amount,
                         multiple,
                     )
                 )
-    return sorted(outliers, key=lambda row: -row[4])
+    return sorted(outliers, key=lambda row: -row[5])
 
 
 def analyse_players(
@@ -203,7 +205,7 @@ def analyse_players(
             )
         )
 
-    for rank, (actor_id, name, ability, amount, multiple) in enumerate(
+    for rank, (actor_id, ability_id, name, ability, amount, multiple) in enumerate(
         _damage_outliers(run, damage_taken, roles)[:MAX_OUTLIERS_REPORTED]
     ):
         # Two players can share a display name; `display_names` disambiguates
@@ -233,6 +235,8 @@ def analyse_players(
                     "unmitigated: before absorbs and mitigation",
                     class_and_spec,
                 ),
+                ability_id=ability_id,
+                ability_name=ability,
             )
         )
     return findings

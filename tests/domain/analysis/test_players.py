@@ -169,6 +169,17 @@ def test_damage_outlier_players_sharing_a_name_are_distinguished_in_the_title() 
     }
 
 
+def test_a_damage_outlier_finding_names_the_ability_that_hit() -> None:
+    run = a_run_with_duplicate_names()
+    damage = (
+        hit(0, 300_000), hit(5, 300_000), hit(1, 10_000), hit(2, 10_000), hit(3, 10_000),
+    )
+    findings = analyse_players(run, (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    assert outlier.ability_id == 500
+    assert outlier.ability_name == "Molten Scar"
+
+
 def a_run_with_a_tank() -> Run:
     """A Blood Death Knight and three Mages of different specialisations."""
     pulls = (
