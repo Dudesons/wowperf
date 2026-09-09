@@ -158,6 +158,17 @@ def test_an_ability_never_cast_has_no_ceiling_claim() -> None:
     assert analyse_cooldown_ceiling(a_run(pulls), (), COOLDOWNS, ()) == []
 
 
+def test_a_throughput_ceiling_finding_names_the_cooldown_it_judged() -> None:
+    from wowperf.domain.analysis.throughput import analyse_cooldown_ceiling
+
+    pulls = (a_pull(0, 0, 1_800_000),)
+    casts = (a_cast(31884, 10_000), a_cast(343721, 10_000))
+    findings = analyse_cooldown_ceiling(a_run(pulls), casts, COOLDOWNS, ())
+    ceiling = next(f for f in findings if f.id.startswith("throughput.ceiling."))
+    assert ceiling.ability_id == BURST.ability_id
+    assert ceiling.ability_name in ceiling.title
+
+
 def a_player_death(at_ms: int, until_next: float | None = 20.0) -> Death:
     return Death(
         player_name="Bob", actor_id=11, timestamp_ms=at_ms, killing_blow="Shadow Bolt",

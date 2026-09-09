@@ -27,11 +27,12 @@ def a_run() -> Run:
 
 
 def a_death(
-    name: str, actor_id: int, at: int, cost: float | None, pull_index: int | None = 0
+    name: str, actor_id: int, at: int, cost: float | None, pull_index: int | None = 0,
+    killing_blow_id: int = 0,
 ) -> Death:
     return Death(player_name=name, actor_id=actor_id, timestamp_ms=at,
                  killing_blow="Molten Scar", pull_index=pull_index,
-                 seconds_until_next_action=cost)
+                 seconds_until_next_action=cost, killing_blow_id=killing_blow_id)
 
 
 def test_the_total_cost_is_the_measured_time_not_played() -> None:
@@ -130,6 +131,22 @@ def test_a_wholly_unmeasured_death_reports_no_seconds_lost_rather_than_zero() ->
     single = next(f for f in findings if f.id == "deaths.single.0")
     assert single.seconds_lost is None
     assert "cannot be measured" in single.detail
+
+
+def test_a_single_death_finding_names_the_ability_that_killed() -> None:
+    deaths = (a_death("Emberkin", 11, 1_000, 10.0, killing_blow_id=1297749),)
+    findings = analyse_deaths(a_run(), deaths)
+    single = next(f for f in findings if f.id.startswith("deaths.single."))
+    assert single.ability_id == 1297749
+    assert single.ability_name == "Molten Scar"
+
+
+def test_a_death_whose_killing_blow_has_no_id_names_no_ability() -> None:
+    # `a_death` leaves killing_blow_id at Death's default of 0, which the
+    # dictionary maps to "Unknown Ability" with a real axe icon.
+    findings = analyse_deaths(a_run(), (a_death("Emberkin", 11, 1_000, 10.0),))
+    single = next(f for f in findings if f.id.startswith("deaths.single."))
+    assert single.ability_id is None
 
 
 def test_a_chain_of_wholly_unmeasured_deaths_reports_no_seconds_lost() -> None:

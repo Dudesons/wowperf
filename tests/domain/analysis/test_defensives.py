@@ -307,3 +307,19 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
         "defensives.ceiling.Tank.1.48792",
         "defensives.ceiling.Tank.2.48792",
     }
+
+
+def test_a_ceiling_finding_names_the_defensive_it_judged() -> None:
+    run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
+    findings = analyse_defensives(run, (a_cast(actor_id=1, ability_id=48792),),
+                                  BLOOD_DEFENSIVES, ())
+    ceiling = findings_by_prefix(findings, "defensives.ceiling.")[0]
+    assert ceiling.ability_id == 48792
+    assert ceiling.ability_name in ceiling.title
+
+
+def test_a_never_cast_finding_names_the_defensive_it_is_about() -> None:
+    findings = analyse_defensives(a_run(), (cast(11, 235450),), DEFENSIVES, ())
+    never = next(f for f in findings if "never cast" in f.title)
+    assert never.ability_id == 45438
+    assert never.ability_name in never.title

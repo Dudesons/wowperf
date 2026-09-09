@@ -251,6 +251,8 @@ def analyse_defensives(
                             f"ability {ability.ability_id}",
                             f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
                         ),
+                        ability_id=ability.ability_id,
+                        ability_name=ability.name,
                     )
                 )
                 continue
@@ -271,6 +273,8 @@ def analyse_defensives(
                         f"ability {ability.ability_id}",
                         "zero casts in the whole run",
                     ),
+                    ability_id=ability.ability_id,
+                    ability_name=ability.name,
                 )
             )
     return findings

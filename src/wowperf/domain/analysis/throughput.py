@@ -272,6 +272,8 @@ def analyse_cooldown_ceiling(
                         f"ability {ability.ability_id}",
                         f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
                     ),
+                    ability_id=ability.ability_id,
+                    ability_name=ability.name,
                 )
             )
     return findings

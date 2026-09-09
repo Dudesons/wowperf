@@ -156,6 +156,8 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                     seconds_lost=seconds_lost,
                     evidence=(pull_offset(run, first),),
                     pull_index=first.pull_index,
+                    ability_id=first.killing_blow_id or None,
+                    ability_name=first.killing_blow,
                 )
             )
             single_rank += 1
