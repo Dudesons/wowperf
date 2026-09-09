@@ -441,8 +441,10 @@ def test_a_death_card_draws_its_health_curve_as_inline_svg() -> None:
     deaths = deaths_of(a_card(health_curve=a_curve()))
     assert "40.0,14.0" in deaths and "668.0,116.0" in deaths
     assert '<circle' in deaths and 'cx="40.0"' in deaths
-    assert "10 s" in deaths and "death" in deaths
-    assert "100%" in deaths and "0%" in deaths
+    # Anchored to their own elements: the slice starts at the Deaths heading, so a
+    # bare "death" matches the section itself, and "0%" matches inside "100%".
+    assert ">10 s</text>" in deaths and ">death</text>" in deaths
+    assert ">100%</text>" in deaths and ">0%</text>" in deaths
 
 
 def test_the_curve_prints_the_legend_and_both_badges_the_builder_wrote() -> None:
