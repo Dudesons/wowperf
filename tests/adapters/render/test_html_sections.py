@@ -573,6 +573,18 @@ def a_ledger_row(**changes: object) -> LedgerRow:
     return row.model_copy(update=changes)
 
 
+def a_player_card(**changes: object) -> PlayerCard:
+    card = PlayerCard(
+        name="Bríala",
+        class_name="Mage",
+        spec="Frost",
+        colour="class-mage",
+        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
+        spell_and_talent=Section(state=SectionState.PRESENT),
+    )
+    return card.model_copy(update=changes)
+
+
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     # The death card's killing blow forces id 45438 into `icons_by_id` through
     # the path that already resolves it, so this test populates `icons_by_id`
@@ -636,3 +648,24 @@ def test_an_id_that_never_resolves_is_still_asked_about_only_once() -> None:
     icons = FakeIcons({})
     render(a_report(deaths=(card_a, card_b)), icons=icons)
     assert icons.asked == [5]
+
+
+def test_an_ability_named_only_by_a_finding_is_embedded() -> None:
+    row = a_ledger_row(title="Uglymage never cast Ice Block",
+                       title_before="Uglymage never cast ",
+                       title_ability="Ice Block", ability_id=45438)
+    icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
+    html = render(a_report(interrupts=(row,)), icons=icons)
+    assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+
+
+def test_an_ability_named_only_inside_a_player_card_is_embedded() -> None:
+    # spell_and_talent_rows is nested one level down, which is where the
+    # comparison findings land.
+    row = a_ledger_row(title="Emberkin never cast Ice Nova",
+                       title_before="Emberkin never cast ",
+                       title_ability="Ice Nova", ability_id=157997)
+    card = a_player_card().model_copy(update={"spell_and_talent_rows": (row,)})
+    html = render(a_report(players=(card,)),
+                  icons=FakeIcons({157997: "data:image/jpeg;base64,BBB"}))
+    assert ".i-157997 { background-image: url(data:image/jpeg;base64,BBB); }" in html

@@ -6,7 +6,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from wowperf.domain.ports import IconSource
-from wowperf.domain.report.model import Report
+from wowperf.domain.report.model import Report, all_ledger_rows
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "report.html.j2"
@@ -50,6 +50,13 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
             uri = icons.data_uri(ability_id)
             if uri is not None:
                 resolved[ability_id] = uri
+    for row in all_ledger_rows(report):
+        if row.ability_id is None or row.ability_id in asked:
+            continue
+        asked.add(row.ability_id)
+        uri = icons.data_uri(row.ability_id)
+        if uri is not None:
+            resolved[row.ability_id] = uri
     return resolved
 
 

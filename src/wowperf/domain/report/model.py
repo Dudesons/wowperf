@@ -1,6 +1,7 @@
 # ABOUTME: Everything the HTML report shows, already formatted, as one frozen value.
 # ABOUTME: No methods: a method here would be judgement the template could reach.
 
+from collections.abc import Iterator
 from enum import StrEnum
 
 from wowperf.domain.base import Frozen
@@ -357,3 +358,22 @@ class Report(Frozen):
     # whitelist of its own. See `build_observations`.
     observations: tuple[LedgerRow, ...]
     provenance: Provenance
+
+
+def all_ledger_rows(report: Report) -> Iterator[LedgerRow]:
+    """Every finding row on the page, including the two nested in each player card.
+
+    One place names the sections, so a caller cannot reach eight of the nine and
+    lose the ninth in silence: a row whose ability reaches the page without
+    reaching the icon resolver draws nothing and reports nothing.
+    """
+    yield from report.ledger_decomposition
+    yield from report.summary_pointers
+    yield from report.route_rows
+    yield from report.death_rows
+    yield from report.interrupts
+    yield from report.group_rows
+    yield from report.observations
+    for player in report.players:
+        yield from player.damage_rows
+        yield from player.spell_and_talent_rows

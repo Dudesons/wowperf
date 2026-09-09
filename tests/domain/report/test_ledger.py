@@ -11,7 +11,7 @@ from tests.domain.report.test_build_frame import (
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.ledger import ledger_row
-from wowperf.domain.report.model import LedgerRow, Report
+from wowperf.domain.report.model import LedgerRow, Report, all_ledger_rows
 
 
 def a_finding(**changes: object) -> Finding:
@@ -98,21 +98,10 @@ def a_full_report() -> Report:
 
 def test_every_row_of_a_real_report_can_be_reassembled_from_its_parts() -> None:
     # Two representations of one sentence would drift apart on their own; this
-    # is what keeps them one sentence. `all_ledger_rows` arrives in a later
-    # task; until then this walks the row-bearing fields by hand.
+    # is what keeps them one sentence, checked over every row-bearing field
+    # `all_ledger_rows` reaches.
     report = a_full_report()
-    rows: list[LedgerRow] = [
-        *report.ledger_decomposition,
-        *report.summary_pointers,
-        *report.route_rows,
-        *report.death_rows,
-        *report.interrupts,
-        *report.group_rows,
-        *report.observations,
-    ]
-    for card in report.players:
-        rows.extend(card.damage_rows)
-        rows.extend(card.spell_and_talent_rows)
+    rows: list[LedgerRow] = list(all_ledger_rows(report))
     assert rows, "a report with no findings would make this vacuous"
     assert any(row.title_ability for row in rows), (
         "no row was actually cut, so the concatenation check below would hold vacuously"

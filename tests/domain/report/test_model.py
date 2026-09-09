@@ -9,8 +9,10 @@ from pydantic import BaseModel, ValidationError
 from wowperf.domain.report import model as report_model
 from wowperf.domain.report.model import (
     AvailabilityRow,
+    Badge,
     DeathCard,
     Header,
+    LedgerRow,
     PlayerCard,
     Provenance,
     RecapRow,
@@ -21,6 +23,7 @@ from wowperf.domain.report.model import (
     Timeline,
     TimelineBlock,
     TimelineTrack,
+    all_ledger_rows,
 )
 
 
@@ -36,6 +39,52 @@ def test_a_withheld_section_carries_its_reason() -> None:
     section = a_section(SectionState.WITHHELD, "no faster run was available")
     assert section.state is SectionState.WITHHELD
     assert section.reason == "no faster run was available"
+
+
+def a_ledger_row(**changes: object) -> LedgerRow:
+    row = LedgerRow(
+        finding_id="time.gap.0",
+        title="A 41 second gap after pull 7",
+        title_before="A 41 second gap after pull 7",
+        detail="Travel, not combat.",
+        badge=Badge(label="measured", tint="badge-measured"),
+    )
+    return row.model_copy(update=changes)
+
+
+def a_player_card(**changes: object) -> PlayerCard:
+    card = PlayerCard(
+        name="Bríala",
+        class_name="Mage",
+        spec="Frost",
+        colour="class-mage",
+        stats_line="182 casts in 31:49 of pulls · 1 death · 7 interrupts",
+        spell_and_talent=a_section(),
+    )
+    return card.model_copy(update=changes)
+
+
+def a_report(**changes: object) -> Report:
+    report = Report(
+        header=Header(
+            dungeon="Den of Nalorakk",
+            keystone_level=16,
+            affixes=("Tyrannical",),
+            result="Timed by 2:14",
+        ),
+        narrative=None,
+        ledger_decomposition=(),
+        timeline=Timeline(section=a_section(SectionState.WITHHELD, "no reference")),
+        route=a_section(SectionState.WITHHELD, "no reference"),
+        deaths=(),
+        interrupts=(),
+        players=(),
+        observations=(),
+        provenance=Provenance(
+            report_code="abc123", fight_id=36, fetched_at="2026-09-05 14:02",
+        ),
+    )
+    return report.model_copy(update=changes)
 
 
 def view_model_types() -> list[type[BaseModel]]:
@@ -163,3 +212,29 @@ def test_a_reference_record_states_why_it_was_not_used() -> None:
     )
     assert record.loaded is False
     assert record.reason == "this is the run under analysis"
+
+
+def test_all_ledger_rows_reaches_every_field_that_holds_them() -> None:
+    """A tenth section that holds findings must be reached, or its icons vanish.
+
+    The fields are discovered by introspection rather than listed here, so
+    adding one and forgetting to name it in `all_ledger_rows` fails this test
+    instead of silently losing that section's icons.
+    """
+    expected: set[str] = set()
+    report_changes: dict[str, object] = {}
+    for name, field in Report.model_fields.items():
+        if field.annotation == tuple[LedgerRow, ...]:
+            report_changes[name] = (a_ledger_row(finding_id=f"report.{name}"),)
+            expected.add(f"report.{name}")
+    card_changes: dict[str, object] = {}
+    for name, field in PlayerCard.model_fields.items():
+        if field.annotation == tuple[LedgerRow, ...]:
+            card_changes[name] = (a_ledger_row(finding_id=f"card.{name}"),)
+            expected.add(f"card.{name}")
+
+    assert expected, "introspection found no row-bearing fields, so this proves nothing"
+    report = a_report().model_copy(
+        update={**report_changes, "players": (a_player_card().model_copy(update=card_changes),)}
+    )
+    assert {row.finding_id for row in all_ledger_rows(report)} == expected
