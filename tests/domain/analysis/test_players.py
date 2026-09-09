@@ -180,6 +180,20 @@ def test_a_damage_outlier_finding_names_the_ability_that_hit() -> None:
     assert outlier.ability_name == "Molten Scar"
 
 
+def test_damage_outliers_are_ordered_by_multiple_of_the_median_not_amount() -> None:
+    # Ability 500's outlier hits harder in absolute terms (300k vs 50k) but ability
+    # 777's outlier is further above its own median (50x vs 30x). Worst-first must
+    # follow the multiple, or a smaller but more extreme hit is buried under a
+    # merely larger one.
+    damage = (
+        hit(0, 300_000), hit(1, 10_000), hit(2, 10_000),
+        hit(3, 50_000, ability=777), hit(1, 1_000, ability=777), hit(2, 1_000, ability=777),
+    )
+    findings = analyse_players(a_run(), (), (), (), damage)
+    outliers = [f for f in findings if f.id.startswith("players.damage.")]
+    assert [f.ability_id for f in outliers] == [777, 500]
+
+
 def a_run_with_a_tank() -> Run:
     """A Blood Death Knight and three Mages of different specialisations."""
     pulls = (
