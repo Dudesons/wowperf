@@ -229,12 +229,18 @@ class DeathCard(Frozen):
     line would have no length to draw, so a card never carries an axis with
     nothing on it. `came_back` is one of the four return lines and always
     carries its badge.
+
+    `killing_blow_id` names the ability in the heading for an icon, or is None
+    where the log named none. Zero is never used: the ability dictionary maps
+    zero to "Unknown Ability" with a real icon file, so a zero would draw art
+    beside a killing blow nobody identified.
     """
 
     player: str
     class_name: str
     when: str
     killing_blow: str
+    killing_blow_id: int | None = None
     timeline: tuple[RecapRow, ...] = ()
     timeline_summary: str = ""
     timeline_note: str = ""

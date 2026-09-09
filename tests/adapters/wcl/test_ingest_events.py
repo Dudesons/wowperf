@@ -75,6 +75,14 @@ def test_a_death_records_its_killing_blow_and_pull() -> None:
     )
 
 
+def test_a_death_keeps_the_id_of_the_ability_that_killed_it() -> None:
+    events: list[dict[str, Any]] = [
+        {"type": "death", "targetID": 11, "timestamp": 12000, "killingAbilityGameID": 900}
+    ]
+    death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
+    assert death.killing_blow_id == 900
+
+
 def test_a_death_with_no_killing_ability_falls_back_to_unknown() -> None:
     events: list[dict[str, Any]] = [
         {

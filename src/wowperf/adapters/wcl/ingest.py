@@ -226,6 +226,7 @@ def build_deaths(
                 player_name=names.get(actor_id, f"Actor {actor_id}"),
                 actor_id=actor_id,
                 timestamp_ms=timestamp,
+                killing_blow_id=event.get("killingAbilityGameID", 0),
                 killing_blow=_ability_name(
                     ability_names, event.get("killingAbilityGameID", 0)
                 ),

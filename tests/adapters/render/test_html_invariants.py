@@ -30,6 +30,7 @@ from wowperf.domain.report.model import (
     CurvePoint,
     CurveReading,
     CurveTick,
+    DeathCard,
     Header,
     HealthCurve,
     Provenance,
@@ -390,6 +391,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (RecapRow, "health_percent"),  # a share of the player's own health, not a duration
     (RecapRow, "ability_id"),  # a spell's identity, not a duration
     (AvailabilityRow, "ability_id"),  # a spell's identity, not a duration
+    (DeathCard, "killing_blow_id"),  # a spell's identity, not a duration
     # The health curve's geometry. Every one of these is a viewBox coordinate
     # computed in `health_curve.py`: a position on a fixed axis rather than a
     # quantity, so a column of them summed would mean nothing a reader could

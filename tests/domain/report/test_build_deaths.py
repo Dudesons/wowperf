@@ -600,3 +600,22 @@ def test_a_recap_row_for_an_ability_id_of_zero_carries_none_not_zero() -> None:
         a_loaded_with((a_death(1, 60_000),), (hit,)), NO_DEFENSIVES, NO_CONSUMABLES
     )[0]
     assert card.timeline[0].ability_id is None
+
+
+def test_a_death_card_carries_the_killing_blows_ability_id() -> None:
+    death = a_death(1, 60_000).model_copy(update={"killing_blow_id": 1297749})
+    card = build_deaths(
+        a_loaded_with((death,), ()), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.killing_blow_id == 1297749
+
+
+def test_a_killing_blow_id_of_zero_carries_none_not_zero() -> None:
+    # A death built with no killing_blow_id override defaults to 0, the log's
+    # sentinel for "named no ability". The ability dictionary maps zero to
+    # "Unknown Ability" with a real icon file, so a bare zero on the card
+    # would draw art beside a killing blow nobody identified.
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    assert card.killing_blow_id is None

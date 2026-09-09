@@ -210,6 +210,7 @@ def build_deaths(
                 class_name=player.class_name if player else "unknown class",
                 when=_when(death, loaded.run),
                 killing_blow=death.killing_blow,
+                killing_blow_id=death.killing_blow_id or None,
                 timeline=timeline,
                 # Every other fact on this card is read straight from the log.
                 # The health column is reconstructed, and says so in the same
