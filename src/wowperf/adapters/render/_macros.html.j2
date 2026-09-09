@@ -6,7 +6,7 @@
 {% endif %}
 <div class="card" id="finding-{{ row.finding_id }}">
   <div class="row-head">
-    <h3>{{ row.title }}</h3>
+    <h3>{{ row.title_before }}{% if row.ability_id in icons_by_id %}<span class="icon i-{{ row.ability_id }}" aria-hidden="true"></span>{% endif %}{{ row.title_ability }}{{ row.title_after }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
     <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
   </div>

@@ -1,6 +1,6 @@
 {# ABOUTME: The Summary panel: the narrative, the decomposition, and the biggest costs. #}
 {# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
-{% from "_macros.html.j2" import ledger_row, pointer %}
+{% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="main" id="tab-summary">
 
 {% if report.narrative %}

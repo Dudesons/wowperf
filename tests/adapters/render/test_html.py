@@ -28,6 +28,9 @@ def a_row(finding_id: str = "time.gap.0", **overrides: object) -> LedgerRow:
         "evidence": ("next pull begins at Loa Speaker Nanea",),
     }
     fields.update(overrides)
+    # Mirrors the uncut shape `ledger.py` guarantees for every real row: when a
+    # caller does not cut the title itself, `title_before` carries all of it.
+    fields.setdefault("title_before", fields["title"])
     return LedgerRow(**fields)  # type: ignore[arg-type]
 
 

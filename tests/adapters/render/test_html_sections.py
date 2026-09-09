@@ -27,6 +27,7 @@ from wowperf.domain.report.model import (
     CurveTick,
     DeathCard,
     HealthCurve,
+    LedgerRow,
     PlayerCard,
     RecapRow,
     Section,
@@ -559,6 +560,69 @@ def test_an_icon_is_drawn_beside_an_availability_rows_ability() -> None:
     html = render(a_report(deaths=(card,)), icons=FakeIcons({99: "data:image/jpeg;base64,CCC"}))
     assert '<span class="icon i-99" aria-hidden="true"></span>' in html
     assert "Icebound Fortitude" in html
+
+
+def a_ledger_row(**changes: object) -> LedgerRow:
+    row = LedgerRow(
+        finding_id="time.gap.0",
+        title="A 41 second gap after pull 7",
+        title_before="A 41 second gap after pull 7",
+        detail="Travel, not combat.",
+        badge=Badge(label="measured", tint="badge-measured"),
+    )
+    return row.model_copy(update=changes)
+
+
+def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
+    # The death card's killing blow forces id 45438 into `icons_by_id` through
+    # the path that already resolves it, so this test populates `icons_by_id`
+    # independently of `report.interrupts` and isolates what this macro owns:
+    # drawing the span wherever `row.ability_id` happens to match an id
+    # already resolved, rather than the resolver's own coverage.
+    row = a_ledger_row(
+        title="Uglymage never cast Ice Block",
+        title_before="Uglymage never cast ",
+        title_ability="Ice Block",
+        ability_id=45438,
+    )
+    html = render(a_report(interrupts=(row,), deaths=(a_card(killing_blow_id=45438),)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    expected = (
+        'Uglymage never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        "Ice Block"
+    )
+    assert expected in html
+
+
+def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None:
+    row = a_ledger_row(
+        title="Uglymage never cast Ice Block",
+        title_before="Uglymage never cast ",
+        title_ability="Ice Block",
+        ability_id=45438,
+    )
+    html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
+    assert "Uglymage never cast Ice Block" in html
+    assert 'class="icon' not in html
+
+
+def test_a_summary_pointer_names_the_finding_without_an_icon() -> None:
+    # A pointer is a one-line cross-reference into another section; the icon
+    # belongs at the finding itself, not at every mention of it. The death
+    # card's killing blow forces id 45438 into `icons_by_id` through the path
+    # that already resolves it, so the assertion below proves the `pointer`
+    # macro withholds the span even though the id is genuinely resolved --
+    # not merely because nothing resolved at all.
+    row = a_ledger_row(
+        title="Uglymage never cast Ice Block",
+        title_before="Uglymage never cast ",
+        title_ability="Ice Block",
+        ability_id=45438,
+    )
+    html = render(a_report(summary_pointers=(row,), deaths=(a_card(killing_blow_id=45438),)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    assert "pointer-title" in html
+    assert 'class="icon i-45438"' not in html.split('class="pointer-title"')[1][:200]
 
 
 def test_an_id_that_never_resolves_is_still_asked_about_only_once() -> None:
