@@ -3,7 +3,8 @@
 
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
-from wowperf.domain.report.build import _run_seconds, badge_for, build_report, format_seconds
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds
 from wowperf.domain.report.model import ReferenceRecord, SectionState
 from wowperf.domain.season import Consumables, Defensives
 
@@ -228,12 +229,12 @@ def test_no_seconds_formats_as_nothing_rather_than_zero() -> None:
 
 def test_run_seconds_spans_first_pull_start_to_last_pull_end() -> None:
     run = a_run(pulls=(a_pull(0, 10_000, 40_000), a_pull(1, 50_000, 130_000)))
-    assert _run_seconds(run) == 120.0
+    assert run_seconds(run) == 120.0
 
 
 def test_run_seconds_is_zero_with_no_pulls() -> None:
     run = a_run(pulls=())
-    assert _run_seconds(run) == 0.0
+    assert run_seconds(run) == 0.0
 
 
 def test_badge_for_measured() -> None:

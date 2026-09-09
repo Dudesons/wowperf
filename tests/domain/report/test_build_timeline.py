@@ -14,15 +14,15 @@ from wowperf.domain.comparison.alignment import Alignment, align_pulls
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import SpeedMember, SpeedSample
 from wowperf.domain.model import Run
-from wowperf.domain.report.build import (
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.model import Section, SectionState
+from wowperf.domain.report.timeline import (
     COMPARED_TIMELINE_LEGEND,
     LONE_TIMELINE_LEGEND,
     TRACK_X0,
     TRACK_X1,
-    build_report,
     build_timeline,
 )
-from wowperf.domain.report.model import Section, SectionState
 
 PRESENT = Section(state=SectionState.PRESENT)
 WITHHELD = Section(state=SectionState.WITHHELD, reason="no faster run was available")
@@ -149,7 +149,7 @@ def test_the_axis_carries_ticks_a_reader_can_read() -> None:
 
 
 def test_the_caption_names_the_run_and_the_span_it_measures() -> None:
-    # `_run_seconds` spans first-pull-start to last-pull-end, not the run's
+    # `run_seconds` spans first-pull-start to last-pull-end, not the run's
     # completion time from `keystone_time_seconds` — the header states that
     # other, longer figure. The caption must say which one this is, so a
     # reader never takes the two different numbers on the page as a

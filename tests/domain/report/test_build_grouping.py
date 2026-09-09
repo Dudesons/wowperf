@@ -9,7 +9,8 @@ from tests.domain.report.test_build_frame import (
     a_player,
 )
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.report.build import build_report, collapse_repeated_details
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.ledger import collapse_repeated_details
 from wowperf.domain.report.model import Badge, LedgerRow
 
 BADGE = Badge(label="measured", tint="measured")

@@ -15,8 +15,8 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
-from wowperf.domain.report import build as build_module
-from wowperf.domain.report.build import build_report, build_timeline
+from wowperf.domain.report import timeline as timeline_module
+from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
@@ -30,6 +30,7 @@ from wowperf.domain.report.model import (
     TimelineBlock,
     TimelineTrack,
 )
+from wowperf.domain.report.timeline import build_timeline
 
 PRESENT = Section(state=SectionState.PRESENT)
 
@@ -55,7 +56,7 @@ def a_timeline() -> Timeline:
                               kind="skipped", css_class="block-skipped"),
             ),
         ),
-        legend=build_module.COMPARED_TIMELINE_LEGEND,
+        legend=timeline_module.COMPARED_TIMELINE_LEGEND,
         ticks=((46.0, "0:00"), (240.0, "10:00")),
         width=680.0,
         height=208.0,
@@ -174,7 +175,7 @@ def test_a_lone_track_renders_its_own_legend_and_not_the_compared_one() -> None:
     was given: a page with no reference track must not carry a legend explaining
     marks no block on it wears."""
     lone = a_timeline().model_copy(
-        update={"theirs": None, "legend": build_module.LONE_TIMELINE_LEGEND}
+        update={"theirs": None, "legend": timeline_module.LONE_TIMELINE_LEGEND}
     )
 
     html = render(a_report(timeline=lone))
@@ -189,9 +190,9 @@ def test_changing_timeline_height_moves_the_tick_geometry_together(
     # No coordinate in the SVG is a template literal: it all comes from build_timeline,
     # so changing TIMELINE_HEIGHT there moves the tick line, its label, and nothing else,
     # together, without touching the template.
-    monkeypatch.setattr(build_module, "TIMELINE_HEIGHT", 300.0)
+    monkeypatch.setattr(timeline_module, "TIMELINE_HEIGHT", 300.0)
     run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    timeline = build_module.build_timeline(run, a_sample(a_member(run, run)), PRESENT)
+    timeline = timeline_module.build_timeline(run, a_sample(a_member(run, run)), PRESENT)
     assert timeline.height == 300.0
     assert timeline.tick_y2 == 300.0 - 32.0
     assert timeline.tick_label_y == 300.0 - 16.0

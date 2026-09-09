@@ -8,7 +8,8 @@ import pytest
 from tests.domain.report.test_build_frame import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, a_run
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import PLACEMENTS, build_report, place_rows
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.ledger import PLACEMENTS, place_rows
 from wowperf.domain.report.model import LedgerRow, Report
 
 SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)

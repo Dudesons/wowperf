@@ -18,12 +18,12 @@ from wowperf.domain.events import (
     Resurrection,
 )
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import (
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.deaths import (
     CONSUMABLE_CAVEAT,
     NO_CONSUMABLE_DATA,
     NO_TIMELINE_EVENT,
     build_deaths,
-    build_report,
 )
 from wowperf.domain.season import (
     ConsumableCategory,

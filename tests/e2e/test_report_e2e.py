@@ -28,7 +28,8 @@ from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.comparison.service import compare, find_player
 from wowperf.domain.findings import rank_findings
-from wowperf.domain.report.build import COMPARISON_PREFIXES, build_report
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.players import COMPARISON_PREFIXES
 from wowperf.urls import parse_report_url
 
 REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")

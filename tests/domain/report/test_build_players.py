@@ -7,8 +7,9 @@ from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import build_players, class_colour, place_rows
+from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
+from wowperf.domain.report.players import build_players, class_colour
 
 
 def a_finding(

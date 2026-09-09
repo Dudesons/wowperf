@@ -4,7 +4,8 @@
 from tests.domain.report.test_build_frame import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, a_run
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.report.build import build_observations, build_report
+from wowperf.domain.report.build import build_report
+from wowperf.domain.report.ledger import build_observations
 
 
 def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -> Finding:

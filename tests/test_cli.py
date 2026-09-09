@@ -30,7 +30,7 @@ from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.model import Player, Run
-from wowperf.domain.report.build import DECOMPOSITION_IDS, NESTS_INSIDE
+from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
 
 runner = CliRunner()
 
