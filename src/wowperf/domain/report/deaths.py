@@ -66,7 +66,8 @@ qualifies rather than several screens below it.
 HEALTH_METHOD = (
     "Health on a death card is reconstructed: the log states a player's health only on their "
     "own casts, so between readings each hit is subtracted and each heal added, and the next "
-    "reading replaces the running value. The column is badged derived for that reason."
+    "reading replaces the running value. The curve's line and the recap's health column are "
+    "badged derived for that reason, and the dots on the curve are the readings themselves."
 )
 
 NO_HEALTH_READING = (
