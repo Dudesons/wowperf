@@ -592,15 +592,15 @@ def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     # drawing the span wherever `row.ability_id` happens to match an id
     # already resolved, rather than the resolver's own coverage.
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,), deaths=(a_card(killing_blow_id=45438),)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Uglymage never cast <span class="icon i-45438" aria-hidden="true"></span>'
+        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
         "Ice Block"
     )
     assert expected in html
@@ -608,13 +608,13 @@ def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
 
 def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None:
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
-    assert "Uglymage never cast Ice Block" in html
+    assert "Emberkin never cast Ice Block" in html
     assert 'class="icon' not in html
 
 
@@ -626,8 +626,8 @@ def test_a_summary_pointer_names_the_finding_without_an_icon() -> None:
     # macro withholds the span even though the id is genuinely resolved --
     # not merely because nothing resolved at all.
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
@@ -651,8 +651,8 @@ def test_an_id_that_never_resolves_is_still_asked_about_only_once() -> None:
 
 
 def test_an_ability_named_only_by_a_finding_is_embedded() -> None:
-    row = a_ledger_row(title="Uglymage never cast Ice Block",
-                       title_before="Uglymage never cast ",
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
     html = render(a_report(interrupts=(row,)), icons=icons)

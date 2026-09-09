@@ -27,24 +27,24 @@ def a_finding(**changes: object) -> Finding:
 
 def test_a_title_is_cut_at_the_ability_it_names() -> None:
     row = ledger_row(
-        a_finding(title="Uglymage never cast Ice Block",
+        a_finding(title="Emberkin never cast Ice Block",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
     assert (row.title_before, row.title_ability, row.title_after) == (
-        "Uglymage never cast ", "Ice Block", ""
+        "Emberkin never cast ", "Ice Block", ""
     )
     assert row.ability_id == 45438
 
 
 def test_a_title_whose_ability_is_not_in_it_is_left_whole() -> None:
     row = ledger_row(
-        a_finding(title="Uglymage pressed nothing",
+        a_finding(title="Emberkin pressed nothing",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
     assert (row.title_before, row.title_ability, row.title_after) == (
-        "Uglymage pressed nothing", "", ""
+        "Emberkin pressed nothing", "", ""
     )
     assert row.ability_id is None
 
@@ -53,7 +53,7 @@ def test_a_title_naming_its_ability_twice_is_left_whole() -> None:
     # Two occurrences and no way to say which one the reader means, so the row
     # keeps its whole title and draws no icon.
     row = ledger_row(
-        a_finding(title="Ice Block was ready; Uglymage never cast Ice Block",
+        a_finding(title="Ice Block was ready; Emberkin never cast Ice Block",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
