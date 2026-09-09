@@ -512,6 +512,7 @@ def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477
+    assert gap.ability_name == "Coagulopathy"
     assert gap.ability_name in gap.title
 
 
@@ -521,4 +522,5 @@ def test_an_uptime_gap_finding_names_the_aura_across_the_sample() -> None:
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477
+    assert gap.ability_name == "Coagulopathy"
     assert gap.ability_name in gap.title

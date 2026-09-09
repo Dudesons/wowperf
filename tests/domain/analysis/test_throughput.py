@@ -166,6 +166,7 @@ def test_a_throughput_ceiling_finding_names_the_cooldown_it_judged() -> None:
     findings = analyse_cooldown_ceiling(a_run(pulls), casts, COOLDOWNS, ())
     ceiling = next(f for f in findings if f.id.startswith("throughput.ceiling."))
     assert ceiling.ability_id == BURST.ability_id
+    assert ceiling.ability_name == "Avenging Wrath"
     assert ceiling.ability_name in ceiling.title
 
 

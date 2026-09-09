@@ -315,6 +315,7 @@ def test_a_ceiling_finding_names_the_defensive_it_judged() -> None:
                                   BLOOD_DEFENSIVES, ())
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")[0]
     assert ceiling.ability_id == 48792
+    assert ceiling.ability_name == "Icebound Fortitude"
     assert ceiling.ability_name in ceiling.title
 
 
@@ -322,4 +323,5 @@ def test_a_never_cast_finding_names_the_defensive_it_is_about() -> None:
     findings = analyse_defensives(a_run(), (cast(11, 235450),), DEFENSIVES, ())
     never = next(f for f in findings if "never cast" in f.title)
     assert never.ability_id == 45438
+    assert never.ability_name == "Ice Block"
     assert never.ability_name in never.title

@@ -422,6 +422,7 @@ def test_a_missing_spell_finding_names_the_ability_against_one_reference() -> No
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == 153626
+    assert missing.ability_name == "Arcane Orb"
     assert missing.ability_name in missing.title
 
 
@@ -437,6 +438,7 @@ def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == 30451
+    assert rate.ability_name == "Arcane Blast"
     assert rate.ability_name in rate.title
 
 
@@ -446,6 +448,9 @@ def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == SHIFTING_POWER
+    # a_parse_member names every ability f"Ability {ability_id}"; this is that
+    # synthetic name, not a real spell name.
+    assert missing.ability_name == f"Ability {SHIFTING_POWER}"
     assert missing.ability_name in missing.title
 
 
@@ -455,4 +460,7 @@ def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == METEOR
+    # The rate branch names the ability from our own side's cast (OURS_LOADED),
+    # not the sample's synthetic "Ability {id}" naming.
+    assert rate.ability_name == "Meteor"
     assert rate.ability_name in rate.title
