@@ -164,8 +164,8 @@ def test_availability_groups_own_defensives_consumables_and_teammates_externals(
     assert at.consumables is not None and [(s.name, s.state) for s in at.consumables] == [
         ("healthstone", READY)
     ]
-    assert [(s.name, s.owner_id, s.state, s.seconds) for s in at.externals] == [
-        ("Ironbark", 2, COOLDOWN, 40)
+    assert [(s.name, s.ability_id, s.owner_id, s.state, s.seconds) for s in at.externals] == [
+        ("Ironbark", 102342, 2, COOLDOWN, 40)
     ]
 
 
