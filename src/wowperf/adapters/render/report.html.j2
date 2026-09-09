@@ -8,6 +8,9 @@
 <title>{{ report.header.dungeon }} +{{ report.header.keystone_level }}</title>
 <style>
 {% include "report.css.j2" %}
+{% for ability_id, uri in icons_by_id.items() %}
+.i-{{ ability_id }} { background-image: url({{ uri }}); }
+{% endfor %}
 </style>
 </head>
 <body>

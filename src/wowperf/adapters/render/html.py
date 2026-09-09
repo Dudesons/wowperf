@@ -5,6 +5,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from wowperf.domain.ports import IconSource
 from wowperf.domain.report.model import Report
 
 TEMPLATE_DIR = Path(__file__).parent
@@ -29,7 +30,33 @@ def _environment() -> Environment:
     )
 
 
-def render(report: Report) -> str:
+def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
+    """Every ability the page can draw, resolved once each, in the order it is met.
+
+    Only the adapter can build this: which ids resolve is a question about a CDN
+    and a cache, and the builder that made the report is forbidden from asking it.
+    """
+    resolved: dict[int, str] = {}
+    for card in report.deaths:
+        candidates = [card.killing_blow_id]
+        candidates.extend(row.ability_id for row in card.timeline)
+        for group in card.availability:
+            candidates.extend(row.ability_id for row in group.rows)
+        for ability_id in candidates:
+            if ability_id is None or ability_id in resolved:
+                continue
+            uri = icons.data_uri(ability_id)
+            if uri is not None:
+                resolved[ability_id] = uri
+    return resolved
+
+
+def render(report: Report, icons: IconSource | None = None) -> str:
     """One self-contained HTML document: one inline script that only shows and hides,
-    no network, no external font."""
-    return _environment().get_template(TEMPLATE_NAME).render(report=report)
+    no network, no external font.
+
+    Without an `icons` source the page is drawn exactly as it is without icons:
+    the ids on the view model are inert until something can turn them into bytes.
+    """
+    uris = {} if icons is None else _icon_uris(report, icons)
+    return _environment().get_template(TEMPLATE_NAME).render(report=report, icons_by_id=uris)

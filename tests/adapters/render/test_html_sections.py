@@ -470,3 +470,50 @@ def test_a_death_card_with_no_curve_emits_no_svg_at_all() -> None:
 def test_the_recap_table_sits_behind_a_summary_naming_its_size() -> None:
     deaths = deaths_of(a_card(health_curve=a_curve()))
     assert "<details" in deaths and "<summary>2 events</summary>" in deaths
+
+
+class FakeIcons:
+    """Answers for the ids it was given and for no others."""
+
+    def __init__(self, uris: dict[int, str]) -> None:
+        self.uris = uris
+        self.asked: list[int] = []
+
+    def data_uri(self, ability_id: int) -> str | None:
+        self.asked.append(ability_id)
+        return self.uris.get(ability_id)
+
+
+def test_an_icon_is_drawn_beside_the_ability_it_names() -> None:
+    card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                                     ability_id=42),))
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({42: "data:image/jpeg;base64,AAA"}))
+    assert ".i-42 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    assert '<span class="icon i-42" aria-hidden="true"></span>' in html
+    assert "Snowdrift" in html
+
+
+def test_an_ability_with_no_icon_still_shows_its_name_and_emits_no_span() -> None:
+    card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                                     ability_id=42),))
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({}))
+    assert "Snowdrift" in html
+    assert 'class="icon' not in html
+
+
+def test_an_ability_drawn_many_times_is_embedded_once() -> None:
+    rows = tuple(
+        RecapRow(seconds_before=f"{n}.0 s", kind="hit", ability="Snowdrift", ability_id=42)
+        for n in range(9)
+    )
+    html = render(a_report(deaths=(a_card(timeline=rows),)),
+                  icons=FakeIcons({42: "data:image/jpeg;base64,AAA"}))
+    assert html.count("background-image") == 1
+    assert html.count('class="icon i-42"') == 9
+
+
+def test_rendering_without_an_icon_source_is_the_page_as_it_was() -> None:
+    card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                                     ability_id=42),))
+    assert render(a_report(deaths=(card,))) == render(a_report(deaths=(card,)), icons=None)
+    assert "background-image" not in render(a_report(deaths=(card,)))

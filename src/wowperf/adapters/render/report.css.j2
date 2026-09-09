@@ -97,6 +97,10 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .avail li.cooldown .avail-detail { color: var(--extra); }
 .avail li.unseen { color: var(--ink-faint); }
 .owner { color: var(--ink-faint); font-size: 12px; }
+{% if icons_by_id %}
+.icon { display: inline-block; width: 16px; height: 16px; margin-right: 5px;
+  vertical-align: -3px; border-radius: 2px; background-size: cover; }
+{% endif %}
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }

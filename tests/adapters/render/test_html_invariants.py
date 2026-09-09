@@ -9,6 +9,7 @@ from typing import Union, get_args, get_origin
 import pytest
 from markupsafe import escape
 
+from tests.adapters.render.test_html import a_report
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -258,6 +259,15 @@ def test_the_page_executes_only_its_own_script() -> None:
     # Finding ids contain dots (e.g. "finding-time.gap.0"); querySelector("#" + id)
     # would parse the dot as a class selector, so the lookup must stay getElementById.
     assert "getElementById" in body
+
+
+def test_the_page_loads_no_image_over_the_network() -> None:
+    # The existing script test checks `src` attributes; an icon reaches the page
+    # through a CSS url() instead, which that check never sees. A hotlinked icon
+    # would leave the report blank the day Blizzard moved the file.
+    html = render(a_report())
+    assert "url(http" not in html
+    assert "url(//" not in html
 
 
 PANEL_ORDER = [
