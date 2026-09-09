@@ -14,7 +14,7 @@ from wowperf.domain.report.health_curve import (
     UNANCHORED_LINE_LEGEND,
     build_health_curve,
 )
-from wowperf.domain.report.model import HealthCurve
+from wowperf.domain.report.model import CurvePoint, HealthCurve
 
 
 def an_event(at_ms: int, percent: int | None, kind: str = HIT) -> RecapEvent:
@@ -47,7 +47,12 @@ def test_a_reading_is_drawn_at_the_value_the_log_stated() -> None:
         (an_event(55_000, 10),), (a_sample(55_000, 40_000, maximum=100_000),), a_death()
     )
     assert curve is not None
-    assert [reading.percent for reading in curve.readings] == [40]
+    reading = curve.readings[0]
+    assert (reading.x, reading.y, reading.percent) == (x_at(0.5), y_at(40), 40)
+    # The line is at 10% that moment, so the dot sits off it. That gap is the drift
+    # the card exists to show, and it has to come from the figures disagreeing
+    # rather than from a dot placed at the wrong moment.
+    assert curve.points[0] == CurvePoint(x=x_at(0.5), y=y_at(10))
 
 
 def x_at(fraction: float) -> float:
@@ -144,3 +149,29 @@ def test_the_time_labels_fit_inside_the_viewbox() -> None:
     curve = build_health_curve((an_event(55_000, 30),), (), a_death())
     assert curve is not None
     assert curve.width - curve.plot_x1 >= len(DEATH_TICK) * 5
+
+
+def test_an_event_that_moves_nothing_adds_no_corner() -> None:
+    # A cast, or a hit a shield swallowed whole, leaves health where it was. A
+    # corner for it would put two identical vertices in the page and move the
+    # shape a reader sees by nothing at all.
+    held = (an_event(51_000, 90), an_event(53_000, 90), an_event(55_000, 90))
+    curve = build_health_curve(held, (), a_death())
+    assert curve is not None
+    assert corners(curve) == [(x_at(0.1), y_at(90)), (PLOT_X1, y_at(90))]
+
+
+def test_there_is_no_curve_when_the_line_would_have_no_length() -> None:
+    # The one event carrying health lands at the instant of death, so the line has
+    # nowhere to run. A polyline of one point paints nothing, and the legend beside
+    # it would grade a line that is not on the page.
+    assert build_health_curve((an_event(60_000, 40),), (), a_death()) is None
+
+
+def test_a_reading_that_agrees_with_the_arithmetic_sits_on_the_line() -> None:
+    curve = build_health_curve(
+        (an_event(55_000, 40),), (a_sample(55_000, 40_000, maximum=100_000),), a_death()
+    )
+    assert curve is not None
+    reading = curve.readings[0]
+    assert (reading.x, reading.y) == (curve.points[0].x, curve.points[0].y)

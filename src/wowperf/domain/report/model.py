@@ -214,9 +214,10 @@ class DeathCard(Frozen):
     Every string is formatted by the builder. `timeline_summary` labels the table
     with what it holds and `timeline_note` says why it is empty when it is.
     `health_badge` is None when no row carries health and `health_note` then says
-    why; `health_curve` is None on that same condition, so a card never draws an
-    axis with no line on it. `came_back` is one of the four return lines and
-    always carries its badge.
+    why. `health_curve` is None then too, and on the rarer condition that the
+    line would have no length to draw, so a card never carries an axis with
+    nothing on it. `came_back` is one of the four return lines and always
+    carries its badge.
     """
 
     player: str

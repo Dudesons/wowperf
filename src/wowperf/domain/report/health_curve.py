@@ -90,11 +90,20 @@ def _step(plotted: list[tuple[int, int]], start_ms: int, span_ms: int) -> tuple[
     a gradual drain nothing measured — never appears. Events sharing a moment
     add the drop alone, having no time between them to run level for. The last
     value carries on to the death for the same reason every other one is held.
+
+    Only a change earns a corner. Most events of a run-up move nothing — a cast,
+    a hit a shield swallowed whole — and a vertex apiece would land in the page
+    for each of them without moving the drawn shape by a pixel.
     """
     points: list[CurvePoint] = []
     for timestamp_ms, percent in plotted:
         x, y = _x(timestamp_ms, start_ms, span_ms), _y(percent)
-        if points and x != points[-1].x:
+        if not points:
+            points.append(CurvePoint(x=x, y=y))
+            continue
+        if y == points[-1].y:
+            continue
+        if x != points[-1].x:
             points.append(CurvePoint(x=x, y=points[-1].y))
         points.append(CurvePoint(x=x, y=y))
     if points[-1].x != PLOT_X1:
@@ -135,6 +144,11 @@ def build_health_curve(
     the same scale. The line begins at the first event carrying health rather
     than at the axis's edge: before that there is no reading to anchor the
     arithmetic, and a line drawn there would be invention.
+
+    A line of one point is no line: a polyline paints nothing for it, and the
+    legend beside it would grade a mark that is not on the page. That card gets
+    None and falls back to its table, the same as one the log reported nothing
+    for.
     """
     start_ms = window_start(death)
     span_ms = death.timestamp_ms - start_ms
@@ -155,6 +169,9 @@ def build_health_curve(
                 x=_x(sample.timestamp_ms, start_ms, span_ms), y=_y(percent), percent=percent
             )
         )
+    points = _step(plotted, start_ms, span_ms)
+    if len(points) < 2:
+        return None
     return HealthCurve(
         width=CURVE_WIDTH,
         height=CURVE_HEIGHT,
@@ -162,7 +179,7 @@ def build_health_curve(
         plot_x1=PLOT_X1,
         label_x=LABEL_X,
         tick_label_y=TICK_LABEL_Y,
-        points=_step(plotted, start_ms, span_ms),
+        points=points,
         readings=tuple(dots),
         ticks=_ticks(span_ms),
         guides=_guides(),
