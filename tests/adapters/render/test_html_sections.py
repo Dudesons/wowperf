@@ -517,3 +517,36 @@ def test_rendering_without_an_icon_source_is_the_page_as_it_was() -> None:
                                      ability_id=42),))
     assert render(a_report(deaths=(card,))) == render(a_report(deaths=(card,)), icons=None)
     assert "background-image" not in render(a_report(deaths=(card,)))
+
+
+def test_an_icon_is_drawn_beside_the_killing_blow_in_the_heading() -> None:
+    # A distinct id from the recap-row test above: a guard copy-pasted from the
+    # wrong site would still read the right id there and pass by accident.
+    card = a_card(killing_blow_id=77)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({77: "data:image/jpeg;base64,BBB"}))
+    assert '<span class="icon i-77" aria-hidden="true"></span>' in html
+    assert "Frigid Roar" in html
+
+
+def test_an_icon_is_drawn_beside_an_availability_rows_ability() -> None:
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", ability_id=99),
+        )),
+    ))
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({99: "data:image/jpeg;base64,CCC"}))
+    assert '<span class="icon i-99" aria-hidden="true"></span>' in html
+    assert "Icebound Fortitude" in html
+
+
+def test_an_id_that_never_resolves_is_still_asked_about_only_once() -> None:
+    # `resolved` only gains an entry once `data_uri` returns a URI, so a naive
+    # dedup keyed on that dict would ask again about an id that resolves to
+    # None every time it recurs -- on a card with 181 rows, every later one.
+    # Two cards naming the same never-resolving ability prove the guard
+    # remembers the id itself, not just the ones that produced a URI.
+    card_a = a_card(killing_blow_id=5)
+    card_b = a_card(killing_blow_id=5)
+    icons = FakeIcons({})
+    render(a_report(deaths=(card_a, card_b)), icons=icons)
+    assert icons.asked == [5]

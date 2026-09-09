@@ -10,6 +10,7 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
+from tests.adapters.render.test_html_sections import FakeIcons
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -266,6 +267,19 @@ def test_the_page_loads_no_image_over_the_network() -> None:
     # through a CSS url() instead, which that check never sees. A hotlinked icon
     # would leave the report blank the day Blizzard moved the file.
     html = render(a_report())
+    assert "url(http" not in html
+    assert "url(//" not in html
+
+
+def test_a_resolved_icon_reaches_the_page_as_a_data_uri_never_a_hotlink() -> None:
+    # The test above renders no icon at all, so a hotlinked `url(http...)` would
+    # leave it passing exactly as it does today -- it never exercises the path a
+    # real icon travels. This renders a page that actually resolves one and
+    # checks what kind of url() it wrote.
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", killing_blow_id=7)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({7: "data:image/jpeg;base64,AAA"}))
+    assert "url(data:" in html
     assert "url(http" not in html
     assert "url(//" not in html
 

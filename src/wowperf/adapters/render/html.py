@@ -37,14 +37,16 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
     and a cache, and the builder that made the report is forbidden from asking it.
     """
     resolved: dict[int, str] = {}
+    asked: set[int] = set()
     for card in report.deaths:
         candidates = [card.killing_blow_id]
         candidates.extend(row.ability_id for row in card.timeline)
         for group in card.availability:
             candidates.extend(row.ability_id for row in group.rows)
         for ability_id in candidates:
-            if ability_id is None or ability_id in resolved:
+            if ability_id is None or ability_id in asked:
                 continue
+            asked.add(ability_id)
             uri = icons.data_uri(ability_id)
             if uri is not None:
                 resolved[ability_id] = uri
