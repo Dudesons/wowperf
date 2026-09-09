@@ -123,8 +123,16 @@ class BlizzardIcons:
         A file Blizzard does not serve comes back as a refusal carrying XML
         rather than as a not-found, so the status alone would have an error
         document embedded in the page as though it were a picture.
+
+        Status 0 is `fetch`'s sentinel for no HTTP response at all -- a
+        transport failure rather than the CDN answering no. That is not
+        recorded as a miss: a one-off timeout would otherwise blacklist the
+        icon forever, with no future run ever asking again. It is left
+        unresolved for this render and asked again next time.
         """
         status, content_type, body = self._fetch(ICON_BASE + name)
+        if status == 0:
+            return None
         if status != 200 or not content_type.startswith("image/"):
             self._store.write_miss(name)
             return None

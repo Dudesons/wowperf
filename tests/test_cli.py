@@ -1819,6 +1819,40 @@ def test_analyze_writes_a_report_whose_icons_are_embedded(
     assert "url(http" not in html
 
 
+def test_a_failed_icon_fetch_does_not_abort_the_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """`build_icons`' fetcher sits inside the `render(...)` call, which runs after
+    `analyze`'s own try/except around the API calls has already closed. A
+    transport failure fetching one icon among the dozens a real report fetches
+    must not escape uncaught and abort the run after the findings file has
+    already been written but before the report has."""
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        raise httpx.ConnectError("connection reset")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = run_analyze(
+        tmp_path,
+        abilities=[
+            {"gameID": KILLING_BLOW_ABILITY_ID, "name": "Frostbolt", "icon": KILLING_BLOW_ICON}
+        ],
+        death_events=[
+            {
+                "type": "death",
+                "targetID": 693,
+                "timestamp": 4000,
+                "killingAbilityGameID": KILLING_BLOW_ABILITY_ID,
+            }
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "url(data:image" not in html
+
+
 def test_the_html_report_fetches_nothing_from_the_network(tmp_path: Path) -> None:
     """Mirrors `test_the_page_executes_only_its_own_script` in `test_html_invariants.py`: an
     `href` to the reference run on warcraftlogs.com is a link the reader may follow,

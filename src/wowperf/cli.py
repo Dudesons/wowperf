@@ -115,7 +115,15 @@ def build_icons(loaded: LoadedRun, cache_dir: Path) -> BlizzardIcons:
     """Icons for one run: its own ability dictionary, and a store that keeps them for good."""
 
     def fetch(url: str) -> tuple[int, str, bytes]:
-        response = httpx.get(url, timeout=30.0, follow_redirects=True)
+        # Status 0 tells `BlizzardIcons` that no HTTP response arrived at all --
+        # a DNS failure, a reset connection, a timeout. This call sits outside
+        # `analyze`'s own try/except (which closes well before `render` runs),
+        # and one flaky request among the dozens a real report makes must not
+        # abort a run that has already written its findings.
+        try:
+            response = httpx.get(url, timeout=30.0, follow_redirects=True)
+        except httpx.HTTPError:
+            return 0, "", b""
         return response.status_code, response.headers.get("content-type", ""), response.content
 
     return BlizzardIcons(

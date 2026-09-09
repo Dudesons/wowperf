@@ -149,6 +149,24 @@ def test_a_stored_icon_is_not_asked_for_again(tmp_path: Path) -> None:
     assert asked == [url]
 
 
+def test_a_request_with_no_answer_draws_nothing_and_is_not_a_known_miss(tmp_path: Path) -> None:
+    """Status 0 is the fetcher's sentinel for a transport failure: no HTTP response at all.
+
+    That is distinct from a server that actually answered no. A one-off
+    timeout must not blacklist the icon forever, so no miss is recorded and a
+    later render asks again.
+    """
+    url = "https://render.worldofwarcraft.com/eu/icons/36/spell_a.jpg"
+    asked: list[str] = []
+    responses = {url: (0, "", b"")}
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+
+    assert IconStore(tmp_path).known_miss("spell_a.jpg") is False
+
+    assert a_source(tmp_path, {1: "spell_a.jpg"}, responses, asked).data_uri(1) is None
+    assert asked == [url, url]
+
+
 def test_a_name_the_rule_refuses_is_never_requested(tmp_path: Path) -> None:
     asked: list[str] = []
     source = a_source(tmp_path, {1: "../escape.jpg"}, {}, asked)
