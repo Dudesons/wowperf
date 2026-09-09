@@ -71,8 +71,8 @@ HEALTH_METHOD = (
 )
 
 NO_HEALTH_READING = (
-    "The log carries no health reading for this player before the death, so the health "
-    "column is empty."
+    "The log carries no health reading for this player before the death, so this card "
+    "draws no health curve and the health column of its recap is empty."
 )
 
 NO_TIMELINE_EVENT = "No event in the last seconds."
