@@ -2,9 +2,12 @@
 # ABOUTME: Every coordinate is asserted here, because the template computes none of them.
 
 from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
+from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
 from wowperf.domain.report.player_timeline import (
+    BUCKET_SECONDS,
+    DAMAGE_HEIGHT,
     FIRST_ROW_Y,
     PRECISION,
     ROW_HEIGHT,
@@ -98,3 +101,50 @@ def test_the_measured_and_inferred_badges_are_not_interchangeable() -> None:
     timeline = a_timeline(LoadedRun(run=run))
     assert timeline.badge_measured is not None and timeline.badge_measured.label == "measured"
     assert timeline.badge_inferred is not None and timeline.badge_inferred.label == "inferred"
+
+
+def a_hit(actor_id: int, at_ms: int, amount: int) -> DamageTakenEvent:
+    return DamageTakenEvent(
+        actor_id=actor_id, ability_id=9, ability_name="Cleave", amount=amount, timestamp_ms=at_ms
+    )
+
+
+def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_it() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(
+        run=run, damage_taken=(a_hit(1, 1_000, 2000), a_hit(1, 50_000, 1000))
+    )
+    track = a_timeline(loaded).damage
+    assert track is not None
+    tallest = max(bar.height for bar in track.bars)
+    shortest = min(bar.height for bar in track.bars)
+    assert tallest == DAMAGE_HEIGHT
+    assert shortest == DAMAGE_HEIGHT / 2
+
+
+def test_another_players_damage_never_reaches_this_players_track() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(2, 1_000, 9999),))
+    assert a_timeline(loaded, actor_id=1).damage is None
+
+
+def test_two_hits_inside_one_bucket_are_one_bar_of_their_sum() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    both = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 400), a_hit(1, 2_000, 600)))
+    one = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1000),))
+    assert len(a_timeline(both).damage.bars) == 1  # type: ignore[union-attr]
+    assert a_timeline(both).damage == a_timeline(one).damage
+
+
+def test_a_bucket_with_no_damage_draws_no_bar() -> None:
+    # Two hits five seconds apart straddle a bucket boundary, leaving the
+    # bucket between them empty. A bar count of two, at bucket 0 and bucket 2
+    # rather than bucket 0 and bucket 1, is only possible if the empty bucket
+    # was skipped rather than drawn at zero height or folded out of the index.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 100), a_hit(1, 11_000, 100)))
+    track = a_timeline(loaded).damage
+    assert track is not None
+    assert len(track.bars) == 2
+    scale = axis_scale(100.0)
+    assert track.bars[1].x == round(TRACK_X0 + 2 * BUCKET_SECONDS * scale, PRECISION)

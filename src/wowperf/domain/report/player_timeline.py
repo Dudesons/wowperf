@@ -1,11 +1,16 @@
 # ABOUTME: One player's run on a single axis, in viewBox units the template only prints.
 # ABOUTME: Pull bands behind, damage taken above, one row per cooldown the player owns.
 
+from collections import defaultdict
+
+from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,
+    DamageBar,
+    DamageTrack,
     PlayerTimeline,
     Section,
     SectionState,
@@ -41,6 +46,15 @@ DAMAGE_BASELINE_Y = 76.0
 
 DAMAGE_HEIGHT = 32.0
 """How tall the largest bucket is drawn. Every other bar is a fraction of it."""
+
+BUCKET_SECONDS = 5.0
+"""How much of the run one damage bar covers.
+
+Narrow enough that a single lethal spike stays one bar rather than being
+averaged into its neighbours, wide enough that a thirty-minute run does not
+emit hundreds of rectangles into a file that has to stay openable. Confirmed
+against a real run rather than assumed; see the plan's final task.
+"""
 
 FIRST_ROW_Y = 96.0
 """The baseline of the first cooldown row."""
@@ -84,6 +98,46 @@ def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, 
     )
 
 
+def _damage_track(
+    events: tuple[DamageTakenEvent, ...], actor_id: int, scale: float, origin_ms: int
+) -> DamageTrack | None:
+    """Damage this player took, bucketed, scaled to their own largest bucket.
+
+    `amount` is the unmitigated figure — what the hit was worth before armour
+    and absorbs — which is the same number the per-ability comparison reads, so
+    the drawing and the findings cannot disagree about how hard something hit.
+
+    Returns `None` when this player took nothing the log recorded: an empty
+    track drawn at full height would read as a run of zero-damage buckets
+    rather than as an absence.
+    """
+    ours = [event for event in events if event.actor_id == actor_id]
+    if not ours:
+        return None
+
+    buckets: dict[int, int] = defaultdict(int)
+    for event in ours:
+        index = int((event.timestamp_ms - origin_ms) / 1000 // BUCKET_SECONDS)
+        buckets[index] += event.amount
+
+    peak = max(buckets.values())
+    width = round(BUCKET_SECONDS * scale, PRECISION)
+    bars = tuple(
+        DamageBar(
+            x=round(TRACK_X0 + index * BUCKET_SECONDS * scale, PRECISION),
+            width=max(width, MIN_BLOCK_WIDTH),
+            y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
+            height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
+        )
+        for index, amount in sorted(buckets.items())
+    )
+    return DamageTrack(
+        baseline_y=DAMAGE_BASELINE_Y,
+        bars=bars,
+        peak_label=f"Tallest bar: {peak:,} damage in {int(BUCKET_SECONDS)} seconds",
+    )
+
+
 def build_player_timeline(
     loaded: LoadedRun,
     actor_id: int,
@@ -120,7 +174,7 @@ def build_player_timeline(
         pulls=_pull_bands(run, scale, origin),
         band_y=BAND_Y,
         band_height=BAND_HEIGHT,
-        damage=None,
+        damage=_damage_track(loaded.damage_taken, actor_id, scale, origin),
         cooldowns=rows,
         ticks=axis_ticks(span, scale),
         tick_y1=AXIS_TOP,
