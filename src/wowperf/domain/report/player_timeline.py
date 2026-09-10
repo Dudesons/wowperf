@@ -53,9 +53,21 @@ BUCKET_SECONDS = 5.0
 """How much of the run one damage bar covers.
 
 Narrow enough that a single lethal spike stays one bar rather than being
-averaged into its neighbours, wide enough that a thirty-minute run does not
-emit hundreds of rectangles into a file that has to stay openable. Confirmed
-against a real run rather than assumed; see the plan's final task.
+averaged into its neighbours, wide enough that a run does not emit thousands
+of rectangles into a file that has to stay openable. Measured 2026-09-10
+against report 6Kx1P9GbNXrcLdHa fight 36 (five players, four deaths):
+re-rendering at 2, 5 and 10 seconds produced 3,266, 2,062 and 1,609 SVG
+rects respectively (721,206, 632,149 and 598,706 bytes). Checked against
+the four buckets surrounding each death, no width concentrated every
+death's damage into one bar best: 5 seconds did for one death (91%,
+against 47% at 2 seconds and 50% at 10), tied 2 seconds for a second
+(100%, against 71% at 10), sat between the other two for a third (58%,
+between 52% at 2 seconds and 72% at 10), and was the worst of the three
+for the fourth (50%, against 79% at 2 seconds and 54% at 10). With spike
+fidelity split across widths rather than favouring one, rect count
+decides: 5 seconds holds well under 2 seconds' count for a comparable
+spread of outcomes, at the cost of a few hundred more rects than 10
+seconds would use.
 """
 
 FIRST_ROW_Y = 96.0

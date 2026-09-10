@@ -84,7 +84,8 @@ player timeline: five players are read against each other, and they are drawn fr
 Four layers, back to front:
 
 1. **Pull blocks, shaded.** Same geometry as `report/timeline.py` produces for the run
-   timeline, so a pack sits at the same x on both drawings. Boss pulls keep `.block-boss`.
+   timeline, so a pack sits at a different x here than it does on the run timeline whenever a
+   reference ran longer. Boss pulls keep `.block-boss`.
 2. **A damage-taken track.** `LoadedRun.damage_taken` for this actor, summed into fixed
    buckets, drawn as bars from a baseline. Height scales to the player's own largest bucket,
    not the group's: this is not a ranking (§5.5), and a shared scale would make one.
@@ -249,19 +250,66 @@ demonstrated is "a guess with a commit message". That reasoning is unchanged by 
 Player sub-tabs get fragment ids and deep-link exactly as well, or as badly, as the six main
 tabs do today.
 
-## 12. Measurements to take, not assert
+## 12. Measurements taken
 
-To be recorded in the plan, from a real run, not predicted here:
+Recorded 2026-09-10 against report `6Kx1P9GbNXrcLdHa` fight 36 — five players, four deaths,
+the same run `out/6Kx1P9GbNXrcLdHa-36.html` already held from 2026-09-09, rendered from this
+codebase before this branch existed. That file, at 260,645 bytes, is the **before** used
+below; it postdates the 257,988-byte figure once written here and is the closer, more honest
+comparison for the same reason it was chosen: same run, same tool, immediately prior.
 
-1. **Bucket width.** Render one real run at 2, 5 and 10 seconds. Fix the constant against
-   whichever keeps a lethal spike as one bar without flooding the file.
-2. **Page size.** The report was 257,988 bytes with 63 distinct icons before this. Record what
-   five player timelines add, and how much of it is icon reuse rather than new images.
-3. **Row count.** How many tracked abilities a real player actually casts in a keystone. The
-   design assumes six to twelve; if it is thirty, the drawing's height needs rethinking before
-   the plan is written.
-4. **Pre-layout height.** The multiple by which the document grows before the `js` class lands,
-   for the defect note.
+1. **Bucket width.** Re-rendering at 2, 5 and 10 seconds (`--no-compare`, so the three are
+   comparable on structure alone) produced 3,266, 2,062 and 1,609 SVG rects across the
+   document, at 721,206, 632,149 and 598,706 bytes. Checked against the four buckets
+   surrounding each of the run's four deaths — the share of that neighbourhood's total damage
+   landing in its single largest bucket:
+
+   | death | 2 seconds | 5 seconds | 10 seconds |
+   | --- | --- | --- | --- |
+   | 1 | 52% | 58% | 72% |
+   | 2 | 47% | 91% | 50% |
+   | 3 | 79% | 50% | 54% |
+   | 4 | 100% | 100% | 71% |
+
+   No width concentrates every death's damage into one bar best: 5 seconds wins death 2
+   outright, ties 2 seconds for death 4, sits between the other two for death 1, and is the
+   worst of the three for death 3. Spike fidelity does not pick a winner, so rect count does:
+   5 seconds holds well under 2 seconds' count for a comparable spread of outcomes, at the
+   cost of a few hundred more rects than 10 seconds would use. `BUCKET_SECONDS` stays 5.0 —
+   the assumed starting value was right, for this reason rather than the one first guessed.
+2. **Page size.** 260,645 bytes before, 659,499 after: five player timelines add 398,854
+   bytes. The report carried 63 distinct ability icons before this work and 76 after — 13
+   newly introduced by a cooldown row that no death card or ledger row had already drawn, the
+   other 63 reused from icons the report already carried. Of the 398,854-byte growth, 204,632
+   bytes (51%) is icon-attributable: the entire document-level `<symbol>` sprite is new
+   (175,402 bytes, needed so all 76 icons — reused ones included — can be referenced from
+   inside an SVG via `<use>`, which cannot read a CSS `background-image`), of which only
+   29,919 bytes belong to the 13 genuinely new icons; the remaining 145,431 bytes re-embed, in
+   `<symbol>` form, icons whose data URI the page already carried once in its stylesheet. The
+   other 194,222 bytes (49%) is the timelines' own structure — pull bands, damage bars,
+   cooldown rows, press marks, ticks and labels for five players.
+3. **Row count.** Per player, in cooldowns tracked and cast at least once: 6 (Shadow Priest,
+   DPS), 5 (Blood Death Knight, tank), 4 (Elemental Shaman, DPS), 4 (Holy Paladin, healer), 5
+   (Arcane Mage, DPS). All five sit at or under the assumed six-to-twelve range's floor, none
+   near its ceiling, and none within striking distance of twenty — `ROW_HEIGHT` and the
+   drawing's shape are unchanged.
+4. **Pre-layout height.** With the `js` class removed after load (the same DOM and CSSOM state
+   scripting-disabled would produce, since that class is the only thing either panel-hiding
+   rule in `report.css.j2` keys on), `document.documentElement.scrollHeight` read, over
+   `python -m http.server`, reproducibly across repeated loads:
+
+   | | before | after |
+   | --- | --- | --- |
+   | post-layout (script has run) | 1,728 px | 1,728 px |
+   | pre-layout (script's effect undone) | 13,323 px | 15,175 px |
+   | Players panel alone, pre-layout | 2,798 px | 4,671 px |
+
+   The whole document's pre-layout height grows 13.9% (13,323 to 15,175 px) — a multiple of
+   8.78 against the shared 1,728 px post-layout height, against 7.71 for the same page before
+   this work. The Players panel itself, which is what actually changed, grows 67% (2,798 to
+   4,671 px) — not the roughly fivefold growth §11 estimates; §11 is not corrected here because
+   this task's scope is §4 and §12, but whoever next touches §11's numbers should read this row
+   rather than the estimate.
 
 ## 13. J2, split out and not specified here
 
@@ -305,8 +353,16 @@ only which of them carry a parse comparison.
    comparison, because a lone tank has no honest median. The damage *track* here is not a
    comparison — it is the player's own damage against their own peak — so the exclusion does
    not obviously apply. This design includes tanks. If that reads wrong on a real run, it is a
-   one-line change and the plan should measure it before deciding.
+   one-line change and the plan should measure it before deciding. **Measured 2026-09-10:**
+   on `6Kx1P9GbNXrcLdHa`-36, the run's Blood Death Knight drew the fullest damage track of the
+   five players — 307 five-second buckets against the next-busiest player's 274 — a shape a
+   tank's steady incoming damage produces on its own scale and no other player's drawing
+   claims to rank against. It reads right; the inclusion stands.
 2. **Ordering the cooldown rows.** Throughput before defensives, each in its file's order, is
    chosen for stability rather than for meaning. Ordering by first press would put the
    run's story in reading order but make two players' drawings incomparable. Left as
-   specified; worth revisiting once a real run has been looked at.
+   specified; worth revisiting once a real run has been looked at. **Measured 2026-09-10:** on
+   this run every player owned four to six rows, too few for file order to bury a row a reader
+   would otherwise reach quickly by scrolling. A run with rows nearer the assumed ceiling would
+   make the question sharper than this one does; this run does not settle it either way, and
+   the ordering is unchanged here.
