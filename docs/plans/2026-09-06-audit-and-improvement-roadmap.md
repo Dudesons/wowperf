@@ -1,8 +1,9 @@
 # Audit of the shipped tool, and a roadmap for what comes next
 
-Date: 2026-09-06. Status: **proposal, not yet approved.** Nothing below has been built. Each
-phase becomes its own design and plan under `docs/plans/` once RwlRwlRwlRwl has decided the open
-questions in §5.
+Date: 2026-09-06. Status: **Phases G, H and I are built; Phase J is not started.** Each built
+phase has its own design and plan under `docs/plans/`; they shipped on 2026-09-06, 2026-09-06
+and 2026-09-08. The §5 decisions those three needed were taken as each was designed; the ones
+that bear on Phase J have not been.
 
 ## 1. What was checked
 

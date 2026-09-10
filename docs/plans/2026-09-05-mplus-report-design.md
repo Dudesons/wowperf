@@ -1,6 +1,7 @@
 # Mythic+ Post-Mortem: The HTML Report — Design
 
-**Status:** Approved 2026-09-05. Not yet implemented.
+**Status:** Approved and implemented 2026-09-05. Amended since for tabs, the death recap and
+spell icons; each amendment is dated in place.
 
 **Authority:** `docs/plans/2026-09-03-mplus-postmortem-design.md` §7 fixes the technology and the
 eight sections and remains binding. This document refines §7 into something implementable and

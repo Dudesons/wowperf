@@ -1,6 +1,6 @@
 # Mythic+ Post-Mortem: The Death Recap — Design
 
-**Status:** Approved in conversation 2026-09-07. Not yet implemented. Phase I of
+**Status:** Approved in conversation 2026-09-07, implemented 2026-09-08. Phase I of
 `2026-09-06-audit-and-improvement-roadmap.md`.
 
 **Authority:** `2026-09-03-mplus-postmortem-design.md` remains the authority on analysers, badges

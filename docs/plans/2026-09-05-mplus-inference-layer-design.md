@@ -1,6 +1,6 @@
 # The Inference Layer — Design
 
-**Status:** approved 2026-09-05.
+**Status:** approved and implemented 2026-09-05.
 
 **Authority:** `docs/plans/2026-09-03-mplus-postmortem-design.md` §8, which this document expands
 and, in the places noted, amends.

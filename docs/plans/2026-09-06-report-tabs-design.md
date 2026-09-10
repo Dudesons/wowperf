@@ -1,6 +1,6 @@
 # Mythic+ Post-Mortem: The Report in Tabs — Design
 
-**Status:** Approved in conversation 2026-09-06. Not yet implemented. Phase H of
+**Status:** Approved and implemented 2026-09-06. Phase H of
 `2026-09-06-audit-and-improvement-roadmap.md`.
 
 **Authority:** `2026-09-05-mplus-report-design.md` remains the report's design and stays binding

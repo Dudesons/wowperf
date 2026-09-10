@@ -1,7 +1,9 @@
 # Mythic+ Run Post-Mortem — Design
 
 - **Date:** 2026-09-03
-- **Status:** Approved. Plans A to F implemented; §6.5 amended 2026-09-05 (see §6.5)
+- **Status:** Approved. Plans A to F implemented 2026-09-04 to 2026-09-05; Phases G and H
+  2026-09-06; Phase I and the reference sample 2026-09-08; the report's spell icons
+  2026-09-09. Superseded sections carry a dated amendment note in place.
 - **Scope:** First vertical slice of the `wow_perf` project
 
 ---
@@ -488,6 +490,11 @@ Two questions need two references.
 
 One report may satisfy both. We do not optimize for that; two queries are simpler and the cache
 absorbs the cost.
+
+*Amended 2026-09-08:* one reference per axis is not enough to say what a fast group does. Each
+axis draws a sample of up to five references and states a median with the observed range;
+below three comparable members the comparison falls back to a single reference and the finding
+says so. See `2026-09-08-sampling-design.md`, which supersedes this section's two queries.
 
 ### 6.2 Matching rules
 

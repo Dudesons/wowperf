@@ -1,7 +1,7 @@
 # Spell icons in the report — design
 
-Written 2026-09-09. Supersedes nothing; it implements the first half of the recommendation in
-`docs/plans/2026-09-08-icons-and-tooltips-spike.md` §9.
+Written and implemented 2026-09-09. Supersedes nothing; it implements the first half of the
+recommendation in `docs/plans/2026-09-08-icons-and-tooltips-spike.md` §9.
 
 ## 1. What this builds
 

@@ -1,7 +1,8 @@
 # Comparing against a sample of references — design
 
-Approved 2026-09-08. This design replaces the one-reference comparison with a sample of
-reference runs, so a claim means what most fast runs did rather than what one stranger did.
+Approved and implemented 2026-09-08. This design replaces the one-reference comparison with a
+sample of reference runs, so a claim means what most fast runs did rather than what one
+stranger did.
 
 It amends `docs/plans/2026-09-03-mplus-postmortem-design.md` §6, which remains the authority on
 everything it does not touch. Two research documents are its evidence and are not restated here:

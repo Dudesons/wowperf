@@ -1,7 +1,7 @@
 # Spell Icons on Findings — Design
 
-Approved 2026-09-09. Extends the shipped death-card icon feature to the sections rendered from
-`Finding`.
+Approved and implemented 2026-09-09. Extends the shipped death-card icon feature to the
+sections rendered from `Finding`.
 
 Companion documents, both current:
 
