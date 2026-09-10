@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for the report's four data sections and the inline timeline SVG.
 # ABOUTME: The template does no arithmetic: every coordinate here was computed in build_timeline.
 
+import re
+
 import pytest
 from markupsafe import escape
 
@@ -15,23 +17,31 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
+from wowperf.domain.model import LoadedRun, Player
+from wowperf.domain.report import player_timeline as player_timeline_module
 from wowperf.domain.report import timeline as timeline_module
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
     Badge,
+    CooldownRow,
     CurveGuide,
     CurvePoint,
     CurveReading,
     CurveTick,
+    DamageBar,
+    DamageTrack,
     DeathCard,
     HealthCurve,
     LedgerRow,
     PlayerCard,
+    PlayerTimeline,
+    Press,
     RecapRow,
     Section,
     SectionState,
+    Span,
     Timeline,
     TimelineBlock,
     TimelineTrack,
@@ -406,6 +416,47 @@ def test_group_rows_render_inside_the_players_section() -> None:
     assert players_start < title_at < provenance_start
 
 
+def test_each_player_gets_a_sub_tab_button_pointing_at_their_own_panel() -> None:
+    # A local import: test_html_invariants imports FakeIcons from this module,
+    # so a module-level import back would make the two modules circular and
+    # fail to collect every test in this file.
+    from tests.adapters.render.test_html_invariants import rich_html
+
+    html = rich_html()
+    navs = re.findall(r'data-tab-group="players".*?</nav>', html, flags=re.S)
+    assert navs, "the players panel has no sub-tab nav"
+    targets = re.findall(r'data-tab-for="(player-[^"]+)"', navs[0])
+    # rich_loaded() has two players. Asserting the count rather than truthiness is
+    # what stops this passing against a nav that rendered one button, or none.
+    assert len(targets) == 2
+    for target in targets:
+        assert f'id="{target}"' in html
+    assert html.count('data-tab-panel="players"') == len(targets)
+
+
+def test_the_subjects_sub_tab_is_the_one_that_opens_first() -> None:
+    # design section 3. `report.js.j2` activates the first `[data-tab-for]` in
+    # each group, so "opens first" is "is drawn first" -- and the panels must
+    # move with the buttons, or the nav and the cards disagree about order.
+    # The subject is last on this roster on purpose: with them first, a page
+    # that never ordered anything would pass.
+    roster = (
+        Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680),
+        Player(actor_id=2, name="Stonewake", class_name="DeathKnight", spec="Blood",
+               item_level=675),
+    )
+    subject = roster[1]
+    loaded = LoadedRun(run=a_run(players=roster, pulls=(a_pull(0, 0, 60_000),)))
+    html = render(build_report(loaded, (), None, None, subject, None, FETCHED,
+                               NO_DEFENSIVES, NO_CONSUMABLES))
+    nav = re.search(r'data-tab-group="players".*?</nav>', html, flags=re.S)
+    assert nav is not None
+    buttons = re.findall(r'data-tab-for="(player-[^"]+)"', nav.group(0))
+    panels = re.findall(r'data-tab-panel="players" id="(player-[^"]+)"', html)
+    assert buttons[0].startswith("player-stonewake")
+    assert panels == buttons
+
+
 def a_curve() -> HealthCurve:
     return HealthCurve(
         width=680.0,
@@ -583,6 +634,281 @@ def a_player_card(**changes: object) -> PlayerCard:
         spell_and_talent=Section(state=SectionState.PRESENT),
     )
     return card.model_copy(update=changes)
+
+
+def a_drawn_timeline() -> PlayerTimeline:
+    """A timeline with one of everything: a test checking each layer's own `class="..."`
+    attribute fails, naming the layer, if a template drops it."""
+    return PlayerTimeline(
+        section=Section(state=SectionState.PRESENT),
+        title=player_timeline_module.TITLE,
+        width=680.0,
+        height=140.0,
+        pulls=(TimelineBlock(label="Pack 0", x=130.0, width=100.0, is_boss=False,
+                             kind="band", css_class="pull-band"),),
+        band_y=28.0,
+        band_height=10.0,
+        damage=DamageTrack(
+            baseline_y=76.0,
+            label_y=60.0,
+            bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+        ),
+        cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                               label_y=104.0,
+                               presses=(Press(x=200.0, icon_x=194.0),),
+                               unavailable=(Span(x=200.0, width=90.0),),
+                               not_judged=Span(x=130.0, width=90.0)),),
+        ticks=((130.0, "0:00"),),
+        tick_y1=22.0,
+        tick_y2=112.0,
+        tick_label_y=128.0,
+        label_x=126.0,
+        row_height=16.0,
+        press_width=4.0,
+        legend="The pale stretch at the start is not judged at all.",
+        badge_measured=Badge(label="measured", tint="badge-measured"),
+        badge_measured_caption=player_timeline_module.BADGE_MEASURED_CAPTION,
+        badge_inferred=Badge(label="inferred", tint="badge-inferred"),
+        badge_inferred_caption=player_timeline_module.BADGE_INFERRED_CAPTION,
+    )
+
+
+def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
+    html = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),)))
+    assert 'data-tab-panel="players"' in html
+    assert 'class="player-timeline"' in html
+    for layer in ("pull-band", "damage-bar", "not-judged", "on-cooldown", "press"):
+        assert f'class="{layer}"' in html, layer
+    assert "Ice Block" in html
+    assert "not judged" in html
+    # Which badge grades what is a claim the page makes, so it must be spoken
+    # rather than left as two colours side by side: "measured" is captioned
+    # to the damage bars and press marks, "inferred" to the dimming.
+    assert "measured</a> — the damage bars and the press marks." in html
+    assert "inferred</a> — the dimming." in html
+
+
+def test_a_timelines_badges_link_to_provenance_like_every_other_badge() -> None:
+    # The health curve's badges and every ledger row's are anchors to the
+    # provenance section. These were the only badges on the page a reader
+    # could not click through.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<a class="badge badge-measured" href="#provenance">measured</a>' in body
+    assert '<a class="badge badge-inferred" href="#provenance">inferred</a>' in body
+
+
+def test_a_timelines_captions_take_the_same_class_the_other_drawings_captions_do() -> None:
+    # `.badges` matched no rule in the stylesheet, so that line rendered at
+    # body size while every other caption on the page rendered at 13px.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<p class="legend"><a class="badge badge-measured"' in body
+    assert 'class="badges"' not in body
+
+
+def test_a_row_label_is_drawn_in_the_gutter_and_on_its_own_rows_middle() -> None:
+    # The coordinates come from the domain and the alignment from one rule in
+    # the stylesheet: without `text-anchor: end` an x of 126 is where the
+    # label *starts*, and it runs rightward over the track it names.
+    html = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),)))
+    stylesheet, body = html.split("</style>")
+    assert '<text class="track-label row-label" x="126.0" y="104.0">Ice Block</text>' in body
+    assert '<text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>' in body
+    assert "text-anchor: end" in stylesheet.split(".row-label {")[1].split("}")[0]
+
+
+def test_a_timeline_names_itself_rather_than_claiming_to_be_an_unnamed_image() -> None:
+    # `role="img"` with no accessible name gives assistive tech an unnamed
+    # image and drops the pull bands' own titles out of the tree with it.
+    # Both other drawings on the page open with a <title> and carry no role.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    svg = body[body.index('<svg class="player-timeline"'):body.index("</svg>")]
+    # Escaped on comparison: the title embeds an apostrophe, which autoescape
+    # turns into "&#39;".
+    assert f"<title>{escape(player_timeline_module.TITLE)}</title>" in svg
+    assert "role=" not in svg
+    assert "<title>Pack 0</title>" in svg
+
+
+def test_a_timelines_tick_labels_are_centred_the_way_the_run_timelines_are() -> None:
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<text class="tick-label" x="130.0" y="128.0" text-anchor="middle">0:00</text>' in body
+
+
+def test_the_press_marks_width_comes_from_the_domain_not_the_template() -> None:
+    # The mark's width decides where its centre falls, so a number written in
+    # the template would put the mark and its icon on different instants.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<rect class="press" x="200.0" y="96.0" width="4.0" height="16.0"/>' in body
+
+
+def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() -> None:
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    # The rule alone proves the resolver ran, not that anything was drawn: split the
+    # stylesheet off and require both the embedded payload and the element that
+    # draws it from there, in the body. The coordinate is pinned too -- matching
+    # only `'<use href="#icon-45438"'` would stay green even if the template
+    # printed `press.x` instead of the centred `press.icon_x`.
+    body = html.split("</style>")[1]
+    assert ('<symbol id="icon-45438" viewBox="0 0 1 1">'
+            '<image href="data:image/jpeg;base64,AAA"') in body
+    assert '<use href="#icon-45438" x="194.0"' in body
+
+
+def test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too() -> None:
+    # The exact instant must stay readable even where an icon would overlap a
+    # neighbouring press, so the narrow mark is drawn whether or not an icon
+    # resolved -- never replaced by the icon. And SVG paints in document order,
+    # so the mark must come *after* the icon in the markup: the icon's box is
+    # several times wider than the mark and fully opaque, so painted second it
+    # would cover the mark completely.
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    body = html.split("</style>")[1]
+    assert '<rect class="press"' in body
+    assert body.index('<use href="#icon-45438"') < body.index('<rect class="press"')
+
+
+def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({}),
+    )
+    assert "background-image" not in html
+    body = html.split("</style>")[1]
+    assert 'class="press"' in body
+    # Stronger than the line above: nothing resolved, so no icon element of
+    # any kind -- embedded or drawn -- may appear either.
+    assert "<use" not in body
+
+
+def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_has() -> None:
+    # The id lives on the row, not the press: two presses of the same ability
+    # must cost one call, not two, the same guarantee the death-card walk
+    # already gives the ids it meets more than once.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    icons = FakeIcons({})
+    render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
+    assert icons.asked == [45438]
+
+
+def test_two_presses_of_the_same_ability_share_one_copy_of_the_icon() -> None:
+    # The resolver test above proves the id is asked once; this proves the
+    # payload itself is not copied once per press into the SVG that draws
+    # them -- a regression back to a per-press `<image href="data:...">`
+    # would double this count without ever asking the resolver twice.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    html = render(a_report(players=(a_player_card(timeline=timeline),)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    body = html.split("</style>")[1]
+    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count('<use href="#icon-45438"') == 2
+
+
+def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> None:
+    # `CooldownRow.ability_id` is `int | None`. `None in {}` and `None in
+    # {45438: ...}` are both `False`, but only the second dict can tell the
+    # template's real guard apart from one that would happen to pass no matter
+    # what it tested -- and a player with one identified row beside one
+    # unidentified one is the case that actually occurs, so `icons_by_id` is
+    # given a resolving id here rather than left empty.
+    unidentified = CooldownRow(label="Unknown", ability_id=None, baseline_y=96.0,
+                               presses=(Press(x=200.0, icon_x=192.0),))
+    identified = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=112.0,
+                             presses=(Press(x=210.0, icon_x=202.0),))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(unidentified, identified))
+    icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
+    html = render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
+    assert icons.asked == [45438]
+    body = html.split("</style>")[1]
+    assert body.count('<rect class="press"') == 2
+    assert '<use href="#icon-45438"' in body
+
+
+def test_two_players_pressing_the_same_ability_share_one_copy_of_the_icon() -> None:
+    # The prior test proves one row's own presses share one copy inside one
+    # player's own <svg>. This is the shape the ruling actually worried about:
+    # two different players, each with their own player-timeline <svg>,
+    # pressing the same ability. A per-player <defs> would duplicate the id
+    # (invalid HTML) and, the day `timeline.row_height` stops being one shared
+    # module constant, silently draw the first player's own geometry under the
+    # second player's <use>. A document-level <symbol> makes both structurally
+    # impossible: there is exactly one element bearing this id anywhere on the
+    # page, and both players' presses resolve against it.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                      presses=(Press(x=200.0, icon_x=192.0),))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    html = render(
+        a_report(players=(
+            a_player_card(name="Bríala", slug="briala-1", timeline=timeline),
+            a_player_card(name="Stonewake", slug="stonewake-2", timeline=timeline),
+        )),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    body = html.split("</style>")[1]
+    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count('id="icon-45438"') == 1
+    assert body.count('<use href="#icon-45438"') == 2
+
+
+def test_a_withheld_timeline_says_why_instead_of_drawing_an_empty_axis() -> None:
+    # The reason is the domain's own withheld string, not one invented for this
+    # test: proving the template prints whatever reason it is given is the
+    # point, and a hand-rolled sentence the domain never produces would prove
+    # nothing about that. Escaped on comparison: the reason embeds an
+    # apostrophe that autoescape turns into "&#39;".
+    withheld = PlayerTimeline(
+        section=Section(state=SectionState.WITHHELD,
+                        reason=player_timeline_module.NO_PULLS_RECORDED),
+    )
+    html = render(a_report(players=(a_player_card(timeline=withheld),)))
+    assert str(escape(player_timeline_module.NO_PULLS_RECORDED)) in html
+    assert 'class="player-timeline"' not in html
+
+
+def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> None:
+    # design section 6: when an ability's own cooldown exceeds the run, the
+    # not-judged stretch and the press's unavailable span cover the exact same
+    # rectangle. Painted in the wrong order the dashed border would sit under
+    # the filled span and vanish; this proves it paints on top instead.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=600.0),),
+        not_judged=Span(x=46.0, width=600.0),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        cooldowns=(row,),
+    )
+    html = render(a_report(players=(a_player_card(timeline=timeline),)))
+    on_cooldown_at = html.index('class="on-cooldown"')
+    not_judged_at = html.index('class="not-judged"')
+    assert on_cooldown_at < not_judged_at
 
 
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:

@@ -1,6 +1,7 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
+import unicodedata
 from collections.abc import Sequence
 
 from wowperf.domain.analysis.players import display_names, summarise_players
@@ -16,6 +17,8 @@ from wowperf.domain.report.frame import (
 )
 from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard
+from wowperf.domain.report.player_timeline import build_player_timeline
+from wowperf.domain.season import Defensives, ThroughputCooldowns
 
 CLASS_COLOURS = (
     "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
@@ -36,12 +39,43 @@ def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
 
 
+SLUG_FALLBACK = "player"
+"""What a name reduces to when nothing in it survives the transliteration.
+
+A wholly non-Latin name — `Кириллица` — keeps no ASCII letter after
+decomposition, and an empty id is not addressable. The index the caller
+appends is what keeps two such names apart.
+"""
+
+
+def player_slug(display_name: str) -> str:
+    """A display name reduced to what an HTML id and a URL fragment both carry.
+
+    Accents decompose and their marks are dropped, so `Bríala` and `Briala`
+    reach the same slug — which is why the caller appends an index rather than
+    trusting this to be unique. Everything else outside the ASCII alphabet and
+    digits becomes a hyphen, and runs of hyphens collapse.
+    """
+    decomposed = unicodedata.normalize("NFKD", display_name)
+    kept = [
+        character.lower() if character.isascii() and character.isalnum() else "-"
+        for character in decomposed
+        if not unicodedata.combining(character)
+    ]
+    slug = "".join(kept).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or SLUG_FALLBACK
+
+
 def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
     parse: ParseSample | None,
     subject: Player,
     titles_by_id: dict[str, str],
+    defensives: Defensives,
+    throughput: ThroughputCooldowns,
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
 
@@ -57,6 +91,13 @@ def build_players(
     roster — never a reference's own top parser, a different character in a
     different log. Matching by `actor_id` rather than name also keeps two
     players who share a display name from both receiving the comparison rows.
+
+    The subject's card comes first, and everyone else keeps the roster's own
+    order behind them. The page opens whichever sub-tab is drawn first, so
+    ordering the cards is what makes the player the reader asked for the
+    player the reader is shown; leaving the roster order alone would open a
+    teammate's drawing four times out of five. Nav and panel are emitted from
+    this one sequence, so they cannot fall out of step.
 
     `parse` decides one thing here and reads nothing off its members: whether
     a parse comparison ran at all.
@@ -75,10 +116,13 @@ def build_players(
     total_pulls = format_seconds(loaded.run.total_pull_seconds)
     assert total_pulls is not None  # a float input always formats to a string
 
+    summaries = sorted(
+        summarise_players(loaded.run, loaded.casts, loaded.deaths, loaded.interrupts),
+        key=lambda summary: summary.actor_id != subject.actor_id,
+    )
+
     cards = []
-    for summary in summarise_players(
-        loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
-    ):
+    for index, summary in enumerate(summaries):
         display_name = names_by_actor[summary.actor_id]
         mine = collapse_repeated_details(
             [
@@ -109,6 +153,11 @@ def build_players(
                     )
                     if is_subject
                     else ()
+                ),
+                slug=f"{player_slug(display_name)}-{index}",
+                timeline=build_player_timeline(
+                    loaded, summary.actor_id, summary.class_name, summary.spec,
+                    defensives, throughput,
                 ),
             )
         )

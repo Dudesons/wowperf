@@ -10,7 +10,7 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
-from tests.adapters.render.test_html_sections import FakeIcons
+from tests.adapters.render.test_html_sections import FakeIcons, a_drawn_timeline, a_player_card
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -28,17 +28,23 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
     AvailabilityRow,
+    CooldownRow,
     CurveGuide,
     CurvePoint,
     CurveReading,
     CurveTick,
+    DamageBar,
+    DamageTrack,
     DeathCard,
     Header,
     HealthCurve,
     LedgerRow,
+    PlayerTimeline,
+    Press,
     Provenance,
     RecapRow,
     ReferenceRecord,
+    Span,
     Timeline,
     TimelineBlock,
     TimelineTrack,
@@ -211,6 +217,20 @@ def rich_html() -> str:
     )
 
 
+def rich_html_with_icon() -> str:
+    # `rich_html()` above is built with no `icons` argument, so it can never
+    # contain a resolved press icon -- the href-scoping test that follows
+    # would still pass even if a future edit drew a remote href on that site,
+    # because nothing here renders one to catch it. This fixture actually
+    # resolves one, against a player card built directly rather than through
+    # `build_report`, the same shortcut `test_html_sections.py` takes to put
+    # a drawn timeline on the page without fetching a real run through it.
+    return render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+
+
 def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     # Guards the fixture above against ever drifting back to something vacuous:
     # the tests below are only meaningful if the page they render truly contains
@@ -223,6 +243,26 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     hrefs = re.findall(r'href="([^"]*)"', html)
     assert any(href.startswith("#") for href in hrefs)
     assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
+
+    # Same guard, for the fixture above: proves it actually resolves an icon
+    # rather than passing the scoping test below by never exercising a
+    # `data:image/` href at all.
+    icon_hrefs = re.findall(r'href="([^"]*)"', rich_html_with_icon())
+    assert any(href.startswith("data:image/") for href in icon_hrefs)
+
+
+def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
+    # The three-prefix rule below is proved against `rich_html()`, which never
+    # resolves a press icon at all -- so a future edit drawing `<image
+    # href="https://…">` on the timeline would pass it silently. This applies
+    # the same rule to a page that actually resolves one.
+    html = rich_html_with_icon()
+    hrefs = re.findall(r'href="([^"]*)"', html)
+    assert any(href.startswith("data:image/") for href in hrefs)
+    for href in hrefs:
+        assert href.startswith("#") or href.startswith(
+            "https://www.warcraftlogs.com/reports/"
+        ) or href.startswith("data:image/"), href
 
 
 FORBIDDEN_IN_SCRIPT = (
@@ -331,7 +371,11 @@ def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
     assert 'class="js' not in html
 
 
-def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:
+def test_every_href_is_a_fragment_a_report_link_or_an_embedded_icon() -> None:
+    # A press-mark icon is drawn as an SVG <image href="data:…">, not a CSS
+    # background: this is the one other shape an href is allowed to take,
+    # because a data URI is bytes already in the file, not a fetch -- the
+    # same reason icons are embedded rather than hotlinked everywhere else.
     html = rich_html()
     hrefs = re.findall(r'href="([^"]*)"', html)
     assert any(href.startswith("#") for href in hrefs)
@@ -339,7 +383,7 @@ def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> Non
     for href in hrefs:
         assert href.startswith("#") or href.startswith(
             "https://www.warcraftlogs.com/reports/"
-        ), href
+        ) or href.startswith("data:image/"), href
 
 
 def test_every_section_appears_in_the_order_the_design_fixes() -> None:
@@ -435,6 +479,33 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (CurveTick, "x"),
     (CurveGuide, "y"),
     (CurveReading, "percent"),  # a share of the player's own health, not a duration
+    # The player timeline's geometry. Every one of these is a viewBox coordinate
+    # computed in `player_timeline.py`: a position on a fixed axis rather than a
+    # quantity, so a column of them summed would mean nothing a reader could
+    # misread as a total.
+    (DamageBar, "x"),
+    (DamageBar, "width"),
+    (DamageBar, "y"),
+    (DamageBar, "height"),
+    (DamageTrack, "baseline_y"),
+    (DamageTrack, "label_y"),
+    (Press, "x"),
+    (Press, "icon_x"),
+    (Span, "x"),
+    (Span, "width"),
+    (CooldownRow, "ability_id"),  # a spell's identity, not a duration
+    (CooldownRow, "baseline_y"),
+    (CooldownRow, "label_y"),
+    (PlayerTimeline, "width"),
+    (PlayerTimeline, "height"),
+    (PlayerTimeline, "band_y"),
+    (PlayerTimeline, "band_height"),
+    (PlayerTimeline, "tick_y1"),
+    (PlayerTimeline, "tick_y2"),
+    (PlayerTimeline, "tick_label_y"),
+    (PlayerTimeline, "label_x"),
+    (PlayerTimeline, "row_height"),
+    (PlayerTimeline, "press_width"),
 }
 
 

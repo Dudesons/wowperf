@@ -34,9 +34,11 @@ It is a real defect in the report.
 The tab script sits at the end of `<body>` in `src/wowperf/adapters/render/report.html.j2`.
 Its first statement adds the `js` class to the root element, and the stylesheet rule
 `.js .panel:not(.active) { display: none; }` only then begins to hide the five inactive
-panels. Before that moment the document contains all six panels and is roughly three times
-taller, so wherever the browser's own fragment scroll lands during parsing, it lands in a
-document whose geometry is about to change underneath it.
+panels. Before that moment the document contains all six panels and is 7.71 times taller —
+measured 2026-09-10 on the page as it stood when this note was written, and 8.78 times on
+the page with the per-player drawings the amendment below describes. So wherever the
+browser's own fragment scroll lands during parsing, it lands in a document whose geometry is
+about to change underneath it.
 
 The script does call `scrollIntoView()` on the fragment target, from `resolve()`, and binds
 `resolve` to both `hashchange` and `load`. On the evidence that is not enough — but *why*

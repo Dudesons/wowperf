@@ -117,6 +117,106 @@ class Timeline(Frozen):
     block_height: float = 0.0
 
 
+class DamageBar(Frozen):
+    """One bucket of damage taken, in viewBox units."""
+
+    x: float
+    width: float
+    y: float
+    height: float
+
+
+class DamageTrack(Frozen):
+    """Damage taken over the run, bucketed and scaled to this player's own peak.
+
+    Never to the group's. A shared scale across five players would rank them,
+    which the postmortem design's §5.5 refuses.
+
+    `baseline_y` is the foot the bars stand on; `label_y` is where the track's
+    name sits, centred on the band the bars grow through rather than on that
+    foot, so the name reads level with what it names.
+    """
+
+    baseline_y: float = 0.0
+    label_y: float = 0.0
+    bars: tuple[DamageBar, ...] = ()
+    peak_label: str = ""
+
+
+class Press(Frozen):
+    """One cast of a tracked cooldown, placed on its row's axis.
+
+    Both fields are left edges, and both centre their own element on the same
+    instant: an SVG element's `x` is its left edge, so a mark placed flush with
+    the instant would sit wholly to the right of the moment it marks. `x` is
+    the left edge of the narrow mark the template always draws, half its width
+    before the instant; `icon_x` is the left edge of the ability's icon, drawn
+    only once one resolves and several times wider, half of that before it.
+    """
+
+    x: float
+    icon_x: float
+
+
+class Span(Frozen):
+    """A stretch of a cooldown row, in viewBox units."""
+
+    x: float
+    width: float
+
+
+class CooldownRow(Frozen):
+    """One ability this player owns, and what the run did with it.
+
+    `not_judged` covers the run's opening, where the log cannot say whether the
+    ability was available: casts are fetched per fight, so a press before the
+    timer started is invisible.
+
+    `baseline_y` is the row's top edge, which every rect on it hangs from;
+    `label_y` is the row's middle, where its name sits. They differ because a
+    name drawn from the top edge would fall across the row above.
+    """
+
+    label: str
+    ability_id: int | None = None
+    baseline_y: float = 0.0
+    label_y: float = 0.0
+    presses: tuple[Press, ...] = ()
+    unavailable: tuple[Span, ...] = ()
+    not_judged: Span | None = None
+
+
+class PlayerTimeline(Frozen):
+    """One player's run on one axis. Every coordinate the SVG needs lives here.
+
+    Each badge's caption is the claim it grades -- what the damage bars and
+    press marks show, or what the dimming assumes -- so the words a reader
+    checks against the drawing live beside the badge, not in the template.
+    """
+
+    section: Section
+    title: str = ""
+    width: float = 0.0
+    height: float = 0.0
+    pulls: tuple[TimelineBlock, ...] = ()
+    band_y: float = 0.0
+    band_height: float = 0.0
+    damage: DamageTrack | None = None
+    cooldowns: tuple[CooldownRow, ...] = ()
+    ticks: tuple[tuple[float, str], ...] = ()
+    tick_y1: float = 0.0
+    tick_y2: float = 0.0
+    tick_label_y: float = 0.0
+    label_x: float = 0.0
+    row_height: float = 0.0
+    press_width: float = 0.0
+    legend: str = ""
+    badge_measured: Badge | None = None
+    badge_measured_caption: str = ""
+    badge_inferred: Badge | None = None
+    badge_inferred_caption: str = ""
+
+
 class RecapRow(Frozen):
     """One event of a death's last seconds, formatted.
 
@@ -288,6 +388,19 @@ class PlayerCard(Frozen):
     damage_rows: tuple[LedgerRow, ...] = ()
     spell_and_talent: Section
     spell_and_talent_rows: tuple[LedgerRow, ...] = ()
+    slug: str = ""
+    """This player's fragment id, unique within the report.
+
+    Derived from the disambiguated display name and suffixed with the card's
+    index, because two names can reduce to the same slug and a duplicate id
+    would give one player another's sub-tab.
+    """
+    timeline: PlayerTimeline | None = None
+    """This player's own run, drawn.
+
+    `None` only on a card built without one: the builder always supplies a
+    timeline, withheld when it has nothing to draw.
+    """
 
 
 class Header(Frozen):

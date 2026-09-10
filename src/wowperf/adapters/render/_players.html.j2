@@ -1,20 +1,27 @@
 {# ABOUTME: The Players panel: one card per player, carrying their measured facts. #}
 {# ABOUTME: Damage reads against the group median, never as avoidable. #}
 {% from "_macros.html.j2" import ledger_row with context %}
+{% from "_player_timeline.html.j2" import player_timeline with context %}
 <section class="panel" data-tab-panel="main" id="tab-players">
 
 <h2 id="players">Players</h2>
 {% if not report.players %}
 <p class="sub">No players.</p>
 {% endif %}
+<nav class="tabs subtabs" data-tab-group="players" aria-label="Players">
 {% for player in report.players %}
-<div class="card">
+  <button type="button" class="tab" data-tab-for="player-{{ player.slug }}">{{ player.name }}</button>
+{% endfor %}
+</nav>
+{% for player in report.players %}
+<div class="card" data-tab-panel="players" id="player-{{ player.slug }}">
   <div class="player-head">
     <span class="swatch" style="background: var(--{{ player.colour }})"></span>
     <h3>{{ player.name }}</h3>
     <span class="sub">{{ player.class_name }} {{ player.spec }}</span>
   </div>
   <p class="stats">{{ player.stats_line }}</p>
+  {{ player_timeline(player.timeline) }}
   {% for row in player.damage_rows %}
   {{ ledger_row(row) }}
   {% endfor %}

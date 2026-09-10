@@ -57,6 +57,16 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
         uri = icons.data_uri(row.ability_id)
         if uri is not None:
             resolved[row.ability_id] = uri
+    for player in report.players:
+        if player.timeline is None:
+            continue
+        for cooldown in player.timeline.cooldowns:
+            if cooldown.ability_id is None or cooldown.ability_id in asked:
+                continue
+            asked.add(cooldown.ability_id)
+            uri = icons.data_uri(cooldown.ability_id)
+            if uri is not None:
+                resolved[cooldown.ability_id] = uri
     return resolved
 
 

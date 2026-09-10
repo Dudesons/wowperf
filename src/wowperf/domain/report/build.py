@@ -25,7 +25,13 @@ from wowperf.domain.report.ledger import (
 from wowperf.domain.report.model import Provenance, ReferenceRecord, Report, SectionState
 from wowperf.domain.report.players import build_players
 from wowperf.domain.report.timeline import build_timeline
-from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
+from wowperf.domain.season import (
+    Consumables,
+    Defensives,
+    Externals,
+    SelfResurrections,
+    ThroughputCooldowns,
+)
 
 
 def build_report(
@@ -40,6 +46,7 @@ def build_report(
     consumables: Consumables,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
+    throughput: ThroughputCooldowns = ThroughputCooldowns(),
     reference_records: tuple[ReferenceRecord, ...] = (),
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
@@ -87,7 +94,9 @@ def build_report(
     decomposition_ids = {row.finding_id for row in ledger_decomposition}
     placed_rows = place_rows(findings, titles_by_id, exclude=decomposition_ids)
     summary_pointers = build_summary_pointers(findings, titles_by_id, exclude=decomposition_ids)
-    players = build_players(loaded, findings, parse, subject, titles_by_id)
+    players = build_players(
+        loaded, findings, parse, subject, titles_by_id, defensives, throughput
+    )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
 
     deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)

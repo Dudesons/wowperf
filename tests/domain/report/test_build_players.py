@@ -9,7 +9,8 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
-from wowperf.domain.report.players import build_players, class_colour
+from wowperf.domain.report.players import build_players, class_colour, player_slug
+from wowperf.domain.season import CooldownAbility, Defensives, ThroughputCooldowns
 
 
 def a_finding(
@@ -65,6 +66,72 @@ def ids(rows: tuple[LedgerRow, ...]) -> list[str]:
     return [row.finding_id for row in rows]
 
 
+def test_a_slug_survives_a_name_html_and_a_url_fragment_cannot_carry() -> None:
+    assert player_slug("Bríala") == "briala"
+    assert player_slug("Кириллица") != ""
+    assert " " not in player_slug("Emberkin the Second")
+
+
+def test_two_players_who_differ_only_by_realm_get_different_slugs() -> None:
+    assert player_slug("Emberkin-Ravencrest") != player_slug("Emberkin-Silvermoon")
+
+
+def test_every_card_carries_a_slug_and_no_two_cards_share_one() -> None:
+    # Bríala and Briala reduce to the same slug -- the point of this test is
+    # that the index the caller appends is what keeps their cards apart.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Briala"),
+        ),
+    )
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=1, name="Emberkin"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    slugs = [card.slug for card in cards]
+    assert all(slugs)
+    assert len(set(slugs)) == len(slugs)
+
+
+def test_the_subjects_card_comes_first_whatever_the_rosters_own_order() -> None:
+    # The page opens whichever sub-tab is drawn first, so this ordering is what
+    # decides which player a reader is shown. The subject is deliberately last
+    # on the roster here: a builder that iterated the roster would put a
+    # teammate's drawing in front of the reader who asked for their own.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Stonewake"),
+        ),
+    )
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=3, name="Stonewake"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    assert [card.name for card in cards] == ["Stonewake", "Emberkin", "Bríala"]
+
+
+def test_the_players_behind_the_subject_keep_the_rosters_order() -> None:
+    # Only the subject moves. Sorting the rest -- by name, by damage, by
+    # anything -- would rank them, which the postmortem design's section 5.5
+    # refuses; a stable partition is what keeps the move to one card.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Stonewake"),
+        ),
+    )
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=2, name="Bríala"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    assert [card.name for card in cards] == ["Bríala", "Emberkin", "Stonewake"]
+
+
 def test_the_interrupts_section_takes_its_findings() -> None:
     findings = (a_finding("interrupts.summary"), a_finding("interrupts.ability.0"))
     rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
@@ -86,7 +153,19 @@ def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None
 
 
 def test_one_card_per_player() -> None:
-    cards = build_players(a_loaded(), (), None, a_player(), {})
+    cards = build_players(a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns())
+    assert [card.name for card in cards] == ["Stonewake"]
+
+
+def test_build_players_accepts_the_defensives_and_throughput_cooldowns_it_will_read() -> None:
+    # Both parameters are unused today; the next task reads them. This proves
+    # only that build_players takes them without disturbing its existing output.
+    throughput = ThroughputCooldowns(
+        entries=(("DeathKnight/Blood", (CooldownAbility(
+            ability_id=1, name="Dancing Rune Weapon", cooldown_seconds=120.0
+        ),)),)
+    )
+    cards = build_players(a_loaded(), (), None, a_player(), {}, Defensives(), throughput)
     assert [card.name for card in cards] == ["Stonewake"]
 
 
@@ -95,12 +174,16 @@ def test_two_players_sharing_a_name_get_disambiguated_card_names() -> None:
     # shared display name must not produce; the actor id disambiguates both,
     # the same way `display_names` disambiguates the finding titles that name them.
     loaded = a_loaded(players=(a_player(1, "Sublime"), a_player(5, "Sublime")))
-    cards = build_players(loaded, (), None, a_player(1, "Sublime"), {})
+    cards = build_players(
+        loaded, (), None, a_player(1, "Sublime"), {}, Defensives(), ThroughputCooldowns()
+    )
     assert [card.name for card in cards] == ["Sublime (actor 1)", "Sublime (actor 5)"]
 
 
 def test_a_card_names_the_class_in_text_beside_its_colour() -> None:
-    card = build_players(a_loaded(), (), None, a_player(), {})[0]
+    card = build_players(
+        a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.class_name == "DeathKnight"
     assert card.colour == class_colour("DeathKnight")
     assert card.colour != card.class_name
@@ -112,7 +195,10 @@ def test_an_unknown_class_still_gets_a_colour_rather_than_an_empty_string() -> N
 
 def test_a_card_carries_its_players_damage_findings() -> None:
     findings = (a_finding("players.damage.0", title="Stonewake took 2.3x the group median"),)
-    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
+    card = build_players(
+        a_loaded(), findings, None, a_player(), titles(findings), Defensives(),
+        ThroughputCooldowns(),
+    )[0]
     assert ids(card.damage_rows) == ["players.damage.0"]
 
 
@@ -131,7 +217,10 @@ def test_a_damage_rows_title_and_detail_are_the_findings_own_unchanged() -> None
         detail=detail,
     )
     findings = (finding,)
-    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
+    card = build_players(
+        a_loaded(), findings, None, a_player(), titles(findings), Defensives(),
+        ThroughputCooldowns(),
+    )[0]
     row = card.damage_rows[0]
     assert row.title == finding.title
     assert row.detail == finding.detail
@@ -139,7 +228,10 @@ def test_a_damage_rows_title_and_detail_are_the_findings_own_unchanged() -> None
 
 def test_a_card_only_takes_damage_findings_naming_that_player() -> None:
     findings = (a_finding("players.damage.0", title="Someoneelse took 4.1x the group median"),)
-    card = build_players(a_loaded(), findings, None, a_player(), titles(findings))[0]
+    card = build_players(
+        a_loaded(), findings, None, a_player(), titles(findings), Defensives(),
+        ThroughputCooldowns(),
+    )[0]
     assert ids(card.damage_rows) == []
 
 
@@ -154,7 +246,10 @@ def test_two_players_sharing_a_name_each_get_their_own_damage_row() -> None:
             title="Bob (actor 5) took 3.2x the group median from Whirlwind",
         ),
     )
-    cards = build_players(loaded, findings, None, a_player(1, "Bob"), titles(findings))
+    cards = build_players(
+        loaded, findings, None, a_player(1, "Bob"), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )
     assert ids(cards[0].damage_rows) == []
     assert ids(cards[1].damage_rows) == ["players.damage.0"]
 
@@ -167,7 +262,10 @@ def test_one_players_name_being_a_prefix_of_anothers_does_not_misattribute_damag
             title="Anna took 4.0x the group median from Frostbolt",
         ),
     )
-    cards = build_players(loaded, findings, None, a_player(1, "Ann"), titles(findings))
+    cards = build_players(
+        loaded, findings, None, a_player(1, "Ann"), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )
     ann_card = next(card for card in cards if card.name == "Ann")
     anna_card = next(card for card in cards if card.name == "Anna")
     assert ids(ann_card.damage_rows) == []
@@ -175,7 +273,9 @@ def test_one_players_name_being_a_prefix_of_anothers_does_not_misattribute_damag
 
 
 def test_without_a_parse_reference_the_comparison_half_is_withheld() -> None:
-    card = build_players(a_loaded(), (), None, a_player(), {})[0]
+    card = build_players(
+        a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.spell_and_talent.state is SectionState.WITHHELD
     assert card.spell_and_talent.reason
     assert card.spell_and_talent_rows == ()
@@ -185,7 +285,10 @@ def test_the_subjects_card_gets_the_comparison_rows_when_a_parse_reference_exist
     # `a_parse()`'s top parser is a name that is not on our roster at all --
     # proof that the match is by actor id, never by the reference's own name.
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
-    card = build_players(a_loaded(), findings, a_parse(), a_player(), titles(findings))[0]
+    card = build_players(
+        a_loaded(), findings, a_parse(), a_player(), titles(findings), Defensives(),
+        ThroughputCooldowns(),
+    )[0]
     assert card.spell_and_talent.state is SectionState.PRESENT
     assert ids(card.spell_and_talent_rows) == ["compare.spells.missing.0"]
 
@@ -194,7 +297,8 @@ def test_a_non_subject_players_card_gets_no_comparison_rows() -> None:
     loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
     cards = build_players(
-        loaded, findings, a_parse("Stonewake"), a_player(1, "Stonewake"), titles(findings)
+        loaded, findings, a_parse("Stonewake"), a_player(1, "Stonewake"), titles(findings),
+        Defensives(), ThroughputCooldowns(),
     )
     other_card = next(card for card in cards if card.name == "Other")
     assert other_card.spell_and_talent_rows == ()
@@ -208,7 +312,8 @@ def test_the_comparison_rows_land_on_the_subject_not_a_namesake() -> None:
     loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
     findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
     cards = build_players(
-        loaded, findings, a_parse("Stonewake"), a_player(2, "Other"), titles(findings)
+        loaded, findings, a_parse("Stonewake"), a_player(2, "Other"), titles(findings),
+        Defensives(), ThroughputCooldowns(),
     )
     namesake_card = next(card for card in cards if card.name == "Stonewake")
     subject_card = next(card for card in cards if card.name == "Other")
@@ -223,13 +328,18 @@ def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -
     findings = (
         a_finding("compare.spells.unavailable", title="No boss pulls to compare"),
     )
-    card = build_players(a_loaded(), findings, a_parse(), a_player(), titles(findings))[0]
+    card = build_players(
+        a_loaded(), findings, a_parse(), a_player(), titles(findings), Defensives(),
+        ThroughputCooldowns(),
+    )[0]
     assert ids(card.spell_and_talent_rows) == ["compare.spells.unavailable"]
 
 
 def test_a_card_states_casts_over_the_pull_time_they_happened_in() -> None:
     # a_loaded() carries one pull, 0 to 120_000ms, no casts, no deaths, no interrupts.
-    card = build_players(a_loaded(), (), None, a_player(), {})[0]
+    card = build_players(
+        a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 0 interrupts"
 
 
@@ -237,7 +347,9 @@ def test_a_cards_cast_count_cannot_read_as_a_percentage() -> None:
     # The old field claimed a share of pull time and could exceed 100%; the
     # replacement states a plain count over a plain duration, with no "%" in
     # sight to imply a bound the underlying model does not respect.
-    card = build_players(a_loaded(), (), None, a_player(), {})[0]
+    card = build_players(
+        a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert "%" not in card.stats_line
 
 
@@ -249,7 +361,9 @@ def test_a_single_cast_is_worded_in_the_singular() -> None:
         casts=(CastEvent(actor_id=1, ability_id=1, ability_name="Whirlwind",
                           timestamp_ms=1_000, pull_index=0),),
     )
-    card = build_players(loaded_with_cast, (), None, a_player(), {})[0]
+    card = build_players(
+        loaded_with_cast, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "1 cast in 2:00 of pulls · 0 deaths · 0 interrupts"
 
 
@@ -260,7 +374,9 @@ def test_a_single_death_is_worded_in_the_singular() -> None:
         deaths=(Death(player_name="Stonewake", actor_id=1, timestamp_ms=1_000,
                       killing_blow="Frigid Roar", pull_index=0),),
     )
-    card = build_players(loaded_with_death, (), None, a_player(), {})[0]
+    card = build_players(
+        loaded_with_death, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 1 death · 0 interrupts"
 
 
@@ -275,7 +391,9 @@ def test_multiple_deaths_are_worded_in_the_plural() -> None:
                   killing_blow="Frigid Roar", pull_index=0),
         ),
     )
-    card = build_players(loaded_with_deaths, (), None, a_player(), {})[0]
+    card = build_players(
+        loaded_with_deaths, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 2 deaths · 0 interrupts"
 
 
@@ -287,7 +405,9 @@ def test_a_single_interrupt_is_worded_in_the_singular() -> None:
                                     interrupted_ability_id=1, target_id=1,
                                     target_instance=0, timestamp_ms=1_000, pull_index=0),),
     )
-    card = build_players(loaded_with_interrupt, (), None, a_player(), {})[0]
+    card = build_players(
+        loaded_with_interrupt, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 1 interrupt"
 
 
@@ -302,5 +422,7 @@ def test_multiple_interrupts_are_worded_in_the_plural() -> None:
                             target_id=1, target_instance=0, timestamp_ms=2_000, pull_index=0),
         ),
     )
-    card = build_players(loaded_with_interrupts, (), None, a_player(), {})[0]
+    card = build_players(
+        loaded_with_interrupts, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
+    )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 2 interrupts"
