@@ -26,10 +26,10 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
-from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.report.build import build_report
-from wowperf.domain.report.players import COMPARISON_PREFIXES
+from wowperf.domain.report.players import COMPARISON_PREFIXES, slugs_by_actor
 from wowperf.urls import parse_report_url
 
 REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")
@@ -83,10 +83,15 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
 
     findings += compare(
         ours=loaded,
-        our_player=subject,
         speed=speed_sample,
-        parse=parse_sample,
-        our_auras=our_auras,
+        subjects=(
+            ComparisonSubject(
+                player=subject,
+                slug=slugs_by_actor(loaded.run)[subject.actor_id],
+                parse=parse_sample,
+                our_auras=our_auras,
+            ),
+        ),
     )
     findings = rank_findings(findings)
 

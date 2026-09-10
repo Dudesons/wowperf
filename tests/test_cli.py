@@ -711,7 +711,7 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
-            "ability_id", "ability_name", "quantifier",
+            "ability_id", "ability_name", "quantifier", "player_slug",
         }
 
 
@@ -1082,7 +1082,7 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
 
     assert result.exit_code == 0, result.output
     assert calls.count("AuraTable") == 2
-    assert "compare.uptime.self.0" in ids
+    assert "compare.uptime.self.0.emberkin-0" in ids
 
 
 def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_auras(
@@ -1120,7 +1120,7 @@ def test_an_aura_fetch_that_fails_still_writes_the_report(tmp_path: Path) -> Non
     ids = [f["id"] for f in payload["findings"]]
 
     assert result.exit_code == 0, result.output
-    assert "compare.uptime.unavailable" in ids
+    assert "compare.uptime.unavailable.emberkin-0" in ids
 
 
 def test_a_graphql_error_on_the_aura_query_still_writes_the_report(tmp_path: Path) -> None:
@@ -1137,7 +1137,7 @@ def test_a_graphql_error_on_the_aura_query_still_writes_the_report(tmp_path: Pat
     ids = [f["id"] for f in payload["findings"]]
 
     assert result.exit_code == 0, result.output
-    assert "compare.uptime.unavailable" in ids
+    assert "compare.uptime.unavailable.emberkin-0" in ids
 
 
 def test_a_non_429_http_failure_on_the_aura_query_still_writes_the_report(tmp_path: Path) -> None:
@@ -1151,7 +1151,7 @@ def test_a_non_429_http_failure_on_the_aura_query_still_writes_the_report(tmp_pa
     ids = [f["id"] for f in payload["findings"]]
 
     assert result.exit_code == 0, result.output
-    assert "compare.uptime.unavailable" in ids
+    assert "compare.uptime.unavailable.emberkin-0" in ids
 
 
 # ---------------------------------------------------------------------------

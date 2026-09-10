@@ -45,12 +45,13 @@ from wowperf.domain.comparison.sample import (
     SpeedMember,
     SpeedSample,
 )
-from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
+from wowperf.domain.report.players import slugs_by_actor
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -583,10 +584,15 @@ def analyze(
 
             findings += compare(
                 ours=loaded,
-                our_player=subject,
                 speed=speed_sample,
-                parse=parse_sample,
-                our_auras=our_auras,
+                subjects=(
+                    ComparisonSubject(
+                        player=subject,
+                        slug=slugs_by_actor(loaded.run)[subject.actor_id],
+                        parse=parse_sample,
+                        our_auras=our_auras,
+                    ),
+                ),
             )
             findings = rank_findings(findings)
         after = repository.rate_limit()

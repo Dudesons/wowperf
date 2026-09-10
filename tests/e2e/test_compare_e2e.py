@@ -8,8 +8,9 @@ import pytest
 
 from wowperf.cli import _samples, build_reference_repositories, build_repository
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP
-from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.findings import Confidence
+from wowperf.domain.report.players import slugs_by_actor
 from wowperf.urls import parse_report_url
 
 REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")
@@ -46,7 +47,17 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
         for member in speed_sample.members
     )
 
-    findings = compare(loaded, subject, speed_sample, parse_sample)
+    findings = compare(
+        loaded,
+        speed_sample,
+        (
+            ComparisonSubject(
+                player=subject,
+                slug=slugs_by_actor(loaded.run)[subject.actor_id],
+                parse=parse_sample,
+            ),
+        ),
+    )
 
     assert findings
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
