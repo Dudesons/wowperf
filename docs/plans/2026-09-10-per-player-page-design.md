@@ -41,7 +41,7 @@ no change to the quota.
 | Every cast by every player, whole fight, every ability | `CASTS_QUERY`, `hostilityType: Friendlies`, no actor filter, fight-wide bounds — `adapters/wcl/queries.py` |
 | Damage taken by every player, whole fight, unwindowed | `DAMAGE_TAKEN_QUERY`, same shape — `adapters/wcl/queries.py` |
 | Pull boundaries, boss flags, the run's clock | `Run.pulls`, `Pull.is_boss` |
-| When a cooldown was next available | `analysis/throughput.py:ready_at` |
+| The rule for when a cooldown may be judged at all | `analysis/throughput.py:ready_at` |
 | Which pulls were worth a cooldown | `analysis/throughput.py:pulls_worth_a_cooldown` |
 | Cooldown lengths per class and spec | `data/defensives.toml`, `data/throughput_cooldowns.toml` |
 | An icon for any ability id | `LoadedRun.ability_icon_map`, `adapters/render/icons.py` |
@@ -71,8 +71,17 @@ the comparison rows, `report/players.py:90`); it now decides two.
 
 ## 4. The drawing
 
-One `<svg>` per player, `TIMELINE_WIDTH` (680) units wide, sharing the run timeline's x-mapping
-so the two drawings can be read against each other. Four layers, back to front:
+One `<svg>` per player, `TIMELINE_WIDTH` (680) units wide, spanning our own run from the first
+pull's start to the last pull's end — `run_start_ms` and `run_seconds`, the same origin and span
+the run timeline measures for our own track.
+
+It does **not** share the run timeline's scale, and this design does not claim it does. That
+drawing fits the longer of our run and its reference into the width (`longest = max(our_seconds,
+their_seconds)`), so whenever a reference ran longer, a pull sits at a different x on the two
+pictures. What matters instead is that every player timeline shares one scale with every other
+player timeline: five players are read against each other, and they are drawn from one run.
+
+Four layers, back to front:
 
 1. **Pull blocks, shaded.** Same geometry as `report/timeline.py` produces for the run
    timeline, so a pack sits at the same x on both drawings. Boss pulls keep `.block-boss`.
@@ -83,8 +92,13 @@ so the two drawings can be read against each other. Four layers, back to front:
    file's own order — `defensives_up_at` already returns abilities "in the order the abilities
    were given, so a caller controls the reading order rather than inheriting a set's", and this
    follows it.
-4. **Marks and dimming.** A mark at each press, carrying the ability's icon. After each press,
-   the row is dimmed for the ability's cooldown.
+4. **Marks, dimming, and one stretch that is not judged.** A mark at each press, carrying the
+   ability's icon. After each press, the row is dimmed for the ability's cooldown. And the
+   first `cooldown_seconds` of every row are drawn as *not judged* rather than as ready: casts
+   are fetched per fight, so an ability pressed before the timer started is invisible, and
+   `ready_at` already refuses to judge any window reaching back past the run's start for
+   exactly that reason. Drawing that stretch as ready would be the one direction this project
+   never guesses in.
 
 **The bucket width is a constant to be chosen against a real run, not asserted here.** The rule
 it must satisfy: narrow enough that one lethal spike is one bar, wide enough that a 1900-second
@@ -118,6 +132,9 @@ The drawing mixes two kinds of claim and must grade them where the reader meets 
 - **`inferred`** — the dimming. Base cooldowns are longer than talented ones, charges are
   ignored, and the log emits no cooldown-reset or cooldown-reduction event. Every one of those
   errs the same way: toward showing an ability as unavailable when it may have been ready.
+- **Neither** — the not-judged stretch at the start of each row. It is not a claim about the
+  ability at all, but about what the log can see, and it is drawn differently from both so no
+  reader takes it for a cooldown running down.
 
 That direction is the safe one and should be said in the legend. Understating what was ready
 cannot produce a false accusation; overstating it would accuse a player of holding a cooldown
