@@ -169,7 +169,12 @@ class CooldownRow(Frozen):
 
 
 class PlayerTimeline(Frozen):
-    """One player's run on one axis. Every coordinate the SVG needs lives here."""
+    """One player's run on one axis. Every coordinate the SVG needs lives here.
+
+    Each badge's caption is the claim it grades -- what the damage bars and
+    press marks show, or what the dimming assumes -- so the words a reader
+    checks against the drawing live beside the badge, not in the template.
+    """
 
     section: Section
     width: float = 0.0
@@ -187,7 +192,9 @@ class PlayerTimeline(Frozen):
     row_height: float = 0.0
     legend: str = ""
     badge_measured: Badge | None = None
+    badge_measured_caption: str = ""
     badge_inferred: Badge | None = None
+    badge_inferred_caption: str = ""
 
 
 class RecapRow(Frozen):
@@ -369,7 +376,11 @@ class PlayerCard(Frozen):
     would give one player another's sub-tab.
     """
     timeline: PlayerTimeline | None = None
-    """This player's own run, drawn. `None` when the run had no span to draw on."""
+    """This player's own run, drawn.
+
+    `None` only on a card built without one: the builder always supplies a
+    timeline, withheld when it has nothing to draw.
+    """
 
 
 class Header(Frozen):

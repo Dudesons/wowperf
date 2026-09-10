@@ -613,7 +613,8 @@ def a_player_card(**changes: object) -> PlayerCard:
 
 
 def a_drawn_timeline() -> PlayerTimeline:
-    """A timeline with one of everything, so a template that drops a layer fails here."""
+    """A timeline with one of everything: a test checking each layer's own `class="..."`
+    attribute fails, naming the layer, if a template drops it."""
     return PlayerTimeline(
         section=Section(state=SectionState.PRESENT),
         width=680.0,
@@ -639,7 +640,9 @@ def a_drawn_timeline() -> PlayerTimeline:
         row_height=16.0,
         legend="The pale stretch at the start is not judged at all.",
         badge_measured=Badge(label="measured", tint="badge-measured"),
+        badge_measured_caption=player_timeline_module.BADGE_MEASURED_CAPTION,
         badge_inferred=Badge(label="inferred", tint="badge-inferred"),
+        badge_inferred_caption=player_timeline_module.BADGE_INFERRED_CAPTION,
     )
 
 
@@ -648,7 +651,7 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     assert 'data-tab-panel="players"' in html
     assert 'class="player-timeline"' in html
     for layer in ("pull-band", "damage-bar", "not-judged", "on-cooldown", "press"):
-        assert layer in html, layer
+        assert f'class="{layer}"' in html, layer
     assert "Ice Block" in html
     assert "not judged" in html
     # Which badge grades what is a claim the page makes, so it must be spoken

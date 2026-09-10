@@ -92,6 +92,13 @@ LEGEND = (
     "to a log fetched per fight."
 )
 
+BADGE_MEASURED_CAPTION = "the damage bars and the press marks."
+"""What the measured badge grades: both are events the log itself emitted."""
+
+BADGE_INFERRED_CAPTION = "the dimming."
+"""What the inferred badge grades: a cooldown length assumed from its base value, since
+talents shorten it and the log records no reset."""
+
 
 def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, ...]:
     """Every pull as a band behind the tracks, boss pulls outlined."""
@@ -287,5 +294,7 @@ def build_player_timeline(
         row_height=ROW_HEIGHT,
         legend=LEGEND,
         badge_measured=badge_for(Confidence.MEASURED),
+        badge_measured_caption=BADGE_MEASURED_CAPTION,
         badge_inferred=badge_for(Confidence.INFERRED),
+        badge_inferred_caption=BADGE_INFERRED_CAPTION,
     )

@@ -6,6 +6,8 @@ from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
 from wowperf.domain.report.player_timeline import (
+    BADGE_INFERRED_CAPTION,
+    BADGE_MEASURED_CAPTION,
     BUCKET_SECONDS,
     DAMAGE_HEIGHT,
     FIRST_ROW_Y,
@@ -138,6 +140,19 @@ def test_the_measured_and_inferred_badges_are_not_interchangeable() -> None:
     timeline = a_timeline(loaded)
     assert timeline.badge_measured is not None and timeline.badge_measured.label == "measured"
     assert timeline.badge_inferred is not None and timeline.badge_inferred.label == "inferred"
+
+
+def test_the_badge_captions_are_not_interchangeable() -> None:
+    # Mirrors the test above: a caption is a claim about what its own badge
+    # grades, so swapping the two would misdescribe both. A test only
+    # checking that each caption is non-empty would not catch the swap; this
+    # pins each caption's exact words against its own badge.
+    run = a_run(pulls=(a_pull(0, 0, 60_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
+    assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
+    assert BADGE_MEASURED_CAPTION != BADGE_INFERRED_CAPTION
 
 
 def test_an_ability_the_player_never_cast_gets_no_row_at_all() -> None:
