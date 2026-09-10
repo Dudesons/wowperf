@@ -46,6 +46,14 @@ document height and a different scroll position from the first, and a manual
 Inconsistent readings across loads are what a race looks like, and they are also what an
 unreliable measurement surface looks like. Which of the two this is remains open.
 
+*Amended 2026-09-10:* the per-player page makes the pre-layout document taller again. The
+Players panel gains a nested tab group with one sub-tab per player, each carrying a timeline
+drawing, so before the `js` class lands the browser sees five players' content where it saw
+one list. The defect's kind is unchanged — the scroll already landed in a document about to
+change height — but its magnitude is not, and a harness built after that work should expect a
+larger discrepancy than the 2081 px measured above. The decision to ship the page rather than
+fix this first, and the reasoning behind it, are in `2026-09-10-per-player-page-design.md` §11.
+
 ## What not to do
 
 Do not ship the obvious fix on this evidence. Emitting the `js` class from an inline script
