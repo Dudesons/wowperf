@@ -75,6 +75,10 @@ NO_PULLS_RECORDED = (
     "The run recorded no pulls, so there is no axis to place this player's timeline against."
 )
 
+RUN_SPANS_NO_TIME = (
+    "This run's pulls span no time, so there is no axis to place this player's timeline against."
+)
+
 NOTHING_TRACKED_OR_TAKEN = (
     "This player cast none of the cooldowns tracked for their specialisation and took no "
     "damage the log recorded, so there is nothing to draw."
@@ -182,7 +186,7 @@ def _cooldown_rows(
         presses = sorted(
             cast.timestamp_ms for cast in ours if cast.ability_id == ability.ability_id
         )
-        width = round(min(ability.cooldown_seconds, span_seconds) * scale, PRECISION)
+        not_judged_width = round(min(ability.cooldown_seconds, span_seconds) * scale, PRECISION)
         rows.append(
             CooldownRow(
                 label=ability.name,
@@ -195,11 +199,22 @@ def _cooldown_rows(
                 unavailable=tuple(
                     Span(
                         x=round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION),
-                        width=width,
+                        # Clamped to the time remaining in the run after this
+                        # press, not to the run's whole length: the ability can
+                        # only be judged unavailable up to the axis end, never
+                        # past it.
+                        width=round(
+                            min(
+                                ability.cooldown_seconds,
+                                max(0.0, span_seconds - (at - origin_ms) / 1000),
+                            )
+                            * scale,
+                            PRECISION,
+                        ),
                     )
                     for at in presses
                 ),
-                not_judged=Span(x=TRACK_X0, width=width),
+                not_judged=Span(x=TRACK_X0, width=not_judged_width),
             )
         )
     return tuple(rows)
@@ -223,9 +238,15 @@ def build_player_timeline(
     run = loaded.run
     span = run_seconds(run)
 
-    if span <= 0:
+    if not run.pulls:
         return PlayerTimeline(
             section=Section(state=SectionState.WITHHELD, reason=NO_PULLS_RECORDED),
+            width=TIMELINE_WIDTH,
+        )
+
+    if span <= 0:
+        return PlayerTimeline(
+            section=Section(state=SectionState.WITHHELD, reason=RUN_SPANS_NO_TIME),
             width=TIMELINE_WIDTH,
         )
 

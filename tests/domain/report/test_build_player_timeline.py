@@ -9,8 +9,11 @@ from wowperf.domain.report.player_timeline import (
     BUCKET_SECONDS,
     DAMAGE_HEIGHT,
     FIRST_ROW_Y,
+    NO_PULLS_RECORDED,
+    NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
     ROW_HEIGHT,
+    RUN_SPANS_NO_TIME,
     build_player_timeline,
 )
 from wowperf.domain.report.timeline import TRACK_X0, TRACK_X1, axis_scale, axis_ticks
@@ -74,8 +77,18 @@ def a_timeline(
 def test_a_player_with_nothing_to_draw_gets_a_withheld_section_and_no_bands() -> None:
     timeline = a_timeline(LoadedRun(run=a_run(pulls=())))
     assert timeline.section.state is SectionState.WITHHELD
-    assert timeline.section.reason
+    assert timeline.section.reason == NO_PULLS_RECORDED
     assert timeline.pulls == ()
+
+
+def test_a_run_whose_pulls_span_no_time_is_withheld_with_its_own_reason() -> None:
+    # A run with pulls recorded is not the same absence as a run with none: an
+    # instantaneous pull leaves `run.pulls` non-empty while `run_seconds` is
+    # still zero, and the reason given must not claim no pull was recorded.
+    run = a_run(pulls=(a_pull(0, 0, 0),))
+    timeline = a_timeline(LoadedRun(run=run))
+    assert timeline.section.state is SectionState.WITHHELD
+    assert timeline.section.reason == RUN_SPANS_NO_TIME
 
 
 def test_a_pull_band_starts_where_the_axis_starts_and_a_boss_is_marked() -> None:
@@ -167,6 +180,66 @@ def test_the_runs_opening_is_not_judged_for_as_long_as_the_cooldown_lasts() -> N
     assert row.not_judged.width == round(180.0 * axis_scale(600.0), 1)
 
 
+def test_a_press_near_the_runs_end_is_clamped_to_the_axis_end_not_the_runs_length() -> None:
+    # A press 50 seconds from the end of a 600-second run still carries a full
+    # 180-second cooldown, but only 50 of those seconds are left to draw: the
+    # span must stop at the axis end, never past it.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 550_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    scale = axis_scale(600.0)
+    span = row.unavailable[0]
+    assert span.x == round(TRACK_X0 + 550.0 * scale, PRECISION)
+    assert span.width == round(50.0 * scale, PRECISION)
+    assert round(span.x + span.width, PRECISION) == TRACK_X1
+
+
+def test_a_cooldown_longer_than_the_run_leaves_the_whole_track_not_judged() -> None:
+    # The design endorses overstating what the log cannot judge: a cooldown
+    # that outlasts the run leaves `not_judged` covering the full track, and
+    # the press's own span -- clamped to the time remaining, not to the
+    # cooldown -- sits entirely inside that stretch.
+    long_cooldown = DefensiveAbility(
+        ability_id=SHIELD.ability_id, name=SHIELD.name, cooldown_seconds=900.0
+    )
+    kit = Defensives(entries=(("DeathKnight/Blood", (long_cooldown,)),))
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 100_000),))
+    row = a_timeline(loaded, defensives=kit).cooldowns[0]
+    scale = axis_scale(600.0)
+    assert row.not_judged is not None
+    assert row.not_judged.x == TRACK_X0
+    assert row.not_judged.width == round(TRACK_X1 - TRACK_X0, PRECISION)
+    span = row.unavailable[0]
+    assert span.x == round(TRACK_X0 + 100.0 * scale, PRECISION)
+    assert span.x > row.not_judged.x
+    assert round(span.x + span.width, PRECISION) == TRACK_X1
+
+
+def test_a_second_press_inside_the_first_covers_still_draws_its_own_mark() -> None:
+    # Design §10: a press at t produces an unavailable span covering
+    # t + cooldown, and a second press inside that span still draws its mark.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, SHIELD.ability_id, 350_000)),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    scale = axis_scale(600.0)
+    assert [press.x for press in row.presses] == [
+        round(TRACK_X0 + 300.0 * scale, PRECISION),
+        round(TRACK_X0 + 350.0 * scale, PRECISION),
+    ]
+    assert [span.x for span in row.unavailable] == [
+        round(TRACK_X0 + 300.0 * scale, PRECISION),
+        round(TRACK_X0 + 350.0 * scale, PRECISION),
+    ]
+    assert row.unavailable[0].width == round(180.0 * scale, PRECISION)
+    assert row.unavailable[1].width == round(180.0 * scale, PRECISION)
+    # The first press's span is still open when the second press lands.
+    assert row.unavailable[0].x + row.unavailable[0].width > row.unavailable[1].x
+
+
 def test_throughput_rows_come_before_defensive_rows() -> None:
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(
@@ -198,7 +271,7 @@ def test_a_player_with_pulls_but_nothing_tracked_and_no_damage_is_withheld() -> 
     loaded = LoadedRun(run=run, casts=())
     timeline = a_timeline(loaded, defensives=KIT)
     assert timeline.section.state is SectionState.WITHHELD
-    assert timeline.section.reason
+    assert timeline.section.reason == NOTHING_TRACKED_OR_TAKEN
 
 
 def test_a_player_with_damage_but_nothing_tracked_still_draws() -> None:
