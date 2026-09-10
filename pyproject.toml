@@ -49,9 +49,9 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.flake8-bugbear]
 # typer.Argument()/typer.Option() calls as parameter defaults are how typer
 # declares CLI parameters; they are not the mutable-default bug B008 flags.
-# Roles, Externals and SelfResurrections are Frozen (immutable) value objects;
-# their empty defaults are the same shape of thing and carry no mutable state a
-# call site could corrupt.
+# Roles, Externals, SelfResurrections and ThroughputCooldowns are Frozen
+# (immutable) value objects; their empty defaults are the same shape of thing
+# and carry no mutable state a call site could corrupt.
 extend-immutable-calls = [
     "typer.Argument",
     "typer.Option",
