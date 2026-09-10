@@ -322,34 +322,55 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis.
 
-**Current state: a run goes in and a report comes out.** Plan A shipped the `wowperf`
-package under `src/`: the domain model and ports, the Warcraft Logs adapter (OAuth client
-credentials, GraphQL client, disk cache, event pagination, and ingest into the domain
-model), and a `fetch` command that prints a run as JSON. Plan B added the six analysers
-under `src/wowperf/domain/analysis/` — time decomposition, deaths, missed interrupts, trash
-efficiency, per-player facts, and defensives never pressed — the service that runs and ranks
-them, the season and defensive data under `data/`, and an `analyze` command that writes the
-findings as JSON. Plan C added the comparison under `src/wowperf/domain/comparison/`: two
-leaderboard queries behind `WclRankingRepository`, pull alignment over pack signatures, and
-findings for the route, the tempo, the spells and the confounds — measured against a fast
-completion of the same dungeon and the top parse of the analysed player's specialisation.
-A keystone-level gap withholds every duration-shaped comparison rather than printing a
-number the reader would misuse. Plan D added two more measures: defensives pressed far below
-what their cooldown allowed, in `analysis/defensives.py` against the cooldowns now recorded in
-`data/defensives.toml`; and buff uptime on boss pulls against the top parse, in
-`comparison/uptime.py`, fed by one aliased aura-table query per player. Its debuff half ships
-inert — Warcraft Logs offers no way to scope the enemy-debuff table to one caster, measured
-2026-09-05 and recorded in `.claude/skills/wcl-api/SKILL.md` under "The debuff half cannot be
-scoped to one caster". Plan E added the report: a frozen view model and a pure
-builder under `src/wowperf/domain/report/`, holding every judgement the page makes; a Jinja2
-adapter under `src/wowperf/adapters/render/` that loops and decides nothing; and `analyze`
-writing a self-contained HTML file beside the findings JSON on every run. Plan F built design
-§8's inference layer: the three skills now under `.claude/skills/`, and a guardrail with tested
-Python behind it — `analyze --narrative` refuses a narrative file containing any digit, before
-it fetches anything.
+**Current state: a run goes in and a report comes out.** `wowperf fetch` prints a run as
+JSON; `wowperf analyze` writes its findings as JSON and as one HTML file.
+
+Everything that touches the network lives in `src/wowperf/adapters/wcl/`: OAuth client
+credentials, the GraphQL client, event pagination, and the ingest that turns a response into
+the domain model. Responses are cached to disk in two tiers — the analysed run is kept for
+good, leaderboard rows and reference runs expire after a day — and every query records what
+it cost from the API's own quota reading, so both commands close by printing where the run's
+points went, dearest operation first.
+
+The analysers under `src/wowperf/domain/analysis/` produce the findings: time decomposition,
+deaths and what each one cost, missed interrupts, trash efficiency, per-player facts,
+defensives never pressed and defensives pressed far below what their cooldown allowed,
+healing consumables, throughput cooldowns spent away from the pulls worth spending them on,
+and the recap behind each death card. The class data they read — cooldowns, teammates'
+externals, self-resurrections, roles — is hand-maintained under `data/`.
+
+`src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
+same dungeon, and top parses of the analysed player's specialisation. Each axis draws a
+sample of five references and reports a median and an observed range, never a mean; below
+three comparable members it falls back to a single reference, and the finding says so.
+Pulls align by the enemy types they contain, and a comparison is withheld rather than
+printed when the reference sits more than one keystone level away, or when fewer than half
+the pulls match. The families are the route, the tempo, the cast spells, the talents, the
+buff uptime, and the confounds that would make any of the others misleading. The debuff half
+of the uptime comparison ships inert: Warcraft Logs offers no way to scope the enemy-debuff
+table to one caster, measured 2026-09-05 and recorded in `.claude/skills/wcl-api/SKILL.md`
+under "The debuff half cannot be scoped to one caster".
+
+The report is a frozen view model and a pure builder under `src/wowperf/domain/report/`,
+holding every judgement the page makes, and a Jinja2 adapter under
+`src/wowperf/adapters/render/` that loops and decides nothing. The page carries six tabs —
+Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. Each death is a recap: a
+health curve reconstructed between the player's own readings, a timeline of what hit them,
+how they came back, and every defensive, consumable and teammate external placed in one of
+four states at the moment of death — pressed, ready, on cooldown, or never seen all run.
+Ability icons come from Blizzard's render CDN, cached on disk and embedded as data URIs.
+
+The inference layer of design §8 is the three skills under `.claude/skills/` and a guardrail
+with tested Python behind it: `analyze --narrative` refuses a narrative file containing any
+digit, before it fetches anything.
 
 The approved design lives at `docs/plans/2026-09-03-mplus-postmortem-design.md` and remains
-the authority on architecture, analyzers, and comparison rules. Read it before writing code.
+the authority on architecture, analyzers, and comparison rules. Later designs in the same
+directory supersede it where they overlap. Most superseded sections carry an inline
+amendment note naming the design that replaced them; do not rely on the note being there.
+Read the master design, and the later design covering the area you are touching, before
+writing code. The plans beside them record intent, not outcome — their checkboxes and status
+lines are unreliable, so the code is the record.
 
 ## Invariants not to break
 
@@ -372,6 +393,10 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
 - **Never invent an API field name.** The verified schema reference lives in
   `.claude/skills/wcl-api/SKILL.md`, where every claim carries the date it was checked. If a
   field is not there, verify against the live schema before using it, then add a dated row.
+- **The report loads nothing.** One HTML file, opened from disk, with no stylesheet link, no
+  `@import`, no remote `src`, and exactly one inline script — the tab toggle, which may not
+  fetch, write text, or read storage. Icons are embedded as data URIs for this reason.
+  `tests/adapters/render/test_html_invariants.py` enforces every clause.
 
 ## Commands
 
@@ -384,8 +409,14 @@ the authority on architecture, analyzers, and comparison rules. Read it before w
 | `uv run pytest -m e2e` | End-to-end tests against the real API; needs credentials, spends quota |
 | `uv run ruff check .` | Lint |
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
-| `uv run wowperf fetch <url>` | Fetch a Mythic+ run and print it as JSON |
-| `uv run wowperf analyze <url> [--player NAME] [--no-compare] [--narrative FILE] [--throughput-ceiling]` | Analyse a run, compare it against two references, and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` |
+| `uv run wowperf fetch <url> [--fight N] [--cache-dir DIR]` | Fetch a Mythic+ run and print it as JSON |
+| `uv run wowperf analyze <url> [--fight N] [--player NAME] [--no-compare] [--narrative FILE] [--throughput-ceiling] [--cache-dir DIR] [--out DIR]` | Analyse a run against its reference samples and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
+
+Both commands take a report URL or a bare report code, and both print what the run
+spent from the hourly point budget, broken down by operation. `.github/workflows/gate.yml`
+runs the lint, the type check and the offline suite on every push and pull request, and
+builds the wheel to check it carries the report's templates — none of them is a `.py` file,
+so no test running from the source tree would notice one missing.
 
 ---
 
