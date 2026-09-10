@@ -191,7 +191,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
 
 @pytest.mark.e2e
 def test_all_players_compares_everyone_and_collides_no_ids(tmp_path: Path) -> None:
-    """`--all-players` end to end: the real command, a cold cache, the real API.
+    r"""`--all-players` end to end: the real command, a cold cache, the real API.
 
     Driven as the command rather than reassembled from its parts, unlike the
     test above. Who is compared is decided in `analyze` and nowhere else --
@@ -206,6 +206,22 @@ def test_all_players_compares_everyone_and_collides_no_ids(tmp_path: Path) -> No
     `.claude/skills/wcl-api/SKILL.md` was read. Take it from a cache this run
     filled itself -- against a warm one the command truthfully reports
     spending almost nothing.
+
+    To take the reading again, at a cost of roughly 190 points of the 3600 an
+    hour:
+
+        WCL_CLIENT_ID=... WCL_CLIENT_SECRET=... \
+        WOWPERF_E2E_REPORT='https://www.warcraftlogs.com/reports/<code>?fight=<n>' \
+        uv run pytest -m e2e -s \
+          tests/e2e/test_report_e2e.py::test_all_players_compares_everyone_and_collides_no_ids
+
+    Both overrides earn their place. `pyproject.toml` sets `addopts = "-m 'not
+    e2e' --strict-markers"`, and pytest applies `-m` to a node-id selection
+    too, so without `-m e2e` this test is deselected and the command spends
+    nothing; without `-s` the block below goes into pytest's capture and is
+    never seen. The exact string behind the 2026-09-11 reading is recorded
+    nowhere -- this is the smallest invocation that reproduces it, not a
+    transcript of it.
     """
     if not REPORT:
         pytest.fail(
@@ -234,17 +250,22 @@ def test_all_players_compares_everyone_and_collides_no_ids(tmp_path: Path) -> No
 
     # Every finding id is minted once. The parse families are suffixed with the
     # player they are about, and five players' worth of them is where a suffix
-    # that failed to distinguish anybody would first show.
+    # that failed to distinguish anybody would first show. Named rather than
+    # counted, as `test_html_invariants.py`'s offline sibling names them: a
+    # failure here has already spent the run's quota, so it has to say which id
+    # collided and not merely that one did.
     ids = [finding["id"] for finding in findings["findings"]]
     assert ids, "the run produced no findings at all"
-    assert len(ids) == len(set(ids))
+    duplicate_ids = {value for value in ids if ids.count(value) > 1}
+    assert duplicate_ids == set()
 
     # The same claim about the page, which mints an element id per card, per
     # sub-tab and per row. A duplicate is invalid HTML and sends the page's own
     # pointers to whichever of the two the browser happens to pick.
     element_ids = re.findall(r'\sid="([^"]+)"', html)
     assert element_ids, "a page with no element ids would pass this vacuously"
-    assert len(element_ids) == len(set(element_ids))
+    duplicate_element_ids = {value for value in element_ids if element_ids.count(value) > 1}
+    assert duplicate_element_ids == set()
 
     # Everyone means everyone: a card per roster member, and each of them
     # compared. A player the log records no specialisation for is compared too
@@ -276,12 +297,27 @@ def test_all_players_compares_everyone_and_collides_no_ids(tmp_path: Path) -> No
         and len(slugs_by_reference[(record["report_code"], record["fight_id"])]) > 1
     ]
 
+    # The rest of the conditions the skill entry records, so that whoever
+    # retakes the reading reproduces the whole entry and not only its total.
+    # Printed and never asserted: how far two specialisations' leaderboards
+    # overlap moves daily, and a partial failure that excluded a candidate is
+    # a legitimate run whose figures are still worth reading.
+    speed_references = [record for record in references if record["axis"] == "speed"]
+    speed_keys = {(record["report_code"], record["fight_id"]) for record in speed_references}
+    parse_keys = set(slugs_by_reference)
+    excluded = [record for record in references if not record["loaded"]]
+
     assert "Where they went:" in result.stderr
     measurement = "\n".join(
         [
             result.stderr,
             f"players compared: {len(compared)}",
             f"parse candidates weighed: {len(parse_references)}",
+            f"speed candidates weighed: {len(speed_references)}",
+            f"distinct reference runs: {len(speed_keys | parse_keys)}",
+            f"speed references also drawn as a parse: {len(speed_keys & parse_keys)}",
+            f"candidates loaded: {len(references) - len(excluded)} of {len(references)}",
+            f"candidates excluded: {len(excluded)}",
             f"served from another player's sample: {len(shared)}",
         ]
     )

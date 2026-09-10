@@ -109,8 +109,13 @@ One approximation and three measurements:
   against the 83.39 above for the same report and fight with one player. Conditions: one cold run,
   report `6Kx1P9GbNXrcLdHa` fight 36, five players in five distinct specialisations and none
   skipped for want of one; all thirty candidates loaded, none excluded and none retried.
-  **Eleven of the twenty-five parse candidates were served from another player's sample** — every
-  one whose report and fight a second player's sample also named, so nothing was fetched twice.
+  **Eleven of the twenty-five parse candidates were served from another player's sample** — the
+  parse rows carrying `from_cache` whose report and fight another player's sample also names,
+  which is what `tests/e2e/test_report_e2e.py` counts. Twenty-five candidates stand on fourteen
+  distinct runs: the fourteen first fetches were paid for and are not among the eleven, and each
+  of the eleven repeats found its run already on disk. Both halves of that definition carry
+  weight — drop `from_cache` and the count is at least fourteen, because the first fetch of every
+  shared run sits in a multi-player group too.
   `docs/plans/2026-09-10-per-player-parse-comparison-design.md` §7.1 derived about 250 for this
   shape, so this too came in about a quarter under. One reading, of one report, against one day's
   leaderboards: how much a roster shares depends on how much its specialisations' leaderboards
@@ -204,7 +209,13 @@ points of 3600**, five players compared instead of one, composed as the command 
 | `Actors`, `EnemyDeaths`, `Resurrects` | 1 each | 1.00 each |
 | `RateLimit` | 2 | 1.00 |
 
-No mean column, for the reason the table above gives: only the totals were measured.
+No mean column, for the reason the table above gives: only the totals were measured. Two rows
+read higher here than the identical call counts did on 2026-09-08 — `EnemyCasts` at 9.44 against
+6.00 over six calls, `DamageTaken` at 1.42 against 1.00 over one. That is the drift the table
+above already describes, the one that put `Deaths` at 6.39 and `DamageTaken` at 1.45 on a second
+cold run of the single-player shape: a handful of queries carry fractions that move between runs.
+Neither row is a difference `--all-players` made, and neither is a discrepancy between the two
+readings.
 
 **Five times the players is not five times the price, and the reason is in the call counts.**
 Thirty candidates were weighed — five speed references, and five parse references for each of the
@@ -212,8 +223,7 @@ five players — and fourteen distinct runs stand behind them: eleven parse cand
 from another player's sample, and all five speed references were themselves top parses, so their
 reports were read on both axes and fetched once. Hence `Fights` and `Abilities` at 15, which is
 fourteen references plus our own run rather than thirty-one; `Talents` at 15, one per
-parse-profile load and ours; `Casts` at 16, which fits one page per parse reference and the two
-our own longer fight is measured above as taking, though only the total was read.
+parse-profile load and ours; `Casts` at 16, which the two `Casts` notes below take up.
 `EnemyCasts`, `Deaths` and `Interrupts` stay at 6 — the speed axis is drawn once however many
 players are compared.
 
@@ -222,9 +232,23 @@ and 60.08 points, a third of the run: one for each of the five subjects' own upt
 each of the twenty-five sample memberships. A reference shared between two samples is a different
 character in each, so nothing there is shared, and nothing about it improves with a warmer cache.
 
-The `Casts` row also speaks to the contradiction above: sixteen pages with `includeResources: true`
-for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not with the 2026-09-07 one.
-Still recorded rather than resolved, since nothing here depends on it.
+The `Casts` row also speaks to the price contradiction above: sixteen pages with
+`includeResources: true` for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not
+with the 2026-09-07 one. Still recorded rather than resolved, since nothing here depends on it.
+
+**A second contradiction for a human to settle: how many cast pages our own fight takes.** Read
+the 16 the way the rest of this composition is read — one page per parse reference — and fourteen
+of them are references, leaving **two** for our own fight. Read the 2026-09-08 table the same way,
+where `Fights` at 7 is six references plus ours and `Casts` is 7, and it leaves **one**. Same
+report, same fight, so both cannot be right. Two is what the 2026-09-07 probe below actually
+counted for this fight's friendly cast stream with `includeResources: true` — 10716 rows over 2
+pages — and if that is the true figure then the 2026-09-08 total is a page short and one of its
+references contributed no cast page at all; if instead our fight takes one page, the 2026-09-11
+total has a page nobody has accounted for. Only totals were read on either run and no page count
+was read on either, so this is arithmetic against arithmetic rather than two measurements.
+Nothing in this project depends on the answer — `pagination.py` follows `nextPageTimestamp` until
+the API stops offering one, and nothing branches on how many pages that took — so it is recorded
+rather than resolved.
 
 ## Mythic+ in the schema
 
