@@ -131,6 +131,21 @@ def test_another_players_damage_never_reaches_this_players_track() -> None:
     assert a_timeline(loaded, actor_id=1).damage is None
 
 
+def test_a_far_larger_hit_on_a_different_actor_never_sets_this_players_scale() -> None:
+    # The other actor's hit dwarfs this player's own, in a separate bucket so
+    # no per-bucket summing could blend the two. If peak were read from the
+    # unfiltered events rather than from `ours`, this player's lone bar would
+    # be drawn far short of DAMAGE_HEIGHT and the label would name the other
+    # actor's figure instead of this player's own.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 100), a_hit(2, 90_000, 100_000)))
+    track = a_timeline(loaded, actor_id=1).damage
+    assert track is not None
+    assert len(track.bars) == 1
+    assert track.bars[0].height == DAMAGE_HEIGHT
+    assert track.peak_label == "Tallest bar: 100 damage in 5 seconds"
+
+
 def test_two_hits_inside_one_bucket_are_one_bar_of_their_sum() -> None:
     run = a_run(pulls=(a_pull(0, 0, 100_000),))
     both = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 400), a_hit(1, 2_000, 600)))
