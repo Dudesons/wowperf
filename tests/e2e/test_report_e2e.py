@@ -81,13 +81,14 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
                 update={"members": (top, *parse_sample.members[1:])}
             )
 
+    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
     findings += compare(
         ours=loaded,
         speed=speed_sample,
         subjects=(
             ComparisonSubject(
                 player=subject,
-                slug=slugs_by_actor(loaded.run)[subject.actor_id],
+                slug=subject_slug,
                 parse=parse_sample,
                 our_auras=our_auras,
             ),
@@ -101,7 +102,8 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     assert findings, "The analysis produced no findings at all"
 
     report = build_report(
-        loaded, findings, speed_sample, parse_sample, subject, None, "2026-09-05 00:00",
+        loaded, findings, speed_sample, frozenset({subject_slug}), subject, None,
+        "2026-09-05 00:00",
         defensives,
         load_consumables(),
         externals=load_externals(),

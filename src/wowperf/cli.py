@@ -568,6 +568,7 @@ def analyze(
         subject = _resolve_player(loaded.run, player)
         speed_sample: SpeedSample | None = None
         parse_sample: ParseSample | None = None
+        compared_slugs: frozenset[str] | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
@@ -582,13 +583,18 @@ def analyze(
                 parse_sample, repository, references, loaded.run, subject
             )
 
+            # One slug, minted once: the comparison stamps it onto every finding
+            # it emits about this player, and the report matches their card by it.
+            subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+            compared_slugs = frozenset({subject_slug})
+
             findings += compare(
                 ours=loaded,
                 speed=speed_sample,
                 subjects=(
                     ComparisonSubject(
                         player=subject,
-                        slug=slugs_by_actor(loaded.run)[subject.actor_id],
+                        slug=subject_slug,
                         parse=parse_sample,
                         our_auras=our_auras,
                     ),
@@ -654,7 +660,7 @@ def analyze(
                     loaded,
                     findings,
                     speed_sample,
-                    parse_sample,
+                    compared_slugs,
                     subject,
                     narrative_text,
                     datetime.now().strftime("%Y-%m-%d %H:%M"),

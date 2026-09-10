@@ -2,11 +2,10 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
-from wowperf.domain.comparison.reference import ParseRow
-from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
+from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
 from wowperf.domain.report.players import (
@@ -19,7 +18,11 @@ from wowperf.domain.season import CooldownAbility, Defensives, ThroughputCooldow
 
 
 def a_finding(
-    finding_id: str, seconds: float | None = None, title: str = "x", detail: str = "detail"
+    finding_id: str,
+    seconds: float | None = None,
+    title: str = "x",
+    detail: str = "detail",
+    slug: str = "",
 ) -> Finding:
     return Finding(
         id=finding_id,
@@ -27,6 +30,7 @@ def a_finding(
         detail=detail,
         confidence=Confidence.DERIVED,
         seconds_lost=seconds,
+        player_slug=slug,
     )
 
 
@@ -43,27 +47,6 @@ def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
 def a_loaded(players: tuple[Player, ...] | None = None) -> LoadedRun:
     return LoadedRun(
         run=a_run(players=players or (a_player(),), pulls=(a_pull(0, 0, 120_000),))
-    )
-
-
-def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseSample:
-    """A one-member parse sample. `build_players` reads nothing off a member;
-    it only asks whether the parse comparison ran at all."""
-    return ParseSample(
-        members=(
-            ParseMember(
-                row=ParseRow(
-                    report_code="def456",
-                    fight_id=12,
-                    keystone_level=16,
-                    duration_ms=1_000_000,
-                    character_name=character_name,
-                    class_name="DeathKnight",
-                    spec="Blood",
-                ),
-                run=a_loaded().run,
-            ),
-        )
     )
 
 
@@ -277,7 +260,7 @@ def test_one_players_name_being_a_prefix_of_anothers_does_not_misattribute_damag
     assert ids(anna_card.damage_rows) == ["players.damage.0"]
 
 
-def test_without_a_parse_reference_the_comparison_half_is_withheld() -> None:
+def test_without_a_comparison_at_all_the_comparison_half_is_withheld() -> None:
     card = build_players(
         a_loaded(), (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
     )[0]
@@ -286,58 +269,76 @@ def test_without_a_parse_reference_the_comparison_half_is_withheld() -> None:
     assert card.spell_and_talent_rows == ()
 
 
-def test_the_subjects_card_gets_the_comparison_rows_when_a_parse_reference_exists() -> None:
-    # `a_parse()`'s top parser is a name that is not on our roster at all --
-    # proof that the match is by actor id, never by the reference's own name.
-    findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
+def test_a_compared_players_card_gets_the_comparison_rows() -> None:
+    findings = (
+        a_finding(
+            "compare.spells.missing.0.stonewake-0",
+            title="Missing Frost Nova",
+            slug="stonewake-0",
+        ),
+    )
     card = build_players(
-        a_loaded(), findings, a_parse(), a_player(), titles(findings), Defensives(),
-        ThroughputCooldowns(),
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
     )[0]
     assert card.spell_and_talent.state is SectionState.PRESENT
-    assert ids(card.spell_and_talent_rows) == ["compare.spells.missing.0"]
+    assert ids(card.spell_and_talent_rows) == ["compare.spells.missing.0.stonewake-0"]
 
 
-def test_a_non_subject_players_card_gets_no_comparison_rows() -> None:
+def test_an_uncompared_players_card_gets_no_comparison_rows() -> None:
     loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
-    findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
+    findings = (
+        a_finding(
+            "compare.spells.missing.0.stonewake-0",
+            title="Missing Frost Nova",
+            slug="stonewake-0",
+        ),
+    )
     cards = build_players(
-        loaded, findings, a_parse("Stonewake"), a_player(1, "Stonewake"), titles(findings),
+        loaded, findings, frozenset({"stonewake-0"}), a_player(1, "Stonewake"), titles(findings),
         Defensives(), ThroughputCooldowns(),
     )
     other_card = next(card for card in cards if card.name == "Other")
     assert other_card.spell_and_talent_rows == ()
 
 
-def test_the_comparison_rows_land_on_the_subject_not_a_namesake() -> None:
-    # The reference run's top parser can share a display name with one of our
-    # own players -- a different character in a different log. Matching by
-    # actor id, not name, keeps the rows off that namesake and on the
-    # analysed player's own card.
+def test_the_comparison_rows_land_on_the_player_they_name_not_on_the_subject() -> None:
+    # The subject decides which card is drawn first and nothing else. A run can
+    # compare a player the reader did not name -- or, once several players are
+    # compared, several at once -- so the rows follow the slug each finding
+    # carries rather than whoever the report is addressed to.
     loaded = a_loaded(players=(a_player(1, "Stonewake"), a_player(2, "Other")))
-    findings = (a_finding("compare.spells.missing.0", title="Missing Frost Nova"),)
+    findings = (
+        a_finding(
+            "compare.spells.missing.0.other-1", title="Missing Frost Nova", slug="other-1"
+        ),
+    )
     cards = build_players(
-        loaded, findings, a_parse("Stonewake"), a_player(2, "Other"), titles(findings),
+        loaded, findings, frozenset({"other-1"}), a_player(1, "Stonewake"), titles(findings),
         Defensives(), ThroughputCooldowns(),
     )
-    namesake_card = next(card for card in cards if card.name == "Stonewake")
-    subject_card = next(card for card in cards if card.name == "Other")
-    assert namesake_card.spell_and_talent_rows == ()
-    assert ids(subject_card.spell_and_talent_rows) == ["compare.spells.missing.0"]
+    subject_card = next(card for card in cards if card.name == "Stonewake")
+    compared_card = next(card for card in cards if card.name == "Other")
+    assert subject_card.spell_and_talent_rows == ()
+    assert ids(compared_card.spell_and_talent_rows) == ["compare.spells.missing.0.other-1"]
 
 
-def test_a_withheld_spell_comparison_finding_still_reaches_the_subjects_card() -> None:
+def test_a_withheld_spell_comparison_finding_still_reaches_that_players_card() -> None:
     # When a run has no boss pulls, compare_spells returns only its own
     # `.unavailable` finding. That finding still explains the absence, so it
     # renders like any other row instead of being silently dropped.
     findings = (
-        a_finding("compare.spells.unavailable", title="No boss pulls to compare"),
+        a_finding(
+            "compare.spells.unavailable.stonewake-0",
+            title="No boss pulls to compare",
+            slug="stonewake-0",
+        ),
     )
     card = build_players(
-        a_loaded(), findings, a_parse(), a_player(), titles(findings), Defensives(),
-        ThroughputCooldowns(),
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
     )[0]
-    assert ids(card.spell_and_talent_rows) == ["compare.spells.unavailable"]
+    assert ids(card.spell_and_talent_rows) == ["compare.spells.unavailable.stonewake-0"]
 
 
 def test_a_card_states_casts_over_the_pull_time_they_happened_in() -> None:
@@ -452,12 +453,78 @@ def test_a_slug_does_not_change_when_a_different_player_is_the_subject() -> None
     findings: tuple[Finding, ...] = ()
 
     subject_first = build_players(
-        loaded, findings, a_parse(), first, {}, Defensives(), ThroughputCooldowns()
+        loaded, findings, frozenset({"emberkin-0"}), first, {}, Defensives(), ThroughputCooldowns()
     )
     subject_second = build_players(
-        loaded, findings, a_parse(), second, {}, Defensives(), ThroughputCooldowns()
+        loaded, findings, frozenset({"stonewake-1"}), second, {}, Defensives(),
+        ThroughputCooldowns(),
     )
 
     by_name_first = {card.name: card.slug for card in subject_first}
     by_name_second = {card.name: card.slug for card in subject_second}
     assert by_name_first == by_name_second
+
+
+def test_a_player_nobody_asked_for_says_so_rather_than_implying_an_empty_leaderboard() -> None:
+    first = a_player(actor_id=1, name="Emberkin")
+    second = a_player(actor_id=2, name="Stonewake")
+    loaded = a_loaded(players=(first, second))
+    cards = build_players(
+        loaded, (), frozenset({"emberkin-0"}), first, {}, Defensives(), ThroughputCooldowns()
+    )
+    theirs = next(card for card in cards if card.name == "Stonewake")
+    assert theirs.spell_and_talent.state is SectionState.WITHHELD
+    assert theirs.spell_and_talent.reason == NOT_REQUESTED
+
+
+def test_no_comparison_at_all_reads_differently_from_a_player_nobody_asked_for() -> None:
+    loaded = a_loaded(players=(a_player(actor_id=1, name="Emberkin"),))
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=1, name="Emberkin"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    assert cards[0].spell_and_talent.reason != NOT_REQUESTED
+
+
+def test_each_player_gets_only_their_own_comparison_rows() -> None:
+    first = a_player(actor_id=1, name="Emberkin")
+    second = a_player(actor_id=2, name="Stonewake")
+    loaded = a_loaded(players=(first, second))
+    mine = Finding(
+        id="compare.talents.emberkin-0", title="mine", detail="d",
+        confidence=Confidence.MEASURED, player_slug="emberkin-0",
+    )
+    theirs = Finding(
+        id="compare.talents.stonewake-1", title="theirs", detail="d",
+        confidence=Confidence.MEASURED, player_slug="stonewake-1",
+    )
+    cards = build_players(
+        loaded, (mine, theirs), frozenset({"emberkin-0", "stonewake-1"}), first,
+        titles((mine, theirs)), Defensives(), ThroughputCooldowns(),
+    )
+    by_name = {card.name: ids(card.spell_and_talent_rows) for card in cards}
+    assert by_name["Emberkin"] == ["compare.talents.emberkin-0"]
+    assert by_name["Stonewake"] == ["compare.talents.stonewake-1"]
+
+
+def test_one_player_is_withheld_while_another_is_present() -> None:
+    first = a_player(actor_id=1, name="Emberkin")
+    second = a_player(actor_id=2, name="Stonewake")
+    loaded = a_loaded(players=(first, second))
+    mine = Finding(
+        id="compare.talents.emberkin-0", title="mine", detail="d",
+        confidence=Confidence.MEASURED, player_slug="emberkin-0",
+    )
+    refused = Finding(
+        id="compare.parse.unavailable.stonewake-1", title="none",
+        detail="The score leaderboard returned nothing.",
+        confidence=Confidence.MEASURED, player_slug="stonewake-1",
+    )
+    cards = build_players(
+        loaded, (mine, refused), frozenset({"emberkin-0", "stonewake-1"}), first,
+        titles((mine, refused)), Defensives(), ThroughputCooldowns(),
+    )
+    by_name = {card.name: card.spell_and_talent for card in cards}
+    assert by_name["Emberkin"].state is SectionState.PRESENT
+    assert by_name["Stonewake"].state is SectionState.WITHHELD
+    assert by_name["Stonewake"].reason == "The score leaderboard returned nothing."

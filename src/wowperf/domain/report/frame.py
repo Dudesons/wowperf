@@ -16,6 +16,19 @@ NO_COMPARISON_RAN = (
     "No reference run was fetched for this analysis, so there is nothing to compare against."
 )
 
+# Said when the comparison ran but this player was not among the ones asked for.
+# Distinct from NO_COMPARISON_RAN, which says nothing was compared at all, and
+# from a withheld section, which says the leaderboard had nothing to offer.
+NOT_REQUESTED = (
+    "No parse comparison was requested for this player. Name them with --player, "
+    "or pass --all-players, to compare them against top parses of their specialisation."
+)
+
+
+def parse_unavailable_id(slug: str) -> str:
+    """This player's own `compare.parse.unavailable`."""
+    return f"{PARSE_UNAVAILABLE_ID}.{slug}"
+
 
 def plural(count: int, singular: str) -> str:
     """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
@@ -39,7 +52,7 @@ def format_seconds(seconds: float | None) -> str | None:
     return f"{whole // 60}:{whole % 60:02d}"
 
 
-def _finding_by_id(findings: Sequence[Finding], finding_id: str) -> Finding | None:
+def finding_by_id(findings: Sequence[Finding], finding_id: str) -> Finding | None:
     return next((finding for finding in findings if finding.id == finding_id), None)
 
 
@@ -60,7 +73,7 @@ def section_for(findings: Sequence[Finding], unavailable_id: str, present: bool)
     """
     if present:
         return Section(state=SectionState.PRESENT)
-    finding = _finding_by_id(findings, unavailable_id)
+    finding = finding_by_id(findings, unavailable_id)
     return Section(
         state=SectionState.WITHHELD,
         reason=finding.detail if finding else NO_COMPARISON_RAN,
