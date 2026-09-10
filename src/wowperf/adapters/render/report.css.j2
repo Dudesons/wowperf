@@ -4,6 +4,7 @@
   --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
   --page: #16181c; --card: #1e2126; --line: #2c3038;
   --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c; --hit: #e07a7a;
+  --cooldown: #6a7280;
   --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
   --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
   --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
@@ -118,6 +119,9 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
 .pull-band { fill: var(--line); }
 .damage-bar { fill: var(--hit); }
-.on-cooldown { fill: var(--line); opacity: 0.55; }
+/* Opaque and lighter than the band behind it: this is the layer the inferred
+   badge grades, and a state marker fainter than the background it sits on is
+   a state a screenshot loses. */
+.on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
 .press { fill: var(--ours); }
