@@ -171,7 +171,15 @@ def only_ours(
     parse: ParseSample | None, our_auras: PlayerAuras | None = None
 ) -> tuple[ComparisonSubject, ...]:
     """The subjects tuple for a comparison that looks at OURS and nobody else."""
-    return (ComparisonSubject(player=OURS, slug=OUR_SLUG, parse=parse, our_auras=our_auras),)
+    return (
+        ComparisonSubject(
+            player=OURS,
+            slug=OUR_SLUG,
+            display_name=OURS.name,
+            parse=parse,
+            our_auras=our_auras,
+        ),
+    )
 
 
 # OURS's boss pull in our_run() runs 400_000-460_000ms; the parse reference's runs
@@ -328,14 +336,19 @@ def test_a_subject_cannot_be_built_without_a_slug() -> None:
     # run-level finding's. Both corruptions are silent, so the slug is refused
     # at the door rather than checked by everyone who reads one.
     with pytest.raises(ValidationError):
-        ComparisonSubject(player=OURS, slug="", parse=None)
+        ComparisonSubject(player=OURS, slug="", display_name=OURS.name, parse=None)
 
 
 def test_a_parse_finding_carries_the_player_it_is_about() -> None:
     findings = compare(
         ours=our_run(),
         speed=None,
-        subjects=(ComparisonSubject(player=OURS, slug="emberkin-0", parse=a_parse_sample()),),
+        subjects=(ComparisonSubject(
+            player=OURS,
+            slug="emberkin-0",
+            display_name=OURS.name,
+            parse=a_parse_sample(),
+        ),),
     )
     talents = next(f for f in findings if f.id.startswith("compare.talents"))
 
@@ -347,7 +360,12 @@ def test_a_speed_finding_names_no_player() -> None:
     findings = compare(
         ours=our_run(),
         speed=None,
-        subjects=(ComparisonSubject(player=OURS, slug="emberkin-0", parse=a_parse_sample()),),
+        subjects=(ComparisonSubject(
+            player=OURS,
+            slug="emberkin-0",
+            display_name=OURS.name,
+            parse=a_parse_sample(),
+        ),),
     )
     speed = next(f for f in findings if f.id == "compare.speed.unavailable")
 
@@ -394,8 +412,18 @@ def test_two_players_produce_no_duplicate_finding_id() -> None:
         ours=our_run(),
         speed=None,
         subjects=(
-            ComparisonSubject(player=OURS, slug="emberkin-0", parse=a_parse_sample()),
-            ComparisonSubject(player=SECOND, slug="stonewake-1", parse=a_parse_sample()),
+            ComparisonSubject(
+            player=OURS,
+            slug="emberkin-0",
+            display_name=OURS.name,
+            parse=a_parse_sample(),
+        ),
+            ComparisonSubject(
+                player=SECOND,
+                slug="stonewake-1",
+                display_name=SECOND.name,
+                parse=a_parse_sample(),
+            ),
         ),
     )
     ids = [finding.id for finding in findings]
@@ -403,11 +431,39 @@ def test_two_players_produce_no_duplicate_finding_id() -> None:
     assert len(ids) == len(set(ids))
 
 
+def test_two_players_produce_no_duplicate_finding_title() -> None:
+    # The companion to the id test above, and the harder half: an id is minted
+    # once, in `_for_player`, while a title is written by whichever module
+    # emitted the finding. A family whose title names nobody reads identically
+    # under two cards, and in the findings file -- which is what the narrative
+    # is written from -- there is then no way to say whose build differed.
+    findings = compare(
+        ours=our_run(),
+        speed=None,
+        subjects=(
+            ComparisonSubject(
+                player=OURS, slug="emberkin-0", display_name="Emberkin", parse=a_parse_sample()
+            ),
+            ComparisonSubject(
+                player=SECOND,
+                slug="stonewake-1",
+                display_name="Stonewake",
+                parse=a_parse_sample(),
+            ),
+        ),
+    )
+    titles = [finding.title for finding in findings]
+
+    assert len(titles) == len(set(titles))
+
+
 def test_a_player_with_no_parse_sample_says_so_in_their_own_name() -> None:
     findings = compare(
         ours=our_run(),
         speed=None,
-        subjects=(ComparisonSubject(player=OURS, slug="emberkin-0", parse=None),),
+        subjects=(ComparisonSubject(
+            player=OURS, slug="emberkin-0", display_name=OURS.name, parse=None
+        ),),
     )
     unavailable = next(f for f in findings if f.id == "compare.parse.unavailable.emberkin-0")
 
@@ -422,7 +478,9 @@ def test_a_player_with_no_specialisation_is_not_told_the_leaderboard_was_empty()
     findings = compare(
         ours=our_run(),
         speed=None,
-        subjects=(ComparisonSubject(player=specless, slug="emberkin-0", parse=None),),
+        subjects=(ComparisonSubject(
+            player=specless, slug="emberkin-0", display_name=OURS.name, parse=None
+        ),),
     )
     unavailable = next(f for f in findings if f.id == "compare.parse.unavailable.emberkin-0")
 

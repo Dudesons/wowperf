@@ -58,9 +58,19 @@ def _their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
 
 
 def compare_spells(
-    ours: LoadedRun, our_player: Player, theirs: ParseMember, their_name: str
+    ours: LoadedRun,
+    our_player: Player,
+    our_name: str,
+    theirs: ParseMember,
+    their_name: str,
 ) -> list[Finding]:
-    """What the reference player cast on bosses that we did not, and how often."""
+    """What the reference player cast on bosses that we did not, and how often.
+
+    `our_name` is the roster's disambiguated spelling of `our_player`, and it
+    is what every title below says. `our_player.name` is not: two roster
+    members can share it, and a run comparing both would then emit two
+    identical titles.
+    """
     their_actor_id = _their_actor_id(theirs, their_name)
     their_boss_seconds = boss_seconds(theirs.run)
     our_boss_seconds = boss_seconds(ours.run)
@@ -69,7 +79,7 @@ def compare_spells(
         return [
             Finding(
                 id="compare.spells.unavailable",
-                title="The spell comparison could not be made",
+                title=f"The spell comparison could not be made for {our_name}",
                 detail=(
                     "A spell comparison needs boss pulls on both sides and the reference "
                     "player present in their own report. One of those is missing, so no "
@@ -109,10 +119,10 @@ def compare_spells(
                 id=f"compare.spells.missing.{rank}",
                 title=(
                     f"{their_name} cast {name} {count} times on bosses; "
-                    f"{our_player.name} never cast it"
+                    f"{our_name} never cast it"
                 ),
                 detail=(
-                    f"{name} does not appear anywhere in this run for {our_player.name} — not "
+                    f"{name} does not appear anywhere in this run for {our_name} — not "
                     "on bosses and not on trash. That is either a talent not taken or a button "
                     "not pressed; the log cannot tell which."
                 ),
@@ -147,7 +157,7 @@ def compare_spells(
                 id=f"compare.spells.rate.{rank}",
                 title=(
                     f"{their_name} cast {name} {their_rate:.1f} times a minute on bosses, "
-                    f"{our_player.name} {our_rate:.1f}"
+                    f"{our_name} {our_rate:.1f}"
                 ),
                 detail=(
                     "Both rates are casts per minute of boss-pull time, which is the one stretch "
@@ -170,9 +180,12 @@ def compare_spells(
 
 
 def compare_spells_sample(
-    ours: LoadedRun, our_player: Player, sample: ParseSample
+    ours: LoadedRun, our_player: Player, our_name: str, sample: ParseSample
 ) -> list[Finding]:
     """What the sample's top parses cast that we did not, and how our own rate compares.
+
+    `our_name` is the roster's disambiguated spelling of `our_player`, for the
+    reason `compare_spells` above gives.
 
     No member is named: the claim is about the sample as a population — "N of M
     top parses cast this" or "the median rate is this" — and naming one member
@@ -191,7 +204,7 @@ def compare_spells_sample(
     if not sample.can_aggregate(sample.members):
         first = sample.members[0]
         return too_few(
-            compare_spells(ours, our_player, first, first.row.character_name),
+            compare_spells(ours, our_player, our_name, first, first.row.character_name),
             len(sample.members),
         )
 
@@ -223,14 +236,14 @@ def compare_spells_sample(
         }
         per_member.append((their_boss_seconds, qualifying))
 
-    findings = _missing_sample(our_player, ours_anywhere, names, per_member, total)
+    findings = _missing_sample(our_name, ours_anywhere, names, per_member, total)
     if our_boss_seconds > 0:
-        findings += _rate_sample(our_player, ours_on_bosses, our_boss_seconds, per_member)
+        findings += _rate_sample(our_name, ours_on_bosses, our_boss_seconds, per_member)
     return findings
 
 
 def _missing_sample(
-    our_player: Player,
+    our_name: str,
     ours_anywhere: set[int],
     names: dict[int, str],
     per_member: Sequence[tuple[float, dict[int, int]]],
@@ -254,10 +267,10 @@ def _missing_sample(
                 id=f"compare.spells.missing.{rank}",
                 title=(
                     f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
-                    f"{our_player.name} never did"
+                    f"{our_name} never did"
                 ),
                 detail=(
-                    f"{name} does not appear anywhere in this run for {our_player.name} — not "
+                    f"{name} does not appear anywhere in this run for {our_name} — not "
                     "on bosses and not on trash. That is either a talent not taken or a button "
                     "not pressed; the log cannot tell which. The count is over the sample, not "
                     "one parse, so no single reference needs naming to make the point."
@@ -279,7 +292,7 @@ def _missing_sample(
 
 
 def _rate_sample(
-    our_player: Player,
+    our_name: str,
     ours_on_bosses: dict[int, tuple[str, int]],
     our_boss_seconds: float,
     per_member: Sequence[tuple[float, dict[int, int]]],
@@ -311,7 +324,7 @@ def _rate_sample(
                 id=f"compare.spells.rate.{rank}",
                 title=(
                     f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
-                    f"minute on bosses; {our_player.name} casts it {our_rate:.1f}"
+                    f"minute on bosses; {our_name} casts it {our_rate:.1f}"
                 ),
                 detail=(
                     "Both rates are casts per minute of boss-pull time, which is the one "
@@ -335,7 +348,7 @@ def _rate_sample(
 
 
 def compare_talents(
-    our_player: Player, their_player: Player | None, their_row: ParseRow
+    our_player: Player, our_name: str, their_player: Player | None, their_row: ParseRow
 ) -> list[Finding]:
     """Whether the two builds differ, and the string needed to import theirs.
 
@@ -343,6 +356,12 @@ def compare_talents(
     mode this project can compute. It names the top-ranked parse rather than
     the player who ran it, and links to that report, because a reader asked to
     copy a stranger's build is the one reader who must be able to trace it.
+
+    Exactly one of the three findings below is emitted per player, so all three
+    titles name whose build they are about: a run comparing the whole group
+    would otherwise state the same sentence once per member with nothing in it
+    to tell them apart. `our_name` is the roster's disambiguated spelling, for
+    the reason `compare_spells` above gives.
     """
     ours = our_player.talent_import_string
     theirs = their_player.talent_import_string if their_player else None
@@ -352,7 +371,7 @@ def compare_talents(
         return [
             Finding(
                 id="compare.talents",
-                title="The talent builds could not be compared",
+                title=f"The talent builds could not be compared for {our_name}",
                 detail=(
                     "One of the two reports does not carry a talent import string for its "
                     "player, so the builds are not compared. An absent string is not evidence "
@@ -372,7 +391,7 @@ def compare_talents(
         return [
             Finding(
                 id="compare.talents",
-                title="The talent build matches the top-ranked parse",
+                title=f"{our_name}'s talent build matches the top-ranked parse",
                 detail=(
                     "Both players imported the same build, so nothing here needs changing. "
                     "This is one player's build, not the sample's: a talent string has no "
@@ -387,7 +406,7 @@ def compare_talents(
     return [
         Finding(
             id="compare.talents",
-            title="The talent build differs from the top-ranked parse",
+            title=f"{our_name}'s talent build differs from the top-ranked parse",
             detail=(
                 "The import codes differ. They are opaque, so the difference is not spelled out "
                 "here — paste the other string into the game to see it laid out on the tree. "

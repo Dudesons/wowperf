@@ -11,6 +11,7 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
 from tests.adapters.render.test_html_sections import FakeIcons, a_drawn_timeline, a_player_card
+from tests.domain.comparison.test_service import a_parse_sample
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -22,6 +23,7 @@ from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.sample import SpeedSample
+from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -527,6 +529,64 @@ def test_the_minimal_fixture_puts_two_players_comparisons_on_one_page() -> None:
     for slug in sorted(COMPARED):
         assert f'id="finding-compare.talents.{slug}"' in cards[slug]
         assert f'id="finding-compare.spells.missing.0.{slug}"' in cards[slug]
+
+
+def a_real_two_player_comparison() -> tuple[tuple[Finding, ...], str]:
+    """A page whose comparison rows the comparison modules actually wrote.
+
+    Every other fixture in this file hand-writes its findings, so a title the
+    modules emit identically for two players reads as two distinct titles here
+    and the once-only rule never sees it. This runs the real `compare()` over
+    two of the roster's own players and renders what comes back.
+    """
+    loaded = minimal_loaded()
+    emberkin, stonewake, _briala = loaded.run.players
+    findings = tuple(
+        compare(
+            loaded,
+            None,
+            (
+                ComparisonSubject(
+                    player=emberkin,
+                    slug="emberkin-0",
+                    display_name="Emberkin",
+                    parse=a_parse_sample(),
+                ),
+                ComparisonSubject(
+                    player=stonewake,
+                    slug="stonewake-1",
+                    display_name="Stonewake",
+                    parse=a_parse_sample(),
+                ),
+            ),
+        )
+    )
+    html = render(
+        build_report(
+            loaded, findings, None, COMPARED, SUBJECT, None, FETCHED, NO_DEFENSIVES,
+            NO_CONSUMABLES,
+        )
+    )
+    return findings, html
+
+
+def test_the_two_player_comparison_fixture_exercises_every_parse_family() -> None:
+    # The test below is only worth running against a page carrying all three
+    # per-player families; a fixture that quietly stopped emitting one would
+    # leave it green over a title that still collides.
+    findings, _html = a_real_two_player_comparison()
+    families = {".".join(f.id.split(".")[:2]) for f in findings if f.player_slug}
+    assert families == {"compare.spells", "compare.talents", "compare.uptime"}
+
+
+def test_no_two_players_share_a_comparison_row_heading() -> None:
+    # The once-only rule, applied to titles the comparison modules wrote rather
+    # than to fixture prose. A family whose title names no player renders the
+    # same heading under both cards, and the reader cannot tell which is whose.
+    findings, html = a_real_two_player_comparison()
+    for finding in findings:
+        if finding.player_slug:
+            assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
 
 
 def test_only_the_card_nobody_asked_for_carries_the_not_requested_sentence() -> None:

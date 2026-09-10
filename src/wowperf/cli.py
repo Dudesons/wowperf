@@ -7,6 +7,7 @@ import sys
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import httpx
 import typer
@@ -267,8 +268,17 @@ def _echo_cost_breakdown(costs: CostLedger) -> None:
 
 
 def _roster_hint(run: Run) -> str:
-    """The names `--player` will accept, for a message that has just refused one."""
-    roster = ", ".join(sorted(player.name for player in run.players)) or "nobody"
+    """Who is on the roster, for a message that has just refused a name.
+
+    Spelled the way the report spells them. Two roster members can share a
+    name, and the raw roster then prints that name twice, telling a reader
+    neither that there are two nor that the second cannot be singled out.
+    `--player` still matches on the raw name and still resolves to the first of
+    the two, so the disambiguated spelling makes the second member visible
+    rather than addressable.
+    """
+    names = display_names(run)
+    roster = ", ".join(sorted(names.values())) or "nobody"
     return f"Pass --player with one of: {roster}"
 
 
@@ -357,11 +367,26 @@ def _record(
     )
 
 
+class RequestedPlayer(NamedTuple):
+    """One player a comparison was asked for, and the two strings that name them.
+
+    A bare tuple would put `slug` and `name` side by side as two positional
+    strings of the same type, and a caller that swapped them would type-check
+    cleanly: the slug would be printed to a reader and the display name stamped
+    onto a `ReferenceRecord`, the record the RPGLogs terms section 5d posture
+    rests on.
+    """
+
+    player: Player
+    slug: str
+    name: str
+
+
 def _samples(
     rankings: WclRankingRepository,
     runs: WclRunRepository,
     run: Run,
-    subjects: Sequence[tuple[Player, str, str]],
+    subjects: Sequence[RequestedPlayer],
 ) -> tuple[SpeedSample, dict[int, ParseSample], tuple[ReferenceRecord, ...]]:
     """Up to `SAMPLE_SIZE` references per axis, and a record of every row weighed.
 
@@ -702,8 +727,11 @@ def analyze(
             # provenance row naming a player names the same one their card does.
             slugs = slugs_by_actor(loaded.run)
             names = display_names(loaded.run)
-            requested: tuple[tuple[Player, str, str], ...] = tuple(
-                (one, slugs[one.actor_id], names[one.actor_id]) for one in to_compare
+            requested: tuple[RequestedPlayer, ...] = tuple(
+                RequestedPlayer(
+                    player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
+                )
+                for one in to_compare
             )
             # Every candidate `_samples` weighed comes back as `reference_records`,
             # carried onto both the report's provenance below and the comparison
@@ -712,7 +740,7 @@ def analyze(
                 rankings, references, loaded.run, requested
             )
 
-            for player_to_compare, slug, _name in requested:
+            for player_to_compare, slug, name in requested:
                 sample, our_auras = _fetch_parse_auras(
                     parse_samples[player_to_compare.actor_id],
                     repository,
@@ -724,6 +752,7 @@ def analyze(
                     ComparisonSubject(
                         player=player_to_compare,
                         slug=slug,
+                        display_name=name,
                         parse=sample,
                         our_auras=our_auras,
                     )

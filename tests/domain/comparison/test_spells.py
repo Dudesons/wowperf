@@ -26,6 +26,15 @@ THEIRS = Player(
     talent_import_string="CoPAAAAA",
 )
 
+OUR_NAME = "Emberkin (actor 693)"
+"""The spelling `display_names` gives a name two roster members share.
+
+Deliberately not `OURS.name`: every title below is built from the name the
+caller passes in, and a fixture that passed `OURS.name` would keep passing if
+these modules went back to reading the name off the roster — which is the bug
+that put one player's name on another player's finding.
+"""
+
 
 def boss_pull(index: int, seconds: float) -> Pull:
     return Pull(
@@ -135,7 +144,7 @@ def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
         ),
     )
 
-    findings = compare_spells(ours, OURS, theirs, "Bríala")
+    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
     missing = [f for f in findings if f.id.startswith("compare.spells.missing.")]
 
     assert len(missing) == 1
@@ -157,7 +166,7 @@ def test_an_ability_we_cast_only_on_trash_still_counts_as_cast() -> None:
     )
 
     missing = [
-        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing.")
     ]
 
@@ -175,7 +184,7 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -196,7 +205,7 @@ def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -207,7 +216,7 @@ def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() ->
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
     theirs = a_member(THEIRS, (trash_pull(0, 60.0),), ())
 
-    findings = compare_spells(ours, OURS, theirs, "Bríala")
+    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
 
     assert any(f.id == "compare.spells.unavailable" for f in findings)
 
@@ -226,7 +235,7 @@ TOP_PARSE_URL = "https://www.warcraftlogs.com/reports/TOPREF?fight=7"
 
 def test_a_different_build_is_reported_with_their_string() -> None:
     finding = compare_talents(OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}),
-                              THEIRS, TOP_PARSE_ROW)[0]
+                              OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
 
     assert finding.id == "compare.talents"
     assert finding.confidence is Confidence.MEASURED
@@ -236,36 +245,53 @@ def test_a_different_build_is_reported_with_their_string() -> None:
 def test_an_identical_build_reports_that_it_matches() -> None:
     same = OURS.model_copy(update={"talent_import_string": "CoPAAAAA"})
 
-    finding = compare_talents(same, THEIRS, TOP_PARSE_ROW)[0]
+    finding = compare_talents(same, OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
 
     assert "matches" in finding.title.lower()
 
 
 def test_a_missing_build_says_the_comparison_could_not_be_made() -> None:
-    finding = compare_talents(OURS, THEIRS, TOP_PARSE_ROW)[0]
+    finding = compare_talents(OURS, OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
 
     assert "not" in finding.detail.lower()
     assert finding.seconds_lost is None
 
 
-def test_the_talent_row_links_the_top_parse_and_names_no_player() -> None:
+TALENT_BUILDS = (
+    (OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}), THEIRS),
+    (OURS.model_copy(update={"talent_import_string": "CoPAAAAA"}), THEIRS),
+    (OURS, THEIRS),
+)
+"""One pair per branch of `compare_talents`: differs, matches, and no string at all."""
+
+
+def test_the_talent_row_links_the_top_parse_and_names_no_reference_player() -> None:
     """The one row that asks a reader to copy a stranger's build. It stays
     single-reference — a build has no median — so it must be traceable, and the
     trace is a link: a name written into a file is greppable and poolable."""
-    builds = (
-        (OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}), THEIRS),
-        (OURS.model_copy(update={"talent_import_string": "CoPAAAAA"}), THEIRS),
-        (OURS, THEIRS),
-    )
-
-    for ours, theirs in builds:
-        finding = compare_talents(ours, theirs, TOP_PARSE_ROW)[0]
+    for ours, theirs in TALENT_BUILDS:
+        finding = compare_talents(ours, OUR_NAME, theirs, TOP_PARSE_ROW)[0]
 
         assert f"top-ranked parse: {TOP_PARSE_URL}" in finding.evidence
         assert THEIRS.name not in finding.title
         assert THEIRS.name not in finding.detail
         assert not any(THEIRS.name in line for line in finding.evidence)
         assert "the reference" not in finding.title.lower()
+
+
+def test_every_talent_outcome_names_the_player_whose_build_it_is() -> None:
+    """`compare_talents` emits exactly one of its three findings per player, so
+    a title naming nobody reads identically under every card of a whole-group
+    run — and in the findings file, which is what the narrative is written
+    from, there would be no way to say whose build differed."""
+    titles = [
+        compare_talents(ours, OUR_NAME, theirs, TOP_PARSE_ROW)[0].title
+        for ours, theirs in TALENT_BUILDS
+    ]
+
+    assert len(titles) == len(TALENT_BUILDS)
+    for title in titles:
+        assert OUR_NAME in title
 
 
 def test_every_finding_id_is_unique() -> None:
@@ -276,7 +302,7 @@ def test_every_finding_id_is_unique() -> None:
         tuple(cast(11, 100 + n, f"Spell {n}", n * 1_000, 0) for n in range(8) for _ in range(4)),
     )
 
-    ids = [f.id for f in compare_spells(ours, OURS, theirs, "Bríala")]
+    ids = [f.id for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")]
 
     assert len(ids) == len(set(ids))
 
@@ -324,18 +350,18 @@ OURS_LOADED = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor",
 
 
 def test_a_spell_most_top_parses_cast_and_we_never_did_is_counted() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     missing = next(f for f in findings if f.id == "compare.spells.missing.0")
     assert missing.title == (
-        "4 of 5 top parses cast Ability 314791 on bosses; Emberkin never did"
+        f"4 of 5 top parses cast Ability 314791 on bosses; {OUR_NAME} never did"
     )
     assert missing.quantifier == "most"
     assert missing.confidence is Confidence.MEASURED
 
 
 def test_no_reference_player_is_named_in_a_sampled_spell_finding() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     for name in ("Bríala", "Dawnseeker", "Emberfall", "Frostwhisper", "Glimmerose"):
         assert all(name not in finding.title for finding in findings)
@@ -346,7 +372,7 @@ def test_an_ability_seen_in_too_few_members_is_not_reported() -> None:
     # Rune of Power is cast by 2 of the 5 members, one short of the threshold.
     assert 2 < MIN_MEMBERS_WITH_ABILITY
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(str(RUNE_OF_POWER) in f.title for f in findings)
 
@@ -368,13 +394,13 @@ def test_a_rate_gap_seen_in_too_few_members_is_not_reported() -> None:
     # otherwise be reported (12 casts over 60s against our own 2).
     assert 2 < MIN_MEMBERS_WITH_ABILITY
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, two_of_five)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, two_of_five)
 
     assert not any(f.id.startswith("compare.spells.rate.") for f in findings)
 
 
 def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     rate = next(f for f in findings if f.id == "compare.spells.rate.0")
     assert "4 top parses cast" in rate.title and "a median" in rate.title
@@ -385,7 +411,7 @@ def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.parse.unavailable`; this must not crash, and must not repeat it.
-    findings = compare_spells_sample(OURS_LOADED, OURS, ParseSample())
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, ParseSample())
 
     assert findings == []
 
@@ -393,7 +419,7 @@ def test_a_wholly_empty_sample_produces_no_findings() -> None:
 def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, below_floor)
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, below_floor)
 
     missing = next(f for f in findings if f.id == "compare.spells.missing.0")
     assert "Bríala" in missing.title
@@ -401,7 +427,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
 
 def test_every_finding_id_is_unique_over_the_sample() -> None:
-    ids = [f.id for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)]
+    ids = [f.id for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)]
 
     assert len(ids) == len(set(ids))
 
@@ -418,7 +444,7 @@ def test_a_missing_spell_finding_names_the_ability_against_one_reference() -> No
         ),
     )
     missing = next(
-        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == 153626
@@ -434,7 +460,7 @@ def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
         tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(6)),
     )
     rate = next(
-        f for f in compare_spells(ours, OURS, theirs, "Bríala")
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == 30451
@@ -444,7 +470,7 @@ def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
 
 def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
     missing = next(
-        f for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+        f for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == SHIFTING_POWER
@@ -456,7 +482,7 @@ def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
 
 def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
     rate = next(
-        f for f in compare_spells_sample(OURS_LOADED, OURS, SAMPLE_OF_FIVE)
+        f for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == METEOR

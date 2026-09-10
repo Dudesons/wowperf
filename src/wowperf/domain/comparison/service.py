@@ -50,10 +50,19 @@ class ComparisonSubject(Frozen):
     silent: `_for_player` would mint `compare.talents.`, a family prefix with
     a trailing dot, and stamp a `player_slug` of "" that no consumer can tell
     from a run-level finding's.
+
+    `display_name` is the spelling every finding title uses for this player,
+    and it is carried rather than taken from `player.name`: two roster members
+    can share a name, and only `display_names` tells them apart -- the same
+    function `slugs_by_actor` reads, so a title, a card heading and a
+    provenance row all name a player the one way. It cannot be empty either: a
+    title built around an empty name reads as a sentence with a hole in it,
+    and no reader could tell whose finding it was.
     """
 
     player: Player
     slug: str = Field(min_length=1)
+    display_name: str = Field(min_length=1)
     parse: ParseSample | None
     our_auras: PlayerAuras | None = None
 
@@ -84,7 +93,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         return [
             _unavailable(
                 "compare.parse.unavailable",
-                f"No ranked parse was available for {subject.player.name} "
+                f"No ranked parse was available for {subject.display_name} "
                 f"({subject.player.class_name})",
                 "This log records no specialisation for this player, so no score "
                 "leaderboard could be asked for one, and spells, talents and uptime "
@@ -96,7 +105,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         return [
             _unavailable(
                 "compare.parse.unavailable",
-                f"No ranked parse was available for {subject.player.name} "
+                f"No ranked parse was available for {subject.display_name} "
                 f"({subject.player.class_name} {subject.player.spec})",
                 "The score leaderboard returned nothing for this specialisation within one "
                 "keystone level of this run, so spells, talents and uptime are not compared.",
@@ -105,11 +114,14 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
     top = parse.top
     assert top is not None  # parse.members is non-empty here, so a top member exists
     return [
-        *compare_spells_sample(ours, subject.player, parse),
+        *compare_spells_sample(ours, subject.player, subject.display_name, parse),
         *compare_talents(
-            subject.player, find_player(top.run, top.row.character_name), top.row
+            subject.player,
+            subject.display_name,
+            find_player(top.run, top.row.character_name),
+            top.row,
         ),
-        *compare_uptime_sample(ours.run, subject.our_auras, subject.player, parse),
+        *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),
     ]
 
 

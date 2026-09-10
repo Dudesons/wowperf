@@ -233,7 +233,7 @@ instead of adjusting for them, because adjusting would invent a number:
   player happens to own: an uptime gap is reported only where at least three of the parses
   carried that aura, which a single proc or a single trinket cannot reach. Below that floor, the
   comparison falls back to a single reference stated pairwise, where a gap can still mean gear
-  this player does not own. `compare.talents` is the one row still drawn from a single
+  this player does not own. `compare.talents.<slug>` is the one row still drawn from a single
   reference — the top-ranked parse, whose report its evidence links to.
 
 When a comparison was withheld, the report says why in the tool's own words — a

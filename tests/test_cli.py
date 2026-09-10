@@ -21,6 +21,7 @@ from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    RequestedPlayer,
     _cost_breakdown,
     _fetch_parse_auras,
     _quota_sentence,
@@ -1488,9 +1489,15 @@ OUR_RUN_WITH_SPECLESS = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players,
 # Who `_samples` draws a parse sample for, each paired with the slug
 # `slugs_by_actor` mints from their roster position and the name
 # `display_names` spells them by.
-SUBJECT_ONLY = ((SUBJECT, "emberkin-0", "Emberkin"),)
-TWO_SUBJECTS = ((SUBJECT, "emberkin-0", "Emberkin"), (OUR_TANK, "stonewake-1", "Stonewake"))
-SPECLESS_SUBJECTS = ((SUBJECT, "emberkin-0", "Emberkin"), (OUR_SPECLESS, "briala-1", "Bríala"))
+SUBJECT_ONLY = (RequestedPlayer(SUBJECT, "emberkin-0", "Emberkin"),)
+TWO_SUBJECTS = (
+    RequestedPlayer(SUBJECT, "emberkin-0", "Emberkin"),
+    RequestedPlayer(OUR_TANK, "stonewake-1", "Stonewake"),
+)
+SPECLESS_SUBJECTS = (
+    RequestedPlayer(SUBJECT, "emberkin-0", "Emberkin"),
+    RequestedPlayer(OUR_SPECLESS, "briala-1", "Bríala"),
+)
 
 
 def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[str, Any]:
@@ -1514,6 +1521,14 @@ def _candidate_parse_row(
     class_name: str = "Mage",
     spec: str = "Arcane",
 ) -> dict[str, Any]:
+    """A leaderboard row naming `character_name` in report `code`.
+
+    `character_name` must be on the roster the paired `_candidate_fights_payload`
+    gives that report: `_fetch_parse_auras` resolves the parser with
+    `find_player(member.run, member.row.character_name)`, so a row naming
+    somebody the reference's own roster does not hold is a reference no
+    comparison can ever use. The default pairs with the default roster.
+    """
     return {
         "name": character_name,
         "class": class_name,
@@ -1830,7 +1845,7 @@ def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
     rows = [
         _candidate_parse_row(OUR_RUN.report_code, OUR_RUN.fight_id),
         _candidate_parse_row("brokenparse"),
-        _candidate_parse_row("selfmatch"),
+        _candidate_parse_row("selfmatch", character_name=SUBJECT.name),
         _candidate_parse_row("cleanparse"),
     ]
     rankings = _samples_ranking_repository(tmp_path, parse_rows_by_bracket={bracket_for(16): rows})
@@ -1864,7 +1879,10 @@ def test_the_parse_sample_also_stops_at_the_configured_size(tmp_path: Path) -> N
     rankings = _samples_ranking_repository(
         tmp_path,
         parse_rows_by_bracket={
-            bracket_for(16): [_candidate_parse_row(code) for code in codes]
+            bracket_for(16): [
+                _candidate_parse_row(code, character_name=f"ParsePlayer{i}")
+                for i, code in enumerate(codes)
+            ]
         },
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
@@ -1978,8 +1996,10 @@ def _two_spec_rankings(
     )
 
 
-def _protection_parse_row(code: str) -> dict[str, Any]:
-    return _candidate_parse_row(code, class_name="Warrior", spec="Protection")
+def _protection_parse_row(code: str, character_name: str = "Fastblock") -> dict[str, Any]:
+    return _candidate_parse_row(
+        code, character_name=character_name, class_name="Warrior", spec="Protection"
+    )
 
 
 def test_each_player_gets_their_own_specialisations_sample(tmp_path: Path) -> None:
@@ -1992,7 +2012,7 @@ def test_each_player_gets_their_own_specialisations_sample(tmp_path: Path) -> No
     }
     rankings = _two_spec_rankings(
         tmp_path,
-        arcane=[_candidate_parse_row("arcaneref")],
+        arcane=[_candidate_parse_row("arcaneref", character_name="Fastcast")],
         protection=[_protection_parse_row("protref")],
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
@@ -2017,8 +2037,14 @@ def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
     }
     rankings = _two_spec_rankings(
         tmp_path,
-        arcane=[_candidate_parse_row("ourown"), _candidate_parse_row("arcaneref")],
-        protection=[_protection_parse_row("ourown"), _protection_parse_row("protref")],
+        arcane=[
+            _candidate_parse_row("ourown", character_name=SUBJECT.name),
+            _candidate_parse_row("arcaneref", character_name="Fastcast"),
+        ],
+        protection=[
+            _protection_parse_row("ourown", character_name=SUBJECT.name),
+            _protection_parse_row("protref"),
+        ],
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
@@ -2047,7 +2073,7 @@ def test_a_parse_candidate_records_whose_comparison_weighed_it(tmp_path: Path) -
     }
     rankings = _two_spec_rankings(
         tmp_path,
-        arcane=[_candidate_parse_row("arcaneref")],
+        arcane=[_candidate_parse_row("arcaneref", character_name="Fastcast")],
         protection=[_protection_parse_row("protref")],
         speed=[_candidate_speed_row("speedref")],
     )
@@ -2072,7 +2098,13 @@ def test_a_player_with_no_ingested_specialisation_is_never_queried_for(tmp_path:
     queried: list[str] = []
     rankings = _samples_ranking_repository(
         tmp_path,
-        parse_rows_by_spec={"Arcane": {bracket_for(16): [_candidate_parse_row("arcaneref")]}},
+        parse_rows_by_spec={
+            "Arcane": {
+                bracket_for(16): [
+                    _candidate_parse_row("arcaneref", character_name="Fastcast")
+                ]
+            }
+        },
         queried_specs=queried,
     )
     runs = _samples_run_repository(

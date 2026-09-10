@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.cli import _samples, build_reference_repositories, build_repository
+from wowperf.cli import (
+    RequestedPlayer,
+    _samples,
+    build_reference_repositories,
+    build_repository,
+)
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
@@ -35,7 +40,10 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
     subject_name = display_names(loaded.run)[subject.actor_id]
     speed_sample, parse_samples, records = _samples(
-        rankings, references, loaded.run, ((subject, subject_slug, subject_name),)
+        rankings,
+        references,
+        loaded.run,
+        (RequestedPlayer(player=subject, slug=subject_slug, name=subject_name),),
     )
     parse_sample = parse_samples[subject.actor_id]
 
@@ -52,7 +60,12 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
         loaded,
         speed_sample,
         (
-            ComparisonSubject(player=subject, slug=subject_slug, parse=parse_sample),
+            ComparisonSubject(
+                player=subject,
+                slug=subject_slug,
+                display_name=subject_name,
+                parse=parse_sample,
+            ),
         ),
     )
     assert findings, "no comparison findings were produced at all"

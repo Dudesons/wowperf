@@ -290,7 +290,11 @@ SUBJECT_SLUG = "emberkin-0"
 """SUBJECT's fragment id: what `slugs_by_actor` mints for the only roster entry."""
 
 SUBJECT_WITH_AURAS = ComparisonSubject(
-    player=SUBJECT, slug=SUBJECT_SLUG, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
+    player=SUBJECT,
+    slug=SUBJECT_SLUG,
+    display_name=SUBJECT.name,
+    parse=PARSE_SAMPLE,
+    our_auras=OUR_AURAS,
 )
 
 
@@ -384,7 +388,14 @@ def test_a_below_floor_sample_carries_no_denominator_and_is_exempt_from_the_rule
     findings = compare(
         ours=OURS,
         speed=below_floor,
-        subjects=(ComparisonSubject(player=SUBJECT, slug=SUBJECT_SLUG, parse=None),),
+        subjects=(
+            ComparisonSubject(
+                player=SUBJECT,
+                slug=SUBJECT_SLUG,
+                display_name=SUBJECT.name,
+                parse=None,
+            ),
+        ),
     )
 
     matching = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES)]
