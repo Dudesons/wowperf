@@ -17,6 +17,7 @@ from wowperf.domain.report.frame import (
 )
 from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard
+from wowperf.domain.report.player_timeline import build_player_timeline
 from wowperf.domain.season import Defensives, ThroughputCooldowns
 
 CLASS_COLOURS = (
@@ -144,6 +145,10 @@ def build_players(
                     else ()
                 ),
                 slug=f"{player_slug(display_name)}-{index}",
+                timeline=build_player_timeline(
+                    loaded, summary.actor_id, summary.class_name, summary.spec,
+                    defensives, throughput,
+                ),
             )
         )
     return tuple(cards)

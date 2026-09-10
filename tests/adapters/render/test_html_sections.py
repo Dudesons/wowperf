@@ -17,23 +17,30 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
+from wowperf.domain.report import player_timeline as player_timeline_module
 from wowperf.domain.report import timeline as timeline_module
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
     Badge,
+    CooldownRow,
     CurveGuide,
     CurvePoint,
     CurveReading,
     CurveTick,
+    DamageBar,
+    DamageTrack,
     DeathCard,
     HealthCurve,
     LedgerRow,
     PlayerCard,
+    PlayerTimeline,
+    Press,
     RecapRow,
     Section,
     SectionState,
+    Span,
     Timeline,
     TimelineBlock,
     TimelineTrack,
@@ -603,6 +610,88 @@ def a_player_card(**changes: object) -> PlayerCard:
         spell_and_talent=Section(state=SectionState.PRESENT),
     )
     return card.model_copy(update=changes)
+
+
+def a_drawn_timeline() -> PlayerTimeline:
+    """A timeline with one of everything, so a template that drops a layer fails here."""
+    return PlayerTimeline(
+        section=Section(state=SectionState.PRESENT),
+        width=680.0,
+        height=140.0,
+        pulls=(TimelineBlock(label="Pack 0", x=46.0, width=100.0, is_boss=False,
+                             kind="band", css_class="pull-band"),),
+        band_y=28.0,
+        band_height=10.0,
+        damage=DamageTrack(
+            baseline_y=76.0,
+            bars=(DamageBar(x=46.0, width=6.0, y=44.0, height=32.0),),
+            peak_label="Tallest bar: 120,000 damage in 5 seconds",
+        ),
+        cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                               presses=(Press(x=200.0, icon_class="i-45438"),),
+                               unavailable=(Span(x=200.0, width=90.0),),
+                               not_judged=Span(x=46.0, width=90.0)),),
+        ticks=((46.0, "0:00"),),
+        tick_y1=22.0,
+        tick_y2=112.0,
+        tick_label_y=128.0,
+        label_x=40.0,
+        row_height=16.0,
+        legend="The pale stretch at the start is not judged at all.",
+        badge_measured=Badge(label="measured", tint="badge-measured"),
+        badge_inferred=Badge(label="inferred", tint="badge-inferred"),
+    )
+
+
+def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
+    html = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),)))
+    assert 'data-tab-panel="players"' in html
+    assert 'class="player-timeline"' in html
+    for layer in ("pull-band", "damage-bar", "not-judged", "on-cooldown", "press"):
+        assert layer in html, layer
+    assert "Ice Block" in html
+    assert "not judged" in html
+    # Which badge grades what is a claim the page makes, so it must be spoken
+    # rather than left as two colours side by side: "measured" is captioned
+    # to the damage bars and press marks, "inferred" to the dimming.
+    assert "measured</span> — the damage bars and the press marks." in html
+    assert "inferred</span> — the dimming." in html
+
+
+def test_a_withheld_timeline_says_why_instead_of_drawing_an_empty_axis() -> None:
+    # The reason is the domain's own withheld string, not one invented for this
+    # test: proving the template prints whatever reason it is given is the
+    # point, and a hand-rolled sentence the domain never produces would prove
+    # nothing about that. Escaped on comparison: the reason embeds an
+    # apostrophe that autoescape turns into "&#39;".
+    withheld = PlayerTimeline(
+        section=Section(state=SectionState.WITHHELD,
+                        reason=player_timeline_module.NO_PULLS_RECORDED),
+    )
+    html = render(a_report(players=(a_player_card(timeline=withheld),)))
+    assert str(escape(player_timeline_module.NO_PULLS_RECORDED)) in html
+    assert 'class="player-timeline"' not in html
+
+
+def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> None:
+    # design section 6: when an ability's own cooldown exceeds the run, the
+    # not-judged stretch and the press's unavailable span cover the exact same
+    # rectangle. Painted in the wrong order the dashed border would sit under
+    # the filled span and vanish; this proves it paints on top instead.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0),),
+        unavailable=(Span(x=46.0, width=600.0),),
+        not_judged=Span(x=46.0, width=600.0),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        cooldowns=(row,),
+    )
+    html = render(a_report(players=(a_player_card(timeline=timeline),)))
+    on_cooldown_at = html.index('class="on-cooldown"')
+    not_judged_at = html.index('class="not-judged"')
+    assert on_cooldown_at < not_judged_at
 
 
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:

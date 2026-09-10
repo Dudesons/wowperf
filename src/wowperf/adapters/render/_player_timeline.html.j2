@@ -1,0 +1,38 @@
+{# ABOUTME: One player's run as an SVG: pull bands, damage bars, and a row per cooldown. #}
+{# ABOUTME: Prints coordinates computed in the domain; no arithmetic happens here. #}
+{% macro player_timeline(timeline) %}
+{% if timeline and timeline.section.state.value == "withheld" %}
+<p class="withheld">{{ timeline.section.reason }}</p>
+{% elif timeline %}
+<svg class="player-timeline" viewBox="0 0 {{ timeline.width }} {{ timeline.height }}" role="img">
+  {% for x, label in timeline.ticks %}
+  <line class="tick" x1="{{ x }}" y1="{{ timeline.tick_y1 }}" x2="{{ x }}" y2="{{ timeline.tick_y2 }}"/>
+  <text class="tick-label" x="{{ x }}" y="{{ timeline.tick_label_y }}">{{ label }}</text>
+  {% endfor %}
+  {% for band in timeline.pulls %}
+  <rect class="{{ band.css_class }}" x="{{ band.x }}" y="{{ timeline.band_y }}" width="{{ band.width }}" height="{{ timeline.band_height }}"><title>{{ band.label }}</title></rect>
+  {% endfor %}
+  {% if timeline.damage %}
+  {% for bar in timeline.damage.bars %}
+  <rect class="damage-bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"/>
+  {% endfor %}
+  <text class="track-label" x="{{ timeline.label_x }}" y="{{ timeline.damage.baseline_y }}">Damage taken</text>
+  {% endif %}
+  {% for row in timeline.cooldowns %}
+  {% for span in row.unavailable %}
+  <rect class="on-cooldown" x="{{ span.x }}" y="{{ row.baseline_y }}" width="{{ span.width }}" height="{{ timeline.row_height }}"/>
+  {% endfor %}
+  {% if row.not_judged %}
+  <rect class="not-judged" x="{{ row.not_judged.x }}" y="{{ row.baseline_y }}" width="{{ row.not_judged.width }}" height="{{ timeline.row_height }}"/>
+  {% endif %}
+  {% for press in row.presses %}
+  <rect class="press" x="{{ press.x }}" y="{{ row.baseline_y }}" width="4" height="{{ timeline.row_height }}"/>
+  {% endfor %}
+  <text class="track-label" x="{{ timeline.label_x }}" y="{{ row.baseline_y }}">{{ row.label }}</text>
+  {% endfor %}
+</svg>
+{% if timeline.damage %}<p class="sub">{{ timeline.damage.peak_label }}</p>{% endif %}
+<p class="sub">{{ timeline.legend }}</p>
+<p class="badges">{% if timeline.badge_measured %}<span class="badge {{ timeline.badge_measured.tint }}">{{ timeline.badge_measured.label }}</span> — the damage bars and the press marks.{% endif %}{% if timeline.badge_inferred %} <span class="badge {{ timeline.badge_inferred.tint }}">{{ timeline.badge_inferred.label }}</span> — the dimming.{% endif %}</p>
+{% endif %}
+{% endmacro %}

@@ -368,6 +368,8 @@ class PlayerCard(Frozen):
     index, because two names can reduce to the same slug and a duplicate id
     would give one player another's sub-tab.
     """
+    timeline: PlayerTimeline | None = None
+    """This player's own run, drawn. `None` when the run had no span to draw on."""
 
 
 class Header(Frozen):

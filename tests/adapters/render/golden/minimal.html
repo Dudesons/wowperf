@@ -107,6 +107,12 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+.player-timeline { display: block; width: 100%; margin: 10px 0 2px; }
+.pull-band { fill: var(--line); }
+.damage-bar { fill: var(--hit); }
+.on-cooldown { fill: var(--line); opacity: 0.55; }
+.not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+.press { fill: var(--ours); }
 </style>
 </head>
 <body>
@@ -263,6 +269,17 @@ never be summed.</p>
     <span class="sub">Mage Arcane</span>
   </div>
   <p class="stats">1 cast in 2:20 of pulls · 1 death · 0 interrupts</p>
+  <svg class="player-timeline" viewBox="0 0 680.0 124.0" role="img">
+  <line class="tick" x1="46.0" y1="22.0" x2="46.0" y2="96.0"/>
+  <text class="tick-label" x="46.0" y="112.0">0:00</text>
+  <rect class="pull-band" x="46.0" y="28.0" width="183.0" height="10.0"><title>Pack 0</title></rect>
+  <rect class="pull-band block-boss" x="412.0" y="28.0" width="244.0" height="10.0"><title>Pack 1</title></rect>
+  <rect class="damage-bar" x="183.2" y="44.0" width="15.2" height="32.0"/>
+  <text class="track-label" x="40.0" y="76.0">Damage taken</text>
+</svg>
+<p class="sub">Tallest bar: 82,410 damage in 5 seconds</p><p class="sub">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight.</p>
+<p class="badges"><span class="badge badge-measured">measured</span> — the damage bars and the press marks. <span class="badge badge-inferred">inferred</span> — the dimming.</p>
+
   <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 </div>
 
