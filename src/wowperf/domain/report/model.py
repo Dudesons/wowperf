@@ -186,7 +186,8 @@ class PlayerTimeline(Frozen):
     label_x: float = 0.0
     row_height: float = 0.0
     legend: str = ""
-    badges: tuple[Badge, ...] = ()
+    badge_measured: Badge | None = None
+    badge_inferred: Badge | None = None
 
 
 class RecapRow(Frozen):

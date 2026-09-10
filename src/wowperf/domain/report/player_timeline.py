@@ -129,5 +129,6 @@ def build_player_timeline(
         label_x=LABEL_X,
         row_height=ROW_HEIGHT,
         legend=LEGEND,
-        badges=(badge_for(Confidence.MEASURED), badge_for(Confidence.INFERRED)),
+        badge_measured=badge_for(Confidence.MEASURED),
+        badge_inferred=badge_for(Confidence.INFERRED),
     )
