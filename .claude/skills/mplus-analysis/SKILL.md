@@ -249,8 +249,13 @@ block, the `findings_are_ranked_not_additive` warning, and the findings themselv
 an `ability_id`, an `ability_name` and a `quantifier`.
 
 `comparison.references` lists every candidate the sample considered, loaded or not, each carrying
-its `axis` (`speed` or `parse`), a link to the report, and — for one that was not used — the
-reason. `sample_size` gives how many references loaded per axis. It is not the denominator of any
+its `axis` (`speed` or `parse`), a link to the report, the reason it was not used if it was not,
+and its `player_slug` — whose comparison weighed it, empty on the speed axis, which is drawn once
+for the run. `comparison.players` lists the players compared, subject first, by that same slug.
+`sample_size.speed` gives how many references loaded for the run, and `sample_size.parse` how
+many loaded for each of those players, keyed by their slug. A player absent from that mapping was
+never compared, which is not what a player present with a zero means: theirs is a leaderboard
+that returned nothing. None of these counts is the denominator of any
 one finding: eligibility is decided per finding — our own keystone level for a duration, a route
 that lined up for a skipped pack, aura data for an uptime — so the "4 of 5" in a title is the only
 count that describes what that finding was drawn from. `comparison.compared` is

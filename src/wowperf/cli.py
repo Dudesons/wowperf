@@ -114,10 +114,10 @@ ICON_CACHE_SUBDIR = "icons"
 
 
 def build_icons(
-    loaded: LoadedRun, parse_sample: ParseSample | None, cache_dir: Path
+    loaded: LoadedRun, parse_samples: Sequence[ParseSample], cache_dir: Path
 ) -> BlizzardIcons | None:
-    """Icons for one run: its own ability dictionary, the parse sample's, and a store
-    that keeps them for good.
+    """Icons for one run: its own ability dictionary, every parse sample's, and a
+    store that keeps them for good.
 
     None when the store cannot be created, which `render` already understands as
     a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s
@@ -130,9 +130,12 @@ def build_icons(
     is said out loud rather than leaving them a report that merely looks plain.
 
     A comparison names an ability our player never cast, so that ability's file
-    name is in the reference's own dictionary and in no other. Ours is overlaid
-    last: where both name an id they name the same file, so the order settles
-    determinism rather than correctness.
+    name is in the reference's own dictionary and in no other. Every compared
+    player's sample is read, not only the subject's: a teammate's comparison
+    draws on their own specialisation's references, and a card whose rows the
+    resolver has never heard of draws them with no icon at all. Ours is
+    overlaid last: where both name an id they name the same file, so the order
+    settles determinism rather than correctness.
     """
     try:
         store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
@@ -153,8 +156,9 @@ def build_icons(
         return response.status_code, response.headers.get("content-type", ""), response.content
 
     names: dict[int, str] = {}
-    for member in parse_sample.members if parse_sample else ():
-        names.update(member.ability_icons)
+    for sample in parse_samples:
+        for member in sample.members:
+            names.update(member.ability_icons)
     names.update(loaded.ability_icon_map)
     return BlizzardIcons(names, store, fetch)
 
@@ -277,6 +281,31 @@ def _resolve_player(run: Run, requested: str | None) -> Player:
     raise ValueError(
         f"{name!r} is not in this run's roster. Pass --player with one of: {roster}"
     )
+
+
+def _resolve_requested(
+    run: Run, requested: Sequence[str], everyone: bool
+) -> tuple[Player, tuple[Player, ...]]:
+    """The subject, and every player to compare.
+
+    The subject is the first name given, or the report owner when none is: it
+    decides whose card opens the Players tab and whose name the findings file
+    carries, and a report with no subject at all would leave both undecided.
+    `--all-players` widens who is compared without touching who the subject is,
+    so the two flags combine rather than conflict.
+
+    Keyed by actor id throughout, so a player named twice — or named and then
+    swept up by `--all-players` — is compared once. Two comparisons of one
+    player would mint every one of their findings twice under a single id, and
+    the page would draw the pair under duplicate element ids.
+    """
+    subject = _resolve_player(run, requested[0] if requested else None)
+    named = [subject] + [_resolve_player(run, name) for name in requested[1:]]
+    by_actor = {player.actor_id: player for player in named}
+    if everyone:
+        for player in run.players:
+            by_actor.setdefault(player.actor_id, player)
+    return subject, tuple(by_actor.values())
 
 
 def _record(
@@ -515,6 +544,15 @@ def _fetch_parse_auras(
     return sample.model_copy(update={"members": tuple(updated_members)}), our_auras
 
 
+def _parse_sample_size(subject: ComparisonSubject) -> int:
+    """How many parse references this player's comparison actually drew.
+
+    A sample nobody could fill and a sample never drawn read the same to a
+    reader — the leaderboard offered nothing — so both count zero.
+    """
+    return len(subject.parse.members) if subject.parse else 0
+
+
 def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]) -> str:
     """Explain the rule once, then list every line that breaks it."""
     lines = "\n".join(f"  line {number}: {line}" for number, line in offending)
@@ -533,8 +571,17 @@ def analyze(
         "--throughput-ceiling",
         help="Also report throughput cooldowns used far below what their cooldown allowed",
     ),
-    player: str | None = typer.Option(
-        None, help="Subject of the individual comparison; defaults to the report owner"
+    player: list[str] = typer.Option(
+        [],
+        "--player",
+        help="Compare this player against top parses of their specialisation. "
+        "Repeatable; the first one given is the report's subject. "
+        "Defaults to the report owner.",
+    ),
+    all_players: bool = typer.Option(
+        False,
+        "--all-players",
+        help="Compare every player in the run, not only the subject",
     ),
     no_compare: bool = typer.Option(
         False, "--no-compare", help="Skip both reference runs and analyse in isolation"
@@ -587,9 +634,15 @@ def analyze(
             include_cooldown_ceiling=throughput_ceiling,
         )
 
-        subject = _resolve_player(loaded.run, player)
+        subject, to_compare = _resolve_requested(loaded.run, player, all_players)
         speed_sample: SpeedSample | None = None
-        parse_sample: ParseSample | None = None
+        # Everyone the comparison was asked for, in the order their cards come
+        # in. This is the one source for who was compared: the slugs stamped
+        # onto the findings, the slugs the report matches cards by, the JSON's
+        # own list, the per-player sample sizes and the page's icons are all
+        # read off it, so none of them can drift from another. Empty means the
+        # comparison did not run.
+        subjects: list[ComparisonSubject] = []
         compared_slugs: frozenset[str] | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
@@ -598,7 +651,9 @@ def analyze(
             # player's slug onto every finding it emits about them, and the report
             # matches their card by it.
             slugs = slugs_by_actor(loaded.run)
-            requested: tuple[tuple[Player, str], ...] = ((subject, slugs[subject.actor_id]),)
+            requested: tuple[tuple[Player, str], ...] = tuple(
+                (one, slugs[one.actor_id]) for one in to_compare
+            )
             # Every candidate `_samples` weighed comes back as `reference_records`,
             # carried onto both the report's provenance below and the comparison
             # block of the findings JSON.
@@ -606,7 +661,6 @@ def analyze(
                 rankings, references, loaded.run, requested
             )
 
-            subjects: list[ComparisonSubject] = []
             for player_to_compare, slug in requested:
                 sample, our_auras = _fetch_parse_auras(
                     parse_samples[player_to_compare.actor_id],
@@ -623,24 +677,9 @@ def analyze(
                         our_auras=our_auras,
                     )
                 )
-            # Read off the subjects themselves, never rebuilt from the roster or
-            # the requested names: a second source of slugs can drift, and a card
-            # would then read "no comparison was requested" while carrying that
-            # player's own comparison rows.
-            compared_slugs = frozenset(compared.slug for compared in subjects)
-            # The findings JSON's parse sample size and the page's icons are the
-            # subject's own; everyone else's sample is carried by their
-            # `ComparisonSubject` alone.
-            parse_sample = next(
-                (
-                    compared.parse
-                    for compared in subjects
-                    if compared.player.actor_id == subject.actor_id
-                ),
-                None,
-            )
+            compared_slugs = frozenset(one.slug for one in subjects)
 
-            findings += compare(ours=loaded, speed=speed_sample, subjects=tuple(subjects))
+            findings += compare(ours=loaded, speed=speed_sample, subjects=subjects)
             findings = rank_findings(findings)
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -658,11 +697,19 @@ def analyze(
         "player": subject.name,
         "comparison": {
             "compared": bool(
-                (speed_sample and speed_sample.members) or (parse_sample and parse_sample.members)
+                (speed_sample and speed_sample.members)
+                or any(_parse_sample_size(one) for one in subjects)
             ),
+            # Who was compared, subject first. An empty list says nobody was
+            # asked for, which a reader can now tell from a leaderboard that
+            # had nothing to offer without inspecting the findings.
+            "players": [one.slug for one in subjects],
             "sample_size": {
                 "speed": len(speed_sample.members) if speed_sample else 0,
-                "parse": len(parse_sample.members) if parse_sample else 0,
+                # The parse axis is drawn once per player, so its size is a
+                # figure per player: one number could only ever describe one
+                # of them, and would under-report the rest.
+                "parse": {one.slug: _parse_sample_size(one) for one in subjects},
             },
             "references": [
                 {
@@ -674,6 +721,7 @@ def analyze(
                     "loaded": record.loaded,
                     "reason": record.reason,
                     "from_cache": record.from_cache,
+                    "player_slug": record.player_slug,
                 }
                 for record in reference_records
             ],
@@ -712,7 +760,11 @@ def analyze(
                     throughput=throughput,
                     reference_records=reference_records,
                 ),
-                icons=build_icons(loaded, parse_sample, cache_dir),
+                icons=build_icons(
+                    loaded,
+                    tuple(one.parse for one in subjects if one.parse is not None),
+                    cache_dir,
+                ),
             ),
             encoding="utf-8",
         )

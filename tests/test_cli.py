@@ -31,7 +31,9 @@ from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
+from wowperf.domain.report.model import ReferenceRecord
 
 runner = CliRunner()
 
@@ -260,7 +262,26 @@ PARSE_REFERENCE_CHARACTER_NAME = "Bríala"
 SPEED_REFERENCE_CHARACTER_NAME = "Speedrunner"
 
 
-def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str, Any]:
+ANALYZE_TEAMMATES = (("Stonewake", "Warrior", "Protection"), ("Кириллица", "Priest", "Holy"))
+"""The roster behind the report owner, for the tests that compare more than one player.
+
+Two teammates rather than one, so "the whole roster" is distinguishable from
+"the subject and one more"; two specialisations neither of which is the
+owner's, so each player draws a leaderboard of their own rather than sharing
+one; and a wholly non-Latin name, because a real roster has them and its slug
+falls back to the roster index alone.
+"""
+
+ANALYZE_ROSTER_SIZE = 1 + len(ANALYZE_TEAMMATES)
+"""The whole roster: the report owner, and every teammate behind them."""
+
+
+def _fights_payload_for(
+    code: str,
+    fight_id: int,
+    player_name: str,
+    teammates: tuple[tuple[str, str, str], ...] = (),
+) -> dict[str, Any]:
     """A copy of the shared fixture, addressed at one report code and fight id.
 
     The rankings tests need `WclRunRepository.load` to succeed for the two
@@ -268,6 +289,10 @@ def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str,
     carries `code` — `select_keystone_fight` picks the fight id afterwards, in
     Python — so the fixture returned for a code must already carry the fight id
     that code's caller is going to ask for.
+
+    `teammates` are (name, class, specialisation) triples appended behind the
+    owner. The roster's order is `friendlyPlayers`' order, and a player's slug
+    carries their roster index, so the owner stays index 0 whatever follows.
     """
     payload: dict[str, Any] = json.loads(json.dumps(ANALYZE_FIGHTS_PAYLOAD))
     report = payload["reportData"]["report"]
@@ -276,8 +301,17 @@ def _fights_payload_for(code: str, fight_id: int, player_name: str) -> dict[str,
     # character's own capitalisation, which is what the default-player test
     # relies on `find_player`'s case-folding to bridge.
     report["owner"] = {"name": player_name.lower()}
-    report["fights"][0]["id"] = fight_id
+    fight = report["fights"][0]
+    fight["id"] = fight_id
     report["masterData"]["actors"][0]["name"] = player_name
+    for index, (name, class_name, spec) in enumerate(teammates):
+        actor_id = 700 + index
+        report["masterData"]["actors"].append(
+            {"id": actor_id, "name": name, "subType": class_name, "server": "Hyjal"}
+        )
+        fight["friendlyPlayers"].append(actor_id)
+        fight["friendlySpecs"].append(spec)
+        fight["friendlyItemLevels"].append(318)
     return payload
 
 
@@ -352,6 +386,7 @@ def build_analyze_transport(
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
     abilities: list[dict[str, Any]] | None = None,
     death_events: list[dict[str, Any]] | None = None,
+    teammates: tuple[tuple[str, str, str], ...] = (),
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -405,6 +440,10 @@ def build_analyze_transport(
     default empty stream — together letting a caller put a real death, with a
     real killing blow, on the report a death card is built from.
 
+    `teammates` widens the roster of the run under analysis, and only that run:
+    a reference whose roster grew would be a different fixture, and one of these
+    names appearing on a reference would get it excluded as a run of our own.
+
     Every answer, `RateLimit` included, carries a quota block off one rising
     counter. Two counters would let the closing read fall below the reading before
     it, which the ledger would take for an hour rollover — silently dropping the
@@ -416,7 +455,10 @@ def build_analyze_transport(
     }
     fights_by_code = {
         code: _fights_payload_for(
-            code, fight_id, reference_roster_name.get(code, player_name)
+            code,
+            fight_id,
+            reference_roster_name.get(code, player_name),
+            teammates=teammates if code == "abc123" else (),
         )
         for code, fight_id in (
             ("abc123", 36),
@@ -623,6 +665,7 @@ def run_analyze(
     aura_rows_by_code: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
     abilities: list[dict[str, Any]] | None = None,
     death_events: list[dict[str, Any]] | None = None,
+    teammates: tuple[tuple[str, str, str], ...] = (),
 ) -> Any:
     """Invoke `analyze abc123`, mocking the report queries and both leaderboards."""
     transport = build_analyze_transport(
@@ -634,6 +677,7 @@ def run_analyze(
         abilities=abilities,
         death_events=death_events,
         aura_rows_by_code=aura_rows_by_code,
+        teammates=teammates,
     )
     return _invoke(tmp_path, list(extra_args), transport)
 
@@ -819,7 +863,7 @@ def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
     payload = written_findings(tmp_path)
     assert payload["player"] == "Emberkin"
     assert payload["comparison"]["compared"] is True
-    assert payload["comparison"]["sample_size"] == {"speed": 1, "parse": 1}
+    assert payload["comparison"]["sample_size"] == {"speed": 1, "parse": {"emberkin-0": 1}}
     assert any(reference["report_code"] for reference in payload["comparison"]["references"])
     assert any(f["id"].startswith("compare.") for f in payload["findings"])
 
@@ -887,7 +931,8 @@ def test_no_compare_skips_both_references(tmp_path: Path) -> None:
     assert result.exit_code == 0
     payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
-    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": 0}
+    # Nobody was compared at all, so the parse axis names no player.
+    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": {}}
     assert payload["comparison"]["references"] == []
     assert not any(f["id"].startswith("compare.") for f in payload["findings"])
 
@@ -927,6 +972,132 @@ def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert written_findings(tmp_path)["player"] == "Emberkin"
+
+
+def test_by_default_only_the_report_owner_is_compared(tmp_path: Path) -> None:
+    """The default costs what it always cost: a run given a full roster and
+    neither flag draws one parse sample, not one per player."""
+    result = run_analyze(tmp_path, teammates=ANALYZE_TEAMMATES)
+
+    assert result.exit_code == 0, result.output
+    assert written_findings(tmp_path)["comparison"]["players"] == ["emberkin-0"]
+
+
+def test_naming_two_players_compares_both_and_makes_the_first_the_subject(
+    tmp_path: Path,
+) -> None:
+    result = run_analyze(
+        tmp_path, "--player", "Stonewake", "--player", "Emberkin", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    assert payload["player"] == "Stonewake"
+    assert payload["comparison"]["players"] == ["stonewake-1", "emberkin-0"]
+
+
+def test_all_players_compares_the_whole_roster(tmp_path: Path) -> None:
+    result = run_analyze(tmp_path, "--all-players", teammates=ANALYZE_TEAMMATES)
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    assert len(payload["comparison"]["players"]) == ANALYZE_ROSTER_SIZE
+    # The wholly non-Latin name keeps no ASCII letter, so its slug is the
+    # fallback plus its roster index — and the whole roster means it too.
+    assert payload["comparison"]["players"] == ["emberkin-0", "stonewake-1", "player-2"]
+
+
+def test_all_players_with_a_named_player_keeps_that_player_as_the_subject(
+    tmp_path: Path,
+) -> None:
+    """The two flags combine rather than conflict: one decides who the report is
+    about, the other how many players it compares."""
+    result = run_analyze(
+        tmp_path, "--all-players", "--player", "Stonewake", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    assert payload["player"] == "Stonewake"
+    assert len(payload["comparison"]["players"]) == ANALYZE_ROSTER_SIZE
+    assert payload["comparison"]["players"][0] == "stonewake-1"
+
+
+def test_the_same_player_named_twice_is_compared_once(tmp_path: Path) -> None:
+    """Two subjects sharing a slug would mint two findings under one id, so the
+    page would draw that player's rows twice under duplicate element ids."""
+    result = run_analyze(
+        tmp_path, "--player", "Emberkin", "--player", "emberkin", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    assert payload["comparison"]["players"] == ["emberkin-0"]
+    ids = [finding["id"] for finding in payload["findings"]]
+    assert len(ids) == len(set(ids))
+
+
+def test_no_compare_makes_both_flags_inert_rather_than_an_error(tmp_path: Path) -> None:
+    result = run_analyze(
+        tmp_path, "--all-players", "--no-compare", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    assert written_findings(tmp_path)["comparison"]["players"] == []
+
+
+def test_an_unknown_name_says_which_one_missed(tmp_path: Path) -> None:
+    result = run_analyze(
+        tmp_path, "--player", "Emberkin", "--player", "Nobodyhere", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 1
+    assert "Nobodyhere" in result.output
+    # The message names the one that missed, not the last one checked: only the
+    # roster listing that follows may mention the name that resolved.
+    assert "Emberkin" not in result.output.split("is not in this run's roster")[0]
+
+
+def test_the_compared_players_are_exactly_the_ones_the_findings_and_the_cards_name(
+    tmp_path: Path,
+) -> None:
+    """`comparison.players`, the slugs stamped onto the findings, and the cards
+    the page gives a comparison section all come off one list of subjects.
+
+    Were they rebuilt separately they could drift, and a card would then read
+    "no parse comparison was requested for this player" while carrying that
+    player's own comparison rows.
+    """
+    result = run_analyze(
+        tmp_path, "--player", "Emberkin", "--player", "Stonewake", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    requested = set(payload["comparison"]["players"])
+    assert requested == {"emberkin-0", "stonewake-1"}
+    stamped = {
+        finding["player_slug"] for finding in payload["findings"] if finding["player_slug"]
+    }
+    assert stamped == requested
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    # Every card outside the requested set says so, and no card inside it does.
+    assert html.count(NOT_REQUESTED) == ANALYZE_ROSTER_SIZE - len(requested)
+
+
+def test_the_sample_size_names_every_compared_players_own_sample(tmp_path: Path) -> None:
+    """The parse axis is drawn once per player, so its size is a figure per
+    player: a scalar read off the subject alone would under-report the rest."""
+    result = run_analyze(
+        tmp_path, "--player", "Emberkin", "--player", "Stonewake", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    assert payload["comparison"]["sample_size"] == {
+        "speed": 1,
+        "parse": {"emberkin-0": 1, "stonewake-1": 1},
+    }
 
 
 def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:
@@ -974,7 +1145,9 @@ def test_every_candidate_failing_to_load_yields_compared_false(tmp_path: Path) -
     assert result.exit_code == 0, result.output
     payload = written_findings(tmp_path)
     assert payload["comparison"]["compared"] is False
-    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": 0}
+    # The owner was compared and their leaderboard yielded nothing, which is
+    # not the same as nobody having been compared at all.
+    assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": {"emberkin-0": 0}}
     assert all(not r["loaded"] for r in payload["comparison"]["references"])
     assert any(f["id"] == "compare.speed.unavailable" for f in payload["findings"])
 
@@ -1011,9 +1184,11 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     )
     assert speed_reference["loaded"] is True
     assert speed_reference["reason"] == ""
+    # The speed axis is drawn once for the run, so its records name no player.
+    assert speed_reference["player_slug"] == ""
     assert set(speed_reference.keys()) == {
         "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
-        "from_cache",
+        "from_cache", "player_slug",
     }
 
     parse_reference = references["parse"]
@@ -1025,10 +1200,28 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     )
     assert parse_reference["loaded"] is True
     assert parse_reference["reason"] == ""
+    # The parse axis is drawn per player, and the record says for whom.
+    assert parse_reference["player_slug"] == "emberkin-0"
     assert set(parse_reference.keys()) == {
         "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
-        "from_cache",
+        "from_cache", "player_slug",
     }
+
+
+def test_the_findings_json_mirrors_every_field_a_reference_record_carries(
+    tmp_path: Path,
+) -> None:
+    """The JSON's reference block is hand-built rather than dumped from the
+    model, so nothing but this notices a field of `ReferenceRecord` that never
+    reaches the file. A reader who cannot see which player's sample weighed a
+    candidate cannot check that comparison's provenance at all."""
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0, result.output
+    references = written_findings(tmp_path)["comparison"]["references"]
+    assert references, "the fixture must produce at least one reference to make this a real test"
+    for reference in references:
+        assert set(reference) == set(ReferenceRecord.model_fields)
 
 
 def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: Path) -> None:
@@ -1548,6 +1741,9 @@ def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
     assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
 
     by_code = {record.report_code: record for record in records if record.axis == "parse"}
+    # Every outcome names whose comparison weighed it, not only the clean one:
+    # a record dropped for any reason is provenance for that player's sample.
+    assert {record.player_slug for record in by_code.values()} == {"emberkin-0"}
     assert by_code[OUR_RUN.report_code].loaded is False
     assert by_code[OUR_RUN.report_code].reason == "this is the run under analysis"
     assert by_code["brokenparse"].loaded is False
@@ -1736,6 +1932,9 @@ def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
     dropped = [record for record in records if record.report_code == "ourown"]
     assert len(dropped) == 2
     assert all("one of our own characters" in record.reason for record in dropped)
+    # One record per player, each naming the sample it was dropped from — the
+    # same candidate is weighed once for the mage and once for the tank.
+    assert {record.player_slug for record in dropped} == {"emberkin-0", "stonewake-1"}
 
 
 def test_a_parse_candidate_records_whose_comparison_weighed_it(tmp_path: Path) -> None:
@@ -2110,10 +2309,46 @@ def test_the_resolver_knows_an_icon_named_only_by_a_reference_report(
         run=a_minimal_run(),
         ability_icons=((157997, "spell_ice_nova.jpg"),),
     )
-    icons = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
+    icons = build_icons(ours, (ParseSample(members=(theirs,)),), tmp_path)
 
     assert icons is not None  # build_icons returns None only when the store fails
     assert icons.data_uri(157997) is not None
+
+
+def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Every compared player's sample feeds the resolver, not the subject's alone.
+
+    A teammate's comparison names abilities out of their own specialisation's
+    references, which nothing else on the page has ever heard of; a resolver
+    built from the subject's sample would draw that card's rows with no icons
+    at all.
+    """
+
+    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    ours = LoadedRun(run=a_minimal_run())
+    mine = ParseMember(
+        row=_parse_row_model(),
+        run=a_minimal_run(),
+        ability_icons=((157997, "spell_ice_nova.jpg"),),
+    )
+    theirs = ParseMember(
+        row=_parse_row_model(),
+        run=a_minimal_run(),
+        ability_icons=((6572, "ability_warrior_revenge.jpg"),),
+    )
+    icons = build_icons(
+        ours, (ParseSample(members=(mine,)), ParseSample(members=(theirs,))), tmp_path
+    )
+
+    assert icons is not None
+    assert icons.data_uri(157997) is not None
+    assert icons.data_uri(6572) is not None
 
 
 def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> None:
@@ -2131,7 +2366,7 @@ def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> N
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(httpx, "get", fake_get)
-        resolver = build_icons(ours, ParseSample(members=(theirs,)), tmp_path)
+        resolver = build_icons(ours, (ParseSample(members=(theirs,)),), tmp_path)
         assert resolver is not None
         resolver.data_uri(1)
 
