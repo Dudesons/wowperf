@@ -2,7 +2,7 @@
 # ABOUTME: Every coordinate is asserted here, because the template computes none of them.
 
 from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
-from wowperf.domain.events import DamageTakenEvent
+from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
 from wowperf.domain.report.player_timeline import (
@@ -14,9 +14,27 @@ from wowperf.domain.report.player_timeline import (
     build_player_timeline,
 )
 from wowperf.domain.report.timeline import TRACK_X0, TRACK_X1, axis_scale, axis_ticks
-from wowperf.domain.season import Defensives, ThroughputCooldowns
+from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives, ThroughputCooldowns
 
 NO_THROUGHPUT = ThroughputCooldowns(entries=())
+
+
+def a_cast(actor_id: int, ability_id: int, at_ms: int) -> CastEvent:
+    return CastEvent(
+        actor_id=actor_id, ability_id=ability_id, ability_name="Shield", timestamp_ms=at_ms
+    )
+
+
+def a_hit(actor_id: int, at_ms: int, amount: int) -> DamageTakenEvent:
+    return DamageTakenEvent(
+        actor_id=actor_id, ability_id=9, ability_name="Cleave", amount=amount, timestamp_ms=at_ms
+    )
+
+
+SHIELD = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=180.0)
+BURST = CooldownAbility(ability_id=49028, name="Dancing Rune Weapon", cooldown_seconds=120.0)
+KIT = Defensives(entries=(("DeathKnight/Blood", (SHIELD,)),))
+BURSTS = ThroughputCooldowns(entries=(("DeathKnight/Blood", (BURST,)),))
 
 
 def test_the_axis_scale_fills_the_track_width() -> None:
@@ -62,7 +80,8 @@ def test_a_player_with_nothing_to_draw_gets_a_withheld_section_and_no_bands() ->
 
 def test_a_pull_band_starts_where_the_axis_starts_and_a_boss_is_marked() -> None:
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
-    timeline = a_timeline(LoadedRun(run=run))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
     assert timeline.pulls[0].x == TRACK_X0
     assert timeline.pulls[1].is_boss
     assert "block-boss" in timeline.pulls[1].css_class
@@ -74,21 +93,25 @@ def test_a_later_pulls_x_is_its_scaled_and_rounded_offset_from_the_first() -> No
     # the scale actually being applied, and on the origin actually being the
     # first pull's start rather than pull 1's own.
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
-    timeline = a_timeline(LoadedRun(run=run))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
     scale = axis_scale(180.0)  # last pull's end (180_000 ms) minus the origin (0)
     assert timeline.pulls[1].x == round(TRACK_X0 + 120.0 * scale, PRECISION)
 
 
 def test_a_bands_width_is_its_scaled_and_rounded_duration() -> None:
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
-    timeline = a_timeline(LoadedRun(run=run))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
     scale = axis_scale(180.0)
     assert timeline.pulls[1].width == round(60.0 * scale, PRECISION)
 
 
 def test_the_height_grows_with_the_rows_it_has_to_hold() -> None:
-    run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    timeline = a_timeline(LoadedRun(run=run))
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    timeline = a_timeline(loaded, defensives=KIT)
+    assert timeline.cooldowns != ()
     assert timeline.height == FIRST_ROW_Y + len(timeline.cooldowns) * ROW_HEIGHT + 28.0
 
 
@@ -98,15 +121,97 @@ def test_the_measured_and_inferred_badges_are_not_interchangeable() -> None:
     # damage bars and press marks read, and `inferred` on the one the dimming
     # reads, exactly as `HealthCurve.line_badge`/`reading_badge` do.
     run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    timeline = a_timeline(LoadedRun(run=run))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
     assert timeline.badge_measured is not None and timeline.badge_measured.label == "measured"
     assert timeline.badge_inferred is not None and timeline.badge_inferred.label == "inferred"
 
 
-def a_hit(actor_id: int, at_ms: int, amount: int) -> DamageTakenEvent:
-    return DamageTakenEvent(
-        actor_id=actor_id, ability_id=9, ability_name="Cleave", amount=amount, timestamp_ms=at_ms
+def test_an_ability_the_player_never_cast_gets_no_row_at_all() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=())
+    assert a_timeline(loaded, defensives=KIT).cooldowns == ()
+
+
+def test_an_ability_the_player_cast_once_gets_a_row_with_one_press() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    rows = a_timeline(loaded, defensives=KIT).cooldowns
+    assert len(rows) == 1
+    assert rows[0].label == "Icebound Fortitude"
+    assert rows[0].ability_id == SHIELD.ability_id
+    assert len(rows[0].presses) == 1
+
+
+def test_another_players_cast_never_gives_this_player_a_row() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(2, SHIELD.ability_id, 300_000),))
+    assert a_timeline(loaded, actor_id=1, defensives=KIT).cooldowns == ()
+
+
+def test_a_press_dims_the_row_for_the_abilitys_own_cooldown() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    scale = axis_scale(600.0)
+    span = next(s for s in row.unavailable if s.x == round(TRACK_X0 + 300.0 * scale, 1))
+    assert span.width == round(180.0 * scale, 1)
+
+
+def test_the_runs_opening_is_not_judged_for_as_long_as_the_cooldown_lasts() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.not_judged is not None
+    assert row.not_judged.x == TRACK_X0
+    assert row.not_judged.width == round(180.0 * axis_scale(600.0), 1)
+
+
+def test_throughput_rows_come_before_defensive_rows() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, BURST.ability_id, 400_000)),
     )
+    rows = a_timeline(loaded, defensives=KIT, throughput=BURSTS).cooldowns
+    assert [row.label for row in rows] == ["Dancing Rune Weapon", "Icebound Fortitude"]
+
+
+def test_each_row_sits_one_row_height_below_the_last() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, BURST.ability_id, 400_000)),
+    )
+    rows = a_timeline(loaded, defensives=KIT, throughput=BURSTS).cooldowns
+    assert rows[1].baseline_y - rows[0].baseline_y == ROW_HEIGHT
+
+
+def test_a_player_with_pulls_but_nothing_tracked_and_no_damage_is_withheld() -> None:
+    # A positive-length run alone is not enough to draw: a player who cast
+    # none of the cooldowns tracked for their specialisation and took no
+    # damage the log recorded has nothing to put on the axis. A guard that
+    # withheld only on `span <= 0` would draw this as `PRESENT` with an axis
+    # and nothing on it -- the "empty SVG" the design's testing section says
+    # must not happen.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=())
+    timeline = a_timeline(loaded, defensives=KIT)
+    assert timeline.section.state is SectionState.WITHHELD
+    assert timeline.section.reason
+
+
+def test_a_player_with_damage_but_nothing_tracked_still_draws() -> None:
+    # The companion to the test above: a player with something worth drawing --
+    # here, damage taken -- must not be withheld merely because they own no
+    # tracked cooldown they ever pressed. A guard that withheld on "no rows"
+    # alone, without also checking for a damage track, would fail this one.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(), damage_taken=(a_hit(1, 1_000, 100),))
+    timeline = a_timeline(loaded, defensives=KIT)
+    assert timeline.section.state is SectionState.PRESENT
+    assert timeline.damage is not None
+    assert timeline.cooldowns == ()
 
 
 def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_it() -> None:

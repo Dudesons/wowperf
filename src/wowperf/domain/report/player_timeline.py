@@ -3,7 +3,7 @@
 
 from collections import defaultdict
 
-from wowperf.domain.events import DamageTakenEvent
+from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
@@ -12,8 +12,10 @@ from wowperf.domain.report.model import (
     DamageBar,
     DamageTrack,
     PlayerTimeline,
+    Press,
     Section,
     SectionState,
+    Span,
     TimelineBlock,
 )
 from wowperf.domain.report.timeline import (
@@ -23,7 +25,7 @@ from wowperf.domain.report.timeline import (
     axis_scale,
     axis_ticks,
 )
-from wowperf.domain.season import Defensives, ThroughputCooldowns
+from wowperf.domain.season import CooldownAbility, Defensives, ThroughputCooldowns
 
 PRECISION = 1
 """Coordinates are rounded to a tenth of a viewBox unit.
@@ -69,9 +71,13 @@ TICK_LABEL_MARGIN = 12.0
 LABEL_X = 40.0
 """Where a row's ability name ends, right-aligned into the margin left of the axis."""
 
-NOTHING_TO_DRAW = (
-    "This player cast none of the cooldowns tracked for their specialisation, and the run "
-    "recorded no pulls to place them against, so there is no timeline to draw."
+NO_PULLS_RECORDED = (
+    "The run recorded no pulls, so there is no axis to place this player's timeline against."
+)
+
+NOTHING_TRACKED_OR_TAKEN = (
+    "This player cast none of the cooldowns tracked for their specialisation and took no "
+    "damage the log recorded, so there is nothing to draw."
 )
 
 LEGEND = (
@@ -143,6 +149,62 @@ def _damage_track(
     )
 
 
+def _cooldown_rows(
+    casts: tuple[CastEvent, ...],
+    abilities: tuple[CooldownAbility, ...],
+    actor_id: int,
+    scale: float,
+    origin_ms: int,
+    span_seconds: float,
+) -> tuple[CooldownRow, ...]:
+    """One row per ability in `abilities` this player cast at least once.
+
+    Ownership is the whole rule. The data files list what a specialisation can
+    take, not what this player took, and `analysis/defensives.py` already
+    refuses to read silence as availability because "reporting silence as
+    availability would accuse someone of not pressing a button they do not
+    own". Drawn, that accusation is worse than written: an empty row across a
+    whole run reads as a run of missed presses.
+
+    The row's opening is marked not-judged for the ability's own cooldown, for
+    the reason `analysis/throughput.py:ready_at` refuses to judge a window
+    reaching back past the run's start — casts are fetched per fight, so a
+    press before the timer began leaves no record, and calling that stretch
+    ready would guess in the one direction this project never guesses in.
+    """
+    ours = [cast for cast in casts if cast.actor_id == actor_id]
+    owned = {cast.ability_id for cast in ours}
+
+    rows: list[CooldownRow] = []
+    for ability in abilities:
+        if ability.ability_id not in owned:
+            continue
+        presses = sorted(
+            cast.timestamp_ms for cast in ours if cast.ability_id == ability.ability_id
+        )
+        width = round(min(ability.cooldown_seconds, span_seconds) * scale, PRECISION)
+        rows.append(
+            CooldownRow(
+                label=ability.name,
+                ability_id=ability.ability_id,
+                baseline_y=FIRST_ROW_Y + len(rows) * ROW_HEIGHT,
+                presses=tuple(
+                    Press(x=round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION))
+                    for at in presses
+                ),
+                unavailable=tuple(
+                    Span(
+                        x=round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION),
+                        width=width,
+                    )
+                    for at in presses
+                ),
+                not_judged=Span(x=TRACK_X0, width=width),
+            )
+        )
+    return tuple(rows)
+
+
 def build_player_timeline(
     loaded: LoadedRun,
     actor_id: int,
@@ -160,16 +222,31 @@ def build_player_timeline(
     """
     run = loaded.run
     span = run_seconds(run)
-    rows: tuple[CooldownRow, ...] = ()
 
     if span <= 0:
         return PlayerTimeline(
-            section=Section(state=SectionState.WITHHELD, reason=NOTHING_TO_DRAW),
+            section=Section(state=SectionState.WITHHELD, reason=NO_PULLS_RECORDED),
             width=TIMELINE_WIDTH,
         )
 
     scale = axis_scale(span)
     origin = run_start_ms(run)
+    rows = _cooldown_rows(
+        loaded.casts,
+        throughput.for_spec(class_name, spec) + defensives.for_spec(class_name, spec),
+        actor_id,
+        scale,
+        origin,
+        span,
+    )
+    damage = _damage_track(loaded.damage_taken, actor_id, scale, origin)
+
+    if not rows and damage is None:
+        return PlayerTimeline(
+            section=Section(state=SectionState.WITHHELD, reason=NOTHING_TRACKED_OR_TAKEN),
+            width=TIMELINE_WIDTH,
+        )
+
     height = FIRST_ROW_Y + len(rows) * ROW_HEIGHT + BOTTOM_MARGIN
 
     return PlayerTimeline(
@@ -179,7 +256,7 @@ def build_player_timeline(
         pulls=_pull_bands(run, scale, origin),
         band_y=BAND_Y,
         band_height=BAND_HEIGHT,
-        damage=_damage_track(loaded.damage_taken, actor_id, scale, origin),
+        damage=damage,
         cooldowns=rows,
         ticks=axis_ticks(span, scale),
         tick_y1=AXIS_TOP,
