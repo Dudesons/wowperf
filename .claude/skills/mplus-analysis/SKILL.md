@@ -246,27 +246,42 @@ invent a better-sounding one.
 `dungeon_name`, `keystone_level`, `keystone_time_seconds`, `in_time`, `player`), a `comparison`
 block, the `findings_are_ranked_not_additive` warning, and the findings themselves — each with an
 `id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `pull_index`,
-an `ability_id`, an `ability_name` and a `quantifier`.
+an `ability_id`, an `ability_name`, a `quantifier` and a `player_slug`. Every finding carries the
+last of those, and it is empty on any finding that is a statement about the run rather than about
+one player: a route, a tempo or a confound belongs to nobody.
 
 `comparison.references` lists every candidate the sample considered, loaded or not, each carrying
-its `axis` (`speed` or `parse`), a link to the report, the reason it was not used if it was not,
-and its `player_slug` — whose comparison weighed it, empty on the speed axis, which is drawn once
-for the run. `comparison.players` lists the players compared, subject first, by that same slug.
-`sample_size.speed` gives how many references loaded for the run, and `sample_size.parse` how
-many loaded for each of those players, keyed by their slug. A player absent from that mapping was
-never compared, which is not what a player present with a zero means: theirs is a leaderboard
-that returned nothing. None of these counts is the denominator of any
-one finding: eligibility is decided per finding — our own keystone level for a duration, a route
-that lined up for a skipped pack, aura data for an uptime — so the "4 of 5" in a title is the only
-count that describes what that finding was drawn from. `comparison.compared` is
-`false` in two different situations, and the findings tell them apart. Under `--no-compare` the
-comparison never ran, so no `compare.*` finding exists at all and `references` is empty. When a
-leaderboard returned nothing, `compare.speed.unavailable` or `compare.parse.unavailable` is there
-to say so instead, and `references` may still list candidates that were tried and failed to load.
-Both differ again from a comparison that ran and was withheld, which leaves its findings in place
-with `seconds_lost: null` and the reason in the `detail`. The route, tempo, duration and confound
-findings hang off the speed sample; spells, talents and uptime hang off the parse sample. One axis
-can be absent while the other is not.
+its `axis` (`speed` or `parse`), the `report_code`, `fight_id` and `keystone_level` that name it,
+a `url` to the report, whether it `loaded`, the `reason` it was not used if it was not, whether
+everything it needed was already `from_cache`, and the player whose comparison weighed it — twice
+over, as a `player_slug` to match on and a `player_name` spelled the way the page spells it. Both
+are empty on the speed axis, which is drawn once for the run. `comparison.players` lists the
+players compared, subject first, by that same slug. `sample_size.speed` gives how many references
+loaded for the run, and `sample_size.parse` how many loaded for each of those players, keyed by
+their slug. A player absent from that mapping was never compared. A player present with a zero
+was compared and drew nothing, for either of two reasons the count itself does not separate: the
+leaderboard for their specialisation returned nothing, or the log records no specialisation for
+them at all, so no leaderboard could be asked for one. Their own
+`compare.parse.unavailable.<slug>` finding says which. None of these counts is the denominator of
+any one finding: eligibility is decided per finding — our own keystone level for a duration, a
+route that lined up for a skipped pack, aura data for an uptime — so the "4 of 5" in a title is
+the only count that describes what that finding was drawn from.
+
+`comparison.compared` is a statement about the run rather than about the subject: it is `true`
+when the speed sample loaded, or when any one compared player's parse sample did. Under
+`--all-players` a teammate's sample is enough on its own, so a run whose subject drew nothing
+still reports `true`. For the subject's own axis read `sample_size.parse[<subject slug>]`, the
+first entry of `comparison.players`. A `false` therefore means neither axis loaded for anybody,
+and that arises in two different situations the findings tell apart. Under `--no-compare` the
+comparison never ran, so no `compare.*` finding exists at all and `references` is empty.
+Otherwise `compare.speed.unavailable`, and a `compare.parse.unavailable.<slug>` for each compared
+player, are there to say so, and `references` may still list candidates that were tried and
+failed to load. Both differ again from a comparison that ran and was withheld, which leaves its
+findings in place with `seconds_lost: null` and the reason in the `detail`. The route, tempo,
+duration and confound findings hang off the speed sample; spells, talents and uptime hang off the
+parse sample. One axis can be absent while the other is not, and the two are named differently:
+every id in the parse family ends `.<slug>`, because each is a statement about one player, while
+the speed family — `compare.speed.unavailable` included — carries no suffix at all.
 
 The `title` is prose written for a reader. The `id` is a machine identifier. When you want to
 point a reader at a finding, echo its title — they can find it on the page. An id means nothing to
