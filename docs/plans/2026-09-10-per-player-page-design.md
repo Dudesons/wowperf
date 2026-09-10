@@ -1,6 +1,6 @@
 # The Per-Player Page — Design
 
-**Status:** Approved in conversation 2026-09-10. Not yet implemented. Phase J of
+**Status:** Approved and implemented 2026-09-10. Phase J of
 `2026-09-06-audit-and-improvement-roadmap.md`, first half.
 
 **Authority:** `2026-09-03-mplus-postmortem-design.md` remains the authority on analysers,
@@ -255,10 +255,10 @@ tabs do today.
 ## 12. Measurements taken
 
 Recorded 2026-09-10 against report `6Kx1P9GbNXrcLdHa` fight 36 — five players, four deaths,
-the same run `out/6Kx1P9GbNXrcLdHa-36.html` already held from 2026-09-09, rendered from this
-codebase before this branch existed. That file, at 260,645 bytes, is the **before** used
-below; it postdates the 257,988-byte figure once written here and is the closer, more honest
-comparison for the same reason it was chosen: same run, same tool, immediately prior.
+the same run and fight already held from 2026-09-09, rendered from this codebase before this
+branch existed. That render, at 260,645 bytes, is the **before** used below; it postdates the
+257,988-byte figure once written here and is the closer, more honest comparison for the same
+reason it was chosen: same run, same tool, immediately prior.
 
 1. **Bucket width.** Re-rendering at 2, 5 and 10 seconds (`--no-compare`, so the three are
    comparable on structure alone) produced 3,266, 2,062 and 1,609 SVG rects across the
@@ -316,6 +316,14 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    same `<symbol>` sprite, instead of a separate CSS rule per id, would delete the CSS layer
    entirely — about 175 KB, 27% of the final file. Recorded here as a measurement; not done in
    this change.
+
+   A second reading, taken 2026-09-10 by re-running `wowperf analyze` against the same report
+   and fight for closing verification, measured **661,953 bytes** — 2,454 bytes over the after
+   figure above. No code changed between the two renders; the only intervening commit touched
+   `pyproject.toml`'s lint configuration, not the report. The difference sits in content the
+   render captures fresh each run — the provenance section's fetch timestamp, and the mix of
+   reference reports the day-scoped cache still held versus the ones it had to re-fetch — not
+   in what the drawing draws.
 3. **Row count.** Per player, in cooldowns tracked and cast at least once: 6 (Shadow Priest,
    DPS), 5 (Blood Death Knight, tank), 4 (Elemental Shaman, DPS), 4 (Holy Paladin, healer), 5
    (Arcane Mage, DPS). All five sit at or under the assumed six-to-twelve range's floor, none
