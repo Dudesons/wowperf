@@ -139,9 +139,19 @@ class DamageTrack(Frozen):
 
 
 class Press(Frozen):
-    """One cast of a tracked cooldown, placed on its row's axis."""
+    """One cast of a tracked cooldown, placed on its row's axis.
+
+    `x` is the instant itself, and the narrow mark the template always draws
+    uses it as a left edge. `icon_x` places a second, wider mark -- the
+    ability's icon, drawn only once one resolves -- centred on that same
+    instant instead: an SVG `<image>`/`<use>` element's own `x` is its own
+    left edge too, and the icon is drawn several times wider than the plain
+    mark it decorates, so drawing it flush with `x` would put its whole body
+    to the right of the instant it is meant to mark.
+    """
 
     x: float
+    icon_x: float
 
 
 class Span(Frozen):

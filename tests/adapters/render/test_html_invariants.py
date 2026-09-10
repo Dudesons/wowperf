@@ -10,7 +10,7 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
-from tests.adapters.render.test_html_sections import FakeIcons
+from tests.adapters.render.test_html_sections import FakeIcons, a_drawn_timeline, a_player_card
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -217,6 +217,20 @@ def rich_html() -> str:
     )
 
 
+def rich_html_with_icon() -> str:
+    # `rich_html()` above is built with no `icons` argument, so it can never
+    # contain a resolved press icon -- the href-scoping test that follows
+    # would still pass even if a future edit drew a remote href on that site,
+    # because nothing here renders one to catch it. This fixture actually
+    # resolves one, against a player card built directly rather than through
+    # `build_report`, the same shortcut `test_html_sections.py` takes to put
+    # a drawn timeline on the page without fetching a real run through it.
+    return render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+
+
 def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     # Guards the fixture above against ever drifting back to something vacuous:
     # the tests below are only meaningful if the page they render truly contains
@@ -229,6 +243,26 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     hrefs = re.findall(r'href="([^"]*)"', html)
     assert any(href.startswith("#") for href in hrefs)
     assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
+
+    # Same guard, for the fixture above: proves it actually resolves an icon
+    # rather than passing the scoping test below by never exercising a
+    # `data:image/` href at all.
+    icon_hrefs = re.findall(r'href="([^"]*)"', rich_html_with_icon())
+    assert any(href.startswith("data:image/") for href in icon_hrefs)
+
+
+def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
+    # The three-prefix rule below is proved against `rich_html()`, which never
+    # resolves a press icon at all -- so a future edit drawing `<image
+    # href="https://…">` on the timeline would pass it silently. This applies
+    # the same rule to a page that actually resolves one.
+    html = rich_html_with_icon()
+    hrefs = re.findall(r'href="([^"]*)"', html)
+    assert any(href.startswith("data:image/") for href in hrefs)
+    for href in hrefs:
+        assert href.startswith("#") or href.startswith(
+            "https://www.warcraftlogs.com/reports/"
+        ) or href.startswith("data:image/"), href
 
 
 FORBIDDEN_IN_SCRIPT = (
@@ -455,6 +489,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (DamageBar, "height"),
     (DamageTrack, "baseline_y"),
     (Press, "x"),
+    (Press, "icon_x"),
     (Span, "x"),
     (Span, "width"),
     (CooldownRow, "ability_id"),  # a spell's identity, not a duration

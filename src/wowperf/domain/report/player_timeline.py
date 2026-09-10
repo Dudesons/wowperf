@@ -186,6 +186,10 @@ def _cooldown_rows(
     ours = [cast for cast in casts if cast.actor_id == actor_id]
     owned = {cast.ability_id for cast in ours}
 
+    def press_at(at: int) -> Press:
+        x = round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION)
+        return Press(x=x, icon_x=round(x - ROW_HEIGHT / 2, PRECISION))
+
     rows: list[CooldownRow] = []
     for ability in abilities:
         if ability.ability_id not in owned:
@@ -199,10 +203,7 @@ def _cooldown_rows(
                 label=ability.name,
                 ability_id=ability.ability_id,
                 baseline_y=FIRST_ROW_Y + len(rows) * ROW_HEIGHT,
-                presses=tuple(
-                    Press(x=round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION))
-                    for at in presses
-                ),
+                presses=tuple(press_at(at) for at in presses),
                 unavailable=tuple(
                     Span(
                         x=round(TRACK_X0 + (at - origin_ms) / 1000 * scale, PRECISION),

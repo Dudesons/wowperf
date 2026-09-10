@@ -255,6 +255,19 @@ def test_a_second_press_inside_the_first_covers_still_draws_its_own_mark() -> No
     assert row.unavailable[0].x + row.unavailable[0].width > row.unavailable[1].x
 
 
+def test_a_presss_icon_is_centred_on_the_instant_it_marks() -> None:
+    # The icon is drawn several times wider than the plain mark it decorates;
+    # if `icon_x` merely equalled `x`, the icon's whole body would sit to the
+    # right of the instant, rather than straddling it.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    press = a_timeline(loaded, defensives=KIT).cooldowns[0].presses[0]
+    scale = axis_scale(600.0)
+    x = round(TRACK_X0 + 300.0 * scale, PRECISION)
+    assert press.x == x
+    assert press.icon_x == round(x - ROW_HEIGHT / 2, PRECISION)
+
+
 def test_throughput_rows_come_before_defensive_rows() -> None:
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(

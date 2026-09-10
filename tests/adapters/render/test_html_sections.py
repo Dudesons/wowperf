@@ -629,7 +629,7 @@ def a_drawn_timeline() -> PlayerTimeline:
             peak_label="Tallest bar: 120,000 damage in 5 seconds",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                               presses=(Press(x=200.0),),
+                               presses=(Press(x=200.0, icon_x=192.0),),
                                unavailable=(Span(x=200.0, width=90.0),),
                                not_judged=Span(x=46.0, width=90.0)),),
         ticks=((46.0, "0:00"),),
@@ -668,8 +668,22 @@ def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() ->
     )
     assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
     # The rule alone proves the resolver ran, not that anything was drawn: split the
-    # stylesheet off and require the drawn element in the body too.
-    assert '<image href="data:image/jpeg;base64,AAA"' in html.split("</style>")[1]
+    # stylesheet off and require both the embedded payload and the element that
+    # draws it from there, in the body.
+    body = html.split("</style>")[1]
+    assert '<image id="icon-45438" href="data:image/jpeg;base64,AAA"' in body
+    assert '<use href="#icon-45438"' in body
+
+
+def test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too() -> None:
+    # The exact instant must stay readable even where an icon would overlap a
+    # neighbouring press, so the narrow mark is drawn whether or not an icon
+    # resolved -- never replaced by the icon.
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    assert 'class="press"' in html.split("</style>")[1]
 
 
 def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
@@ -678,7 +692,11 @@ def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
         icons=FakeIcons({}),
     )
     assert "background-image" not in html
-    assert 'class="press"' in html.split("</style>")[1]
+    body = html.split("</style>")[1]
+    assert 'class="press"' in body
+    # Stronger than the line above: nothing resolved, so no icon element of
+    # any kind -- embedded or drawn -- may appear either.
+    assert "<use" not in body
 
 
 def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_has() -> None:
@@ -686,12 +704,42 @@ def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_h
     # must cost one call, not two, the same guarantee the death-card walk
     # already gives the ids it meets more than once.
     row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                      presses=(Press(x=200.0), Press(x=210.0)))
+                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(row,))
     icons = FakeIcons({})
     render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
     assert icons.asked == [45438]
+
+
+def test_two_presses_of_the_same_ability_share_one_copy_of_the_icon() -> None:
+    # The resolver test above proves the id is asked once; this proves the
+    # payload itself is not copied once per press into the SVG that draws
+    # them -- a regression back to a per-press `<image href="data:...">`
+    # would double this count without ever asking the resolver twice.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    html = render(a_report(players=(a_player_card(timeline=timeline),)),
+                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    body = html.split("</style>")[1]
+    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count('<use href="#icon-45438"') == 2
+
+
+def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> None:
+    # `CooldownRow.ability_id` is `int | None`; `None in {}` is `False`, so the
+    # template's membership test already takes the plain branch safely -- this
+    # is the proof that it does, not a fix for a bug.
+    row = CooldownRow(label="Unknown", ability_id=None, baseline_y=96.0,
+                      presses=(Press(x=200.0, icon_x=192.0),))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    icons = FakeIcons({})
+    html = render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
+    assert icons.asked == []
+    assert 'class="press"' in html.split("</style>")[1]
 
 
 def test_a_withheld_timeline_says_why_instead_of_drawing_an_empty_axis() -> None:
@@ -716,7 +764,7 @@ def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> Non
     # the filled span and vanish; this proves it paints on top instead.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0),),
+        presses=(Press(x=46.0, icon_x=38.0),),
         unavailable=(Span(x=46.0, width=600.0),),
         not_judged=Span(x=46.0, width=600.0),
     )
