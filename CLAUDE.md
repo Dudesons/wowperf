@@ -410,7 +410,7 @@ lines are unreliable, so the code is the record.
 | `uv run ruff check .` | Lint |
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
 | `uv run wowperf fetch <url> [--fight N] [--cache-dir DIR]` | Fetch a Mythic+ run and print it as JSON |
-| `uv run wowperf analyze <url> [--fight N] [--player NAME] [--no-compare] [--narrative FILE] [--throughput-ceiling] [--cache-dir DIR] [--out DIR]` | Analyse a run against its reference samples and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
+| `uv run wowperf analyze <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--narrative FILE] [--throughput-ceiling] [--cache-dir DIR] [--out DIR]` | Analyse a run against its reference samples and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
 
 Both commands take a report URL or a bare report code, and both print what the run
 spent from the hourly point budget, broken down by operation. `.github/workflows/gate.yml`

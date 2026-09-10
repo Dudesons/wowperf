@@ -18,7 +18,7 @@ from wowperf.domain.comparison.sample import (
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Player, Run
+from wowperf.domain.model import Run
 
 MAX_AURAS_REPORTED = 5
 
@@ -45,11 +45,15 @@ def _fractions(
 
 
 def _unavailable(
-    our_seconds: float, their_seconds: float, our_has_auras: bool, their_has_auras: bool
+    our_name: str,
+    our_seconds: float,
+    their_seconds: float,
+    our_has_auras: bool,
+    their_has_auras: bool,
 ) -> Finding:
     return Finding(
         id="compare.uptime.unavailable",
-        title="Buff and debuff uptime could not be compared",
+        title=f"Buff and debuff uptime could not be compared for {our_name}",
         detail=(
             "An uptime comparison needs boss pulls on both sides and aura data for both "
             "players. One of those is missing, so no uptime numbers are reported rather "
@@ -66,11 +70,11 @@ def _unavailable(
     )
 
 
-def _no_reference_auras(total: int) -> Finding:
+def _no_reference_auras(our_name: str, total: int) -> Finding:
     """Not one reference came back with aura data, which decides it on its own."""
     return Finding(
         id="compare.uptime.unavailable",
-        title="Buff and debuff uptime could not be compared",
+        title=f"Buff and debuff uptime could not be compared for {our_name}",
         detail=(
             "An uptime comparison needs aura data from a reference to compare ours against, "
             "and no reference in the sample returned any. No uptime numbers are reported "
@@ -86,7 +90,7 @@ def _gap_findings(
     kind: str,
     ours: dict[int, tuple[str, float]],
     theirs: dict[int, tuple[str, float]],
-    our_player: Player,
+    our_name: str,
     their_name: str,
     our_seconds: float,
     their_seconds: float,
@@ -120,7 +124,7 @@ def _gap_findings(
                 id=f"compare.uptime.{kind}.{rank}",
                 title=(
                     f"{their_name} kept {name} up for {their_fraction:.0%} of boss time "
-                    f"{where}, {our_player.name} {our_fraction:.0%}"
+                    f"{where}, {our_name} {our_fraction:.0%}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "
@@ -147,19 +151,28 @@ def _gap_findings(
 def compare_uptime(
     ours: Run,
     our_auras: PlayerAuras | None,
-    our_player: Player,
+    our_name: str,
     theirs: Run,
     their_auras: PlayerAuras | None,
     their_name: str,
 ) -> list[Finding]:
-    """Where the reference kept an aura up markedly more of the boss fight than we did."""
+    """Where the reference kept an aura up markedly more of the boss fight than we did.
+
+    `our_name` is the roster's disambiguated spelling of the player being
+    compared — never `Player.name`, which two roster members can share, and
+    which would then title two players' findings identically.
+    """
     our_seconds = boss_seconds(ours)
     their_seconds = boss_seconds(theirs)
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
         return [
             _unavailable(
-                our_seconds, their_seconds, our_auras is not None, their_auras is not None
+                our_name,
+                our_seconds,
+                their_seconds,
+                our_auras is not None,
+                their_auras is not None,
             )
         ]
 
@@ -171,14 +184,17 @@ def compare_uptime(
         ("self", our_auras.on_self, their_auras.on_self),
         ("target", our_auras.on_targets, their_auras.on_targets),
     ):
+        # Named at the call site: the four arguments below are two pairs of
+        # same-typed values, and a swap inside either pair would put one
+        # player's figure under the other's name without failing a type check.
         findings += _gap_findings(
             kind,
             _fractions(ours_side, our_windows, our_seconds),
             _fractions(theirs_side, their_windows, their_seconds),
-            our_player,
-            their_name,
-            our_seconds,
-            their_seconds,
+            our_name=our_name,
+            their_name=their_name,
+            our_seconds=our_seconds,
+            their_seconds=their_seconds,
         )
     return findings
 
@@ -186,10 +202,13 @@ def compare_uptime(
 def compare_uptime_sample(
     ours: Run,
     our_auras: PlayerAuras | None,
-    our_player: Player,
+    our_name: str,
     sample: ParseSample,
 ) -> list[Finding]:
     """Where the sample's top parses kept an aura up markedly more of the boss fight than we did.
+
+    `our_name` is the roster's disambiguated spelling, for the reason
+    `compare_uptime` above gives.
 
     No member is named: the claim is about the sample as a population, the same way
     `compare_spells_sample` reports a count or a median rather than one parse's number.
@@ -220,7 +239,7 @@ def compare_uptime_sample(
         # aura data our own may never have been asked for. Delegating to
         # `compare_uptime` here would report "our aura data absent" for a query
         # that was never issued.
-        return [_no_reference_auras(len(sample.members))]
+        return [_no_reference_auras(our_name, len(sample.members))]
 
     if our_auras is None or boss_seconds(ours) <= 0 or not aggregable:
         # Below the floor, or our own side has nothing to compute a fraction from
@@ -232,7 +251,7 @@ def compare_uptime_sample(
         # for a gap that was never the sample's fault.
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
-            ours, our_auras, our_player, first.run, first.auras, first.row.character_name
+            ours, our_auras, our_name, first.run, first.auras, first.row.character_name
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
 
@@ -245,7 +264,7 @@ def compare_uptime_sample(
     for kind, our_side in (("self", our_auras.on_self), ("target", our_auras.on_targets)):
         our_fractions = _fractions(our_side, our_windows, our_seconds)
         findings += _gap_findings_sample(
-            kind, our_fractions, eligible, our_player, our_seconds, missing_aura_data, total
+            kind, our_fractions, eligible, our_name, our_seconds, missing_aura_data, total
         )
     return findings
 
@@ -254,7 +273,7 @@ def _gap_findings_sample(
     kind: str,
     our_fractions: dict[int, tuple[str, float]],
     eligible: Sequence[ParseMember],
-    our_player: Player,
+    our_name: str,
     our_seconds: float,
     missing_aura_data: int,
     total: int,
@@ -315,7 +334,7 @@ def _gap_findings_sample(
                 id=f"compare.uptime.{kind}.{rank}",
                 title=(
                     f"{len(carried)} top parses kept {name} up a median {their_median:.0%} "
-                    f"of boss time {where}; {our_player.name} {our_fraction:.0%}"
+                    f"of boss time {where}; {our_name} {our_fraction:.0%}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "

@@ -3,12 +3,12 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.comparison.sample import ParseSample, SpeedSample
+from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
 from wowperf.domain.report.frame import (
-    PARSE_UNAVAILABLE_ID,
+    NO_COMPARISON_RAN,
     SPEED_UNAVAILABLE_ID,
     build_header,
     sampled,
@@ -38,7 +38,7 @@ def build_report(
     loaded: LoadedRun,
     findings: Sequence[Finding],
     speed: SpeedSample | None,
-    parse: ParseSample | None,
+    compared_slugs: frozenset[str] | None,
     subject: Player,
     narrative: str | None,
     fetched_at: str,
@@ -53,38 +53,55 @@ def build_report(
 
     `fetched_at` is a parameter rather than a clock read: the domain performs no
     I/O, and the same inputs must render the same report. `subject` is the
-    player being analysed, from our own roster — it decides whose card carries
-    the spell-and-talent and uptime comparison rows. `defensives` is passed in
+    player being analysed, from our own roster — it decides which card comes
+    first. `compared_slugs` is who a parse comparison was asked for, and it
+    decides which cards carry a comparison section at all; `None` means none
+    was asked for, whoever the subject is. `defensives` is passed in
     rather than read here for the same reason the clock is: the data file is an
     adapter's job to load. `externals` and `self_resurrections` are data files
     too, loaded by the same adapter; they default to empty so a caller without
     them still builds every other section.
 
-    `speed` and `parse` are the samples themselves, not a pick from them: the
-    timeline draws its best-aligned duration-eligible member out of `speed`,
-    and both gate their sections on whether the leaderboard filled them at all.
-    A single reference reconstructed for this signature would have to carry
-    empty streams, and a reader of `speed.members[0].deaths` would then be told
-    a fast run died nobody with no complaint from the type checker.
+    `speed` is the sample itself, not a pick from it: the timeline draws its
+    best-aligned duration-eligible member out of it, and gates its section on
+    whether the leaderboard filled it at all. A single reference reconstructed
+    for this signature would have to carry empty streams, and a reader of
+    `speed.members[0].deaths` would then be told a fast run died nobody with no
+    complaint from the type checker.
     `reference_records` is every candidate `_samples` weighed, loaded or not —
     carried onto the provenance unchanged, a link and never a figure.
     """
     compared_speed = sampled(speed)
     timeline_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
+    route_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
+
+    titles_by_id = {finding.id: finding.title for finding in findings}
+    players = build_players(
+        loaded, findings, compared_slugs, subject, titles_by_id, defensives, throughput
+    )
 
     withheld: list[str] = []
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 
-    comparison_section = section_for(findings, PARSE_UNAVAILABLE_ID, sampled(parse))
-    if comparison_section.state is SectionState.WITHHELD:
-        withheld.append(f"Spell and talent comparison: {comparison_section.reason}")
+    # `--no-compare` fetched no reference at all, so the whole run gets one
+    # report-level line rather than one per card -- a line per player here
+    # would say a comparison for each of them was asked for and refused, when
+    # none was ever asked for. When a comparison did run, a player nobody
+    # asked for is left off this list for the same reason: their comparison
+    # was not withheld, it was not requested, and one such line per teammate
+    # on every default run would bury the ones that mean something.
+    if compared_slugs is None:
+        withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
+    else:
+        for card in players:
+            if card.spell_and_talent.state is SectionState.WITHHELD and card.slug in compared_slugs:
+                withheld.append(
+                    f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
+                )
 
-    route_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
     if route_section.state is SectionState.WITHHELD:
         withheld.append(f"Route and tempo: {route_section.reason}")
-
-    titles_by_id = {finding.id: finding.title for finding in findings}
 
     ledger_decomposition = tuple(
         ledger_row(finding, titles_by_id)
@@ -94,9 +111,6 @@ def build_report(
     decomposition_ids = {row.finding_id for row in ledger_decomposition}
     placed_rows = place_rows(findings, titles_by_id, exclude=decomposition_ids)
     summary_pointers = build_summary_pointers(findings, titles_by_id, exclude=decomposition_ids)
-    players = build_players(
-        loaded, findings, parse, subject, titles_by_id, defensives, throughput
-    )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
 
     deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)

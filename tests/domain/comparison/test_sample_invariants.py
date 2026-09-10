@@ -8,7 +8,7 @@ from wowperf.domain.comparison.alignment import Alignment, align_pulls
 from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
-from wowperf.domain.comparison.service import compare
+from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
@@ -286,13 +286,22 @@ PARSE_SAMPLE = ParseSample(
     )
 )
 
+SUBJECT_SLUG = "emberkin-0"
+"""SUBJECT's fragment id: what `slugs_by_actor` mints for the only roster entry."""
+
+SUBJECT_WITH_AURAS = ComparisonSubject(
+    player=SUBJECT,
+    slug=SUBJECT_SLUG,
+    display_name=SUBJECT.name,
+    parse=PARSE_SAMPLE,
+    our_auras=OUR_AURAS,
+)
+
 
 def test_the_fixture_exercises_every_aggregate_prefix_family() -> None:
     """A family that emits nothing is how the denominator guard would rot without
     anyone noticing (Ruling R5), so pin down that every prefix actually fires."""
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     for prefix in AGGREGATE_PREFIXES:
         matching = [f for f in findings if f.id.startswith(prefix) and f.quantifier]
@@ -304,9 +313,7 @@ def test_the_fixture_exercises_every_median_prefix_family() -> None:
     below only proves the merged list is non-empty, so one family going silent
     could hide behind the others still firing. Enumerate them individually, the
     same way the aggregate families are."""
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     for prefix in MEDIAN_ID_PREFIXES:
         matching = [f for f in findings if f.id.startswith(prefix)]
@@ -314,9 +321,7 @@ def test_the_fixture_exercises_every_median_prefix_family() -> None:
 
 
 def test_every_count_finding_states_its_denominator_in_its_title() -> None:
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     counted = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES) and f.quantifier]
     assert counted, "the fixture must produce at least one aggregate finding"
@@ -333,9 +338,7 @@ def test_no_count_finding_renders_its_share_of_the_sample_as_a_percentage() -> N
     percentage of that run's own time and states one on purpose; only a share
     *of the sample* is banned from wearing one.
     """
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     counted = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES) and f.quantifier]
     assert counted, "the fixture must produce at least one aggregate finding"
@@ -345,9 +348,7 @@ def test_no_count_finding_renders_its_share_of_the_sample_as_a_percentage() -> N
 
 
 def test_every_median_finding_states_its_range_in_its_evidence() -> None:
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     medians = [f for f in findings if f.id.startswith(MEDIAN_ID_PREFIXES)]
     assert medians, "the fixture must produce at least one median finding"
@@ -356,9 +357,7 @@ def test_every_median_finding_states_its_range_in_its_evidence() -> None:
 
 
 def test_a_count_finding_is_measured_and_a_median_finding_is_derived() -> None:
-    findings = compare(
-        ours=OURS, our_player=SUBJECT, speed=SAMPLE, parse=PARSE_SAMPLE, our_auras=OUR_AURAS
-    )
+    findings = compare(ours=OURS, speed=SAMPLE, subjects=(SUBJECT_WITH_AURAS,))
 
     counted = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES) and f.quantifier]
     assert counted, "the fixture must produce at least one aggregate finding"
@@ -386,7 +385,18 @@ def test_a_below_floor_sample_carries_no_denominator_and_is_exempt_from_the_rule
     no sample size to state one of."""
     below_floor = SpeedSample(members=(SAMPLE.members[0],))
 
-    findings = compare(ours=OURS, our_player=SUBJECT, speed=below_floor, parse=None)
+    findings = compare(
+        ours=OURS,
+        speed=below_floor,
+        subjects=(
+            ComparisonSubject(
+                player=SUBJECT,
+                slug=SUBJECT_SLUG,
+                display_name=SUBJECT.name,
+                parse=None,
+            ),
+        ),
+    )
 
     matching = [f for f in findings if f.id.startswith(AGGREGATE_PREFIXES)]
     assert matching, "the one-member sample should still produce a route or confound finding"

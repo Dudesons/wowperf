@@ -7,11 +7,14 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from wowperf.cli import app
+from wowperf.domain.findings import Finding
+from wowperf.domain.report.model import ReferenceRecord
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WCL_API_SKILL = REPO_ROOT / ".claude" / "skills" / "wcl-api" / "SKILL.md"
 QUERIES = REPO_ROOT / "src" / "wowperf" / "adapters" / "wcl" / "queries.py"
 ANALYZING_SKILL = REPO_ROOT / ".claude" / "skills" / "analyzing-a-run" / "SKILL.md"
+MPLUS_SKILL = REPO_ROOT / ".claude" / "skills" / "mplus-analysis" / "SKILL.md"
 
 FIELD_ROW = re.compile(
     r"^\|\s*`(?P<field>[^`]+)`\s*\|[^|]*\|\s*(?P<verified>\d{4}-\d{2}-\d{2})\s*\|"
@@ -68,3 +71,34 @@ def test_every_flag_the_command_offers_is_named_in_the_workflow() -> None:
     named = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
     missing = sorted(offered - named)
     assert missing == [], f"offered by the command but never named in the skill: {missing}"
+
+
+def paragraph_naming(marker: str) -> str:
+    """The one paragraph of the interpretation skill that contains `marker`.
+
+    Scoped to a paragraph rather than searched over the whole file: the skill
+    names `player_slug` in two unrelated places, so "the string appears
+    somewhere" would pass without either enumeration mentioning it.
+    """
+    blocks = [
+        block for block in MPLUS_SKILL.read_text(encoding="utf-8").split("\n\n") if marker in block
+    ]
+    assert len(blocks) == 1, f"{marker!r} appears in {len(blocks)} paragraphs, not one"
+    return blocks[0]
+
+
+def test_every_field_a_finding_carries_is_enumerated_by_the_interpretation_skill() -> None:
+    # "Reading the file" enumerates a finding's fields for a reader who will never
+    # open the model. A field the findings JSON emits and that enumeration never
+    # names is one the narrative writer cannot know is there to be read.
+    enumeration = paragraph_naming("the findings themselves")
+    missing = [name for name in Finding.model_fields if f"`{name}`" not in enumeration]
+    assert missing == [], f"carried by every finding but never enumerated: {missing}"
+
+
+def test_every_field_a_reference_carries_is_enumerated_by_the_interpretation_skill() -> None:
+    # The same guard over `comparison.references`, whose emitted keys
+    # `tests/test_cli.py` holds equal to `ReferenceRecord.model_fields`.
+    enumeration = paragraph_naming("`comparison.references` lists")
+    missing = [name for name in ReferenceRecord.model_fields if f"`{name}`" not in enumeration]
+    assert missing == [], f"carried by every reference but never enumerated: {missing}"

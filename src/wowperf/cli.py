@@ -4,8 +4,10 @@
 import json
 import os
 import sys
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 import httpx
 import typer
@@ -29,6 +31,7 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
@@ -45,12 +48,13 @@ from wowperf.domain.comparison.sample import (
     SpeedMember,
     SpeedSample,
 )
-from wowperf.domain.comparison.service import compare, find_player
+from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
+from wowperf.domain.report.players import slugs_by_actor
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -112,10 +116,10 @@ ICON_CACHE_SUBDIR = "icons"
 
 
 def build_icons(
-    loaded: LoadedRun, parse_sample: ParseSample | None, cache_dir: Path
+    loaded: LoadedRun, parse_samples: Sequence[ParseSample], cache_dir: Path
 ) -> BlizzardIcons | None:
-    """Icons for one run: its own ability dictionary, the parse sample's, and a store
-    that keeps them for good.
+    """Icons for one run: its own ability dictionary, every parse sample's, and a
+    store that keeps them for good.
 
     None when the store cannot be created, which `render` already understands as
     a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s
@@ -128,9 +132,12 @@ def build_icons(
     is said out loud rather than leaving them a report that merely looks plain.
 
     A comparison names an ability our player never cast, so that ability's file
-    name is in the reference's own dictionary and in no other. Ours is overlaid
-    last: where both name an id they name the same file, so the order settles
-    determinism rather than correctness.
+    name is in the reference's own dictionary and in no other. Every compared
+    player's sample is read, not only the subject's: a teammate's comparison
+    draws on their own specialisation's references, and a card whose rows the
+    resolver has never heard of draws them with no icon at all. Ours is
+    overlaid last: where both name an id they name the same file, so the order
+    settles determinism rather than correctness.
     """
     try:
         store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
@@ -151,8 +158,9 @@ def build_icons(
         return response.status_code, response.headers.get("content-type", ""), response.content
 
     names: dict[int, str] = {}
-    for member in parse_sample.members if parse_sample else ():
-        names.update(member.ability_icons)
+    for sample in parse_samples:
+        for member in sample.members:
+            names.update(member.ability_icons)
     names.update(loaded.ability_icon_map)
     return BlizzardIcons(names, store, fetch)
 
@@ -259,22 +267,92 @@ def _echo_cost_breakdown(costs: CostLedger) -> None:
         typer.echo(breakdown, err=True)
 
 
-def _resolve_player(run: Run, requested: str | None) -> Player:
+def _roster_hint(names: Mapping[int, str]) -> str:
+    """Who is on the roster, for a message that has just refused a name.
+
+    Spelled the way the report spells them, which is also a spelling
+    `_resolve_player` accepts: every name printed here resolves, so a reader
+    who copies one back into `--player` is never refused a second time. Two
+    roster members can share a name, and the raw roster would print that name
+    twice, telling a reader neither that there are two nor which of them a
+    name would reach.
+    """
+    roster = ", ".join(sorted(names.values())) or "nobody"
+    return f"Pass --player with one of: {roster}"
+
+
+def _by_display_name(run: Run, requested: str, names: Mapping[int, str]) -> Player | None:
+    """The roster member a disambiguated spelling names, or None.
+
+    Folds case the same way `find_player` does, for the same reason. An empty
+    request matches nobody rather than the first member with no spelling of
+    their own: equality against an empty string is as indiscriminate as
+    membership in one.
+    """
+    folded = requested.casefold()
+    if not folded:
+        return None
+    return next(
+        (player for player in run.players if names.get(player.actor_id, "").casefold() == folded),
+        None,
+    )
+
+
+def _resolve_player(run: Run, requested: str | None, names: Mapping[int, str]) -> Player:
     """Whose run this is, for the individual comparison.
 
     The report owner is the default because it is the only name the log itself
     volunteers. Warcraft Logs lowercases it, so the match folds case.
+
+    A raw roster name is tried first and the disambiguated spelling
+    `display_names` gives -- `Emberkin (actor 700)` -- second. Raw first leaves
+    the common invocation exactly as it was: a name two members share still
+    reaches the first of them rather than becoming an error. The second pass is
+    what makes the other one reachable at all, and what keeps `_roster_hint`
+    from offering a name this would refuse.
     """
     name = requested or run.owner_name
     if name is not None:
-        found = find_player(run, name)
+        found = find_player(run, name) or _by_display_name(run, name, names)
         if found is not None:
             return found
 
-    roster = ", ".join(sorted(player.name for player in run.players)) or "nobody"
-    raise ValueError(
-        f"{name!r} is not in this run's roster. Pass --player with one of: {roster}"
-    )
+    raise ValueError(f"{name!r} is not in this run's roster. {_roster_hint(names)}")
+
+
+def _resolve_requested(
+    run: Run, requested: Sequence[str], everyone: bool, names: Mapping[int, str]
+) -> tuple[Player, tuple[Player, ...]]:
+    """The subject, and every player to compare.
+
+    The subject is the first name given, or the report owner when none is: it
+    decides whose card opens the Players tab and whose name the findings file
+    carries, and a report with no subject at all would leave both undecided.
+    `--all-players` widens who is compared without touching who the subject is,
+    so the two flags combine rather than conflict.
+
+    A name the tool cannot honour is refused rather than substituted, and an
+    empty one is such a name: `--player "$WHO"` with `WHO` unset would
+    otherwise mean the report owner, so a reader who asked for one player
+    would silently be charged for two. Only a *supplied* name is checked here
+    — with no `--player` at all, `_resolve_player`'s own default still stands.
+
+    Keyed by actor id throughout, so a player named twice — or named and then
+    swept up by `--all-players` — is compared once. Two comparisons of one
+    player would mint every one of their findings twice under a single id, and
+    the page would draw the pair under duplicate element ids.
+    """
+    for name in requested:
+        if not name:
+            raise ValueError(f"{name!r} is not a name. {_roster_hint(names)}")
+
+    subject = _resolve_player(run, requested[0] if requested else None, names)
+    named = [subject] + [_resolve_player(run, name, names) for name in requested[1:]]
+    by_actor = {player.actor_id: player for player in named}
+    if everyone:
+        for player in run.players:
+            by_actor.setdefault(player.actor_id, player)
+    return subject, tuple(by_actor.values())
 
 
 def _record(
@@ -284,6 +362,8 @@ def _record(
     loaded: bool,
     reason: str = "",
     from_cache: bool = False,
+    player_slug: str = "",
+    player_name: str = "",
 ) -> ReferenceRecord:
     """One leaderboard row's outcome, in the shape the report is allowed to keep forever.
 
@@ -291,6 +371,10 @@ def _record(
     character name or the score a `SpeedRow`/`ParseRow` also carries, which is
     what keeps a `ReferenceRecord` a link rather than a tabulation of another
     player's run.
+
+    `player_slug` and `player_name` name whose comparison weighed the row, the
+    first for matching and the second for reading. Both are empty on the speed
+    axis, which is drawn once for the run rather than per player.
     """
     return ReferenceRecord(
         report_code=row.report_code,
@@ -301,16 +385,48 @@ def _record(
         loaded=loaded,
         reason=reason,
         from_cache=from_cache,
+        player_slug=player_slug,
+        player_name=player_name,
     )
+
+
+class RequestedPlayer(NamedTuple):
+    """One player a comparison was asked for, and the two strings that name them.
+
+    A bare tuple would put `slug` and `name` side by side as two positional
+    strings of the same type, and a caller that swapped them would type-check
+    cleanly: the slug would be printed to a reader and the display name stamped
+    onto a `ReferenceRecord`, the record the RPGLogs terms section 5d posture
+    rests on.
+    """
+
+    player: Player
+    slug: str
+    name: str
 
 
 def _samples(
     rankings: WclRankingRepository,
     runs: WclRunRepository,
     run: Run,
-    subject: Player,
-) -> tuple[SpeedSample, ParseSample, tuple[ReferenceRecord, ...]]:
+    subjects: Sequence[RequestedPlayer],
+) -> tuple[SpeedSample, dict[int, ParseSample], tuple[ReferenceRecord, ...]]:
     """Up to `SAMPLE_SIZE` references per axis, and a record of every row weighed.
+
+    Each subject arrives as the player, their slug and the name the page
+    spells them by. The caller mints both, and this loop only stamps them
+    onto the parse records it keeps: computing either here would be a second
+    source of a player's identity, and the two could then disagree.
+
+    The speed axis is drawn once, for the run: the route and the tempo are
+    facts about the group, and every player is measured against the same fast
+    completions. The parse axis is drawn once per subject, because a
+    specialisation's leaderboard is the only place its own references live —
+    so the result is keyed by actor id, and a player's sample is theirs alone.
+    A subject whose specialisation never arrived in the log is not asked
+    about: `specName: ""` matches no row at any keystone level, so the whole
+    widening loop of queries would be paid for nothing, and
+    `compare.parse.unavailable` says why their card is empty.
 
     A row is skipped, never fatal, for three reasons, and every one of them is
     recorded rather than silently dropped: it is our own report and fight
@@ -375,54 +491,83 @@ def _samples(
             )
         )
 
-    parse_members: list[ParseMember] = []
-    for parse_row in rankings.top_parses(
-        run.encounter_id,
-        run.keystone_level,
-        subject.class_name,
-        subject.spec,
-        minimum=SAMPLE_SIZE,
-    ):
-        if len(parse_members) >= SAMPLE_SIZE:
-            break
-        if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
-            records.append(
-                _record(parse_row, "parse", loaded=False, reason="this is the run under analysis")
-            )
+    parse_samples: dict[int, ParseSample] = {}
+    for subject, slug, name in subjects:
+        if not subject.spec:
+            parse_samples[subject.actor_id] = ParseSample()
             continue
-        try:
-            theirs, from_cache = runs.load_parse_reference(
-                parse_row.report_code, parse_row.fight_id
-            )
-        except (IngestError, WclError) as error:
-            records.append(_record(parse_row, "parse", loaded=False, reason=str(error)))
-            continue
-        if any(player.name.casefold() in our_names for player in theirs.run.players):
+        parse_members: list[ParseMember] = []
+        for parse_row in rankings.top_parses(
+            run.encounter_id,
+            run.keystone_level,
+            subject.class_name,
+            subject.spec,
+            minimum=SAMPLE_SIZE,
+        ):
+            if len(parse_members) >= SAMPLE_SIZE:
+                break
+            if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+                records.append(
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=False,
+                        reason="this is the run under analysis",
+                        player_slug=slug,
+                        player_name=name,
+                    )
+                )
+                continue
+            try:
+                theirs, from_cache = runs.load_parse_reference(
+                    parse_row.report_code, parse_row.fight_id
+                )
+            except (IngestError, WclError) as error:
+                records.append(
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=False,
+                        reason=str(error),
+                        player_slug=slug,
+                        player_name=name,
+                    )
+                )
+                continue
+            if any(player.name.casefold() in our_names for player in theirs.run.players):
+                records.append(
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=True,
+                        reason="the roster includes one of our own characters",
+                        from_cache=from_cache,
+                        player_slug=slug,
+                        player_name=name,
+                    )
+                )
+                continue
             records.append(
                 _record(
                     parse_row,
                     "parse",
                     loaded=True,
-                    reason="the roster includes one of our own characters",
                     from_cache=from_cache,
+                    player_slug=slug,
+                    player_name=name,
                 )
             )
-            continue
-        records.append(_record(parse_row, "parse", loaded=True, from_cache=from_cache))
-        parse_members.append(
-            ParseMember(
-                row=parse_row,
-                run=theirs.run,
-                casts=theirs.casts,
-                ability_icons=theirs.ability_icons,
+            parse_members.append(
+                ParseMember(
+                    row=parse_row,
+                    run=theirs.run,
+                    casts=theirs.casts,
+                    ability_icons=theirs.ability_icons,
+                )
             )
-        )
+        parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
 
-    return (
-        SpeedSample(members=tuple(speed_members)),
-        ParseSample(members=tuple(parse_members)),
-        tuple(records),
-    )
+    return SpeedSample(members=tuple(speed_members)), parse_samples, tuple(records)
 
 
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
@@ -492,6 +637,15 @@ def _fetch_parse_auras(
     return sample.model_copy(update={"members": tuple(updated_members)}), our_auras
 
 
+def _parse_sample_size(subject: ComparisonSubject) -> int:
+    """How many parse references this player's comparison actually drew.
+
+    A sample nobody could fill and a sample never drawn read the same to a
+    reader — the leaderboard offered nothing — so both count zero.
+    """
+    return len(subject.parse.members) if subject.parse else 0
+
+
 def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]) -> str:
     """Explain the rule once, then list every line that breaks it."""
     lines = "\n".join(f"  line {number}: {line}" for number, line in offending)
@@ -510,8 +664,17 @@ def analyze(
         "--throughput-ceiling",
         help="Also report throughput cooldowns used far below what their cooldown allowed",
     ),
-    player: str | None = typer.Option(
-        None, help="Subject of the individual comparison; defaults to the report owner"
+    player: list[str] = typer.Option(
+        [],
+        "--player",
+        help="Compare this player against top parses of their specialisation. "
+        "Repeatable; the first one given is the report's subject. "
+        "Defaults to the report owner.",
+    ),
+    all_players: bool = typer.Option(
+        False,
+        "--all-players",
+        help="Compare every player in the run, not only the subject",
     ),
     no_compare: bool = typer.Option(
         False, "--no-compare", help="Skip both reference runs and analyse in isolation"
@@ -564,30 +727,69 @@ def analyze(
             include_cooldown_ceiling=throughput_ceiling,
         )
 
-        subject = _resolve_player(loaded.run, player)
+        # The roster's own spelling, disambiguated where two members share a
+        # name, computed once and read by everything that names a player: the
+        # names `--player` accepts, the roster a refusal lists, and the name
+        # stamped onto every comparison subject below. One mapping rather than
+        # three calls, so a finding's title, a card heading, a provenance row
+        # and the argument that asked for them cannot spell a player
+        # differently.
+        names = display_names(loaded.run)
+        subject, to_compare = _resolve_requested(loaded.run, player, all_players, names)
         speed_sample: SpeedSample | None = None
-        parse_sample: ParseSample | None = None
+        # Everyone the comparison was asked for: the subject, then the order
+        # the reader named the rest, then whoever `--all-players` swept up.
+        # That is not the order the cards come in -- those are the subject
+        # first and the roster's own order behind -- so nothing may read this
+        # sequence as a card order. It is the one source for *who* was
+        # compared: the slugs stamped onto the findings, the slugs the report
+        # matches cards by, the JSON's own list, the per-player sample sizes
+        # and the page's icons are all read off it, so none of them can drift
+        # from another. Empty means the comparison did not run.
+        subjects: list[ComparisonSubject] = []
+        compared_slugs: frozenset[str] | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
+            # The only place this command mints a slug: the comparison stamps a
+            # player's slug onto every finding it emits about them, and the report
+            # matches their card by it. The name beside it is `names`' spelling,
+            # so a provenance row naming a player names the same one their card
+            # does -- and the same one `--player` would have to be given.
+            slugs = slugs_by_actor(loaded.run)
+            requested: tuple[RequestedPlayer, ...] = tuple(
+                RequestedPlayer(
+                    player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
+                )
+                for one in to_compare
+            )
             # Every candidate `_samples` weighed comes back as `reference_records`,
             # carried onto both the report's provenance below and the comparison
             # block of the findings JSON.
-            speed_sample, parse_sample, reference_records = _samples(
-                rankings, references, loaded.run, subject
+            speed_sample, parse_samples, reference_records = _samples(
+                rankings, references, loaded.run, requested
             )
 
-            parse_sample, our_auras = _fetch_parse_auras(
-                parse_sample, repository, references, loaded.run, subject
-            )
+            for player_to_compare, slug, name in requested:
+                sample, our_auras = _fetch_parse_auras(
+                    parse_samples[player_to_compare.actor_id],
+                    repository,
+                    references,
+                    loaded.run,
+                    player_to_compare,
+                )
+                subjects.append(
+                    ComparisonSubject(
+                        player=player_to_compare,
+                        slug=slug,
+                        display_name=name,
+                        parse=sample,
+                        our_auras=our_auras,
+                    )
+                )
+            compared_slugs = frozenset(one.slug for one in subjects)
 
-            findings += compare(
-                ours=loaded,
-                our_player=subject,
-                speed=speed_sample,
-                parse=parse_sample,
-                our_auras=our_auras,
-            )
+            findings += compare(ours=loaded, speed=speed_sample, subjects=subjects)
             findings = rank_findings(findings)
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -605,11 +807,19 @@ def analyze(
         "player": subject.name,
         "comparison": {
             "compared": bool(
-                (speed_sample and speed_sample.members) or (parse_sample and parse_sample.members)
+                (speed_sample and speed_sample.members)
+                or any(_parse_sample_size(one) for one in subjects)
             ),
+            # Who was compared, subject first. An empty list says nobody was
+            # asked for, which a reader can now tell from a leaderboard that
+            # had nothing to offer without inspecting the findings.
+            "players": [one.slug for one in subjects],
             "sample_size": {
                 "speed": len(speed_sample.members) if speed_sample else 0,
-                "parse": len(parse_sample.members) if parse_sample else 0,
+                # The parse axis is drawn once per player, so its size is a
+                # figure per player: one number could only ever describe one
+                # of them, and would under-report the rest.
+                "parse": {one.slug: _parse_sample_size(one) for one in subjects},
             },
             "references": [
                 {
@@ -621,6 +831,8 @@ def analyze(
                     "loaded": record.loaded,
                     "reason": record.reason,
                     "from_cache": record.from_cache,
+                    "player_slug": record.player_slug,
+                    "player_name": record.player_name,
                 }
                 for record in reference_records
             ],
@@ -648,7 +860,7 @@ def analyze(
                     loaded,
                     findings,
                     speed_sample,
-                    parse_sample,
+                    compared_slugs,
                     subject,
                     narrative_text,
                     datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -659,7 +871,11 @@ def analyze(
                     throughput=throughput,
                     reference_records=reference_records,
                 ),
-                icons=build_icons(loaded, parse_sample, cache_dir),
+                icons=build_icons(
+                    loaded,
+                    tuple(one.parse for one in subjects if one.parse is not None),
+                    cache_dir,
+                ),
             ),
             encoding="utf-8",
         )

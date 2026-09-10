@@ -39,6 +39,10 @@ class Finding(Frozen):
     # The word a digit-free narrative may use in place of this finding's count.
     # Empty on any finding that is not an aggregate over a sample.
     quantifier: str = ""
+    # The fragment id of the player this finding is about, from `slugs_by_actor`.
+    # Empty on any finding that is a statement about the run rather than about
+    # one player: a route, a tempo or a confound belongs to nobody.
+    player_slug: str = ""
 
 
 def quantifier_for(matching: int, total: int) -> str:

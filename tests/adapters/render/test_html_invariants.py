@@ -11,6 +11,7 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
 from tests.adapters.render.test_html_sections import FakeIcons, a_drawn_timeline, a_player_card
+from tests.domain.comparison.test_service import a_parse_sample
 from tests.domain.report.test_build_frame import (
     FETCHED,
     NO_CONSUMABLES,
@@ -22,10 +23,12 @@ from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.domain.comparison.sample import SpeedSample
+from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
+from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.model import (
     AvailabilityRow,
     CooldownRow,
@@ -69,6 +72,16 @@ SECTION_ORDER = [
 ]
 
 
+COMPARED = frozenset({"emberkin-0", "stonewake-1"})
+"""Who the fixture's comparison was asked for: the subject and one teammate.
+
+Two, so two players' comparison findings sit on one page and a colliding id
+between them is a page the uniqueness test below can actually see. The third
+roster member is deliberately left out, so the same page also carries a card
+in the not-requested state.
+"""
+
+
 def minimal_loaded() -> LoadedRun:
     return LoadedRun(
         run=a_run(
@@ -79,6 +92,20 @@ def minimal_loaded() -> LoadedRun:
                     class_name="Mage",
                     spec="Arcane",
                     item_level=680,
+                ),
+                Player(
+                    actor_id=2,
+                    name="Stonewake",
+                    class_name="DeathKnight",
+                    spec="Blood",
+                    item_level=675,
+                ),
+                Player(
+                    actor_id=3,
+                    name="Bríala",
+                    class_name="Priest",
+                    spec="Discipline",
+                    item_level=670,
                 ),
             ),
             pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 200_000, encounter_id=12825)),
@@ -127,25 +154,58 @@ def minimal_findings() -> tuple[Finding, ...]:
             detail="Cast earlier in the run, and its cooldown had elapsed by the killing blow.",
             confidence=Confidence.INFERRED,
         ),
+        # Two players' comparison findings, in the same two families under a
+        # slug each. Every id in these families is minted by appending the
+        # player to a family name the comparison modules share, so this pair
+        # is the shape a lost suffix would collide in.
+        Finding(
+            id="compare.talents.emberkin-0",
+            title="Emberkin's talents differ from the top parse's in two nodes",
+            detail="Both differences sit in the class tree.",
+            confidence=Confidence.DERIVED,
+            player_slug="emberkin-0",
+        ),
+        Finding(
+            id="compare.spells.missing.0.emberkin-0",
+            title="Emberkin cast no Combustion on the boss",
+            detail="The reference cast it twice on the same pull.",
+            confidence=Confidence.MEASURED,
+            player_slug="emberkin-0",
+        ),
+        Finding(
+            id="compare.talents.stonewake-1",
+            title="Stonewake's talents differ from the top parse's in one node",
+            detail="The difference sits in the specialisation tree.",
+            confidence=Confidence.DERIVED,
+            player_slug="stonewake-1",
+        ),
+        Finding(
+            id="compare.spells.missing.0.stonewake-1",
+            title="Stonewake cast no Dancing Rune Weapon on the boss",
+            detail="The reference cast it once on the same pull.",
+            confidence=Confidence.MEASURED,
+            player_slug="stonewake-1",
+        ),
     )
 
 
 def minimal_html() -> str:
     return render(
         build_report(
-            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+            minimal_loaded(), minimal_findings(), None, COMPARED, SUBJECT, None, FETCHED,
             NO_DEFENSIVES,
         NO_CONSUMABLES,
         )
     )
 
 
-# The golden fixture above deliberately has one player, no reference run, and so no
-# Warcraft Logs link and no timeline SVG. The self-containment and href-scoping
-# assertions need a page that actually contains both href kinds, the inline SVG,
-# a withheld section and more than one player — otherwise they would pass by never
-# exercising the thing they claim to check. This fixture, not the golden one, is
-# what those tests render.
+# The golden fixture above deliberately has no reference run, and so no Warcraft
+# Logs link and no timeline SVG, and its comparison was asked for rather than
+# skipped. The self-containment and href-scoping assertions need a page that
+# actually contains both href kinds and the inline SVG, and the whole-run
+# withheld line only appears where no comparison ran at all — otherwise they
+# would pass by never exercising the thing they claim to check. This fixture,
+# not the golden one, is what those tests render.
 
 
 def rich_loaded() -> LoadedRun:
@@ -403,8 +463,9 @@ def test_a_narrative_adds_exactly_one_heading() -> None:
     # Header (h1) plus the always-present h2 sections plus narrative.
     html = render(
         build_report(
-            minimal_loaded(), minimal_findings(), None, None, SUBJECT, "A sentence.", FETCHED
-        , NO_DEFENSIVES, NO_CONSUMABLES)
+            minimal_loaded(), minimal_findings(), None, COMPARED, SUBJECT, "A sentence.",
+            FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        )
     )
     assert 'id="narrative"' in html
     assert len(re.findall(r"<h2 ", html)) == len(SECTION_ORDER) + 1
@@ -426,6 +487,121 @@ def test_no_finding_reaches_the_page_twice() -> None:
     html = minimal_html()
     for finding in minimal_findings():
         assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+
+
+def test_no_element_id_appears_twice() -> None:
+    # The companion to test_no_finding_reaches_the_page_twice, which compares
+    # titles and so cannot see two findings that share an id. A duplicate
+    # element id is invalid HTML and sends the page's own pointer to whichever
+    # of the two the browser happens to pick.
+    html = minimal_html()
+    element_ids = re.findall(r'\sid="([^"]+)"', html)
+    assert element_ids, "a page with no element ids would pass this vacuously"
+    duplicates = {value for value in element_ids if element_ids.count(value) > 1}
+    assert duplicates == set()
+
+
+def player_cards(html: str) -> dict[str, str]:
+    """Each player card's own markup, keyed by the slug in its element id.
+
+    Split on the opening tag rather than matched to a closing one: a finding
+    row inside a card is itself a `<div class="card">`, so nothing pairs the
+    tags without counting them. The last card runs to the end of the Players
+    panel, which is where the split's tail is cut.
+    """
+    opener = '<div class="card" data-tab-panel="players" id="player-'
+    cards = {}
+    for chunk in html.split(opener)[1:]:
+        slug = chunk[: chunk.index('"')]
+        cards[slug] = chunk.split("\n</section>")[0]
+    return cards
+
+
+def test_the_minimal_fixture_puts_two_players_comparisons_on_one_page() -> None:
+    # The uniqueness test above is only worth running against a page where two
+    # ids could collide: two compared players, carrying the same comparison
+    # families under a slug each. A fixture that drifted back to one player
+    # would leave it green and blind, which is the blind spot it exists to
+    # close rather than to reproduce.
+    assert len(COMPARED) > 1
+    cards = player_cards(minimal_html())
+    assert set(cards) == {"emberkin-0", "stonewake-1", "briala-2"}
+    for slug in sorted(COMPARED):
+        assert f'id="finding-compare.talents.{slug}"' in cards[slug]
+        assert f'id="finding-compare.spells.missing.0.{slug}"' in cards[slug]
+
+
+def a_real_two_player_comparison() -> tuple[tuple[Finding, ...], str]:
+    """A page whose comparison rows the comparison modules actually wrote.
+
+    Every other fixture in this file hand-writes its findings, so a title the
+    modules emit identically for two players reads as two distinct titles here
+    and the once-only rule never sees it. This runs the real `compare()` over
+    two of the roster's own players and renders what comes back.
+    """
+    loaded = minimal_loaded()
+    emberkin, stonewake, _briala = loaded.run.players
+    findings = tuple(
+        compare(
+            loaded,
+            None,
+            (
+                ComparisonSubject(
+                    player=emberkin,
+                    slug="emberkin-0",
+                    display_name="Emberkin",
+                    parse=a_parse_sample(),
+                ),
+                ComparisonSubject(
+                    player=stonewake,
+                    slug="stonewake-1",
+                    display_name="Stonewake",
+                    parse=a_parse_sample(),
+                ),
+            ),
+        )
+    )
+    html = render(
+        build_report(
+            loaded, findings, None, COMPARED, SUBJECT, None, FETCHED, NO_DEFENSIVES,
+            NO_CONSUMABLES,
+        )
+    )
+    return findings, html
+
+
+def test_the_two_player_comparison_fixture_exercises_every_parse_family() -> None:
+    # The test below is only worth running against a page carrying all three
+    # per-player families; a fixture that quietly stopped emitting one would
+    # leave it green over a title that still collides.
+    findings, _html = a_real_two_player_comparison()
+    families = {".".join(f.id.split(".")[:2]) for f in findings if f.player_slug}
+    assert families == {"compare.spells", "compare.talents", "compare.uptime"}
+
+
+def test_no_two_players_share_a_comparison_row_heading() -> None:
+    # The once-only rule, applied to titles the comparison modules wrote rather
+    # than to fixture prose. A family whose title names no player renders the
+    # same heading under both cards, and the reader cannot tell which is whose.
+    findings, html = a_real_two_player_comparison()
+    for finding in findings:
+        if finding.player_slug:
+            assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+
+
+def test_only_the_card_nobody_asked_for_carries_the_not_requested_sentence() -> None:
+    # The proof at the HTML level that a withheld card renders sanely. Asserted
+    # card by card rather than as a page-wide count: the sentence and the rows
+    # are decided separately, so a page can carry the right number of each and
+    # still put one player's comparison under another player's name.
+    cards = player_cards(minimal_html())
+    uncompared = set(cards) - COMPARED
+    assert uncompared == {"briala-2"}
+    for slug in sorted(uncompared):
+        assert NOT_REQUESTED in cards[slug]
+        assert 'id="finding-compare.' not in cards[slug]
+    for slug in sorted(COMPARED):
+        assert NOT_REQUESTED not in cards[slug]
 
 
 def test_every_withheld_section_gives_a_reason() -> None:
@@ -525,7 +701,7 @@ def test_the_report_carries_no_total_row() -> None:
     # that the report's own view model and templates have nowhere to hold or
     # build one.
     report = build_report(
-        minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+        minimal_loaded(), minimal_findings(), None, COMPARED, SUBJECT, None, FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
     )
@@ -598,7 +774,7 @@ ARCANE = Defensives(
 def a_page(defensives: Defensives) -> str:
     return render(
         build_report(
-            minimal_loaded(), minimal_findings(), None, None, SUBJECT, None, FETCHED,
+            minimal_loaded(), minimal_findings(), None, COMPARED, SUBJECT, None, FETCHED,
             defensives, NO_CONSUMABLES,
         )
     )
@@ -621,7 +797,7 @@ def a_page_with(cast: CastEvent) -> str:
     return render(
         build_report(
             loaded.model_copy(update={"casts": loaded.casts + (cast,)}), minimal_findings(),
-            None, None, SUBJECT, None, FETCHED, ARCANE, NO_CONSUMABLES,
+            None, COMPARED, SUBJECT, None, FETCHED, ARCANE, NO_CONSUMABLES,
         )
     )
 
@@ -674,7 +850,7 @@ def a_page_with_consumables(cast: CastEvent | None = None) -> str:
     return render(
         build_report(
             loaded.model_copy(update={"casts": casts, "deaths": late}), minimal_findings(),
-            None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, POTIONS,
+            None, COMPARED, SUBJECT, None, FETCHED, NO_DEFENSIVES, POTIONS,
         )
     )
 
@@ -738,7 +914,7 @@ def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:
     untimed = tuple(f for f in minimal_findings() if f.seconds_lost is None)
     html = render(
         build_report(
-            minimal_loaded(), untimed, None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES,
+            minimal_loaded(), untimed, None, COMPARED, SUBJECT, None, FETCHED, NO_DEFENSIVES,
             NO_CONSUMABLES,
         )
     )

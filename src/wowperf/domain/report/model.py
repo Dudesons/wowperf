@@ -391,9 +391,9 @@ class PlayerCard(Frozen):
     slug: str = ""
     """This player's fragment id, unique within the report.
 
-    Derived from the disambiguated display name and suffixed with the card's
-    index, because two names can reduce to the same slug and a duplicate id
-    would give one player another's sub-tab.
+    Derived from the disambiguated display name and suffixed with the
+    roster's own index, because two names can reduce to the same slug and a
+    duplicate id would give one player another's sub-tab.
     """
     timeline: PlayerTimeline | None = None
     """This player's own run, drawn.
@@ -431,6 +431,15 @@ class ReferenceRecord(Frozen):
     # fetched for it. The reference cache is shared across analyses, and this
     # is where a report that discloses every candidate discloses that too.
     from_cache: bool = False
+    # Whose comparison weighed this candidate, from `slugs_by_actor`. Empty on a
+    # speed candidate: the route is compared once for the run, not per player.
+    player_slug: str = ""
+    # The same player as `player_slug`, spelled the way the page spells them,
+    # from `display_names`. Empty on a speed candidate for the same reason.
+    # This is a member of our own roster, whose name every card already prints,
+    # so it tabulates nothing about anybody else -- the rule this record keeps
+    # is about other players' runs, and it still carries a link and no figure.
+    player_name: str = ""
 
 
 class Provenance(Frozen):

@@ -16,7 +16,13 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
    ```
 
    Add `--player NAME` when the person named someone other than the report's owner; if the name is
-   not in the roster the tool prints the roster it does have. Add `--no-compare` only if they asked
+   not in the roster the tool prints the roster it does have. It is repeatable, and the first name
+   given is the subject: whose card opens the Players tab, and who the narrative is about. Add
+   `--all-players` when they asked about the group rather than one player — every player then gets
+   their own parse comparison, and the one named by `--player` is still the subject. Each compared
+   player draws a parse sample of their own, so a whole roster multiplies the parse half of the
+   fetch; players sharing a specialisation share the leaderboard query, and any reference already
+   fetched is served from the cache. Add `--no-compare` only if they asked
    for the run in isolation; the comparison is the most useful half of the report.
    Add `--throughput-ceiling` only when the person asks how often a burst cooldown was pressed
    against what its cooldown allowed; it is off by default because a route, not a rotation,
@@ -37,8 +43,9 @@ You are given a Warcraft Logs URL. You hand back one HTML file and say what it f
 4. **Write the narrative** to `out/<code>-<fight>.narrative.md`. See below for what it must and
    must not contain.
 
-5. **Re-run with the narrative.** Repeat step 1's command *exactly* — same URL, same `--player`,
-   same `--no-compare`, same `--fight` if you used one — and add only `--narrative`.
+5. **Re-run with the narrative.** Repeat step 1's command *exactly* — same URL, every `--player`
+   in the same order, same `--all-players`, same `--no-compare`, same `--fight` if you used one —
+   and add only `--narrative`.
 
    ```bash
    uv run wowperf analyze <url> --narrative out/<code>-<fight>.narrative.md

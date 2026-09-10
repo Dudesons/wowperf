@@ -91,7 +91,7 @@ hardcoding it, because it is per-client and can change.
 `pointsSpentThisHour` field is a Float, implying fractional per-query costs. We measure rather
 than predict.
 
-One approximation and one measurement:
+One approximation and three measurements:
 
 - A full compared analysis costs roughly **28 points of 3600** — an order of magnitude observed
   across this project's own compared runs, not a controlled measurement. No single reading stands
@@ -104,6 +104,24 @@ One approximation and one measurement:
   (2026-09-08). Conditions: one cold run, one dungeon, one keystone level; all ten candidates
   loaded, none excluded and none retried. `docs/plans/2026-09-08-sampling-design.md` projects ~111
   for that shape, so the reading came in about a quarter under.
+- The same analysis widened to the whole roster with `--all-players` — one speed sample for the
+  run and a parse sample for each of five players — spent **190.90 points of 3600** (2026-09-11),
+  against the 83.39 above for the same report and fight with one player. Conditions: one cold run,
+  report `6Kx1P9GbNXrcLdHa` fight 36, five players in five distinct specialisations and none
+  skipped for want of one; all thirty candidates loaded, none excluded and none retried.
+  **Eleven of the twenty-five parse candidates were served from another player's sample** — the
+  parse rows carrying `from_cache` whose report and fight another player's sample also names,
+  which is what `tests/e2e/test_report_e2e.py` counts. Twenty-five candidates stand on fourteen
+  distinct runs: the fourteen first parse loads are not among the eleven, and each of the eleven
+  repeats found its run already on disk. Those fourteen were not all paid for in full — five of
+  them had already been read on the speed axis, so their first parse load paid only for `Talents`
+  and `Casts`, the queries a speed profile leaves unfetched. Both halves of that definition carry
+  weight — drop `from_cache` and the count is at least fourteen, because the first fetch of every
+  shared run sits in a multi-player group too.
+  `docs/plans/2026-09-10-per-player-parse-comparison-design.md` §7.1 derived about 250 for this
+  shape, so this too came in about a quarter under. One reading, of one report, against one day's
+  leaderboards: how much a roster shares depends on how much its specialisations' leaderboards
+  overlap, and that is not a rate this measures.
 
 ## Every query reports its own cost
 
@@ -171,6 +189,71 @@ The off-by-one is **not** the explanation, so do not reach for it. The older met
 quota before and after and subtracted the read's own 1.00, and under the reading described above
 that arithmetic yields the query's true cost: the opening read's point falls inside the
 difference and the closing read's does not.
+
+**The same analysis with `--all-players`, cold cache, same report and fight, 2026-09-11: 190.90
+points of 3600**, five players compared instead of one, composed as the command prints it.
+
+| Operation | Calls | Points |
+| --- | --- | --- |
+| `AuraTable` | 30 | 60.08 |
+| `Talents` | 15 | 30.75 |
+| `Fights` | 15 | 30.15 |
+| `Casts` | 16 | 16.00 |
+| `Abilities` | 15 | 15.00 |
+| `EnemyCasts` | 6 | 9.44 |
+| `Deaths` | 6 | 6.00 |
+| `Interrupts` | 6 | 6.00 |
+| `CharacterRankings` | 5 | 5.05 |
+| `Healing` | 4 | 4.00 |
+| `Affixes` | 2 | 2.00 |
+| `DamageTaken` | 1 | 1.42 |
+| `FightRankings` | 1 | 1.01 |
+| `Actors`, `EnemyDeaths`, `Resurrects` | 1 each | 1.00 each |
+| `RateLimit` | 2 | 1.00 |
+
+No mean column, for the reason the table above gives: only the totals were measured. Two rows
+read higher here than the identical call counts did on 2026-09-08 — `EnemyCasts` at 9.44 against
+6.00 over six calls, `DamageTaken` at 1.42 against 1.00 over one. `DamageTaken` is squarely the
+drift the table above describes, which put that same row at 1.45 on a second cold run of the
+single-player shape. `EnemyCasts` is consistent with that drift but larger than either row the
+drift was measured on: 3.44 points over six calls, 57% above the 2026-09-08 figure, where the
+recorded drift moved a row by under half a point. There is a second account the call count does
+not distinguish it from — the five speed references were drawn from a different day's
+leaderboard, so those five calls were made against a sample re-drawn three days later, not
+necessarily the same fights. Neither row is a difference `--all-players` made. Which account
+holds for `EnemyCasts` needs another reading to settle, and none has been taken.
+
+**Five times the players is not five times the price, and the reason is in the call counts.**
+Thirty candidates were weighed — five speed references, and five parse references for each of the
+five players — and fourteen distinct runs stand behind them: eleven parse candidates were served
+from another player's sample, and all five speed references were themselves top parses, so their
+reports were read on both axes and fetched once. Hence `Fights` and `Abilities` at 15, which is
+fourteen references plus our own run rather than thirty-one; `Talents` at 15, one per
+parse-profile load and ours; `Casts` at 16, one page per parse reference plus the two our own
+longer fight takes, which is what the 2026-09-07 probe below counted for this fight's friendly
+cast stream with `includeResources: true` — 10716 rows over 2 pages. `EnemyCasts`, `Deaths` and
+`Interrupts` stay at 6 — the speed axis is drawn once however many players are compared.
+
+**The rows do not all count the same population, and that is what makes the two tables
+comparable.** Read off `src/wowperf/adapters/wcl/repository.py` on 2026-09-11: `Fights` and
+`Abilities` are fetched on every profile, so they count references on both axes, while `Casts`
+and `Talents` are fetched on the parse profile and on our own run and nowhere else — a speed
+reference fetches neither. So the divisor for a `Casts` count is `Talents`, never `Fights`.
+`Fights` and `Abilities` are keyed on the report code alone where `Casts` and `Talents` are keyed
+on report and fight, so strictly the first two count distinct reports, which in both these
+samples is the same as distinct runs. On 2026-09-08, `Talents` at 6 is five parse references and
+ours, and `Casts` at 7 is those five single pages plus our two. Here, `Talents` at 15 is fourteen
+parse references and ours, and `Casts` at 16 is those fourteen plus our two. Both readings
+therefore put our own fight at the same two pages, and neither leaves a page unaccounted for.
+
+**The one row that scales with players rather than with references is `AuraTable`**, at 30 calls
+and 60.08 points, a third of the run: one for each of the five subjects' own uptime, and one for
+each of the twenty-five sample memberships. A reference shared between two samples is a different
+character in each, so nothing there is shared, and nothing about it improves with a warmer cache.
+
+The `Casts` row also speaks to the price contradiction above: sixteen pages with
+`includeResources: true` for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not
+with the 2026-09-07 one. Still recorded rather than resolved, since nothing here depends on it.
 
 ## Mythic+ in the schema
 
