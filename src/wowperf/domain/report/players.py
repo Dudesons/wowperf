@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.findings import Finding
-from wowperf.domain.model import LoadedRun, Player
+from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.frame import (
     PARSE_UNAVAILABLE_ID,
     format_seconds,
@@ -68,6 +68,26 @@ def player_slug(display_name: str) -> str:
     return slug or SLUG_FALLBACK
 
 
+def slugs_by_actor(run: Run) -> dict[int, str]:
+    """Every player's fragment id, keyed by actor id.
+
+    Computed from the roster's own order, not from the order the cards are
+    drawn in, so a player's fragment id does not move when a different subject
+    reorders the cards -- a deep link into a report stays valid across a
+    re-run that named someone else. Two display names can reduce to the same
+    slug, so the roster index is appended to keep them apart.
+
+    This is the only place a slug is minted. The comparison's finding ids and
+    the card they belong to both read from here, and that agreement is what
+    makes a `#finding-...` link land in the right sub-tab.
+    """
+    names = display_names(run)
+    return {
+        player.actor_id: f"{player_slug(names[player.actor_id])}-{index}"
+        for index, player in enumerate(run.players)
+    }
+
+
 def build_players(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -104,6 +124,7 @@ def build_players(
     """
     comparison_section = section_for(findings, PARSE_UNAVAILABLE_ID, sampled(parse))
     names_by_actor = display_names(loaded.run)
+    slugs = slugs_by_actor(loaded.run)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
@@ -122,7 +143,7 @@ def build_players(
     )
 
     cards = []
-    for index, summary in enumerate(summaries):
+    for summary in summaries:
         display_name = names_by_actor[summary.actor_id]
         mine = collapse_repeated_details(
             [
@@ -154,7 +175,7 @@ def build_players(
                     if is_subject
                     else ()
                 ),
-                slug=f"{player_slug(display_name)}-{index}",
+                slug=slugs[summary.actor_id],
                 timeline=build_player_timeline(
                     loaded, summary.actor_id, summary.class_name, summary.spec,
                     defensives, throughput,

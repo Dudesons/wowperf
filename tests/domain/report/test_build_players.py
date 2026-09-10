@@ -9,7 +9,12 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
-from wowperf.domain.report.players import build_players, class_colour, player_slug
+from wowperf.domain.report.players import (
+    build_players,
+    class_colour,
+    player_slug,
+    slugs_by_actor,
+)
 from wowperf.domain.season import CooldownAbility, Defensives, ThroughputCooldowns
 
 
@@ -426,3 +431,33 @@ def test_multiple_interrupts_are_worded_in_the_plural() -> None:
         loaded_with_interrupts, (), None, a_player(), {}, Defensives(), ThroughputCooldowns()
     )[0]
     assert card.stats_line == "0 casts in 2:00 of pulls · 0 deaths · 2 interrupts"
+
+
+def test_two_names_that_reduce_to_one_slug_stay_apart() -> None:
+    # Bríala and Briala both reduce to "briala"; the roster index separates them.
+    run = a_run(
+        players=(a_player(actor_id=1, name="Bríala"), a_player(actor_id=2, name="Briala")),
+        pulls=(a_pull(0, 0, 120_000),),
+    )
+    slugs = slugs_by_actor(run)
+    assert slugs[1] != slugs[2]
+    assert slugs[1].startswith("briala")
+    assert slugs[2].startswith("briala")
+
+
+def test_a_slug_does_not_change_when_a_different_player_is_the_subject() -> None:
+    first = a_player(actor_id=1, name="Emberkin")
+    second = a_player(actor_id=2, name="Stonewake")
+    loaded = a_loaded(players=(first, second))
+    findings: tuple[Finding, ...] = ()
+
+    subject_first = build_players(
+        loaded, findings, a_parse(), first, {}, Defensives(), ThroughputCooldowns()
+    )
+    subject_second = build_players(
+        loaded, findings, a_parse(), second, {}, Defensives(), ThroughputCooldowns()
+    )
+
+    by_name_first = {card.name: card.slug for card in subject_first}
+    by_name_second = {card.name: card.slug for card in subject_second}
+    assert by_name_first == by_name_second

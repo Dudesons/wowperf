@@ -391,9 +391,9 @@ class PlayerCard(Frozen):
     slug: str = ""
     """This player's fragment id, unique within the report.
 
-    Derived from the disambiguated display name and suffixed with the card's
-    index, because two names can reduce to the same slug and a duplicate id
-    would give one player another's sub-tab.
+    Derived from the disambiguated display name and suffixed with the
+    roster's own index, because two names can reduce to the same slug and a
+    duplicate id would give one player another's sub-tab.
     """
     timeline: PlayerTimeline | None = None
     """This player's own run, drawn.
