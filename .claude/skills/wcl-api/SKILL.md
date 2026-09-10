@@ -219,9 +219,9 @@ single-player shape. `EnemyCasts` is consistent with that drift but larger than 
 drift was measured on: 3.44 points over six calls, 57% above the 2026-09-08 figure, where the
 recorded drift moved a row by under half a point. There is a second account the call count does
 not distinguish it from — the five speed references were drawn from a different day's
-leaderboard, so five of those six calls were made against different fights than on 2026-09-08.
-Neither row is a difference `--all-players` made. Which account holds for `EnemyCasts` needs
-another reading to settle, and none has been taken.
+leaderboard, so those five calls were made against a sample re-drawn three days later, not
+necessarily the same fights. Neither row is a difference `--all-players` made. Which account
+holds for `EnemyCasts` needs another reading to settle, and none has been taken.
 
 **Five times the players is not five times the price, and the reason is in the call counts.**
 Thirty candidates were weighed — five speed references, and five parse references for each of the
@@ -238,11 +238,13 @@ cast stream with `includeResources: true` — 10716 rows over 2 pages. `EnemyCas
 comparable.** Read off `src/wowperf/adapters/wcl/repository.py` on 2026-09-11: `Fights` and
 `Abilities` are fetched on every profile, so they count references on both axes, while `Casts`
 and `Talents` are fetched on the parse profile and on our own run and nowhere else — a speed
-reference fetches neither. So the divisor for a `Casts` count is `Talents`, never `Fights`. On
-2026-09-08, `Talents` at 6 is five parse references and ours, and `Casts` at 7 is those five
-single pages plus our two. Here, `Talents` at 15 is fourteen parse references and ours, and
-`Casts` at 16 is those fourteen plus our two. Both readings therefore put our own fight at the
-same two pages, and neither leaves a page unaccounted for.
+reference fetches neither. So the divisor for a `Casts` count is `Talents`, never `Fights`.
+`Fights` and `Abilities` are keyed on the report code alone where `Casts` and `Talents` are keyed
+on report and fight, so strictly the first two count distinct reports, which in both these
+samples is the same as distinct runs. On 2026-09-08, `Talents` at 6 is five parse references and
+ours, and `Casts` at 7 is those five single pages plus our two. Here, `Talents` at 15 is fourteen
+parse references and ours, and `Casts` at 16 is those fourteen plus our two. Both readings
+therefore put our own fight at the same two pages, and neither leaves a page unaccounted for.
 
 **The one row that scales with players rather than with references is `AuraTable`**, at 30 calls
 and 60.08 points, a third of the run: one for each of the five subjects' own uptime, and one for
