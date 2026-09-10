@@ -203,11 +203,17 @@ from a teammate's sample as firmly as from the subject's.
 - **The derived figure is probably high.** Reference runs cache by report code with no class or
   spec in the key, so a report already loaded for one player's sample costs a second player only
   its aura query. How often that happens is unmeasured.
+- **Measured 2026-09-11: 190.90 points of 3600**, five players on the same report and fight, cold
+  cache — against the 250 derived above, which was high for exactly the reason given. Eleven of
+  the twenty-five parse candidates were served from another player's sample, and the five speed
+  references were themselves top parses, so fourteen distinct runs stood behind thirty
+  candidates. The dearest row is `AuraTable` at 60.08 of the 190.90, and it is the one that
+  scales with players rather than with references. Recorded with its composition in
+  `.claude/skills/wcl-api/SKILL.md`.
 
-**The plan must take one real `--all-players` reading** and record in
-`.claude/skills/wcl-api/SKILL.md`, with its date, both the total and how many reference loads
-were served from another player's sample. The derived 165 stops being the best available figure
-the moment that reading exists.
+The derived 165 and the 250 it made are kept above as the reasoning the reading replaced, not as
+figures to budget against. One report, one day's leaderboards: how much a roster shares depends
+on how much its specialisations' leaderboards overlap, which one reading cannot turn into a rate.
 
 ### 7.2 Partial failure
 
@@ -333,9 +339,12 @@ Goldens regenerate with
 
 ## 13. Open questions
 
-1. **Cross-sample cache hits.** §7.1 derives 165 points and says the true figure is probably
+1. ~~**Cross-sample cache hits.** §7.1 derives 165 points and says the true figure is probably
    lower. The plan measures it once; until then no claim about `--all-players` costing under 250
-   points may be stated as measured.
+   points may be stated as measured.~~ Settled 2026-09-11. One cold `--all-players` run of report
+   `6Kx1P9GbNXrcLdHa` fight 36 spent 190.90 points of 3600, with eleven of its twenty-five parse
+   candidates served from another player's sample. §7.1 carries the total and
+   `.claude/skills/wcl-api/SKILL.md` its composition.
 2. **Whether five comparisons is more than a reader wants.** Four real runs produced 5, 5, 5 and
    15 parse-family findings for a single player, against whole-report totals of 39 to 52. Four
    more players is +20 typically and +60 at the observed worst, so the report's finding count

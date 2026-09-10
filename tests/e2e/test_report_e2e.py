@@ -1,12 +1,15 @@
 # ABOUTME: End-to-end report rendering against a real run; no mocks, real credentials.
 # ABOUTME: Excluded from the default suite because it needs a network and spends API quota.
 
+import json
 import os
 import re
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from markupsafe import escape
+from typer.testing import CliRunner
 
 from wowperf.adapters.config.toml import (
     load_consumables,
@@ -22,6 +25,7 @@ from wowperf.cli import (
     _auras,
     _resolve_player,
     _samples,
+    app,
     build_reference_repositories,
     build_repository,
 )
@@ -183,3 +187,106 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
         for card in report.players:
             if card is not subject_card:
                 assert card.spell_and_talent_rows == ()
+
+
+@pytest.mark.e2e
+def test_all_players_compares_everyone_and_collides_no_ids(tmp_path: Path) -> None:
+    """`--all-players` end to end: the real command, a cold cache, the real API.
+
+    Driven as the command rather than reassembled from its parts, unlike the
+    test above. Who is compared is decided in `analyze` and nowhere else --
+    the flag, the roster it sweeps up, the slug stamped on every finding it
+    mints and the cards the report then fills -- so a reassembly here would
+    exercise the reassembly.
+
+    A parse sample is drawn per player, so this is also the run that prices
+    the flag. What `analyze` says about its own spend goes to stderr, which
+    the runner captures rather than shows; it is echoed back so that
+    `pytest -s` prints it, which is how the figure in
+    `.claude/skills/wcl-api/SKILL.md` was read. Take it from a cache this run
+    filled itself -- against a warm one the command truthfully reports
+    spending almost nothing.
+    """
+    if not REPORT:
+        pytest.fail(
+            "Set WOWPERF_E2E_REPORT to a public Warcraft Logs Mythic+ report URL to run this"
+        )
+
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        app,
+        [
+            "analyze", REPORT,
+            "--all-players",
+            "--cache-dir", str(tmp_path / "cache"),
+            "--out", str(out),
+        ],
+    )
+    # Both halves of the diagnosis: a refusal the command wrote itself goes to
+    # stderr, and an exception it never expected is held on the result instead.
+    # This run costs real quota, so a failure has to say which it was.
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+
+    [written] = out.glob("*.findings.json")
+    findings = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
+    [page] = out.glob("*.html")
+    html = page.read_text(encoding="utf-8")
+
+    # Every finding id is minted once. The parse families are suffixed with the
+    # player they are about, and five players' worth of them is where a suffix
+    # that failed to distinguish anybody would first show.
+    ids = [finding["id"] for finding in findings["findings"]]
+    assert ids, "the run produced no findings at all"
+    assert len(ids) == len(set(ids))
+
+    # The same claim about the page, which mints an element id per card, per
+    # sub-tab and per row. A duplicate is invalid HTML and sends the page's own
+    # pointers to whichever of the two the browser happens to pick.
+    element_ids = re.findall(r'\sid="([^"]+)"', html)
+    assert element_ids, "a page with no element ids would pass this vacuously"
+    assert len(element_ids) == len(set(element_ids))
+
+    # Everyone means everyone: a card per roster member, and each of them
+    # compared. A player the log records no specialisation for is compared too
+    # -- their comparison is one finding saying why it is empty.
+    compared = findings["comparison"]["players"]
+    assert len(compared) > 1, "a roster of one cannot show that --all-players widened anything"
+    assert set(compared) == set(re.findall(r'data-tab-panel="players" id="player-([^"]+)"', html))
+    for slug in compared:
+        assert any(finding.get("player_slug") == slug for finding in findings["findings"]), slug
+
+    # Every parse candidate names whose comparison weighed it, and names
+    # somebody who was actually compared.
+    references = findings["comparison"]["references"]
+    parse_references = [record for record in references if record["axis"] == "parse"]
+    assert parse_references, "no parse candidate was weighed at all"
+    assert {record["player_slug"] for record in parse_references} <= set(compared)
+
+    # A reference is cheap for the second player who wants it: the cache is
+    # keyed by report and fight with no character in it, so `from_cache` on a
+    # candidate two players' samples both name is a load nobody paid for twice.
+    slugs_by_reference: dict[tuple[str, int], set[str]] = {}
+    for record in parse_references:
+        key = (record["report_code"], record["fight_id"])
+        slugs_by_reference.setdefault(key, set()).add(record["player_slug"])
+    shared = [
+        record
+        for record in parse_references
+        if record["from_cache"]
+        and len(slugs_by_reference[(record["report_code"], record["fight_id"])]) > 1
+    ]
+
+    assert "Where they went:" in result.stderr
+    measurement = "\n".join(
+        [
+            result.stderr,
+            f"players compared: {len(compared)}",
+            f"parse candidates weighed: {len(parse_references)}",
+            f"served from another player's sample: {len(shared)}",
+        ]
+    )
+    # Windows gives the process a cp1252 stdout, and `-s` sends this straight
+    # to it rather than through pytest's own capture. A run that has already
+    # spent its quota must not end in a UnicodeEncodeError over a character in
+    # a dungeon or ability name, so the escape is taken here.
+    print(measurement.encode("ascii", "backslashreplace").decode("ascii"))

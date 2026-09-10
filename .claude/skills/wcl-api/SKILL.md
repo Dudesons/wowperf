@@ -91,7 +91,7 @@ hardcoding it, because it is per-client and can change.
 `pointsSpentThisHour` field is a Float, implying fractional per-query costs. We measure rather
 than predict.
 
-One approximation and one measurement:
+One approximation and three measurements:
 
 - A full compared analysis costs roughly **28 points of 3600** — an order of magnitude observed
   across this project's own compared runs, not a controlled measurement. No single reading stands
@@ -104,6 +104,17 @@ One approximation and one measurement:
   (2026-09-08). Conditions: one cold run, one dungeon, one keystone level; all ten candidates
   loaded, none excluded and none retried. `docs/plans/2026-09-08-sampling-design.md` projects ~111
   for that shape, so the reading came in about a quarter under.
+- The same analysis widened to the whole roster with `--all-players` — one speed sample for the
+  run and a parse sample for each of five players — spent **190.90 points of 3600** (2026-09-11),
+  against the 83.39 above for the same report and fight with one player. Conditions: one cold run,
+  report `6Kx1P9GbNXrcLdHa` fight 36, five players in five distinct specialisations and none
+  skipped for want of one; all thirty candidates loaded, none excluded and none retried.
+  **Eleven of the twenty-five parse candidates were served from another player's sample** — every
+  one whose report and fight a second player's sample also named, so nothing was fetched twice.
+  `docs/plans/2026-09-10-per-player-parse-comparison-design.md` §7.1 derived about 250 for this
+  shape, so this too came in about a quarter under. One reading, of one report, against one day's
+  leaderboards: how much a roster shares depends on how much its specialisations' leaderboards
+  overlap, and that is not a rate this measures.
 
 ## Every query reports its own cost
 
@@ -171,6 +182,49 @@ The off-by-one is **not** the explanation, so do not reach for it. The older met
 quota before and after and subtracted the read's own 1.00, and under the reading described above
 that arithmetic yields the query's true cost: the opening read's point falls inside the
 difference and the closing read's does not.
+
+**The same analysis with `--all-players`, cold cache, same report and fight, 2026-09-11: 190.90
+points of 3600**, five players compared instead of one, composed as the command prints it.
+
+| Operation | Calls | Points |
+| --- | --- | --- |
+| `AuraTable` | 30 | 60.08 |
+| `Talents` | 15 | 30.75 |
+| `Fights` | 15 | 30.15 |
+| `Casts` | 16 | 16.00 |
+| `Abilities` | 15 | 15.00 |
+| `EnemyCasts` | 6 | 9.44 |
+| `Deaths` | 6 | 6.00 |
+| `Interrupts` | 6 | 6.00 |
+| `CharacterRankings` | 5 | 5.05 |
+| `Healing` | 4 | 4.00 |
+| `Affixes` | 2 | 2.00 |
+| `DamageTaken` | 1 | 1.42 |
+| `FightRankings` | 1 | 1.01 |
+| `Actors`, `EnemyDeaths`, `Resurrects` | 1 each | 1.00 each |
+| `RateLimit` | 2 | 1.00 |
+
+No mean column, for the reason the table above gives: only the totals were measured.
+
+**Five times the players is not five times the price, and the reason is in the call counts.**
+Thirty candidates were weighed — five speed references, and five parse references for each of the
+five players — and fourteen distinct runs stand behind them: eleven parse candidates were served
+from another player's sample, and all five speed references were themselves top parses, so their
+reports were read on both axes and fetched once. Hence `Fights` and `Abilities` at 15, which is
+fourteen references plus our own run rather than thirty-one; `Talents` at 15, one per
+parse-profile load and ours; `Casts` at 16, which fits one page per parse reference and the two
+our own longer fight is measured above as taking, though only the total was read.
+`EnemyCasts`, `Deaths` and `Interrupts` stay at 6 — the speed axis is drawn once however many
+players are compared.
+
+**The one row that scales with players rather than with references is `AuraTable`**, at 30 calls
+and 60.08 points, a third of the run: one for each of the five subjects' own uptime, and one for
+each of the twenty-five sample memberships. A reference shared between two samples is a different
+character in each, so nothing there is shared, and nothing about it improves with a warmer cache.
+
+The `Casts` row also speaks to the contradiction above: sixteen pages with `includeResources: true`
+for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not with the 2026-09-07 one.
+Still recorded rather than resolved, since nothing here depends on it.
 
 ## Mythic+ in the schema
 
