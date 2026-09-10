@@ -25,10 +25,13 @@ from wowperf.cli import (
     _cost_breakdown,
     _fetch_parse_auras,
     _quota_sentence,
+    _resolve_player,
+    _roster_hint,
     _samples,
     app,
     build_icons,
 )
+from wowperf.domain.analysis.players import display_names
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
@@ -1090,6 +1093,130 @@ def test_an_empty_player_name_is_refused_rather_than_read_as_the_owner(tmp_path:
     assert "is not a name" in result.output
     # The same closing sentence an unknown name gets, so the two read as one rule.
     assert "Pass --player with one of:" in result.output
+
+
+ROSTER_HINT_PREFIX = "Pass --player with one of: "
+
+
+def _roster_offered(hint: str) -> list[str]:
+    """The spellings a roster hint offered, in the order it printed them."""
+    assert ROSTER_HINT_PREFIX in hint, hint
+    return hint.split(ROSTER_HINT_PREFIX, 1)[1].splitlines()[0].strip().split(", ")
+
+
+def _roster_run(*roster: tuple[int, str]) -> Run:
+    """A run whose roster is exactly these (actor id, name) pairs.
+
+    Resolving a `--player` name reads the roster and the report owner and
+    nothing else, so everything else is left at its emptiest.
+    """
+    return Run(
+        report_code="abc123",
+        fight_id=36,
+        dungeon_name="Den of Nalorakk",
+        encounter_id=12660,
+        keystone_level=16,
+        affix_ids=(),
+        keystone_time_ms=1_909_000,
+        keystone_bonus=1,
+        count_reached=744,
+        count_required=729,
+        npc_counts=(),
+        players=tuple(
+            Player(
+                actor_id=actor_id, name=name, class_name="Mage", spec="Arcane", item_level=318
+            )
+            for actor_id, name in roster
+        ),
+        pulls=(),
+    )
+
+
+def test_a_disambiguated_spelling_resolves_to_the_member_it_names() -> None:
+    """The second of two same-named members is reachable, not merely visible.
+
+    `display_names` is what tells them apart, and the raw name reaches only the
+    first, so without this the second player could be listed and never asked for.
+    """
+    run = _roster_run((693, "Emberkin"), (700, "Emberkin"))
+    names = display_names(run)
+
+    assert _resolve_player(run, names[700], names).actor_id == 700
+    assert _resolve_player(run, names[693], names).actor_id == 693
+
+
+def test_every_spelling_the_roster_hint_offers_resolves_to_a_member_of_its_own() -> None:
+    """The hint and the set of accepted names, asserted against each other.
+
+    A message that suggests a value the tool then refuses is a loop, and two
+    hand-written literals here would let the two drift apart again.
+    """
+    run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
+    names = display_names(run)
+
+    offered = _roster_offered(_roster_hint(names))
+
+    assert len(offered) == len(run.players)
+    assert {_resolve_player(run, one, names).actor_id for one in offered} == {693, 700, 701}
+
+
+def test_a_raw_name_resolves_as_it_always_did_and_an_ambiguous_one_takes_the_first() -> None:
+    """The overwhelmingly common invocation, unchanged.
+
+    Where a name is held by two members it still reaches the first rather than
+    becoming an error, and the match still folds case because Warcraft Logs
+    lowercases the report owner's name.
+    """
+    run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
+    names = display_names(run)
+
+    assert _resolve_player(run, "Stonewake", names).actor_id == 701
+    assert _resolve_player(run, "stonewake", names).actor_id == 701
+    assert _resolve_player(run, "Emberkin", names).actor_id == 693
+
+
+def test_an_empty_owner_name_matches_nobody_rather_than_the_first_member() -> None:
+    """`"" == ""` is as true as `"" in anything`.
+
+    A display name compared against an empty request must miss: a run whose
+    owner Warcraft Logs named with an empty string would otherwise be analysed
+    as whoever the roster happens to list first, silently and under the wrong
+    player's name.
+    """
+    run = _roster_run((693, "Emberkin")).model_copy(update={"owner_name": ""})
+    names = display_names(run)
+
+    with pytest.raises(ValueError, match="is not in this run's roster"):
+        _resolve_player(run, None, names)
+
+
+def test_the_second_of_two_same_named_players_is_addressable_from_the_command_line(
+    tmp_path: Path,
+) -> None:
+    """The whole loop, end to end: refuse a name, then use what the refusal offered.
+
+    Both spellings are read out of the hint rather than written down here, so
+    the command's own message is what this test types back at it.
+    """
+    two_emberkins = (("Emberkin", "Warrior", "Protection"),)
+    refused = run_analyze(
+        tmp_path / "refused", "--player", "Nobodyhere", teammates=two_emberkins
+    )
+    assert refused.exit_code == 1
+    offered = _roster_offered(refused.output)
+    assert len(offered) == 2, offered
+
+    compared: list[list[str]] = []
+    for index, name in enumerate(offered):
+        out = tmp_path / f"named{index}"
+        result = run_analyze(out, "--player", name, teammates=two_emberkins)
+        assert result.exit_code == 0, (name, result.output)
+        compared.append(written_findings(out)["comparison"]["players"])
+
+    # One player each, and not the same one: the two spellings reach the two
+    # members, rather than both landing on whichever the raw name reaches.
+    assert [len(one) for one in compared] == [1, 1], compared
+    assert compared[0] != compared[1], compared
 
 
 def test_the_compared_players_are_exactly_the_ones_the_findings_and_the_cards_name(

@@ -56,10 +56,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # `--compare`'s default path -- both reference runs, spell/talent/uptime
     # comparison, and the routing of their findings onto one player's card --
     # is exercised against real data instead of only offline fixtures.
-    subject = _resolve_player(loaded.run, None)
+    names = display_names(loaded.run)
+    subject = _resolve_player(loaded.run, None, names)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-    subject_name = display_names(loaded.run)[subject.actor_id]
+    subject_name = names[subject.actor_id]
     speed_sample, parse_samples, reference_records = _samples(
         rankings,
         references,

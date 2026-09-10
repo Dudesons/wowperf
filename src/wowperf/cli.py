@@ -4,7 +4,7 @@
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -267,38 +267,61 @@ def _echo_cost_breakdown(costs: CostLedger) -> None:
         typer.echo(breakdown, err=True)
 
 
-def _roster_hint(run: Run) -> str:
+def _roster_hint(names: Mapping[int, str]) -> str:
     """Who is on the roster, for a message that has just refused a name.
 
-    Spelled the way the report spells them. Two roster members can share a
-    name, and the raw roster then prints that name twice, telling a reader
-    neither that there are two nor that the second cannot be singled out.
-    `--player` still matches on the raw name and still resolves to the first of
-    the two, so the disambiguated spelling makes the second member visible
-    rather than addressable.
+    Spelled the way the report spells them, which is also a spelling
+    `_resolve_player` accepts: every name printed here resolves, so a reader
+    who copies one back into `--player` is never refused a second time. Two
+    roster members can share a name, and the raw roster would print that name
+    twice, telling a reader neither that there are two nor which of them a
+    name would reach.
     """
-    names = display_names(run)
     roster = ", ".join(sorted(names.values())) or "nobody"
     return f"Pass --player with one of: {roster}"
 
 
-def _resolve_player(run: Run, requested: str | None) -> Player:
+def _by_display_name(run: Run, requested: str, names: Mapping[int, str]) -> Player | None:
+    """The roster member a disambiguated spelling names, or None.
+
+    Folds case the same way `find_player` does, for the same reason. An empty
+    request matches nobody rather than the first member with no spelling of
+    their own: equality against an empty string is as indiscriminate as
+    membership in one.
+    """
+    folded = requested.casefold()
+    if not folded:
+        return None
+    return next(
+        (player for player in run.players if names.get(player.actor_id, "").casefold() == folded),
+        None,
+    )
+
+
+def _resolve_player(run: Run, requested: str | None, names: Mapping[int, str]) -> Player:
     """Whose run this is, for the individual comparison.
 
     The report owner is the default because it is the only name the log itself
     volunteers. Warcraft Logs lowercases it, so the match folds case.
+
+    A raw roster name is tried first and the disambiguated spelling
+    `display_names` gives -- `Emberkin (actor 700)` -- second. Raw first leaves
+    the common invocation exactly as it was: a name two members share still
+    reaches the first of them rather than becoming an error. The second pass is
+    what makes the other one reachable at all, and what keeps `_roster_hint`
+    from offering a name this would refuse.
     """
     name = requested or run.owner_name
     if name is not None:
-        found = find_player(run, name)
+        found = find_player(run, name) or _by_display_name(run, name, names)
         if found is not None:
             return found
 
-    raise ValueError(f"{name!r} is not in this run's roster. {_roster_hint(run)}")
+    raise ValueError(f"{name!r} is not in this run's roster. {_roster_hint(names)}")
 
 
 def _resolve_requested(
-    run: Run, requested: Sequence[str], everyone: bool
+    run: Run, requested: Sequence[str], everyone: bool, names: Mapping[int, str]
 ) -> tuple[Player, tuple[Player, ...]]:
     """The subject, and every player to compare.
 
@@ -321,10 +344,10 @@ def _resolve_requested(
     """
     for name in requested:
         if not name:
-            raise ValueError(f"{name!r} is not a name. {_roster_hint(run)}")
+            raise ValueError(f"{name!r} is not a name. {_roster_hint(names)}")
 
-    subject = _resolve_player(run, requested[0] if requested else None)
-    named = [subject] + [_resolve_player(run, name) for name in requested[1:]]
+    subject = _resolve_player(run, requested[0] if requested else None, names)
+    named = [subject] + [_resolve_player(run, name, names) for name in requested[1:]]
     by_actor = {player.actor_id: player for player in named}
     if everyone:
         for player in run.players:
@@ -704,7 +727,15 @@ def analyze(
             include_cooldown_ceiling=throughput_ceiling,
         )
 
-        subject, to_compare = _resolve_requested(loaded.run, player, all_players)
+        # The roster's own spelling, disambiguated where two members share a
+        # name, computed once and read by everything that names a player: the
+        # names `--player` accepts, the roster a refusal lists, and the name
+        # stamped onto every comparison subject below. One mapping rather than
+        # three calls, so a finding's title, a card heading, a provenance row
+        # and the argument that asked for them cannot spell a player
+        # differently.
+        names = display_names(loaded.run)
+        subject, to_compare = _resolve_requested(loaded.run, player, all_players, names)
         speed_sample: SpeedSample | None = None
         # Everyone the comparison was asked for: the subject, then the order
         # the reader named the rest, then whoever `--all-players` swept up.
@@ -722,11 +753,10 @@ def analyze(
             rankings, references = build_reference_repositories(repository.client, cache_dir)
             # The only place this command mints a slug: the comparison stamps a
             # player's slug onto every finding it emits about them, and the report
-            # matches their card by it. The names beside them are the page's own
-            # spelling, disambiguated where two roster members share one, so a
-            # provenance row naming a player names the same one their card does.
+            # matches their card by it. The name beside it is `names`' spelling,
+            # so a provenance row naming a player names the same one their card
+            # does -- and the same one `--player` would have to be given.
             slugs = slugs_by_actor(loaded.run)
-            names = display_names(loaded.run)
             requested: tuple[RequestedPlayer, ...] = tuple(
                 RequestedPlayer(
                     player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
