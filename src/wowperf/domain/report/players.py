@@ -92,6 +92,13 @@ def build_players(
     different log. Matching by `actor_id` rather than name also keeps two
     players who share a display name from both receiving the comparison rows.
 
+    The subject's card comes first, and everyone else keeps the roster's own
+    order behind them. The page opens whichever sub-tab is drawn first, so
+    ordering the cards is what makes the player the reader asked for the
+    player the reader is shown; leaving the roster order alone would open a
+    teammate's drawing four times out of five. Nav and panel are emitted from
+    this one sequence, so they cannot fall out of step.
+
     `parse` decides one thing here and reads nothing off its members: whether
     a parse comparison ran at all.
     """
@@ -109,10 +116,13 @@ def build_players(
     total_pulls = format_seconds(loaded.run.total_pull_seconds)
     assert total_pulls is not None  # a float input always formats to a string
 
+    summaries = sorted(
+        summarise_players(loaded.run, loaded.casts, loaded.deaths, loaded.interrupts),
+        key=lambda summary: summary.actor_id != subject.actor_id,
+    )
+
     cards = []
-    for index, summary in enumerate(
-        summarise_players(loaded.run, loaded.casts, loaded.deaths, loaded.interrupts)
-    ):
+    for index, summary in enumerate(summaries):
         display_name = names_by_actor[summary.actor_id]
         mine = collapse_repeated_details(
             [

@@ -95,6 +95,43 @@ def test_every_card_carries_a_slug_and_no_two_cards_share_one() -> None:
     assert len(set(slugs)) == len(slugs)
 
 
+def test_the_subjects_card_comes_first_whatever_the_rosters_own_order() -> None:
+    # The page opens whichever sub-tab is drawn first, so this ordering is what
+    # decides which player a reader is shown. The subject is deliberately last
+    # on the roster here: a builder that iterated the roster would put a
+    # teammate's drawing in front of the reader who asked for their own.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Stonewake"),
+        ),
+    )
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=3, name="Stonewake"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    assert [card.name for card in cards] == ["Stonewake", "Emberkin", "Bríala"]
+
+
+def test_the_players_behind_the_subject_keep_the_rosters_order() -> None:
+    # Only the subject moves. Sorting the rest -- by name, by damage, by
+    # anything -- would rank them, which the postmortem design's section 5.5
+    # refuses; a stable partition is what keeps the move to one card.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Stonewake"),
+        ),
+    )
+    cards = build_players(
+        loaded, (), None, a_player(actor_id=2, name="Bríala"), {},
+        Defensives(), ThroughputCooldowns(),
+    )
+    assert [card.name for card in cards] == ["Bríala", "Emberkin", "Stonewake"]
+
+
 def test_the_interrupts_section_takes_its_findings() -> None:
     findings = (a_finding("interrupts.summary"), a_finding("interrupts.ability.0"))
     rows = place_rows(findings, titles(findings), exclude=set())["interrupts"]
