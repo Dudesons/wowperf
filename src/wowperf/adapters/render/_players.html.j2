@@ -7,8 +7,13 @@
 {% if not report.players %}
 <p class="sub">No players.</p>
 {% endif %}
+<nav class="tabs subtabs" data-tab-group="players" aria-label="Players">
 {% for player in report.players %}
-<div class="card">
+  <button type="button" class="tab" data-tab-for="player-{{ player.slug }}">{{ player.name }}</button>
+{% endfor %}
+</nav>
+{% for player in report.players %}
+<div class="card" data-tab-panel="players" id="player-{{ player.slug }}">
   <div class="player-head">
     <span class="swatch" style="background: var(--{{ player.colour }})"></span>
     <h3>{{ player.name }}</h3>

@@ -9,7 +9,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, SectionState
-from wowperf.domain.report.players import build_players, class_colour
+from wowperf.domain.report.players import build_players, class_colour, player_slug
 
 
 def a_finding(
@@ -63,6 +63,32 @@ def a_parse(character_name: str = "SomeoneElsesTopParse") -> ParseSample:
 
 def ids(rows: tuple[LedgerRow, ...]) -> list[str]:
     return [row.finding_id for row in rows]
+
+
+def test_a_slug_survives_a_name_html_and_a_url_fragment_cannot_carry() -> None:
+    assert player_slug("Bríala") == "briala"
+    assert player_slug("Кириллица") != ""
+    assert " " not in player_slug("Emberkin the Second")
+
+
+def test_two_players_who_differ_only_by_realm_get_different_slugs() -> None:
+    assert player_slug("Emberkin-Ravencrest") != player_slug("Emberkin-Silvermoon")
+
+
+def test_every_card_carries_a_slug_and_no_two_cards_share_one() -> None:
+    # Bríala and Briala reduce to the same slug -- the point of this test is
+    # that the index the caller appends is what keeps their cards apart.
+    loaded = a_loaded(
+        players=(
+            a_player(actor_id=1, name="Emberkin"),
+            a_player(actor_id=2, name="Bríala"),
+            a_player(actor_id=3, name="Briala"),
+        ),
+    )
+    cards = build_players(loaded, (), None, a_player(actor_id=1, name="Emberkin"), {})
+    slugs = [card.slug for card in cards]
+    assert all(slugs)
+    assert len(set(slugs)) == len(slugs)
 
 
 def test_the_interrupts_section_takes_its_findings() -> None:

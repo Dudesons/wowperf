@@ -288,6 +288,13 @@ class PlayerCard(Frozen):
     damage_rows: tuple[LedgerRow, ...] = ()
     spell_and_talent: Section
     spell_and_talent_rows: tuple[LedgerRow, ...] = ()
+    slug: str = ""
+    """This player's fragment id, unique within the report.
+
+    Derived from the disambiguated display name and suffixed with the card's
+    index, because two names can reduce to the same slug and a duplicate id
+    would give one player another's sub-tab.
+    """
 
 
 class Header(Frozen):

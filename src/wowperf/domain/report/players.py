@@ -1,6 +1,7 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
+import unicodedata
 from collections.abc import Sequence
 
 from wowperf.domain.analysis.players import display_names, summarise_players
@@ -34,6 +35,35 @@ COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
 
 def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
+
+
+SLUG_FALLBACK = "player"
+"""What a name reduces to when nothing in it survives the transliteration.
+
+A wholly non-Latin name — `Кириллица` — keeps no ASCII letter after
+decomposition, and an empty id is not addressable. The index the caller
+appends is what keeps two such names apart.
+"""
+
+
+def player_slug(display_name: str) -> str:
+    """A display name reduced to what an HTML id and a URL fragment both carry.
+
+    Accents decompose and their marks are dropped, so `Bríala` and `Briala`
+    reach the same slug — which is why the caller appends an index rather than
+    trusting this to be unique. Everything else outside the ASCII alphabet and
+    digits becomes a hyphen, and runs of hyphens collapse.
+    """
+    decomposed = unicodedata.normalize("NFKD", display_name)
+    kept = [
+        character.lower() if character.isascii() and character.isalnum() else "-"
+        for character in decomposed
+        if not unicodedata.combining(character)
+    ]
+    slug = "".join(kept).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or SLUG_FALLBACK
 
 
 def build_players(
@@ -76,8 +106,8 @@ def build_players(
     assert total_pulls is not None  # a float input always formats to a string
 
     cards = []
-    for summary in summarise_players(
-        loaded.run, loaded.casts, loaded.deaths, loaded.interrupts
+    for index, summary in enumerate(
+        summarise_players(loaded.run, loaded.casts, loaded.deaths, loaded.interrupts)
     ):
         display_name = names_by_actor[summary.actor_id]
         mine = collapse_repeated_details(
@@ -110,6 +140,7 @@ def build_players(
                     if is_subject
                     else ()
                 ),
+                slug=f"{player_slug(display_name)}-{index}",
             )
         )
     return tuple(cards)

@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for the report's four data sections and the inline timeline SVG.
 # ABOUTME: The template does no arithmetic: every coordinate here was computed in build_timeline.
 
+import re
+
 import pytest
 from markupsafe import escape
 
@@ -404,6 +406,24 @@ def test_group_rows_render_inside_the_players_section() -> None:
     provenance_start = html.index('<h2 id="provenance">')
     title_at = html.index("Emberkin had a cooldown ready and unpressed")
     assert players_start < title_at < provenance_start
+
+
+def test_each_player_gets_a_sub_tab_button_pointing_at_their_own_panel() -> None:
+    # A local import: test_html_invariants imports FakeIcons from this module,
+    # so a module-level import back would make the two modules circular and
+    # fail to collect every test in this file.
+    from tests.adapters.render.test_html_invariants import rich_html
+
+    html = rich_html()
+    navs = re.findall(r'data-tab-group="players".*?</nav>', html, flags=re.S)
+    assert navs, "the players panel has no sub-tab nav"
+    targets = re.findall(r'data-tab-for="(player-[^"]+)"', navs[0])
+    # rich_loaded() has two players. Asserting the count rather than truthiness is
+    # what stops this passing against a nav that rendered one button, or none.
+    assert len(targets) == 2
+    for target in targets:
+        assert f'id="{target}"' in html
+    assert html.count('data-tab-panel="players"') == len(targets)
 
 
 def a_curve() -> HealthCurve:
