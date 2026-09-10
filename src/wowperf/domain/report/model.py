@@ -139,10 +139,9 @@ class DamageTrack(Frozen):
 
 
 class Press(Frozen):
-    """One cast of a tracked cooldown. `icon_class` is empty when none resolved."""
+    """One cast of a tracked cooldown, placed on its row's axis."""
 
     x: float
-    icon_class: str = ""
 
 
 class Span(Frozen):

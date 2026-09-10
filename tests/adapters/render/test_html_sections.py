@@ -629,7 +629,7 @@ def a_drawn_timeline() -> PlayerTimeline:
             peak_label="Tallest bar: 120,000 damage in 5 seconds",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                               presses=(Press(x=200.0, icon_class="i-45438"),),
+                               presses=(Press(x=200.0),),
                                unavailable=(Span(x=200.0, width=90.0),),
                                not_judged=Span(x=46.0, width=90.0)),),
         ticks=((46.0, "0:00"),),
@@ -659,6 +659,39 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     # to the damage bars and press marks, "inferred" to the dimming.
     assert "measured</span> — the damage bars and the press marks." in html
     assert "inferred</span> — the dimming." in html
+
+
+def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() -> None:
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    # The rule alone proves the resolver ran, not that anything was drawn: split the
+    # stylesheet off and require the drawn element in the body too.
+    assert '<image href="data:image/jpeg;base64,AAA"' in html.split("</style>")[1]
+
+
+def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
+    html = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({}),
+    )
+    assert "background-image" not in html
+    assert 'class="press"' in html.split("</style>")[1]
+
+
+def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_has() -> None:
+    # The id lives on the row, not the press: two presses of the same ability
+    # must cost one call, not two, the same guarantee the death-card walk
+    # already gives the ids it meets more than once.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+                      presses=(Press(x=200.0), Press(x=210.0)))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(row,))
+    icons = FakeIcons({})
+    render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
+    assert icons.asked == [45438]
 
 
 def test_a_withheld_timeline_says_why_instead_of_drawing_an_empty_axis() -> None:

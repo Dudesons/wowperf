@@ -26,7 +26,11 @@
   <rect class="not-judged" x="{{ row.not_judged.x }}" y="{{ row.baseline_y }}" width="{{ row.not_judged.width }}" height="{{ timeline.row_height }}"/>
   {% endif %}
   {% for press in row.presses %}
+  {% if row.ability_id in icons_by_id %}
+  <image href="{{ icons_by_id[row.ability_id] }}" x="{{ press.x }}" y="{{ row.baseline_y }}" width="{{ timeline.row_height }}" height="{{ timeline.row_height }}"/>
+  {% else %}
   <rect class="press" x="{{ press.x }}" y="{{ row.baseline_y }}" width="4" height="{{ timeline.row_height }}"/>
+  {% endif %}
   {% endfor %}
   <text class="track-label" x="{{ timeline.label_x }}" y="{{ row.baseline_y }}">{{ row.label }}</text>
   {% endfor %}

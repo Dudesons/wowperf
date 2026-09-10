@@ -337,7 +337,11 @@ def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
     assert 'class="js' not in html
 
 
-def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> None:
+def test_every_href_is_a_fragment_a_report_link_or_an_embedded_icon() -> None:
+    # A press-mark icon is drawn as an SVG <image href="data:…">, not a CSS
+    # background: this is the one other shape an href is allowed to take,
+    # because a data URI is bytes already in the file, not a fetch -- the
+    # same reason icons are embedded rather than hotlinked everywhere else.
     html = rich_html()
     hrefs = re.findall(r'href="([^"]*)"', html)
     assert any(href.startswith("#") for href in hrefs)
@@ -345,7 +349,7 @@ def test_every_href_is_a_fragment_or_a_report_link_the_reader_asked_for() -> Non
     for href in hrefs:
         assert href.startswith("#") or href.startswith(
             "https://www.warcraftlogs.com/reports/"
-        ), href
+        ) or href.startswith("data:image/"), href
 
 
 def test_every_section_appears_in_the_order_the_design_fixes() -> None:
