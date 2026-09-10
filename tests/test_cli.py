@@ -1191,6 +1191,19 @@ OUR_TEAMMATE = Player(
 )
 OUR_RUN_WITH_TEAMMATE = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players, OUR_TEAMMATE)})
 
+# A roster for the per-player parse tests: a second member whose
+# specialisation differs from `SUBJECT`'s, so the two draw from different
+# leaderboards, and whose name mints the slug those tests name.
+OUR_TANK = Player(
+    actor_id=2, name="Stonewake", class_name="Warrior", spec="Protection", item_level=300
+)
+OUR_RUN_WITH_TANK = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players, OUR_TANK)})
+
+# Who `_samples` draws a parse sample for, each paired with the slug
+# `slugs_by_actor` mints from their roster position.
+SUBJECT_ONLY = ((SUBJECT, "emberkin-0"),)
+TWO_SUBJECTS = ((SUBJECT, "emberkin-0"), (OUR_TANK, "stonewake-1"))
+
 
 def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[str, Any]:
     return {
@@ -1206,12 +1219,17 @@ def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[
 
 
 def _candidate_parse_row(
-    code: str, fight_id: int = 1, level: int = 16, character_name: str = "Someone"
+    code: str,
+    fight_id: int = 1,
+    level: int = 16,
+    character_name: str = "Someone",
+    class_name: str = "Mage",
+    spec: str = "Arcane",
 ) -> dict[str, Any]:
     return {
         "name": character_name,
-        "class": "Mage",
-        "spec": "Arcane",
+        "class": class_name,
+        "spec": spec,
         "duration": 1000000,
         "report": {"code": code, "fightID": fight_id, "startTime": 1},
         "bracketData": level,
@@ -1317,13 +1335,19 @@ def _samples_ranking_repository(
     tmp_path: Path,
     speed_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
     parse_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
+    parse_rows_by_spec: dict[str, dict[int, list[dict[str, Any]]]] | None = None,
 ) -> WclRankingRepository:
     """A `WclRankingRepository` answering FightRankings/CharacterRankings by
     whichever bracket the query actually asked for, so a fixture with rows in
     only one bracket does not fail `assert_bracket` the moment `_samples`
-    widens past it looking for more."""
+    widens past it looking for more.
+
+    `parse_rows_by_spec` answers the parse leaderboard by the specialisation
+    the query named, for the tests that draw one sample per player;
+    `parse_rows_by_bracket` answers any specialisation it does not name."""
     speed_by_bracket = speed_rows_by_bracket or {}
     parse_by_bracket = parse_rows_by_bracket or {}
+    parse_by_spec = parse_rows_by_spec or {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
@@ -1333,7 +1357,10 @@ def _samples_ranking_repository(
         bracket = variables["bracket"]
         is_parse = "className" in variables
         field = "characterRankings" if is_parse else "fightRankings"
-        rows = (parse_by_bracket if is_parse else speed_by_bracket).get(bracket, [])
+        if is_parse:
+            rows = parse_by_spec.get(variables["specName"], parse_by_bracket).get(bracket, [])
+        else:
+            rows = speed_by_bracket.get(bracket, [])
         return httpx.Response(
             200,
             json={
@@ -1366,7 +1393,7 @@ def test_the_sample_stops_at_the_configured_size(tmp_path: Path) -> None:
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     assert len(speed.members) == SAMPLE_SIZE
     # The row past the sample size was never even weighed, once the sample was full.
@@ -1385,7 +1412,7 @@ def test_our_own_run_is_never_a_member(tmp_path: Path) -> None:
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     assert all(member.row.report_code != OUR_RUN.report_code for member in speed.members)
     self_record = next(record for record in records if record.report_code == OUR_RUN.report_code)
@@ -1403,7 +1430,7 @@ def test_a_candidate_whose_roster_holds_one_of_our_characters_is_skipped(tmp_pat
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     assert all(member.row.report_code != "sameplayer" for member in speed.members)
     assert len(speed.members) == 1
@@ -1430,7 +1457,7 @@ def test_a_candidate_whose_roster_holds_one_of_our_teammates_is_skipped(tmp_path
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, records = _samples(rankings, runs, OUR_RUN_WITH_TEAMMATE, SUBJECT)
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN_WITH_TEAMMATE, SUBJECT_ONLY)
 
     assert all(member.row.report_code != "teammate" for member in speed.members)
     excluded = next(record for record in records if record.report_code == "teammate")
@@ -1444,7 +1471,7 @@ def test_a_candidate_that_failed_to_load_is_recorded_with_its_reason(tmp_path: P
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     failed = next(
         record for record in records if not record.loaded and record.report_code == "brokenrun"
@@ -1461,7 +1488,7 @@ def test_a_short_leaderboard_yields_a_short_sample_rather_than_an_error(tmp_path
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     assert len(speed.members) == 2
 
@@ -1490,7 +1517,7 @@ def test_a_narrow_bracket_widens_to_the_next_one_to_fill_the_sample(tmp_path: Pa
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     assert len(speed.members) == SAMPLE_SIZE
     assert {member.row.report_code for member in speed.members} == {
@@ -1516,9 +1543,9 @@ def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
     rankings = _samples_ranking_repository(tmp_path, parse_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _speed, parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, parses, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
-    assert [member.row.report_code for member in parse.members] == ["cleanparse"]
+    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
 
     by_code = {record.report_code: record for record in records if record.axis == "parse"}
     assert by_code[OUR_RUN.report_code].loaded is False
@@ -1546,9 +1573,9 @@ def test_the_parse_sample_also_stops_at_the_configured_size(tmp_path: Path) -> N
     )
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _speed, parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, parses, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
-    assert len(parse.members) == SAMPLE_SIZE
+    assert len(parses[SUBJECT.actor_id].members) == SAMPLE_SIZE
     assert len([record for record in records if record.axis == "parse"]) == SAMPLE_SIZE
 
 
@@ -1558,7 +1585,7 @@ def test_a_fresh_candidate_is_recorded_as_not_from_the_cache(tmp_path: Path) -> 
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     [record] = records
     assert record.from_cache is False
@@ -1570,8 +1597,8 @@ def test_a_reused_candidate_is_recorded_as_served_from_the_cache(tmp_path: Path)
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _samples(rankings, runs, OUR_RUN, SUBJECT)
-    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     [record] = records
     assert record.from_cache is True
@@ -1583,7 +1610,7 @@ def test_a_record_names_its_report_fight_level_axis_and_url(tmp_path: Path) -> N
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     [record] = records
     assert record.report_code == "cleanrun"
@@ -1605,7 +1632,7 @@ def test_each_speed_member_carries_its_own_comparability_and_alignment(tmp_path:
     rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(15): rows})
     runs = _samples_run_repository(tmp_path, fights_by_code)
 
-    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    speed, _parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
     [member] = speed.members
     assert member.comparability.our_level == 16
@@ -1632,10 +1659,108 @@ def test_a_parse_members_ability_icons_come_from_its_own_reference_report(
         abilities_rows=[{"gameID": 157997, "name": "Ice Nova", "icon": "spell_ice_nova.jpg"}],
     )
 
-    _speed, parse, _records = _samples(rankings, runs, OUR_RUN, SUBJECT)
+    _speed, parses, _records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
-    [member] = parse.members
+    [member] = parses[SUBJECT.actor_id].members
     assert member.ability_icons == ((157997, "spell_ice_nova.jpg"),)
+
+
+def _two_spec_rankings(
+    tmp_path: Path,
+    arcane: list[dict[str, Any]],
+    protection: list[dict[str, Any]],
+    speed: list[dict[str, Any]] | None = None,
+) -> WclRankingRepository:
+    """Leaderboards for both of `TWO_SUBJECTS`' specialisations at our own level."""
+    return _samples_ranking_repository(
+        tmp_path,
+        speed_rows_by_bracket={bracket_for(16): speed or []},
+        parse_rows_by_spec={
+            "Arcane": {bracket_for(16): arcane},
+            "Protection": {bracket_for(16): protection},
+        },
+    )
+
+
+def _protection_parse_row(code: str) -> dict[str, Any]:
+    return _candidate_parse_row(code, class_name="Warrior", spec="Protection")
+
+
+def test_each_player_gets_their_own_specialisations_sample(tmp_path: Path) -> None:
+    """Two players of different specialisations draw from different parse
+    leaderboards, and each sample is keyed by the actor it belongs to — a
+    single shared sample would hand the tank the mage's references."""
+    fights_by_code = {
+        "arcaneref": _candidate_fights_payload("arcaneref", roster=("Fastcast",)),
+        "protref": _candidate_fights_payload("protref", roster=("Fastblock",)),
+    }
+    rankings = _two_spec_rankings(
+        tmp_path,
+        arcane=[_candidate_parse_row("arcaneref")],
+        protection=[_protection_parse_row("protref")],
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, parses, _records = _samples(rankings, runs, OUR_RUN_WITH_TANK, TWO_SUBJECTS)
+
+    assert set(parses) == {SUBJECT.actor_id, OUR_TANK.actor_id}
+    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["arcaneref"]
+    assert [member.row.report_code for member in parses[OUR_TANK.actor_id].members] == ["protref"]
+
+
+def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
+    tmp_path: Path,
+) -> None:
+    """`our_names` is our whole roster, computed once and applied to every
+    player's sample: a reference fielding our mage is as unusable for the
+    tank's comparison as for the mage's own."""
+    fights_by_code = {
+        "arcaneref": _candidate_fights_payload("arcaneref", roster=("Fastcast",)),
+        "protref": _candidate_fights_payload("protref", roster=("Fastblock",)),
+        "ourown": _candidate_fights_payload("ourown", roster=(SUBJECT.name,)),
+    }
+    rankings = _two_spec_rankings(
+        tmp_path,
+        arcane=[_candidate_parse_row("ourown"), _candidate_parse_row("arcaneref")],
+        protection=[_protection_parse_row("ourown"), _protection_parse_row("protref")],
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, parses, records = _samples(rankings, runs, OUR_RUN_WITH_TANK, TWO_SUBJECTS)
+
+    for sample in parses.values():
+        # A clean candidate followed the tainted one, so an empty sample would
+        # pass the exclusion below while proving nothing.
+        assert sample.members
+        assert all(member.row.report_code != "ourown" for member in sample.members)
+    dropped = [record for record in records if record.report_code == "ourown"]
+    assert len(dropped) == 2
+    assert all("one of our own characters" in record.reason for record in dropped)
+
+
+def test_a_parse_candidate_records_whose_comparison_weighed_it(tmp_path: Path) -> None:
+    """Provenance names the player each parse candidate was drawn for. The
+    speed axis is drawn once for the run, so its records name nobody."""
+    fights_by_code = {
+        "arcaneref": _candidate_fights_payload("arcaneref", roster=("Fastcast",)),
+        "protref": _candidate_fights_payload("protref", roster=("Fastblock",)),
+        "speedref": _candidate_fights_payload("speedref", roster=("Fastclear",)),
+    }
+    rankings = _two_spec_rankings(
+        tmp_path,
+        arcane=[_candidate_parse_row("arcaneref")],
+        protection=[_protection_parse_row("protref")],
+        speed=[_candidate_speed_row("speedref")],
+    )
+    runs = _samples_run_repository(tmp_path, fights_by_code)
+
+    _speed, _parses, records = _samples(rankings, runs, OUR_RUN_WITH_TANK, TWO_SUBJECTS)
+
+    parse_records = [record for record in records if record.axis == "parse"]
+    assert {record.player_slug for record in parse_records} == {"emberkin-0", "stonewake-1"}
+    speed_records = [record for record in records if record.axis == "speed"]
+    assert speed_records
+    assert all(record.player_slug == "" for record in speed_records)
 
 
 # ---------------------------------------------------------------------------

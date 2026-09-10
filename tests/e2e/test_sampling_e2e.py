@@ -31,7 +31,11 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
     subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
-    speed_sample, parse_sample, records = _samples(rankings, references, loaded.run, subject)
+    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    speed_sample, parse_samples, records = _samples(
+        rankings, references, loaded.run, ((subject, subject_slug),)
+    )
+    parse_sample = parse_samples[subject.actor_id]
 
     # Both leaderboards for a real dungeon should hold enough eligible, non-self
     # candidates to fill the sample this project draws per axis.
@@ -46,11 +50,7 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
         loaded,
         speed_sample,
         (
-            ComparisonSubject(
-                player=subject,
-                slug=slugs_by_actor(loaded.run)[subject.actor_id],
-                parse=parse_sample,
-            ),
+            ComparisonSubject(player=subject, slug=subject_slug, parse=parse_sample),
         ),
     )
     assert findings, "no comparison findings were produced at all"

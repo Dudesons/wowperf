@@ -57,9 +57,11 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # is exercised against real data instead of only offline fixtures.
     subject = _resolve_player(loaded.run, None)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
-    speed_sample, parse_sample, reference_records = _samples(
-        rankings, references, loaded.run, subject
+    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    speed_sample, parse_samples, reference_records = _samples(
+        rankings, references, loaded.run, ((subject, subject_slug),)
     )
+    parse_sample = parse_samples[subject.actor_id]
     assert reference_records, "no candidate was weighed at all"
 
     our_auras = None
@@ -81,7 +83,6 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
                 update={"members": (top, *parse_sample.members[1:])}
             )
 
-    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
     findings += compare(
         ours=loaded,
         speed=speed_sample,

@@ -4,6 +4,7 @@
 import json
 import os
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -285,6 +286,7 @@ def _record(
     loaded: bool,
     reason: str = "",
     from_cache: bool = False,
+    player_slug: str = "",
 ) -> ReferenceRecord:
     """One leaderboard row's outcome, in the shape the report is allowed to keep forever.
 
@@ -292,6 +294,9 @@ def _record(
     character name or the score a `SpeedRow`/`ParseRow` also carries, which is
     what keeps a `ReferenceRecord` a link rather than a tabulation of another
     player's run.
+
+    `player_slug` names whose comparison weighed the row, and is empty on the
+    speed axis, which is drawn once for the run rather than per player.
     """
     return ReferenceRecord(
         report_code=row.report_code,
@@ -302,6 +307,7 @@ def _record(
         loaded=loaded,
         reason=reason,
         from_cache=from_cache,
+        player_slug=player_slug,
     )
 
 
@@ -309,9 +315,15 @@ def _samples(
     rankings: WclRankingRepository,
     runs: WclRunRepository,
     run: Run,
-    subject: Player,
-) -> tuple[SpeedSample, ParseSample, tuple[ReferenceRecord, ...]]:
+    subjects: Sequence[tuple[Player, str]],
+) -> tuple[SpeedSample, dict[int, ParseSample], tuple[ReferenceRecord, ...]]:
     """Up to `SAMPLE_SIZE` references per axis, and a record of every row weighed.
+
+    The speed axis is drawn once, for the run: the route and the tempo are
+    facts about the group, and every player is measured against the same fast
+    completions. The parse axis is drawn once per subject, because a
+    specialisation's leaderboard is the only place its own references live —
+    so the result is keyed by actor id, and a player's sample is theirs alone.
 
     A row is skipped, never fatal, for three reasons, and every one of them is
     recorded rather than silently dropped: it is our own report and fight
@@ -376,54 +388,64 @@ def _samples(
             )
         )
 
-    parse_members: list[ParseMember] = []
-    for parse_row in rankings.top_parses(
-        run.encounter_id,
-        run.keystone_level,
-        subject.class_name,
-        subject.spec,
-        minimum=SAMPLE_SIZE,
-    ):
-        if len(parse_members) >= SAMPLE_SIZE:
-            break
-        if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+    parse_samples: dict[int, ParseSample] = {}
+    for subject, slug in subjects:
+        parse_members: list[ParseMember] = []
+        for parse_row in rankings.top_parses(
+            run.encounter_id,
+            run.keystone_level,
+            subject.class_name,
+            subject.spec,
+            minimum=SAMPLE_SIZE,
+        ):
+            if len(parse_members) >= SAMPLE_SIZE:
+                break
+            if parse_row.report_code == run.report_code and parse_row.fight_id == run.fight_id:
+                records.append(
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=False,
+                        reason="this is the run under analysis",
+                        player_slug=slug,
+                    )
+                )
+                continue
+            try:
+                theirs, from_cache = runs.load_parse_reference(
+                    parse_row.report_code, parse_row.fight_id
+                )
+            except (IngestError, WclError) as error:
+                records.append(
+                    _record(parse_row, "parse", loaded=False, reason=str(error), player_slug=slug)
+                )
+                continue
+            if any(player.name.casefold() in our_names for player in theirs.run.players):
+                records.append(
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=True,
+                        reason="the roster includes one of our own characters",
+                        from_cache=from_cache,
+                        player_slug=slug,
+                    )
+                )
+                continue
             records.append(
-                _record(parse_row, "parse", loaded=False, reason="this is the run under analysis")
+                _record(parse_row, "parse", loaded=True, from_cache=from_cache, player_slug=slug)
             )
-            continue
-        try:
-            theirs, from_cache = runs.load_parse_reference(
-                parse_row.report_code, parse_row.fight_id
-            )
-        except (IngestError, WclError) as error:
-            records.append(_record(parse_row, "parse", loaded=False, reason=str(error)))
-            continue
-        if any(player.name.casefold() in our_names for player in theirs.run.players):
-            records.append(
-                _record(
-                    parse_row,
-                    "parse",
-                    loaded=True,
-                    reason="the roster includes one of our own characters",
-                    from_cache=from_cache,
+            parse_members.append(
+                ParseMember(
+                    row=parse_row,
+                    run=theirs.run,
+                    casts=theirs.casts,
+                    ability_icons=theirs.ability_icons,
                 )
             )
-            continue
-        records.append(_record(parse_row, "parse", loaded=True, from_cache=from_cache))
-        parse_members.append(
-            ParseMember(
-                row=parse_row,
-                run=theirs.run,
-                casts=theirs.casts,
-                ability_icons=theirs.ability_icons,
-            )
-        )
+        parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
 
-    return (
-        SpeedSample(members=tuple(speed_members)),
-        ParseSample(members=tuple(parse_members)),
-        tuple(records),
-    )
+    return SpeedSample(members=tuple(speed_members)), parse_samples, tuple(records)
 
 
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
@@ -572,34 +594,53 @@ def analyze(
         reference_records: tuple[ReferenceRecord, ...] = ()
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
+            # The only place this command mints a slug: the comparison stamps a
+            # player's slug onto every finding it emits about them, and the report
+            # matches their card by it.
+            slugs = slugs_by_actor(loaded.run)
+            requested: tuple[tuple[Player, str], ...] = ((subject, slugs[subject.actor_id]),)
             # Every candidate `_samples` weighed comes back as `reference_records`,
             # carried onto both the report's provenance below and the comparison
             # block of the findings JSON.
-            speed_sample, parse_sample, reference_records = _samples(
-                rankings, references, loaded.run, subject
+            speed_sample, parse_samples, reference_records = _samples(
+                rankings, references, loaded.run, requested
             )
 
-            parse_sample, our_auras = _fetch_parse_auras(
-                parse_sample, repository, references, loaded.run, subject
-            )
-
-            # One slug, minted once: the comparison stamps it onto every finding
-            # it emits about this player, and the report matches their card by it.
-            subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-            compared_slugs = frozenset({subject_slug})
-
-            findings += compare(
-                ours=loaded,
-                speed=speed_sample,
-                subjects=(
+            subjects: list[ComparisonSubject] = []
+            for player_to_compare, slug in requested:
+                sample, our_auras = _fetch_parse_auras(
+                    parse_samples[player_to_compare.actor_id],
+                    repository,
+                    references,
+                    loaded.run,
+                    player_to_compare,
+                )
+                subjects.append(
                     ComparisonSubject(
-                        player=subject,
-                        slug=subject_slug,
-                        parse=parse_sample,
+                        player=player_to_compare,
+                        slug=slug,
+                        parse=sample,
                         our_auras=our_auras,
-                    ),
+                    )
+                )
+            # Read off the subjects themselves, never rebuilt from the roster or
+            # the requested names: a second source of slugs can drift, and a card
+            # would then read "no comparison was requested" while carrying that
+            # player's own comparison rows.
+            compared_slugs = frozenset(compared.slug for compared in subjects)
+            # The findings JSON's parse sample size and the page's icons are the
+            # subject's own; everyone else's sample is carried by their
+            # `ComparisonSubject` alone.
+            parse_sample = next(
+                (
+                    compared.parse
+                    for compared in subjects
+                    if compared.player.actor_id == subject.actor_id
                 ),
+                None,
             )
+
+            findings += compare(ours=loaded, speed=speed_sample, subjects=tuple(subjects))
             findings = rank_findings(findings)
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:

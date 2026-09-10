@@ -431,6 +431,9 @@ class ReferenceRecord(Frozen):
     # fetched for it. The reference cache is shared across analyses, and this
     # is where a report that discloses every candidate discloses that too.
     from_cache: bool = False
+    # Whose comparison weighed this candidate, from `slugs_by_actor`. Empty on a
+    # speed candidate: the route is compared once for the run, not per player.
+    player_slug: str = ""
 
 
 class Provenance(Frozen):

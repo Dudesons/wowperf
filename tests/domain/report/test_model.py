@@ -187,9 +187,10 @@ def test_a_reference_record_has_no_field_for_a_name_a_duration_or_a_death_count(
     # A closed field set is what keeps a `ReferenceRecord` a link rather than a
     # tabulation: there is no field this test would need to police for a stray
     # character name, a duration, or a death count, because none exists to fill.
+    # `player_slug` names one of our own roster, never the reference's.
     assert set(ReferenceRecord.model_fields) == {
         "report_code", "fight_id", "keystone_level", "url", "axis", "loaded", "reason",
-        "from_cache",
+        "from_cache", "player_slug",
     }
 
 
