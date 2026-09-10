@@ -58,8 +58,9 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     subject = _resolve_player(loaded.run, None)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run)[subject.actor_id]
     speed_sample, parse_samples, reference_records = _samples(
-        rankings, references, loaded.run, ((subject, subject_slug),)
+        rankings, references, loaded.run, ((subject, subject_slug, subject_name),)
     )
     parse_sample = parse_samples[subject.actor_id]
     assert reference_records, "no candidate was weighed at all"

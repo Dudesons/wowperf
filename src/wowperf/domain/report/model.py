@@ -434,6 +434,12 @@ class ReferenceRecord(Frozen):
     # Whose comparison weighed this candidate, from `slugs_by_actor`. Empty on a
     # speed candidate: the route is compared once for the run, not per player.
     player_slug: str = ""
+    # The same player as `player_slug`, spelled the way the page spells them,
+    # from `display_names`. Empty on a speed candidate for the same reason.
+    # This is a member of our own roster, whose name every card already prints,
+    # so it tabulates nothing about anybody else -- the rule this record keeps
+    # is about other players' runs, and it still carries a link and no figure.
+    player_name: str = ""
 
 
 class Provenance(Frozen):

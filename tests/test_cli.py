@@ -905,6 +905,24 @@ def test_every_reference_in_the_json_carries_a_url_and_no_duration(tmp_path: Pat
         assert "medal" not in reference
 
 
+def test_a_parse_reference_carries_the_disambiguated_name_not_the_raw_one(tmp_path: Path) -> None:
+    """Two roster members can share a name — a cross-realm group ordinarily
+    produces one — and `display_names` is what tells them apart. A record
+    built from `player.name` would label both players' candidates identically,
+    which is precisely what naming them was for."""
+    result = run_analyze(
+        tmp_path, "--all-players", teammates=(("Emberkin", "Warrior", "Protection"),)
+    )
+
+    assert result.exit_code == 0, result.output
+    references = written_findings(tmp_path)["comparison"]["references"]
+    parse_names = {
+        reference["player_name"] for reference in references if reference["axis"] == "parse"
+    }
+    assert len(parse_names) == 2, parse_names
+    assert all(name.startswith("Emberkin (actor ") for name in parse_names)
+
+
 def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: Path) -> None:
     """Our own run loads every stream. A reference loads only the five that are read.
 
@@ -1058,6 +1076,20 @@ def test_an_unknown_name_says_which_one_missed(tmp_path: Path) -> None:
     assert "Emberkin" not in result.output.split("is not in this run's roster")[0]
 
 
+def test_an_empty_player_name_is_refused_rather_than_read_as_the_owner(tmp_path: Path) -> None:
+    """`--player "$WHO"` with `WHO` unset asks for a player the tool cannot
+    name. Substituting the report owner would add a compared player, and a
+    leaderboard query for them, that nobody asked for."""
+    result = run_analyze(
+        tmp_path, "--player", "Stonewake", "--player", "", teammates=ANALYZE_TEAMMATES
+    )
+
+    assert result.exit_code == 1
+    assert "is not a name" in result.output
+    # The same closing sentence an unknown name gets, so the two read as one rule.
+    assert "Pass --player with one of:" in result.output
+
+
 def test_the_compared_players_are_exactly_the_ones_the_findings_and_the_cards_name(
     tmp_path: Path,
 ) -> None:
@@ -1083,6 +1115,21 @@ def test_the_compared_players_are_exactly_the_ones_the_findings_and_the_cards_na
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
     # Every card outside the requested set says so, and no card inside it does.
     assert html.count(NOT_REQUESTED) == ANALYZE_ROSTER_SIZE - len(requested)
+
+
+def test_a_player_with_no_specialisation_gets_a_card_saying_why_not(tmp_path: Path) -> None:
+    """A log can leave `friendlySpecs` short, and the roster then carries a
+    player with no specialisation. Their card must say that, rather than
+    reporting the leaderboard as empty when none was ever asked."""
+    result = run_analyze(tmp_path, "--all-players", teammates=(("Bríala", "Priest", ""),))
+
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+    # They were compared, so the absence is theirs rather than "not requested".
+    assert payload["comparison"]["sample_size"]["parse"]["briala-1"] == 0
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert "no specialisation" in html
+    assert "Spell and talent comparison for Bríala" in html
 
 
 def test_the_sample_size_names_every_compared_players_own_sample(tmp_path: Path) -> None:
@@ -1186,9 +1233,10 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     assert speed_reference["reason"] == ""
     # The speed axis is drawn once for the run, so its records name no player.
     assert speed_reference["player_slug"] == ""
+    assert speed_reference["player_name"] == ""
     assert set(speed_reference.keys()) == {
         "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
-        "from_cache", "player_slug",
+        "from_cache", "player_slug", "player_name",
     }
 
     parse_reference = references["parse"]
@@ -1202,9 +1250,10 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
     assert parse_reference["reason"] == ""
     # The parse axis is drawn per player, and the record says for whom.
     assert parse_reference["player_slug"] == "emberkin-0"
+    assert parse_reference["player_name"] == "Emberkin"
     assert set(parse_reference.keys()) == {
         "axis", "report_code", "fight_id", "keystone_level", "url", "loaded", "reason",
-        "from_cache", "player_slug",
+        "from_cache", "player_slug", "player_name",
     }
 
 
@@ -1392,10 +1441,17 @@ OUR_TANK = Player(
 )
 OUR_RUN_WITH_TANK = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players, OUR_TANK)})
 
+# A roster member whose specialisation never arrived: `friendlySpecs` can be
+# short or absent, and `ingest` then leaves `spec` empty rather than guessing.
+OUR_SPECLESS = Player(actor_id=3, name="Bríala", class_name="Priest", spec="", item_level=300)
+OUR_RUN_WITH_SPECLESS = OUR_RUN.model_copy(update={"players": (*OUR_RUN.players, OUR_SPECLESS)})
+
 # Who `_samples` draws a parse sample for, each paired with the slug
-# `slugs_by_actor` mints from their roster position.
-SUBJECT_ONLY = ((SUBJECT, "emberkin-0"),)
-TWO_SUBJECTS = ((SUBJECT, "emberkin-0"), (OUR_TANK, "stonewake-1"))
+# `slugs_by_actor` mints from their roster position and the name
+# `display_names` spells them by.
+SUBJECT_ONLY = ((SUBJECT, "emberkin-0", "Emberkin"),)
+TWO_SUBJECTS = ((SUBJECT, "emberkin-0", "Emberkin"), (OUR_TANK, "stonewake-1", "Stonewake"))
+SPECLESS_SUBJECTS = ((SUBJECT, "emberkin-0", "Emberkin"), (OUR_SPECLESS, "briala-1", "Bríala"))
 
 
 def _candidate_speed_row(code: str, fight_id: int = 1, level: int = 16) -> dict[str, Any]:
@@ -1529,6 +1585,7 @@ def _samples_ranking_repository(
     speed_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
     parse_rows_by_bracket: dict[int, list[dict[str, Any]]] | None = None,
     parse_rows_by_spec: dict[str, dict[int, list[dict[str, Any]]]] | None = None,
+    queried_specs: list[str] | None = None,
 ) -> WclRankingRepository:
     """A `WclRankingRepository` answering FightRankings/CharacterRankings by
     whichever bracket the query actually asked for, so a fixture with rows in
@@ -1537,7 +1594,9 @@ def _samples_ranking_repository(
 
     `parse_rows_by_spec` answers the parse leaderboard by the specialisation
     the query named, for the tests that draw one sample per player;
-    `parse_rows_by_bracket` answers any specialisation it does not name."""
+    `parse_rows_by_bracket` answers any specialisation it does not name.
+    `queried_specs` collects every specialisation a parse query actually
+    asked for, for the test that a query is not issued at all."""
     speed_by_bracket = speed_rows_by_bracket or {}
     parse_by_bracket = parse_rows_by_bracket or {}
     parse_by_spec = parse_rows_by_spec or {}
@@ -1551,6 +1610,8 @@ def _samples_ranking_repository(
         is_parse = "className" in variables
         field = "characterRankings" if is_parse else "fightRankings"
         if is_parse:
+            if queried_specs is not None:
+                queried_specs.append(variables["specName"])
             rows = parse_by_spec.get(variables["specName"], parse_by_bracket).get(bracket, [])
         else:
             rows = speed_by_bracket.get(bracket, [])
@@ -1957,9 +2018,37 @@ def test_a_parse_candidate_records_whose_comparison_weighed_it(tmp_path: Path) -
 
     parse_records = [record for record in records if record.axis == "parse"]
     assert {record.player_slug for record in parse_records} == {"emberkin-0", "stonewake-1"}
+    # The slug matches the card; the name is what the panel prints.
+    assert {record.player_name for record in parse_records} == {"Emberkin", "Stonewake"}
     speed_records = [record for record in records if record.axis == "speed"]
     assert speed_records
     assert all(record.player_slug == "" for record in speed_records)
+    assert all(record.player_name == "" for record in speed_records)
+
+
+def test_a_player_with_no_ingested_specialisation_is_never_queried_for(tmp_path: Path) -> None:
+    """`specName: ""` matches no leaderboard row at any keystone level, so
+    asking costs a whole widening loop of queries for nothing. Their sample is
+    empty and their card says why."""
+    queried: list[str] = []
+    rankings = _samples_ranking_repository(
+        tmp_path,
+        parse_rows_by_spec={"Arcane": {bracket_for(16): [_candidate_parse_row("arcaneref")]}},
+        queried_specs=queried,
+    )
+    runs = _samples_run_repository(
+        tmp_path, {"arcaneref": _candidate_fights_payload("arcaneref", roster=("Fastcast",))}
+    )
+
+    _speed, parses, _records = _samples(
+        rankings, runs, OUR_RUN_WITH_SPECLESS, SPECLESS_SUBJECTS
+    )
+
+    # A set, because a short leaderboard widens a bracket at a time and asks
+    # for the same specialisation several times over.
+    assert set(queried) == {"Arcane"}
+    # Still keyed, so the caller's own lookup does not have to know about the skip.
+    assert parses[OUR_SPECLESS.actor_id].members == ()
 
 
 # ---------------------------------------------------------------------------

@@ -30,6 +30,7 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
@@ -265,6 +266,12 @@ def _echo_cost_breakdown(costs: CostLedger) -> None:
         typer.echo(breakdown, err=True)
 
 
+def _roster_hint(run: Run) -> str:
+    """The names `--player` will accept, for a message that has just refused one."""
+    roster = ", ".join(sorted(player.name for player in run.players)) or "nobody"
+    return f"Pass --player with one of: {roster}"
+
+
 def _resolve_player(run: Run, requested: str | None) -> Player:
     """Whose run this is, for the individual comparison.
 
@@ -277,10 +284,7 @@ def _resolve_player(run: Run, requested: str | None) -> Player:
         if found is not None:
             return found
 
-    roster = ", ".join(sorted(player.name for player in run.players)) or "nobody"
-    raise ValueError(
-        f"{name!r} is not in this run's roster. Pass --player with one of: {roster}"
-    )
+    raise ValueError(f"{name!r} is not in this run's roster. {_roster_hint(run)}")
 
 
 def _resolve_requested(
@@ -294,11 +298,21 @@ def _resolve_requested(
     `--all-players` widens who is compared without touching who the subject is,
     so the two flags combine rather than conflict.
 
+    A name the tool cannot honour is refused rather than substituted, and an
+    empty one is such a name: `--player "$WHO"` with `WHO` unset would
+    otherwise mean the report owner, so a reader who asked for one player
+    would silently be charged for two. Only a *supplied* name is checked here
+    — with no `--player` at all, `_resolve_player`'s own default still stands.
+
     Keyed by actor id throughout, so a player named twice — or named and then
     swept up by `--all-players` — is compared once. Two comparisons of one
     player would mint every one of their findings twice under a single id, and
     the page would draw the pair under duplicate element ids.
     """
+    for name in requested:
+        if not name:
+            raise ValueError(f"{name!r} is not a name. {_roster_hint(run)}")
+
     subject = _resolve_player(run, requested[0] if requested else None)
     named = [subject] + [_resolve_player(run, name) for name in requested[1:]]
     by_actor = {player.actor_id: player for player in named}
@@ -316,6 +330,7 @@ def _record(
     reason: str = "",
     from_cache: bool = False,
     player_slug: str = "",
+    player_name: str = "",
 ) -> ReferenceRecord:
     """One leaderboard row's outcome, in the shape the report is allowed to keep forever.
 
@@ -324,8 +339,9 @@ def _record(
     what keeps a `ReferenceRecord` a link rather than a tabulation of another
     player's run.
 
-    `player_slug` names whose comparison weighed the row, and is empty on the
-    speed axis, which is drawn once for the run rather than per player.
+    `player_slug` and `player_name` name whose comparison weighed the row, the
+    first for matching and the second for reading. Both are empty on the speed
+    axis, which is drawn once for the run rather than per player.
     """
     return ReferenceRecord(
         report_code=row.report_code,
@@ -337,6 +353,7 @@ def _record(
         reason=reason,
         from_cache=from_cache,
         player_slug=player_slug,
+        player_name=player_name,
     )
 
 
@@ -344,15 +361,24 @@ def _samples(
     rankings: WclRankingRepository,
     runs: WclRunRepository,
     run: Run,
-    subjects: Sequence[tuple[Player, str]],
+    subjects: Sequence[tuple[Player, str, str]],
 ) -> tuple[SpeedSample, dict[int, ParseSample], tuple[ReferenceRecord, ...]]:
     """Up to `SAMPLE_SIZE` references per axis, and a record of every row weighed.
+
+    Each subject arrives as the player, their slug and the name the page
+    spells them by. The caller mints both, and this loop only stamps them
+    onto the parse records it keeps: computing either here would be a second
+    source of a player's identity, and the two could then disagree.
 
     The speed axis is drawn once, for the run: the route and the tempo are
     facts about the group, and every player is measured against the same fast
     completions. The parse axis is drawn once per subject, because a
     specialisation's leaderboard is the only place its own references live —
     so the result is keyed by actor id, and a player's sample is theirs alone.
+    A subject whose specialisation never arrived in the log is not asked
+    about: `specName: ""` matches no row at any keystone level, so the whole
+    widening loop of queries would be paid for nothing, and
+    `compare.parse.unavailable` says why their card is empty.
 
     A row is skipped, never fatal, for three reasons, and every one of them is
     recorded rather than silently dropped: it is our own report and fight
@@ -418,7 +444,10 @@ def _samples(
         )
 
     parse_samples: dict[int, ParseSample] = {}
-    for subject, slug in subjects:
+    for subject, slug, name in subjects:
+        if not subject.spec:
+            parse_samples[subject.actor_id] = ParseSample()
+            continue
         parse_members: list[ParseMember] = []
         for parse_row in rankings.top_parses(
             run.encounter_id,
@@ -437,6 +466,7 @@ def _samples(
                         loaded=False,
                         reason="this is the run under analysis",
                         player_slug=slug,
+                        player_name=name,
                     )
                 )
                 continue
@@ -446,7 +476,14 @@ def _samples(
                 )
             except (IngestError, WclError) as error:
                 records.append(
-                    _record(parse_row, "parse", loaded=False, reason=str(error), player_slug=slug)
+                    _record(
+                        parse_row,
+                        "parse",
+                        loaded=False,
+                        reason=str(error),
+                        player_slug=slug,
+                        player_name=name,
+                    )
                 )
                 continue
             if any(player.name.casefold() in our_names for player in theirs.run.players):
@@ -458,11 +495,19 @@ def _samples(
                         reason="the roster includes one of our own characters",
                         from_cache=from_cache,
                         player_slug=slug,
+                        player_name=name,
                     )
                 )
                 continue
             records.append(
-                _record(parse_row, "parse", loaded=True, from_cache=from_cache, player_slug=slug)
+                _record(
+                    parse_row,
+                    "parse",
+                    loaded=True,
+                    from_cache=from_cache,
+                    player_slug=slug,
+                    player_name=name,
+                )
             )
             parse_members.append(
                 ParseMember(
@@ -649,10 +694,13 @@ def analyze(
             rankings, references = build_reference_repositories(repository.client, cache_dir)
             # The only place this command mints a slug: the comparison stamps a
             # player's slug onto every finding it emits about them, and the report
-            # matches their card by it.
+            # matches their card by it. The names beside them are the page's own
+            # spelling, disambiguated where two roster members share one, so a
+            # provenance row naming a player names the same one their card does.
             slugs = slugs_by_actor(loaded.run)
-            requested: tuple[tuple[Player, str], ...] = tuple(
-                (one, slugs[one.actor_id]) for one in to_compare
+            names = display_names(loaded.run)
+            requested: tuple[tuple[Player, str, str], ...] = tuple(
+                (one, slugs[one.actor_id], names[one.actor_id]) for one in to_compare
             )
             # Every candidate `_samples` weighed comes back as `reference_records`,
             # carried onto both the report's provenance below and the comparison
@@ -661,7 +709,7 @@ def analyze(
                 rankings, references, loaded.run, requested
             )
 
-            for player_to_compare, slug in requested:
+            for player_to_compare, slug, _name in requested:
                 sample, our_auras = _fetch_parse_auras(
                     parse_samples[player_to_compare.actor_id],
                     repository,
@@ -722,6 +770,7 @@ def analyze(
                     "reason": record.reason,
                     "from_cache": record.from_cache,
                     "player_slug": record.player_slug,
+                    "player_name": record.player_name,
                 }
                 for record in reference_records
             ],

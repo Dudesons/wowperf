@@ -212,6 +212,38 @@ def test_provenance_states_why_a_candidate_was_not_used() -> None:
     assert "this is the run under analysis" in html
 
 
+def test_a_parse_candidate_names_whose_comparison_weighed_it() -> None:
+    """A run comparing the whole group prints up to five parse candidates per
+    player, every one of them the same shape. The name is what tells one
+    player's rows from the next. The speed axis is drawn once for the run, so
+    its rows name nobody."""
+    html = render(
+        a_report(
+            provenance=Provenance(
+                report_code="abc123",
+                fight_id=36,
+                fetched_at="2026-09-05 14:02",
+                references=(
+                    ReferenceRecord(
+                        report_code="parse1", fight_id=2, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/parse1?fight=2", axis="parse",
+                        player_slug="stonewake-1", player_name="Stonewake",
+                    ),
+                    ReferenceRecord(
+                        report_code="speed1", fight_id=1, keystone_level=16,
+                        url="https://www.warcraftlogs.com/reports/speed1?fight=1", axis="speed",
+                    ),
+                ),
+            )
+        )
+    )
+    panel = html[html.index('<h2 id="provenance">'):]
+
+    assert "Parse candidate for Stonewake, +16" in panel
+    assert "Speed candidate, +16" in panel
+    assert "Speed candidate for" not in panel
+
+
 def test_a_reference_records_reason_cannot_smuggle_markup() -> None:
     html = render(
         a_report(

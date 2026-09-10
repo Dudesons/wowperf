@@ -368,3 +368,21 @@ def test_a_player_with_no_parse_sample_says_so_in_their_own_name() -> None:
     unavailable = next(f for f in findings if f.id == "compare.parse.unavailable.emberkin-0")
 
     assert OURS.name in unavailable.title
+
+
+def test_a_player_with_no_specialisation_is_not_told_the_leaderboard_was_empty() -> None:
+    """A log can record no specialisation for a player, and no leaderboard can
+    then be asked for one. Saying the leaderboard returned nothing would state
+    a fact about the API that was never established."""
+    specless = OURS.model_copy(update={"spec": ""})
+    findings = compare(
+        ours=our_run(),
+        speed=None,
+        subjects=(ComparisonSubject(player=specless, slug="emberkin-0", parse=None),),
+    )
+    unavailable = next(f for f in findings if f.id == "compare.parse.unavailable.emberkin-0")
+
+    assert "no specialisation" in unavailable.detail
+    assert "leaderboard returned nothing" not in unavailable.detail
+    # The title names the player without a trailing gap where the spec would be.
+    assert unavailable.title == f"No ranked parse was available for {OURS.name} (Mage)"

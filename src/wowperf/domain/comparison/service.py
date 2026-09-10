@@ -68,7 +68,23 @@ def _for_player(findings: list[Finding], slug: str) -> list[Finding]:
 
 
 def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding]:
-    """Everything measured about one player against their own parse sample."""
+    """Everything measured about one player against their own parse sample.
+
+    A player the log records no specialisation for is a separate absence from
+    a leaderboard that offered nothing, and must not be reported as one: no
+    leaderboard was asked, because a specialisation is what one is asked for.
+    """
+    if not subject.player.spec:
+        return [
+            _unavailable(
+                "compare.parse.unavailable",
+                f"No ranked parse was available for {subject.player.name} "
+                f"({subject.player.class_name})",
+                "This log records no specialisation for this player, so no score "
+                "leaderboard could be asked for one, and spells, talents and uptime "
+                "are not compared.",
+            )
+        ]
     parse = subject.parse
     if parse is None or not parse.members:
         return [
