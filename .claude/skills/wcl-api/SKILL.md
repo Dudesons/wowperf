@@ -112,8 +112,10 @@ One approximation and three measurements:
   **Eleven of the twenty-five parse candidates were served from another player's sample** — the
   parse rows carrying `from_cache` whose report and fight another player's sample also names,
   which is what `tests/e2e/test_report_e2e.py` counts. Twenty-five candidates stand on fourteen
-  distinct runs: the fourteen first fetches were paid for and are not among the eleven, and each
-  of the eleven repeats found its run already on disk. Both halves of that definition carry
+  distinct runs: the fourteen first parse loads are not among the eleven, and each of the eleven
+  repeats found its run already on disk. Those fourteen were not all paid for in full — five of
+  them had already been read on the speed axis, so their first parse load paid only for `Talents`
+  and `Casts`, the queries a speed profile leaves unfetched. Both halves of that definition carry
   weight — drop `from_cache` and the count is at least fourteen, because the first fetch of every
   shared run sits in a multi-player group too.
   `docs/plans/2026-09-10-per-player-parse-comparison-design.md` §7.1 derived about 250 for this
@@ -211,11 +213,15 @@ points of 3600**, five players compared instead of one, composed as the command 
 
 No mean column, for the reason the table above gives: only the totals were measured. Two rows
 read higher here than the identical call counts did on 2026-09-08 — `EnemyCasts` at 9.44 against
-6.00 over six calls, `DamageTaken` at 1.42 against 1.00 over one. That is the drift the table
-above already describes, the one that put `Deaths` at 6.39 and `DamageTaken` at 1.45 on a second
-cold run of the single-player shape: a handful of queries carry fractions that move between runs.
-Neither row is a difference `--all-players` made, and neither is a discrepancy between the two
-readings.
+6.00 over six calls, `DamageTaken` at 1.42 against 1.00 over one. `DamageTaken` is squarely the
+drift the table above describes, which put that same row at 1.45 on a second cold run of the
+single-player shape. `EnemyCasts` is consistent with that drift but larger than either row the
+drift was measured on: 3.44 points over six calls, 57% above the 2026-09-08 figure, where the
+recorded drift moved a row by under half a point. There is a second account the call count does
+not distinguish it from — the five speed references were drawn from a different day's
+leaderboard, so five of those six calls were made against different fights than on 2026-09-08.
+Neither row is a difference `--all-players` made. Which account holds for `EnemyCasts` needs
+another reading to settle, and none has been taken.
 
 **Five times the players is not five times the price, and the reason is in the call counts.**
 Thirty candidates were weighed — five speed references, and five parse references for each of the
@@ -223,9 +229,20 @@ five players — and fourteen distinct runs stand behind them: eleven parse cand
 from another player's sample, and all five speed references were themselves top parses, so their
 reports were read on both axes and fetched once. Hence `Fights` and `Abilities` at 15, which is
 fourteen references plus our own run rather than thirty-one; `Talents` at 15, one per
-parse-profile load and ours; `Casts` at 16, which the two `Casts` notes below take up.
-`EnemyCasts`, `Deaths` and `Interrupts` stay at 6 — the speed axis is drawn once however many
-players are compared.
+parse-profile load and ours; `Casts` at 16, one page per parse reference plus the two our own
+longer fight takes, which is what the 2026-09-07 probe below counted for this fight's friendly
+cast stream with `includeResources: true` — 10716 rows over 2 pages. `EnemyCasts`, `Deaths` and
+`Interrupts` stay at 6 — the speed axis is drawn once however many players are compared.
+
+**The rows do not all count the same population, and that is what makes the two tables
+comparable.** Read off `src/wowperf/adapters/wcl/repository.py` on 2026-09-11: `Fights` and
+`Abilities` are fetched on every profile, so they count references on both axes, while `Casts`
+and `Talents` are fetched on the parse profile and on our own run and nowhere else — a speed
+reference fetches neither. So the divisor for a `Casts` count is `Talents`, never `Fights`. On
+2026-09-08, `Talents` at 6 is five parse references and ours, and `Casts` at 7 is those five
+single pages plus our two. Here, `Talents` at 15 is fourteen parse references and ours, and
+`Casts` at 16 is those fourteen plus our two. Both readings therefore put our own fight at the
+same two pages, and neither leaves a page unaccounted for.
 
 **The one row that scales with players rather than with references is `AuraTable`**, at 30 calls
 and 60.08 points, a third of the run: one for each of the five subjects' own uptime, and one for
@@ -235,20 +252,6 @@ character in each, so nothing there is shared, and nothing about it improves wit
 The `Casts` row also speaks to the price contradiction above: sixteen pages with
 `includeResources: true` for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not
 with the 2026-09-07 one. Still recorded rather than resolved, since nothing here depends on it.
-
-**A second contradiction for a human to settle: how many cast pages our own fight takes.** Read
-the 16 the way the rest of this composition is read — one page per parse reference — and fourteen
-of them are references, leaving **two** for our own fight. Read the 2026-09-08 table the same way,
-where `Fights` at 7 is six references plus ours and `Casts` is 7, and it leaves **one**. Same
-report, same fight, so both cannot be right. Two is what the 2026-09-07 probe below actually
-counted for this fight's friendly cast stream with `includeResources: true` — 10716 rows over 2
-pages — and if that is the true figure then the 2026-09-08 total is a page short and one of its
-references contributed no cast page at all; if instead our fight takes one page, the 2026-09-11
-total has a page nobody has accounted for. Only totals were read on either run and no page count
-was read on either, so this is arithmetic against arithmetic rather than two measurements.
-Nothing in this project depends on the answer — `pagination.py` follows `nextPageTimestamp` until
-the API stops offering one, and nothing branches on how many pages that took — so it is recorded
-rather than resolved.
 
 ## Mythic+ in the schema
 
