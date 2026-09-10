@@ -58,6 +58,7 @@ extend-immutable-calls = [
     "wowperf.domain.season.Externals",
     "wowperf.domain.season.Roles",
     "wowperf.domain.season.SelfResurrections",
+    "wowperf.domain.season.ThroughputCooldowns",
 ]
 
 [tool.mypy]

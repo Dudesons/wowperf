@@ -553,12 +553,13 @@ def analyze(
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
         consumables = load_consumables()
+        throughput = load_throughput_cooldowns()
         findings = analyse(
             loaded,
             load_season_data(),
             defensives,
             consumables,
-            load_throughput_cooldowns(),
+            throughput,
             roles=load_roles(),
             include_cooldown_ceiling=throughput_ceiling,
         )
@@ -655,6 +656,7 @@ def analyze(
                     consumables,
                     externals=load_externals(),
                     self_resurrections=load_self_resurrections(),
+                    throughput=throughput,
                     reference_records=reference_records,
                 ),
                 icons=build_icons(loaded, parse_sample, cache_dir),

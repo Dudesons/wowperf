@@ -17,6 +17,7 @@ from wowperf.domain.report.frame import (
 )
 from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard
+from wowperf.domain.season import Defensives, ThroughputCooldowns
 
 CLASS_COLOURS = (
     "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
@@ -72,6 +73,8 @@ def build_players(
     parse: ParseSample | None,
     subject: Player,
     titles_by_id: dict[str, str],
+    defensives: Defensives,
+    throughput: ThroughputCooldowns,
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
 

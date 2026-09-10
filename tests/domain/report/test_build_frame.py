@@ -6,7 +6,7 @@ from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds
 from wowperf.domain.report.model import ReferenceRecord, SectionState
-from wowperf.domain.season import Consumables, Defensives
+from wowperf.domain.season import Consumables, CooldownAbility, Defensives, ThroughputCooldowns
 
 FETCHED = "2026-09-05 14:02"
 
@@ -253,3 +253,18 @@ def test_badge_for_inferred() -> None:
     badge = badge_for(Confidence.INFERRED)
     assert badge.label == "inferred"
     assert badge.tint == "badge-inferred"
+
+
+def test_the_report_builder_accepts_the_throughput_cooldowns_the_analysers_read() -> None:
+    throughput = ThroughputCooldowns(
+        entries=(("DeathKnight/Blood", (CooldownAbility(
+            ability_id=1, name="Dancing Rune Weapon", cooldown_seconds=120.0
+        ),)),)
+    )
+    report = build_report(
+        a_loaded(), (), None, None, a_player(), None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        throughput=throughput,
+    )
+    # a_loaded() carries no players, so this call shape produces no cards either
+    # way -- the point of this test is that build_report takes the keyword at all.
+    assert report.players == ()
