@@ -100,7 +100,19 @@ def _blocks(
     return tuple(blocks)
 
 
-def _ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
+def axis_scale(seconds: float) -> float:
+    """viewBox units per second for a drawing that fills the track width.
+
+    A span of no length scales to zero rather than dividing by it: a run with
+    one instantaneous pull is degenerate, not an error, and every coordinate
+    derived from a zero scale collapses onto the axis origin where a reader can
+    see there is nothing to read.
+    """
+    return (TRACK_X1 - TRACK_X0) / seconds if seconds > 0 else 0.0
+
+
+def axis_ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
+    """One labelled mark every `TICK_SECONDS`, from the origin to `longest`."""
     marks = []
     second = 0
     while second <= longest:
@@ -162,7 +174,7 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
     our_seconds = run_seconds(ours)
     their_seconds = run_seconds(member.run) if member is not None else 0.0
     longest = max(our_seconds, their_seconds)
-    scale = (TRACK_X1 - TRACK_X0) / longest if longest > 0 else 0.0
+    scale = axis_scale(longest)
 
     our_kinds = {index: "extra" for index in member.alignment.only_ours} if member else {}
 
@@ -191,7 +203,7 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
         ),
         theirs=theirs_track,
         legend=COMPARED_TIMELINE_LEGEND if theirs_track else LONE_TIMELINE_LEGEND,
-        ticks=_ticks(longest, scale),
+        ticks=axis_ticks(longest, scale),
         width=TIMELINE_WIDTH,
         height=TIMELINE_HEIGHT,
         tick_y1=AXIS_TOP,

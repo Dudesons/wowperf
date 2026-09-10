@@ -28,17 +28,23 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import (
     AvailabilityRow,
+    CooldownRow,
     CurveGuide,
     CurvePoint,
     CurveReading,
     CurveTick,
+    DamageBar,
+    DamageTrack,
     DeathCard,
     Header,
     HealthCurve,
     LedgerRow,
+    PlayerTimeline,
+    Press,
     Provenance,
     RecapRow,
     ReferenceRecord,
+    Span,
     Timeline,
     TimelineBlock,
     TimelineTrack,
@@ -435,6 +441,29 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (CurveTick, "x"),
     (CurveGuide, "y"),
     (CurveReading, "percent"),  # a share of the player's own health, not a duration
+    # The player timeline's geometry. Every one of these is a viewBox coordinate
+    # computed in `player_timeline.py`: a position on a fixed axis rather than a
+    # quantity, so a column of them summed would mean nothing a reader could
+    # misread as a total.
+    (DamageBar, "x"),
+    (DamageBar, "width"),
+    (DamageBar, "y"),
+    (DamageBar, "height"),
+    (DamageTrack, "baseline_y"),
+    (Press, "x"),
+    (Span, "x"),
+    (Span, "width"),
+    (CooldownRow, "ability_id"),  # a spell's identity, not a duration
+    (CooldownRow, "baseline_y"),
+    (PlayerTimeline, "width"),
+    (PlayerTimeline, "height"),
+    (PlayerTimeline, "band_y"),
+    (PlayerTimeline, "band_height"),
+    (PlayerTimeline, "tick_y1"),
+    (PlayerTimeline, "tick_y2"),
+    (PlayerTimeline, "tick_label_y"),
+    (PlayerTimeline, "label_x"),
+    (PlayerTimeline, "row_height"),
 }
 
 

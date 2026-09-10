@@ -117,6 +117,78 @@ class Timeline(Frozen):
     block_height: float = 0.0
 
 
+class DamageBar(Frozen):
+    """One bucket of damage taken, in viewBox units."""
+
+    x: float
+    width: float
+    y: float
+    height: float
+
+
+class DamageTrack(Frozen):
+    """Damage taken over the run, bucketed and scaled to this player's own peak.
+
+    Never to the group's. A shared scale across five players would rank them,
+    which the postmortem design's §5.5 refuses.
+    """
+
+    baseline_y: float = 0.0
+    bars: tuple[DamageBar, ...] = ()
+    peak_label: str = ""
+
+
+class Press(Frozen):
+    """One cast of a tracked cooldown. `icon_class` is empty when none resolved."""
+
+    x: float
+    icon_class: str = ""
+
+
+class Span(Frozen):
+    """A stretch of a cooldown row, in viewBox units."""
+
+    x: float
+    width: float
+
+
+class CooldownRow(Frozen):
+    """One ability this player owns, and what the run did with it.
+
+    `not_judged` covers the run's opening, where the log cannot say whether the
+    ability was available: casts are fetched per fight, so a press before the
+    timer started is invisible.
+    """
+
+    label: str
+    ability_id: int | None = None
+    baseline_y: float = 0.0
+    presses: tuple[Press, ...] = ()
+    unavailable: tuple[Span, ...] = ()
+    not_judged: Span | None = None
+
+
+class PlayerTimeline(Frozen):
+    """One player's run on one axis. Every coordinate the SVG needs lives here."""
+
+    section: Section
+    width: float = 0.0
+    height: float = 0.0
+    pulls: tuple[TimelineBlock, ...] = ()
+    band_y: float = 0.0
+    band_height: float = 0.0
+    damage: DamageTrack | None = None
+    cooldowns: tuple[CooldownRow, ...] = ()
+    ticks: tuple[tuple[float, str], ...] = ()
+    tick_y1: float = 0.0
+    tick_y2: float = 0.0
+    tick_label_y: float = 0.0
+    label_x: float = 0.0
+    row_height: float = 0.0
+    legend: str = ""
+    badges: tuple[Badge, ...] = ()
+
+
 class RecapRow(Frozen):
     """One event of a death's last seconds, formatted.
 
