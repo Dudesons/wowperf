@@ -52,22 +52,38 @@ DAMAGE_HEIGHT = 32.0
 BUCKET_SECONDS = 5.0
 """How much of the run one damage bar covers.
 
-Narrow enough that a single lethal spike stays one bar rather than being
-averaged into its neighbours, wide enough that a run does not emit thousands
-of rectangles into a file that has to stay openable. Measured 2026-09-10
-against report 6Kx1P9GbNXrcLdHa fight 36 (five players, four deaths):
-re-rendering at 2, 5 and 10 seconds produced 3,266, 2,062 and 1,609 SVG
-rects respectively (721,206, 632,149 and 598,706 bytes). Checked against
-the four buckets surrounding each death, no width concentrated every
-death's damage into one bar best: 5 seconds did for one death (91%,
-against 47% at 2 seconds and 50% at 10), tied 2 seconds for a second
-(100%, against 71% at 10), sat between the other two for a third (58%,
-between 52% at 2 seconds and 72% at 10), and was the worst of the three
-for the fourth (50%, against 79% at 2 seconds and 54% at 10). With spike
-fidelity split across widths rather than favouring one, rect count
-decides: 5 seconds holds well under 2 seconds' count for a comparable
-spread of outcomes, at the cost of a few hundred more rects than 10
-seconds would use.
+Chosen against report 6Kx1P9GbNXrcLdHa fight 36 (five players, four deaths, 1,908.976
+seconds first pull to last), by rendering that run at 2, 5 and 10 seconds and reading the
+result three ways.
+
+Rect count and file size move together but gently across that range: 3,266, 2,062 and
+1,609 rects (721,206, 632,149 and 598,706 bytes) at 2, 5 and 10 seconds — a 1.20x spread
+in bytes end to end. None of the three risks the report's openability, so file weight does
+not decide.
+
+Checked against the run's own four deaths — the share of each death's four-bucket
+neighbourhood landing in its single largest bucket — no width wins across all four:
+52%/47%/79%/100% at 2 seconds, 58%/91%/50%/100% at 5, 72%/50%/54%/71% at 10. This metric is
+a weak arbiter besides: a four-bucket neighbourhood spans 8, 20 and 40 seconds at the three
+widths, so a point spike's share of it falls simply because the window widened, biasing the
+comparison toward narrow buckets on exactly the case it exists to settle. That even 2
+seconds still loses on two of the four deaths despite that bias is the more telling reading
+of the table.
+
+What decides is geometry. The track spans `TRACK_X1 - TRACK_X0`, 610 units, over this run's
+1,908.976 seconds — `axis_scale` = 0.3195 units per second — so consecutive buckets sit
+`BUCKET_SECONDS * scale` apart: 0.64, 1.60 and 3.19 units at 2, 5 and 10 seconds.
+`MIN_BLOCK_WIDTH` (2.0) floors how narrow a drawn bar may get, and at 2 seconds that floor
+draws every bar 3.1x wider than the gap between buckets — a lethal spike is not one bar, it
+is smeared across its own slot and roughly two more, which is the "one lethal spike is one
+bar" rule failing outright. At 5 seconds the floor still binds, but only to 1.25x, a bar
+spilling lightly into its one right-hand neighbour. At 10 seconds the gap already exceeds
+the floor, so nothing is drawn oversize.
+
+Two seconds is ruled out on that ground alone. Between 5 and 10, neither the concentration
+figures nor the geometry pick a clean winner: 10 draws every bucket at its true width, 5
+accepts a mild, single-neighbour overdraw for half the seconds any one bar can blur
+together. 5 is kept for the finer resolution at that modest cost.
 """
 
 FIRST_ROW_Y = 96.0

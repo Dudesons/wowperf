@@ -83,9 +83,10 @@ player timeline: five players are read against each other, and they are drawn fr
 
 Four layers, back to front:
 
-1. **Pull blocks, shaded.** Same geometry as `report/timeline.py` produces for the run
-   timeline, so a pack sits at a different x here than it does on the run timeline whenever a
-   reference ran longer. Boss pulls keep `.block-boss`.
+1. **Pull blocks, shaded.** Same drawing code as `report/timeline.py` uses for the run
+   timeline, but not its scale — this drawing fits only our own run, while the run timeline
+   fits the longer of ours and a reference's — so a pack can sit at a different x here than it
+   does on the run timeline whenever a reference ran longer. Boss pulls keep `.block-boss`.
 2. **A damage-taken track.** `LoadedRun.damage_taken` for this actor, summed into fixed
    buckets, drawn as bars from a baseline. Height scales to the player's own largest bucket,
    not the group's: this is not a ranking (§5.5), and a shared scale would make one.
@@ -101,10 +102,11 @@ Four layers, back to front:
    exactly that reason. Drawing that stretch as ready would be the one direction this project
    never guesses in.
 
-**The bucket width is a constant to be chosen against a real run, not asserted here.** The rule
-it must satisfy: narrow enough that one lethal spike is one bar, wide enough that a 1900-second
-run does not emit hundreds of rects into a file that must stay openable. Five seconds is the
-starting value; §12 says what to measure before fixing it.
+**The bucket width is `BUCKET_SECONDS`, fixed against a real run rather than asserted here.**
+The rule it satisfies: narrow enough that one lethal spike draws as one bar, wide enough that
+the rects it draws and the bytes they cost stay well short of anything that would make the
+file unopenable. §12 records the run it was measured against, the widths tried, and the value
+kept: five seconds.
 
 ## 5. Which rows appear, and why this is the honest set
 
@@ -235,11 +237,11 @@ it.
 
 `2026-09-08-deep-link-scroll-defect.md` records that opening the report at a fragment lands at
 the wrong scroll offset, because the tab script hides inactive panels only after first layout,
-in a document about three times taller than the final one.
+in a document 7.71 times taller than the final one.
 
-This design makes the Players panel roughly five times taller in that pre-script document. It
-changes the defect's magnitude, not its kind: the scroll is already wrong, and a wronger number
-is the same bug.
+This design makes the Players panel about two-thirds taller in that pre-script document
+(2,798 to 4,671 pixels, ×1.67 — §12). It changes the defect's magnitude, not its kind: the
+scroll is already wrong, and a wronger number is the same bug.
 
 **Decision, taken 2026-09-10:** ship this, and add a line to the defect note saying the
 pre-layout document grew, so whoever builds the harness knows what they are measuring. Do not
@@ -260,7 +262,8 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
 
 1. **Bucket width.** Re-rendering at 2, 5 and 10 seconds (`--no-compare`, so the three are
    comparable on structure alone) produced 3,266, 2,062 and 1,609 SVG rects across the
-   document, at 721,206, 632,149 and 598,706 bytes. Checked against the four buckets
+   document, at 721,206, 632,149 and 598,706 bytes — a 1.20x spread in bytes end to end, none
+   of it close to risking the report's openability. Checked against the four buckets
    surrounding each of the run's four deaths — the share of that neighbourhood's total damage
    landing in its single largest bucket:
 
@@ -271,12 +274,22 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    | 3 | 79% | 50% | 54% |
    | 4 | 100% | 100% | 71% |
 
-   No width concentrates every death's damage into one bar best: 5 seconds wins death 2
-   outright, ties 2 seconds for death 4, sits between the other two for death 1, and is the
-   worst of the three for death 3. Spike fidelity does not pick a winner, so rect count does:
-   5 seconds holds well under 2 seconds' count for a comparable spread of outcomes, at the
-   cost of a few hundred more rects than 10 seconds would use. `BUCKET_SECONDS` stays 5.0 —
-   the assumed starting value was right, for this reason rather than the one first guessed.
+   No width concentrates every death's damage into one bar best, and the metric is a weak
+   arbiter besides: a four-bucket neighbourhood spans 8, 20 and 40 seconds at the three widths,
+   so a point spike's share of it shrinks simply because the window widened — biasing the
+   comparison toward narrow buckets on exactly the case it exists to settle. That even 2
+   seconds still loses on two of the four deaths despite that bias is the more telling reading
+   of the table, and neither it nor the rect counts above end up deciding.
+
+   What decides is geometry: at 2 seconds, `MIN_BLOCK_WIDTH` draws every bar 3.1x wider than
+   the gap between buckets, smearing a lethal spike across its own slot and roughly two more —
+   the "one lethal spike is one bar" rule failing outright. At 5 seconds the same floor binds
+   to only 1.25x, spilling lightly into one neighbour; at 10 seconds the gap already exceeds
+   the floor and nothing draws oversize. Two seconds is ruled out on that ground; between 5 and
+   10, the table above and the geometry both fail to pick a clean winner, and `BUCKET_SECONDS`
+   stays at 5 for the finer resolution, at the cost of a mild, single-neighbour overdraw that
+   10 does not have. The full derivation — `axis_scale`, `TRACK_X1 - TRACK_X0`, and the exact
+   bucket spacings — is on the constant's own docstring in `player_timeline.py`.
 2. **Page size.** 260,645 bytes before, 659,499 after: five player timelines add 398,854
    bytes. The report carried 63 distinct ability icons before this work and 76 after — 13
    newly introduced by a cooldown row that no death card or ledger row had already drawn, the
@@ -285,17 +298,25 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    (175,402 bytes, needed so all 76 icons — reused ones included — can be referenced from
    inside an SVG via `<use>`, which cannot read a CSS `background-image`), of which only
    29,919 bytes belong to the 13 genuinely new icons; the remaining 145,431 bytes re-embed, in
-   `<symbol>` form, icons whose data URI the page already carried once in its stylesheet. The
-   other 194,222 bytes (49%) is the timelines' own structure — pull bands, damage bars,
-   cooldown rows, press marks, ticks and labels for five players.
+   `<symbol>` form, icons whose data URI the page already carried once in its stylesheet
+   (29,919 + 145,431 = 175,350; the other 52 bytes are the `<svg class="icon-defs">` wrapper
+   itself). The other 194,222 bytes (49%) is the timelines' own structure — pull bands, damage
+   bars, cooldown rows, press marks, ticks and labels for five players.
+
+   That second copy exists because a `<use>` reference cannot read a CSS `background-image`,
+   not because the report needs two icon layers. Pointing the HTML's `.i-<id>` sites at this
+   same `<symbol>` sprite, instead of a separate CSS rule per id, would delete the CSS layer
+   entirely — about 175 KB, 27% of the final file. Recorded here as a measurement; not done in
+   this change.
 3. **Row count.** Per player, in cooldowns tracked and cast at least once: 6 (Shadow Priest,
    DPS), 5 (Blood Death Knight, tank), 4 (Elemental Shaman, DPS), 4 (Holy Paladin, healer), 5
    (Arcane Mage, DPS). All five sit at or under the assumed six-to-twelve range's floor, none
    near its ceiling, and none within striking distance of twenty — `ROW_HEIGHT` and the
    drawing's shape are unchanged.
 4. **Pre-layout height.** With the `js` class removed after load (the same DOM and CSSOM state
-   scripting-disabled would produce, since that class is the only thing either panel-hiding
-   rule in `report.css.j2` keys on), `document.documentElement.scrollHeight` read, over
+   scripting-disabled would produce, since that class is the only thing any of the three
+   `.js`-gated rules in `report.css.j2` key on — two hide inactive panels, the third switches
+   the tabs nav to `display: flex`), `document.documentElement.scrollHeight` read, over
    `python -m http.server`, reproducibly across repeated loads:
 
    | | before | after |
@@ -307,9 +328,9 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    The whole document's pre-layout height grows 13.9% (13,323 to 15,175 px) — a multiple of
    8.78 against the shared 1,728 px post-layout height, against 7.71 for the same page before
    this work. The Players panel itself, which is what actually changed, grows 67% (2,798 to
-   4,671 px) — not the roughly fivefold growth §11 estimates; §11 is not corrected here because
-   this task's scope is §4 and §12, but whoever next touches §11's numbers should read this row
-   rather than the estimate.
+   4,671 px) — the figure §11 now states. The two figures do not quite match: the document
+   grew 1,852 px overall against the panel's own 1,873 px. If only that panel's content
+   changed, the two should be equal; the 21 px gap is unexplained by anything measured here.
 
 ## 13. J2, split out and not specified here
 
@@ -355,9 +376,18 @@ only which of them carry a parse comparison.
    not obviously apply. This design includes tanks. If that reads wrong on a real run, it is a
    one-line change and the plan should measure it before deciding. **Measured 2026-09-10:**
    on `6Kx1P9GbNXrcLdHa`-36, the run's Blood Death Knight drew the fullest damage track of the
-   five players — 307 five-second buckets against the next-busiest player's 274 — a shape a
-   tank's steady incoming damage produces on its own scale and no other player's drawing
-   claims to rank against. It reads right; the inclusion stands.
+   five players — 307 non-empty five-second buckets against the next-busiest player's 274.
+   Density is not legibility, and §10 already says the render suite cannot see layout, so this
+   was checked by opening the rendered file and looking at the tank's sub-tab directly, beside
+   the other four. It shows a dense, nearly continuous band across most of the run, visibly the
+   busiest of the five tracks — where the other four show separated spikes over a quiet
+   baseline, this one shows a quiet baseline nowhere. It does not cross into unreadable: the
+   tallest bar still stands out above the surrounding noise because every track scales to its
+   own peak, close enough to a Vampiric Blood press to read as the same moment, so the run's
+   one clear spike is still the one clear peak on this player's drawing too. On that direct
+   look, the inclusion stands for this run — but on the density this run measured, not the
+   shape it draws, a tank encounter with more sustained incoming damage than this one could
+   plausibly push a similar track past this margin, and that case has not been looked at.
 2. **Ordering the cooldown rows.** Throughput before defensives, each in its file's order, is
    chosen for stability rather than for meaning. Ordering by first press would put the
    run's story in reading order but make two players' drawings incomparable. Left as
