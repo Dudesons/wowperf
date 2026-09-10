@@ -2,6 +2,7 @@
 # ABOUTME: Every coordinate is asserted here, because the template computes none of them.
 
 from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
+from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldowns
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
@@ -11,17 +12,31 @@ from wowperf.domain.report.player_timeline import (
     BUCKET_SECONDS,
     DAMAGE_HEIGHT,
     FIRST_ROW_Y,
+    LABEL_UNITS_PER_CHARACTER,
+    LABEL_X,
     NO_PULLS_RECORDED,
     NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
+    PRESS_WIDTH,
     ROW_HEIGHT,
     RUN_SPANS_NO_TIME,
+    TRACK_ORIGIN_X,
     build_player_timeline,
 )
 from wowperf.domain.report.timeline import TRACK_X0, TRACK_X1, axis_scale, axis_ticks
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives, ThroughputCooldowns
 
 NO_THROUGHPUT = ThroughputCooldowns(entries=())
+
+
+def a_scale(seconds: float) -> float:
+    """This drawing's own units per second.
+
+    Not `axis_scale(seconds)`: the player timeline reserves a gutter for its
+    row labels and starts its track after it, so the same run fits a narrower
+    track here than on the run timeline.
+    """
+    return axis_scale(seconds, TRACK_ORIGIN_X)
 
 
 def a_cast(actor_id: int, ability_id: int, at_ms: int) -> CastEvent:
@@ -97,28 +112,28 @@ def test_a_pull_band_starts_where_the_axis_starts_and_a_boss_is_marked() -> None
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
     timeline = a_timeline(loaded)
-    assert timeline.pulls[0].x == TRACK_X0
+    assert timeline.pulls[0].x == TRACK_ORIGIN_X
     assert timeline.pulls[1].is_boss
     assert "block-boss" in timeline.pulls[1].css_class
 
 
 def test_a_later_pulls_x_is_its_scaled_and_rounded_offset_from_the_first() -> None:
-    # Pull 0 always lands on TRACK_X0 regardless of the scale, because its own
+    # Pull 0 always lands on TRACK_ORIGIN_X regardless of the scale, because its own
     # offset from the origin is zero -- this pull is the one whose x depends on
     # the scale actually being applied, and on the origin actually being the
     # first pull's start rather than pull 1's own.
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
     timeline = a_timeline(loaded)
-    scale = axis_scale(180.0)  # last pull's end (180_000 ms) minus the origin (0)
-    assert timeline.pulls[1].x == round(TRACK_X0 + 120.0 * scale, PRECISION)
+    scale = a_scale(180.0)  # last pull's end (180_000 ms) minus the origin (0)
+    assert timeline.pulls[1].x == round(TRACK_ORIGIN_X + 120.0 * scale, PRECISION)
 
 
 def test_a_bands_width_is_its_scaled_and_rounded_duration() -> None:
     run = a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 180_000, encounter_id=2599)))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
     timeline = a_timeline(loaded)
-    scale = axis_scale(180.0)
+    scale = a_scale(180.0)
     assert timeline.pulls[1].width == round(60.0 * scale, PRECISION)
 
 
@@ -181,8 +196,8 @@ def test_a_press_dims_the_row_for_the_abilitys_own_cooldown() -> None:
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    scale = axis_scale(600.0)
-    span = next(s for s in row.unavailable if s.x == round(TRACK_X0 + 300.0 * scale, 1))
+    scale = a_scale(600.0)
+    span = next(s for s in row.unavailable if s.x == round(TRACK_ORIGIN_X + 300.0 * scale, 1))
     assert span.width == round(180.0 * scale, 1)
 
 
@@ -191,8 +206,8 @@ def test_the_runs_opening_is_not_judged_for_as_long_as_the_cooldown_lasts() -> N
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
     assert row.not_judged is not None
-    assert row.not_judged.x == TRACK_X0
-    assert row.not_judged.width == round(180.0 * axis_scale(600.0), 1)
+    assert row.not_judged.x == TRACK_ORIGIN_X
+    assert row.not_judged.width == round(180.0 * a_scale(600.0), 1)
 
 
 def test_a_press_near_the_runs_end_is_clamped_to_the_axis_end_not_the_runs_length() -> None:
@@ -202,9 +217,9 @@ def test_a_press_near_the_runs_end_is_clamped_to_the_axis_end_not_the_runs_lengt
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 550_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    scale = axis_scale(600.0)
+    scale = a_scale(600.0)
     span = row.unavailable[0]
-    assert span.x == round(TRACK_X0 + 550.0 * scale, PRECISION)
+    assert span.x == round(TRACK_ORIGIN_X + 550.0 * scale, PRECISION)
     assert span.width == round(50.0 * scale, PRECISION)
     assert round(span.x + span.width, PRECISION) == TRACK_X1
 
@@ -221,12 +236,12 @@ def test_a_cooldown_longer_than_the_run_leaves_the_whole_track_not_judged() -> N
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 100_000),))
     row = a_timeline(loaded, defensives=kit).cooldowns[0]
-    scale = axis_scale(600.0)
+    scale = a_scale(600.0)
     assert row.not_judged is not None
-    assert row.not_judged.x == TRACK_X0
-    assert row.not_judged.width == round(TRACK_X1 - TRACK_X0, PRECISION)
+    assert row.not_judged.x == TRACK_ORIGIN_X
+    assert row.not_judged.width == round(TRACK_X1 - TRACK_ORIGIN_X, PRECISION)
     span = row.unavailable[0]
-    assert span.x == round(TRACK_X0 + 100.0 * scale, PRECISION)
+    assert span.x == round(TRACK_ORIGIN_X + 100.0 * scale, PRECISION)
     assert span.x > row.not_judged.x
     assert round(span.x + span.width, PRECISION) == TRACK_X1
 
@@ -240,14 +255,14 @@ def test_a_second_press_inside_the_first_covers_still_draws_its_own_mark() -> No
         casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, SHIELD.ability_id, 350_000)),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    scale = axis_scale(600.0)
+    scale = a_scale(600.0)
     assert [press.x for press in row.presses] == [
-        round(TRACK_X0 + 300.0 * scale, PRECISION),
-        round(TRACK_X0 + 350.0 * scale, PRECISION),
+        round(TRACK_ORIGIN_X + 300.0 * scale - PRESS_WIDTH / 2, PRECISION),
+        round(TRACK_ORIGIN_X + 350.0 * scale - PRESS_WIDTH / 2, PRECISION),
     ]
     assert [span.x for span in row.unavailable] == [
-        round(TRACK_X0 + 300.0 * scale, PRECISION),
-        round(TRACK_X0 + 350.0 * scale, PRECISION),
+        round(TRACK_ORIGIN_X + 300.0 * scale, PRECISION),
+        round(TRACK_ORIGIN_X + 350.0 * scale, PRECISION),
     ]
     assert row.unavailable[0].width == round(180.0 * scale, PRECISION)
     assert row.unavailable[1].width == round(180.0 * scale, PRECISION)
@@ -255,17 +270,81 @@ def test_a_second_press_inside_the_first_covers_still_draws_its_own_mark() -> No
     assert row.unavailable[0].x + row.unavailable[0].width > row.unavailable[1].x
 
 
-def test_a_presss_icon_is_centred_on_the_instant_it_marks() -> None:
-    # The icon is drawn several times wider than the plain mark it decorates;
-    # if `icon_x` merely equalled `x`, the icon's whole body would sit to the
-    # right of the instant, rather than straddling it.
+def test_a_presss_mark_and_icon_are_both_centred_on_the_instant_they_mark() -> None:
+    # Both elements are placed by their own left edge, and both are wider than
+    # the moment they stand for: the mark by `PRESS_WIDTH`, the icon by a whole
+    # row height. Either one placed flush with the instant would sit entirely
+    # to the right of it -- several seconds late on a half-hour run -- and the
+    # two would then disagree about where the press happened.
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     press = a_timeline(loaded, defensives=KIT).cooldowns[0].presses[0]
-    scale = axis_scale(600.0)
-    x = round(TRACK_X0 + 300.0 * scale, PRECISION)
-    assert press.x == x
-    assert press.icon_x == round(x - ROW_HEIGHT / 2, PRECISION)
+    instant = TRACK_ORIGIN_X + 300.0 * a_scale(600.0)
+    assert press.x == round(instant - PRESS_WIDTH / 2, PRECISION)
+    assert press.icon_x == round(instant - ROW_HEIGHT / 2, PRECISION)
+    # Same centre, to within the rounding both coordinates carry.
+    assert abs((press.x + PRESS_WIDTH / 2) - (press.icon_x + ROW_HEIGHT / 2)) <= 0.1
+
+
+def test_every_tick_coordinate_is_rounded_like_every_other_coordinate() -> None:
+    # design section 7: this drawing rounds every coordinate it emits, because
+    # it emits hundreds of them. The ticks come from a helper the run timeline
+    # shares and which does not round -- three attributes per tick, on every
+    # player's drawing, at full binary precision.
+    span_ms = 1_908_976
+    span = span_ms / 1000
+    run = a_run(pulls=(a_pull(0, 0, span_ms),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    raw = axis_ticks(span, a_scale(span), TRACK_ORIGIN_X)
+    # The run has to produce a coordinate that rounding actually changes, or
+    # the comparison below would hold with the rounding taken back out.
+    assert any(x != round(x, PRECISION) for x, _ in raw)
+    assert timeline.ticks == tuple((round(x, PRECISION), label) for x, label in raw)
+
+
+def test_a_row_label_ends_in_the_gutter_and_sits_on_its_own_rows_middle() -> None:
+    # Two claims, and the drawing is wrong without either. Horizontally the
+    # label has to end before the track begins, or it is drawn across the row
+    # it names -- over the not-judged stretch every row opens with, which
+    # obscured reads as an ability that was ready. Vertically its baseline has
+    # to be the row's middle, not the row's top edge, which is where every
+    # rect on the row hangs from: a baseline on the top edge puts the glyphs
+    # over the row above.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    timeline = a_timeline(loaded, defensives=KIT)
+    row = timeline.cooldowns[0]
+    assert timeline.label_x == LABEL_X
+    assert timeline.label_x < TRACK_ORIGIN_X
+    assert row.label_y == row.baseline_y + ROW_HEIGHT / 2
+
+
+def test_the_damage_tracks_label_ends_in_the_same_gutter_the_rows_use() -> None:
+    # One gutter, or the drawing has two left edges. The damage label is
+    # centred on the band its bars grow through rather than on the foot they
+    # stand on, so it reads level with what it names.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.label_x == LABEL_X
+    assert timeline.damage.label_y == timeline.damage.baseline_y - DAMAGE_HEIGHT / 2
+
+
+def test_the_gutter_still_fits_the_longest_ability_name_in_the_data_files() -> None:
+    # The gutter was sized against the widest name the shipped data files
+    # carry. Adding a wider one is a legitimate thing to do to those files and
+    # nothing else in the suite would notice it; this fails when it happens,
+    # and equally if the gutter is ever narrowed under the names it holds.
+    names = [
+        ability.name
+        for entries in (load_defensives().entries, load_throughput_cooldowns().entries)
+        for _, abilities in entries
+        for ability in abilities
+    ]
+    longest = max(names, key=len)
+    assert len(longest) * LABEL_UNITS_PER_CHARACTER <= LABEL_X, longest
 
 
 def test_throughput_rows_come_before_defensive_rows() -> None:
@@ -328,7 +407,7 @@ def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_
     assert shortest == DAMAGE_HEIGHT / 2
     # This player's own tallest bucket only -- never a group figure, which
     # would still pass this assertion's shape but say something dishonest.
-    assert track.peak_label == "Tallest bar: 2,000 damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 2,000 unmitigated damage in 5 seconds"
 
 
 def test_another_players_damage_never_reaches_this_players_track() -> None:
@@ -349,7 +428,7 @@ def test_a_far_larger_hit_on_a_different_actor_never_sets_this_players_scale() -
     assert track is not None
     assert len(track.bars) == 1
     assert track.bars[0].height == DAMAGE_HEIGHT
-    assert track.peak_label == "Tallest bar: 100 damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 100 unmitigated damage in 5 seconds"
 
 
 def test_two_hits_inside_one_bucket_are_one_bar_of_their_sum() -> None:
@@ -370,8 +449,8 @@ def test_a_bucket_with_no_damage_draws_no_bar() -> None:
     track = a_timeline(loaded).damage
     assert track is not None
     assert len(track.bars) == 2
-    scale = axis_scale(100.0)
-    assert track.bars[1].x == round(TRACK_X0 + 2 * BUCKET_SECONDS * scale, PRECISION)
+    scale = a_scale(100.0)
+    assert track.bars[1].x == round(TRACK_ORIGIN_X + 2 * BUCKET_SECONDS * scale, PRECISION)
 
 
 def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> None:

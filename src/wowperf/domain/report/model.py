@@ -131,9 +131,14 @@ class DamageTrack(Frozen):
 
     Never to the group's. A shared scale across five players would rank them,
     which the postmortem design's §5.5 refuses.
+
+    `baseline_y` is the foot the bars stand on; `label_y` is where the track's
+    name sits, centred on the band the bars grow through rather than on that
+    foot, so the name reads level with what it names.
     """
 
     baseline_y: float = 0.0
+    label_y: float = 0.0
     bars: tuple[DamageBar, ...] = ()
     peak_label: str = ""
 
@@ -141,13 +146,12 @@ class DamageTrack(Frozen):
 class Press(Frozen):
     """One cast of a tracked cooldown, placed on its row's axis.
 
-    `x` is the instant itself, and the narrow mark the template always draws
-    uses it as a left edge. `icon_x` places a second, wider mark -- the
-    ability's icon, drawn only once one resolves -- centred on that same
-    instant instead: an SVG `<image>`/`<use>` element's own `x` is its own
-    left edge too, and the icon is drawn several times wider than the plain
-    mark it decorates, so drawing it flush with `x` would put its whole body
-    to the right of the instant it is meant to mark.
+    Both fields are left edges, and both centre their own element on the same
+    instant: an SVG element's `x` is its left edge, so a mark placed flush with
+    the instant would sit wholly to the right of the moment it marks. `x` is
+    the left edge of the narrow mark the template always draws, half its width
+    before the instant; `icon_x` is the left edge of the ability's icon, drawn
+    only once one resolves and several times wider, half of that before it.
     """
 
     x: float
@@ -167,11 +171,16 @@ class CooldownRow(Frozen):
     `not_judged` covers the run's opening, where the log cannot say whether the
     ability was available: casts are fetched per fight, so a press before the
     timer started is invisible.
+
+    `baseline_y` is the row's top edge, which every rect on it hangs from;
+    `label_y` is the row's middle, where its name sits. They differ because a
+    name drawn from the top edge would fall across the row above.
     """
 
     label: str
     ability_id: int | None = None
     baseline_y: float = 0.0
+    label_y: float = 0.0
     presses: tuple[Press, ...] = ()
     unavailable: tuple[Span, ...] = ()
     not_judged: Span | None = None
@@ -186,6 +195,7 @@ class PlayerTimeline(Frozen):
     """
 
     section: Section
+    title: str = ""
     width: float = 0.0
     height: float = 0.0
     pulls: tuple[TimelineBlock, ...] = ()
@@ -199,6 +209,7 @@ class PlayerTimeline(Frozen):
     tick_label_y: float = 0.0
     label_x: float = 0.0
     row_height: float = 0.0
+    press_width: float = 0.0
     legend: str = ""
     badge_measured: Badge | None = None
     badge_measured_caption: str = ""

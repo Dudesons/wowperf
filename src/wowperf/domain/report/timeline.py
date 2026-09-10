@@ -100,25 +100,32 @@ def _blocks(
     return tuple(blocks)
 
 
-def axis_scale(seconds: float) -> float:
+def axis_scale(seconds: float, origin: float = TRACK_X0) -> float:
     """viewBox units per second for a drawing that fills the track width.
+
+    `origin` is the x the axis starts at, and so what is left of the width for
+    the track: a drawing that reserves a wider left margin than this file's own
+    — the player timeline, which right-aligns a row label into one — passes its
+    own origin and gets the scale for the narrower track that remains.
 
     A span of no length scales to zero rather than dividing by it: a run with
     one instantaneous pull is degenerate, not an error, and every coordinate
     derived from a zero scale collapses onto the axis origin where a reader can
     see there is nothing to read.
     """
-    return (TRACK_X1 - TRACK_X0) / seconds if seconds > 0 else 0.0
+    return (TRACK_X1 - origin) / seconds if seconds > 0 else 0.0
 
 
-def axis_ticks(longest: float, scale: float) -> tuple[tuple[float, str], ...]:
-    """One labelled mark every `TICK_SECONDS`, from the origin to `longest`."""
+def axis_ticks(
+    longest: float, scale: float, origin: float = TRACK_X0
+) -> tuple[tuple[float, str], ...]:
+    """One labelled mark every `TICK_SECONDS`, from `origin` to `longest`."""
     marks = []
     second = 0
     while second <= longest:
         label = format_seconds(float(second))
         assert label is not None  # a float input always formats to a string
-        marks.append((TRACK_X0 + second * scale, label))
+        marks.append((origin + second * scale, label))
         second += TICK_SECONDS
     return tuple(marks)
 

@@ -108,6 +108,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
 .player-timeline { display: block; width: 100%; margin: 10px 0 2px; }
+/* Every row is named, and the name is right-aligned into the gutter left of the
+   track so it never crosses the row it labels. Its own size, smaller than the
+   run timeline's captions, is what lets the longest ability name in the data
+   files fit that gutter. */
+.row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
 .pull-band { fill: var(--line); }
 .damage-bar { fill: var(--hit); }
 .on-cooldown { fill: var(--line); opacity: 0.55; }
@@ -269,16 +274,17 @@ never be summed.</p>
     <span class="sub">Mage Arcane</span>
   </div>
   <p class="stats">1 cast in 2:20 of pulls · 1 death · 0 interrupts</p>
-  <svg class="player-timeline" viewBox="0 0 680.0 124.0" role="img">
-  <line class="tick" x1="46.0" y1="22.0" x2="46.0" y2="96.0"/>
-  <text class="tick-label" x="46.0" y="112.0">0:00</text>
-  <rect class="pull-band" x="46.0" y="28.0" width="183.0" height="10.0"><title>Pack 0</title></rect>
-  <rect class="pull-band block-boss" x="412.0" y="28.0" width="244.0" height="10.0"><title>Pack 1</title></rect>
-  <rect class="damage-bar" x="183.2" y="44.0" width="15.2" height="32.0"/>
-  <text class="track-label" x="40.0" y="76.0">Damage taken</text>
+  <svg class="player-timeline" viewBox="0 0 680.0 124.0">
+  <title>One player&#39;s run on one elapsed-time axis</title>
+  <line class="tick" x1="130.0" y1="22.0" x2="130.0" y2="96.0"/>
+  <text class="tick-label" x="130.0" y="112.0" text-anchor="middle">0:00</text>
+  <rect class="pull-band" x="130.0" y="28.0" width="157.8" height="10.0"><title>Pack 0</title></rect>
+  <rect class="pull-band block-boss" x="445.6" y="28.0" width="210.4" height="10.0"><title>Pack 1</title></rect>
+  <rect class="damage-bar" x="248.3" y="44.0" width="13.1" height="32.0"/>
+  <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
 </svg>
-<p class="sub">Tallest bar: 82,410 damage in 5 seconds</p><p class="sub">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight.</p>
-<p class="badges"><span class="badge badge-measured">measured</span> — the damage bars and the press marks. <span class="badge badge-inferred">inferred</span> — the dimming.</p>
+<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight.</p>
+<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars and the press marks. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming.</p>
 
   <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 </div>

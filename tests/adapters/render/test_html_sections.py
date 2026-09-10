@@ -17,6 +17,7 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
+from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report import player_timeline as player_timeline_module
 from wowperf.domain.report import timeline as timeline_module
 from wowperf.domain.report.build import build_report
@@ -433,6 +434,29 @@ def test_each_player_gets_a_sub_tab_button_pointing_at_their_own_panel() -> None
     assert html.count('data-tab-panel="players"') == len(targets)
 
 
+def test_the_subjects_sub_tab_is_the_one_that_opens_first() -> None:
+    # design section 3. `report.js.j2` activates the first `[data-tab-for]` in
+    # each group, so "opens first" is "is drawn first" -- and the panels must
+    # move with the buttons, or the nav and the cards disagree about order.
+    # The subject is last on this roster on purpose: with them first, a page
+    # that never ordered anything would pass.
+    roster = (
+        Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680),
+        Player(actor_id=2, name="Stonewake", class_name="DeathKnight", spec="Blood",
+               item_level=675),
+    )
+    subject = roster[1]
+    loaded = LoadedRun(run=a_run(players=roster, pulls=(a_pull(0, 0, 60_000),)))
+    html = render(build_report(loaded, (), None, None, subject, None, FETCHED,
+                               NO_DEFENSIVES, NO_CONSUMABLES))
+    nav = re.search(r'data-tab-group="players".*?</nav>', html, flags=re.S)
+    assert nav is not None
+    buttons = re.findall(r'data-tab-for="(player-[^"]+)"', nav.group(0))
+    panels = re.findall(r'data-tab-panel="players" id="(player-[^"]+)"', html)
+    assert buttons[0].startswith("player-stonewake")
+    assert panels == buttons
+
+
 def a_curve() -> HealthCurve:
     return HealthCurve(
         width=680.0,
@@ -617,27 +641,31 @@ def a_drawn_timeline() -> PlayerTimeline:
     attribute fails, naming the layer, if a template drops it."""
     return PlayerTimeline(
         section=Section(state=SectionState.PRESENT),
+        title=player_timeline_module.TITLE,
         width=680.0,
         height=140.0,
-        pulls=(TimelineBlock(label="Pack 0", x=46.0, width=100.0, is_boss=False,
+        pulls=(TimelineBlock(label="Pack 0", x=130.0, width=100.0, is_boss=False,
                              kind="band", css_class="pull-band"),),
         band_y=28.0,
         band_height=10.0,
         damage=DamageTrack(
             baseline_y=76.0,
-            bars=(DamageBar(x=46.0, width=6.0, y=44.0, height=32.0),),
-            peak_label="Tallest bar: 120,000 damage in 5 seconds",
+            label_y=60.0,
+            bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                               presses=(Press(x=200.0, icon_x=192.0),),
+                               label_y=104.0,
+                               presses=(Press(x=200.0, icon_x=194.0),),
                                unavailable=(Span(x=200.0, width=90.0),),
-                               not_judged=Span(x=46.0, width=90.0)),),
-        ticks=((46.0, "0:00"),),
+                               not_judged=Span(x=130.0, width=90.0)),),
+        ticks=((130.0, "0:00"),),
         tick_y1=22.0,
         tick_y2=112.0,
         tick_label_y=128.0,
-        label_x=40.0,
+        label_x=126.0,
         row_height=16.0,
+        press_width=4.0,
         legend="The pale stretch at the start is not judged at all.",
         badge_measured=Badge(label="measured", tint="badge-measured"),
         badge_measured_caption=player_timeline_module.BADGE_MEASURED_CAPTION,
@@ -657,8 +685,71 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     # Which badge grades what is a claim the page makes, so it must be spoken
     # rather than left as two colours side by side: "measured" is captioned
     # to the damage bars and press marks, "inferred" to the dimming.
-    assert "measured</span> — the damage bars and the press marks." in html
-    assert "inferred</span> — the dimming." in html
+    assert "measured</a> — the damage bars and the press marks." in html
+    assert "inferred</a> — the dimming." in html
+
+
+def test_a_timelines_badges_link_to_provenance_like_every_other_badge() -> None:
+    # The health curve's badges and every ledger row's are anchors to the
+    # provenance section. These were the only badges on the page a reader
+    # could not click through.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<a class="badge badge-measured" href="#provenance">measured</a>' in body
+    assert '<a class="badge badge-inferred" href="#provenance">inferred</a>' in body
+
+
+def test_a_timelines_captions_take_the_same_class_the_other_drawings_captions_do() -> None:
+    # `.badges` matched no rule in the stylesheet, so that line rendered at
+    # body size while every other caption on the page rendered at 13px.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<p class="legend"><a class="badge badge-measured"' in body
+    assert 'class="badges"' not in body
+
+
+def test_a_row_label_is_drawn_in_the_gutter_and_on_its_own_rows_middle() -> None:
+    # The coordinates come from the domain and the alignment from one rule in
+    # the stylesheet: without `text-anchor: end` an x of 126 is where the
+    # label *starts*, and it runs rightward over the track it names.
+    html = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),)))
+    stylesheet, body = html.split("</style>")
+    assert '<text class="track-label row-label" x="126.0" y="104.0">Ice Block</text>' in body
+    assert '<text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>' in body
+    assert "text-anchor: end" in stylesheet.split(".row-label {")[1].split("}")[0]
+
+
+def test_a_timeline_names_itself_rather_than_claiming_to_be_an_unnamed_image() -> None:
+    # `role="img"` with no accessible name gives assistive tech an unnamed
+    # image and drops the pull bands' own titles out of the tree with it.
+    # Both other drawings on the page open with a <title> and carry no role.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    svg = body[body.index('<svg class="player-timeline"'):body.index("</svg>")]
+    # Escaped on comparison: the title embeds an apostrophe, which autoescape
+    # turns into "&#39;".
+    assert f"<title>{escape(player_timeline_module.TITLE)}</title>" in svg
+    assert "role=" not in svg
+    assert "<title>Pack 0</title>" in svg
+
+
+def test_a_timelines_tick_labels_are_centred_the_way_the_run_timelines_are() -> None:
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<text class="tick-label" x="130.0" y="128.0" text-anchor="middle">0:00</text>' in body
+
+
+def test_the_press_marks_width_comes_from_the_domain_not_the_template() -> None:
+    # The mark's width decides where its centre falls, so a number written in
+    # the template would put the mark and its icon on different instants.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<rect class="press" x="200.0" y="96.0" width="4.0" height="16.0"/>' in body
 
 
 def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() -> None:
@@ -675,7 +766,7 @@ def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() ->
     body = html.split("</style>")[1]
     assert ('<symbol id="icon-45438" viewBox="0 0 1 1">'
             '<image href="data:image/jpeg;base64,AAA"') in body
-    assert '<use href="#icon-45438" x="192.0"' in body
+    assert '<use href="#icon-45438" x="194.0"' in body
 
 
 def test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too() -> None:

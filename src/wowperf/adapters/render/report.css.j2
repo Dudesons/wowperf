@@ -111,6 +111,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
 .player-timeline { display: block; width: 100%; margin: 10px 0 2px; }
+/* Every row is named, and the name is right-aligned into the gutter left of the
+   track so it never crosses the row it labels. Its own size, smaller than the
+   run timeline's captions, is what lets the longest ability name in the data
+   files fit that gutter. */
+.row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
 .pull-band { fill: var(--line); }
 .damage-bar { fill: var(--hit); }
 .on-cooldown { fill: var(--line); opacity: 0.55; }

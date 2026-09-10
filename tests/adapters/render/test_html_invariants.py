@@ -488,12 +488,14 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (DamageBar, "y"),
     (DamageBar, "height"),
     (DamageTrack, "baseline_y"),
+    (DamageTrack, "label_y"),
     (Press, "x"),
     (Press, "icon_x"),
     (Span, "x"),
     (Span, "width"),
     (CooldownRow, "ability_id"),  # a spell's identity, not a duration
     (CooldownRow, "baseline_y"),
+    (CooldownRow, "label_y"),
     (PlayerTimeline, "width"),
     (PlayerTimeline, "height"),
     (PlayerTimeline, "band_y"),
@@ -503,6 +505,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (PlayerTimeline, "tick_label_y"),
     (PlayerTimeline, "label_x"),
     (PlayerTimeline, "row_height"),
+    (PlayerTimeline, "press_width"),
 }
 
 
