@@ -383,6 +383,12 @@ reason it was chosen: same run, same tool, immediately prior.
 
 ## 13. J2, split out and not specified here
 
+**Superseded 2026-09-10 by `2026-09-10-per-player-parse-comparison-design.md`.** That document
+is now the authority on J2. Two of the three blockers below are resolved and the second is
+mis-diagnosed — the test it names asserts on titles, not ids, and would not have failed. Its §11
+records the corrections. Read this section as the record of what was known when the per-player
+page shipped, not as a statement about the tree.
+
 The roadmap's fifth item — a top-parse comparison for every player rather than the subject —
 is a different change and does not belong in this spec. It is not deferred for cost.
 

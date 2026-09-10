@@ -5,9 +5,11 @@ Each built phase has its own design and plan under `docs/plans/`; they shipped o
 2026-09-06, 2026-09-08 and 2026-09-10. Phase J's first four bullets — the sub-tab, the cooldown
 timeline, the damage-taken track and the gathered per-player facts — are built and are specified
 in `2026-09-10-per-player-page-design.md`. Its fifth, a top-parse comparison for every player
-rather than the subject, is split out as J2 and is not built; that design's §13 records what
-blocks it. The §5 decisions the built phases needed were taken as each was designed. Decision 5
-is J2's and is still open, though the API fact behind it is now settled: `playerscore` returns
+rather than the subject, is split out as J2: designed in
+`2026-09-10-per-player-parse-comparison-design.md`, not yet built. The §5 decisions the built
+phases needed were taken as each was designed. **Decision 5 is closed** by that design — parse
+references are drawn for the subject by default and for anyone else the reader names, chosen at
+runtime rather than at design time. The API fact behind it is settled too: `playerscore` returns
 rows for tank and healer specialisations, measured 2026-09-10 and recorded in
 `.claude/skills/wcl-api/SKILL.md`.
 
