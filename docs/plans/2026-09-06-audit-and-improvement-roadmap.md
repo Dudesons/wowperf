@@ -1,9 +1,15 @@
 # Audit of the shipped tool, and a roadmap for what comes next
 
-Date: 2026-09-06. Status: **Phases G, H and I are built; Phase J is not started.** Each built
-phase has its own design and plan under `docs/plans/`; they shipped on 2026-09-06, 2026-09-06
-and 2026-09-08. The §5 decisions those three needed were taken as each was designed; the ones
-that bear on Phase J have not been.
+Date: 2026-09-06. Status: **Phases G, H and I are built, and so is the first half of Phase J.**
+Each built phase has its own design and plan under `docs/plans/`; they shipped on 2026-09-06,
+2026-09-06, 2026-09-08 and 2026-09-10. Phase J's first four bullets — the sub-tab, the cooldown
+timeline, the damage-taken track and the gathered per-player facts — are built and are specified
+in `2026-09-10-per-player-page-design.md`. Its fifth, a top-parse comparison for every player
+rather than the subject, is split out as J2 and is not built; that design's §13 records what
+blocks it. The §5 decisions the built phases needed were taken as each was designed. Decision 5
+is J2's and is still open, though the API fact behind it is now settled: `playerscore` returns
+rows for tank and healer specialisations, measured 2026-09-10 and recorded in
+`.claude/skills/wcl-api/SKILL.md`.
 
 ## 1. What was checked
 

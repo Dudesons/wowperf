@@ -379,6 +379,22 @@ The pipeline "find a top run, then fetch its log" works end to end.
 `bracket = keystoneLevel - 1` and passes `className` and `specName` together. Neither
 appears in the documentation. The implementation must assert this rather than assume it.
 
+**`playerscore` returns rows for tank and healer specialisations, not only damage.** Measured
+2026-09-10 against encounter 12825 at keystone level 16, one query per specialisation on a real
+five-player roster: Priest/Shadow 72 rows, DeathKnight/Blood 81, Shaman/Elemental 82,
+Paladin/Holy 75, Mage/Arcane 82. The tank and the healer sit inside the same range as the three
+damage specialisations, so a per-player parse comparison is not silently unavailable for two of
+five players. Five queries spent 5.04 points, about 1.01 each, matching the `CharacterRankings`
+price recorded above. This settles the first of the three things
+`docs/plans/2026-09-10-per-player-page-design.md` §13 records as blocking J2.
+
+**`worldData.encounter(id:)` takes the dungeon's encounter id, not a boss pull's.** Measured
+2026-09-10, same run: `Run.encounter_id` is 12825 and returns rows, while the `encounterID` of a
+boss `ReportDungeonPull` on that same run is 3209 and returns `encounter: null` — which this
+project surfaces as `WclError: The rankings response carried no encounter`. Both numbers are
+called an encounter id and only one addresses a leaderboard. A query with the wrong one still
+costs its point.
+
 ## Terms of service
 
 Read 2026-09-03 from the RPGLogs API Terms of Service. §5d prohibits scraping, building
