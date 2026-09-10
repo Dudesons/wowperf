@@ -8,6 +8,7 @@ from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
 from wowperf.domain.report.frame import (
+    NO_COMPARISON_RAN,
     SPEED_UNAVAILABLE_ID,
     build_header,
     sampled,
@@ -83,16 +84,21 @@ def build_report(
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 
-    # A player nobody asked for is left off this list on purpose: their
-    # comparison was not withheld, it was not requested, and one such line per
-    # teammate on every default run would bury the ones that mean something.
-    for card in players:
-        if card.spell_and_talent.state is SectionState.WITHHELD and (
-            compared_slugs is None or card.slug in compared_slugs
-        ):
-            withheld.append(
-                f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
-            )
+    # `--no-compare` fetched no reference at all, so the whole run gets one
+    # report-level line rather than one per card -- a line per player here
+    # would say a comparison for each of them was asked for and refused, when
+    # none was ever asked for. When a comparison did run, a player nobody
+    # asked for is left off this list for the same reason: their comparison
+    # was not withheld, it was not requested, and one such line per teammate
+    # on every default run would bury the ones that mean something.
+    if compared_slugs is None:
+        withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
+    else:
+        for card in players:
+            if card.spell_and_talent.state is SectionState.WITHHELD and card.slug in compared_slugs:
+                withheld.append(
+                    f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
+                )
 
     if route_section.state is SectionState.WITHHELD:
         withheld.append(f"Route and tempo: {route_section.reason}")

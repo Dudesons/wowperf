@@ -4,7 +4,7 @@
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import build_report
-from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds
+from wowperf.domain.report.frame import NO_COMPARISON_RAN, badge_for, format_seconds, run_seconds
 from wowperf.domain.report.model import ReferenceRecord, SectionState
 from wowperf.domain.season import Consumables, CooldownAbility, Defensives, ThroughputCooldowns
 
@@ -191,6 +191,19 @@ def test_provenance_names_the_player_whose_comparison_was_withheld() -> None:
     assert [line for line in report.provenance.withheld if "Spell and talent" in line] == [
         f"Spell and talent comparison for Emberkin: {detail}"
     ]
+
+
+def test_no_compare_withholds_the_comparison_once_not_once_per_player() -> None:
+    # `--no-compare` fetched no reference at all, so the whole run gets one
+    # report-level line. A line per card here would say a comparison for each
+    # of them was asked for and refused, when none was ever asked for.
+    loaded = a_loaded(players=(a_player(1, "Emberkin"), a_player(2, "Stonewake")))
+    report = build_report(
+        loaded, (), None, None, a_player(1, "Emberkin"), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+    comparison_lines = [line for line in report.provenance.withheld if "Spell and talent" in line]
+    assert comparison_lines == [f"Spell and talent comparison: {NO_COMPARISON_RAN}"]
 
 
 def test_provenance_carries_the_report_code_and_the_fetch_time() -> None:
