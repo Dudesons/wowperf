@@ -669,21 +669,29 @@ def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() ->
     assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
     # The rule alone proves the resolver ran, not that anything was drawn: split the
     # stylesheet off and require both the embedded payload and the element that
-    # draws it from there, in the body.
+    # draws it from there, in the body. The coordinate is pinned too -- matching
+    # only `'<use href="#icon-45438"'` would stay green even if the template
+    # printed `press.x` instead of the centred `press.icon_x`.
     body = html.split("</style>")[1]
-    assert '<image id="icon-45438" href="data:image/jpeg;base64,AAA"' in body
-    assert '<use href="#icon-45438"' in body
+    assert ('<symbol id="icon-45438" viewBox="0 0 1 1">'
+            '<image href="data:image/jpeg;base64,AAA"') in body
+    assert '<use href="#icon-45438" x="192.0"' in body
 
 
 def test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too() -> None:
     # The exact instant must stay readable even where an icon would overlap a
     # neighbouring press, so the narrow mark is drawn whether or not an icon
-    # resolved -- never replaced by the icon.
+    # resolved -- never replaced by the icon. And SVG paints in document order,
+    # so the mark must come *after* the icon in the markup: the icon's box is
+    # several times wider than the mark and fully opaque, so painted second it
+    # would cover the mark completely.
     html = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
         icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
     )
-    assert 'class="press"' in html.split("</style>")[1]
+    body = html.split("</style>")[1]
+    assert '<rect class="press"' in body
+    assert body.index('<use href="#icon-45438"') < body.index('<rect class="press"')
 
 
 def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
@@ -729,17 +737,51 @@ def test_two_presses_of_the_same_ability_share_one_copy_of_the_icon() -> None:
 
 
 def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> None:
-    # `CooldownRow.ability_id` is `int | None`; `None in {}` is `False`, so the
-    # template's membership test already takes the plain branch safely -- this
-    # is the proof that it does, not a fix for a bug.
-    row = CooldownRow(label="Unknown", ability_id=None, baseline_y=96.0,
+    # `CooldownRow.ability_id` is `int | None`. `None in {}` and `None in
+    # {45438: ...}` are both `False`, but only the second dict can tell the
+    # template's real guard apart from one that would happen to pass no matter
+    # what it tested -- and a player with one identified row beside one
+    # unidentified one is the case that actually occurs, so `icons_by_id` is
+    # given a resolving id here rather than left empty.
+    unidentified = CooldownRow(label="Unknown", ability_id=None, baseline_y=96.0,
+                               presses=(Press(x=200.0, icon_x=192.0),))
+    identified = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=112.0,
+                             presses=(Press(x=210.0, icon_x=202.0),))
+    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
+                              height=140.0, cooldowns=(unidentified, identified))
+    icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
+    html = render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
+    assert icons.asked == [45438]
+    body = html.split("</style>")[1]
+    assert body.count('<rect class="press"') == 2
+    assert '<use href="#icon-45438"' in body
+
+
+def test_two_players_pressing_the_same_ability_share_one_copy_of_the_icon() -> None:
+    # The prior test proves one row's own presses share one copy inside one
+    # player's own <svg>. This is the shape the ruling actually worried about:
+    # two different players, each with their own player-timeline <svg>,
+    # pressing the same ability. A per-player <defs> would duplicate the id
+    # (invalid HTML) and, the day `timeline.row_height` stops being one shared
+    # module constant, silently draw the first player's own geometry under the
+    # second player's <use>. A document-level <symbol> makes both structurally
+    # impossible: there is exactly one element bearing this id anywhere on the
+    # page, and both players' presses resolve against it.
+    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
                       presses=(Press(x=200.0, icon_x=192.0),))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(row,))
-    icons = FakeIcons({})
-    html = render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
-    assert icons.asked == []
-    assert 'class="press"' in html.split("</style>")[1]
+    html = render(
+        a_report(players=(
+            a_player_card(name="Bríala", slug="briala-1", timeline=timeline),
+            a_player_card(name="Stonewake", slug="stonewake-2", timeline=timeline),
+        )),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    )
+    body = html.split("</style>")[1]
+    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count('id="icon-45438"') == 1
+    assert body.count('<use href="#icon-45438"') == 2
 
 
 def test_a_withheld_timeline_says_why_instead_of_drawing_an_empty_axis() -> None:

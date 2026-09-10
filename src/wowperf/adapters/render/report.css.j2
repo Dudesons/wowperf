@@ -102,6 +102,10 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 {% if icons_by_id %}
 .icon { display: inline-block; width: 16px; height: 16px; margin-right: 5px;
   vertical-align: -3px; border-radius: 2px; background-size: cover; }
+/* Hiding an SVG sprite container by removing it from the box tree breaks
+   <use> resolution in some browsers, so this is hidden by position and size
+   instead. */
+.icon-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 {% endif %}
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
