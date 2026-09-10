@@ -1,5 +1,8 @@
 # ABOUTME: Behaviour tests for running every comparison over one run and ranking the result.
-# ABOUTME: Guards the two things only the service can get wrong: a missing reference, and a name.
+# ABOUTME: Guards a missing reference, a name, which axis addresses a player, and unique ids.
+
+import pytest
+from pydantic import ValidationError
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
@@ -319,6 +322,15 @@ def test_a_one_member_sample_compares_against_that_member() -> None:
     assert not any(finding.id == "compare.speed.unavailable" for finding in findings)
 
 
+def test_a_subject_cannot_be_built_without_a_slug() -> None:
+    # An empty slug mints `compare.talents.` -- a family prefix with a trailing
+    # dot -- and stamps a `player_slug` of "" that no consumer can tell from a
+    # run-level finding's. Both corruptions are silent, so the slug is refused
+    # at the door rather than checked by everyone who reads one.
+    with pytest.raises(ValidationError):
+        ComparisonSubject(player=OURS, slug="", parse=None)
+
+
 def test_a_parse_finding_carries_the_player_it_is_about() -> None:
     findings = compare(
         ours=our_run(),
@@ -340,6 +352,38 @@ def test_a_speed_finding_names_no_player() -> None:
     speed = next(f for f in findings if f.id == "compare.speed.unavailable")
 
     assert speed.player_slug == ""
+
+
+PARSE_FAMILIES = (
+    "compare.spells.",
+    "compare.talents",
+    "compare.uptime.",
+    "compare.parse.unavailable",
+)
+"""The families drawn per player. Everything else `compare` emits is about the run.
+
+The route, the tempo, the downtime, the deaths, the interrupts, the duration
+and the confounds are measured once against one fast run, whoever is being
+looked at, so none of them may carry a player.
+"""
+
+
+def test_only_the_parse_families_address_a_player() -> None:
+    # The partition, not one family of it: a refactor that drew the tempo
+    # inside the per-player half would suffix four more ids and stamp four
+    # more slugs, and an assertion naming `compare.speed.unavailable` alone
+    # would stay green through it.
+    findings = compare(our_run(), a_speed_sample(), only_ours(a_parse_sample()))
+    about_a_player = [f for f in findings if f.id.startswith(PARSE_FAMILIES)]
+    about_the_run = [f for f in findings if not f.id.startswith(PARSE_FAMILIES)]
+
+    # Neither half may be empty, or the halves below prove nothing.
+    assert about_a_player
+    assert about_the_run
+    assert all(f.player_slug == OUR_SLUG for f in about_a_player)
+    assert all(f.id.endswith(f".{OUR_SLUG}") for f in about_a_player)
+    assert all(f.player_slug == "" for f in about_the_run)
+    assert not any(f.id.endswith(OUR_SLUG) for f in about_the_run)
 
 
 def test_two_players_produce_no_duplicate_finding_id() -> None:

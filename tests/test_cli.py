@@ -11,6 +11,7 @@ import pytest
 from markupsafe import escape
 from typer.testing import CliRunner
 
+from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
@@ -1113,8 +1114,46 @@ def test_the_compared_players_are_exactly_the_ones_the_findings_and_the_cards_na
     }
     assert stamped == requested
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    # Every card outside the requested set says so, and no card inside it does.
-    assert html.count(NOT_REQUESTED) == ANALYZE_ROSTER_SIZE - len(requested)
+    cards = player_cards(html)
+    assert len(cards) == ANALYZE_ROSTER_SIZE
+    # Which card, not how many. The sentence and the comparison rows are
+    # decided separately, so a page that landed one player's rows on another
+    # player's card carries exactly as many of each as this run should, and
+    # satisfies any count written over the whole page.
+    for slug in sorted(requested):
+        assert NOT_REQUESTED not in cards[slug], slug
+        assert 'id="finding-compare.' in cards[slug], slug
+    for slug in sorted(set(cards) - requested):
+        assert NOT_REQUESTED in cards[slug], slug
+        assert 'id="finding-compare.' not in cards[slug], slug
+
+
+def test_all_players_draws_one_parse_leaderboard_per_player_and_one_speed_leaderboard(
+    tmp_path: Path,
+) -> None:
+    """What `--all-players` costs, counted rather than reasoned about.
+
+    The parse axis is a specialisation's own leaderboard, so it is drawn once
+    per compared player; the speed axis is a fact about the run and is drawn
+    once however many players are compared. Stated as a ratio against the
+    default run rather than as a figure, because how many queries one draw
+    takes is `top_parses`' widening loop's business and not this claim's.
+    """
+    everyone: list[str] = []
+    owner_only: list[str] = []
+    widened = run_analyze(
+        tmp_path / "everyone", "--all-players", teammates=ANALYZE_TEAMMATES, calls=everyone
+    )
+    default = run_analyze(tmp_path / "owner", teammates=ANALYZE_TEAMMATES, calls=owner_only)
+
+    assert widened.exit_code == 0, widened.output
+    assert default.exit_code == 0, default.output
+    one_draw = owner_only.count("CharacterRankings")
+    # Without this the two assertions below would both hold at zero queries.
+    assert one_draw
+    assert owner_only.count("FightRankings")
+    assert everyone.count("CharacterRankings") == one_draw * ANALYZE_ROSTER_SIZE
+    assert everyone.count("FightRankings") == owner_only.count("FightRankings")
 
 
 def test_a_player_with_no_specialisation_gets_a_card_saying_why_not(tmp_path: Path) -> None:

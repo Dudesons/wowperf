@@ -33,7 +33,13 @@ screenshotted and recompressed.
 """
 
 COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
-"""Finding families that belong on the subject player's card rather than in the ledger."""
+"""Finding families that belong on a player's card rather than in the ledger.
+
+Which card is decided by the slug the finding carries, never by who the
+subject is: a run can compare a teammate the reader did not name, and can
+compare several players at once, so routing these to the subject's card would
+put one player's rows under another player's name.
+"""
 
 
 def class_colour(class_name: str) -> str:

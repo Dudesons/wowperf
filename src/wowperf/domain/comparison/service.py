@@ -3,6 +3,8 @@
 
 from collections.abc import Sequence
 
+from pydantic import Field
+
 from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
@@ -44,10 +46,14 @@ class ComparisonSubject(Frozen):
     `slug` comes from `slugs_by_actor` and is what makes this player's
     findings addressable: the report's card for the same player carries the
     identical string, so a pointer into a finding lands in the right sub-tab.
+    It cannot be empty, because both of the ways an empty one goes wrong are
+    silent: `_for_player` would mint `compare.talents.`, a family prefix with
+    a trailing dot, and stamp a `player_slug` of "" that no consumer can tell
+    from a run-level finding's.
     """
 
     player: Player
-    slug: str
+    slug: str = Field(min_length=1)
     parse: ParseSample | None
     our_auras: PlayerAuras | None = None
 

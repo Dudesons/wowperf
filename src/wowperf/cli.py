@@ -681,12 +681,15 @@ def analyze(
 
         subject, to_compare = _resolve_requested(loaded.run, player, all_players)
         speed_sample: SpeedSample | None = None
-        # Everyone the comparison was asked for, in the order their cards come
-        # in. This is the one source for who was compared: the slugs stamped
-        # onto the findings, the slugs the report matches cards by, the JSON's
-        # own list, the per-player sample sizes and the page's icons are all
-        # read off it, so none of them can drift from another. Empty means the
-        # comparison did not run.
+        # Everyone the comparison was asked for: the subject, then the order
+        # the reader named the rest, then whoever `--all-players` swept up.
+        # That is not the order the cards come in -- those are the subject
+        # first and the roster's own order behind -- so nothing may read this
+        # sequence as a card order. It is the one source for *who* was
+        # compared: the slugs stamped onto the findings, the slugs the report
+        # matches cards by, the JSON's own list, the per-player sample sizes
+        # and the page's icons are all read off it, so none of them can drift
+        # from another. Empty means the comparison did not run.
         subjects: list[ComparisonSubject] = []
         compared_slugs: frozenset[str] | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()

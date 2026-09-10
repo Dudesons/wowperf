@@ -446,6 +446,29 @@ def test_two_names_that_reduce_to_one_slug_stay_apart() -> None:
     assert slugs[2].startswith("briala")
 
 
+def test_a_findings_slug_addresses_the_card_that_carries_it() -> None:
+    # `slugs_by_actor` exists so the comparison and the card cannot compute a
+    # slug independently and drift. This is the test that fails if they ever do.
+    # Bríala and Briala reduce to one slug before the roster index is appended,
+    # so a builder that dropped the index would land these rows on either card.
+    first = a_player(actor_id=1, name="Bríala")
+    second = a_player(actor_id=2, name="Briala")
+    loaded = a_loaded(players=(first, second))
+    slugs = slugs_by_actor(loaded.run)
+    hers = Finding(
+        id=f"compare.talents.{slugs[2]}", title="theirs", detail="d",
+        confidence=Confidence.MEASURED, player_slug=slugs[2],
+    )
+    cards = build_players(
+        loaded, (hers,), frozenset(slugs.values()), first, titles((hers,)),
+        Defensives(), ThroughputCooldowns(),
+    )
+    carrying = [card for card in cards if card.spell_and_talent_rows]
+    assert len(carrying) == 1
+    assert carrying[0].slug == slugs[2]
+    assert carrying[0].name != "Bríala"
+
+
 def test_a_slug_does_not_change_when_a_different_player_is_the_subject() -> None:
     first = a_player(actor_id=1, name="Emberkin")
     second = a_player(actor_id=2, name="Stonewake")
