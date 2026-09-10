@@ -281,14 +281,16 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    seconds still loses on two of the four deaths despite that bias is the more telling reading
    of the table, and neither it nor the rect counts above end up deciding.
 
-   What decides is geometry: at 2 seconds, `MIN_BLOCK_WIDTH` draws every bar 3.1x wider than
-   the gap between buckets, smearing a lethal spike across its own slot and roughly two more —
-   the "one lethal spike is one bar" rule failing outright. At 5 seconds the same floor binds
-   to only 1.25x, spilling lightly into one neighbour; at 10 seconds the gap already exceeds
-   the floor and nothing draws oversize. Two seconds is ruled out on that ground; between 5 and
-   10, the table above and the geometry both fail to pick a clean winner, and `BUCKET_SECONDS`
-   stays at 5 for the finer resolution, at the cost of a mild, single-neighbour overdraw that
-   10 does not have. The full derivation — `axis_scale`, `TRACK_X1 - TRACK_X0`, and the exact
+   What decides is geometry: at 2 seconds, `MIN_BLOCK_WIDTH` draws every bar 3.6x wider than
+   the gap between buckets, smearing a lethal spike across its own slot and two and a half
+   more — the "one lethal spike is one bar" rule failing outright. At 5 seconds the same floor
+   binds to only 1.45x, spilling lightly into one neighbour; at 10 seconds the gap already
+   exceeds the floor and nothing draws oversize. Two seconds is ruled out on that ground;
+   between 5 and 10, the table above and the geometry both fail to pick a clean winner, and
+   `BUCKET_SECONDS` stays at 5 for the finer resolution, at the cost of a mild,
+   single-neighbour overdraw that 10 does not have. The three ratios are stated against the
+   drawing's own track, `TRACK_X1 - TRACK_ORIGIN_X` — 526 units, the width left after the
+   gutter §12.5 sizes. The full derivation — `axis_scale`, that track width, and the exact
    bucket spacings — is on the constant's own docstring in `player_timeline.py`.
 2. **Page size.** 260,645 bytes before, 659,499 after: five player timelines add 398,854
    bytes. The report carried 63 distinct ability icons before this work and 76 after — 13
@@ -300,8 +302,14 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    29,919 bytes belong to the 13 genuinely new icons; the remaining 145,431 bytes re-embed, in
    `<symbol>` form, icons whose data URI the page already carried once in its stylesheet
    (29,919 + 145,431 = 175,350; the other 52 bytes are the `<svg class="icon-defs">` wrapper
-   itself). The other 194,222 bytes (49%) is the timelines' own structure — pull bands, damage
-   bars, cooldown rows, press marks, ticks and labels for five players.
+   itself). The sprite is 175,402 of the 204,632; the remaining **29,230 bytes** are the 13
+   new `.i-<id>` rules in the stylesheet — one per icon no death card or ledger row had
+   already drawn, each carrying that icon's data URI. Only those 13 are new CSS: the other 63
+   rules were on the page before this work. That the figure lands within 689 bytes of the
+   29,919 those same 13 icons cost in `<symbol>` form is the expected corroboration — the
+   same payloads in two wrappers of near-equal length. The other 194,222 bytes (49%) is the
+   timelines' own structure — pull bands, damage bars, cooldown rows, press marks, ticks and
+   labels for five players.
 
    That second copy exists because a `<use>` reference cannot read a CSS `background-image`,
    not because the report needs two icon layers. Pointing the HTML's `.i-<id>` sites at this
@@ -331,6 +339,39 @@ comparison for the same reason it was chosen: same run, same tool, immediately p
    4,671 px) — the figure §11 now states. The two figures do not quite match: the document
    grew 1,852 px overall against the panel's own 1,873 px. If only that panel's content
    changed, the two should be equal; the 21 px gap is unexplained by anything measured here.
+
+5. **The label gutter.** The row labels are right-aligned into a margin left of the track,
+   and the margin is sized against the names it has to hold rather than guessed. The longest
+   ability name across `data/defensives.toml` and `data/throughput_cooldowns.toml` is
+   "Incarnation: Avatar of Ashamane", 31 characters — tied on length with "Invoke Yu'lon, the
+   Jade Serpent" and wider than it when drawn. Measured in Chromium against the report's own
+   font stack at the 8.5px `.row-label` size, it draws 121.6 units wide in Segoe UI, 122.7 in
+   Arial and Helvetica, and 123.6 in Roboto; `-apple-system` and `BlinkMacSystemFont` are not
+   installed on the machine that took the reading and could not be measured. At 12px, the size
+   the run timeline's captions use, the same name needs 171.7 units.
+
+   Chosen: `TRACK_ORIGIN_X` 130, `LABEL_X` 126, a 4-unit gap to the track. That clears the
+   widest measured face by 2.4 units and leaves the track 526 units of the 610 it had — 13.8%
+   given up, against the 172-unit gutter a 12px label would have cost. Verified on a rendered
+   page served over HTTP: at the report's own width the drawing occupies 730 CSS px for its
+   680-unit viewBox, and the longest label's ink box runs from x=4.45 to x=126.21 against a
+   track whose first rect starts at x=130 — inside the viewBox at one end, clear of the track
+   at the other.
+6. **Press icons overlapping each other.** Across the five drawings of the real render, 24
+   rows carry 416 press marks, giving 392 adjacent pairs on a shared row. Under the geometry
+   that render used, 139 of those 392 sat closer together than the icon's own 16 units —
+   twelve pairs share an exact coordinate, and the next two gaps are 0.1 and 1.3 units. Under
+   the gutter §12.5 introduces the presses sit 13.8% closer still, and the count rises to 166
+   of 392.
+
+   **Left as it is, deliberately.** The overlap concentrates on short-cooldown abilities,
+   where the question this drawing exists to answer — was the cooldown held past the pack
+   worth spending it on — does not arise; the narrow mark is drawn at every press whether or
+   not its icon is, so no instant goes unmarked however the pictures pile up; and the
+   long-cooldown rows the drawing was built for carry no overlapping pairs at all. Recorded
+   here because the icon-size question was deferred to "§12.3" during the build, and §12.3 as
+   written measures row count and says nothing about icon width, so the handoff was lost to a
+   coincidence of numbering.
 
 ## 13. J2, split out and not specified here
 
