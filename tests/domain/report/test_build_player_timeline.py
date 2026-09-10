@@ -120,6 +120,9 @@ def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_
     shortest = min(bar.height for bar in track.bars)
     assert tallest == DAMAGE_HEIGHT
     assert shortest == DAMAGE_HEIGHT / 2
+    # This player's own tallest bucket only -- never a group figure, which
+    # would still pass this assertion's shape but say something dishonest.
+    assert track.peak_label == "Tallest bar: 2,000 damage in 5 seconds"
 
 
 def test_another_players_damage_never_reaches_this_players_track() -> None:
@@ -148,3 +151,14 @@ def test_a_bucket_with_no_damage_draws_no_bar() -> None:
     assert len(track.bars) == 2
     scale = axis_scale(100.0)
     assert track.bars[1].x == round(TRACK_X0 + 2 * BUCKET_SECONDS * scale, PRECISION)
+
+
+def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> None:
+    # A miss, dodge, or parry carries no unmitigatedAmount and an amount of 0,
+    # so ingest.py builds DamageTakenEvent(amount=0, ...) for it -- a real
+    # construction, not a hypothetical. `ours` is non-empty here, so this
+    # takes the path past the "no events" guard, into buckets that sum to
+    # zero everywhere.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 0), a_hit(1, 50_000, 0)))
+    assert a_timeline(loaded).damage is None

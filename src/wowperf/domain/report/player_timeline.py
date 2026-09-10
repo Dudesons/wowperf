@@ -107,9 +107,11 @@ def _damage_track(
     and absorbs — which is the same number the per-ability comparison reads, so
     the drawing and the findings cannot disagree about how hard something hit.
 
-    Returns `None` when this player took nothing the log recorded: an empty
-    track drawn at full height would read as a run of zero-damage buckets
-    rather than as an absence.
+    Returns `None` when this player took nothing the log recorded -- no
+    events, or every recorded hit fully avoided (a miss, dodge, or parry
+    carries an unmitigated amount of zero): an empty track drawn at full
+    height would read as a run of zero-damage buckets rather than as an
+    absence.
     """
     ours = [event for event in events if event.actor_id == actor_id]
     if not ours:
@@ -121,6 +123,9 @@ def _damage_track(
         buckets[index] += event.amount
 
     peak = max(buckets.values())
+    if peak == 0:
+        return None
+
     width = round(BUCKET_SECONDS * scale, PRECISION)
     bars = tuple(
         DamageBar(
