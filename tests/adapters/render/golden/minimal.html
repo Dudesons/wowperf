@@ -112,6 +112,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .avail li.cooldown .avail-detail { color: var(--extra); }
 .avail li.unseen { color: var(--ink-faint); }
 .owner { color: var(--ink-faint); font-size: 12px; }
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
@@ -208,7 +213,7 @@ never be summed.</p>
 <h2 id="deaths">Deaths</h2>
 <div class="card">
   <div class="row-head">
-    <h3>Emberkin — Frigid Roar</h3>
+    <h3><span class="ability"><span class="ability-name">Frigid Roar</span></span> — Emberkin</h3>
     <span class="death-when">0:50, pull 0</span>
   </div>
   <p class="detail">Mage</p>
@@ -221,7 +226,7 @@ never be summed.</p>
         <tbody>
         <tr class="hit">
           <td>5.0 s</td>
-          <td>Snowdrift</td>
+          <td><span class="ability"><span class="ability-name">Snowdrift</span></span></td>
           <td>82,410 to health</td>
           <td class="hp"></td>
         </tr>

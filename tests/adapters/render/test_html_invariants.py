@@ -29,6 +29,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.frame import NOT_REQUESTED
+from wowperf.domain.report.ledger import ledger_row
 from wowperf.domain.report.model import (
     AvailabilityRow,
     CooldownRow,
@@ -583,10 +584,25 @@ def test_no_two_players_share_a_comparison_row_heading() -> None:
     # The once-only rule, applied to titles the comparison modules wrote rather
     # than to fixture prose. A family whose title names no player renders the
     # same heading under both cards, and the reader cannot tell which is whose.
+    # A heading that names an ability wraps it in one hoverable object (see
+    # `ability` in `_macros.html.j2`), so the expected heading is rebuilt
+    # through the same `ledger_row` split the template renders from, rather
+    # than compared against the finding's own plain-text title.
     findings, html = a_real_two_player_comparison()
     for finding in findings:
         if finding.player_slug:
-            assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+            row = ledger_row(finding, {})
+            if row.title_ability:
+                ability_html = (
+                    f'<span class="ability"><span class="ability-name">'
+                    f"{escape(row.title_ability)}</span></span>"
+                )
+            else:
+                ability_html = ""
+            expected = (
+                f"<h3>{escape(row.title_before)}{ability_html}{escape(row.title_after)}</h3>"
+            )
+            assert html.count(expected) == 1, finding.id
 
 
 def test_only_the_card_nobody_asked_for_carries_the_not_requested_sentence() -> None:

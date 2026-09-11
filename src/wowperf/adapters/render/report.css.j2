@@ -115,6 +115,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    instead. */
 .icon-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 {% endif %}
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }

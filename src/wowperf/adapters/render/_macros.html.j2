@@ -6,7 +6,7 @@
 {% endif %}
 <div class="card" id="finding-{{ row.finding_id }}">
   <div class="row-head">
-    <h3>{{ row.title_before }}{% if row.ability_id in icons_by_id %}<span class="icon i-{{ row.ability_id }}" aria-hidden="true"></span>{% endif %}{{ row.title_ability }}{{ row.title_after }}</h3>
+    <h3>{{ row.title_before }}{% if row.title_ability %}{{ ability(row.ability_id, row.title_ability) }}{% endif %}{{ row.title_after }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
     <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
   </div>
@@ -29,3 +29,9 @@
   <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
 </a>
 {% endmacro %}
+
+{# One hoverable object per ability: the art and the word are the same thing to a
+   reader, so they are the same element to the page. #}
+{% macro ability(ability_id, name) %}
+<span class="ability">{% if ability_id in icons_by_id %}<span class="icon i-{{ ability_id }}" aria-hidden="true"></span>{% endif %}<span class="ability-name">{{ name }}</span></span>
+{%- endmacro %}

@@ -1,6 +1,6 @@
 {# ABOUTME: The Deaths panel: a health curve and a recap per death, the death costs below. #}
 {# ABOUTME: A recap says what was pressed and what was ready, never what should have been. #}
-{% from "_macros.html.j2" import ledger_row with context %}
+{% from "_macros.html.j2" import ability, ledger_row with context %}
 {% macro health_curve(curve) %}
 <svg class="hp-curve" width="100%" viewBox="0 0 {{ curve.width }} {{ curve.height }}">
   <title>Health through the seconds before the death</title>
@@ -40,7 +40,7 @@
 {% for death in report.deaths %}
 <div class="card">
   <div class="row-head">
-    <h3>{% if death.killing_blow_id in icons_by_id %}<span class="icon i-{{ death.killing_blow_id }}" aria-hidden="true"></span>{% endif %}{{ death.player }} — {{ death.killing_blow }}</h3>
+    <h3>{{ ability(death.killing_blow_id, death.killing_blow) }} — {{ death.player }}</h3>
     <span class="death-when">{{ death.when }}</span>
   </div>
   <p class="detail">{{ death.class_name }}</p>
@@ -58,7 +58,7 @@
         {% for row in death.timeline %}
         <tr class="{{ row.kind }}">
           <td>{{ row.seconds_before }}</td>
-          <td>{% if row.ability_id in icons_by_id %}<span class="icon i-{{ row.ability_id }}" aria-hidden="true"></span>{% endif %}{{ row.ability }}</td>
+          <td>{{ ability(row.ability_id, row.ability) }}</td>
           <td>{{ row.detail }}</td>
           <td class="hp">
             {%- if row.health_percent is not none %}<span class="hp-bar" style="width: {{ row.health_percent }}%"></span>{% endif -%}
@@ -94,7 +94,7 @@
         <ul>
           {% for row in group.rows %}
           <li class="{{ row.state }}">
-            <span class="avail-name">{% if row.ability_id in icons_by_id %}<span class="icon i-{{ row.ability_id }}" aria-hidden="true"></span>{% endif %}{{ row.ability }}
+            <span class="avail-name">{{ ability(row.ability_id, row.ability) }}
               {%- if row.owner %} <span class="owner">{{ row.owner }}</span>{% endif %}</span>
             <span class="avail-detail">{{ row.detail }}</span>
           </li>

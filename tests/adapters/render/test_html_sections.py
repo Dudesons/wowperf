@@ -926,8 +926,9 @@ def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     html = render(a_report(interrupts=(row,), deaths=(a_card(killing_blow_id=45438),)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -940,7 +941,11 @@ def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
-    assert "Emberkin never cast Ice Block" in html
+    expected = (
+        'Emberkin never cast <span class="ability">'
+        '<span class="ability-name">Ice Block</span></span>'
+    )
+    assert expected in html
     assert 'class="icon' not in html
 
 
@@ -1015,8 +1020,9 @@ def test_an_icon_is_drawn_at_the_ability_a_death_row_names() -> None:
     html = render(a_report(death_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1028,8 +1034,9 @@ def test_an_icon_is_drawn_at_the_ability_a_group_row_names() -> None:
     html = render(a_report(group_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1041,8 +1048,9 @@ def test_an_icon_is_drawn_at_the_ability_a_route_row_names() -> None:
     html = render(a_report(route_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1054,8 +1062,9 @@ def test_an_icon_is_drawn_at_the_ability_a_summary_ledger_row_names() -> None:
     html = render(a_report(ledger_decomposition=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1091,3 +1100,23 @@ def test_ledger_rows_render_inside_a_findings_wrapper() -> None:
     # proving adjacency and containment. The wrapper's first child is a card.
     assert '<div class="findings">\n<div class="card"' in html, \
         "Findings wrapper must immediately contain a card"
+
+
+def test_an_icon_and_its_ability_name_render_as_one_element() -> None:
+    # Two adjacent spans read as two things. A reader scanning a recap table
+    # for "which ability was that" should meet one object with one hover
+    # target, which is also what a tooltip later attaches to.
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", killing_blow_id=7)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({7: "data:image/jpeg;base64,AAA"}))
+    assert '<span class="ability">' in html
+    assert '<span class="ability-name">Frigid Roar</span>' in html
+
+
+def test_an_unresolved_icon_still_renders_the_ability_as_one_element() -> None:
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", killing_blow_id=7)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({}))
+    assert '<span class="ability">' in html
+    assert '<span class="ability-name">Frigid Roar</span>' in html
+    assert 'class="icon i-7"' not in html
