@@ -111,8 +111,12 @@ p { margin: 0 0 10px; }
 .hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
 .hp-marker.lit { opacity: 1; }
 /* Behind the line, not over it: the window is context for the curve, and a
-   filled band drawn on top would hide the shape a reader came for. */
-.hp-cover { fill: var(--ours); opacity: 0; }
+   filled band drawn on top would hide the shape a reader came for. Measured
+   tint, not derived: the window is the aura table's own band, the same claim
+   the run timeline's `.cover` rule paints in the same colour -- `--ours`
+   happens to be byte-identical to `--badge-derived`, which would read this
+   measured window as the curve's own arithmetic. */
+.hp-cover { fill: var(--badge-measured); opacity: 0; }
 .hp-cover.lit { opacity: 0.18; }
 tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
