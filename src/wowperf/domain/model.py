@@ -4,6 +4,7 @@
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import (
     CastEvent,
@@ -138,8 +139,19 @@ class LoadedRun(Frozen):
     # hashable; read it through ability_icon_map. A file name is data of the same
     # kind as an ability name, so carrying it performs no I/O.
     ability_icons: tuple[tuple[int, str], ...] = ()
+    # Every roster player's own buff bands, as the aura table reports them. A
+    # tuple rather than a dict for the same reason `ability_icons` is one: a
+    # LoadedRun stays immutable and hashable. Empty when no aura table was
+    # fetched, which is a report that draws no cover window rather than one
+    # that draws a wrong window.
+    auras: tuple[PlayerAuras, ...] = ()
 
     @property
     def ability_icon_map(self) -> Mapping[int, str]:
         """Icon file names by ability game id, as a read-only mapping."""
         return MappingProxyType(dict(self.ability_icons))
+
+    @property
+    def auras_by_actor(self) -> Mapping[int, PlayerAuras]:
+        """Buff bands by actor id, as a read-only mapping."""
+        return MappingProxyType({one.actor_id: one for one in self.auras})

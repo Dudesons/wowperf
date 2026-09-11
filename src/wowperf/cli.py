@@ -587,6 +587,27 @@ def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> P
         return None
 
 
+def load_run_with_auras(
+    runs: WclRunRepository, code: str, fight_id: int, loaded: LoadedRun
+) -> LoadedRun:
+    """The run, with every roster player's buff bands attached.
+
+    One `AuraTable` query per player, measured at about 1.06 points
+    (`.claude/skills/wcl-api/SKILL.md`). A player whose parse comparison
+    already fetched theirs costs nothing the second time: our own run's cached
+    responses never expire. A player whose fetch fails simply has no bands, and
+    the drawings that read them draw nothing rather than guessing a window.
+    """
+    fetched = tuple(
+        one
+        for one in (
+            _auras(runs, code, fight_id, player.actor_id) for player in loaded.run.players
+        )
+        if one is not None
+    )
+    return loaded.model_copy(update={"auras": fetched})
+
+
 def _fetch_parse_auras(
     sample: ParseSample,
     ours: WclRunRepository,
@@ -712,6 +733,11 @@ def analyze(
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
+        # Fetched here, once, so the comparison below and the report builder
+        # after it both see the same LoadedRun -- a --no-compare report still
+        # gets its own roster's cover windows, which used to be fetched only
+        # on the parse-comparison path.
+        loaded = load_run_with_auras(repository, code, loaded.run.fight_id, loaded)
         # Loaded once and shared: the analysers and the death cards must read
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
