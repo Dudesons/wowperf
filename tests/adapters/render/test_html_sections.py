@@ -819,17 +819,8 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
     # The band used to float at a fixed height above the tracks; it now runs the
     # full column height so a press reads as landing inside the pull it happened
     # during. Only the boss pull's name is drawn on the chart -- a run's forty
-    # trash names would overlap into a smear (task-9-brief.md step 4) -- so the
-    # trash pull's index still reaches a reader only through its own <title>.
-    #
-    # This replaces one assertion the task instructions specified verbatim: "a
-    # <text> element renders the trash pull's index label ... at pull_label_y".
-    # That contradicts the brief's own step 4, which keeps trash labels off the
-    # chart entirely and draws <text> for boss pulls only. Asserting a rendered
-    # <text> for the trash pull's label would assert something the design
-    # forbids and could never legitimately pass, so it is replaced below with
-    # the assertion that the trash pull's index label reaches the page as its
-    # band's <title> and never as on-chart text.
+    # trash names would overlap into a smear -- so the trash pull's index
+    # reaches a reader only through its own <title>, never as on-chart text.
     timeline = PlayerTimeline(
         section=Section(state=SectionState.PRESENT),
         title=player_timeline_module.TITLE,
@@ -849,15 +840,15 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
     html = render(a_report(players=(a_player_card(timeline=timeline),)))
     body = html.split("</style>")[1]
 
-    # 1. The boss pull's <rect> carries height equal to the timeline's column_height.
+    # The boss pull's <rect> carries height equal to the timeline's column_height.
     assert (
         '<rect class="pull-band block-boss" x="200.0" y="28.0"\n'
         '        width="60.0" height="84.0">'
     ) in body
-    # 2. The boss pull's name is drawn as text at pull_label_y.
+    # The boss pull's name is drawn as text at pull_label_y.
     assert '<text class="pull-name" x="200.0" y="25.0">Nalorakk</text>' in body
-    # 3. (corrected, see note above) the trash pull's index label reaches the
-    #    page as a <title>, and no on-chart <text> is drawn for it.
+    # The trash pull's index label reaches the page as a <title> only -- no
+    # on-chart <text> is drawn for it.
     assert "<title>Pull 7</title>" in body
     assert '<text class="pull-name" x="130.0" y="25.0">Pull 7</text>' not in body
 

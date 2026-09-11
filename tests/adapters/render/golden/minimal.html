@@ -139,7 +139,9 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    run timeline's captions, is what lets the longest ability name in the data
    files fit that gutter. */
 .row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
-.pull-band { fill: var(--line); }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
 .damage-bar { fill: var(--hit); }
 /* Opaque and lighter than the band behind it: this is the layer the inferred
    badge grades, and a state marker fainter than the background it sits on is
@@ -147,9 +149,6 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
 .press { fill: var(--ours); }
-/* Behind every track, so a press reads as landing inside a pull. Faint enough
-   that forty of them do not become the drawing. */
-.pull-band { fill: var(--line); opacity: 0.55; }
 .pull-name { fill: var(--ink-dim); font-size: 8px; }
 /* Revealed by hover and by keyboard focus, and rendered into the page whether
    or not it is shown: the panel is markup the builder wrote, never text the
