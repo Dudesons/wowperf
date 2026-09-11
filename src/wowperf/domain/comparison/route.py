@@ -18,6 +18,11 @@ def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
 
 
+def _our_packs(ours: Run) -> set[int]:
+    """The indices of our trash pulls that a route decision could have left."""
+    return {pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack}
+
+
 def _pack_match(ours: Run, alignment: Alignment) -> tuple[int, int]:
     """How many of our trash packs found a counterpart, and how many there were.
 
@@ -31,9 +36,8 @@ def _pack_match(ours: Run, alignment: Alignment) -> tuple[int, int]:
     which references are eligible is unchanged and slightly conservative. This
     is the figure the report states to a reader.
     """
-    packs = {pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack}
-    matched = {match.ours_index for match in alignment.matched} & packs
-    return len(matched), len(packs)
+    packs = _our_packs(ours)
+    return len({match.ours_index for match in alignment.matched} & packs), len(packs)
 
 
 def compare_route(
@@ -51,9 +55,9 @@ def compare_route(
         Finding(
             id="compare.route.summary",
             title=(
-                f"We pulled {len(ours.pulls)} "
-                f"pack{'s' if len(ours.pulls) != 1 else ''}, "
-                f"the reference pulled {len(theirs.pulls)}"
+                f"Our route was {len(ours.pulls)} "
+                f"pull{'s' if len(ours.pulls) != 1 else ''}, "
+                f"the reference's {len(theirs.pulls)}"
             ),
             detail=(
                 f"{matched_packs} of {pack_count} trash "
@@ -66,7 +70,7 @@ def compare_route(
             confidence=Confidence.MEASURED,
             seconds_lost=None,
             evidence=(
-                f"{in_common} pack{'s' if in_common != 1 else ''} in common",
+                f"{in_common} pull{'s' if in_common != 1 else ''} in common",
                 f"{len(alignment.only_ours)} only ours",
                 f"{len(alignment.only_theirs)} only theirs",
                 f"{len(alignment.out_of_order)} reordered",
@@ -75,11 +79,12 @@ def compare_route(
     ]
 
     if alignment.matched_share < MIN_ALIGNED_SHARE:
+        matched_trash = round(alignment.matched_share * alignment.our_trash_count)
         findings.append(
             Finding(
                 id="compare.route.unaligned",
                 title=(
-                    f"Only {matched_packs} of {pack_count} trash packs could be "
+                    f"Only {matched_trash} of {alignment.our_trash_count} trash pulls could be "
                     "matched to the reference's"
                 ),
                 detail=(
@@ -207,7 +212,7 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     nothing to explain the gap.
 
     How well those routes lined up is stated beside it, as the range of our
-    trash pulls that found a counterpart. Eligibility is a floor rather than a
+    trash packs that found a counterpart. Eligibility is a floor rather than a
     grade, and the pairwise summary states its own match rate: without this
     line a reader of a sampled run cannot tell whether the skipped-pack rows
     below rest on routes that matched almost whole or on ones that barely
@@ -215,14 +220,14 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
-    pack_count = _pack_match(ours, eligible[0].alignment)[1]
+    pack_count = len(_our_packs(ours))
     matched_low, matched_high = observed_range(
         [float(_pack_match(ours, member.alignment)[0]) for member in eligible]
     )
     return Finding(
         id="compare.route.summary",
         title=(
-            f"We pulled {len(ours.pulls)} packs; the {total} fast runs pulled "
+            f"Our route was {len(ours.pulls)} pulls; the {total} fast runs ran "
             f"{low:.0f} to {high:.0f}"
         ),
         detail=(
@@ -236,7 +241,7 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
         seconds_lost=None,
         evidence=(
             f"{count_phrase(total, sampled)} references aligned well enough to price a skip",
-            f"observed range {low:.0f} to {high:.0f} packs",
+            f"observed range {low:.0f} to {high:.0f} pulls",
             f"{matched_low:.0f} to {matched_high:.0f} of our {pack_count} trash packs matched",
         ),
     )

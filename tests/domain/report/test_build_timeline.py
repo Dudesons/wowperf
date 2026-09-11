@@ -284,7 +284,8 @@ def test_an_artefact_pull_is_not_outlined_as_a_pack_the_reference_skipped() -> N
         pulls=(
             a_pull(0, 0, 60_000, enemies=(1,)),
             a_pull(1, 90_000, 90_048, enemies=(7,)),
-            a_pull(2, 120_000, 180_000, enemies=(8,)),
+            a_pull(2, 100_000, 160_000, enemies=()),
+            a_pull(3, 200_000, 260_000, enemies=(8,)),
         )
     )
     theirs = a_run(pulls=(a_pull(0, 0, 60_000, enemies=(1,)),))
@@ -292,7 +293,12 @@ def test_an_artefact_pull_is_not_outlined_as_a_pack_the_reference_skipped() -> N
     timeline = build_timeline(ours, a_sample(a_member(ours, theirs)), PRESENT)
 
     assert timeline.ours is not None
-    assert [block.kind for block in timeline.ours.blocks] == ["matched", "matched", "extra"]
+    assert [block.kind for block in timeline.ours.blocks] == [
+        "matched",
+        "matched",
+        "matched",
+        "extra",
+    ]
 
 
 def test_a_reference_artefact_pull_is_not_drawn_as_a_pack_we_skipped() -> None:
@@ -301,11 +307,17 @@ def test_a_reference_artefact_pull_is_not_drawn_as_a_pack_we_skipped() -> None:
         pulls=(
             a_pull(0, 0, 60_000, enemies=(1,)),
             a_pull(1, 90_000, 90_048, enemies=(7,)),
-            a_pull(2, 120_000, 180_000, enemies=(8,)),
+            a_pull(2, 100_000, 160_000, enemies=()),
+            a_pull(3, 200_000, 260_000, enemies=(8,)),
         )
     )
 
     timeline = build_timeline(ours, a_sample(a_member(ours, theirs)), PRESENT)
 
     assert timeline.theirs is not None
-    assert [block.kind for block in timeline.theirs.blocks] == ["matched", "matched", "skipped"]
+    assert [block.kind for block in timeline.theirs.blocks] == [
+        "matched",
+        "matched",
+        "matched",
+        "skipped",
+    ]
