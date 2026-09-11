@@ -23,6 +23,7 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.timeline import (
     MIN_BLOCK_WIDTH,
     TIMELINE_WIDTH,
+    TRACK_X1,
     axis_scale,
     axis_ticks,
 )
@@ -279,6 +280,11 @@ def _damage_track(
         # from, not the label gutter: every other track element leaves
         # LABEL_GAP between the two, and this line is not an exception.
         axis_x0=TRACK_ORIGIN_X,
+        # The same end the bars and every span on the chart already stop at,
+        # not the viewBox's own edge: `timeline.width` runs past TRACK_X1 into
+        # the right margin, twenty-four units this drawing never places
+        # anything else in.
+        axis_x1=TRACK_X1,
         axis_top_label=f"{peak:,}",
         # Says what `peak_label` does not: that width is every bar's, not just
         # the tallest one's, and what the axis itself is scaled against. Says

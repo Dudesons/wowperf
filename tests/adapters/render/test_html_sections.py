@@ -1119,12 +1119,15 @@ def test_the_damage_row_draws_its_own_axis_line() -> None:
     # The full opening tag is pinned: the line has to start at the track's own
     # origin -- the same one the bars sit on -- and not at label_x, which is
     # the label gutter every other track element leaves a LABEL_GAP clear of.
+    # And it must end at the track's own end (F9), not at the viewBox's width,
+    # which runs past TRACK_X1 into a margin nothing else on this chart uses.
     damage = DamageTrack(
         baseline_y=76.0, label_y=60.0,
         bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
         peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         axis_top_y=44.0,
         axis_x0=130.0,
+        axis_x1=timeline_module.TRACK_X1,
         axis_top_label="120,000",
         bucket_caption=(
             "Each bar is a 5-second bucket, and the axis runs from nothing to this "
@@ -1138,7 +1141,7 @@ def test_the_damage_row_draws_its_own_axis_line() -> None:
     body = render(a_report(players=(a_player_card(timeline=timeline),)))
     assert (
         '<line class="damage-axis" x1="130.0" y1="44.0"\n'
-        '        x2="680.0" y2="44.0"/>'
+        f'        x2="{timeline_module.TRACK_X1}" y2="44.0"/>'
     ) in body
 
 

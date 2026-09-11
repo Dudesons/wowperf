@@ -579,6 +579,19 @@ def test_the_damage_axis_starts_at_the_same_origin_the_bars_do() -> None:
     assert timeline.damage.axis_x0 == TRACK_ORIGIN_X
 
 
+def test_the_damage_axis_ends_where_the_track_does_not_past_it() -> None:
+    # F9: the same defect the axis's `x1` already had fixed for it, at the
+    # other end of the same line. Every bar, span and mark on this chart ends
+    # at TRACK_X1; an axis line reaching `timeline.width` instead overruns
+    # the last instant the track can hold and runs into the right margin.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_x1 == TRACK_X1
+    assert timeline.damage.axis_x1 != timeline.width
+
+
 def a_player_auras(actor_id: int, aura: Aura) -> PlayerAuras:
     return PlayerAuras(actor_id=actor_id, on_self=(aura,))
 
