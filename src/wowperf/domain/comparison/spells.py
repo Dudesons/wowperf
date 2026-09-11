@@ -57,6 +57,53 @@ def _their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
     return None
 
 
+
+def _one_row_per_sentence(findings: list[Finding]) -> list[Finding]:
+    """One row per distinct title, at most `MAX_SPELLS_REPORTED` of each family.
+
+    Callers build every candidate row with its family id and no rank; this
+    collapses, truncates and numbers them. The rank has to be assigned after
+    the collapse or the numbering would carry the holes the collapse left, and
+    a pointer into a hole lands nowhere.
+
+    **Ability names do not identify abilities, and ability ids do not identify
+    buttons.** Measured against the cached responses for one report on
+    2026-09-11 and recorded in `.claude/skills/wcl-api/SKILL.md`: 475 of 1755
+    names own more than one game id, and 29 of 73 actors cast two ids sharing
+    a name. Those pairs are of two kinds. For some -- Alter Time, Greater
+    Invisibility -- one press emits both ids within the same second, so
+    summing their casts would report two presses where the player made one.
+    For others -- Demonic Gateway -- the two never coincide and are two real
+    abilities. Nothing in the log distinguishes the kinds, so neither merging
+    by name nor keeping every id is right.
+
+    What is right is narrower, and needs no such distinction. Each row's own
+    rate is already correct, because one press does emit one cast of that id.
+    The only defect is a sentence printed twice, so the sentence is what
+    collapses, and every id that produced it is kept in the evidence. Where
+    two ids of one name genuinely differ, their titles differ and both rows
+    survive.
+    """
+    by_family: dict[str, dict[str, Finding]] = {}
+    for finding in findings:
+        rows = by_family.setdefault(finding.id, {})
+        first = rows.get(finding.title)
+        if first is None:
+            rows[finding.title] = finding
+            continue
+        rows[finding.title] = first.model_copy(
+            update={
+                "evidence": first.evidence
+                + tuple(line for line in finding.evidence if line not in first.evidence)
+            }
+        )
+    return [
+        row.model_copy(update={"id": f"{family}.{rank}"})
+        for family, rows in by_family.items()
+        for rank, row in enumerate(list(rows.values())[:MAX_SPELLS_REPORTED])
+    ]
+
+
 def compare_spells(
     ours: LoadedRun,
     our_player: Player,
@@ -113,10 +160,10 @@ def compare_spells(
         key=lambda row: row[2],
         reverse=True,
     )
-    for rank, (ability_id, name, count) in enumerate(never[:MAX_SPELLS_REPORTED]):
+    for ability_id, name, count in never:
         findings.append(
             Finding(
-                id=f"compare.spells.missing.{rank}",
+                id="compare.spells.missing",
                 title=(
                     f"{their_name} cast {name} {count} times on bosses; "
                     f"{our_name} never cast it"
@@ -151,10 +198,10 @@ def compare_spells(
         gaps.append((their_rate - our_rate, ability_id, name, our_rate, their_rate))
     gaps.sort(reverse=True)
 
-    for rank, (_, ability_id, name, our_rate, their_rate) in enumerate(gaps[:MAX_SPELLS_REPORTED]):
+    for _, ability_id, name, our_rate, their_rate in gaps:
         findings.append(
             Finding(
-                id=f"compare.spells.rate.{rank}",
+                id="compare.spells.rate",
                 title=(
                     f"{their_name} cast {name} {their_rate:.1f} times a minute on bosses, "
                     f"{our_name} {our_rate:.1f}"
@@ -176,7 +223,7 @@ def compare_spells(
             )
         )
 
-    return findings
+    return _one_row_per_sentence(findings)
 
 
 def compare_spells_sample(
@@ -261,10 +308,10 @@ def _missing_sample(
     candidates.sort(key=lambda row: (-row[0], row[2]))
 
     findings = []
-    for rank, (matching, ability_id, name) in enumerate(candidates[:MAX_SPELLS_REPORTED]):
+    for matching, ability_id, name in candidates:
         findings.append(
             Finding(
-                id=f"compare.spells.missing.{rank}",
+                id="compare.spells.missing",
                 title=(
                     f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
                     f"{our_name} never did"
@@ -288,7 +335,7 @@ def _missing_sample(
                 ability_name=name,
             )
         )
-    return findings
+    return _one_row_per_sentence(findings)
 
 
 def _rate_sample(
@@ -315,13 +362,11 @@ def _rate_sample(
     gaps.sort(key=lambda row: row[0], reverse=True)
 
     findings = []
-    for rank, (_, ability_id, name, our_rate, their_median, rates) in enumerate(
-        gaps[:MAX_SPELLS_REPORTED]
-    ):
+    for _, ability_id, name, our_rate, their_median, rates in gaps:
         low, high = observed_range(rates)
         findings.append(
             Finding(
-                id=f"compare.spells.rate.{rank}",
+                id="compare.spells.rate",
                 title=(
                     f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
                     f"minute on bosses; {our_name} casts it {our_rate:.1f}"
@@ -344,7 +389,7 @@ def _rate_sample(
                 ability_name=name,
             )
         )
-    return findings
+    return _one_row_per_sentence(findings)
 
 
 def compare_talents(

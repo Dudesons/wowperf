@@ -490,3 +490,103 @@ def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
     # not the sample's synthetic "Ability {id}" naming.
     assert rate.ability_name == "Meteor"
     assert rate.ability_name in rate.title
+
+
+# Measured against the cached responses for report 6Kx1P9GbNXrcLdHa on
+# 2026-09-11: 475 of 1755 ability names own more than one game id, and 29 of
+# 73 actors cast two ids that share a name. Both numbers are recorded in
+# `.claude/skills/wcl-api/SKILL.md`. That is why the two tests below exist and
+# why neither of them merges casts: for some of those pairs one press emits
+# both ids, so summing the counts would report two presses where there was one.
+
+
+def test_one_sentence_is_printed_once_however_many_ids_produced_it() -> None:
+    """Alter Time casts as 342245 and as 342247, and both are named Alter Time.
+
+    Each row's own rate is correct -- one press does emit one cast of that id
+    -- so the ids must not be merged into a doubled count. What must not
+    happen is the same true sentence printed twice with nothing in it to tell
+    the two apart.
+    """
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        (cast(693, 342245, "Alter Time", 1_000, 0), cast(693, 342247, "Alter Time", 1_100, 0)),
+    )
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(cast(11, 342245, "Alter Time", n * 1_000, 0) for n in range(6))
+        + tuple(cast(11, 342247, "Alter Time", n * 1_000 + 100, 0) for n in range(6)),
+    )
+
+    rates = [
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    ]
+
+    assert len(rates) == 1, [f.title for f in rates]
+    assert "ability 342245" in rates[0].evidence
+    assert "ability 342247" in rates[0].evidence
+
+
+def test_two_ids_of_one_name_that_say_different_things_keep_both_rows() -> None:
+    """Collapsing is on the sentence, not on the name.
+
+    Some same-named pairs are genuinely two abilities -- measured on the same
+    cache, Demonic Gateway's two ids never pair up within a second of each
+    other. Where their rates differ the two titles differ too, and both rows
+    carry information the other does not.
+    """
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        (cast(693, 342245, "Alter Time", 1_000, 0), cast(693, 342247, "Alter Time", 1_100, 0)),
+    )
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(cast(11, 342245, "Alter Time", n * 1_000, 0) for n in range(6))
+        + tuple(cast(11, 342247, "Alter Time", n * 1_000 + 100, 0) for n in range(12)),
+    )
+
+    rates = [
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    ]
+
+    assert len(rates) == 2, [f.title for f in rates]
+    assert rates[0].title != rates[1].title
+
+
+def test_collapsing_leaves_the_rank_numbering_without_a_hole_in_it() -> None:
+    """The rank is part of the id, and the id is an element id on the page.
+
+    A row dropped after its neighbours were numbered would leave
+    `compare.spells.rate.0` beside `compare.spells.rate.2`, and a reader
+    following a pointer to the missing one would land nowhere.
+    """
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        (
+            cast(693, 342245, "Alter Time", 1_000, 0),
+            cast(693, 342247, "Alter Time", 1_100, 0),
+            cast(693, 30451, "Arcane Blast", 1_200, 0),
+        ),
+    )
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(cast(11, 342245, "Alter Time", n * 1_000, 0) for n in range(6))
+        + tuple(cast(11, 342247, "Alter Time", n * 1_000 + 100, 0) for n in range(6))
+        + tuple(cast(11, 30451, "Arcane Blast", n * 1_000 + 200, 0) for n in range(9)),
+    )
+
+    rates = [
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    ]
+
+    assert len(rates) == 2, [f.title for f in rates]
+    assert [f.id for f in rates] == ["compare.spells.rate.0", "compare.spells.rate.1"]
