@@ -240,6 +240,10 @@ def _damage_track(
             f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds."
         ),
         axis_top_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
+        # The same origin the bars and every span on the chart already start
+        # from, not the label gutter: every other track element leaves
+        # LABEL_GAP between the two, and this line is not an exception.
+        axis_x0=TRACK_ORIGIN_X,
         axis_top_label=f"{peak:,}",
         # Says what `peak_label` does not: that width is every bar's, not just
         # the tallest one's, and what the axis itself is scaled against. Says

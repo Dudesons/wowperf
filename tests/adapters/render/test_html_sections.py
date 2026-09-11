@@ -1070,13 +1070,15 @@ def test_a_cooldown_row_with_no_ready_ticks_draws_no_ready_again_mark() -> None:
 
 
 def test_the_damage_row_draws_its_own_axis_line() -> None:
-    # The full opening tag is pinned: the line has to sit at the track's own
-    # axis_top_y, not at some value the template invented.
+    # The full opening tag is pinned: the line has to start at the track's own
+    # origin -- the same one the bars sit on -- and not at label_x, which is
+    # the label gutter every other track element leaves a LABEL_GAP clear of.
     damage = DamageTrack(
         baseline_y=76.0, label_y=60.0,
         bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
         peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         axis_top_y=44.0,
+        axis_x0=130.0,
         axis_top_label="120,000",
         bucket_caption=(
             "Each bar is a 5-second bucket, and the axis runs from nothing to this "
@@ -1089,7 +1091,7 @@ def test_the_damage_row_draws_its_own_axis_line() -> None:
     )
     body = render(a_report(players=(a_player_card(timeline=timeline),)))
     assert (
-        '<line class="damage-axis" x1="126.0" y1="44.0"\n'
+        '<line class="damage-axis" x1="130.0" y1="44.0"\n'
         '        x2="680.0" y2="44.0"/>'
     ) in body
 
@@ -1100,6 +1102,7 @@ def test_the_damage_rows_axis_label_and_bucket_caption_reach_the_page() -> None:
         bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
         peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         axis_top_y=44.0,
+        axis_x0=130.0,
         axis_top_label="120,000",
         bucket_caption=(
             "Each bar is a 5-second bucket, and the axis runs from nothing to this "

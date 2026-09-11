@@ -18,7 +18,7 @@
   {% endif %}
   {% endfor %}
   {% if timeline.damage %}
-  <line class="damage-axis" x1="{{ timeline.label_x }}" y1="{{ timeline.damage.axis_top_y }}"
+  <line class="damage-axis" x1="{{ timeline.damage.axis_x0 }}" y1="{{ timeline.damage.axis_top_y }}"
         x2="{{ timeline.width }}" y2="{{ timeline.damage.axis_top_y }}"/>
   <text class="tick-label row-label" x="{{ timeline.label_x }}"
         y="{{ timeline.damage.axis_top_y }}">{{ timeline.damage.axis_top_label }}</text>

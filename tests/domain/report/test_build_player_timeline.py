@@ -491,12 +491,14 @@ def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> No
 def test_a_cooldown_that_finishes_inside_the_run_is_marked_ready_again() -> None:
     # The stretch after a press is the cooldown; its end is the moment the
     # ability came back, and an unmarked end reads as an absence rather than
-    # as an event.
+    # as an event. The press lands at 10s and SHIELD's cooldown is 180s, so
+    # the ability comes back at 190s into the run -- the exact instant the
+    # tick has to sit at, not merely somewhere to the right of the press.
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert len(row.ready_ticks) == 1
-    assert row.ready_ticks[0] > row.presses[0].x
+    scale = a_scale(600.0)
+    assert row.ready_ticks == (round(TRACK_ORIGIN_X + 190.0 * scale, PRECISION),)
 
 
 def test_a_cooldown_still_running_when_the_run_ends_is_not_marked_ready() -> None:
@@ -515,3 +517,15 @@ def test_the_damage_row_states_its_own_scale_and_bucket_width() -> None:
     assert timeline.damage is not None
     assert timeline.damage.axis_top_label != ""
     assert f"{int(BUCKET_SECONDS)}-second" in timeline.damage.bucket_caption
+
+
+def test_the_damage_axis_starts_at_the_same_origin_the_bars_do() -> None:
+    # Every other element on this chart -- the bars, the pull bands, the
+    # cooldown spans -- starts at the track's own origin and leaves the
+    # label gutter to the row names. The axis line must not be the one
+    # exception, or it reads as a mistake to anyone reading the drawing.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_x0 == TRACK_ORIGIN_X

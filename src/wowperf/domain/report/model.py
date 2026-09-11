@@ -136,7 +136,9 @@ class DamageTrack(Frozen):
     name sits, centred on the band the bars grow through rather than on that
     foot, so the name reads level with what it names. `axis_top_y` is the
     same peak drawn as a line rather than implied by the tallest bar's own
-    top edge, `axis_top_label` names the figure that line stands for, and
+    top edge, running from `axis_x0` -- the same track origin the bars and
+    every span on the chart already start from, not the label gutter --
+    `axis_top_label` names the figure that line stands for, and
     `bucket_caption` states the bucket width so a bar's meaning does not have
     to be guessed from its own thickness.
     """
@@ -146,6 +148,7 @@ class DamageTrack(Frozen):
     bars: tuple[DamageBar, ...] = ()
     peak_label: str = ""
     axis_top_y: float = 0.0
+    axis_x0: float = 0.0
     axis_top_label: str = ""
     bucket_caption: str = ""
 
