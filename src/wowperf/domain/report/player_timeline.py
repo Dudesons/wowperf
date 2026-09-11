@@ -79,6 +79,9 @@ BAND_Y = 28.0
 
 BAND_HEIGHT = 10.0
 
+PULL_LABEL_GAP = 3.0
+"""Clear space between a boss pull's name and the column top it sits above."""
+
 DAMAGE_BASELINE_Y = 76.0
 """The foot of the damage bars. They grow upward from here."""
 
@@ -176,7 +179,10 @@ def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, 
     """Every pull as a band behind the tracks, boss pulls outlined."""
     return tuple(
         TimelineBlock(
-            label=pull.name,
+            # A boss's name is worth the space; a trash pack's generated name is
+            # the first mob the log happened to see, which names nothing a reader
+            # can find again. The index is what the rest of the report calls it.
+            label=pull.name if pull.is_boss else f"Pull {pull.index}",
             x=round(TRACK_ORIGIN_X + (pull.start_ms - origin_ms) / 1000 * scale, PRECISION),
             width=round(max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH), PRECISION),
             is_boss=pull.is_boss,
@@ -369,6 +375,8 @@ def build_player_timeline(
         pulls=_pull_bands(run, scale, origin),
         band_y=BAND_Y,
         band_height=BAND_HEIGHT,
+        column_height=height - BAND_Y - BOTTOM_MARGIN,
+        pull_label_y=BAND_Y - PULL_LABEL_GAP,
         damage=damage,
         cooldowns=rows,
         ticks=tuple(

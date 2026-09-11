@@ -147,6 +147,10 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
 .press { fill: var(--ours); }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
+.pull-name { fill: var(--ink-dim); font-size: 8px; }
 /* Revealed by hover and by keyboard focus, and rendered into the page whether
    or not it is shown: the panel is markup the builder wrote, never text the
    script fetches or writes. */
@@ -330,8 +334,11 @@ never be summed.</p>
   <title>One player&#39;s run on one elapsed-time axis</title>
   <line class="tick" x1="130.0" y1="22.0" x2="130.0" y2="96.0"/>
   <text class="tick-label" x="130.0" y="112.0" text-anchor="middle">0:00</text>
-  <rect class="pull-band" x="130.0" y="28.0" width="157.8" height="10.0"><title>Pack 0</title></rect>
-  <rect class="pull-band block-boss" x="445.6" y="28.0" width="210.4" height="10.0"><title>Pack 1</title></rect>
+  <rect class="pull-band" x="130.0" y="28.0"
+        width="157.8" height="68.0"><title>Pull 0</title></rect>
+  <rect class="pull-band block-boss" x="445.6" y="28.0"
+        width="210.4" height="68.0"><title>Pack 1</title></rect>
+  <text class="pull-name" x="445.6" y="25.0">Pack 1</text>
   <rect class="damage-bar" x="248.3" y="44.0" width="13.1" height="32.0"/>
   <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
 </svg>

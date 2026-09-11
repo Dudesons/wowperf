@@ -11,7 +11,11 @@
   <text class="tick-label" x="{{ x }}" y="{{ timeline.tick_label_y }}" text-anchor="middle">{{ label }}</text>
   {% endfor %}
   {% for band in timeline.pulls %}
-  <rect class="{{ band.css_class }}" x="{{ band.x }}" y="{{ timeline.band_y }}" width="{{ band.width }}" height="{{ timeline.band_height }}"><title>{{ band.label }}</title></rect>
+  <rect class="{{ band.css_class }}" x="{{ band.x }}" y="{{ timeline.band_y }}"
+        width="{{ band.width }}" height="{{ timeline.column_height }}"><title>{{ band.label }}</title></rect>
+  {% if band.is_boss and band.label %}
+  <text class="pull-name" x="{{ band.x }}" y="{{ timeline.pull_label_y }}">{{ band.label }}</text>
+  {% endif %}
   {% endfor %}
   {% if timeline.damage %}
   {% for bar in timeline.damage.bars %}

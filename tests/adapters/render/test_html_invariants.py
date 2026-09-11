@@ -714,6 +714,8 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (PlayerTimeline, "height"),
     (PlayerTimeline, "band_y"),
     (PlayerTimeline, "band_height"),
+    (PlayerTimeline, "column_height"),  # a viewBox coordinate, not a quantity
+    (PlayerTimeline, "pull_label_y"),  # a viewBox coordinate, not a quantity
     (PlayerTimeline, "tick_y1"),
     (PlayerTimeline, "tick_y2"),
     (PlayerTimeline, "tick_label_y"),

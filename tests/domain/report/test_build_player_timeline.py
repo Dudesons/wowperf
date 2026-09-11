@@ -137,6 +137,29 @@ def test_a_bands_width_is_its_scaled_and_rounded_duration() -> None:
     assert timeline.pulls[1].width == round(60.0 * scale, PRECISION)
 
 
+def test_a_boss_pull_takes_its_name_and_a_trash_pull_takes_its_index() -> None:
+    # `Pull.name`, `Pull.is_boss` and `Pull.index` are already on the domain
+    # model and the timeline used none of them. A reader looking at a press
+    # should be able to say which pull it landed in. `a_pull` always names a
+    # pull "Pack {index}", so the boss's label below is that generated name,
+    # not a real encounter name -- what matters is that it is `pull.name`,
+    # not `f"Pull {pull.index}"`.
+    run = a_run(pulls=(a_pull(1, 0, 60_000), a_pull(2, 120_000, 180_000, encounter_id=2571)))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    assert [block.label for block in timeline.pulls] == ["Pull 1", "Pack 2"]
+
+
+def test_a_pull_is_drawn_as_a_column_the_height_of_the_chart() -> None:
+    # A band above the tracks floats over them. A column runs behind them, so a
+    # press visibly lands inside a pull.
+    run = a_run(pulls=(a_pull(0, 0, 60_000, encounter_id=2571),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    assert timeline.column_height > timeline.band_height
+    assert timeline.band_y + timeline.column_height <= timeline.height
+
+
 def test_the_height_grows_with_the_rows_it_has_to_hold() -> None:
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
