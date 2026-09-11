@@ -66,19 +66,25 @@ def test_a_heal_tooltip_says_the_log_reports_no_overheal() -> None:
     assert "no overheal" in heal_tooltip(event, {3: "Bríala"}).note
 
 
-def a_hit(timestamp_ms: int, swung: int, landed: int, buffs: tuple[int, ...]) -> DamageTakenEvent:
+def a_hit(
+    timestamp_ms: int, swung: int, landed: int, buffs: tuple[int, ...], mitigated: int = 0,
+) -> DamageTakenEvent:
     return DamageTakenEvent(
         actor_id=1, ability_id=100, ability_name="Frigid Roar", amount=swung,
-        timestamp_ms=timestamp_ms, health_damage=landed, buff_ids=buffs,
+        timestamp_ms=timestamp_ms, health_damage=landed, buff_ids=buffs, mitigated=mitigated,
     )
 
 
 def test_an_ability_tooltip_reports_presses_cover_and_what_arrived_inside_it() -> None:
     # Every figure here is a field on an event the log emitted, or a sum of
     # such fields over a window the aura table stated. Nothing is apportioned.
+    # The inside hit's 900 that never reached health is only partly
+    # `mitigated` (350) -- the rest (250, left implicit here since nothing
+    # below reads `absorbed`) is a shield's share, which must not count.
     tip = ability_tooltip(
         cooldown_seconds=120.0, cover=((1_000, 9_000),),
-        hits=(a_hit(2_000, 1_000, 400, (48792,)), a_hit(20_000, 1_000, 800, ())),
+        hits=(a_hit(2_000, 1_000, 400, (48792,), mitigated=350),
+              a_hit(20_000, 1_000, 800, (), mitigated=50)),
         buff_id=48792, presses=1,
     )
     labels = {line.label: line.value for line in tip.lines}
@@ -87,7 +93,7 @@ def test_an_ability_tooltip_reports_presses_cover_and_what_arrived_inside_it() -
     assert labels["Cover"] == "8.0 s"
     assert labels["Arrived while it was up"] == "1,000"
     assert labels["Reached health"] == "400"
-    assert labels["Mitigated inside / outside"] == "60% / 20%"
+    assert labels["Mitigated inside / outside"] == "35% / 5%"
 
 
 def test_an_ability_tooltip_states_the_rate_gap_as_suggestive_not_attributable() -> None:
@@ -107,12 +113,29 @@ def test_a_side_with_no_hits_reads_as_a_dash_rather_than_as_perfect_mitigation()
     # the window", and a zero there would read as exactly that.
     tip = ability_tooltip(
         cooldown_seconds=120.0, cover=((1_000, 9_000),),
-        hits=(a_hit(2_000, 1_000, 400, (48792,)),), buff_id=48792, presses=1,
+        hits=(a_hit(2_000, 1_000, 400, (48792,), mitigated=350),), buff_id=48792, presses=1,
     )
-    assert tip.lines[-1].value == "60% / --"
+    assert tip.lines[-1].value == "35% / --"
 
 
 def test_an_ability_with_no_band_reports_its_presses_and_no_cover() -> None:
     tip = ability_tooltip(cooldown_seconds=120.0, cover=(), hits=(), buff_id=48792, presses=2)
     assert not any(line.label == "Cover" for line in tip.lines)
     assert {line.label for line in tip.lines} == {"Base cooldown", "Presses"}
+
+
+def test_the_mitigation_rate_counts_what_was_mitigated_not_what_a_shield_absorbed() -> None:
+    # A shield soaking a hit is not the game reducing it: `mitigated` and
+    # `absorbed` are separate fields of the same event, the same distinction
+    # `hit_tooltip` already keeps as "Mitigated" and "Reached health" (a shield
+    # never appears there but in its own "Absorbed" line). Of this hit's 900
+    # that never reached health, only 150 was mitigated and 750 was absorbed;
+    # a rate computed from `amount - health_damage` would read 90%, not 15%.
+    hit = a_hit(2_000, 1_000, 100, (48792,), mitigated=150).model_copy(
+        update={"absorbed": 750}
+    )
+    tip = ability_tooltip(
+        cooldown_seconds=120.0, cover=((1_000, 9_000),),
+        hits=(hit,), buff_id=48792, presses=1,
+    )
+    assert tip.lines[-1].value == "15% / --"

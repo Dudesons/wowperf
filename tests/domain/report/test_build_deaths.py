@@ -723,9 +723,14 @@ def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_win
 
 
 def test_a_defensive_row_carries_a_measured_tooltip_when_its_aura_is_known() -> None:
+    # Of the inside hit's 900, only 350 was mitigated -- the other 250 that
+    # never reached health (900 - 300 - 350) was a shield's absorb, which the
+    # rate must not count as this ability's own reduction.
     loaded = a_loaded_run_with_a_pressed_defensive_and_its_band().model_copy(update={
         "damage_taken": (
-            a_hit(1, 54_000, "Frigid Roar", 900).model_copy(update={"health_damage": 300}),
+            a_hit(1, 54_000, "Frigid Roar", 900).model_copy(
+                update={"health_damage": 300, "mitigated": 350, "absorbed": 250}
+            ),
             a_hit(1, 70_000, "Frigid Roar", 800),
         ),
     })
@@ -738,7 +743,7 @@ def test_a_defensive_row_carries_a_measured_tooltip_when_its_aura_is_known() -> 
     assert labels["Cover"] == "6.0 s"
     assert labels["Arrived while it was up"] == "900"
     assert labels["Reached health"] == "300"
-    assert labels["Mitigated inside / outside"] == "67% / 0%"
+    assert labels["Mitigated inside / outside"] == "39% / 0%"
     assert "suggestive, not attributable" in row.tooltip.note
 
 

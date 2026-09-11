@@ -105,16 +105,22 @@ def _inside(hit: DamageTakenEvent, buff_id: int, cover: tuple[tuple[int, int], .
 
 
 def _rate(hits: tuple[DamageTakenEvent, ...]) -> str:
-    """What share of what swung never reached health, as a whole percent.
+    """What share of the swing the game mitigated, as a whole percent.
 
-    An empty side reads as a dash rather than as zero: no hits is not the same
-    claim as hits that were never reduced.
+    Computed from `mitigated` over `amount` -- the unmitigated swing --
+    deliberately never from what reached health: `amount - health_damage`
+    also carries `absorbed`, and a shield soaking a hit is not the game
+    reducing it. `hit_tooltip` already keeps the two apart as "Mitigated" and
+    "Reached health" (with a shield's own share on its own "Absorbed" line),
+    and this rate follows the same split. An empty side reads as a dash
+    rather than as zero: no hits is not the same claim as hits that were
+    never reduced.
     """
     swung = sum(hit.amount for hit in hits)
     if swung == 0:
         return "--"
-    landed = sum(hit.health_damage for hit in hits)
-    return f"{round(100 * (swung - landed) / swung)}%"
+    mitigated = sum(hit.mitigated for hit in hits)
+    return f"{round(100 * mitigated / swung)}%"
 
 
 def ability_tooltip(
