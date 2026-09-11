@@ -53,14 +53,24 @@ on this one are computed, so each half of the drawing is graded where a reader
 meets it.
 """
 
+INTERACTION_LEGEND = (
+    "Hovering or focusing a row of the table lights a marker at that row's own moment on the "
+    "curve, and a defensive press also lights the window its buff covered."
+)
+"""What the vertical hover marker and the translucent cover window are, said once rather
+than left for a reader to meet unexplained. True whether or not the curve is anchored to a
+reading of its own -- a row lights its marker, and a press its cover window, either way --
+so it closes both `LINE_LEGEND` and `UNANCHORED_LINE_LEGEND`."""
+
 LINE_LEGEND = (
-    "Between dots the line is arithmetic: each hit subtracted, each heal added."
+    f"Between dots the line is arithmetic: each hit subtracted, each heal added. "
+    f"{INTERACTION_LEGEND}"
 )
 """What joins the dots, and the claim the derived badge grades."""
 
 UNANCHORED_LINE_LEGEND = (
-    "The log stated this player's health at no moment this axis covers, so the whole "
-    "line is arithmetic from the last reading before it."
+    f"The log stated this player's health at no moment this axis covers, so the whole "
+    f"line is arithmetic from the last reading before it. {INTERACTION_LEGEND}"
 )
 """Said instead of the two sentences above when the run-up carried no reading.
 

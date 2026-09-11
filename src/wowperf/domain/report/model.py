@@ -455,8 +455,13 @@ class DeathCard(Frozen):
     came_back_badge: Badge | None = None
     availability: tuple[AvailabilityGroup, ...] = ()
     slug: str = ""
-    """This card's fragment id, unique within the report. Every marker id on the
-    card is built from it."""
+    """The stem every marker id on this card is built from, unique within the report.
+
+    Not a fragment id: nothing on the page renders `id="{{ slug }}"` or links
+    to it, unlike `PlayerCard.slug`, which is one. This is only a prefix a
+    recap row and the mark it lights on the curve share, so the script can
+    resolve one from the other.
+    """
 
 
 class PlayerCard(Frozen):

@@ -132,6 +132,16 @@ def test_a_curve_with_no_reading_of_its_own_claims_no_measurement() -> None:
     assert curve.line_legend == UNANCHORED_LINE_LEGEND
 
 
+def test_the_line_legend_explains_the_hover_marker_and_the_cover_window() -> None:
+    # F11: a reader meets both the vertical hover marker and the translucent
+    # cover window without being told what either is anywhere on the card.
+    # Said on both forms of the line legend, since a row still lights a
+    # marker (and a press its cover window) whether or not the curve itself
+    # is anchored to a reading of its own.
+    assert "marker" in LINE_LEGEND and "cover" in LINE_LEGEND
+    assert "marker" in UNANCHORED_LINE_LEGEND and "cover" in UNANCHORED_LINE_LEGEND
+
+
 def test_the_axis_labels_sit_clear_of_the_plot() -> None:
     # The template is handed these extents rather than the module's constants, and
     # a label placed inside the plot would cross the line it is there to label.
