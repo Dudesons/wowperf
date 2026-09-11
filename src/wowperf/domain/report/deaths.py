@@ -25,7 +25,7 @@ from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
-from wowperf.domain.report.health_curve import build_health_curve
+from wowperf.domain.report.health_curve import build_health_curve, curve_x
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
@@ -85,7 +85,9 @@ NO_CONSUMABLE_DATA = (
 )
 
 
-def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapRow:
+def _recap_row(
+    event: RecapEvent, death: Death, names: dict[int, str], marker_id: str, has_curve: bool
+) -> RecapRow:
     if event.kind == HIT:
         detail = f"{event.amount:,} to health"
         if event.absorbed:
@@ -106,6 +108,8 @@ def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapR
         health="" if event.health_percent is None else f"{event.health_percent}%",
         health_percent=event.health_percent,
         ability_id=event.ability_id or None,
+        marker_id=marker_id,
+        marker_x=curve_x(event.timestamp_ms, death) if has_curve else None,
     )
 
 
@@ -191,10 +195,15 @@ def build_deaths(
     players_by_id = {player.actor_id: player for player in loaded.run.players}
     names = display_names(loaded.run)
     cards = []
-    for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
+    for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)
         events = recap_timeline(loaded, death)
-        timeline = tuple(_recap_row(event, death, names) for event in events)
+        curve = build_health_curve(events, readings_in_window(loaded, death), death)
+        slug = f"death-{index}"
+        timeline = tuple(
+            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None)
+            for position, event in enumerate(events)
+        )
         has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
             loaded, death, defensives, consumables, externals,
@@ -216,9 +225,7 @@ def build_deaths(
                 # The health column is reconstructed, and says so in the same
                 # words the ledger uses.
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
-                health_curve=build_health_curve(
-                    events, readings_in_window(loaded, death), death
-                ),
+                health_curve=curve,
                 timeline_summary=f"{len(timeline)} {plural(len(timeline), 'event')}",
                 timeline_note="" if timeline else NO_TIMELINE_EVENT,
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
@@ -230,6 +237,7 @@ def build_deaths(
                            CONSUMABLE_CAVEAT),
                     _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS),
                 ),
+                slug=slug,
             )
         )
     return tuple(cards)

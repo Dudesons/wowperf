@@ -1,7 +1,7 @@
 {# ABOUTME: The Deaths panel: a health curve and a recap per death, the death costs below. #}
 {# ABOUTME: A recap says what was pressed and what was ready, never what should have been. #}
 {% from "_macros.html.j2" import ability, ledger_row with context %}
-{% macro health_curve(curve) %}
+{% macro health_curve(curve, rows) %}
 <svg class="hp-curve" width="100%" viewBox="0 0 {{ curve.width }} {{ curve.height }}">
   <title>Health through the seconds before the death</title>
   {% for guide in curve.guides %}
@@ -20,6 +20,13 @@
   <circle class="hp-reading" cx="{{ reading.x }}" cy="{{ reading.y }}" r="3.5">
     <title>{{ reading.percent }}% stated by the log</title>
   </circle>
+  {% endfor %}
+  {% for row in rows %}
+  {% if row.marker_x is not none %}
+  <line class="hp-marker" id="{{ row.marker_id }}-mark"
+        x1="{{ row.marker_x }}" y1="{{ curve.plot_y0 }}"
+        x2="{{ row.marker_x }}" y2="{{ curve.plot_y1 }}"></line>
+  {% endif %}
   {% endfor %}
 </svg>
 {% if curve.reading_legend %}
@@ -45,7 +52,7 @@
   </div>
   <p class="detail">{{ death.class_name }}</p>
   {% if death.health_curve %}
-  {{ health_curve(death.health_curve) }}
+  {{ health_curve(death.health_curve, death.timeline) }}
   {% endif %}
   <div class="recap">
     <div class="recap-timeline">
@@ -56,7 +63,7 @@
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
         {% for row in death.timeline %}
-        <tr class="{{ row.kind }}">
+        <tr class="{{ row.kind }}" id="{{ row.marker_id }}" tabindex="0">
           <td>{{ row.seconds_before }}</td>
           <td>{{ ability(row.ability_id, row.ability) }}</td>
           <td>{{ row.detail }}</td>

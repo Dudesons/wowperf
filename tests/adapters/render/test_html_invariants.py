@@ -364,6 +364,18 @@ def test_the_page_executes_only_its_own_script() -> None:
     assert "getElementById" in body
 
 
+def test_the_script_lights_a_curve_marker_by_id_and_computes_no_position() -> None:
+    # Spec 3.2: every coordinate is computed in Python. The script may toggle a
+    # class on a marker already placed; the moment it multiplies or divides to
+    # find an x, the arithmetic has left the tested layer.
+    html = rich_html()
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
+    assert "hp-marker" in html
+    assert "classList" in body
+    assert "getBoundingClientRect" not in body
+    assert "getAttribute" in body
+
+
 def test_the_page_loads_no_image_over_the_network() -> None:
     # The existing script test checks `src` attributes; an icon reaches the page
     # through a CSS url() instead, which that check never sees. A hotlinked icon
@@ -662,8 +674,11 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (HealthCurve, "height"),
     (HealthCurve, "plot_x0"),
     (HealthCurve, "plot_x1"),
+    (HealthCurve, "plot_y0"),       # a viewBox coordinate, not a quantity
+    (HealthCurve, "plot_y1"),       # a viewBox coordinate, not a quantity
     (HealthCurve, "label_x"),
     (HealthCurve, "tick_label_y"),
+    (RecapRow, "marker_x"),         # a viewBox coordinate, not a quantity
     (CurvePoint, "x"),
     (CurvePoint, "y"),
     (CurveReading, "x"),

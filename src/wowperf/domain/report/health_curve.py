@@ -77,6 +77,18 @@ def _x(timestamp_ms: int, start_ms: int, span_ms: int) -> float:
     return round(PLOT_X0 + (timestamp_ms - start_ms) / span_ms * (PLOT_X1 - PLOT_X0), PRECISION)
 
 
+def curve_x(timestamp_ms: int, death: Death) -> float:
+    """Where an instant of the run-up falls on the curve's axis.
+
+    Exported so a recap row's marker and the curve's own points are placed by
+    one piece of arithmetic. A row computing its own x would drift the first
+    time the plot's margins changed.
+    """
+    start_ms = window_start(death)
+    span_ms = death.timestamp_ms - start_ms
+    return _x(timestamp_ms, start_ms, span_ms)
+
+
 def _y(percent: int) -> float:
     return round(PLOT_BOTTOM - percent / 100 * (PLOT_BOTTOM - PLOT_TOP), PRECISION)
 
@@ -177,6 +189,8 @@ def build_health_curve(
         height=CURVE_HEIGHT,
         plot_x0=PLOT_X0,
         plot_x1=PLOT_X1,
+        plot_y0=PLOT_TOP,
+        plot_y1=PLOT_BOTTOM,
         label_x=LABEL_X,
         tick_label_y=TICK_LABEL_Y,
         points=points,

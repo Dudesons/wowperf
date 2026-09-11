@@ -619,3 +619,34 @@ def test_a_killing_blow_id_of_zero_carries_none_not_zero() -> None:
         a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, NO_CONSUMABLES
     )[0]
     assert card.killing_blow_id is None
+
+
+def test_every_recap_row_carries_the_x_of_its_own_moment_on_the_curve() -> None:
+    # The marker is drawn where the curve puts that instant, not where the
+    # browser guesses: both come from `curve_x`, so a row and its mark cannot
+    # drift apart.
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    loaded = loaded.model_copy(update={"health_samples": (a_reading(50_000, 100_000),)})
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert card.health_curve is not None
+    row = next(row for row in card.timeline if row.kind == "hit")
+    assert row.marker_x is not None
+    assert card.health_curve.plot_x0 <= row.marker_x <= card.health_curve.plot_x1
+
+
+def test_a_recap_row_on_a_card_with_no_curve_carries_no_marker() -> None:
+    # A marker with nothing to sit on is a mark floating over a table.
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert card.health_curve is None
+    assert all(row.marker_x is None for row in card.timeline)
+
+
+def test_every_marker_id_on_the_page_is_unique_across_cards() -> None:
+    # Two deaths in one run each produce a row zero. The script looks a marker
+    # up by id, so a collision would light the wrong card's curve.
+    deaths = (a_death(1, 60_000), a_death(1, 160_000))
+    hits = (a_hit(1, 54_200, "First", 900), a_hit(1, 154_200, "Second", 900))
+    cards = build_deaths(a_loaded_with(deaths, hits), NO_DEFENSIVES, NO_CONSUMABLES)
+    ids = [row.marker_id for card in cards for row in card.timeline]
+    assert len(ids) == len(set(ids))

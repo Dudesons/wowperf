@@ -239,6 +239,15 @@ class RecapRow(Frozen):
     health: str = ""
     health_percent: int | None = None
     ability_id: int | None = None
+    marker_id: str = ""
+    """This row's own element id, shared with the marker it lights on the curve.
+
+    Unique across the page: two deaths in one run each have a row zero, and the
+    script resolves a marker by id.
+    """
+    marker_x: float | None = None
+    """Where this row's moment falls on the curve, or None when there is no curve
+    to place it on. In the curve's own coordinate space, from `curve_x`."""
 
 
 class CurvePoint(Frozen):
@@ -288,6 +297,8 @@ class HealthCurve(Frozen):
     height: float
     plot_x0: float
     plot_x1: float
+    plot_y0: float
+    plot_y1: float
     label_x: float
     tick_label_y: float
     points: tuple[CurvePoint, ...] = ()
@@ -363,6 +374,9 @@ class DeathCard(Frozen):
     came_back: str = ""
     came_back_badge: Badge | None = None
     availability: tuple[AvailabilityGroup, ...] = ()
+    slug: str = ""
+    """This card's fragment id, unique within the report. Every marker id on the
+    card is built from it."""
 
 
 class PlayerCard(Frozen):

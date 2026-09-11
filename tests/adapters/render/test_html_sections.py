@@ -249,7 +249,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
     html = render(a_report(deaths=(card,)))
 
     assert [kind for kind in ("hit", "absorb", "heal", "cast")
-            if f'<tr class="{kind}">' not in html] == []
+            if f'<tr class="{kind}" id="" tabindex="0">' not in html] == []
     assert [state for state in ("pressed", "ready", "cooldown", "unseen")
             if f'<li class="{state}">' not in html] == []
 
@@ -294,7 +294,7 @@ def test_a_death_card_renders_its_recap() -> None:
     html = render(a_report(deaths=(card,)))
     deaths = html[html.index('<h2 id="deaths">'):html.index('<h2 id="interrupts">')]
     assert str(escape("Frigid Roar")) in deaths
-    assert '<tr class="hit">' in deaths and str(escape("Snowdrift")) in deaths
+    assert '<tr class="hit" id="" tabindex="0">' in deaths and str(escape("Snowdrift")) in deaths
     assert 'style="width: 61%"' in deaths and "61%" in deaths
     assert "34.2 s after death" in deaths
     assert '<li class="cooldown">' in deaths and "at most 14 s left" in deaths
@@ -463,6 +463,8 @@ def a_curve() -> HealthCurve:
         height=148.0,
         plot_x0=40.0,
         plot_x1=668.0,
+        plot_y0=14.0,
+        plot_y1=116.0,
         label_x=34.0,
         tick_label_y=136.0,
         points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=668.0, y=116.0)),
@@ -511,7 +513,8 @@ def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> N
     # so. Saying it in shape as well as in words means a reader who never reads
     # the legend still sees two different claims.
     curve = HealthCurve(
-        width=680.0, height=148.0, plot_x0=40.0, plot_x1=648.0, label_x=34.0,
+        width=680.0, height=148.0, plot_x0=40.0, plot_x1=648.0, plot_y0=14.0, plot_y1=116.0,
+        label_x=34.0,
         tick_label_y=136.0,
         points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=648.0, y=116.0)),
         readings=(CurveReading(x=40.0, y=14.0, percent=100),),
@@ -538,6 +541,30 @@ def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> N
     deaths = deaths_of(a_card(health_curve=curve))
     assert "<circle" not in deaths
     assert "measured" not in deaths
+
+
+def test_a_recap_row_with_a_marker_draws_a_hidden_line_on_the_curve() -> None:
+    # The script test in test_html_invariants.py proves the CSS rule and the JS
+    # handlers exist, but that string sits in the stylesheet regardless of
+    # whether any card actually draws a marker. This proves the template
+    # itself draws the hidden `<line>` a real row's marker_x asks for, tied
+    # to the row's own id by the "-mark" suffix the script looks up.
+    curve = a_curve()
+    row = RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                   health="61%", health_percent=61, marker_id="death-0-e0", marker_x=50.0)
+    deaths = deaths_of(a_card(health_curve=curve, timeline=(row,)))
+    assert (
+        '<line class="hp-marker" id="death-0-e0-mark"\n'
+        f'        x1="50.0" y1="{curve.plot_y0}"\n'
+        f'        x2="50.0" y2="{curve.plot_y1}"></line>'
+    ) in deaths
+
+
+def test_a_recap_row_with_no_marker_draws_no_line_on_the_curve() -> None:
+    # The default RecapRow carries no marker_x, and a card can carry a curve
+    # while one of its rows falls outside it (or before build_deaths ever ran).
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "hp-marker" not in deaths
 
 
 def test_a_death_card_with_no_curve_emits_no_svg_at_all() -> None:

@@ -100,6 +100,12 @@ p { margin: 0 0 10px; }
 .hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
   stroke-linejoin: round; stroke-dasharray: 5 3; }
 .hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
+/* Placed by the builder, hidden until the row it belongs to is hovered or
+   focused. Hidden by opacity rather than by display so the browser has no
+   layout to recompute when it appears. */
+.hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
+.hp-marker.lit { opacity: 1; }
+tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }
 .avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
