@@ -53,7 +53,11 @@ def band_holding(aura: Aura, start_ms: int, end_ms: int, at_ms: int) -> tuple[in
     each one's rectangle reaching into the duration the *other* press
     actually earned — a claim about how long one cast protected the player
     that nothing in the log stated. Returns the single band containing
-    `at_ms`, or None if none does.
+    `at_ms`, or None if none does. Among bands containing a press, the one
+    that starts latest is the one that press began, so ties -- two touching
+    or overlapping bands both containing `at_ms` -- resolve to the last match
+    in ascending order, never the first.
     """
     clipped = _clip_to_window(aura, start_ms, end_ms)
-    return next(((low, high) for low, high in clipped if low <= at_ms <= high), None)
+    holding = [(low, high) for low, high in clipped if low <= at_ms <= high]
+    return holding[-1] if holding else None

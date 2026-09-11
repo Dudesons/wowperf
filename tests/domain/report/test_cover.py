@@ -117,3 +117,24 @@ def test_band_holding_clips_the_band_it_returns_to_the_window() -> None:
     aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=10000, uses=1,
                 bands=(AuraBand(start_ms=0, end_ms=10_000),))
     assert band_holding(aura, 4_000, 8_000, 6_000) == (4_000, 8_000)
+
+
+def test_a_press_at_the_exact_join_of_two_touching_bands_resolves_to_the_later_one() -> None:
+    # A press at 4_000 satisfies `low <= at_ms <= high` for both (0, 4_000) and
+    # (4_000, 8_000): it is the last instant of the first band and the first
+    # instant of the second. A press creates a band beginning at its own
+    # timestamp, so the band that STARTS at the press is the one it began --
+    # picking the one that ends there instead would draw a rectangle of zero
+    # duration and tell a reader this cast covered nothing.
+    aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=8000, uses=2,
+                bands=(AuraBand(start_ms=0, end_ms=4_000), AuraBand(start_ms=4_000, end_ms=8_000)))
+    assert band_holding(aura, 0, 8_000, 4_000) == (4_000, 8_000)
+
+
+def test_a_press_inside_two_overlapping_bands_resolves_to_the_one_that_started_later() -> None:
+    # Same reasoning as the touching case, without a shared endpoint: a press
+    # at 5_000 falls inside both (0, 6_000) and (4_000, 10_000), and the one it
+    # began is the one with the later start.
+    aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=10000, uses=2,
+                bands=(AuraBand(start_ms=0, end_ms=6_000), AuraBand(start_ms=4_000, end_ms=10_000)))
+    assert band_holding(aura, 0, 10_000, 5_000) == (4_000, 10_000)
