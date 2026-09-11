@@ -407,15 +407,15 @@ class WclRunRepository:
         return loaded, all(hits)
 
     def auras(self, report_code: str, fight_id: int, actor_id: int) -> PlayerAuras:
-        """Buff and debuff uptime for one player of one fight.
+        """Buff uptime for one player of one fight.
 
         Scoped rather than folded into `load`: an aura table is per-actor, so
         loading them for a whole roster would pay for ten tables to answer a
-        question about two players. The debuff half of what comes back is
-        always empty against the live API — confirmed 2026-09-05, no query
-        argument narrows the enemy-debuff table to one caster; the measured
-        table is in `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot
-        be scoped to one caster".
+        question about two players. Only what the player carried is asked for:
+        no query argument narrows the enemy-debuff table to one caster, so the
+        matching figure for enemies does not exist — the measured table is in
+        `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to
+        one caster".
         """
         payload = self._query(
             AURA_TABLE_QUERY,

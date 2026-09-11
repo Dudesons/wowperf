@@ -1,10 +1,11 @@
-# ABOUTME: Compares one player's buff and debuff uptime on boss pulls against a top parse or sample.
+# ABOUTME: Compares one player's buff uptime on boss pulls against a top parse or a sample.
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
-# The debuff half never fires in practice: `on_targets` is always empty against
-# the live API, confirmed 2026-09-05 — no query argument narrows the enemy-debuff
-# table to one caster. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half
-# cannot be scoped to one caster".
+# Buffs only, and the titles here say so. The design's other half — what a player
+# kept up on enemies — is not comparable per player: no query argument narrows the
+# enemy-debuff table to one caster, so every row it returns belongs to the whole
+# group. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped
+# to one caster".
 
 from collections.abc import Sequence
 
@@ -53,7 +54,7 @@ def _unavailable(
 ) -> Finding:
     return Finding(
         id="compare.uptime.unavailable",
-        title=f"Buff and debuff uptime could not be compared for {our_name}",
+        title=f"Buff uptime could not be compared for {our_name}",
         detail=(
             "An uptime comparison needs boss pulls on both sides and aura data for both "
             "players. One of those is missing, so no uptime numbers are reported rather "
@@ -74,7 +75,7 @@ def _no_reference_auras(our_name: str, total: int) -> Finding:
     """Not one reference came back with aura data, which decides it on its own."""
     return Finding(
         id="compare.uptime.unavailable",
-        title=f"Buff and debuff uptime could not be compared for {our_name}",
+        title=f"Buff uptime could not be compared for {our_name}",
         detail=(
             "An uptime comparison needs aura data from a reference to compare ours against, "
             "and no reference in the sample returned any. No uptime numbers are reported "
@@ -87,7 +88,6 @@ def _no_reference_auras(our_name: str, total: int) -> Finding:
 
 
 def _gap_findings(
-    kind: str,
     ours: dict[int, tuple[str, float]],
     theirs: dict[int, tuple[str, float]],
     our_name: str,
@@ -114,17 +114,16 @@ def _gap_findings(
                      their_fraction))
     gaps.sort(reverse=True)
 
-    where = "on themselves" if kind == "self" else "on the enemy"
     findings = []
     for rank, (_, ability_id, name, our_fraction, their_fraction) in enumerate(
         gaps[:MAX_AURAS_REPORTED]
     ):
         findings.append(
             Finding(
-                id=f"compare.uptime.{kind}.{rank}",
+                id=f"compare.uptime.self.{rank}",
                 title=(
-                    f"{their_name} kept {name} up for {their_fraction:.0%} of boss time "
-                    f"{where}, {our_name} {our_fraction:.0%}"
+                    f"{their_name} kept {name} up for {their_fraction:.0%} of boss time, "
+                    f"{our_name} {our_fraction:.0%}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "
@@ -179,24 +178,17 @@ def compare_uptime(
     our_windows = boss_windows(ours)
     their_windows = boss_windows(theirs)
 
-    findings: list[Finding] = []
-    for kind, ours_side, theirs_side in (
-        ("self", our_auras.on_self, their_auras.on_self),
-        ("target", our_auras.on_targets, their_auras.on_targets),
-    ):
-        # Named at the call site: the four arguments below are two pairs of
-        # same-typed values, and a swap inside either pair would put one
-        # player's figure under the other's name without failing a type check.
-        findings += _gap_findings(
-            kind,
-            _fractions(ours_side, our_windows, our_seconds),
-            _fractions(theirs_side, their_windows, their_seconds),
-            our_name=our_name,
-            their_name=their_name,
-            our_seconds=our_seconds,
-            their_seconds=their_seconds,
-        )
-    return findings
+    # Named at the call site: the four arguments below are two pairs of
+    # same-typed values, and a swap inside either pair would put one player's
+    # figure under the other's name without failing a type check.
+    return _gap_findings(
+        _fractions(our_auras.on_self, our_windows, our_seconds),
+        _fractions(their_auras.on_self, their_windows, their_seconds),
+        our_name=our_name,
+        their_name=their_name,
+        our_seconds=our_seconds,
+        their_seconds=their_seconds,
+    )
 
 
 def compare_uptime_sample(
@@ -260,17 +252,13 @@ def compare_uptime_sample(
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
-    findings: list[Finding] = []
-    for kind, our_side in (("self", our_auras.on_self), ("target", our_auras.on_targets)):
-        our_fractions = _fractions(our_side, our_windows, our_seconds)
-        findings += _gap_findings_sample(
-            kind, our_fractions, eligible, our_name, our_seconds, missing_aura_data, total
-        )
-    return findings
+    our_fractions = _fractions(our_auras.on_self, our_windows, our_seconds)
+    return _gap_findings_sample(
+        our_fractions, eligible, our_name, our_seconds, missing_aura_data, total
+    )
 
 
 def _gap_findings_sample(
-    kind: str,
     our_fractions: dict[int, tuple[str, float]],
     eligible: Sequence[ParseMember],
     our_name: str,
@@ -288,10 +276,11 @@ def _gap_findings_sample(
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        side = member.auras.on_self if kind == "self" else member.auras.on_targets
         their_seconds = boss_seconds(member.run)
         fractions = (
-            _fractions(side, boss_windows(member.run), their_seconds) if their_seconds > 0 else {}
+            _fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            if their_seconds > 0
+            else {}
         )
         qualifying: dict[int, float] = {}
         for ability_id, (name, fraction) in fractions.items():
@@ -323,7 +312,6 @@ def _gap_findings_sample(
         )
     gaps.sort(key=lambda row: row[0], reverse=True)
 
-    where = "on themselves" if kind == "self" else "on the enemy"
     findings = []
     for rank, (_, ability_id, name, our_fraction, their_median, carried) in enumerate(
         gaps[:MAX_AURAS_REPORTED]
@@ -331,10 +319,10 @@ def _gap_findings_sample(
         low, high = observed_range(carried)
         findings.append(
             Finding(
-                id=f"compare.uptime.{kind}.{rank}",
+                id=f"compare.uptime.self.{rank}",
                 title=(
                     f"{len(carried)} top parses kept {name} up a median {their_median:.0%} "
-                    f"of boss time {where}; {our_name} {our_fraction:.0%}"
+                    f"of boss time; {our_name} {our_fraction:.0%}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "

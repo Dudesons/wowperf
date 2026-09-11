@@ -1,4 +1,4 @@
-# ABOUTME: Buff and debuff intervals as pure values, plus uptime over an arbitrary window.
+# ABOUTME: Aura intervals as pure values, plus uptime over an arbitrary window.
 # ABOUTME: Warcraft Logs hands back the bands already computed; this is what reads them.
 
 from wowperf.domain.base import Frozen
@@ -25,18 +25,17 @@ class Aura(Frozen):
 
 
 class PlayerAuras(Frozen):
-    """The two halves of one player's aura picture.
+    """What one player carried, as the aura table reports it.
 
-    `on_self` is what the player carried; `on_targets` is meant to be what they
-    kept up on enemies, but is always empty against the live API today —
-    confirmed 2026-09-05, no query argument narrows the enemy-debuff table to
-    one caster (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be
-    scoped to one caster"). The design calls these "on self and on target".
+    The design's other half, "on target", has no counterpart here: no query
+    argument narrows the enemy-debuff table to one caster, so a per-player
+    figure for what a player kept up on enemies is not available from this API
+    (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+    caster").
     """
 
     actor_id: int
     on_self: tuple[Aura, ...] = ()
-    on_targets: tuple[Aura, ...] = ()
 
 
 def uptime_seconds_in(aura: Aura, windows: tuple[tuple[int, int], ...]) -> float:
@@ -45,11 +44,10 @@ def uptime_seconds_in(aura: Aura, windows: tuple[tuple[int, int], ...]) -> float
     Bands are clipped to each window rather than counted whole, which is what
     makes a boss-pull-only figure exact rather than an approximation. The
     clipped intervals are then merged before summing, so overlap contributes
-    once rather than once per overlapping band or window: a debuff table
-    aggregates every enemy the player hit, and a damage-over-time effect
-    ticking on several targets at once produces bands that overlap in
-    wall-clock time. Summing the union rather than the parts is also the only
-    reading that cannot exceed the window length.
+    once rather than once per overlapping band or window: nothing in the aura
+    table's own response promises the bands it hands back are disjoint, and
+    summing the union rather than the parts is the only reading that cannot
+    exceed the window length.
     """
     clipped: list[tuple[int, int]] = []
     for band in aura.bands:

@@ -137,6 +137,10 @@ section should not repeat them.
   difference to be displayed).
 - The debuff half of the uptime comparison ships inert, as recorded; it should either be removed
   or replaced by the group-wide figure the API does give.
+  **Fixed 2026-09-11 by removal.** The query selection, the model field, the branches and their
+  tests are gone, and the uptime findings no longer promise a debuff comparison. The group-wide
+  figure was not adopted: it answers a different question from the per-player one every other
+  comparison family asks.
 
 ## 3. What the audit did *not* find
 

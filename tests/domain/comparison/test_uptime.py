@@ -1,4 +1,4 @@
-# ABOUTME: Behaviour tests for buff and debuff uptime against a top parse, on boss pulls only.
+# ABOUTME: Behaviour tests for buff uptime against a top parse or sample, on boss pulls only.
 # ABOUTME: The interesting cases are a missing reference, a small sample, and a gap below cut-off.
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
@@ -98,25 +98,6 @@ def test_an_uptime_gap_on_self_is_reported() -> None:
     assert "Coagulopathy" in reported[0].title
     assert reported[0].confidence is Confidence.DERIVED
     assert reported[0].seconds_lost is None
-
-
-def test_the_inert_on_target_plumbing_still_reports_a_gap_if_ever_fed_data() -> None:
-    """`on_targets` is always empty against the live API (2026-09-05,
-    `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
-    caster"), so this path never fires in production. It is kept — deliberately, by
-    controller ruling — as correct code for a query that returns nothing today, ready
-    if a working query is ever found. This test hand-builds `on_targets` data rather
-    than exercising the real query, so it covers the plumbing, not a working feature.
-    """
-    ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
-    our_auras = PlayerAuras(actor_id=7, on_targets=(an_aura(55095, "Frost Fever", (0, 10_000)),))
-    their_auras = PlayerAuras(actor_id=3, on_targets=(an_aura(55095, "Frost Fever", (0, 95_000)),))
-
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
-
-    assert ids(findings, "compare.uptime.target.") == ["compare.uptime.target.0"]
-    assert ids(findings, "compare.uptime.self.") == []
 
 
 def test_uptime_outside_boss_pulls_is_not_counted() -> None:
@@ -432,6 +413,38 @@ def test_both_ways_of_being_unavailable_name_the_player() -> None:
         assert OUR_NAME in findings[0].title
 
 
+def test_no_uptime_finding_promises_a_debuff_comparison() -> None:
+    """Nothing here compares debuffs: the enemy-debuff table cannot be scoped to
+    one caster, measured 2026-09-05 and recorded in the wcl-api skill under "The
+    debuff half cannot be scoped to one caster". A title promising one is a
+    promise the report cannot keep, so every branch is swept rather than the two
+    that happened to carry the wording."""
+    every_branch = (
+        compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+        + compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+        + compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+        + compare_uptime(OUR_RUN, None, OUR_NAME, OUR_RUN, None, "Bríala")
+    )
+
+    assert every_branch
+    for finding in every_branch:
+        assert "debuff" not in finding.title.lower()
+        assert "debuff" not in finding.detail.lower()
+
+
+def test_an_unavailable_uptime_says_which_half_it_could_not_compare() -> None:
+    unavailable = [
+        f
+        for f in compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+        + compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+        if f.id == "compare.uptime.unavailable"
+    ]
+
+    assert len(unavailable) == 2
+    for finding in unavailable:
+        assert finding.title.startswith("Buff uptime could not be compared")
+
+
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.parse.unavailable`; this must not crash, and must not repeat it.
@@ -479,51 +492,6 @@ def test_every_finding_id_is_unique_over_the_sample() -> None:
     ids_ = [f.id for f in compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)]
 
     assert len(ids_) == len(set(ids_))
-
-
-def test_the_inert_on_target_plumbing_still_reports_a_gap_in_the_sample_if_ever_fed_data() -> None:
-    """`on_targets` is always empty against the live API (2026-09-05,
-    `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one caster"), so
-    this path never fires in production, in the sample the same way it never fires pairwise.
-    It is kept as correct code for a query that returns nothing today. This test hand-builds
-    `on_targets` data rather than exercising the real query, so it covers the plumbing, not a
-    working feature.
-    """
-
-    def a_target_member(name: str, actor_id: int, end_ms: int) -> ParseMember:
-        run = a_run(BOSS, player=a_player(name, actor_id))
-        auras = PlayerAuras(
-            actor_id=actor_id, on_targets=(an_aura(55095, "Frost Fever", (0, end_ms)),)
-        )
-        return ParseMember(
-            row=ParseRow(
-                report_code=f"TGT{actor_id}",
-                fight_id=1,
-                keystone_level=16,
-                duration_ms=100_000,
-                character_name=name,
-                class_name="DeathKnight",
-                spec="Blood",
-            ),
-            run=run,
-            auras=auras,
-        )
-
-    sample = ParseSample(
-        members=(
-            a_target_member("Alpha", 21, 90_000),
-            a_target_member("Beta", 22, 80_000),
-            a_target_member("Gamma", 23, 70_000),
-        )
-    )
-    our_target_auras = PlayerAuras(
-        actor_id=7, on_targets=(an_aura(55095, "Frost Fever", (0, 10_000)),)
-    )
-
-    findings = compare_uptime_sample(OUR_RUN, our_target_auras, OUR_NAME, sample)
-
-    assert ids(findings, "compare.uptime.target.") == ["compare.uptime.target.0"]
-    assert ids(findings, "compare.uptime.self.") == []
 
 
 def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:

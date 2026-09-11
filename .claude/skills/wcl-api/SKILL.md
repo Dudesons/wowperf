@@ -47,7 +47,7 @@ covers it otherwise.
 | `fightRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightIDs` | `table` argument | 2026-09-05 | yes |
 | `hostilityType` | `table` argument | 2026-09-05 | yes |
-| `sourceID` | `table` argument | 2026-09-05 | yes |
+| `sourceID` | `table` argument | 2026-09-05 | no |
 | `targetID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `events` argument | 2026-09-07 | yes |
 | `includeResources` | `events` argument | 2026-09-07 | yes |
@@ -448,6 +448,11 @@ the same report and fight:
 
 So a per-player "debuffs I kept on the enemy" figure is not available from `table`. A group-wide
 one is. Anything built on the per-player reading returns nothing, silently.
+
+`AURA_TABLE_QUERY` no longer asks for the debuff table at all — removed 2026-09-11, after the
+selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_auras.py` holds it
+out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
+`AuraTable` costs; that is a prediction and nothing here has measured it.
 
 ## Leaderboards return report codes
 

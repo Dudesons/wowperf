@@ -30,9 +30,9 @@ AGGREGATE_PREFIXES = (
 )
 
 # Every id whose sample function calls `statistics.median` and must state the
-# observed range beside it. Ranked ids (spells.rate, uptime.self, uptime.target)
-# need a prefix; the rest are single findings, so an exact id behaves the same
-# under `startswith`.
+# observed range beside it. Ranked ids (spells.rate, uptime.self) need a prefix;
+# the rest are single findings, so an exact id behaves the same under
+# `startswith`.
 MEDIAN_ID_PREFIXES = (
     "compare.downtime",
     "compare.deaths",
@@ -41,7 +41,6 @@ MEDIAN_ID_PREFIXES = (
     "compare.confound.item_level",
     "compare.spells.rate.",
     "compare.uptime.self.",
-    "compare.uptime.target.",
 )
 
 DUNGEON_ENCOUNTER_ID = 12825
@@ -52,8 +51,6 @@ MISSING_ABILITY_ID = 90001
 MISSING_ABILITY_NAME = "Meteor"
 UPTIME_SELF_ABILITY_ID = 90003
 UPTIME_SELF_ABILITY_NAME = "Ice Barrier"
-UPTIME_TARGET_ABILITY_ID = 90004
-UPTIME_TARGET_ABILITY_NAME = "Winter's Chill"
 
 
 def _pull(index: int, game_id: int, seconds: float = 60.0, boss: bool = False) -> Pull:
@@ -113,7 +110,7 @@ OUR_RUN = Run(
 )
 OURS = LoadedRun(run=OUR_RUN, casts=OUR_CASTS)
 
-# Our own boss pull (OUR_BOSS) spans 1_200_000ms to 1_320_000ms, 120s. 6s of each
+# Our own boss pull (OUR_BOSS) spans 1_200_000ms to 1_320_000ms, 120s. 6s of the
 # aura kept up is a 5% fraction -- low enough for every top parse below (80%) to
 # clear UPTIME_GAP_FRACTION against it, and still above zero so the "we never had
 # it at all" carve-out does not swallow the gap.
@@ -123,15 +120,6 @@ OUR_AURAS = PlayerAuras(
         Aura(
             ability_id=UPTIME_SELF_ABILITY_ID,
             name=UPTIME_SELF_ABILITY_NAME,
-            total_uptime_ms=6_000,
-            uses=1,
-            bands=(AuraBand(start_ms=1_200_000, end_ms=1_206_000),),
-        ),
-    ),
-    on_targets=(
-        Aura(
-            ability_id=UPTIME_TARGET_ABILITY_ID,
-            name=UPTIME_TARGET_ABILITY_NAME,
             total_uptime_ms=6_000,
             uses=1,
             bands=(AuraBand(start_ms=1_200_000, end_ms=1_206_000),),
@@ -237,22 +225,13 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
                          item_level=400),),
         pulls=(_pull(0, 99, seconds=120.0, boss=True),),
     )
-    # This run's boss pull spans 0ms to 120_000ms; 96s of each aura is 80% of it.
+    # This run's boss pull spans 0ms to 120_000ms; 96s of the aura is 80% of it.
     auras = PlayerAuras(
         actor_id=actor_id,
         on_self=(
             Aura(
                 ability_id=UPTIME_SELF_ABILITY_ID,
                 name=UPTIME_SELF_ABILITY_NAME,
-                total_uptime_ms=96_000,
-                uses=1,
-                bands=(AuraBand(start_ms=0, end_ms=96_000),),
-            ),
-        ),
-        on_targets=(
-            Aura(
-                ability_id=UPTIME_TARGET_ABILITY_ID,
-                name=UPTIME_TARGET_ABILITY_NAME,
                 total_uptime_ms=96_000,
                 uses=1,
                 bands=(AuraBand(start_ms=0, end_ms=96_000),),
@@ -273,9 +252,8 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
 # Five top parses. All five cast the rate ability far more often than we do
 # (compare.spells.rate: a DERIVED median with its range). Four of five also cast
 # an ability we never cast anywhere (compare.spells.missing: "4 of 5", most). All
-# five also keep an on-self buff and an on-target debuff up for 80% of their boss
-# pull against our own 5% (compare.uptime.self / compare.uptime.target: a DERIVED
-# median with its range).
+# five also keep a buff up for 80% of their boss pull against our own 5%
+# (compare.uptime.self: a DERIVED median with its range).
 PARSE_SAMPLE = ParseSample(
     members=(
         _parse_member("A", casts_missing=True),

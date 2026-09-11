@@ -341,25 +341,17 @@ query CharacterRankings(
 """
 
 
-# Two aliased selections of `table`, so one cached query covers both halves of
-# "on self and on target". `Buffs` with targetID is what the player carried.
-# `Debuffs` with sourceID and Enemies does not work against the live API: confirmed
-# 2026-09-05, that combination returns zero auras, and no argument (sourceID,
-# filterExpression, sourceClass) narrows the enemy-debuff table to one caster —
-# see `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
-# caster", for the measured table. The selection stays wired for when a working
-# query is found; today `onTargets` ships inert.
+# `Buffs` with targetID is what the player carried. The matching enemy-debuff
+# table is not asked for: nothing narrows it to one caster, so every row it returns
+# belongs to the whole group — see `.claude/skills/wcl-api/SKILL.md`, "The debuff
+# half cannot be scoped to one caster", for the arguments measured. The selection
+# is aliased even though it is now the only one, because
+# `ingest.build_player_auras` reads it by that name and says so when it is missing.
 AURA_TABLE_QUERY = """
 query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       onSelf: table(fightIDs: [$fightId], dataType: Buffs, targetID: $actorId)
-      onTargets: table(
-        fightIDs: [$fightId]
-        dataType: Debuffs
-        sourceID: $actorId
-        hostilityType: Enemies
-      )
     }
   }
 }

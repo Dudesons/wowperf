@@ -681,7 +681,6 @@ def an_aura_payload() -> dict[str, object]:
                             "totalTime": 5000,
                         }
                     },
-                    "onTargets": {"data": {"auras": [], "totalTime": 5000}},
                 }
             }
         }
@@ -704,7 +703,6 @@ def test_auras_come_back_for_the_actor_that_was_asked_for(tmp_path: Path) -> Non
     assert calls == ["AuraTable"]
     assert auras.actor_id == 7
     assert [a.name for a in auras.on_self] == ["Coagulopathy"]
-    assert auras.on_targets == ()
 
 
 def test_a_second_lookup_for_the_same_actor_is_served_from_the_cache(tmp_path: Path) -> None:

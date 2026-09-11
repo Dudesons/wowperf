@@ -40,16 +40,15 @@ def test_no_windows_means_no_uptime_rather_than_the_whole_aura() -> None:
     assert uptime_seconds_in(an_aura((0, 5000)), ()) == 0.0
 
 
-def test_player_auras_default_to_empty_on_both_sides() -> None:
+def test_player_auras_default_to_no_auras_at_all() -> None:
     auras = PlayerAuras(actor_id=7)
 
     assert auras.on_self == ()
-    assert auras.on_targets == ()
 
 
 def test_two_overlapping_bands_count_the_union_not_the_sum() -> None:
-    # A debuff table aggregates every enemy the player hit, so a DoT ticking on
-    # two targets at once produces two bands that overlap in wall-clock time.
+    # Nothing in the aura table's response promises the bands it returns are
+    # disjoint, and the union is the only reading that cannot exceed the window.
     # The aura was up, without interruption, from 1000 to 7000: six seconds.
     aura = an_aura((1000, 5000), (3000, 7000))
 

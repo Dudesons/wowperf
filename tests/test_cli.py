@@ -434,7 +434,7 @@ def build_analyze_transport(
     `compare.uptime.unavailable` regardless of aura content — this is what a
     caller needs to get a genuine, populated uptime finding instead.
     `aura_rows_by_code` answers `AuraTable` with real aura rows for the report
-    codes named (`{"onSelf": [...], "onTargets": [...]}`, each a list of
+    codes named (`{"onSelf": [...]}`, a list of
     `{"guid", "name", "totalUptime", "totalUses", "bands"}` rows, the shape
     `build_player_auras` reads), in place of the default empty-but-valid tables
     — letting a caller give the two players aura data that actually differs.
@@ -504,7 +504,6 @@ def build_analyze_transport(
         "reportData": {
             "report": {
                 "onSelf": {"data": {"auras": [], "totalTime": 0}},
-                "onTargets": {"data": {"auras": [], "totalTime": 0}},
             }
         }
     }
@@ -589,12 +588,6 @@ def build_analyze_transport(
                                     "onSelf": {
                                         "data": {
                                             "auras": rows.get("onSelf", []),
-                                            "totalTime": 0,
-                                        }
-                                    },
-                                    "onTargets": {
-                                        "data": {
-                                            "auras": rows.get("onTargets", []),
                                             "totalTime": 0,
                                         }
                                     },
@@ -2322,7 +2315,6 @@ def _aura_repository(
                     "reportData": {
                         "report": {
                             "onSelf": {"data": {"auras": [], "totalTime": 0}},
-                            "onTargets": {"data": {"auras": [], "totalTime": 0}},
                         }
                     }
                 }

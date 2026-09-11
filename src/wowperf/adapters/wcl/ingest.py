@@ -462,10 +462,9 @@ def _aura(row: dict[str, Any]) -> Aura:
 
 
 def build_player_auras(payload: dict[str, Any], actor_id: int) -> PlayerAuras:
-    """Both aliased aura tables for one actor, as domain values."""
+    """The aliased buff table for one actor, as domain values."""
     report = payload["reportData"]["report"]
     return PlayerAuras(
         actor_id=actor_id,
         on_self=tuple(_aura(row) for row in _aura_rows(report, "onSelf")),
-        on_targets=tuple(_aura(row) for row in _aura_rows(report, "onTargets")),
     )
