@@ -679,12 +679,19 @@ SUMMARY_RUN = a_run(
         *tuple(a_pull(i, (i + 1,)) for i in range(8)),
         a_pull(8, (900,), boss=True),
         a_pull(9, (1,), seconds=0.048, name="Tail"),
+        a_pull(10, (902,), seconds=0.034, name="Stray"),
     )
 )
 
 
-ARTEFACT_INDEX = 9
-"""SUMMARY_RUN's own segmentation artefact, which no reference ever ran."""
+ARTEFACT_INDICES = (9, 10)
+"""SUMMARY_RUN's own segmentation artefacts, which no reference ever ran.
+
+Both shapes the cache holds. The tail shares an enemy with a pull every
+reference ran, so it reaches `matched` and exercises the intersection that
+keeps it out of the numerator. The stray matches nothing, so it reaches
+`only_ours` and stops that list standing in for the pack count.
+"""
 
 
 def summary_member(
@@ -694,7 +701,7 @@ def summary_member(
     pulls = tuple(
         pull
         for pull in SUMMARY_RUN.pulls
-        if pull.index not in missing and pull.index != ARTEFACT_INDEX
+        if pull.index not in missing and pull.index not in ARTEFACT_INDICES
     )
     if extra:
         pulls = (*pulls, a_pull(9, (901,), name="Bonus Pack"))
@@ -723,10 +730,13 @@ def test_the_sampled_summary_states_how_well_the_packs_matched() -> None:
     # The pull-count range must differ from the match range, or this test cannot
     # tell the two apart, and the boss must sit outside the denominator.
     assert "observed range 7 to 10 pulls" in summary.evidence
-    # Ten pulls, nine of them trash, eight of those packs: no two of the three
+    # Eleven pulls, ten of them trash, eight of those packs: no two of the three
     # denominators coincide, so each is distinguishable from the others.
-    assert len(SUMMARY_RUN.pulls) == 10
-    assert len([pull for pull in SUMMARY_RUN.pulls if not pull.is_boss]) == 9
+    assert len(SUMMARY_RUN.pulls) == 11
+    assert len([pull for pull in SUMMARY_RUN.pulls if not pull.is_boss]) == 10
+    # And one artefact must sit in only_ours, or that list could stand in for
+    # the pack count and nothing would notice.
+    assert 10 in sample.members[0].alignment.only_ours
 
 
 def test_a_reference_artefact_pull_is_not_reported_as_extra_on_the_sampled_path() -> None:
