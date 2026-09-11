@@ -37,7 +37,7 @@ from wowperf.domain.report.model import (
     DeathCard,
     RecapRow,
 )
-from wowperf.domain.report.tooltip import absorb_tooltip, heal_tooltip, hit_tooltip
+from wowperf.domain.report.tooltip import absorb_tooltip, caster_name, heal_tooltip, hit_tooltip
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
 
@@ -124,9 +124,7 @@ def _recap_row(
     elif event.kind == ABSORB:
         detail = f"{event.amount:,} soaked"
     elif event.kind == HEAL:
-        source = event.source_id
-        healer = "an unknown source" if source is None else names.get(source, "an unknown source")
-        detail = f"+{event.amount:,} from {healer}"
+        detail = f"+{event.amount:,} from {caster_name(event.source_id, names)}"
     else:
         detail = ""
     if event.kind == HIT:

@@ -34,6 +34,29 @@ def test_only_a_lethal_blow_reports_overkill() -> None:
     assert not any(line.label == "Overkill" for line in hit_tooltip(ordinary).lines)
 
 
+def test_an_area_hit_reports_area_and_a_single_target_hit_does_not() -> None:
+    # Task 1 carried `is_area` out of the log specifically for this line; the
+    # false half catches a branch wired to always fire.
+    area = RecapEvent(kind=HIT, timestamp_ms=1000, ability_name="Frigid Roar", ability_id=7,
+                      amount=100, unmitigated=100, is_area=True)
+    single_target = RecapEvent(kind=HIT, timestamp_ms=1000, ability_name="Frigid Roar",
+                               ability_id=7, amount=100, unmitigated=100, is_area=False)
+    assert any(line.label == "Area" for line in hit_tooltip(area).lines)
+    assert not any(line.label == "Area" for line in hit_tooltip(single_target).lines)
+
+
+def test_a_periodic_hit_reports_periodic_and_a_discrete_hit_does_not() -> None:
+    # Plan ruling 2 chose `tick` over the undocumented `hitType` because
+    # "periodic" is self-describing; the false half catches a branch wired to
+    # always fire.
+    tick = RecapEvent(kind=HIT, timestamp_ms=1000, ability_name="Frigid Roar", ability_id=7,
+                      amount=100, unmitigated=100, is_tick=True)
+    discrete = RecapEvent(kind=HIT, timestamp_ms=1000, ability_name="Frigid Roar",
+                          ability_id=7, amount=100, unmitigated=100, is_tick=False)
+    assert any(line.label == "Periodic" for line in hit_tooltip(tick).lines)
+    assert not any(line.label == "Periodic" for line in hit_tooltip(discrete).lines)
+
+
 def test_a_heal_tooltip_says_the_log_reports_no_overheal() -> None:
     # Recorded 2026-09-06 in the wcl-api skill: the healing stream returns no
     # such field. Saying so beats omitting the row in silence.

@@ -27,6 +27,16 @@ def hit_tooltip(event: RecapEvent) -> Tooltip:
     `unmitigated` is how hard it swung, `mitigated` what the game took off,
     `absorbed` what a shield soaked and `amount` what reached health. Overkill
     appears only where the log recorded it, which is only on a lethal blow.
+
+    Names no source, though `event.source_id` carries the enemy that dealt the
+    hit. `EnemyNpc` in `wowperf.domain.model` holds only `actor_id` and
+    `game_id` -- no name -- so there is nothing here to resolve the id
+    against. `masterData.actors` carries a name for every actor in the
+    report, but ingest reads it only for player actors
+    (`_build_players` in `adapters/wcl/ingest.py`); naming an enemy would need
+    that same lookup carried onto `EnemyNpc` and through to `LoadedRun`, work
+    the size of what Task 2 already did for the player roster, which this
+    plan does not do.
     """
     lines = [
         TooltipLine(label="Struck for", value=f"{event.unmitigated:,}"),
@@ -44,14 +54,21 @@ def hit_tooltip(event: RecapEvent) -> Tooltip:
     return Tooltip(lines=tuple(lines), note=MITIGATION_IS_NOT_ATTRIBUTED)
 
 
+def caster_name(source_id: int | None, names: dict[int, str]) -> str:
+    """Who cast something, by actor id.
+
+    "an unknown source" when the log named no caster at all, or when the id it
+    named is not one `names` covers.
+    """
+    return "an unknown source" if source_id is None else names.get(source_id, "an unknown source")
+
+
 def heal_tooltip(event: RecapEvent, names: dict[int, str]) -> Tooltip:
     """One heal that landed, and who cast it."""
-    source = event.source_id
-    caster = "an unknown source" if source is None else names.get(source, "an unknown source")
     return Tooltip(
         lines=(
             TooltipLine(label="Healed for", value=f"{event.amount:,}"),
-            TooltipLine(label="From", value=caster),
+            TooltipLine(label="From", value=caster_name(event.source_id, names)),
         ),
         note=NO_OVERHEAL_FIELD,
     )
@@ -59,11 +76,9 @@ def heal_tooltip(event: RecapEvent, names: dict[int, str]) -> Tooltip:
 
 def absorb_tooltip(event: RecapEvent, names: dict[int, str]) -> Tooltip:
     """One shield, and the hit it soaked."""
-    source = event.source_id
-    caster = "an unknown source" if source is None else names.get(source, "an unknown source")
     return Tooltip(
         lines=(
             TooltipLine(label="Soaked", value=f"{event.amount:,}"),
-            TooltipLine(label="Shield from", value=caster),
+            TooltipLine(label="Shield from", value=caster_name(event.source_id, names)),
         )
     )
