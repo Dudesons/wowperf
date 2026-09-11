@@ -77,3 +77,33 @@ grouping before writing it down. A cache is a set of pages, not a set of runs; j
 report and de-duplicate events before counting anything.
 
 **Scope:** anything written into `.claude/skills/`, and any figure quoted in a docstring.
+
+## 2026-09-12 — A harness needs its own spot check
+
+**What happened:** A mutation harness rewrote one module in a loop to prove which test pinned
+which line. CPython validates a cached `.pyc` on source mtime and size, and four of the
+mutations deleted the same guard line at four call sites, so consecutive runs produced files of
+identical size milliseconds apart and each one executed the previous one's compiled module.
+The table it printed attributed three of four call sites to the wrong test. The aggregate —
+zero surviving mutations — was correct throughout, so nothing looked wrong. Two direct
+single-mutation runs exposed it.
+
+**The rule:** A tool built to produce a measurement is not itself evidence. Before believing a
+harness's table, reproduce one row of it by hand; if the hand-run disagrees, the table is
+wrong, not the hand-run. Distrust a per-item breakdown whose aggregate looks healthy — an
+aggregate over a set survives a corrupt partition, and the per-item rows are precisely what it
+corrupts. When the harness rewrites source between runs, disable bytecode caching outright.
+
+**Scope:** mutation batteries, benchmark loops, anything that edits a file and re-executes it.
+
+## 2026-09-12 — Commit before you hand a file to a script
+
+**What happened:** Reverting one mutation with `git checkout <file>` discarded the whole
+uncommitted implementation the mutations were testing, because the work had never been
+committed. It was recoverable only because the edit had been applied by a saved script.
+
+**The rule:** Commit the work before running anything that reverts files, and back up any
+generated file a script will overwrite. `git checkout <path>` and `git restore <path>` destroy
+uncommitted changes silently and are the natural way to undo a scripted edit.
+
+**Scope:** any script that writes to tracked files.
