@@ -2091,9 +2091,9 @@ flags this as a mockup detail — if it is, fix it with `bottom: auto; top: calc
 | §4.3 death event tooltips | 1, 8 |
 | §4.4 pull columns, names, ready ticks, damage axis, true-scale cover | 9, 10, 11 |
 | §4.5 ability tooltips, measured and derived tiers | 12 |
-| §4.5 static tier | **not built** — ruling 5 |
+| §4.5 static tier | **not built** — ruling 5, closed 2026-09-12 in `2026-09-08-icons-and-tooltips-spike.md` §9 |
 | §4.6 icon and name as one object | 4 |
 | §5 what we refuse to state | 8, 12, both with their own test |
 | §6 `buffs` on every damage event | 1, used in 12 |
-| §7 description source | **not built** — ruling 5 |
+| §7 description source | **not built** — ruling 5, closed 2026-09-12 in `2026-09-08-icons-and-tooltips-spike.md` §9 |
 | §8 tests owed | each in the task that owes it |

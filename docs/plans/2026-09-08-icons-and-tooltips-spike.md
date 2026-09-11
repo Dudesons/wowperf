@@ -525,6 +525,35 @@ that cannot bind Blizzard's rights. Nobody but Blizzard can license Blizzard's a
 If the answer to question 1 above is "yes, these get shared", I would not ship either half
 without a human reading the ZAM EULA directly.
 
+### The answer, recorded 2026-09-12
+
+**The static description tier is not built, and that is a decision rather than a deferral.**
+RwlRwlRwlRwl closed it on 2026-09-12. The implementation plan's coverage table records the same
+outcome against §4.5 and §7; the reasoning belongs here, because this is where the question was
+asked.
+
+The grounds are the ones this section already established, and no others:
+
+- **The ZAM route conflicts on three separate clauses** — automated retrieval, reproduction and
+  distribution, and display outside their service — and the endpoint everyone uses is documented
+  nowhere. Three independent conflicts is not an invitation to read carefully; it is a route that
+  was never open.
+- **Blizzard's terms are unclear rather than permissive.** Unclear is the honest word: the Legal
+  FAQ, the website Terms of Use and the Developer API terms disagree with one another, and none of
+  them mentions images at all.
+- **Nothing is broken by its absence.** Every tooltip on the page renders from the measured and
+  derived tiers alone. The static tier would have added borrowed prose beside facts the log
+  already carries; it was never load-bearing.
+
+Question 1 of the three above — whether the report is distributed — is still unanswered, and this
+decision does not wait on it. A tier that is not built distributes nothing. An answer would change
+what may be reconsidered, not what ships.
+
+**Reversing it is cheap, which is why the decision is recorded rather than defended at length.**
+One optional line in the `ability` macro, and a build-time fetch on the rail
+`src/wowperf/adapters/render/icons.py` already runs — the icon half proves the shape works.
+Reopening this means answering the licensing question first, not writing the code.
+
 ---
 
 ## 10. What I could not determine
