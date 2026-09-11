@@ -87,8 +87,9 @@ class Pull(Frozen):
 
         Nothing counts pulls through this. A pull count describes how the log
         cut the route and must keep reporting every pull the log recorded; what
-        this gates is whether a pull may be named to a reader as a pack one
-        group fought and the other did not.
+        this gates is whether a pull may be named to a reader as a pack — one a
+        group chose, and can be held to account for, whether the charge is that
+        the other route skipped it or that it bought almost nothing.
         """
         return bool(self.enemies) and self.duration_seconds >= MIN_PACK_SECONDS
 

@@ -175,3 +175,55 @@ def test_forces_by_pull_sums_every_death_inside_a_pull() -> None:
         EnemyDeath(game_id=300, actor_id=4, timestamp_ms=9_500, forces=4, pull_index=None),
     )
     assert forces_by_pull(deaths) == {0: 12, 1: 4}
+
+
+def test_a_sub_second_pull_is_not_ranked_on_the_forces_it_bought() -> None:
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=500,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+        a_pull(1, 10_000, 40_000),
+    )
+    findings = analyse_trash(a_run_with_pulls(pulls, reached=112), (kill(1, 30, 20_000),))
+    pull_findings = [f for f in findings if f.id.startswith("trash.pull.")]
+    assert all(f.pull_index != 0 for f in pull_findings)
+    assert any(f.pull_index == 1 for f in pull_findings)
+
+
+def test_a_pull_with_no_recorded_enemies_is_not_ranked_on_the_forces_it_bought() -> None:
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=20_000,
+             killed=True, x=10, y=20, enemies=()),
+        a_pull(1, 30_000, 60_000),
+    )
+    findings = analyse_trash(a_run_with_pulls(pulls, reached=112), (kill(1, 30, 40_000),))
+    pull_findings = [f for f in findings if f.id.startswith("trash.pull.")]
+    assert all(f.pull_index != 0 for f in pull_findings)
+    assert any(f.pull_index == 1 for f in pull_findings)
+
+
+def test_a_pack_that_awarded_no_forces_is_still_ranked() -> None:
+    """The pack floor drops segmentation artefacts, not packs that paid nothing.
+
+    A real pack of mobs awarding no enemy forces is exactly what this analyser
+    exists to name, so filtering the ranking on the rate rather than on the
+    pull's shape would suppress its strongest finding.
+    """
+    pulls = (a_pull(0, 0, 20_000), a_pull(1, 30_000, 60_000))
+    findings = analyse_trash(a_run_with_pulls(pulls, reached=112), (kill(1, 30, 40_000),))
+    named = [f for f in findings if f.pull_index == 0 and f.id.startswith("trash.pull.")]
+    assert len(named) == 1
+    assert named[0].title == "Pull 0 bought 0.0 forces per second"
+    assert named[0].detail == "0 forces over 20s."
+
+
+def test_a_pack_one_second_long_is_still_ranked() -> None:
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=1_000,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+        a_pull(1, 10_000, 40_000),
+    )
+    findings = analyse_trash(
+        a_run_with_pulls(pulls, reached=112), (kill(0, 1, 500), kill(1, 30, 20_000))
+    )
+    pull_findings = [f for f in findings if f.id.startswith("trash.pull.")]
+    assert any(f.pull_index == 0 for f in pull_findings)

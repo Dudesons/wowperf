@@ -219,8 +219,12 @@ instead of adjusting for them, because adjusting would invent a number:
   enemies at all. Neither is a pack a route decision could have taken or left. `Pull.is_a_pack`
   is the test and `MIN_PACK_SECONDS` its floor, measured 2026-09-11 against 98 cached pulls where
   six ran under a second, the longest of those 0.525s, and the next shortest ran 6.770s. Neither
-  shape is ever named as skipped, drawn as skipped on the timeline, or counted in the match rate
-  or in the share that decides eligibility. Some figures deliberately do still count every pull
+  shape is ever named as skipped, drawn as skipped on the timeline, counted in the match rate or
+  in the share that decides eligibility, or ranked among the packs that bought fewest enemy
+  forces. That last one carries a reading worth having: a `trash.pull.*` row saying a pull bought
+  no forces at all is now always a real pack that paid nothing, which is this analyser at its
+  strongest rather than an artefact scoring zero because it was never a pack. Some figures
+  deliberately do still count every pull
   the log recorded: the two route lengths, and the "in common", "only ours" and "only theirs"
   evidence beneath them, here and on `compare.route.unaligned`. So one summary can read "2 of 2
   trash packs found a counterpart" above "2 only ours" with neither line wrong, and can say our

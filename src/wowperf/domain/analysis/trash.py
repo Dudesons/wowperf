@@ -62,10 +62,20 @@ def analyse_trash(run: Run, enemy_deaths: tuple[EnemyDeath, ...]) -> list[Findin
         # explain unless trash.overage actually fired.
         pull_forces = forces_by_pull(enemy_deaths)
 
+        # Only a pack has a rate worth naming. A pull Warcraft Logs cut out of
+        # the middle of an engagement, or one with no enemies recorded, awards
+        # no forces over almost no time, so it scores zero and takes the worst
+        # rank ahead of every pack a route actually chose. `Pull.is_a_pack`
+        # names both shapes, and its floor is also what keeps the divisor here
+        # above zero.
+        #
+        # The filter is on the pull's shape and never on the rate: a real pack
+        # that awarded no forces at all is the strongest finding this analyser
+        # has, and dropping every zero would throw it away with the artefacts.
         rates = [
             (pull.index, pull_forces.get(pull.index, 0) / pull.duration_seconds)
             for pull in run.trash_pulls
-            if pull.duration_seconds > 0
+            if pull.is_a_pack
         ]
         for rank, (pull_index, rate) in enumerate(sorted(rates, key=lambda item: item[1])):
             if rank >= MAX_PULLS_REPORTED:
