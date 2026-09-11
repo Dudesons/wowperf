@@ -18,28 +18,6 @@ def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
 
 
-def _our_packs(ours: Run) -> set[int]:
-    """The indices of our trash pulls that a route decision could have left."""
-    return {pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack}
-
-
-def _pack_match(ours: Run, alignment: Alignment) -> tuple[int, int]:
-    """How many of our trash packs found a counterpart, and how many there were.
-
-    Counted over `Pull.is_a_pack` rather than over every trash pull the log
-    recorded. A pull that is not a pack cannot be matched — one with no enemies
-    pairs with nothing at all — so leaving it in the denominator reports a
-    reference that found every real pack as having missed one, by exactly the
-    number of artefacts in our own log.
-
-    `Alignment.matched_share` still measures itself over every trash pull, so
-    which references are eligible is unchanged and slightly conservative. This
-    is the figure the report states to a reader.
-    """
-    packs = _our_packs(ours)
-    return len({match.ours_index for match in alignment.matched} & packs), len(packs)
-
-
 def compare_route(
     ours: Run, theirs: Run, alignment: Alignment, forces: Mapping[int, int]
 ) -> list[Finding]:
@@ -49,7 +27,8 @@ def compare_route(
     by `analysis.trash.forces_by_pull`, so the route and the trash findings
     price the same pull with the same number.
     """
-    matched_packs, pack_count = _pack_match(ours, alignment)
+    matched_packs = len(alignment.matched_packs)
+    pack_count = len(alignment.our_pack_indices)
     in_common = len({match.ours_index for match in alignment.matched})
     findings: list[Finding] = [
         Finding(
@@ -79,12 +58,11 @@ def compare_route(
     ]
 
     if alignment.matched_share < MIN_ALIGNED_SHARE:
-        matched_trash = round(alignment.matched_share * alignment.our_trash_count)
         findings.append(
             Finding(
                 id="compare.route.unaligned",
                 title=(
-                    f"Only {matched_trash} of {alignment.our_trash_count} trash pulls could be "
+                    f"Only {matched_packs} of {pack_count} trash packs could be "
                     "matched to the reference's"
                 ),
                 detail=(
@@ -220,9 +198,9 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
-    pack_count = len(_our_packs(ours))
+    pack_count = len(eligible[0].alignment.our_pack_indices)
     matched_low, matched_high = observed_range(
-        [float(_pack_match(ours, member.alignment)[0]) for member in eligible]
+        [float(len(member.alignment.matched_packs)) for member in eligible]
     )
     return Finding(
         id="compare.route.summary",

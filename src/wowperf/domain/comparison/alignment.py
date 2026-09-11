@@ -25,28 +25,34 @@ class Alignment(Frozen):
     only_ours: tuple[int, ...] = ()
     only_theirs: tuple[int, ...] = ()
     out_of_order: tuple[PullMatch, ...] = ()
-    our_trash_count: int = 0
+    our_pack_indices: tuple[int, ...] = ()
     boss_indices: tuple[int, ...] = ()
 
     @property
-    def matched_share(self) -> float:
-        """Our trash pulls that found a counterpart, as a share of all our trash pulls.
+    def matched_packs(self) -> frozenset[int]:
+        """Our packs that found a counterpart, by our own pull index."""
+        return frozenset(
+            {match.ours_index for match in self.matched} & set(self.our_pack_indices)
+        )
 
-        Bosses are left out: they match by encounter id and would flatter the share.
-        Every non-boss pull counts in the denominator, including one with no
-        recorded enemies and one too short to be a pack, neither of which can ever
-        match. This is the conservative choice and it costs a reference headroom
-        against `MIN_ALIGNED_SHARE`: our own segmentation artefacts push every
-        reference's share down, so a route that lined up with all of our real packs
-        still reads short of whole. What a reader is shown is not this figure —
-        `comparison.route._pack_match` recounts over `Pull.is_a_pack` for that — so
-        the effect is confined to which references are eligible at all. A run with
-        no trash pulls aligned everything it had.
+    @property
+    def matched_share(self) -> float:
+        """Our packs that found a counterpart, as a share of all our packs.
+
+        Measured over `Pull.is_a_pack` rather than over every trash pull the log
+        recorded. Bosses are left out because they match by encounter id and would
+        flatter the share; a pull with no recorded enemies and a pull too short to
+        be a pack are left out because neither can ever match, so counting them
+        would dock a reference for how our own log was cut rather than for how
+        either group ran the dungeon.
+
+        Every reader-facing figure and `MIN_ALIGNED_SHARE` share this denominator,
+        which is what keeps a finding from contradicting the rule that produced it.
+        A run with no packs aligned everything it had.
         """
-        if self.our_trash_count == 0:
+        if not self.our_pack_indices:
             return 1.0
-        matched_trash = {match.ours_index for match in self.matched} - set(self.boss_indices)
-        return len(matched_trash) / self.our_trash_count
+        return len(self.matched_packs) / len(self.our_pack_indices)
 
 
 MIN_ALIGNED_SHARE = 0.5
@@ -177,6 +183,8 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
             pull.index for pull in theirs.pulls if pull.index not in matched_theirs
         ),
         out_of_order=tuple(_reordered(matched)),
-        our_trash_count=len([pull for pull in ours.pulls if not pull.is_boss]),
+        our_pack_indices=tuple(
+            pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack
+        ),
         boss_indices=tuple(pull.index for pull in ours.pulls if pull.is_boss),
     )

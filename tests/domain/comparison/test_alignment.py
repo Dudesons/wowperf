@@ -137,9 +137,10 @@ def test_matched_share_subtracts_matched_boss_pulls_from_the_numerator() -> None
     assert alignment.matched_share == 0.5
 
 
-def test_an_enemy_less_trash_pull_counts_against_the_share_and_lands_in_only_ours() -> None:
-    # One trash pull with enemies (matches), one with none recorded (matches
-    # nothing but still counts in the denominator).
+def test_an_enemy_less_trash_pull_is_outside_the_share_and_lands_in_only_ours() -> None:
+    # One trash pull with enemies (matches), one with none recorded. The second
+    # can match nothing whatever either group did, so it is no part of the
+    # denominator -- but it is still a pull of ours without a counterpart.
     ours = a_run().model_copy(
         update={
             "pulls": (
@@ -161,8 +162,38 @@ def test_an_enemy_less_trash_pull_counts_against_the_share_and_lands_in_only_our
     )
     theirs = a_run((1,))
     alignment = align_pulls(ours, theirs)
-    assert alignment.matched_share == 0.5
+    assert alignment.our_pack_indices == (0,)
+    assert alignment.matched_share == 1.0
     assert 1 in alignment.only_ours
+
+
+def test_a_pull_too_short_to_be_a_pack_is_outside_the_share_too() -> None:
+    # The other half of the same rule. This pull has enemies and could match,
+    # so only its duration keeps it out.
+    ours = a_run().model_copy(
+        update={
+            "pulls": (
+                a_pull(0, (1,)),
+                Pull(
+                    index=1,
+                    pull_id=2,
+                    name="Tail",
+                    encounter_id=0,
+                    start_ms=100_000,
+                    end_ms=100_048,
+                    killed=True,
+                    x=0,
+                    y=0,
+                    enemies=(EnemyNpc(actor_id=9, game_id=2),),
+                ),
+            )
+        }
+    )
+    theirs = a_run((1,), (2,))
+    alignment = align_pulls(ours, theirs)
+
+    assert alignment.our_pack_indices == (0,)
+    assert alignment.matched_share == 1.0
 
 
 def test_pairs_that_break_the_reference_order_are_out_of_order() -> None:

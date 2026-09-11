@@ -43,7 +43,7 @@ def _member(their_level: int, matched_share_numerator: int) -> SpeedMember:
                 PullMatch(ours_index=i, theirs_index=i)
                 for i in range(matched_share_numerator)
             ),
-            our_trash_count=10,
+            our_pack_indices=tuple(range(10)),
         ),
     )
 
