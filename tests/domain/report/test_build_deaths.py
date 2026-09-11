@@ -820,6 +820,44 @@ def test_an_externals_row_carries_a_tooltip_from_the_dying_players_own_aura_tabl
     assert labels["Presses"] == "1"
 
 
+def test_an_externals_tooltip_counts_only_presses_that_could_have_been_for_this_player() -> None:
+    # F5: `state_of` already scopes an external's PRESSED state to a cast on
+    # the dying player or with no target at all -- a cast on someone else was
+    # a use, not a save -- and the tooltip's own press count must agree with
+    # the row's own detail rather than reading every cast on any target. A
+    # healer who shielded a different ally must not have that cast counted as
+    # a press "for" the player who died.
+    dude = a_player()
+    caster = Player(actor_id=2, name="Emberkin", class_name="Druid", spec="Restoration",
+                    item_level=680)
+    bystander = Player(actor_id=3, name="Bríala", class_name="Priest", spec="Discipline",
+                       item_level=670)
+    loaded = LoadedRun(
+        run=a_run(players=(dude, caster, bystander), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 60_000),),
+        casts=(
+            CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                     timestamp_ms=55_000, target_id=1),
+            # Same ability, same caster, earlier in the run, aimed at someone
+            # else entirely -- never a save for the player who died at 60s.
+            CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                     timestamp_ms=20_000, target_id=3),
+        ),
+        auras=(
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=102342, name="Ironbark", total_uptime_ms=8_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=63_000),)),
+            )),
+        ),
+    )
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES,
+                        externals=Externals(entries=(("Druid/Restoration", (IRONBARK,)),)))[0]
+    mates = card.availability[2]
+    assert mates.rows[0].tooltip is not None
+    labels = {line.label: line.value for line in mates.rows[0].tooltip.lines}
+    assert labels["Presses"] == "1"
+
+
 def test_a_consumable_row_carries_no_tooltip() -> None:
     # A consumable category names a cooldown group, not one ability id, so
     # there is no aura to resolve it against.

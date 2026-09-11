@@ -174,6 +174,7 @@ def _ability_tooltip(
     auras: PlayerAuras | None,
     hits: tuple[DamageTakenEvent, ...],
     window: tuple[int, int],
+    on_target: int | None = None,
 ) -> Tooltip | None:
     """What the run measured about one ability, against the dying player's own aura table.
 
@@ -181,6 +182,15 @@ def _ability_tooltip(
     neither the ability's own id nor its name matched an aura it carries --
     the same two reasons a cooldown row's own cover can be empty, since both
     read the same table through `resolve_aura`.
+
+    `on_target` scopes the press count to casts that could have been meant
+    for the dying player: aimed at them, or aimed at no one in particular (an
+    untargeted cast covers an area or the whole group). None on the dying
+    player's own defensive, which needs no such scoping -- every press is
+    already "for" them. Set to the dying player's own id for a teammate's
+    external, matching the rule `analysis/recap.py:state_of` already applies
+    to that row's own PRESSED state: a cast on someone else was a use, not a
+    save, and the tooltip beside that row must not disagree with it.
     """
     if auras is None:
         return None
@@ -189,7 +199,9 @@ def _ability_tooltip(
         return None
     start_ms, end_ms = window
     presses = sum(
-        1 for cast in loaded.casts if cast.actor_id == owner_id and cast.ability_id == ability_id
+        1 for cast in loaded.casts
+        if cast.actor_id == owner_id and cast.ability_id == ability_id
+        and (on_target is None or cast.target_id in (on_target, None))
     )
     return ability_tooltip(
         cooldown_seconds=cooldown_seconds,
@@ -235,7 +247,7 @@ def _availability_tooltips(
         for external in externals.for_spec(mate.class_name, mate.spec):
             tip = _ability_tooltip(
                 external.ability_id, external.name, external.cooldown_seconds, mate.actor_id,
-                loaded, auras, hits, window,
+                loaded, auras, hits, window, on_target=death.actor_id,
             )
             if tip is not None:
                 tooltips[(mate.actor_id, external.ability_id)] = tip
