@@ -431,7 +431,7 @@ def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_
     assert shortest == DAMAGE_HEIGHT / 2
     # This player's own tallest bucket only -- never a group figure, which
     # would still pass this assertion's shape but say something dishonest.
-    assert track.peak_label == "Tallest bar: 2,000 unmitigated damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 2,000 unmitigated damage in 5 seconds."
 
 
 def test_another_players_damage_never_reaches_this_players_track() -> None:
@@ -452,7 +452,7 @@ def test_a_far_larger_hit_on_a_different_actor_never_sets_this_players_scale() -
     assert track is not None
     assert len(track.bars) == 1
     assert track.bars[0].height == DAMAGE_HEIGHT
-    assert track.peak_label == "Tallest bar: 100 unmitigated damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 100 unmitigated damage in 5 seconds."
 
 
 def test_two_hits_inside_one_bucket_are_one_bar_of_their_sum() -> None:
@@ -514,4 +514,4 @@ def test_the_damage_row_states_its_own_scale_and_bucket_width() -> None:
     timeline = a_timeline(loaded)
     assert timeline.damage is not None
     assert timeline.damage.axis_top_label != ""
-    assert "5 seconds" in timeline.damage.bucket_caption
+    assert f"{int(BUCKET_SECONDS)}-second" in timeline.damage.bucket_caption

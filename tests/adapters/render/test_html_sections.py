@@ -730,7 +730,7 @@ def a_drawn_timeline() -> PlayerTimeline:
             baseline_y=76.0,
             label_y=60.0,
             bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
-            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
                                label_y=104.0,
@@ -1075,10 +1075,13 @@ def test_the_damage_row_draws_its_own_axis_line() -> None:
     damage = DamageTrack(
         baseline_y=76.0, label_y=60.0,
         bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
-        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         axis_top_y=44.0,
         axis_top_label="120,000",
-        bucket_caption="One bar is 5 seconds of unmitigated damage taken.",
+        bucket_caption=(
+            "Each bar is a 5-second bucket, and the axis runs from nothing to this "
+            "player's own tallest, never the group's."
+        ),
     )
     timeline = PlayerTimeline(
         section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
@@ -1095,10 +1098,13 @@ def test_the_damage_rows_axis_label_and_bucket_caption_reach_the_page() -> None:
     damage = DamageTrack(
         baseline_y=76.0, label_y=60.0,
         bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
-        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         axis_top_y=44.0,
         axis_top_label="120,000",
-        bucket_caption="One bar is 5 seconds of unmitigated damage taken.",
+        bucket_caption=(
+            "Each bar is a 5-second bucket, and the axis runs from nothing to this "
+            "player's own tallest, never the group's."
+        ),
     )
     timeline = PlayerTimeline(
         section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
@@ -1106,7 +1112,9 @@ def test_the_damage_rows_axis_label_and_bucket_caption_reach_the_page() -> None:
     )
     html = render(a_report(players=(a_player_card(timeline=timeline),)))
     assert "120,000" in html
-    assert "One bar is 5 seconds of unmitigated damage taken." in html
+    # Escaped on comparison: the caption embeds two apostrophes, which
+    # autoescape turns into "&#39;".
+    assert str(escape(damage.bucket_caption)) in html
 
 
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:

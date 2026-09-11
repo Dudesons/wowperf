@@ -237,13 +237,17 @@ def _damage_track(
         label_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT / 2, PRECISION),
         bars=bars,
         peak_label=(
-            f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds"
+            f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds."
         ),
         axis_top_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
         axis_top_label=f"{peak:,}",
+        # Says what `peak_label` does not: that width is every bar's, not just
+        # the tallest one's, and what the axis itself is scaled against. Says
+        # nothing `peak_label` already said -- no repeated "unmitigated
+        # damage" -- since the two sentences sit side by side on the page.
         bucket_caption=(
-            f"One bar is {int(BUCKET_SECONDS)} seconds of unmitigated damage taken. The axis "
-            f"runs from nothing to this player's own tallest bucket, never the group's."
+            f"Each bar is a {int(BUCKET_SECONDS)}-second bucket, and the axis runs from "
+            f"nothing to this player's own tallest, never the group's."
         ),
     )
 
