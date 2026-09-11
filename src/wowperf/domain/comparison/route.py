@@ -216,9 +216,23 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     finding of its own, so without the line below a reader would meet route
     rows denominated in three beside tempo rows denominated in five and have
     nothing to explain the gap.
+
+    How well those routes lined up is stated beside it, as the range of our
+    trash pulls that found a counterpart. Eligibility is a floor rather than a
+    grade, and the pairwise summary states its own match rate: without this
+    line a reader of a sampled run cannot tell whether the skipped-pack rows
+    below rest on routes that matched almost whole or on ones that barely
+    cleared `MIN_ALIGNED_SHARE`.
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
+    trash_count = sum(1 for pull in ours.pulls if not pull.is_boss)
+    matched_low, matched_high = observed_range(
+        [
+            float(round(member.alignment.matched_share * member.alignment.our_trash_count))
+            for member in eligible
+        ]
+    )
     return Finding(
         id="compare.route.summary",
         title=(
@@ -237,6 +251,7 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
         evidence=(
             f"{count_phrase(total, sampled)} references aligned well enough to price a skip",
             f"observed range {low:.0f} to {high:.0f} packs",
+            f"{matched_low:.0f} to {matched_high:.0f} of our {trash_count} trash pulls matched",
         ),
     )
 

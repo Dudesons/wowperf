@@ -647,6 +647,18 @@ def test_an_artefact_pull_does_not_outrank_the_pack_the_sample_really_skipped() 
     assert skipped[0].title == "1 of 3 fast runs skipped the pack at pull 6"
 
 
+def test_the_sampled_summary_states_how_well_the_pulls_matched() -> None:
+    # The pairwise summary states this and the sampled one did not, so a reader
+    # could not tell whether the rows below rested on a whole route lining up or
+    # on the bare minimum.
+    sample = SpeedSample(members=(member_full(), member_missing_pull_7(), member_missing((5, 6))))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+    summary = next(f for f in findings if f.id == "compare.route.summary")
+
+    assert "6 to 8 of our 8 trash pulls matched" in summary.evidence
+
+
 def test_a_reference_artefact_pull_is_not_reported_as_extra_on_the_sampled_path() -> None:
     theirs = a_run(
         (
