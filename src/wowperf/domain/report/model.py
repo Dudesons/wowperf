@@ -253,6 +253,8 @@ class RecapRow(Frozen):
     space, or None on a row that is not a press or whose buff the aura table
     never recorded. Drawn only where the log stated a band."""
     cover_width: float | None = None
+    """How wide that window is, in the same coordinate space as `cover_x`.
+    None exactly when `cover_x` is: the two are always set together."""
 
 
 class CurvePoint(Frozen):

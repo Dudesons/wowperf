@@ -458,6 +458,17 @@ carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls
 intersection rather than a second query. Confirmed by recomputing one aura's uptime over
 fight 36's three boss pulls and matching the boss window the analyzers already derive.
 
+**A buff band's `startTime` coincides with the cast that applied it, closely enough to trust
+`start <= press <= end`.** Measured 2026-09-11 against the cached responses for report
+`6Kx1P9GbNXrcLdHa`: of 1241 band-starts paired to a cast of the same ability within five
+seconds, 842 were exactly equal. The pairing is by ability id across the whole cache rather
+than per actor, because a cached `AuraTable` response carries no actor id — the actor lives in
+the query variables, which are not cached — so this figure is an approximation, and the 41
+later and 358 earlier pairings are as likely to be mispairings as real offsets. Same cache,
+same date: 1189 pairs of bands on one aura touch or overlap, which is why drawing what one
+press covered clips its own band rather than reusing the merged total `clipped_bands` computes
+for `uptime_seconds_in`.
+
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's

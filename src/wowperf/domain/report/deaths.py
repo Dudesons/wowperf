@@ -27,7 +27,7 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
-from wowperf.domain.report.cover import clipped_bands
+from wowperf.domain.report.cover import band_holding
 from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
@@ -105,15 +105,7 @@ def _cover_of(
     aura = next((one for one in auras.on_self if one.ability_id == event.ability_id), None)
     if aura is None:
         return (None, None)
-    windows = clipped_bands(aura, window_start(death), death.timestamp_ms)
-    holding = next(
-        (
-            (start, end)
-            for start, end in windows
-            if start <= event.timestamp_ms <= end
-        ),
-        None,
-    )
+    holding = band_holding(aura, window_start(death), death.timestamp_ms, event.timestamp_ms)
     if holding is None:
         return (None, None)
     start_x = curve_x(holding[0], death)
