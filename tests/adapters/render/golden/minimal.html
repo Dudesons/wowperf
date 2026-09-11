@@ -47,8 +47,11 @@ p { margin: 0 0 10px; }
 .badge-derived { background: var(--badge-derived); }
 .badge-inferred { background: var(--badge-inferred); }
 .detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* `.findings` is a grid and this note is one of its direct children, so
+   without a span it would take one card's own column instead of reading as
+   an introduction to the run of cards after it. */
 .group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
-  border-left: 2px solid var(--line); }
+  border-left: 2px solid var(--line); grid-column: 1 / -1; }
 .evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
 .evidence li::before { content: "· "; }
 .nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
