@@ -44,6 +44,7 @@ from wowperf.domain.report.tooltip import (
     caster_name,
     heal_tooltip,
     hit_tooltip,
+    press_tooltip,
 )
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
@@ -97,33 +98,49 @@ NO_CONSUMABLE_DATA = (
 )
 
 
-def _cover_of(
+def _press_band(
     event: RecapEvent, death: Death, auras: PlayerAuras | None
-) -> tuple[float | None, float | None]:
-    """Where this press's buff was up, in the curve's coordinate space.
+) -> tuple[int, int] | None:
+    """When this press's buff was up, in milliseconds, clipped to the card's window.
 
-    The window containing the press, not the ability's whole history: the row
+    The band containing the press, not the ability's whole history: the row
     describes one cast, and an earlier band of the same buff belongs to an
-    earlier one. Both values are None where no aura table was fetched, where
-    the table recorded no band for this ability, or where the press's own band
-    does not reach into the run-up the card draws.
+    earlier one. None where no aura table was fetched, where the table
+    recorded no band for this ability, or where the press's own band does not
+    reach into the run-up the card draws.
+
+    The single source for both of the row's answers about the press -- the
+    rectangle `_cover_of` places on the health curve, and the figures
+    `press_tooltip` reports beside it -- so the drawing and the panel
+    explaining it can never resolve different bands.
     """
     if auras is None or event.kind != CAST:
-        return (None, None)
+        return None
     aura = resolve_aura(auras, event.ability_id, event.ability_name)
     if aura is None:
+        return None
+    return band_holding(aura, window_start(death), death.timestamp_ms, event.timestamp_ms)
+
+
+def _cover_of(
+    band: tuple[int, int] | None, death: Death
+) -> tuple[float | None, float | None]:
+    """A press's band in the curve's coordinate space, or two Nones where there is none."""
+    if band is None:
         return (None, None)
-    holding = band_holding(aura, window_start(death), death.timestamp_ms, event.timestamp_ms)
-    if holding is None:
-        return (None, None)
-    start_x = curve_x(holding[0], death)
-    return (start_x, round(curve_x(holding[1], death) - start_x, PRECISION))
+    start_x = curve_x(band[0], death)
+    return (start_x, round(curve_x(band[1], death) - start_x, PRECISION))
 
 
 def _recap_row(
     event: RecapEvent, death: Death, names: dict[int, str], marker_id: str, has_curve: bool,
-    auras: PlayerAuras | None,
+    auras: PlayerAuras | None, events: tuple[RecapEvent, ...],
 ) -> RecapRow:
+    """One row of the recap table.
+
+    `events` is every row of the same run-up, which a press reads to sum what
+    arrived while its buff was up. A row that is not a press ignores it.
+    """
     if event.kind == HIT:
         detail = f"{event.amount:,} to health"
         if event.absorbed:
@@ -142,7 +159,10 @@ def _recap_row(
         tooltip = absorb_tooltip(event, names)
     else:
         tooltip = None
-    cover_x, cover_width = _cover_of(event, death, auras)
+    band = _press_band(event, death, auras)
+    if band is not None:
+        tooltip = press_tooltip(band, death.timestamp_ms, events)
+    cover_x, cover_width = _cover_of(band, death)
     return RecapRow(
         seconds_before=f"{(death.timestamp_ms - event.timestamp_ms) / 1000:.1f} s",
         kind=event.kind,
@@ -349,7 +369,8 @@ def build_deaths(
         slug = f"death-{index}"
         auras = loaded.auras_by_actor.get(death.actor_id)
         timeline = tuple(
-            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras)
+            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras,
+                       events)
             for position, event in enumerate(events)
         )
         has_health = any(row.health_percent is not None for row in timeline)

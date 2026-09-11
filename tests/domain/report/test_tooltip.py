@@ -3,7 +3,12 @@
 
 from wowperf.domain.analysis.recap import HEAL, HIT, RecapEvent
 from wowperf.domain.events import DamageTakenEvent
-from wowperf.domain.report.tooltip import ability_tooltip, heal_tooltip, hit_tooltip
+from wowperf.domain.report.tooltip import (
+    ability_tooltip,
+    heal_tooltip,
+    hit_tooltip,
+    press_tooltip,
+)
 
 
 def test_a_hit_reports_its_four_figures_and_attributes_none_of_them() -> None:
@@ -186,3 +191,94 @@ def test_the_mitigation_rate_counts_what_was_mitigated_not_what_a_shield_absorbe
         hits=(hit,), buff_id=48792, presses=1,
     )
     assert tip.lines[-1].value == "15% / --"
+
+
+def a_recap_hit(
+    timestamp_ms: int, swung: int, landed: int, absorbed: int = 0, mitigated: int = 0,
+) -> RecapEvent:
+    return RecapEvent(
+        kind=HIT, timestamp_ms=timestamp_ms, ability_name="Frigid Roar", ability_id=100,
+        amount=landed, absorbed=absorbed, unmitigated=swung, mitigated=mitigated,
+    )
+
+
+def test_a_press_reports_the_cover_its_own_band_gave_and_when_that_band_ended() -> None:
+    # The band is the aura table's own account of this one press, clipped to
+    # the ten seconds the card draws. Both figures are subtractions on it.
+    tip = press_tooltip(band=(51_000, 55_200), death_ms=58_000, events=())
+    labels = {line.label: line.value for line in tip.lines}
+    assert labels["Cover"] == "4.2 s"
+    assert labels["Ran out"] == "2.8 s before the death"
+
+
+def test_a_press_still_up_at_the_death_says_so_rather_than_naming_an_expiry() -> None:
+    # The band is clipped to the death, so a buff that outlived the player
+    # would otherwise report the death's own moment as its expiry -- an
+    # expiry the log never recorded.
+    tip = press_tooltip(band=(51_000, 60_000), death_ms=60_000, events=())
+    labels = {line.label: line.value for line in tip.lines}
+    assert labels["Ran out"] == "still up at the death"
+
+
+def test_only_the_hits_inside_the_band_are_summed() -> None:
+    # The one before and the one after are each larger than the one inside, so
+    # a sum that swept the whole run-up could not report the inside figure by
+    # coincidence.
+    events = (
+        a_recap_hit(50_000, swung=9_000, landed=8_000),
+        a_recap_hit(53_000, swung=1_000, landed=400),
+        a_recap_hit(57_000, swung=7_000, landed=6_000),
+    )
+    tip = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=events)
+    labels = {line.label: line.value for line in tip.lines}
+    assert labels["Arrived while it was up"] == "1,000"
+    assert labels["Reached health"] == "400"
+
+
+def test_a_hit_on_either_edge_of_the_band_counts_as_inside_it() -> None:
+    # The band's own endpoints are moments the aura table says the buff was
+    # up, so a half-open window would drop a hit the drawing shows covered.
+    events = (
+        a_recap_hit(51_000, swung=100, landed=100),
+        a_recap_hit(55_000, swung=20, landed=20),
+    )
+    tip = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=events)
+    labels = {line.label: line.value for line in tip.lines}
+    assert labels["Arrived while it was up"] == "120"
+
+
+def test_only_a_press_that_saw_a_shield_soak_something_reports_an_absorb() -> None:
+    soaked = (a_recap_hit(53_000, swung=1_000, landed=400, absorbed=600),)
+    unsoaked = (a_recap_hit(53_000, swung=1_000, landed=1_000),)
+    with_shield = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=soaked)
+    without = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=unsoaked)
+    assert {line.label: line.value for line in with_shield.lines}["Absorbed"] == "600"
+    assert not any(line.label == "Absorbed" for line in without.lines)
+
+
+def test_a_press_tooltip_prints_no_mitigation_figure() -> None:
+    # Spec 5. A mitigation sum over one press's own window is exactly the
+    # "this press prevented X" reading the design refuses, and unlike the
+    # ability tooltip there is no inside/outside comparison to give it
+    # meaning. 4,242 is unmistakable in any line it leaked into.
+    events = (a_recap_hit(53_000, swung=1_000, landed=400, mitigated=4_242),)
+    tip = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=events)
+    # Anchored on a line that must be there, so the two absences below cannot
+    # pass by the panel simply being empty.
+    assert {line.label: line.value for line in tip.lines}["Arrived while it was up"] == "1,000"
+    assert not any("4,242" in line.value or "4242" in line.value for line in tip.lines)
+    assert not any("mitigat" in line.label.lower() for line in tip.lines)
+
+
+def test_a_press_tooltip_counts_only_hits_and_not_the_heals_beside_them() -> None:
+    # `recap_timeline` hands over every row of the run-up. A heal carries an
+    # `amount` too, and summing it into "reached health" would invert the
+    # figure's sign as well as its meaning.
+    events = (
+        a_recap_hit(53_000, swung=1_000, landed=400),
+        RecapEvent(kind=HEAL, timestamp_ms=53_500, ability_name="Rejuvenation", ability_id=9,
+                   amount=5_000, source_id=3),
+    )
+    tip = press_tooltip(band=(51_000, 55_000), death_ms=58_000, events=events)
+    labels = {line.label: line.value for line in tip.lines}
+    assert labels["Reached health"] == "400"

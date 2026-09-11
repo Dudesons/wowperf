@@ -1,7 +1,7 @@
 # ABOUTME: What one event of a death is worth saying, as labelled lines the page prints.
 # ABOUTME: Reports the fields of a single event and apportions none of them between causes.
 
-from wowperf.domain.analysis.recap import RecapEvent
+from wowperf.domain.analysis.recap import HIT, RecapEvent
 from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.report.frame import badge_for
@@ -185,3 +185,56 @@ def ability_tooltip(
         lines=tuple(lines),
         note=f"{MITIGATION_IS_NOT_ATTRIBUTED_OVER_A_RUN} {RATE_GAP_IS_SUGGESTIVE}",
     )
+
+
+def press_tooltip(
+    band: tuple[int, int], death_ms: int, events: tuple[RecapEvent, ...]
+) -> Tooltip:
+    """What one press of a self-buff covered, and what arrived inside that cover.
+
+    `band` is the one band of the press's own aura that holds the cast,
+    already clipped to the run-up the card draws -- the same band, from the
+    same call, that the card draws as a rectangle over its health curve. Every
+    figure here is therefore scoped to what that rectangle claims, and the two
+    cannot disagree: a press whose buff outlived the card reports only the
+    part the card saw, never the buff's full length, and says the buff was
+    still up rather than naming the death's own moment as an expiry.
+
+    Hits are placed inside the cover by timestamp rather than by their own
+    `buff_ids`, which is the opposite of `_inside`'s preference and is
+    deliberate. `_inside` serves `ability_tooltip`, whose windows are merged
+    across a whole run and so are coarser than the truth; one press's band is
+    exactly the drawing beside it, and matching the drawing is what this panel
+    is for.
+
+    No mitigation figure appears, so no attribution note is needed. Summing
+    `mitigated` over one press's own window is precisely the "this press
+    prevented that much" reading the design's section 5 refuses, and there is
+    no inside-versus-outside comparison here to give such a sum meaning.
+    """
+    start_ms, end_ms = band
+    inside = tuple(
+        event for event in events
+        if event.kind == HIT and start_ms <= event.timestamp_ms <= end_ms
+    )
+    lines = [
+        TooltipLine(label="Cover", value=f"{(end_ms - start_ms) / 1000:.1f} s"),
+        TooltipLine(
+            label="Ran out",
+            value="still up at the death" if end_ms >= death_ms
+            else f"{(death_ms - end_ms) / 1000:.1f} s before the death",
+        ),
+        TooltipLine(
+            label="Arrived while it was up",
+            value=f"{sum(event.unmitigated for event in inside):,}",
+        ),
+    ]
+    absorbed = sum(event.absorbed for event in inside)
+    if absorbed:
+        lines.append(TooltipLine(label="Absorbed", value=f"{absorbed:,}"))
+    lines.append(
+        TooltipLine(
+            label="Reached health", value=f"{sum(event.amount for event in inside):,}"
+        )
+    )
+    return Tooltip(lines=tuple(lines))

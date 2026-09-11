@@ -918,3 +918,61 @@ def test_a_cast_row_carries_no_tooltip() -> None:
     card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
     row = next(row for row in card.timeline if row.kind == "cast")
     assert row.tooltip is None
+
+
+def test_a_press_row_carries_a_tooltip_measuring_its_own_cover_window() -> None:
+    # Spec 4.3's fifth row. The band runs 53s to 59s against a death at 60s,
+    # so both figures are subtractions on the same band the row draws.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.tooltip is not None
+    labels = {line.label: line.value for line in row.tooltip.lines}
+    assert labels["Cover"] == "6.0 s"
+    assert labels["Ran out"] == "1.0 s before the death"
+
+
+def test_a_press_tooltip_counts_only_the_damage_that_arrived_inside_its_band() -> None:
+    # 51s falls in the run-up but before the band opens at 53s, and it is the
+    # larger of the two, so a tooltip summing the whole run-up could not
+    # report the inside figure by coincidence.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band().model_copy(update={
+        "damage_taken": (
+            a_hit(1, 51_000, "Snowdrift", 82_410),
+            a_hit(1, 54_000, "Frigid Roar", 9_001),
+        ),
+    })
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.tooltip is not None
+    labels = {line.label: line.value for line in row.tooltip.lines}
+    assert labels["Arrived while it was up"] == "9,001"
+    assert labels["Reached health"] == "9,001"
+
+
+def test_a_press_with_no_band_in_the_log_carries_no_tooltip_either() -> None:
+    # The panel explains the rectangle beside it, so a press that draws no
+    # rectangle must offer no panel. Anchored on the hit rows, which do carry
+    # tooltips in the same card, so this cannot pass by tooltips being off.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras().model_copy(update={
+        "damage_taken": (a_hit(1, 54_000, "Frigid Roar", 9_001),),
+    })
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    assert all(row.tooltip is None for row in card.timeline if row.kind == "cast")
+    assert all(row.tooltip is not None for row in card.timeline if row.kind == "hit")
+
+
+def test_an_ordinary_cast_that_leaves_no_self_buff_carries_no_tooltip() -> None:
+    # `recap_timeline` emits a cast row for every spell the dying player cast,
+    # not only defensives. A damaging cast resolves no aura, so it draws no
+    # cover window and says nothing about one.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band().model_copy(update={
+        "casts": owns_icebound(55_000) + (
+            CastEvent(actor_id=1, ability_id=116, ability_name="Frostbolt",
+                      timestamp_ms=56_000, pull_index=0),
+        ),
+    })
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    rows = {row.ability: row for row in card.timeline if row.kind == "cast"}
+    assert rows["Frostbolt"].tooltip is None
+    assert rows["Icebound Fortitude"].tooltip is not None
