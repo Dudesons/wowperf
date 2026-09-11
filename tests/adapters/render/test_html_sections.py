@@ -519,9 +519,16 @@ def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> N
     card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar", health_curve=curve)
     html = render(a_report(deaths=(card,)))
-    assert "stroke-dasharray" in html
-    assert 'class="hp-reading"' in html
-    assert 'r="3.5"' in html
+    # The line is dashed: stroke-linejoin followed by stroke-dasharray appears
+    # only in the .hp-line rule after this change.
+    assert "stroke-linejoin: round; stroke-dasharray: 5 3;" in html
+    # The reading is ringed: the rule now has both fill and stroke, a
+    # combination that did not exist before.
+    assert "fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5;" in html
+    # The reading's radius is increased so the ring stroke is visible: assert
+    # the whole opening tag rather than the bare radius, which could appear
+    # on any circle.
+    assert '<circle class="hp-reading" cx="40.0" cy="14.0" r="3.5">' in html
 
 
 def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> None:
