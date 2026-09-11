@@ -121,9 +121,14 @@ def _gap_findings(
         findings.append(
             Finding(
                 id=f"compare.uptime.self.{rank}",
+                # Presence, never agency. A proc is not something a player
+                # keeps up, and this family cannot tell a proc from a button:
+                # the aura table reports that a buff was present, not who or
+                # what put it there. So the aura is the subject and the two
+                # players are only whose boss time it is measured over.
                 title=(
-                    f"{their_name} kept {name} up for {their_fraction:.0%} of boss time, "
-                    f"{our_name} {our_fraction:.0%}"
+                    f"{name} was up for {their_fraction:.0%} of {their_name}'s boss time, "
+                    f"{our_fraction:.0%} of {our_name}'s"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "
@@ -320,9 +325,10 @@ def _gap_findings_sample(
         findings.append(
             Finding(
                 id=f"compare.uptime.self.{rank}",
+                # Presence, never agency -- see the pairwise branch above.
                 title=(
-                    f"{len(carried)} top parses kept {name} up a median {their_median:.0%} "
-                    f"of boss time; {our_name} {our_fraction:.0%}"
+                    f"{name} was up a median {their_median:.0%} of boss time across "
+                    f"{len(carried)} top parses; {our_fraction:.0%} for {our_name}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "

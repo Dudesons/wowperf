@@ -333,7 +333,7 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
-    assert "4 top parses kept" in gap.title and "a median" in gap.title
+    assert "across 4 top parses" in gap.title and "a median" in gap.title
     assert gap.confidence is Confidence.DERIVED
     assert gap.seconds_lost is None
     # A median title states no count for a digit-free narrative to echo.
@@ -516,3 +516,36 @@ def test_an_uptime_gap_finding_names_the_aura_across_the_sample() -> None:
     assert gap.ability_id == 391477
     assert gap.ability_name == "Coagulopathy"
     assert gap.ability_name in gap.title
+
+
+def test_no_uptime_title_says_a_player_kept_an_aura_up() -> None:
+    """The family measures presence, and presence is all it may claim.
+
+    A proc is not something a player keeps up: an execute-window proc and a
+    proc-based hand buff both appear here, and "kept it up" credits the
+    player with an agency the buff never gave them. The measurement is sound;
+    the verb was the defect. Both wordings are checked, because the pairwise
+    branch and the aggregate branch build their titles separately.
+    """
+    below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
+    aggregate = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    pairwise = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
+
+    # Anchored on the row each branch must produce, so the absences below
+    # cannot pass by the branch simply emitting nothing.
+    assert any(f.id == "compare.uptime.self.0" for f in aggregate)
+    assert any(f.id == "compare.uptime.self.0" for f in pairwise)
+    for finding in aggregate + pairwise:
+        assert "kept" not in finding.title, finding.title
+
+
+def test_an_uptime_title_names_the_aura_before_it_names_anyone() -> None:
+    """What was up is the subject; whose time it was up over is the measure.
+
+    The old wording opened on a player and made the aura the object of a verb
+    they did not perform.
+    """
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert gap.title.startswith(f"{gap.ability_name} was up")
