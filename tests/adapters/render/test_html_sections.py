@@ -45,6 +45,8 @@ from wowperf.domain.report.model import (
     Timeline,
     TimelineBlock,
     TimelineTrack,
+    Tooltip,
+    TooltipLine,
 )
 from wowperf.domain.report.timeline import build_timeline
 
@@ -1197,3 +1199,29 @@ def test_an_unresolved_icon_still_renders_the_ability_as_one_element() -> None:
     assert '<span class="ability">' in html
     assert '<span class="ability-name">Frigid Roar</span>' in html
     assert 'class="icon i-7"' not in html
+
+
+def test_an_ability_with_a_tooltip_is_a_focusable_span() -> None:
+    # Spec 4.6: the icon and name become "a single hoverable, focusable unit".
+    # A bare <span> takes no keyboard focus at all, so the tooltip's
+    # `:focus-within` half can only ever fire once the span carries a tabindex.
+    tooltip = Tooltip(lines=(TooltipLine(label="Struck for", value="1"),))
+    card = DeathCard(
+        player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+        killing_blow="Frigid Roar",
+        timeline=(RecapRow(seconds_before="5.0 s", kind="hit", ability="Snowdrift",
+                           tooltip=tooltip),),
+    )
+    html = render(a_report(deaths=(card,)))
+    assert '<span class="ability" tabindex="0">' in html
+
+
+def test_an_ability_with_no_tooltip_is_not_a_tab_stop() -> None:
+    # The real report embeds dozens of ability icons. Making every one of them
+    # a tab stop would wreck keyboard navigation through the page to buy
+    # nothing: an ability with no tooltip has no panel for focus to reveal.
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar")
+    html = render(a_report(deaths=(card,)))
+    assert '<span class="ability">' in html
+    assert 'class="ability" tabindex' not in html

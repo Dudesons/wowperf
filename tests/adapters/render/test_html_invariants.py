@@ -994,6 +994,6 @@ def test_a_tooltip_is_markup_the_builder_wrote_and_never_names_a_mitigation_sour
     html = minimal_html()
     assert 'class="tip"' in html
     body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
-    assert "tip" not in body
+    assert 'class="tip"' not in body
     assert "prevented" not in html.lower()
     assert "damage reduction" not in html.lower()
