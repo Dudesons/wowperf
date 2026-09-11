@@ -929,3 +929,17 @@ def test_running_prose_keeps_a_reading_measure_while_dense_content_takes_the_wid
     assert "main { max-width: 760px" not in html
     assert "max-width: 68ch" in html
     assert "repeat(auto-fit, minmax(330px, 1fr))" in html
+
+
+def test_no_empty_findings_wrappers_render() -> None:
+    # The .findings grid renders nothing when empty. Empty wrappers are dead
+    # markup in the golden file that prove unconditional wrappers exist where
+    # they should be guarded. This test covers both unindented and indented
+    # forms: prose sections use 0 indent, per-player sections use 2.
+    html = rich_html()
+    # No wrapper should consist of only the opening tag, optional whitespace, and closing tag.
+    # Unindented form: <div class="findings">\n</div> or similar.
+    assert "<div class=\"findings\">\n</div>" not in html
+    # Indented form (inside cards, inside per-player sections): spaces before the div,
+    # then opening, whitespace, closing.
+    assert re.search(r"  <div class=\"findings\">\n  </div>", html) is None

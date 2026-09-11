@@ -22,19 +22,23 @@
   </div>
   <p class="stats">{{ player.stats_line }}</p>
   {{ player_timeline(player.timeline) }}
+  {% if player.damage_rows %}
   <div class="findings">
   {% for row in player.damage_rows %}
   {{ ledger_row(row) }}
   {% endfor %}
   </div>
+  {% endif %}
   {% if player.spell_and_talent.state.value == "withheld" %}
   <p class="withheld">{{ player.spell_and_talent.reason }}</p>
   {% endif %}
+  {% if player.spell_and_talent_rows %}
   <div class="findings">
   {% for row in player.spell_and_talent_rows %}
   {{ ledger_row(row) }}
   {% endfor %}
   </div>
+  {% endif %}
 </div>
 {% endfor %}
 

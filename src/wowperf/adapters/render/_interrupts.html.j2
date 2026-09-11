@@ -4,13 +4,14 @@
 <section class="panel" data-tab-panel="main" id="tab-interrupts">
 
 <h2 id="interrupts">Interrupts</h2>
-{% if not report.interrupts %}
-<p class="sub">Nothing to report.</p>
-{% endif %}
+{% if report.interrupts %}
 <div class="findings">
 {% for row in report.interrupts %}
 {{ ledger_row(row) }}
 {% endfor %}
 </div>
+{% else %}
+<p class="sub">Nothing to report.</p>
+{% endif %}
 
 </section>
