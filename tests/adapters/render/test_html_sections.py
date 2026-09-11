@@ -506,6 +506,24 @@ def test_the_curve_prints_the_legend_and_both_badges_the_builder_wrote() -> None
     assert "measured" in deaths and "derived" in deaths
 
 
+def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> None:
+    # The line is derived and the dots are measured, and the badges beneath say
+    # so. Saying it in shape as well as in words means a reader who never reads
+    # the legend still sees two different claims.
+    curve = HealthCurve(
+        width=680.0, height=148.0, plot_x0=40.0, plot_x1=648.0, label_x=34.0,
+        tick_label_y=136.0,
+        points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=648.0, y=116.0)),
+        readings=(CurveReading(x=40.0, y=14.0, percent=100),),
+    )
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", health_curve=curve)
+    html = render(a_report(deaths=(card,)))
+    assert "stroke-dasharray" in html
+    assert 'class="hp-reading"' in html
+    assert 'r="3.5"' in html
+
+
 def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> None:
     curve = a_curve().model_copy(
         update={"readings": (), "reading_badge": None, "reading_legend": ""}

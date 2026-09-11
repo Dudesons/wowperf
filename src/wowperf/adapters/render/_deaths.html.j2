@@ -17,7 +17,7 @@
     {{ point.x }},{{ point.y }}
     {%- endfor %}"></polyline>
   {% for reading in curve.readings %}
-  <circle class="hp-reading" cx="{{ reading.x }}" cy="{{ reading.y }}" r="2.5">
+  <circle class="hp-reading" cx="{{ reading.x }}" cy="{{ reading.y }}" r="3.5">
     <title>{{ reading.percent }}% stated by the log</title>
   </circle>
   {% endfor %}

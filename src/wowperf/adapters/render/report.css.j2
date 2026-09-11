@@ -92,11 +92,14 @@ p { margin: 0 0 10px; }
 .hp-axis { fill: var(--ink-faint); font-size: 11px; }
 .hp-health { text-anchor: end; dominant-baseline: middle; }
 .hp-time { text-anchor: middle; }
-/* The line takes the derived tint and the dots the measured one, so a mark's colour
-   and the badge beneath it name the same claim. */
+/* The line takes the derived tint and a dashed stroke, because it is
+   arithmetic between readings rather than anything the log stated. The
+   readings take the measured tint and a ring against the page colour, so a
+   stated figure reads as a mark on the drawing rather than as a kink in the
+   line it happens to sit on. */
 .hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
-  stroke-linejoin: round; }
-.hp-reading { fill: var(--badge-measured); }
+  stroke-linejoin: round; stroke-dasharray: 5 3; }
+.hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }
 .avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
