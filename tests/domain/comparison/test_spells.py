@@ -498,7 +498,8 @@ def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
 # anything cast some name under two ids. Both figures are recorded in
 # `.claude/skills/wcl-api/SKILL.md`. That is why the tests below exist and why
 # none of them merges casts: for some of those pairs one press emits both ids,
-# so summing the counts would report two presses where there was one.
+# so summing the counts would report two presses where there was one, and
+# nothing in the log says which pairs those are.
 
 
 def test_one_sentence_is_printed_once_however_many_ids_produced_it() -> None:

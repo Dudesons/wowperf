@@ -478,31 +478,35 @@ run.
 
 ## A name does not identify an ability, and an id does not identify a button
 
-Measured 2026-09-11 against the cached responses for the reports under `cache/`, offline and at
-no quota cost.
+Measured 2026-09-11 against the cached responses under `cache/`, offline and at no quota cost.
+Method: every cached page of a report joined, cast events de-duplicated on
+`(sourceID, abilityGameID, timestamp)` because overlapping pages repeat them.
 
 Of **1755 ability names** in `masterData.abilities`, **475 own more than one `gameID`**. Of the
-**73 report-and-actor pairs that cast anything at all** (66 distinct actor ids, some appearing in
-more than one cached report), **22 cast some name under two ids**, for **29 such
-name collisions**.
+**73 report-and-actor pairs that cast anything** (66 distinct actor ids, some recurring across
+cached reports), **22 cast some name under two ids** — **28 such collisions** once every page of
+a report is joined.
 
-Those collisions are of two kinds, and the cast timestamps separate them cleanly rather than on
-a continuum:
+The tempting question is whether the two ids are one button logged twice or two real abilities,
+and **the log does not answer it.** Applying the most obvious test — do casts of the two ids fall
+within a second of each other — to all 28:
 
-| Kind | Example | Casts | Paired within 1s |
-| --- | --- | --- | --- |
-| One press emits both ids | Alter Time `342245`/`342247` | 1 / 1 | 1 of 1 |
-| | Greater Invisibility `110959`/`110960` | 3 / 3 | 3 of 3 |
-| | Fingers of Gul'dan `474457`/`474462` | 16 / 4 | 16 of 16 |
-| Two real abilities | Demonic Gateway `1214675`/`1214740` | 4 / 4 | 0 of 4 |
-| | Overwhelming Onslaught `1243569`/`1297792` | 6 / 6 | 0 of 6 |
+| Casts of the two ids pair within 1s | Collisions |
+| --- | --- |
+| Never | 18 |
+| Always | 5 |
+| Sometimes | 5 |
 
-Nothing in the schema states which kind a pair is, and the pairing test above is a heuristic on
-one set of reports, not a rule the API documents.
+Five collisions sit in neither camp, and **Alter Time is one of them**: `342245`/`342247`, two
+presses by one actor, one pair 159 ms apart and the other 4323 ms apart. Greater Invisibility
+`110959`/`110960` pairs 3 of 3; Demonic Gateway `1214675`/`1214740` and Overwhelming Onslaught
+`1243569`/`1297792` pair 0 of 4 and 0 of 6. The exemplar the reporting code was written for is
+the ambiguous case, not a clean one.
 
-**So never sum casts across ids that share a name.** For the first kind that reports two presses
-where the player made one. Counting each id separately is right, because one press does emit one
-cast of that id. What needs handling instead is a report printing the same sentence twice, which
+**So never sum casts across ids that share a name.** Where one press does emit both ids, summing
+reports two presses where the player made one, and no test tells you when that is happening.
+Counting each id separately is right, because one press does emit one cast of that id. What needs
+handling instead is a report printing the same sentence twice, which
 `src/wowperf/domain/comparison/spells.py` does by collapsing on the rendered sentence rather than
 on the name.
 
