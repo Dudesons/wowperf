@@ -77,8 +77,6 @@ AXIS_TOP = 22.0
 BAND_Y = 28.0
 """The pull band's top edge: a thin strip the rest of the drawing hangs under."""
 
-BAND_HEIGHT = 10.0
-
 PULL_LABEL_GAP = 3.0
 """Clear space between a boss pull's name and the column top it sits above."""
 
@@ -374,7 +372,6 @@ def build_player_timeline(
         height=height,
         pulls=_pull_bands(run, scale, origin),
         band_y=BAND_Y,
-        band_height=BAND_HEIGHT,
         column_height=height - BAND_Y - BOTTOM_MARGIN,
         pull_label_y=BAND_Y - PULL_LABEL_GAP,
         damage=damage,

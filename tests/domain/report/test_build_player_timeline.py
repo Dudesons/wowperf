@@ -151,12 +151,13 @@ def test_a_boss_pull_takes_its_name_and_a_trash_pull_takes_its_index() -> None:
 
 
 def test_a_pull_is_drawn_as_a_column_the_height_of_the_chart() -> None:
-    # A band above the tracks floats over them. A column runs behind them, so a
-    # press visibly lands inside a pull.
+    # A press must land visibly inside the pull it happened during, so the
+    # column runs from the band's own top down to where the axis ticks end,
+    # not some independent fixed height.
     run = a_run(pulls=(a_pull(0, 0, 60_000, encounter_id=2571),))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
     timeline = a_timeline(loaded)
-    assert timeline.column_height > timeline.band_height
+    assert timeline.column_height == timeline.tick_y2 - timeline.band_y
     assert timeline.band_y + timeline.column_height <= timeline.height
 
 

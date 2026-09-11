@@ -726,7 +726,6 @@ def a_drawn_timeline() -> PlayerTimeline:
         pulls=(TimelineBlock(label="Pack 0", x=130.0, width=100.0, is_boss=False,
                              kind="band", css_class="pull-band"),),
         band_y=28.0,
-        band_height=10.0,
         damage=DamageTrack(
             baseline_y=76.0,
             label_y=60.0,
@@ -833,7 +832,6 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
                           kind="band", css_class="pull-band block-boss"),
         ),
         band_y=28.0,
-        band_height=10.0,
         column_height=84.0,
         pull_label_y=25.0,
     )

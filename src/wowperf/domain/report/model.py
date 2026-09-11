@@ -200,7 +200,6 @@ class PlayerTimeline(Frozen):
     height: float = 0.0
     pulls: tuple[TimelineBlock, ...] = ()
     band_y: float = 0.0
-    band_height: float = 0.0
     column_height: float = 0.0
     pull_label_y: float = 0.0
     damage: DamageTrack | None = None
