@@ -1,13 +1,13 @@
 # Audit of the shipped tool, and a roadmap for what comes next
 
-Date: 2026-09-06. Status: **Phases G, H and I are built, and so is the first half of Phase J.**
+Date: 2026-09-06. Status: **Phases G, H, I and J are built.**
 Each built phase has its own design and plan under `docs/plans/`; they shipped on 2026-09-06,
 2026-09-06, 2026-09-08 and 2026-09-10. Phase J's first four bullets — the sub-tab, the cooldown
 timeline, the damage-taken track and the gathered per-player facts — are built and are specified
 in `2026-09-10-per-player-page-design.md`. Its fifth, a top-parse comparison for every player
-rather than the subject, is split out as J2: designed in
-`2026-09-10-per-player-parse-comparison-design.md`, not yet built. The §5 decisions the built
-phases needed were taken as each was designed. **Decision 5 is closed** by that design — parse
+rather than the subject, was split out as J2, designed in
+`2026-09-10-per-player-parse-comparison-design.md` and built on 2026-09-11. The §5 decisions
+the built phases needed were taken as each was designed. **Decision 5 is closed** by that design — parse
 references are drawn for the subject by default and for anyone else the reader names, chosen at
 runtime rather than at design time. The API fact behind it is settled too: `playerscore` returns
 rows for tank and healer specialisations, measured 2026-09-10 and recorded in
