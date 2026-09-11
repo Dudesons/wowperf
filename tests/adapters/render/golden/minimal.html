@@ -20,7 +20,14 @@
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
   font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-main { max-width: 760px; margin: 0 auto; }
+/* The page takes the screen; running prose does not. A paragraph read at the
+   width of a monitor is harder to follow than one read in a narrow column, so
+   the measure moves off the page and onto the text, and the dense content --
+   cards, tables, drawings -- keeps the whole width. */
+main { max-width: 1400px; margin: 0 auto; }
+.detail, .sub, .legend, .nests, .group-note, .narrative, .withheld { max-width: 68ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px; align-items: start; }
 a { color: var(--ours); }
 h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
 h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
@@ -147,6 +154,7 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 <h2 id="ledger">Where the time went</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-time.residual">
   <div class="row-head">
     <h3>Time outside pulls</h3>
@@ -155,6 +163,7 @@ never be summed.</p>
   <p class="detail">Travel, waiting and run-backs.</p>
 </div>
 
+</div>
 
 <h2 id="losses">Biggest losses</h2>
 <p class="sub">Each line opens its card. Ranked, not additive.</p>
@@ -179,6 +188,7 @@ never be summed.</p>
 <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-time.gap.0">
   <div class="row-head">
     <h3>A 41 second gap after pull 0</h3>
@@ -189,6 +199,7 @@ never be summed.</p>
   <ul class="evidence"><li>next pull begins at Pack 1</li></ul>
 </div>
 
+</div>
 
 </section>
 
@@ -240,6 +251,7 @@ never be summed.</p>
 
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-defensives.unused.0">
   <div class="row-head">
     <h3>Emberkin died with Ice Block available</h3>
@@ -248,12 +260,14 @@ never be summed.</p>
   <p class="detail">Cast earlier in the run, and its cooldown had elapsed by the killing blow.</p>
 </div>
 
+</div>
 
 </section>
 
 <section class="panel" data-tab-panel="main" id="tab-interrupts">
 
 <h2 id="interrupts">Interrupts</h2>
+<div class="findings">
 <div class="card" id="finding-interrupts.summary">
   <div class="row-head">
     <h3>Wipsdk let Death&#39;s Advance &amp; Ice Block go uninterrupted</h3>
@@ -262,6 +276,7 @@ never be summed.</p>
   <p class="detail">Grouped by spell.</p>
 </div>
 
+</div>
 
 </section>
 
@@ -292,6 +307,9 @@ never be summed.</p>
 <p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight.</p>
 <p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars and the press marks. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming.</p>
 
+  <div class="findings">
+  </div>
+  <div class="findings">
   <div class="card" id="finding-compare.talents.emberkin-0">
   <div class="row-head">
     <h3>Emberkin&#39;s talents differ from the top parse&#39;s in two nodes</h3>
@@ -308,6 +326,7 @@ never be summed.</p>
   <p class="detail">The reference cast it twice on the same pull.</p>
 </div>
 
+  </div>
 </div>
 <div class="card" data-tab-panel="players" id="player-stonewake-1">
   <div class="player-head">
@@ -318,6 +337,9 @@ never be summed.</p>
   <p class="stats">0 casts in 2:20 of pulls · 0 deaths · 0 interrupts</p>
   <p class="withheld">This player cast none of the cooldowns tracked for their specialisation and took no damage the log recorded, so there is nothing to draw.</p>
 
+  <div class="findings">
+  </div>
+  <div class="findings">
   <div class="card" id="finding-compare.talents.stonewake-1">
   <div class="row-head">
     <h3>Stonewake&#39;s talents differ from the top parse&#39;s in one node</h3>
@@ -334,6 +356,7 @@ never be summed.</p>
   <p class="detail">The reference cast it once on the same pull.</p>
 </div>
 
+  </div>
 </div>
 <div class="card" data-tab-panel="players" id="player-briala-2">
   <div class="player-head">
@@ -344,7 +367,11 @@ never be summed.</p>
   <p class="stats">0 casts in 2:20 of pulls · 0 deaths · 0 interrupts</p>
   <p class="withheld">This player cast none of the cooldowns tracked for their specialisation and took no damage the log recorded, so there is nothing to draw.</p>
 
+  <div class="findings">
+  </div>
   <p class="withheld">No parse comparison was requested for this player. Name them with --player, or pass --all-players, to compare them against top parses of their specialisation.</p>
+  <div class="findings">
+  </div>
 </div>
 
 

@@ -12,9 +12,11 @@
 <h2 id="ledger">Where the time went</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 {% for row in report.ledger_decomposition %}
 {{ ledger_row(row) }}
 {% endfor %}
+</div>
 
 {% if report.summary_pointers %}
 <h2 id="losses">Biggest losses</h2>
@@ -56,9 +58,11 @@ never be summed.</p>
 <h2 id="observations">Other findings</h2>
 {% if report.observations %}
 <p class="sub">Findings no other section claimed.</p>
+<div class="findings">
 {% for row in report.observations %}
 {{ ledger_row(row) }}
 {% endfor %}
+</div>
 {% else %}
 <p class="sub">Nothing else measured.</p>
 {% endif %}

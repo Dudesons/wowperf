@@ -114,9 +114,11 @@
 {% if report.death_rows %}
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 {% for row in report.death_rows %}
 {{ ledger_row(row) }}
 {% endfor %}
+</div>
 {% endif %}
 
 </section>

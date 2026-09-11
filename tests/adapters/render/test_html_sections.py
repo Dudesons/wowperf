@@ -1076,3 +1076,31 @@ def test_a_findings_ability_icon_survives_finding_through_build_report_to_render
     html = render(report, icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
 
     assert '<span class="icon i-45438" aria-hidden="true"></span>' in html
+
+
+def test_ledger_rows_render_inside_a_findings_wrapper() -> None:
+    # The CSS grid for dense content applies to .findings containers.
+    # Without them, the grid rule selects nothing and content does not flow
+    # into columns. This test verifies the wrappers actually render.
+    finding = a_finding("time.residual", title="Time outside pulls")
+    report = build_report(a_loaded(), (finding,), None, None, SUBJECT, None, FETCHED,
+                          NO_DEFENSIVES, NO_CONSUMABLES)
+    html = render(report)
+
+    # At least one findings wrapper must exist and contain ledger rows
+    assert '<div class="findings">' in html
+    # Verify that rendered cards appear within findings wrappers
+    import re
+    findings_blocks = re.findall(
+        r'<div class="findings">.*?</div>',
+        html,
+        flags=re.DOTALL
+    )
+    assert findings_blocks, "No findings wrappers found in HTML"
+    # At least one wrapper should contain cards (rendered by ledger_row macro)
+    card_found = False
+    for block in findings_blocks:
+        if '<div class="card"' in block:
+            card_found = True
+            break
+    assert card_found, "No cards found within findings wrappers"

@@ -919,3 +919,13 @@ def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:
         )
     )
     assert 'id="losses"' not in html
+
+
+def test_running_prose_keeps_a_reading_measure_while_dense_content_takes_the_width() -> None:
+    # Removing the 760px cap alone would stretch a narrative paragraph to the
+    # width of a monitor, which is the one thing worse than a cramped one. The
+    # cap moves off the page and onto the text.
+    html = rich_html()
+    assert "main { max-width: 760px" not in html
+    assert "max-width: 68ch" in html
+    assert "repeat(auto-fit, minmax(330px, 1fr))" in html

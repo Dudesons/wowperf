@@ -7,8 +7,10 @@
 {% if not report.interrupts %}
 <p class="sub">Nothing to report.</p>
 {% endif %}
+<div class="findings">
 {% for row in report.interrupts %}
 {{ ledger_row(row) }}
 {% endfor %}
+</div>
 
 </section>
