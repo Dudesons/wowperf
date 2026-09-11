@@ -81,6 +81,21 @@ def _block_css_class(kind: str, is_boss: bool, track_class: str) -> str:
     return " ".join(classes)
 
 
+def _unmatched_packs(run: Run, indices: tuple[int, ...], kind: str) -> dict[int, str]:
+    """Mark the pulls one route ran alone, skipping the ones that are not packs.
+
+    An alignment reports every unmatched pull, and two shapes of pull are
+    unmatched whatever either group did: one with no recorded enemies, which
+    pairs with nothing, and one Warcraft Logs cut out of the middle of an
+    engagement. `Pull.is_a_pack` names both. The legend promises that a marked
+    block is a pack one group fought and the other did not, and
+    `comparison.route` withholds those same pulls from the ledger, so marking
+    one here would leave the picture asserting what the prose declines to.
+    """
+    packs = {pull.index for pull in run.pulls if pull.is_a_pack}
+    return {index: kind for index in indices if index in packs}
+
+
 def _blocks(
     run: Run, kinds: dict[int, str], scale: float, origin_ms: int, track_class: str = ""
 ) -> tuple[TimelineBlock, ...]:
@@ -183,7 +198,9 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
     longest = max(our_seconds, their_seconds)
     scale = axis_scale(longest)
 
-    our_kinds = {index: "extra" for index in member.alignment.only_ours} if member else {}
+    our_kinds = (
+        _unmatched_packs(ours, member.alignment.only_ours, "extra") if member else {}
+    )
 
     theirs_track = None
     if member is not None and sample is not None:
@@ -194,7 +211,7 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
             baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(
                 member.run,
-                {index: "skipped" for index in member.alignment.only_theirs},
+                _unmatched_packs(member.run, member.alignment.only_theirs, "skipped"),
                 scale,
                 run_start_ms(member.run),
                 track_class="block-theirs",

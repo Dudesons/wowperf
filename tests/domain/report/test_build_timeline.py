@@ -274,3 +274,38 @@ def test_the_timeline_draws_the_members_own_alignment_not_a_recomputed_one() -> 
     assert timeline.theirs is not None
     assert timeline.ours.blocks[0].kind == "extra"
     assert timeline.theirs.blocks[0].kind == "skipped"
+
+
+def test_an_artefact_pull_is_not_outlined_as_a_pack_the_reference_skipped() -> None:
+    # The legend calls the heavier outline a pack we pulled and the reference did
+    # not. A pull Warcraft Logs cut out of the middle of an engagement is not one,
+    # and `compare_route` will not name it, so the picture must not claim it either.
+    ours = a_run(
+        pulls=(
+            a_pull(0, 0, 60_000, enemies=(1,)),
+            a_pull(1, 90_000, 90_048, enemies=(7,)),
+            a_pull(2, 120_000, 180_000, enemies=(8,)),
+        )
+    )
+    theirs = a_run(pulls=(a_pull(0, 0, 60_000, enemies=(1,)),))
+
+    timeline = build_timeline(ours, a_sample(a_member(ours, theirs)), PRESENT)
+
+    assert timeline.ours is not None
+    assert [block.kind for block in timeline.ours.blocks] == ["matched", "matched", "extra"]
+
+
+def test_a_reference_artefact_pull_is_not_drawn_as_a_pack_we_skipped() -> None:
+    ours = a_run(pulls=(a_pull(0, 0, 60_000, enemies=(1,)),))
+    theirs = a_run(
+        pulls=(
+            a_pull(0, 0, 60_000, enemies=(1,)),
+            a_pull(1, 90_000, 90_048, enemies=(7,)),
+            a_pull(2, 120_000, 180_000, enemies=(8,)),
+        )
+    )
+
+    timeline = build_timeline(ours, a_sample(a_member(ours, theirs)), PRESENT)
+
+    assert timeline.theirs is not None
+    assert [block.kind for block in timeline.theirs.blocks] == ["matched", "matched", "skipped"]

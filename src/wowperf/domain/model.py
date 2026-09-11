@@ -29,6 +29,20 @@ class Player(Frozen):
     talent_import_string: str | None = None
 
 
+MIN_PACK_SECONDS = 1.0
+"""Under this a pull is a segmentation artefact rather than a pack anybody chose.
+
+Warcraft Logs closes and reopens a pull in the middle of an engagement, leaving
+one of a few milliseconds whose enemies are a subset of the pull before it, and
+it records the odd stray tag the same way. Measured over 98 cached pulls on
+2026-09-11: six ran under a second — the longest of them 0.525s — and the next
+shortest ran 6.770s. The floor therefore falls in an empty stretch of the
+distribution rather than through a cluster of real packs, which is the whole of
+its justification. It is a claim about how the log cuts a route, not a view about
+how long a pack ought to last.
+"""
+
+
 class EnemyNpc(Frozen):
     actor_id: int
     game_id: int
@@ -54,6 +68,23 @@ class Pull(Frozen):
     @property
     def duration_seconds(self) -> float:
         return (self.end_ms - self.start_ms) / 1000
+
+    @property
+    def is_a_pack(self) -> bool:
+        """Whether a route decision could have taken or left this pull.
+
+        Two shapes of pull are not. One with no recorded enemies is nothing any
+        route contains, and `comparison.alignment` can never pair it with
+        anything, so it reads as unmatched however both routes were run. One
+        under `MIN_PACK_SECONDS` is where Warcraft Logs cut a single engagement
+        in two.
+
+        Nothing counts pulls through this. A pull count describes how the log
+        cut the route and must keep reporting every pull the log recorded; what
+        this gates is whether a pull may be named to a reader as a pack one
+        group fought and the other did not.
+        """
+        return bool(self.enemies) and self.duration_seconds >= MIN_PACK_SECONDS
 
     @property
     def signature(self) -> tuple[int, ...]:

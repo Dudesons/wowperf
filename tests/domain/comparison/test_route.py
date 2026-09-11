@@ -186,7 +186,7 @@ def test_the_summary_pluralises_a_single_pack_correctly() -> None:
 
     assert "1 pack," in summary.title
     assert "1 packs" not in summary.title
-    assert "1 of 1 trash pull found a counterpart" in summary.detail
+    assert "1 of 1 trash pack found a counterpart" in summary.detail
     assert "1 pack in common" in " ".join(summary.evidence)
 
 
@@ -249,14 +249,14 @@ def test_no_finding_prints_a_map_position() -> None:
             assert "map position" not in line, finding.id
 
 
-def test_the_summary_states_how_many_trash_pulls_found_a_counterpart() -> None:
+def test_the_summary_states_how_many_trash_packs_found_a_counterpart() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,)), a_pull(3, (4,))))
     theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
 
     summary = compare_route(ours, theirs, align_pulls(ours, theirs), {})[0]
 
     assert summary.id == "compare.route.summary"
-    assert "2 of 4 trash pulls found a counterpart" in summary.detail
+    assert "2 of 4 trash packs found a counterpart" in summary.detail
 
 
 def test_below_the_aligned_share_no_pack_is_priced_as_skipped() -> None:
@@ -542,6 +542,7 @@ ARTEFACT_RUN = a_run(
         *tuple(a_pull(i, (i + 1,)) for i in range(6)),
         a_pull(6, (90,), seconds=93.0, name="Real Pack"),
         a_pull(7, (91,), seconds=0.048, name="Tail"),
+        a_pull(8, (), name="Empty"),
     )
 )
 
@@ -563,7 +564,7 @@ def test_a_sub_second_pull_is_not_priced_as_a_pack_the_reference_skipped() -> No
             a_pull(0, (1,)),
             a_pull(1, (2,)),
             a_pull(2, (3,)),
-            a_pull(3, (4,), seconds=0.048, name="Tail"),
+            a_pull(3, (4,), seconds=0.525, name="Tail"),
             a_pull(4, (5,), seconds=93.0, name="Real Pack"),
         )
     )
@@ -618,7 +619,8 @@ def test_a_reference_artefact_pull_is_not_reported_as_a_pack_we_did_not_pull() -
             a_pull(0, (1,)),
             a_pull(1, (2,)),
             a_pull(2, (98,), seconds=0.03, name="Their Tail"),
-            a_pull(3, (99,), name="Bonus Pack"),
+            a_pull(3, (), name="Their Empty"),
+            a_pull(4, (99,), name="Bonus Pack"),
         )
     )
 
@@ -634,9 +636,9 @@ def test_an_artefact_pull_does_not_outrank_the_pack_the_sample_really_skipped() 
     # and takes the top row from a pack that really was skipped.
     sample = SpeedSample(
         members=(
-            artefact_member((7,), report_code="REF1"),
-            artefact_member((7,), report_code="REF2"),
-            artefact_member((6, 7), report_code="REF3"),
+            artefact_member((7, 8), report_code="REF1"),
+            artefact_member((7, 8), report_code="REF2"),
+            artefact_member((6, 7, 8), report_code="REF3"),
         )
     )
 
@@ -647,16 +649,47 @@ def test_an_artefact_pull_does_not_outrank_the_pack_the_sample_really_skipped() 
     assert skipped[0].title == "1 of 3 fast runs skipped the pack at pull 6"
 
 
-def test_the_sampled_summary_states_how_well_the_pulls_matched() -> None:
-    # The pairwise summary states this and the sampled one did not, so a reader
-    # could not tell whether the rows below rested on a whole route lining up or
-    # on the bare minimum.
-    sample = SpeedSample(members=(member_full(), member_missing_pull_7(), member_missing((5, 6))))
+SUMMARY_RUN = a_run(
+    (
+        *tuple(a_pull(i, (i + 1,)) for i in range(8)),
+        a_pull(8, (900,), boss=True),
+    )
+)
 
-    findings = compare_route_sample(OUR_RUN, sample, forces={})
+
+def summary_member(
+    missing: tuple[int, ...] = (), extra: bool = False, report_code: str = "REF1"
+) -> SpeedMember:
+    """A reference over SUMMARY_RUN, missing packs of ours or carrying one of its own."""
+    pulls = tuple(pull for pull in SUMMARY_RUN.pulls if pull.index not in missing)
+    if extra:
+        pulls = (*pulls, a_pull(9, (901,), name="Bonus Pack"))
+    theirs = a_run(pulls)
+    return SpeedMember(
+        row=a_speed_row(report_code=report_code),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(SUMMARY_RUN, theirs),
+    )
+
+
+def test_the_sampled_summary_states_how_well_the_packs_matched() -> None:
+    sample = SpeedSample(
+        members=(
+            summary_member(extra=True, report_code="REF1"),
+            summary_member(missing=(7,), report_code="REF2"),
+            summary_member(missing=(5, 6), report_code="REF3"),
+        )
+    )
+
+    findings = compare_route_sample(SUMMARY_RUN, sample, forces={})
     summary = next(f for f in findings if f.id == "compare.route.summary")
 
-    assert "6 to 8 of our 8 trash pulls matched" in summary.evidence
+    assert "6 to 8 of our 8 trash packs matched" in summary.evidence
+    # The pull-count range must differ from the match range, or this test cannot
+    # tell the two apart, and the boss must sit outside the denominator.
+    assert "observed range 7 to 10 packs" in summary.evidence
+    assert len(SUMMARY_RUN.pulls) == 9
 
 
 def test_a_reference_artefact_pull_is_not_reported_as_extra_on_the_sampled_path() -> None:
@@ -664,7 +697,8 @@ def test_a_reference_artefact_pull_is_not_reported_as_extra_on_the_sampled_path(
         (
             *tuple(a_pull(i, (i + 1,)) for i in range(8)),
             a_pull(8, (98,), seconds=0.03, name="Their Tail"),
-            a_pull(9, (99,), name="Bonus Pack"),
+            a_pull(9, (), name="Their Empty"),
+            a_pull(10, (99,), name="Bonus Pack"),
         )
     )
     member = SpeedMember(

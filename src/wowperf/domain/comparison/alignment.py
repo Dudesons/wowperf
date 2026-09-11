@@ -33,10 +33,15 @@ class Alignment(Frozen):
         """Our trash pulls that found a counterpart, as a share of all our trash pulls.
 
         Bosses are left out: they match by encounter id and would flatter the share.
-        Every non-boss pull counts in the denominator, even one with no recorded
-        enemies — it cannot match anything, and excluding it would let it be priced
-        as a skipped pack while the share still read whole. A run with no trash
-        pulls aligned everything it had.
+        Every non-boss pull counts in the denominator, including one with no
+        recorded enemies and one too short to be a pack, neither of which can ever
+        match. This is the conservative choice and it costs a reference headroom
+        against `MIN_ALIGNED_SHARE`: our own segmentation artefacts push every
+        reference's share down, so a route that lined up with all of our real packs
+        still reads short of whole. What a reader is shown is not this figure —
+        `comparison.route._pack_match` recounts over `Pull.is_a_pack` for that — so
+        the effect is confined to which references are eligible at all. A run with
+        no trash pulls aligned everything it had.
         """
         if self.our_trash_count == 0:
             return 1.0

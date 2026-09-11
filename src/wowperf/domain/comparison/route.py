@@ -13,38 +13,27 @@ from wowperf.domain.model import Pull, Run
 MAX_PACKS_REPORTED = 5
 """Beyond five packs a reader stops reading and starts skimming."""
 
-MIN_PRICEABLE_SECONDS = 1.0
-"""Below this a pull cannot state what it cost, so it is never priced as a pack.
-
-Measured over 98 cached pulls on 2026-09-11: six ran under a second and the next
-shortest ran 6.77s, so the floor falls in an empty stretch of the distribution
-rather than through a cluster of real packs.
-"""
-
 
 def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
 
 
-def _is_a_pack(pull: Pull) -> bool:
-    """Whether a route decision could have taken or left this pull.
+def _pack_match(ours: Run, alignment: Alignment) -> tuple[int, int]:
+    """How many of our trash packs found a counterpart, and how many there were.
 
-    Two shapes of pull are not packs anybody chose. Warcraft Logs closes and
-    reopens a pull in the middle of an engagement, leaving one of a few
-    milliseconds whose enemies are a subset of the pull before it; and it
-    records pulls with no enemies at all, which `align_pulls` pairs with
-    nothing, so they reach `only_ours` whatever the reference did. Priced as a
-    skipped pack the first reads "We spent 0s on it" and the second names a
-    pack that is not there.
+    Counted over `Pull.is_a_pack` rather than over every trash pull the log
+    recorded. A pull that is not a pack cannot be matched — one with no enemies
+    pairs with nothing at all — so leaving it in the denominator reports a
+    reference that found every real pack as having missed one, by exactly the
+    number of artefacts in our own log.
 
-    The floor is the resolution of the claim the finding makes, not a view
-    about small packs: under a second there is no cost left to state.
-
-    Only the pricing is scoped this way. Both summaries still count every pull
-    the log recorded, because how the log cut the route is what a pull count
-    describes.
+    `Alignment.matched_share` still measures itself over every trash pull, so
+    which references are eligible is unchanged and slightly conservative. This
+    is the figure the report states to a reader.
     """
-    return bool(pull.enemies) and pull.duration_seconds >= MIN_PRICEABLE_SECONDS
+    packs = {pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack}
+    matched = {match.ours_index for match in alignment.matched} & packs
+    return len(matched), len(packs)
 
 
 def compare_route(
@@ -56,7 +45,7 @@ def compare_route(
     by `analysis.trash.forces_by_pull`, so the route and the trash findings
     price the same pull with the same number.
     """
-    matched_trash = round(alignment.matched_share * alignment.our_trash_count)
+    matched_packs, pack_count = _pack_match(ours, alignment)
     in_common = len({match.ours_index for match in alignment.matched})
     findings: list[Finding] = [
         Finding(
@@ -67,8 +56,8 @@ def compare_route(
                 f"the reference pulled {len(theirs.pulls)}"
             ),
             detail=(
-                f"{matched_trash} of {alignment.our_trash_count} trash "
-                f"pull{'s' if alignment.our_trash_count != 1 else ''} found a counterpart. "
+                f"{matched_packs} of {pack_count} trash "
+                f"pack{'s' if pack_count != 1 else ''} found a counterpart. "
                 "Packs are matched by which enemies they contain, not by when either group "
                 "fought them, so this comparison holds across a keystone-level difference. A "
                 "stretch fought without a break is one pull to Warcraft Logs, and it matches "
@@ -90,7 +79,7 @@ def compare_route(
             Finding(
                 id="compare.route.unaligned",
                 title=(
-                    f"Only {matched_trash} of {alignment.our_trash_count} trash pulls could be "
+                    f"Only {matched_packs} of {pack_count} trash packs could be "
                     "matched to the reference's"
                 ),
                 detail=(
@@ -116,7 +105,7 @@ def compare_route(
         for index in alignment.only_ours
         if (pull := _pull_by_index(ours, index)) is not None
         and not pull.is_boss
-        and _is_a_pack(pull)
+        and pull.is_a_pack
     ]
     skippable.sort(key=lambda pull: pull.duration_seconds, reverse=True)
 
@@ -150,7 +139,7 @@ def compare_route(
         for index in alignment.only_theirs
         if (pull := _pull_by_index(theirs, index)) is not None
         and not pull.is_boss
-        and _is_a_pack(pull)
+        and pull.is_a_pack
     ]
     for rank, pull in enumerate(extra[:MAX_PACKS_REPORTED]):
         findings.append(
@@ -226,12 +215,9 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
-    trash_count = sum(1 for pull in ours.pulls if not pull.is_boss)
+    pack_count = _pack_match(ours, eligible[0].alignment)[1]
     matched_low, matched_high = observed_range(
-        [
-            float(round(member.alignment.matched_share * member.alignment.our_trash_count))
-            for member in eligible
-        ]
+        [float(_pack_match(ours, member.alignment)[0]) for member in eligible]
     )
     return Finding(
         id="compare.route.summary",
@@ -251,7 +237,7 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
         evidence=(
             f"{count_phrase(total, sampled)} references aligned well enough to price a skip",
             f"observed range {low:.0f} to {high:.0f} packs",
-            f"{matched_low:.0f} to {matched_high:.0f} of our {trash_count} trash pulls matched",
+            f"{matched_low:.0f} to {matched_high:.0f} of our {pack_count} trash packs matched",
         ),
     )
 
@@ -273,7 +259,7 @@ def _skipped(
         for index in counts
         if (pull := _pull_by_index(ours, index)) is not None
         and not pull.is_boss
-        and _is_a_pack(pull)
+        and pull.is_a_pack
     ]
     # Agreement first, price second, where the pairwise version sorted on price
     # alone. A pack one reference skipped is a coincidence whatever it cost; a
@@ -325,7 +311,7 @@ def _extra_from(member: SpeedMember, ours: Run) -> list[Finding]:
         for index in member.alignment.only_theirs
         if (pull := _pull_by_index(theirs, index)) is not None
         and not pull.is_boss
-        and _is_a_pack(pull)
+        and pull.is_a_pack
     ]
     findings = []
     for rank, pull in enumerate(extra[:MAX_PACKS_REPORTED]):
