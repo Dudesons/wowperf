@@ -174,6 +174,22 @@ BADGE_INFERRED_CAPTION = "the dimming."
 talents shorten it and the log records no reset."""
 
 
+def _track_x(elapsed_seconds: float, scale: float) -> float:
+    """The x coordinate for a moment `elapsed_seconds` after the axis origin.
+
+    Every mark on this chart -- a pull band, a damage bucket, a press, a
+    cooldown span, a ready tick, a cover window -- places some instant on the
+    same track, and every one of them has to translate that instant to an x
+    the same way. Writing `TRACK_ORIGIN_X + elapsed_seconds * scale` by hand
+    at each call site let a mark and the thing it sits on drift apart the
+    moment one site's formula changed and another's did not; this is the one
+    place that arithmetic happens. Unrounded: callers round to `PRECISION`
+    themselves, since some do further arithmetic first (a press mark's x is
+    offset half its own width before rounding).
+    """
+    return TRACK_ORIGIN_X + elapsed_seconds * scale
+
+
 def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, ...]:
     """Every pull as a band behind the tracks, boss pulls outlined."""
     return tuple(
@@ -182,7 +198,7 @@ def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, 
             # the first mob the log happened to see, which names nothing a reader
             # can find again. The index is what the rest of the report calls it.
             label=pull.name if pull.is_boss else f"Pull {pull.index}",
-            x=round(TRACK_ORIGIN_X + (pull.start_ms - origin_ms) / 1000 * scale, PRECISION),
+            x=round(_track_x((pull.start_ms - origin_ms) / 1000, scale), PRECISION),
             width=round(max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH), PRECISION),
             is_boss=pull.is_boss,
             kind="band",
@@ -223,7 +239,7 @@ def _damage_track(
     width = round(BUCKET_SECONDS * scale, PRECISION)
     bars = tuple(
         DamageBar(
-            x=round(TRACK_ORIGIN_X + index * BUCKET_SECONDS * scale, PRECISION),
+            x=round(_track_x(index * BUCKET_SECONDS, scale), PRECISION),
             width=max(width, MIN_BLOCK_WIDTH),
             y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
             height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
@@ -283,7 +299,7 @@ def _cooldown_rows(
     owned = {cast.ability_id for cast in ours}
 
     def press_at(at: int) -> Press:
-        instant = TRACK_ORIGIN_X + (at - origin_ms) / 1000 * scale
+        instant = _track_x((at - origin_ms) / 1000, scale)
         return Press(
             x=round(instant - PRESS_WIDTH / 2, PRECISION),
             icon_x=round(instant - ROW_HEIGHT / 2, PRECISION),
@@ -308,7 +324,7 @@ def _cooldown_rows(
                 presses=tuple(press_at(at) for at in presses),
                 unavailable=tuple(
                     Span(
-                        x=round(TRACK_ORIGIN_X + (at - origin_ms) / 1000 * scale, PRECISION),
+                        x=round(_track_x((at - origin_ms) / 1000, scale), PRECISION),
                         # Clamped to the time remaining in the run after this
                         # press, not to the run's whole length: the ability can
                         # only be judged unavailable up to the axis end, never
@@ -330,7 +346,7 @@ def _cooldown_rows(
                 # at the axis end, which claims the ability came back at the
                 # moment the run finished; the log never says that.
                 ready_ticks=tuple(
-                    round(TRACK_ORIGIN_X + end * scale, PRECISION)
+                    round(_track_x(end, scale), PRECISION)
                     for end in (
                         (at - origin_ms) / 1000 + ability.cooldown_seconds for at in presses
                     )
