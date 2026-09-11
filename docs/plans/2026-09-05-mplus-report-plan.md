@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-05-mplus-report-design.md`. Its authority is `docs/plans/2026-09-03-mplus-postmortem-design.md` §7, amended 2026-09-05 in two places this plan depends on.
 
-**Depends on:** Plans A (`62fd0e4`), B (`eae5238`), C (`71b10f7`) and D (`f39976c`), all merged. Read `src/wowperf/domain/findings.py`, `src/wowperf/domain/model.py`, `src/wowperf/domain/analysis/players.py`, `src/wowperf/domain/comparison/alignment.py` and `src/wowperf/cli.py` before starting.
+**Depends on:** Plans A (`be84a22`), B (`9bd47fb`), C (`ebe3ddc`) and D (`b8d0557`), all merged. Read `src/wowperf/domain/findings.py`, `src/wowperf/domain/model.py`, `src/wowperf/domain/analysis/players.py`, `src/wowperf/domain/comparison/alignment.py` and `src/wowperf/cli.py` before starting.
 
 ## Global Constraints
 

@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-06-report-tabs-design.md`. It supersedes §11 of `docs/plans/2026-09-05-mplus-report-design.md` and amends its §4, §5, §9 and §10; Task 1 writes those amendments. Read the spec in full before any task, and the report design's §2 ("the template decides nothing") before Tasks 2 to 4.
 
-**Depends on:** `master` at `7f261ba` (Phase G merged, design committed). Read `src/wowperf/domain/report/build.py`, `src/wowperf/domain/report/model.py`, `src/wowperf/adapters/render/report.html.j2` and `tests/adapters/render/test_html_invariants.py` before starting any task.
+**Depends on:** `master` at `bfdfdf5` (Phase G merged, design committed). Read `src/wowperf/domain/report/build.py`, `src/wowperf/domain/report/model.py`, `src/wowperf/adapters/render/report.html.j2` and `tests/adapters/render/test_html_invariants.py` before starting any task.
 
 ## Global Constraints
 

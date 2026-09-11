@@ -8,7 +8,7 @@ eight sections and remains binding. This document refines §7 into something imp
 records the four decisions §7 left open. Where the two disagree, this one is newer and wins; a
 disagreement worth keeping is amended back into §7.
 
-**Depends on:** Plans A (`62fd0e4`), B (`eae5238`), C (`71b10f7`) and D (`f39976c`), all merged.
+**Depends on:** Plans A (`be84a22`), B (`9bd47fb`), C (`ebe3ddc`) and D (`b8d0557`), all merged.
 
 **Not in scope:** design §8, the inference layer — the three skills and the narrative's authorship.
 This document covers only how a narrative, once written, reaches the page. §8 gets its own design

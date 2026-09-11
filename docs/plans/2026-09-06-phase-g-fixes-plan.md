@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-06-audit-and-improvement-roadmap.md` §2 (the defects, D1–D11) and §4 "Phase G". The design authority is `docs/plans/2026-09-03-mplus-postmortem-design.md`, amended 2026-09-06 in §3.3, §3.5, §3.6, §5.2, §5.5, §5.7, §6.2 and §6.3, and `docs/plans/2026-09-05-mplus-report-design.md` §5, amended the same day. Read the amendments before the task that implements them.
 
-**Depends on:** everything merged on `master` at `069027e`. Read `src/wowperf/domain/analysis/service.py`, `src/wowperf/domain/comparison/service.py`, `src/wowperf/domain/report/build.py` and `src/wowperf/cli.py` before starting any task.
+**Depends on:** everything merged on `master` at `2fba045`. Read `src/wowperf/domain/analysis/service.py`, `src/wowperf/domain/comparison/service.py`, `src/wowperf/domain/report/build.py` and `src/wowperf/cli.py` before starting any task.
 
 **Withdrawn from scope:** the audit's D4 ("a finished analyser is not wired in") was wrong. `analyse_consumables_never_used` is called from `service.py` and its three findings are in the real report. Nothing to do. The debuff half of the uptime comparison (D11, last bullet) is left for the per-player phase, where the decision to delete it or replace it with the group-wide figure belongs; nothing here touches it.
 

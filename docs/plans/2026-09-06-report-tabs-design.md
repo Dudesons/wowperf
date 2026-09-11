@@ -9,7 +9,7 @@ wherever this document is silent. This document supersedes its §11 (no navigati
 disagree, this one is newer and wins; each disagreement is amended back into the older document,
 dated, by the plan that implements this design.
 
-**Depends on:** Phase G, merged into `master` at `144aa8f`.
+**Depends on:** Phase G, merged into `master` at `d940679`.
 
 **Not in scope:** per-player sub-tabs and their content (Phase J), the death recap (Phase I). See
 §9.

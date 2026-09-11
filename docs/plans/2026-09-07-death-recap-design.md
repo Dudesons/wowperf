@@ -10,7 +10,7 @@ it extends the postmortem design's §5.8 and §5.9 and closes the question its �
 "a later phase". Where the documents disagree, this one is newer and wins; each disagreement is
 amended back into the older document, dated, by the plan that implements this design.
 
-**Depends on:** Phase H, merged into `master` at `baaf58f`.
+**Depends on:** Phase H, merged into `master` at `03c58ed`.
 
 **Not in scope:** the multi-reference sample for comparisons, the per-player page (Phase J), any
 new finding. See §9.

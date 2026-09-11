@@ -105,7 +105,7 @@ def test_readiness_uses_the_oldest_of_the_last_charges_presses_not_the_oldest_of
     # reported. Using the 200 s press instead (the oldest of the whole run) would push
     # readiness outside the run-up and report nothing; using the 20 s press instead
     # (the most recent) would put readiness after the death and report a negative
-    # duration -- the defect corrected in dc4934d.
+    # duration -- the defect corrected in 2eaa7f8.
     state = state_of(
         (
             press(194679, DEATH_MS - 200_000),

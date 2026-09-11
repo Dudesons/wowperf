@@ -4,7 +4,7 @@
 authorises no code.** Its only job is to put the arguments and the evidence on the table before
 that session starts.
 
-Written 2026-09-08, against `master` at `7af17b1`.
+Written 2026-09-08, against `master` at `857afa2`.
 
 ---
 

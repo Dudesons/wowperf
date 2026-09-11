@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-03-mplus-postmortem-design.md` — §5.7 and §6.5 item 5 are what this plan implements, amended 2026-09-05. §2.2's aura block is load-bearing.
 
-**Depends on:** Plans A (`62fd0e4`), B (`eae5238`) and C (`71b10f7`), all merged. Read `src/wowperf/domain/analysis/defensives.py`, `src/wowperf/domain/comparison/spells.py`, `src/wowperf/domain/comparison/service.py`, `src/wowperf/adapters/wcl/repository.py` and `src/wowperf/cli.py` before starting.
+**Depends on:** Plans A (`be84a22`), B (`9bd47fb`) and C (`ebe3ddc`), all merged. Read `src/wowperf/domain/analysis/defensives.py`, `src/wowperf/domain/comparison/spells.py`, `src/wowperf/domain/comparison/service.py`, `src/wowperf/adapters/wcl/repository.py` and `src/wowperf/cli.py` before starting.
 
 ## Global Constraints
 

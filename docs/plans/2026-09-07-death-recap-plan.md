@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-07-death-recap-design.md`. Read it in full before any task; §2 before Tasks 1, 3 and 4; §3 before Tasks 2 and 5; §4 before Tasks 6 to 8; §5 and §6 before Task 9; §8 before Task 10.
 
-**Depends on:** `master` at `de2d670` (Phase H merged, this design committed). Read `src/wowperf/adapters/wcl/ingest.py`, `src/wowperf/adapters/wcl/repository.py`, `src/wowperf/domain/analysis/defensives.py`, `src/wowperf/domain/report/build.py` (`build_deaths`), `src/wowperf/domain/report/model.py` and `.claude/skills/wcl-api/SKILL.md` §"The event stream, probed for a death recap" before starting any task.
+**Depends on:** `master` at `0fdb381` (Phase H merged, this design committed). Read `src/wowperf/adapters/wcl/ingest.py`, `src/wowperf/adapters/wcl/repository.py`, `src/wowperf/domain/analysis/defensives.py`, `src/wowperf/domain/report/build.py` (`build_deaths`), `src/wowperf/domain/report/model.py` and `.claude/skills/wcl-api/SKILL.md` §"The event stream, probed for a death recap" before starting any task.
 
 ## Global Constraints
 

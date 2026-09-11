@@ -10,7 +10,7 @@
 
 **Spec:** `docs/plans/2026-09-03-mplus-postmortem-design.md` — §6 is what this plan implements, §2.3 and §3.6 are load-bearing for it.
 
-**Depends on:** Plan A (`62fd0e4`) and Plan B (`eae5238`), both merged. Read `src/wowperf/domain/model.py`, `findings.py`, `analysis/timeline.py`, `analysis/service.py`, `adapters/wcl/repository.py` and `cli.py` before starting.
+**Depends on:** Plan A (`be84a22`) and Plan B (`9bd47fb`), both merged. Read `src/wowperf/domain/model.py`, `findings.py`, `analysis/timeline.py`, `analysis/service.py`, `adapters/wcl/repository.py` and `cli.py` before starting.
 
 ## Global Constraints
 
