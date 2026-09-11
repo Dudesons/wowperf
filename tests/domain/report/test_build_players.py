@@ -11,10 +11,10 @@ from wowperf.domain.report.model import LedgerRow, SectionState
 from wowperf.domain.report.players import (
     build_players,
     class_colour,
-    player_slug,
     slugs_by_actor,
 )
 from wowperf.domain.season import CooldownAbility, Defensives, ThroughputCooldowns
+from wowperf.domain.slug import player_slug
 
 
 def a_finding(

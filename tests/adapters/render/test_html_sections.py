@@ -360,7 +360,7 @@ def test_a_run_with_no_players_says_so_rather_than_showing_an_empty_heading() ->
 def test_death_findings_render_inside_the_deaths_section() -> None:
     html = render(build_report(a_loaded(), (
         a_finding(
-            "defensives.unused.Emberkin",
+            "defensives.unused.emberkin",
             title="Emberkin died once with a defensive available",
         ),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))

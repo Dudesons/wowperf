@@ -197,7 +197,7 @@ def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
     findings = analyse_defensives(run, (), BLOOD_DEFENSIVES, ())
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    assert findings_by_prefix(findings, "defensives.Tank.") != []
+    assert findings_by_prefix(findings, "defensives.tank.") != []
 
 
 def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> None:
@@ -285,7 +285,7 @@ def test_a_death_with_unmeasured_cost_disables_the_ceiling_but_not_never_cast() 
     findings = analyse_defensives(run, casts, defensives, (a_death(1, None),))
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    never_cast = findings_by_prefix(findings, "defensives.Tank.")
+    never_cast = findings_by_prefix(findings, "defensives.tank.")
     assert any("Rune Tap" in finding.title for finding in never_cast)
 
 
@@ -304,8 +304,8 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
 
     assert len(ceiling) == 2
     assert {finding.id for finding in ceiling} == {
-        "defensives.ceiling.Tank.1.48792",
-        "defensives.ceiling.Tank.2.48792",
+        "defensives.ceiling.tank.1.48792",
+        "defensives.ceiling.tank.2.48792",
     }
 
 
@@ -325,3 +325,69 @@ def test_a_never_cast_finding_names_the_defensive_it_is_about() -> None:
     assert never.ability_id == 45438
     assert never.ability_name == "Ice Block"
     assert never.ability_name in never.title
+
+
+def a_run_named(name: str) -> Run:
+    """The Arcane mage of `a_run`, renamed, so only the name varies."""
+    base = a_run()
+    return base.model_copy(update={
+        "players": (base.players[0].model_copy(update={"name": name}), base.players[1]),
+    })
+
+
+def test_a_defensive_finding_id_carries_no_character_outside_the_ascii_set() -> None:
+    """Every finding id becomes an HTML element id, so it has to be addressable.
+
+    `defensives.*` built its id from the raw display name while every
+    `compare.*` family slugs it, which put a real player's name -- and, for a
+    non-Latin one, characters no fragment should carry -- into the page's own
+    element ids.
+    """
+    findings = analyse_defensives(a_run_named("Кириллица"), (), DEFENSIVES, ())
+
+    ids = [finding.id for finding in findings]
+    # Anchored: this spec has two listed defensives and casts neither, so the
+    # never-cast branch must produce rows for the absences below to mean
+    # anything.
+    assert ids
+    for finding_id in ids:
+        assert finding_id.isascii(), finding_id
+
+
+def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids() -> None:
+    """Slugging discards information, so it must not discard the distinction.
+
+    `Bríala` and `Briala` are two different players and reduce to one slug.
+    The id appends the actor id when two players share a *name*, and these two
+    do not, so that guard never fires -- the disambiguation has to key on what
+    the id actually carries, which after this change is the slug.
+    """
+    base = a_run()
+    mage = base.players[0]
+    run = base.model_copy(update={
+        "players": (
+            mage.model_copy(update={"name": "Bríala"}),
+            mage.model_copy(update={"actor_id": 12, "name": "Briala"}),
+        ),
+    })
+
+    findings = analyse_defensives(run, (), DEFENSIVES, ())
+
+    ids = [finding.id for finding in findings]
+    assert len(ids) == 4, ids
+    assert len(set(ids)) == len(ids), ids
+
+
+def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None:
+    """The actor id is the disambiguator, and it appears only when needed.
+
+    Pinned exactly rather than by prefix: `defensives.emberkin.45438` and
+    `defensives.emberkin.11.45438` share a prefix, so a prefix assertion
+    cannot tell a working disambiguation from one that fires for everybody.
+    """
+    findings = analyse_defensives(a_run(), (), DEFENSIVES, ())
+
+    assert {finding.id for finding in findings} == {
+        "defensives.emberkin.235450",
+        "defensives.emberkin.45438",
+    }

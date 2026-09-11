@@ -8,6 +8,7 @@ from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Run
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
+from wowperf.domain.slug import player_slug
 
 CEILING_USE_FRACTION = 0.2
 """How far below the ceiling a player must be before it is worth saying anything.
@@ -108,9 +109,12 @@ def analyse_defensives_at_death(
     A spec absent from the data file produces nothing, which is not the same
     claim as a spec that had nothing available. The caller must keep those apart.
     """
-    name_counts: dict[str, int] = defaultdict(int)
+    # Counted on the slug rather than the name, because the slug is what the id
+    # carries: `Bríala` and `Briala` are two players and one slug, and only the
+    # actor id then tells their findings apart.
+    slug_counts: dict[str, int] = defaultdict(int)
     for player in run.players:
-        name_counts[player.name] += 1
+        slug_counts[player_slug(player.name)] += 1
 
     findings = []
     for player in run.players:
@@ -137,11 +141,8 @@ def analyse_defensives_at_death(
         if not lines:
             continue
 
-        base_id = (
-            player.name
-            if name_counts[player.name] == 1
-            else f"{player.name}.{player.actor_id}"
-        )
+        slug = player_slug(player.name)
+        base_id = slug if slug_counts[slug] == 1 else f"{slug}.{player.actor_id}"
         times = "once" if len(lines) == 1 else f"{len(lines)} times"
         findings.append(
             Finding(
@@ -208,18 +209,22 @@ def analyse_defensives(
     for cast in casts:
         cast_counts[cast.actor_id][cast.ability_id] += 1
 
-    name_counts: dict[str, int] = defaultdict(int)
+    # Counted on the slug rather than the name, because the slug is what the id
+    # carries: `Bríala` and `Briala` are two players and one slug, and only the
+    # actor id then tells their findings apart.
+    slug_counts: dict[str, int] = defaultdict(int)
     for player in run.players:
-        name_counts[player.name] += 1
+        slug_counts[player_slug(player.name)] += 1
 
     findings = []
     for player in run.players:
         known = defensives.for_spec(player.class_name, player.spec)
         for ability in known:
+            slug = player_slug(player.name)
             base_id = (
-                f"{player.name}.{ability.ability_id}"
-                if name_counts[player.name] == 1
-                else f"{player.name}.{player.actor_id}.{ability.ability_id}"
+                f"{slug}.{ability.ability_id}"
+                if slug_counts[slug] == 1
+                else f"{slug}.{player.actor_id}.{ability.ability_id}"
             )
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
 

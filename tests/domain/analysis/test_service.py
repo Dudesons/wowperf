@@ -153,7 +153,7 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
             a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
         )
     }
-    assert "defensives.unused.Emberkin" in ids
+    assert "defensives.unused.emberkin" in ids
 
 
 CONSUMABLES = Consumables(

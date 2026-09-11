@@ -1,7 +1,6 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
-import unicodedata
 from collections.abc import Sequence
 
 from wowperf.domain.analysis.players import display_names, summarise_players
@@ -20,6 +19,7 @@ from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard, Section, SectionState
 from wowperf.domain.report.player_timeline import build_player_timeline
 from wowperf.domain.season import Defensives, ThroughputCooldowns
+from wowperf.domain.slug import player_slug
 
 CLASS_COLOURS = (
     "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
@@ -46,35 +46,6 @@ def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
 
 
-SLUG_FALLBACK = "player"
-"""What a name reduces to when nothing in it survives the transliteration.
-
-A wholly non-Latin name — `Кириллица` — keeps no ASCII letter after
-decomposition, and an empty id is not addressable. The index the caller
-appends is what keeps two such names apart.
-"""
-
-
-def player_slug(display_name: str) -> str:
-    """A display name reduced to what an HTML id and a URL fragment both carry.
-
-    Accents decompose and their marks are dropped, so `Bríala` and `Briala`
-    reach the same slug — which is why the caller appends an index rather than
-    trusting this to be unique. Everything else outside the ASCII alphabet and
-    digits becomes a hyphen, and runs of hyphens collapse.
-    """
-    decomposed = unicodedata.normalize("NFKD", display_name)
-    kept = [
-        character.lower() if character.isascii() and character.isalnum() else "-"
-        for character in decomposed
-        if not unicodedata.combining(character)
-    ]
-    slug = "".join(kept).strip("-")
-    while "--" in slug:
-        slug = slug.replace("--", "-")
-    return slug or SLUG_FALLBACK
-
-
 def slugs_by_actor(run: Run) -> dict[int, str]:
     """Every player's fragment id, keyed by actor id.
 
@@ -84,9 +55,11 @@ def slugs_by_actor(run: Run) -> dict[int, str]:
     re-run that named someone else. Two display names can reduce to the same
     slug, so the roster index is appended to keep them apart.
 
-    This is the only place a slug is minted. The comparison's finding ids and
-    the card they belong to both read from here, and that agreement is what
-    makes a `#finding-...` link land in the right sub-tab.
+    This is the only place a player *fragment* id is minted. The comparison's
+    finding ids and the card they belong to both read from here, and that
+    agreement is what makes a `#finding-...` link land in the right sub-tab.
+    The slugging itself is `wowperf.domain.slug`, which analysis shares:
+    `defensives.*` mints its own ids and needs the same alphabet.
     """
     names = display_names(run)
     return {

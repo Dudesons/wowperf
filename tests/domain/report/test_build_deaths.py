@@ -512,7 +512,7 @@ def test_the_provenance_states_the_health_method_only_when_a_card_has_a_health_c
 def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     findings = (
         a_finding(
-            "defensives.unused.Emberkin",
+            "defensives.unused.emberkin",
             title="Emberkin died once with a defensive available",
         ),
         a_finding(
@@ -528,7 +528,7 @@ def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert [row.finding_id for row in report.death_rows] == [
-        "defensives.unused.Emberkin",
+        "defensives.unused.emberkin",
         "consumables.unused.Emberkin",
         "consumables.never.Emberkin",
     ]

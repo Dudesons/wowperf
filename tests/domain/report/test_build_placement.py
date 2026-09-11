@@ -65,7 +65,7 @@ FAMILY_HOMES = {
     "interrupts.summary": "interrupts",
     "compare.interrupts": "interrupts",
     "compare.parse.unavailable": "group_rows",
-    "defensives.Emberkin.45438": "group_rows",
+    "defensives.emberkin.45438": "group_rows",
     "defensives.ceiling.45438": "group_rows",
     "throughput.alignment.12345": "group_rows",
     "throughput.ceiling.12345": "group_rows",

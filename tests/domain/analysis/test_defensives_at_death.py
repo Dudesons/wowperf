@@ -127,7 +127,7 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Emberkin") -
 def test_a_death_with_a_defensive_available_is_a_finding() -> None:
     findings = analyse_defensives_at_death(a_run(), owns_both(), DEFENSIVES, (a_death(),))
     assert len(findings) == 1
-    assert findings[0].id == "defensives.unused.Emberkin"
+    assert findings[0].id == "defensives.unused.emberkin"
     assert findings[0].confidence is Confidence.INFERRED
     # No honest number of seconds attaches to a button not pressed.
     assert findings[0].seconds_lost is None
@@ -193,4 +193,4 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
     casts = owns_both(11) + owns_both(12)
     deaths = (a_death(actor_id=11), a_death(actor_id=12))
     ids = {finding.id for finding in analyse_defensives_at_death(run, casts, DEFENSIVES, deaths)}
-    assert ids == {"defensives.unused.Emberkin.11", "defensives.unused.Emberkin.12"}
+    assert ids == {"defensives.unused.emberkin.11", "defensives.unused.emberkin.12"}
