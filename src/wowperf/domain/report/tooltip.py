@@ -3,18 +3,28 @@
 
 from wowperf.domain.analysis.recap import RecapEvent
 from wowperf.domain.events import DamageTakenEvent
+from wowperf.domain.findings import Confidence
+from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import Tooltip, TooltipLine
 
 MITIGATION_IS_NOT_ATTRIBUTED = (
     "The log does not attribute what reduced this hit: armour, Versatility, spec passives, a "
     "defensive and a teammate's external all land in one figure."
 )
-"""Said wherever `mitigated` is printed.
+"""Said wherever a single hit's `mitigated` is printed, in `hit_tooltip`.
 
 The figure is real and the causes are not separable, so the tooltip states the
 one and refuses the other. Printing the figure without this sentence invites
 exactly the reading the design's section 5 forbids.
 """
+
+MITIGATION_IS_NOT_ATTRIBUTED_OVER_A_RUN = (
+    "The log does not attribute what reduced these hits: armour, Versatility, spec passives, a "
+    "defensive and a teammate's external all land in one figure, for every hit summed here."
+)
+"""Said in `ability_tooltip`, which sums `mitigated` over every hit inside a run's window
+rather than reporting one hit's own figure -- `MITIGATION_IS_NOT_ATTRIBUTED`'s "this hit"
+does not fit a panel describing an ability across a run, not a single event of it."""
 
 NO_OVERHEAL_FIELD = (
     "The healing stream reports no overheal, so this is what landed, not what was wasted."
@@ -138,7 +148,13 @@ def ability_tooltip(
     prevented -- see the design's section 5.
     """
     lines = [
-        TooltipLine(label="Base cooldown", value=f"{cooldown_seconds:.0f} s"),
+        # A base length from `data/defensives.toml`, not anything the log
+        # said -- the same assumption the run timeline's own inferred badge
+        # already grades on the drawing beside it.
+        TooltipLine(
+            label="Base cooldown", value=f"{cooldown_seconds:.0f} s",
+            tier=badge_for(Confidence.INFERRED),
+        ),
         TooltipLine(label="Presses", value=str(presses)),
     ]
     if cover:
@@ -162,9 +178,10 @@ def ability_tooltip(
             TooltipLine(
                 label="Mitigated inside / outside",
                 value=f"{_rate(within)} / {_rate(without)}",
+                tier=badge_for(Confidence.DERIVED),
             )
         )
     return Tooltip(
         lines=tuple(lines),
-        note=f"{MITIGATION_IS_NOT_ATTRIBUTED} {RATE_GAP_IS_SUGGESTIVE}",
+        note=f"{MITIGATION_IS_NOT_ATTRIBUTED_OVER_A_RUN} {RATE_GAP_IS_SUGGESTIVE}",
     )

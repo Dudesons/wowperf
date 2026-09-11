@@ -1441,3 +1441,34 @@ def test_an_availability_row_with_no_tooltip_renders_no_tooltip_element() -> Non
     ))
     row = _li(render(a_report(deaths=(card,))), "ready")
     assert 'class="tip"' not in row
+
+
+def test_a_tooltip_line_with_a_tier_renders_a_badge_beside_its_label() -> None:
+    # F2/spec 4.5: a tooltip that mixes measured, derived and inferred figures
+    # has to mark which is which, the same discipline the rest of the page
+    # already carries. Styled like the page's other badges but a <span>, not
+    # a link -- a tooltip line is not a finding with its own row in
+    # Provenance for it to point to.
+    tooltip = Tooltip(
+        lines=(TooltipLine(label="Base cooldown", value="120 s",
+                           tier=Badge(label="inferred", tint="badge-inferred")),),
+    )
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert '<span class="badge badge-inferred">inferred</span>' in row
+    assert '<a class="badge badge-inferred"' not in row
+
+
+def test_a_tooltip_line_with_no_tier_renders_no_badge() -> None:
+    tooltip = Tooltip(lines=(TooltipLine(label="Presses", value="1"),))
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert "badge" not in row

@@ -124,6 +124,53 @@ def test_an_ability_with_no_band_reports_its_presses_and_no_cover() -> None:
     assert {line.label for line in tip.lines} == {"Base cooldown", "Presses"}
 
 
+def test_the_base_cooldown_line_is_marked_inferred() -> None:
+    # F2: `Base cooldown` is a base length from `data/defensives.toml`, not
+    # anything the log said -- the same assumption the run timeline's own
+    # inferred badge grades. Every other line in this tooltip is a measured
+    # sum or a derived rate; only this one and the rate below need marking.
+    tip = ability_tooltip(cooldown_seconds=120.0, cover=(), hits=(), buff_id=48792, presses=2)
+    line = next(line for line in tip.lines if line.label == "Base cooldown")
+    assert line.tier is not None and line.tier.label == "inferred"
+
+
+def test_the_mitigation_rate_line_is_marked_derived() -> None:
+    # Spec 4.5 singles this line out by name for a badge: it is arithmetic
+    # over the measured sums beside it, not a figure the log stated directly.
+    tip = ability_tooltip(
+        cooldown_seconds=120.0, cover=((1_000, 9_000),),
+        hits=(a_hit(2_000, 1_000, 400, (48792,)),), buff_id=48792, presses=1,
+    )
+    line = next(line for line in tip.lines if line.label == "Mitigated inside / outside")
+    assert line.tier is not None and line.tier.label == "derived"
+
+
+def test_the_measured_lines_carry_no_tier() -> None:
+    # Measured is this tooltip's default and the tier common enough that
+    # marking it would mark everything -- only the inferred and derived lines
+    # carry a badge.
+    tip = ability_tooltip(
+        cooldown_seconds=120.0, cover=((1_000, 9_000),),
+        hits=(a_hit(2_000, 1_000, 400, (48792,)),), buff_id=48792, presses=1,
+    )
+    measured_labels = ("Presses", "Cover", "Arrived while it was up", "Reached health")
+    for label in measured_labels:
+        line = next(line for line in tip.lines if line.label == label)
+        assert line.tier is None
+
+
+def test_an_ability_tooltips_refusal_describes_hits_not_a_single_one() -> None:
+    # F13: `MITIGATION_IS_NOT_ATTRIBUTED`'s "this hit" fits `hit_tooltip`,
+    # which describes one event. `ability_tooltip` sums `mitigated` over
+    # every hit inside a whole run's window, and needs wording that says so.
+    tip = ability_tooltip(
+        cooldown_seconds=120.0, cover=((1_000, 9_000),),
+        hits=(a_hit(2_000, 1_000, 400, (48792,)),), buff_id=48792, presses=1,
+    )
+    assert "this hit" not in tip.note
+    assert "does not attribute" in tip.note
+
+
 def test_the_mitigation_rate_counts_what_was_mitigated_not_what_a_shield_absorbed() -> None:
     # A shield soaking a hit is not the game reducing it: `mitigated` and
     # `absorbed` are separate fields of the same event, the same distinction
