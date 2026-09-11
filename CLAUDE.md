@@ -159,6 +159,15 @@ Before implementing new functionality:
 - TEST OUTPUT MUST BE PRISTINE TO PASS
 - If the logs are supposed to contain errors, capture and test it.
 
+## Test Data
+
+- **Never put a real character name in `tests/`.** The sanctioned set is `Emberkin`, `Stonewake`,
+  `Bríala` and `Кириллица` — plus the accent-stripped spelling of one of those where a test needs
+  two distinct names that reduce to one slug. Real names reach this repository through findings
+  files and rendered reports, and the fixtures are the one place they can be kept out for good.
+- The five players on report `6Kx1P9GbNXrcLdHa` are real people. Refer to them by class, spec,
+  role or index — in code, in tests, in commit messages and in documents.
+
 ## Test Coverage Requirements
 
 - NO EXCEPTIONS POLICY: Under no circumstances should you mark any test type as "not applicable". Every project, regardless of size or complexity, MUST have unit tests, integration tests, AND end-to-end tests. If you believe a test type doesn't apply, you need the human to say exactly "I AUTHORIZE YOU TO SKIP WRITING TESTS THIS TIME"
