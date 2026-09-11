@@ -20,7 +20,14 @@
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
   font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-main { max-width: 760px; margin: 0 auto; }
+/* The page takes the screen; running prose does not. A paragraph read at the
+   width of a monitor is harder to follow than one read in a narrow column, so
+   the measure moves off the page and onto the text, and the dense content --
+   cards, tables, drawings -- keeps the whole width. */
+main { max-width: 1400px; margin: 0 auto; }
+.detail, .sub, .legend, .nests, .group-note, .narrative, .withheld { max-width: 68ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px; align-items: start; }
 a { color: var(--ours); }
 h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
 h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
@@ -40,8 +47,11 @@ p { margin: 0 0 10px; }
 .badge-derived { background: var(--badge-derived); }
 .badge-inferred { background: var(--badge-inferred); }
 .detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* `.findings` is a grid and this note is one of its direct children, so
+   without a span it would take one card's own column instead of reading as
+   an introduction to the run of cards after it. */
 .group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
-  border-left: 2px solid var(--line); }
+  border-left: 2px solid var(--line); grid-column: 1 / -1; }
 .evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
 .evidence li::before { content: "· "; }
 .nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
@@ -90,11 +100,28 @@ p { margin: 0 0 10px; }
 .hp-axis { fill: var(--ink-faint); font-size: 11px; }
 .hp-health { text-anchor: end; dominant-baseline: middle; }
 .hp-time { text-anchor: middle; }
-/* The line takes the derived tint and the dots the measured one, so a mark's colour
-   and the badge beneath it name the same claim. */
+/* The line takes the derived tint and a dashed stroke, because it is
+   arithmetic between readings rather than anything the log stated. The
+   readings take the measured tint and a ring against the page colour, so a
+   stated figure reads as a mark on the drawing rather than as a kink in the
+   line it happens to sit on. */
 .hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
-  stroke-linejoin: round; }
-.hp-reading { fill: var(--badge-measured); }
+  stroke-linejoin: round; stroke-dasharray: 5 3; }
+.hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
+/* Placed by the builder, hidden until the row it belongs to is hovered or
+   focused. Hidden by opacity rather than by display so the browser has no
+   layout to recompute when it appears. */
+.hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
+.hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. Measured
+   tint, not derived: the window is the aura table's own band, the same claim
+   the run timeline's `.cover` rule paints in the same colour -- `--ours`
+   happens to be byte-identical to `--badge-derived`, which would read this
+   measured window as the curve's own arithmetic. */
+.hp-cover { fill: var(--badge-measured); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
+tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }
 .avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
@@ -105,6 +132,12 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .avail li.cooldown .avail-detail { color: var(--extra); }
 .avail li.unseen { color: var(--ink-faint); }
 .owner { color: var(--ink-faint); font-size: 12px; }
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  position: relative; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
@@ -114,14 +147,37 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    run timeline's captions, is what lets the longest ability name in the data
    files fit that gutter. */
 .row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
-.pull-band { fill: var(--line); }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
 .damage-bar { fill: var(--hit); }
 /* Opaque and lighter than the band behind it: this is the layer the inferred
    badge grades, and a state marker fainter than the background it sits on is
    a state a screenshot loses. */
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+/* The share of each cycle the ability was doing anything, at true scale. A
+   green head on a grey bar. */
+.cover { fill: var(--badge-measured); }
 .press { fill: var(--ours); }
+/* An open tick, not a filled mark: a press is something the player did and a
+   comeback is something that merely became true, and the two must not read as
+   the same event. */
+.ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+.damage-axis { stroke: var(--line); stroke-width: 1; }
+.pull-name { fill: var(--ink-dim); font-size: 8px; }
+/* Revealed by hover and by keyboard focus, and rendered into the page whether
+   or not it is shown: the panel is markup the builder wrote, never text the
+   script fetches or writes. */
+.tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
+  min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.ability:hover .tip, .ability:focus-within .tip { display: block; }
+.tip-line { display: flex; justify-content: space-between; gap: 12px; }
+.tip-label { color: var(--ink-dim); }
+.tip-value { font-variant-numeric: tabular-nums; }
+.tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }
 </style>
 </head>
 <body>
@@ -147,6 +203,7 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 <h2 id="ledger">Where the time went</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-time.residual">
   <div class="row-head">
     <h3>Time outside pulls</h3>
@@ -155,6 +212,7 @@ never be summed.</p>
   <p class="detail">Travel, waiting and run-backs.</p>
 </div>
 
+</div>
 
 <h2 id="losses">Biggest losses</h2>
 <p class="sub">Each line opens its card. Ranked, not additive.</p>
@@ -179,6 +237,7 @@ never be summed.</p>
 <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-time.gap.0">
   <div class="row-head">
     <h3>A 41 second gap after pull 0</h3>
@@ -189,6 +248,7 @@ never be summed.</p>
   <ul class="evidence"><li>next pull begins at Pack 1</li></ul>
 </div>
 
+</div>
 
 </section>
 
@@ -197,7 +257,7 @@ never be summed.</p>
 <h2 id="deaths">Deaths</h2>
 <div class="card">
   <div class="row-head">
-    <h3>Emberkin — Frigid Roar</h3>
+    <h3><span class="ability"><span class="ability-name">Frigid Roar</span></span> — Emberkin</h3>
     <span class="death-when">0:50, pull 0</span>
   </div>
   <p class="detail">Mage</p>
@@ -208,9 +268,9 @@ never be summed.</p>
       <table class="timeline">
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
-        <tr class="hit">
+        <tr class="hit" id="death-0-e0" tabindex="0">
           <td>5.0 s</td>
-          <td>Snowdrift</td>
+          <td><span class="ability" tabindex="0"><span class="ability-name">Snowdrift</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Struck for</span><span class="tip-value">82,410</span></span><span class="tip-line"><span class="tip-label">Mitigated</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">82,410</span></span><span class="tip-note">The log does not attribute what reduced this hit: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure.</span></span></span></td>
           <td>82,410 to health</td>
           <td class="hp"></td>
         </tr>
@@ -240,6 +300,7 @@ never be summed.</p>
 
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 <div class="card" id="finding-defensives.unused.0">
   <div class="row-head">
     <h3>Emberkin died with Ice Block available</h3>
@@ -248,12 +309,14 @@ never be summed.</p>
   <p class="detail">Cast earlier in the run, and its cooldown had elapsed by the killing blow.</p>
 </div>
 
+</div>
 
 </section>
 
 <section class="panel" data-tab-panel="main" id="tab-interrupts">
 
 <h2 id="interrupts">Interrupts</h2>
+<div class="findings">
 <div class="card" id="finding-interrupts.summary">
   <div class="row-head">
     <h3>Wipsdk let Death&#39;s Advance &amp; Ice Block go uninterrupted</h3>
@@ -262,6 +325,7 @@ never be summed.</p>
   <p class="detail">Grouped by spell.</p>
 </div>
 
+</div>
 
 </section>
 
@@ -284,14 +348,22 @@ never be summed.</p>
   <title>One player&#39;s run on one elapsed-time axis</title>
   <line class="tick" x1="130.0" y1="22.0" x2="130.0" y2="96.0"/>
   <text class="tick-label" x="130.0" y="112.0" text-anchor="middle">0:00</text>
-  <rect class="pull-band" x="130.0" y="28.0" width="157.8" height="10.0"><title>Pack 0</title></rect>
-  <rect class="pull-band block-boss" x="445.6" y="28.0" width="210.4" height="10.0"><title>Pack 1</title></rect>
+  <rect class="pull-band" x="130.0" y="28.0"
+        width="157.8" height="68.0"><title>Pull 0</title></rect>
+  <rect class="pull-band block-boss" x="445.6" y="28.0"
+        width="210.4" height="68.0"><title>Pack 1</title></rect>
+  <text class="pull-name" x="445.6" y="25.0">Pack 1</text>
+  <line class="damage-axis" x1="130.0" y1="44.0"
+        x2="656.0" y2="44.0"/>
+  <text class="tick-label row-label" x="126.0"
+        y="44.0">82,410</text>
   <rect class="damage-bar" x="248.3" y="44.0" width="13.1" height="32.0"/>
   <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
 </svg>
-<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight.</p>
-<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars and the press marks. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming.</p>
+<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds. Each bar is a 5-second bucket, and the axis runs from nothing to this player&#39;s own tallest, never the group&#39;s.</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight. An open tick marks the earliest the ability could have come back, computed from that same base length: talents may have freed it sooner, and the log never says.</p>
+<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars, the press marks and the cover windows. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming and the ready tick that ends it.</p>
 
+  <div class="findings">
   <div class="card" id="finding-compare.talents.emberkin-0">
   <div class="row-head">
     <h3>Emberkin&#39;s talents differ from the top parse&#39;s in two nodes</h3>
@@ -308,6 +380,7 @@ never be summed.</p>
   <p class="detail">The reference cast it twice on the same pull.</p>
 </div>
 
+  </div>
 </div>
 <div class="card" data-tab-panel="players" id="player-stonewake-1">
   <div class="player-head">
@@ -318,6 +391,7 @@ never be summed.</p>
   <p class="stats">0 casts in 2:20 of pulls · 0 deaths · 0 interrupts</p>
   <p class="withheld">This player cast none of the cooldowns tracked for their specialisation and took no damage the log recorded, so there is nothing to draw.</p>
 
+  <div class="findings">
   <div class="card" id="finding-compare.talents.stonewake-1">
   <div class="row-head">
     <h3>Stonewake&#39;s talents differ from the top parse&#39;s in one node</h3>
@@ -334,6 +408,7 @@ never be summed.</p>
   <p class="detail">The reference cast it once on the same pull.</p>
 </div>
 
+  </div>
 </div>
 <div class="card" data-tab-panel="players" id="player-briala-2">
   <div class="player-head">
@@ -421,6 +496,40 @@ fetched 2026-09-05 14:02.</p>
   window.addEventListener("hashchange", resolve);
   window.addEventListener("load", resolve);
   resolve();
+
+  // Lighting a marker, and the cover window beside it, that the builder
+  // already placed. No geometry here: the x of every marker and the x and
+  // width of every cover were computed in Python and are already in the
+  // document, so this only decides which of them is visible.
+  var rows = document.querySelectorAll("tr[id]");
+  for (var r = 0; r < rows.length; r++) {
+    rows[r].addEventListener("mouseenter", light);
+    rows[r].addEventListener("mouseleave", darken);
+    rows[r].addEventListener("focus", light);
+    rows[r].addEventListener("blur", darken);
+  }
+
+  function markerOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-mark");
+  }
+
+  function coverOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-cover");
+  }
+
+  function light(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.add("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.add("lit"); }
+  }
+
+  function darken(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.remove("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.remove("lit"); }
+  }
 })();
 </script>
 </body>

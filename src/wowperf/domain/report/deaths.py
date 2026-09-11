@@ -5,6 +5,7 @@ from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.recap import (
     ABSENT,
     ABSORB,
+    CAST,
     COOLDOWN,
     HEAL,
     HIT,
@@ -20,18 +21,29 @@ from wowperf.domain.analysis.recap import (
     readings_in_window,
     recap_timeline,
     return_of,
+    window_start,
 )
-from wowperf.domain.events import Death
+from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
-from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
-from wowperf.domain.report.health_curve import build_health_curve
+from wowperf.domain.report.cover import band_holding, clipped_bands, resolve_aura
+from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_seconds, run_start_ms
+from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
     Badge,
     DeathCard,
     RecapRow,
+    Tooltip,
+)
+from wowperf.domain.report.tooltip import (
+    ability_tooltip,
+    absorb_tooltip,
+    caster_name,
+    heal_tooltip,
+    hit_tooltip,
 )
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
@@ -85,7 +97,33 @@ NO_CONSUMABLE_DATA = (
 )
 
 
-def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapRow:
+def _cover_of(
+    event: RecapEvent, death: Death, auras: PlayerAuras | None
+) -> tuple[float | None, float | None]:
+    """Where this press's buff was up, in the curve's coordinate space.
+
+    The window containing the press, not the ability's whole history: the row
+    describes one cast, and an earlier band of the same buff belongs to an
+    earlier one. Both values are None where no aura table was fetched, where
+    the table recorded no band for this ability, or where the press's own band
+    does not reach into the run-up the card draws.
+    """
+    if auras is None or event.kind != CAST:
+        return (None, None)
+    aura = resolve_aura(auras, event.ability_id, event.ability_name)
+    if aura is None:
+        return (None, None)
+    holding = band_holding(aura, window_start(death), death.timestamp_ms, event.timestamp_ms)
+    if holding is None:
+        return (None, None)
+    start_x = curve_x(holding[0], death)
+    return (start_x, round(curve_x(holding[1], death) - start_x, PRECISION))
+
+
+def _recap_row(
+    event: RecapEvent, death: Death, names: dict[int, str], marker_id: str, has_curve: bool,
+    auras: PlayerAuras | None,
+) -> RecapRow:
     if event.kind == HIT:
         detail = f"{event.amount:,} to health"
         if event.absorbed:
@@ -93,11 +131,18 @@ def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapR
     elif event.kind == ABSORB:
         detail = f"{event.amount:,} soaked"
     elif event.kind == HEAL:
-        source = event.source_id
-        healer = "an unknown source" if source is None else names.get(source, "an unknown source")
-        detail = f"+{event.amount:,} from {healer}"
+        detail = f"+{event.amount:,} from {caster_name(event.source_id, names)}"
     else:
         detail = ""
+    if event.kind == HIT:
+        tooltip = hit_tooltip(event)
+    elif event.kind == HEAL:
+        tooltip = heal_tooltip(event, names)
+    elif event.kind == ABSORB:
+        tooltip = absorb_tooltip(event, names)
+    else:
+        tooltip = None
+    cover_x, cover_width = _cover_of(event, death, auras)
     return RecapRow(
         seconds_before=f"{(death.timestamp_ms - event.timestamp_ms) / 1000:.1f} s",
         kind=event.kind,
@@ -106,10 +151,112 @@ def _recap_row(event: RecapEvent, death: Death, names: dict[int, str]) -> RecapR
         health="" if event.health_percent is None else f"{event.health_percent}%",
         health_percent=event.health_percent,
         ability_id=event.ability_id or None,
+        tooltip=tooltip,
+        marker_id=marker_id,
+        # `curve_x` does not clamp its input to the run-up window: it trusts
+        # that `recap_timeline` already filtered events to
+        # [window_start(death), death.timestamp_ms] before any of them reached
+        # this row. The two modules agree only because both read the same
+        # window; a caller that handed an unfiltered event to a row builder
+        # would get back an x that falls outside the plot it is drawn on.
+        marker_x=curve_x(event.timestamp_ms, death) if has_curve else None,
+        cover_x=cover_x,
+        cover_width=cover_width,
     )
 
 
-def _availability_row(state: AbilityState, names: dict[int, str]) -> AvailabilityRow:
+def _ability_tooltip(
+    ability_id: int,
+    ability_name: str,
+    cooldown_seconds: float,
+    owner_id: int,
+    loaded: LoadedRun,
+    auras: PlayerAuras | None,
+    hits: tuple[DamageTakenEvent, ...],
+    window: tuple[int, int],
+    on_target: int | None = None,
+) -> Tooltip | None:
+    """What the run measured about one ability, against the dying player's own aura table.
+
+    None where no aura table was fetched for the dying player, or where
+    neither the ability's own id nor its name matched an aura it carries --
+    the same two reasons a cooldown row's own cover can be empty, since both
+    read the same table through `resolve_aura`.
+
+    `on_target` scopes the press count to casts that could have been meant
+    for the dying player: aimed at them, or aimed at no one in particular (an
+    untargeted cast covers an area or the whole group). None on the dying
+    player's own defensive, which needs no such scoping -- every press is
+    already "for" them. Set to the dying player's own id for a teammate's
+    external, matching the rule `analysis/recap.py:state_of` already applies
+    to that row's own PRESSED state: a cast on someone else was a use, not a
+    save, and the tooltip beside that row must not disagree with it.
+    """
+    if auras is None:
+        return None
+    aura = resolve_aura(auras, ability_id, ability_name)
+    if aura is None:
+        return None
+    start_ms, end_ms = window
+    presses = sum(
+        1 for cast in loaded.casts
+        if cast.actor_id == owner_id and cast.ability_id == ability_id
+        and (on_target is None or cast.target_id in (on_target, None))
+    )
+    return ability_tooltip(
+        cooldown_seconds=cooldown_seconds,
+        cover=clipped_bands(aura, start_ms, end_ms),
+        hits=hits,
+        # The aura table keys a buff on itself, not on the spell cast to apply
+        # it -- `resolve_aura`'s own docstring names the abilities where the
+        # two ids differ. Comparing a hit's `buff_ids` against the cast id
+        # here would silently match nothing for exactly those abilities.
+        buff_id=aura.ability_id,
+        presses=presses,
+    )
+
+
+def _availability_tooltips(
+    loaded: LoadedRun, death: Death, defensives: Defensives, externals: Externals,
+) -> dict[tuple[int | None, int], Tooltip]:
+    """Every availability row's tooltip, keyed as `_availability_row` looks it up.
+
+    An external's buff lands on the dying player regardless of who cast it, so
+    both groups are read against the dying player's own aura table and the
+    hits they took across the whole run -- not scoped to this death's own
+    run-up, which is a narrower window than what the ability actually covered.
+    """
+    player = next((p for p in loaded.run.players if p.actor_id == death.actor_id), None)
+    auras = loaded.auras_by_actor.get(death.actor_id)
+    hits = tuple(hit for hit in loaded.damage_taken if hit.actor_id == death.actor_id)
+    start_ms = run_start_ms(loaded.run)
+    window = (start_ms, start_ms + int(run_seconds(loaded.run) * 1000))
+
+    tooltips: dict[tuple[int | None, int], Tooltip] = {}
+    if player is not None:
+        for defensive in defensives.for_spec(player.class_name, player.spec):
+            tip = _ability_tooltip(
+                defensive.ability_id, defensive.name, defensive.cooldown_seconds, death.actor_id,
+                loaded, auras, hits, window,
+            )
+            if tip is not None:
+                tooltips[(None, defensive.ability_id)] = tip
+    for mate in loaded.run.players:
+        if mate.actor_id == death.actor_id:
+            continue
+        for external in externals.for_spec(mate.class_name, mate.spec):
+            tip = _ability_tooltip(
+                external.ability_id, external.name, external.cooldown_seconds, mate.actor_id,
+                loaded, auras, hits, window, on_target=death.actor_id,
+            )
+            if tip is not None:
+                tooltips[(mate.actor_id, external.ability_id)] = tip
+    return tooltips
+
+
+def _availability_row(
+    state: AbilityState, names: dict[int, str], tooltips: dict[tuple[int | None, int], Tooltip],
+) -> AvailabilityRow:
     if state.state == PRESSED:
         detail = f"{state.seconds:.1f} s before death"
     elif state.state == COOLDOWN:
@@ -122,12 +269,15 @@ def _availability_row(state: AbilityState, names: dict[int, str]) -> Availabilit
         detail = "not seen this run"
     else:
         detail = ""
+    tooltip = tooltips.get((state.owner_id, state.ability_id)) if state.ability_id is not None \
+        else None
     return AvailabilityRow(
         ability=state.name,
         state=state.state,
         owner=names.get(state.owner_id, "") if state.owner_id is not None else "",
         detail=detail,
         ability_id=state.ability_id,
+        tooltip=tooltip,
     )
 
 
@@ -136,6 +286,7 @@ def _group(
     states: tuple[AbilityState, ...] | None,
     names: dict[int, str],
     empty_note: str,
+    tooltips: dict[tuple[int | None, int], Tooltip],
     caveat: str = "",
 ) -> AvailabilityGroup:
     """A group with rows carries the badge and any caveat; an empty one says why it is empty."""
@@ -143,7 +294,7 @@ def _group(
         return AvailabilityGroup(title=title, note=empty_note)
     return AvailabilityGroup(
         title=title,
-        rows=tuple(_availability_row(state, names) for state in states),
+        rows=tuple(_availability_row(state, names, tooltips) for state in states),
         badge=badge_for(Confidence.INFERRED),
         note=caveat,
     )
@@ -191,10 +342,16 @@ def build_deaths(
     players_by_id = {player.actor_id: player for player in loaded.run.players}
     names = display_names(loaded.run)
     cards = []
-    for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms):
+    for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)
         events = recap_timeline(loaded, death)
-        timeline = tuple(_recap_row(event, death, names) for event in events)
+        curve = build_health_curve(events, readings_in_window(loaded, death), death)
+        slug = f"death-{index}"
+        auras = loaded.auras_by_actor.get(death.actor_id)
+        timeline = tuple(
+            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras)
+            for position, event in enumerate(events)
+        )
         has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
             loaded, death, defensives, consumables, externals,
@@ -202,6 +359,7 @@ def build_deaths(
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
         came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)
+        tooltips = _availability_tooltips(loaded, death, defensives, externals)
         cards.append(
             DeathCard(
                 # Falls back to the raw event name only for an actor id that is not
@@ -216,20 +374,20 @@ def build_deaths(
                 # The health column is reconstructed, and says so in the same
                 # words the ledger uses.
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
-                health_curve=build_health_curve(
-                    events, readings_in_window(loaded, death), death
-                ),
+                health_curve=curve,
                 timeline_summary=f"{len(timeline)} {plural(len(timeline), 'event')}",
                 timeline_note="" if timeline else NO_TIMELINE_EVENT,
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
                 came_back=came_back,
                 came_back_badge=came_back_badge,
                 availability=(
-                    _group("Defensives", at.own, names, f"No data file covers {spec}."),
-                    _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA,
+                    _group("Defensives", at.own, names, f"No data file covers {spec}.", tooltips),
+                    _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA, tooltips,
                            CONSUMABLE_CAVEAT),
-                    _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS),
+                    _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS,
+                           tooltips),
                 ),
+                slug=slug,
             )
         )
     return tuple(cards)

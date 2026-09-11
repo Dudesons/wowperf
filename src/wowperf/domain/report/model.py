@@ -134,13 +134,25 @@ class DamageTrack(Frozen):
 
     `baseline_y` is the foot the bars stand on; `label_y` is where the track's
     name sits, centred on the band the bars grow through rather than on that
-    foot, so the name reads level with what it names.
+    foot, so the name reads level with what it names. `axis_top_y` is the
+    same peak drawn as a line rather than implied by the tallest bar's own
+    top edge, running from `axis_x0` to `axis_x1` -- the same track origin
+    and end every bar and span on the chart already starts and stops at, not
+    the label gutter on one side or the viewBox edge on the other --
+    `axis_top_label` names the figure that line stands for, and
+    `bucket_caption` states the bucket width so a bar's meaning does not have
+    to be guessed from its own thickness.
     """
 
     baseline_y: float = 0.0
     label_y: float = 0.0
     bars: tuple[DamageBar, ...] = ()
     peak_label: str = ""
+    axis_top_y: float = 0.0
+    axis_x0: float = 0.0
+    axis_x1: float = 0.0
+    axis_top_label: str = ""
+    bucket_caption: str = ""
 
 
 class Press(Frozen):
@@ -175,6 +187,12 @@ class CooldownRow(Frozen):
     `baseline_y` is the row's top edge, which every rect on it hangs from;
     `label_y` is the row's middle, where its name sits. They differ because a
     name drawn from the top edge would fall across the row above.
+
+    `ready_ticks` marks the instant each `unavailable` span ends -- the
+    moment the ability came back -- but only for a press whose cooldown
+    finished before the axis did. A cooldown still running when the run ends
+    gets no tick: the log never says the ability came back, so nothing is
+    drawn claiming it did.
     """
 
     label: str
@@ -183,7 +201,22 @@ class CooldownRow(Frozen):
     label_y: float = 0.0
     presses: tuple[Press, ...] = ()
     unavailable: tuple[Span, ...] = ()
+    ready_ticks: tuple[float, ...] = ()
     not_judged: Span | None = None
+    cover: tuple[Span, ...] = ()
+    """Every stretch this ability's buff was actually up, from the aura table's
+    own bands, clipped to the axis.
+
+    Drawn at true scale and never floored: a five-second buff on a
+    thirty-three-minute axis is about one and a half units wide, and widening it
+    to make it visible would be a claim about duration the log did not make.
+    Empty where no aura table was fetched for this player, where the table
+    recorded no band for the ability, or where neither the ability's own id
+    nor its name matched an aura the table carries -- `resolve_aura` tries the
+    id first and the name second, because the table keys an aura on the buff
+    it applies, not on the spell cast to apply it, and a few abilities cast as
+    one spell and buff as another.
+    """
 
 
 class PlayerTimeline(Frozen):
@@ -200,7 +233,8 @@ class PlayerTimeline(Frozen):
     height: float = 0.0
     pulls: tuple[TimelineBlock, ...] = ()
     band_y: float = 0.0
-    band_height: float = 0.0
+    column_height: float = 0.0
+    pull_label_y: float = 0.0
     damage: DamageTrack | None = None
     cooldowns: tuple[CooldownRow, ...] = ()
     ticks: tuple[tuple[float, str], ...] = ()
@@ -217,6 +251,32 @@ class PlayerTimeline(Frozen):
     badge_inferred_caption: str = ""
 
 
+class TooltipLine(Frozen):
+    """One labelled figure of a tooltip. Formatted here; the template prints it."""
+
+    label: str
+    value: str
+    tier: Badge | None = None
+    """Which confidence tier this line's figure belongs to, or None for measured --
+    this tooltip's default and the one tier common enough that marking it would
+    mark everything. Set only on a line that is not a measured sum: an inferred
+    assumption from a data file, or a derived rate computed from the measured
+    lines beside it. Rendered as a small marker beside the label, styled like
+    the page's other badges but linking nowhere, since a tooltip is not a
+    finding with its own row in Provenance."""
+
+
+class Tooltip(Frozen):
+    """What hovering an ability says: measured lines, and the caveat they need.
+
+    A tooltip with no lines is never built: the panel exists to carry figures,
+    and an empty one is a hover target that rewards nothing.
+    """
+
+    lines: tuple[TooltipLine, ...] = ()
+    note: str = ""
+
+
 class RecapRow(Frozen):
     """One event of a death's last seconds, formatted.
 
@@ -230,6 +290,9 @@ class RecapRow(Frozen):
     none. Zero is never used: the ability dictionary maps zero to "Unknown
     Ability" with a real icon file, so a zero would draw art beside a row
     nobody identified.
+
+    `tooltip` is what the log recorded about this one event, or None on a
+    cast, which carries no figures of its own to show.
     """
 
     seconds_before: str
@@ -239,6 +302,23 @@ class RecapRow(Frozen):
     health: str = ""
     health_percent: int | None = None
     ability_id: int | None = None
+    tooltip: Tooltip | None = None
+    marker_id: str = ""
+    """This row's own element id, shared with the marker it lights on the curve.
+
+    Unique across the page: two deaths in one run each have a row zero, and the
+    script resolves a marker by id.
+    """
+    marker_x: float | None = None
+    """Where this row's moment falls on the curve, or None when there is no curve
+    to place it on. In the curve's own coordinate space, from `curve_x`."""
+    cover_x: float | None = None
+    """The left edge of the window this press covered, in the curve's coordinate
+    space, or None on a row that is not a press or whose buff the aura table
+    never recorded. Drawn only where the log stated a band."""
+    cover_width: float | None = None
+    """How wide that window is, in the same coordinate space as `cover_x`.
+    None exactly when `cover_x` is: the two are always set together."""
 
 
 class CurvePoint(Frozen):
@@ -288,6 +368,11 @@ class HealthCurve(Frozen):
     height: float
     plot_x0: float
     plot_x1: float
+    plot_y0: float
+    plot_y1: float
+    plot_height: float
+    """`plot_y1 - plot_y0`, computed once so a cover window's `<rect>` needs no
+    arithmetic of its own to span the plot's full height."""
     label_x: float
     tick_label_y: float
     points: tuple[CurvePoint, ...] = ()
@@ -305,6 +390,11 @@ class AvailabilityRow(Frozen):
 
     `ability_id` is None on a consumable row, which names a cooldown group
     rather than one item, so those rows carry no icon.
+
+    `tooltip` carries what the run measured about this ability -- its
+    presses, its cover, and the derived mitigation-rate gap the design's
+    section 5 requires to be offered as suggestive rather than attributed --
+    or None where the dying player's own aura table names no matching buff.
     """
 
     ability: str
@@ -312,6 +402,7 @@ class AvailabilityRow(Frozen):
     owner: str = ""
     detail: str = ""
     ability_id: int | None = None
+    tooltip: Tooltip | None = None
 
 
 class AvailabilityGroup(Frozen):
@@ -363,6 +454,14 @@ class DeathCard(Frozen):
     came_back: str = ""
     came_back_badge: Badge | None = None
     availability: tuple[AvailabilityGroup, ...] = ()
+    slug: str = ""
+    """The stem every marker id on this card is built from, unique within the report.
+
+    Not a fragment id: nothing on the page renders `id="{{ slug }}"` or links
+    to it, unlike `PlayerCard.slug`, which is one. This is only a prefix a
+    recap row and the mark it lights on the curve share, so the script can
+    resolve one from the other.
+    """
 
 
 class PlayerCard(Frozen):

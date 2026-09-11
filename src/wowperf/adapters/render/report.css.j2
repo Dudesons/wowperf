@@ -15,7 +15,14 @@
 * { box-sizing: border-box; }
 body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
   font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-main { max-width: 760px; margin: 0 auto; }
+/* The page takes the screen; running prose does not. A paragraph read at the
+   width of a monitor is harder to follow than one read in a narrow column, so
+   the measure moves off the page and onto the text, and the dense content --
+   cards, tables, drawings -- keeps the whole width. */
+main { max-width: 1400px; margin: 0 auto; }
+.detail, .sub, .legend, .nests, .group-note, .narrative, .withheld { max-width: 68ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px; align-items: start; }
 a { color: var(--ours); }
 h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
 h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
@@ -35,8 +42,11 @@ p { margin: 0 0 10px; }
 .badge-derived { background: var(--badge-derived); }
 .badge-inferred { background: var(--badge-inferred); }
 .detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* `.findings` is a grid and this note is one of its direct children, so
+   without a span it would take one card's own column instead of reading as
+   an introduction to the run of cards after it. */
 .group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
-  border-left: 2px solid var(--line); }
+  border-left: 2px solid var(--line); grid-column: 1 / -1; }
 .evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
 .evidence li::before { content: "· "; }
 .nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
@@ -85,11 +95,28 @@ p { margin: 0 0 10px; }
 .hp-axis { fill: var(--ink-faint); font-size: 11px; }
 .hp-health { text-anchor: end; dominant-baseline: middle; }
 .hp-time { text-anchor: middle; }
-/* The line takes the derived tint and the dots the measured one, so a mark's colour
-   and the badge beneath it name the same claim. */
+/* The line takes the derived tint and a dashed stroke, because it is
+   arithmetic between readings rather than anything the log stated. The
+   readings take the measured tint and a ring against the page colour, so a
+   stated figure reads as a mark on the drawing rather than as a kink in the
+   line it happens to sit on. */
 .hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
-  stroke-linejoin: round; }
-.hp-reading { fill: var(--badge-measured); }
+  stroke-linejoin: round; stroke-dasharray: 5 3; }
+.hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
+/* Placed by the builder, hidden until the row it belongs to is hovered or
+   focused. Hidden by opacity rather than by display so the browser has no
+   layout to recompute when it appears. */
+.hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
+.hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. Measured
+   tint, not derived: the window is the aura table's own band, the same claim
+   the run timeline's `.cover` rule paints in the same colour -- `--ours`
+   happens to be byte-identical to `--badge-derived`, which would read this
+   measured window as the curve's own arithmetic. */
+.hp-cover { fill: var(--badge-measured); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
+tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }
 .avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
@@ -108,6 +135,12 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    instead. */
 .icon-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 {% endif %}
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  position: relative; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
@@ -117,11 +150,34 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    run timeline's captions, is what lets the longest ability name in the data
    files fit that gutter. */
 .row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
-.pull-band { fill: var(--line); }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
 .damage-bar { fill: var(--hit); }
 /* Opaque and lighter than the band behind it: this is the layer the inferred
    badge grades, and a state marker fainter than the background it sits on is
    a state a screenshot loses. */
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+/* The share of each cycle the ability was doing anything, at true scale. A
+   green head on a grey bar. */
+.cover { fill: var(--badge-measured); }
 .press { fill: var(--ours); }
+/* An open tick, not a filled mark: a press is something the player did and a
+   comeback is something that merely became true, and the two must not read as
+   the same event. */
+.ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+.damage-axis { stroke: var(--line); stroke-width: 1; }
+.pull-name { fill: var(--ink-dim); font-size: 8px; }
+/* Revealed by hover and by keyboard focus, and rendered into the page whether
+   or not it is shown: the panel is markup the builder wrote, never text the
+   script fetches or writes. */
+.tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
+  min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.ability:hover .tip, .ability:focus-within .tip { display: block; }
+.tip-line { display: flex; justify-content: space-between; gap: 12px; }
+.tip-label { color: var(--ink-dim); }
+.tip-value { font-variant-numeric: tabular-nums; }
+.tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }

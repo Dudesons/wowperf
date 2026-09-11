@@ -86,6 +86,22 @@ def test_a_hit_carries_its_health_damage_and_absorbed_share_and_a_heal_its_sourc
     assert (hit.amount, hit.absorbed, heal.amount, heal.source_id) == (1_000, 400, 5, 2)
 
 
+def test_a_hit_carries_the_figures_a_tooltip_needs_beyond_what_reached_health() -> None:
+    # `amount` and `absorbed` are already proven above; this covers the fields
+    # Task 8 adds for the tooltip -- the ones `a_hit` above never sets.
+    run = loaded(
+        damage_taken=(
+            DamageTakenEvent(actor_id=1, ability_id=1, ability_name="Snowdrift",
+                             amount=145_434, timestamp_ms=55_000, health_damage=67_343,
+                             mitigated=15_609, overkill=62_482, is_area=True, is_tick=True),
+        ),
+    )
+    hit = recap_timeline(run, a_death())[0]
+    assert (hit.unmitigated, hit.mitigated, hit.overkill, hit.is_area, hit.is_tick) == (
+        145_434, 15_609, 62_482, True, True,
+    )
+
+
 def test_another_players_events_do_not_enter_the_timeline() -> None:
     run = loaded(
         damage_taken=(a_hit(55_000, 10, actor_id=3),),

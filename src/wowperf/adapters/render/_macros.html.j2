@@ -6,7 +6,7 @@
 {% endif %}
 <div class="card" id="finding-{{ row.finding_id }}">
   <div class="row-head">
-    <h3>{{ row.title_before }}{% if row.ability_id in icons_by_id %}<span class="icon i-{{ row.ability_id }}" aria-hidden="true"></span>{% endif %}{{ row.title_ability }}{{ row.title_after }}</h3>
+    <h3>{{ row.title_before }}{% if row.title_ability %}{{ ability(row.ability_id, row.title_ability) }}{% endif %}{{ row.title_after }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
     <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
   </div>
@@ -29,3 +29,18 @@
   <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
 </a>
 {% endmacro %}
+
+{# One hoverable object per ability: the art and the word are the same thing to a
+   reader, so they are the same element to the page. An optional tooltip rides on
+   the same element, since that is the one hover target the page already has.
+   Spec 4.6 calls the pair "a single hoverable, focusable unit", which a bare
+   span cannot be, so it takes a tabindex -- but only when it carries a
+   tooltip: an ability with no panel to reveal has nothing for focus to earn,
+   and making every one of the page's icons a tab stop would wreck keyboard
+   navigation to buy nothing. #}
+{% macro ability(ability_id, name, tooltip=None) %}
+<span class="ability"{% if tooltip %} tabindex="0"{% endif %}>{% if ability_id in icons_by_id %}<span class="icon i-{{ ability_id }}" aria-hidden="true"></span>{% endif %}<span class="ability-name">{{ name }}</span>
+{%- if tooltip %}<span class="tip" role="note">
+{%- for line in tooltip.lines %}<span class="tip-line"><span class="tip-label">{{ line.label }}{% if line.tier %} <span class="badge {{ line.tier.tint }}">{{ line.tier.label }}</span>{% endif %}</span><span class="tip-value">{{ line.value }}</span></span>{% endfor %}
+{%- if tooltip.note %}<span class="tip-note">{{ tooltip.note }}</span>{% endif %}</span>{% endif %}</span>
+{%- endmacro %}

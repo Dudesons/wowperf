@@ -10,9 +10,11 @@
 {% if report.route_rows %}
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
+<div class="findings">
 {% for row in report.route_rows %}
 {{ ledger_row(row) }}
 {% endfor %}
+</div>
 {% elif report.route.state.value != "withheld" %}
 <p class="sub">Nothing to report.</p>
 {% endif %}

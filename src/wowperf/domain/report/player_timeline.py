@@ -3,9 +3,11 @@
 
 from collections import defaultdict
 
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,
@@ -21,6 +23,7 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.timeline import (
     MIN_BLOCK_WIDTH,
     TIMELINE_WIDTH,
+    TRACK_X1,
     axis_scale,
     axis_ticks,
 )
@@ -77,7 +80,8 @@ AXIS_TOP = 22.0
 BAND_Y = 28.0
 """The pull band's top edge: a thin strip the rest of the drawing hangs under."""
 
-BAND_HEIGHT = 10.0
+PULL_LABEL_GAP = 3.0
+"""Clear space between a boss pull's name and the column top it sits above."""
 
 DAMAGE_BASELINE_Y = 76.0
 """The foot of the damage bars. They grow upward from here."""
@@ -161,23 +165,60 @@ LEGEND = (
     "computed from its base length: talents shorten cooldowns and the log records no reset, "
     "so this shows an ability as unavailable at least as often as it truly was. The pale "
     "stretch at the start is not judged at all — a press before the timer began is invisible "
-    "to a log fetched per fight."
+    "to a log fetched per fight. An open tick marks the earliest the ability could have come "
+    "back, computed from that same base length: talents may have freed it sooner, and the log "
+    "never says."
 )
 
-BADGE_MEASURED_CAPTION = "the damage bars and the press marks."
-"""What the measured badge grades: both are events the log itself emitted."""
+BADGE_MEASURED_CAPTION = "the damage bars, the press marks and the cover windows."
+"""What the measured badge grades: the log itself reports all three directly -- casts
+and hits as events, the aura's own bands as the intervals it was up for."""
 
-BADGE_INFERRED_CAPTION = "the dimming."
+BADGE_INFERRED_CAPTION = "the dimming and the ready tick that ends it."
 """What the inferred badge grades: a cooldown length assumed from its base value, since
-talents shorten it and the log records no reset."""
+talents shorten it and the log records no reset -- the same assumption the ready tick is
+computed from, so it carries the same badge as the dimming it closes."""
+
+
+def _track_x(elapsed_seconds: float, scale: float) -> float:
+    """The x coordinate for a moment `elapsed_seconds` after the axis origin.
+
+    Every mark on this chart -- a pull band, a damage bucket, a press, a
+    cooldown span, a ready tick, a cover window -- places some instant on the
+    same track, and every one of them has to translate that instant to an x
+    the same way. Writing `TRACK_ORIGIN_X + elapsed_seconds * scale` by hand
+    at each call site let a mark and the thing it sits on drift apart the
+    moment one site's formula changed and another's did not; this is the one
+    place that arithmetic happens. Unrounded: callers round to `PRECISION`
+    themselves, since some do further arithmetic first (a press mark's x is
+    offset half its own width before rounding).
+    """
+    return TRACK_ORIGIN_X + elapsed_seconds * scale
+
+
+def _press_x(instant: float) -> float:
+    """The left edge of a `PRESS_WIDTH`-wide mark centred on `instant`, rounded.
+
+    Shared by a press's own mark and the ready tick that answers it: both are
+    rects of the same width standing for a single moment, and `Press`'s own
+    docstring is the reason either needs offsetting at all -- an SVG rect's
+    `x` is its left edge, so a mark placed flush with the instant would sit
+    wholly to its right. Writing the offset a second time at the tick's call
+    site would let the two drift the way `_track_x` already exists to stop a
+    mark and its track from drifting.
+    """
+    return round(instant - PRESS_WIDTH / 2, PRECISION)
 
 
 def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, ...]:
     """Every pull as a band behind the tracks, boss pulls outlined."""
     return tuple(
         TimelineBlock(
-            label=pull.name,
-            x=round(TRACK_ORIGIN_X + (pull.start_ms - origin_ms) / 1000 * scale, PRECISION),
+            # A boss's name is worth the space; a trash pack's generated name is
+            # the first mob the log happened to see, which names nothing a reader
+            # can find again. The index is what the rest of the report calls it.
+            label=pull.name if pull.is_boss else f"Pull {pull.index}",
+            x=round(_track_x((pull.start_ms - origin_ms) / 1000, scale), PRECISION),
             width=round(max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH), PRECISION),
             is_boss=pull.is_boss,
             kind="band",
@@ -218,7 +259,7 @@ def _damage_track(
     width = round(BUCKET_SECONDS * scale, PRECISION)
     bars = tuple(
         DamageBar(
-            x=round(TRACK_ORIGIN_X + index * BUCKET_SECONDS * scale, PRECISION),
+            x=round(_track_x(index * BUCKET_SECONDS, scale), PRECISION),
             width=max(width, MIN_BLOCK_WIDTH),
             y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
             height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
@@ -232,8 +273,62 @@ def _damage_track(
         label_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT / 2, PRECISION),
         bars=bars,
         peak_label=(
-            f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds"
+            f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds."
         ),
+        axis_top_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
+        # The same origin the bars and every span on the chart already start
+        # from, not the label gutter: every other track element leaves
+        # LABEL_GAP between the two, and this line is not an exception.
+        axis_x0=TRACK_ORIGIN_X,
+        # The same end the bars and every span on the chart already stop at,
+        # not the viewBox's own edge: `timeline.width` runs past TRACK_X1 into
+        # the right margin, twenty-four units this drawing never places
+        # anything else in.
+        axis_x1=TRACK_X1,
+        axis_top_label=f"{peak:,}",
+        # Says what `peak_label` does not: that width is every bar's, not just
+        # the tallest one's, and what the axis itself is scaled against. Says
+        # nothing `peak_label` already said -- no repeated "unmitigated
+        # damage" -- since the two sentences sit side by side on the page.
+        bucket_caption=(
+            f"Each bar is a {int(BUCKET_SECONDS)}-second bucket, and the axis runs from "
+            f"nothing to this player's own tallest, never the group's."
+        ),
+    )
+
+
+def _cover_spans(
+    ability_id: int,
+    ability_name: str,
+    auras: PlayerAuras | None,
+    scale: float,
+    origin_ms: int,
+    span_seconds: float,
+) -> tuple[Span, ...]:
+    """Every stretch this ability's buff was up, drawn at the axis's own scale.
+
+    `MIN_BLOCK_WIDTH` is deliberately not applied. A pull is floored to that
+    width because a pull that vanishes tells the reader nothing; a cover
+    window's width *is* the claim, and widening a five-second buff on a
+    thirty-three-minute axis from 1.4 units to 2 would overstate its duration by
+    nearly half.
+
+    `clipped_bands` -- the merged view -- is used rather than `band_holding`:
+    this row draws the ability's total cover across the whole run, not the
+    window one particular press earned.
+    """
+    if auras is None:
+        return ()
+    aura = resolve_aura(auras, ability_id, ability_name)
+    if aura is None:
+        return ()
+    end_ms = origin_ms + int(span_seconds * 1000)
+    return tuple(
+        Span(
+            x=round(_track_x((start - origin_ms) / 1000, scale), PRECISION),
+            width=round((end - start) / 1000 * scale, PRECISION),
+        )
+        for start, end in clipped_bands(aura, origin_ms, end_ms)
     )
 
 
@@ -244,6 +339,7 @@ def _cooldown_rows(
     scale: float,
     origin_ms: int,
     span_seconds: float,
+    auras: PlayerAuras | None,
 ) -> tuple[CooldownRow, ...]:
     """One row per ability in `abilities` this player cast at least once.
 
@@ -264,9 +360,9 @@ def _cooldown_rows(
     owned = {cast.ability_id for cast in ours}
 
     def press_at(at: int) -> Press:
-        instant = TRACK_ORIGIN_X + (at - origin_ms) / 1000 * scale
+        instant = _track_x((at - origin_ms) / 1000, scale)
         return Press(
-            x=round(instant - PRESS_WIDTH / 2, PRECISION),
+            x=_press_x(instant),
             icon_x=round(instant - ROW_HEIGHT / 2, PRECISION),
         )
 
@@ -289,7 +385,7 @@ def _cooldown_rows(
                 presses=tuple(press_at(at) for at in presses),
                 unavailable=tuple(
                     Span(
-                        x=round(TRACK_ORIGIN_X + (at - origin_ms) / 1000 * scale, PRECISION),
+                        x=round(_track_x((at - origin_ms) / 1000, scale), PRECISION),
                         # Clamped to the time remaining in the run after this
                         # press, not to the run's whole length: the ability can
                         # only be judged unavailable up to the axis end, never
@@ -305,7 +401,25 @@ def _cooldown_rows(
                     )
                     for at in presses
                 ),
+                # A cooldown's own end is the moment the ability came back --
+                # marked only when that moment falls before the axis does. A
+                # cooldown still running when the run ends would need a tick
+                # at the axis end, which claims the ability came back at the
+                # moment the run finished; the log never says that. Anchored
+                # through `_press_x`, the same offsetting the press it
+                # answers already uses -- see that helper for why either
+                # mark needs offsetting at all.
+                ready_ticks=tuple(
+                    _press_x(_track_x(end, scale))
+                    for end in (
+                        (at - origin_ms) / 1000 + ability.cooldown_seconds for at in presses
+                    )
+                    if end < span_seconds
+                ),
                 not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
+                cover=_cover_spans(
+                    ability.ability_id, ability.name, auras, scale, origin_ms, span_seconds
+                ),
             )
         )
     return tuple(rows)
@@ -350,6 +464,7 @@ def build_player_timeline(
         scale,
         origin,
         span,
+        loaded.auras_by_actor.get(actor_id),
     )
     damage = _damage_track(loaded.damage_taken, actor_id, scale, origin)
 
@@ -368,7 +483,8 @@ def build_player_timeline(
         height=height,
         pulls=_pull_bands(run, scale, origin),
         band_y=BAND_Y,
-        band_height=BAND_HEIGHT,
+        column_height=height - BAND_Y - BOTTOM_MARGIN,
+        pull_label_y=BAND_Y - PULL_LABEL_GAP,
         damage=damage,
         cooldowns=rows,
         ticks=tuple(

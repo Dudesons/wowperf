@@ -41,3 +41,12 @@ def test_a_row_that_kept_its_detail_still_renders_it() -> None:
     html = render(a_report(route_rows=(a_row("time.gap.0", detail="Travel, not combat."),)))
 
     assert "Travel, not combat." in html
+
+
+def test_the_group_note_spans_the_full_grid_row() -> None:
+    # F7: `.findings` is a grid, and every direct child -- including this note
+    # -- is a grid item. Without an explicit span the note takes one card's
+    # own column instead of reading as an introduction to the cards after it.
+    html = render(a_report(route_rows=a_run()))
+
+    assert "grid-column: 1 / -1" in html

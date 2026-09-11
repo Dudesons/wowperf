@@ -45,6 +45,8 @@ from wowperf.domain.report.model import (
     Timeline,
     TimelineBlock,
     TimelineTrack,
+    Tooltip,
+    TooltipLine,
 )
 from wowperf.domain.report.timeline import build_timeline
 
@@ -463,6 +465,9 @@ def a_curve() -> HealthCurve:
         height=148.0,
         plot_x0=40.0,
         plot_x1=668.0,
+        plot_y0=14.0,
+        plot_y1=116.0,
+        plot_height=102.0,
         label_x=34.0,
         tick_label_y=136.0,
         points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=668.0, y=116.0)),
@@ -506,6 +511,33 @@ def test_the_curve_prints_the_legend_and_both_badges_the_builder_wrote() -> None
     assert "measured" in deaths and "derived" in deaths
 
 
+def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> None:
+    # The line is derived and the dots are measured, and the badges beneath say
+    # so. Saying it in shape as well as in words means a reader who never reads
+    # the legend still sees two different claims.
+    curve = HealthCurve(
+        width=680.0, height=148.0, plot_x0=40.0, plot_x1=648.0, plot_y0=14.0, plot_y1=116.0,
+        plot_height=102.0,
+        label_x=34.0,
+        tick_label_y=136.0,
+        points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=648.0, y=116.0)),
+        readings=(CurveReading(x=40.0, y=14.0, percent=100),),
+    )
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", health_curve=curve)
+    html = render(a_report(deaths=(card,)))
+    # The line is dashed: stroke-linejoin followed by stroke-dasharray appears
+    # only in the .hp-line rule after this change.
+    assert "stroke-linejoin: round; stroke-dasharray: 5 3;" in html
+    # The reading is ringed: the rule now has both fill and stroke, a
+    # combination that did not exist before.
+    assert "fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5;" in html
+    # The reading's radius is increased so the ring stroke is visible: assert
+    # the whole opening tag rather than the bare radius, which could appear
+    # on any circle.
+    assert '<circle class="hp-reading" cx="40.0" cy="14.0" r="3.5">' in html
+
+
 def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> None:
     curve = a_curve().model_copy(
         update={"readings": (), "reading_badge": None, "reading_legend": ""}
@@ -513,6 +545,53 @@ def test_a_curve_with_no_readings_draws_no_dots_and_claims_no_measurement() -> N
     deaths = deaths_of(a_card(health_curve=curve))
     assert "<circle" not in deaths
     assert "measured" not in deaths
+
+
+def test_a_recap_row_with_a_marker_draws_a_hidden_line_on_the_curve() -> None:
+    # The script test in test_html_invariants.py proves the CSS rule and the JS
+    # handlers exist, but that string sits in the stylesheet regardless of
+    # whether any card actually draws a marker. This proves the template
+    # itself draws the hidden `<line>` a real row's marker_x asks for, tied
+    # to the row's own id by the "-mark" suffix the script looks up.
+    curve = a_curve()
+    row = RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
+                   health="61%", health_percent=61, marker_id="death-0-e0", marker_x=50.0)
+    deaths = deaths_of(a_card(health_curve=curve, timeline=(row,)))
+    assert (
+        '<line class="hp-marker" id="death-0-e0-mark"\n'
+        f'        x1="50.0" y1="{curve.plot_y0}"\n'
+        f'        x2="50.0" y2="{curve.plot_y1}"></line>'
+    ) in deaths
+
+
+def test_a_recap_row_with_no_marker_draws_no_line_on_the_curve() -> None:
+    # The default RecapRow carries no marker_x, and a card can carry a curve
+    # while one of its rows falls outside it (or before build_deaths ever ran).
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "hp-marker" not in deaths
+
+
+def test_a_pressed_row_with_a_cover_window_draws_a_hidden_rect_on_the_curve() -> None:
+    # Same proof as the marker test above, for the window a press covered: the
+    # template itself draws the hidden `<rect>` a real row's cover_x and
+    # cover_width ask for, tied to the row's own id by the "-cover" suffix the
+    # script looks up.
+    curve = a_curve()
+    row = RecapRow(seconds_before="5.0 s", kind="cast", ability="Icebound Fortitude",
+                   marker_id="death-0-e0", cover_x=40.0, cover_width=12.0)
+    deaths = deaths_of(a_card(health_curve=curve, timeline=(row,)))
+    assert (
+        '<rect class="hp-cover" id="death-0-e0-cover"\n'
+        f'        x="40.0" y="{curve.plot_y0}"\n'
+        f'        width="12.0" height="{curve.plot_height}"></rect>'
+    ) in deaths
+
+
+def test_a_recap_row_with_no_cover_window_draws_no_rect_on_the_curve() -> None:
+    # A row that is not a press, or whose buff the aura table never recorded,
+    # must render no cover element at all -- not an empty or zero-width one.
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "hp-cover" not in deaths
 
 
 def test_a_death_card_with_no_curve_emits_no_svg_at_all() -> None:
@@ -647,12 +726,11 @@ def a_drawn_timeline() -> PlayerTimeline:
         pulls=(TimelineBlock(label="Pack 0", x=130.0, width=100.0, is_boss=False,
                              kind="band", css_class="pull-band"),),
         band_y=28.0,
-        band_height=10.0,
         damage=DamageTrack(
             baseline_y=76.0,
             label_y=60.0,
             bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
-            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+            peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
                                label_y=104.0,
@@ -684,9 +762,10 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     assert "not judged" in html
     # Which badge grades what is a claim the page makes, so it must be spoken
     # rather than left as two colours side by side: "measured" is captioned
-    # to the damage bars and press marks, "inferred" to the dimming.
-    assert "measured</a> — the damage bars and the press marks." in html
-    assert "inferred</a> — the dimming." in html
+    # to the damage bars, the press marks and the cover windows, "inferred"
+    # to the dimming and the ready tick that ends it.
+    assert "measured</a> — the damage bars, the press marks and the cover windows." in html
+    assert "inferred</a> — the dimming and the ready tick that ends it." in html
 
 
 def test_a_timelines_badges_link_to_provenance_like_every_other_badge() -> None:
@@ -734,6 +813,43 @@ def test_a_timeline_names_itself_rather_than_claiming_to_be_an_unnamed_image() -
     assert f"<title>{escape(player_timeline_module.TITLE)}</title>" in svg
     assert "role=" not in svg
     assert "<title>Pack 0</title>" in svg
+
+
+def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> None:
+    # The band used to float at a fixed height above the tracks; it now runs the
+    # full column height so a press reads as landing inside the pull it happened
+    # during. Only the boss pull's name is drawn on the chart -- a run's forty
+    # trash names would overlap into a smear -- so the trash pull's index
+    # reaches a reader only through its own <title>, never as on-chart text.
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT),
+        title=player_timeline_module.TITLE,
+        width=680.0,
+        height=140.0,
+        pulls=(
+            TimelineBlock(label="Pull 7", x=130.0, width=50.0, is_boss=False,
+                          kind="band", css_class="pull-band"),
+            TimelineBlock(label="Nalorakk", x=200.0, width=60.0, is_boss=True,
+                          kind="band", css_class="pull-band block-boss"),
+        ),
+        band_y=28.0,
+        column_height=84.0,
+        pull_label_y=25.0,
+    )
+    html = render(a_report(players=(a_player_card(timeline=timeline),)))
+    body = html.split("</style>")[1]
+
+    # The boss pull's <rect> carries height equal to the timeline's column_height.
+    assert (
+        '<rect class="pull-band block-boss" x="200.0" y="28.0"\n'
+        '        width="60.0" height="84.0">'
+    ) in body
+    # The boss pull's name is drawn as text at pull_label_y.
+    assert '<text class="pull-name" x="200.0" y="25.0">Nalorakk</text>' in body
+    # The trash pull's index label reaches the page as a <title> only -- no
+    # on-chart <text> is drawn for it.
+    assert "<title>Pull 7</title>" in body
+    assert '<text class="pull-name" x="130.0" y="25.0">Pull 7</text>' not in body
 
 
 def test_a_timelines_tick_labels_are_centred_the_way_the_run_timelines_are() -> None:
@@ -911,6 +1027,148 @@ def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> Non
     assert on_cooldown_at < not_judged_at
 
 
+def test_a_cooldown_row_with_a_ready_tick_draws_the_open_mark() -> None:
+    # The full opening tag is pinned, not just the class name: the tick's own
+    # x and the row's baseline_y both have to reach the page, the same way a
+    # press's own coordinates do.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+        ready_ticks=(136.0,),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<rect class="ready-again" x="136.0" y="96.0"\n'
+        '        width="4.0" height="16.0"/>'
+    ) in body
+
+
+def test_a_cooldown_row_with_a_cover_window_draws_it_at_true_scale() -> None:
+    # The full opening tag is pinned, not just the class name: the span's own x
+    # and width, and the row's baseline_y, all have to reach the page -- the
+    # same proof every other mark on this row already carries. The width here
+    # (1.4) is deliberately narrower than MIN_BLOCK_WIDTH (2.0): the builder
+    # never floors a cover window, so the template must not either.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+        cover=(Span(x=46.0, width=1.4),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<rect class="cover" x="46.0" y="96.0"\n'
+        '        width="1.4" height="16.0"/>'
+    ) in body
+
+
+def test_a_cooldown_row_with_no_cover_window_draws_no_cover_rect() -> None:
+    # The half that catches an unconditional element: a row with a press but
+    # no cover window -- an ability whose buff the aura table never recorded,
+    # or a player with no aura table fetched at all -- must not render a
+    # "cover" element anywhere. Scoped to the body: the stylesheet always
+    # defines ".cover", so checking the whole page would pass even if the
+    # template drew the element unconditionally.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split(
+        "</style>"
+    )[1]
+    assert 'class="cover"' not in body
+
+
+def test_a_cooldown_row_with_no_ready_ticks_draws_no_ready_again_mark() -> None:
+    # The half that catches an unconditional element: a row with a press but
+    # no ready tick -- the ordinary case for a cooldown still running when the
+    # run ends -- must not render a "ready-again" element anywhere at all.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=600.0),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    # Scoped to the body: the stylesheet always defines ".ready-again", so
+    # checking the whole page would pass even if the template drew the
+    # element unconditionally.
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split(
+        "</style>"
+    )[1]
+    assert "ready-again" not in body
+
+
+def test_the_damage_row_draws_its_own_axis_line() -> None:
+    # The full opening tag is pinned: the line has to start at the track's own
+    # origin -- the same one the bars sit on -- and not at label_x, which is
+    # the label gutter every other track element leaves a LABEL_GAP clear of.
+    # And it must end at the track's own end (F9), not at the viewBox's width,
+    # which runs past TRACK_X1 into a margin nothing else on this chart uses.
+    damage = DamageTrack(
+        baseline_y=76.0, label_y=60.0,
+        bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
+        axis_top_y=44.0,
+        axis_x0=130.0,
+        axis_x1=timeline_module.TRACK_X1,
+        axis_top_label="120,000",
+        bucket_caption=(
+            "Each bar is a 5-second bucket, and the axis runs from nothing to this "
+            "player's own tallest, never the group's."
+        ),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        label_x=126.0, damage=damage,
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<line class="damage-axis" x1="130.0" y1="44.0"\n'
+        f'        x2="{timeline_module.TRACK_X1}" y2="44.0"/>'
+    ) in body
+
+
+def test_the_damage_rows_axis_label_and_bucket_caption_reach_the_page() -> None:
+    damage = DamageTrack(
+        baseline_y=76.0, label_y=60.0,
+        bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
+        axis_top_y=44.0,
+        axis_x0=130.0,
+        axis_top_label="120,000",
+        bucket_caption=(
+            "Each bar is a 5-second bucket, and the axis runs from nothing to this "
+            "player's own tallest, never the group's."
+        ),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        label_x=126.0, damage=damage,
+    )
+    html = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert "120,000" in html
+    # Escaped on comparison: the caption embeds two apostrophes, which
+    # autoescape turns into "&#39;".
+    assert str(escape(damage.bucket_caption)) in html
+
+
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     # The death card's killing blow forces id 45438 into `icons_by_id` through
     # the path that already resolves it, so this test populates `icons_by_id`
@@ -926,8 +1184,9 @@ def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     html = render(a_report(interrupts=(row,), deaths=(a_card(killing_blow_id=45438),)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -940,7 +1199,11 @@ def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
-    assert "Emberkin never cast Ice Block" in html
+    expected = (
+        'Emberkin never cast <span class="ability">'
+        '<span class="ability-name">Ice Block</span></span>'
+    )
+    assert expected in html
     assert 'class="icon' not in html
 
 
@@ -1015,8 +1278,9 @@ def test_an_icon_is_drawn_at_the_ability_a_death_row_names() -> None:
     html = render(a_report(death_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1028,8 +1292,9 @@ def test_an_icon_is_drawn_at_the_ability_a_group_row_names() -> None:
     html = render(a_report(group_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1041,8 +1306,9 @@ def test_an_icon_is_drawn_at_the_ability_a_route_row_names() -> None:
     html = render(a_report(route_rows=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1054,8 +1320,9 @@ def test_an_icon_is_drawn_at_the_ability_a_summary_ledger_row_names() -> None:
     html = render(a_report(ledger_decomposition=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     expected = (
-        'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>'
-        "Ice Block"
+        'Emberkin never cast <span class="ability">'
+        '<span class="icon i-45438" aria-hidden="true"></span>'
+        '<span class="ability-name">Ice Block</span></span>'
     )
     assert expected in html
 
@@ -1076,3 +1343,132 @@ def test_a_findings_ability_icon_survives_finding_through_build_report_to_render
     html = render(report, icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
 
     assert '<span class="icon i-45438" aria-hidden="true"></span>' in html
+
+
+def test_ledger_rows_render_inside_a_findings_wrapper() -> None:
+    # The CSS grid for dense content applies to .findings containers.
+    # Without them, the grid rule selects nothing and content does not flow
+    # into columns. This test verifies the wrappers actually render and contain cards.
+    finding = a_finding("time.residual", title="Time outside pulls")
+    report = build_report(a_loaded(), (finding,), None, None, SUBJECT, None, FETCHED,
+                          NO_DEFENSIVES, NO_CONSUMABLES)
+    html = render(report)
+
+    # Assert that a wrapper opening tag is immediately followed by a card opening tag,
+    # proving adjacency and containment. The wrapper's first child is a card.
+    assert '<div class="findings">\n<div class="card"' in html, \
+        "Findings wrapper must immediately contain a card"
+
+
+def test_an_icon_and_its_ability_name_render_as_one_element() -> None:
+    # Two adjacent spans read as two things. A reader scanning a recap table
+    # for "which ability was that" should meet one object with one hover
+    # target, which is also what a tooltip later attaches to.
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", killing_blow_id=7)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({7: "data:image/jpeg;base64,AAA"}))
+    assert '<span class="ability">' in html
+    assert '<span class="ability-name">Frigid Roar</span>' in html
+
+
+def test_an_unresolved_icon_still_renders_the_ability_as_one_element() -> None:
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar", killing_blow_id=7)
+    html = render(a_report(deaths=(card,)), icons=FakeIcons({}))
+    assert '<span class="ability">' in html
+    assert '<span class="ability-name">Frigid Roar</span>' in html
+    assert 'class="icon i-7"' not in html
+
+
+def test_an_ability_with_a_tooltip_is_a_focusable_span() -> None:
+    # Spec 4.6: the icon and name become "a single hoverable, focusable unit".
+    # A bare <span> takes no keyboard focus at all, so the tooltip's
+    # `:focus-within` half can only ever fire once the span carries a tabindex.
+    tooltip = Tooltip(lines=(TooltipLine(label="Struck for", value="1"),))
+    card = DeathCard(
+        player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+        killing_blow="Frigid Roar",
+        timeline=(RecapRow(seconds_before="5.0 s", kind="hit", ability="Snowdrift",
+                           tooltip=tooltip),),
+    )
+    html = render(a_report(deaths=(card,)))
+    assert '<span class="ability" tabindex="0">' in html
+
+
+def test_an_ability_with_no_tooltip_is_not_a_tab_stop() -> None:
+    # The real report embeds dozens of ability icons. Making every one of them
+    # a tab stop would wreck keyboard navigation through the page to buy
+    # nothing: an ability with no tooltip has no panel for focus to reveal.
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+                     killing_blow="Frigid Roar")
+    html = render(a_report(deaths=(card,)))
+    assert '<span class="ability">' in html
+    assert 'class="ability" tabindex' not in html
+
+
+def _li(html: str, state: str) -> str:
+    """The one `<li>` of this state, isolated from the rest of the page.
+
+    Task 8 already put `class="tip"` on the page for death-event tooltips, so a
+    bare substring check for it proves nothing about the availability rows this
+    task adds it to -- the check has to be scoped to this one list item.
+    """
+    start = html.index(f'<li class="{state}">')
+    return html[start:html.index("</li>", start)]
+
+
+def test_an_availability_row_with_a_tooltip_renders_it_inside_the_row() -> None:
+    tooltip = Tooltip(
+        lines=(TooltipLine(label="Base cooldown", value="120 s"),),
+        note="suggestive, not attributable",
+    )
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert 'class="tip"' in row
+    assert "Base cooldown" in row and "120 s" in row
+    assert "suggestive, not attributable" in row
+
+
+def test_an_availability_row_with_no_tooltip_renders_no_tooltip_element() -> None:
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready"),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert 'class="tip"' not in row
+
+
+def test_a_tooltip_line_with_a_tier_renders_a_badge_beside_its_label() -> None:
+    # F2/spec 4.5: a tooltip that mixes measured, derived and inferred figures
+    # has to mark which is which, the same discipline the rest of the page
+    # already carries. Styled like the page's other badges but a <span>, not
+    # a link -- a tooltip line is not a finding with its own row in
+    # Provenance for it to point to.
+    tooltip = Tooltip(
+        lines=(TooltipLine(label="Base cooldown", value="120 s",
+                           tier=Badge(label="inferred", tint="badge-inferred")),),
+    )
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert '<span class="badge badge-inferred">inferred</span>' in row
+    assert '<a class="badge badge-inferred"' not in row
+
+
+def test_a_tooltip_line_with_no_tier_renders_no_badge() -> None:
+    tooltip = Tooltip(lines=(TooltipLine(label="Presses", value="1"),))
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert "badge" not in row

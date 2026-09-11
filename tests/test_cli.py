@@ -30,6 +30,7 @@ from wowperf.cli import (
     _samples,
     app,
     build_icons,
+    load_run_with_auras,
 )
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.comparison.alignment import Alignment
@@ -1487,29 +1488,39 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
     assert "compare.uptime.self.0.emberkin-0" in ids
 
 
-def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_auras(
+def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_extra_auras(
     tmp_path: Path,
 ) -> None:
     """When the parse leaderboard names a player the reference's own roster does
     not contain, `find_player` can never resolve the counterpart, and the
     counterpart's aura fetch never fires — a state `cli.analyze` already handles.
-    Our own auras must be fetched only once that counterpart is known to resolve,
-    or this state pays for one `AuraTable` query it then has no use for."""
+    Our own auras must not be fetched a second time for the comparison once
+    `load_run_with_auras` has already fetched them for the whole roster before
+    the comparison ever runs: the only `AuraTable` queries this run issues are
+    that roster-wide fetch, one per roster player (`OUR_RUN`, the roster
+    `build_analyze_transport`'s default `player_name` answers for report
+    abc123). Nothing pays for the ghost's unresolved counterpart, and nothing
+    pays for `our_auras` again."""
     calls: list[str] = []
     ghost_row = {**_parse_row(16), "name": "Ghost"}
     transport = build_analyze_transport(parse_rows=[ghost_row], calls=calls)
     result = _invoke(tmp_path, [], transport)
 
     assert result.exit_code == 0, result.output
-    assert "AuraTable" not in calls
+    assert calls.count("AuraTable") == len(OUR_RUN.players)
 
 
-def test_no_compare_issues_no_aura_queries(tmp_path: Path) -> None:
+def test_no_compare_still_fetches_the_roster_aura_table(tmp_path: Path) -> None:
+    """`--no-compare` skips the reference lookups
+    (`test_no_compare_skips_both_references`), but still fetches every roster
+    player's own aura table: `load_run_with_auras` runs before the `if not
+    no_compare` branch, which is what lets a --no-compare report draw cover
+    windows at all."""
     calls: list[str] = []
     result = run_analyze(tmp_path, "--no-compare", calls=calls)
 
     assert result.exit_code == 0
-    assert "AuraTable" not in calls
+    assert "AuraTable" in calls
 
 
 def test_an_aura_fetch_that_fails_still_writes_the_report(tmp_path: Path) -> None:
@@ -2296,18 +2307,25 @@ def _parse_member(code: str, actor_id: int, roster_name: str, row_name: str) -> 
 
 
 def _aura_repository(
-    tmp_path: Path, subdir: str, calls: list[tuple[str, int, int]]
+    tmp_path: Path,
+    subdir: str,
+    calls: list[tuple[str, int, int]],
+    failing_actor_ids: frozenset[int] = frozenset(),
 ) -> WclRunRepository:
     """A `WclRunRepository` that answers only `AuraTable`, with empty-but-valid
     aura tables, recording each query's (report_code, fight_id, actor_id) so a
     caller can assert on exactly which aura queries fired and how many times —
-    not merely on the outcome."""
+    not merely on the outcome. An actor id in `failing_actor_ids` gets a 500
+    response instead, so a caller can exercise `_auras`' own fallback to `None`
+    without faking a malformed payload."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "t", "expires_in": 3600})
         variables = json.loads(request.content)["variables"]
         calls.append((variables["code"], variables["fightId"], variables["actorId"]))
+        if variables["actorId"] in failing_actor_ids:
+            return httpx.Response(500, json={"error": "boom"})
         return httpx.Response(
             200,
             json={
@@ -2324,6 +2342,50 @@ def _aura_repository(
     http = httpx.Client(transport=httpx.MockTransport(handler))
     client = WclClient(TokenProvider("id", "secret", http), http)
     return WclRunRepository(client, DiskCache(tmp_path / subdir))
+
+
+def test_analyze_fetches_the_aura_table_once_for_every_roster_player(tmp_path: Path) -> None:
+    """Cover windows on a death card and on a player timeline are drawn from
+    these bands. Fetching them per report rather than per comparison is what
+    lets a --no-compare report draw them at all.
+
+    Adapted from the plan's `FakeRunRepository`-based sketch, which names a
+    fake this file has no counterpart for: every neighbouring test that
+    exercises a `WclRunRepository`-typed function drives a real one over a
+    mock transport (`_aura_repository`, just above), so this follows that
+    pattern instead and counts calls off the recorded list rather than off an
+    attribute no such fake here carries.
+    """
+    aura_calls: list[tuple[str, int, int]] = []
+    runs = _aura_repository(tmp_path, "ours", aura_calls)
+    loaded = LoadedRun(run=OUR_RUN_WITH_TEAMMATE)
+
+    result = load_run_with_auras(
+        runs, OUR_RUN_WITH_TEAMMATE.report_code, OUR_RUN_WITH_TEAMMATE.fight_id, loaded
+    )
+
+    assert {one.actor_id for one in result.auras} == {
+        player.actor_id for player in loaded.run.players
+    }
+    assert len(aura_calls) == len(loaded.run.players)
+
+
+def test_a_failed_aura_fetch_costs_that_player_their_bands_and_nothing_else(
+    tmp_path: Path,
+) -> None:
+    """`_auras` already swallows IngestError, WclError and httpx.HTTPError for
+    the comparison path, for the reason its docstring gives: everything else
+    has been fetched and paid for. The same rule holds here."""
+    aura_calls: list[tuple[str, int, int]] = []
+    runs = _aura_repository(tmp_path, "ours", aura_calls, failing_actor_ids=frozenset({2}))
+    loaded = LoadedRun(run=OUR_RUN_WITH_TEAMMATE)
+
+    result = load_run_with_auras(
+        runs, OUR_RUN_WITH_TEAMMATE.report_code, OUR_RUN_WITH_TEAMMATE.fight_id, loaded
+    )
+
+    assert 2 not in result.auras_by_actor
+    assert len(result.auras) == len(loaded.run.players) - 1
 
 
 def test_every_resolvable_parse_member_fetches_its_own_auras(tmp_path: Path) -> None:

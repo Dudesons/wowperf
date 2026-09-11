@@ -395,9 +395,10 @@ lines are unreliable, so the code is the record.
   `.claude/skills/wcl-api/SKILL.md`, where every claim carries the date it was checked. If a
   field is not there, verify against the live schema before using it, then add a dated row.
 - **The report loads nothing.** One HTML file, opened from disk, with no stylesheet link, no
-  `@import`, no remote `src`, and exactly one inline script — the tab toggle, which may not
-  fetch, write text, or read storage. Icons are embedded as data URIs for this reason.
-  `tests/adapters/render/test_html_invariants.py` enforces every clause.
+  `@import`, no remote `src`, and exactly one inline script. That script may show, hide and
+  highlight what is already on the page; it may not fetch, write text, or read storage, and
+  `tests/adapters/render/test_html_invariants.py` enforces the list. Icons are embedded as
+  data URIs for this reason.
 
 ## Commands
 

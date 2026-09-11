@@ -3,6 +3,7 @@
 
 from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
 from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldowns
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
@@ -14,6 +15,7 @@ from wowperf.domain.report.player_timeline import (
     FIRST_ROW_Y,
     LABEL_UNITS_PER_CHARACTER,
     LABEL_X,
+    LEGEND,
     NO_PULLS_RECORDED,
     NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
@@ -23,7 +25,13 @@ from wowperf.domain.report.player_timeline import (
     TRACK_ORIGIN_X,
     build_player_timeline,
 )
-from wowperf.domain.report.timeline import TRACK_X0, TRACK_X1, axis_scale, axis_ticks
+from wowperf.domain.report.timeline import (
+    MIN_BLOCK_WIDTH,
+    TRACK_X0,
+    TRACK_X1,
+    axis_scale,
+    axis_ticks,
+)
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives, ThroughputCooldowns
 
 NO_THROUGHPUT = ThroughputCooldowns(entries=())
@@ -137,6 +145,30 @@ def test_a_bands_width_is_its_scaled_and_rounded_duration() -> None:
     assert timeline.pulls[1].width == round(60.0 * scale, PRECISION)
 
 
+def test_a_boss_pull_takes_its_name_and_a_trash_pull_takes_its_index() -> None:
+    # `Pull.name`, `Pull.is_boss` and `Pull.index` are already on the domain
+    # model and the timeline used none of them. A reader looking at a press
+    # should be able to say which pull it landed in. `a_pull` always names a
+    # pull "Pack {index}", so the boss's label below is that generated name,
+    # not a real encounter name -- what matters is that it is `pull.name`,
+    # not `f"Pull {pull.index}"`.
+    run = a_run(pulls=(a_pull(1, 0, 60_000), a_pull(2, 120_000, 180_000, encounter_id=2571)))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    assert [block.label for block in timeline.pulls] == ["Pull 1", "Pack 2"]
+
+
+def test_a_pull_is_drawn_as_a_column_the_height_of_the_chart() -> None:
+    # A press must land visibly inside the pull it happened during, so the
+    # column runs from the band's own top down to where the axis ticks end,
+    # not some independent fixed height.
+    run = a_run(pulls=(a_pull(0, 0, 60_000, encounter_id=2571),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
+    timeline = a_timeline(loaded)
+    assert timeline.column_height == timeline.tick_y2 - timeline.band_y
+    assert timeline.band_y + timeline.column_height <= timeline.height
+
+
 def test_the_height_grows_with_the_rows_it_has_to_hold() -> None:
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
@@ -168,6 +200,24 @@ def test_the_badge_captions_are_not_interchangeable() -> None:
     assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
     assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
     assert BADGE_MEASURED_CAPTION != BADGE_INFERRED_CAPTION
+
+
+def test_the_legend_states_the_ready_tick_as_an_upper_bound_not_a_moment() -> None:
+    # F4: the tick is computed from an ability's base cooldown, and the same
+    # legend already admits, two sentences earlier, that this understates how
+    # often an ability was really available. Naming the tick "the moment" the
+    # ability came back contradicts the sentence right before it.
+    assert "is the moment" not in LEGEND
+    assert "earliest" in LEGEND
+
+
+def test_the_inferred_badge_also_grades_the_ready_tick() -> None:
+    # The tick is derived from the same base-cooldown assumption the dimming
+    # already carries the inferred badge for, so the caption has to name both
+    # -- a new mark on a badged drawing must not go ungraded.
+    assert "tick" in BADGE_INFERRED_CAPTION
+    # BADGE_MEASURED_CAPTION is untouched: the tick is not measured.
+    assert "tick" not in BADGE_MEASURED_CAPTION
 
 
 def test_an_ability_the_player_never_cast_gets_no_row_at_all() -> None:
@@ -407,7 +457,7 @@ def test_the_tallest_bar_fills_the_damage_track_and_a_half_sized_hit_is_half_of_
     assert shortest == DAMAGE_HEIGHT / 2
     # This player's own tallest bucket only -- never a group figure, which
     # would still pass this assertion's shape but say something dishonest.
-    assert track.peak_label == "Tallest bar: 2,000 unmitigated damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 2,000 unmitigated damage in 5 seconds."
 
 
 def test_another_players_damage_never_reaches_this_players_track() -> None:
@@ -428,7 +478,7 @@ def test_a_far_larger_hit_on_a_different_actor_never_sets_this_players_scale() -
     assert track is not None
     assert len(track.bars) == 1
     assert track.bars[0].height == DAMAGE_HEIGHT
-    assert track.peak_label == "Tallest bar: 100 unmitigated damage in 5 seconds"
+    assert track.peak_label == "Tallest bar: 100 unmitigated damage in 5 seconds."
 
 
 def test_two_hits_inside_one_bucket_are_one_bar_of_their_sum() -> None:
@@ -462,3 +512,187 @@ def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> No
     run = a_run(pulls=(a_pull(0, 0, 100_000),))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 0), a_hit(1, 50_000, 0)))
     assert a_timeline(loaded).damage is None
+
+
+def test_a_cooldown_that_finishes_inside_the_run_is_marked_ready_again() -> None:
+    # The stretch after a press is the cooldown; its end is the instant the
+    # ability came back, and an unmarked end reads as an absence rather than
+    # as an event. The press lands at 10s and SHIELD's cooldown is 180s, so
+    # the ability comes back at 190s into the run. The tick is centred on
+    # that instant the same way a press is centred on its own -- left-edged
+    # half a mark's width before it, per `Press`'s own docstring -- so this
+    # pins the anchored x, not the raw unoffset one.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    scale = a_scale(600.0)
+    assert row.ready_ticks == (
+        round(TRACK_ORIGIN_X + 190.0 * scale - PRESS_WIDTH / 2, PRECISION),
+    )
+
+
+def test_a_ready_tick_is_anchored_the_same_way_its_press_is() -> None:
+    # F8: a `Press` centres its mark on the instant, left-edged half the
+    # mark's own width before it (`Press`'s own docstring). The ready tick is
+    # a mark of the same width answering that same press, so it has to use
+    # the same anchoring rule -- not the raw, unoffset x -- or the two read at
+    # different times on the same row despite marking the same cooldown.
+    # Tolerance mirrors `test_a_presss_mark_and_icon_are_both_centred_on_the_instant_they_mark`:
+    # both x's are independently rounded to PRECISION, so an exact comparison
+    # of the two offsets would fail on rounding noise smaller than a pixel.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    press_offset = row.presses[0].x - (TRACK_ORIGIN_X + 10.0 * a_scale(600.0))
+    tick_offset = row.ready_ticks[0] - (TRACK_ORIGIN_X + 190.0 * a_scale(600.0))
+    assert abs(tick_offset - press_offset) <= 0.1
+    assert abs(press_offset - (-PRESS_WIDTH / 2)) <= 0.1
+
+
+def test_a_cooldown_still_running_when_the_run_ends_is_not_marked_ready() -> None:
+    # Marking a tick at the axis end would claim the ability came back at the
+    # moment the run finished, which the log never says.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 590_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.ready_ticks == ()
+
+
+def test_the_damage_row_states_its_own_scale_and_bucket_width() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_top_label != ""
+    assert f"{int(BUCKET_SECONDS)}-second" in timeline.damage.bucket_caption
+
+
+def test_the_damage_axis_starts_at_the_same_origin_the_bars_do() -> None:
+    # Every other element on this chart -- the bars, the pull bands, the
+    # cooldown spans -- starts at the track's own origin and leaves the
+    # label gutter to the row names. The axis line must not be the one
+    # exception, or it reads as a mistake to anyone reading the drawing.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_x0 == TRACK_ORIGIN_X
+
+
+def test_the_damage_axis_ends_where_the_track_does_not_past_it() -> None:
+    # F9: the same defect the axis's `x1` already had fixed for it, at the
+    # other end of the same line. Every bar, span and mark on this chart ends
+    # at TRACK_X1; an axis line reaching `timeline.width` instead overruns
+    # the last instant the track can hold and runs into the right margin.
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_x1 == TRACK_X1
+    assert timeline.damage.axis_x1 != timeline.width
+
+
+def a_player_auras(actor_id: int, aura: Aura) -> PlayerAuras:
+    return PlayerAuras(actor_id=actor_id, on_self=(aura,))
+
+
+def test_a_cooldown_row_carries_the_windows_its_buff_actually_covered() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=SHIELD.ability_id,
+                    name=SHIELD.name,
+                    total_uptime_ms=8_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover != ()
+
+
+def test_a_cover_window_is_never_widened_to_make_it_visible() -> None:
+    # The guard the spec asks for. MIN_BLOCK_WIDTH floors a pull so it does not
+    # vanish; a cover window has no such floor, because its width IS the claim.
+    # A five-second buff on a thirty-three-minute (1980-second) axis draws at
+    # about 1.3 units, and that sliver is what must be drawn -- not widened to
+    # clear MIN_BLOCK_WIDTH (2.0).
+    run = a_run(pulls=(a_pull(0, 0, 1_980_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=SHIELD.ability_id,
+                    name=SHIELD.name,
+                    total_uptime_ms=5_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=305_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    span = row.cover[0]
+    assert span.width < MIN_BLOCK_WIDTH
+
+
+def test_a_player_with_no_aura_table_gets_no_cover_windows() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover == ()
+
+
+def test_a_cast_id_that_differs_from_its_auras_id_still_gets_a_cover_window() -> None:
+    # The regression `resolve_aura` fixes, proven through a throughput cooldown
+    # rather than a defensive: `_cooldown_rows` builds both kinds of row
+    # through the same `_cover_spans` call, so the id/name bridge covers
+    # throughput cooldowns by construction, not by a second implementation.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, BURST.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=999_111,  # deliberately not BURST.ability_id
+                    name=BURST.name,
+                    total_uptime_ms=8_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, throughput=BURSTS).cooldowns[0]
+    assert row.cover != ()
+
+
+def test_an_aura_table_with_no_band_for_this_ability_gives_no_cover_windows() -> None:
+    # A player's own aura table can be present while saying nothing about this
+    # particular ability -- distinct from no table at all, and the branch
+    # `test_a_player_with_no_aura_table_gets_no_cover_windows` does not exercise.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(ability_id=999_999, name="Unrelated Buff", total_uptime_ms=0, uses=0),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover == ()

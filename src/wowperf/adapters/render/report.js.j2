@@ -54,4 +54,38 @@
   window.addEventListener("hashchange", resolve);
   window.addEventListener("load", resolve);
   resolve();
+
+  // Lighting a marker, and the cover window beside it, that the builder
+  // already placed. No geometry here: the x of every marker and the x and
+  // width of every cover were computed in Python and are already in the
+  // document, so this only decides which of them is visible.
+  var rows = document.querySelectorAll("tr[id]");
+  for (var r = 0; r < rows.length; r++) {
+    rows[r].addEventListener("mouseenter", light);
+    rows[r].addEventListener("mouseleave", darken);
+    rows[r].addEventListener("focus", light);
+    rows[r].addEventListener("blur", darken);
+  }
+
+  function markerOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-mark");
+  }
+
+  function coverOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-cover");
+  }
+
+  function light(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.add("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.add("lit"); }
+  }
+
+  function darken(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.remove("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.remove("lit"); }
+  }
 })();

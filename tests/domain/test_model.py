@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for the run structure: pull classification, durations and signatures.
 # ABOUTME: These models are pure data, so the tests cover only the derived properties.
 
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 
 
@@ -117,3 +118,23 @@ def test_a_loaded_run_reads_its_icon_pairs_as_a_mapping() -> None:
 
 def test_a_loaded_run_with_no_icon_pairs_reads_an_empty_mapping() -> None:
     assert dict(LoadedRun(run=a_run()).ability_icon_map) == {}
+
+
+def test_a_loaded_run_exposes_its_auras_by_actor() -> None:
+    loaded = LoadedRun(
+        run=a_run(),
+        auras=(
+            PlayerAuras(actor_id=7, on_self=(Aura(
+                ability_id=48792, name="Icebound Fortitude", total_uptime_ms=8000, uses=1,
+                bands=(AuraBand(start_ms=1000, end_ms=9000),),
+            ),)),
+        ),
+    )
+    assert loaded.auras_by_actor[7].on_self[0].name == "Icebound Fortitude"
+    assert 99 not in loaded.auras_by_actor
+
+
+def test_a_loaded_run_with_no_auras_has_an_empty_mapping() -> None:
+    # A report built with --no-compare and no aura fetch must read as "no bands
+    # known", never as a KeyError at draw time.
+    assert dict(LoadedRun(run=a_run()).auras_by_actor) == {}

@@ -363,6 +363,26 @@ def test_the_page_executes_only_its_own_script() -> None:
     assert "getElementById" in body
 
 
+def test_the_script_resolves_a_marker_by_id_suffix_and_computes_no_position() -> None:
+    # Spec 3.2: every coordinate is computed in Python. The script may toggle a
+    # class on a marker already placed; the moment it measures the rendered
+    # page to find an x, the arithmetic has left the tested layer. `rich_html()`
+    # renders no death card at all, so this cannot check for a lit marker or a
+    # rendered `hp-marker` line -- see the two render-layer tests in
+    # test_html_sections.py for that. What this proves is scoped to the script
+    # source: it resolves a marker from a row's own id by the "-mark" suffix
+    # (a string this task introduces, absent from every render template
+    # before it -- confirmed by grep against commit 7cced42), and it contains
+    # none of the measurement calls a script would need to compute a position
+    # itself.
+    html = rich_html()
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
+    assert "-mark" in body
+    assert "getBoundingClientRect" not in body
+    assert "offsetLeft" not in body
+    assert "getComputedStyle" not in body
+
+
 def test_the_page_loads_no_image_over_the_network() -> None:
     # The existing script test checks `src` attributes; an icon reaches the page
     # through a CSS url() instead, which that check never sees. A hotlinked icon
@@ -392,15 +412,17 @@ PANEL_ORDER = [
 
 def test_the_page_hides_nothing_before_the_script_runs() -> None:
     # Without the script the root class is absent, so every hiding rule must be
-    # scoped under it. The tab bar is the one thing hidden *without* the script,
-    # by the bare `.tabs` rule, and that is checked by name.
+    # scoped under it. Two bare rules are hidden *without* the script: `.tabs`,
+    # which the script un-hides by adding the root class, and `.tip`, which
+    # needs no script at all -- a hover panel that CSS alone reveals on
+    # `:hover`/`:focus-within` and hides the rest of the time.
     html = rich_html()
     assert not re.search(r"<[^>]*\shidden[\s>=]", html)
     assert not re.search(r'style="[^"]*display', html)
     style = html[html.index("<style>"):html.index("</style>")]
     for rule in re.finditer(r"([^{}]+)\{[^{}]*display:\s*none", style):
         selector = rule.group(1).strip().splitlines()[-1].strip()
-        assert selector.startswith(".js ") or selector == ".tabs", selector
+        assert selector.startswith(".js ") or selector in (".tabs", ".tip"), selector
 
 
 def test_every_panel_appears_once_in_tab_order() -> None:
@@ -580,13 +602,23 @@ def test_the_two_player_comparison_fixture_exercises_every_parse_family() -> Non
 
 
 def test_no_two_players_share_a_comparison_row_heading() -> None:
-    # The once-only rule, applied to titles the comparison modules wrote rather
-    # than to fixture prose. A family whose title names no player renders the
-    # same heading under both cards, and the reader cannot tell which is whose.
+    # The once-only rule, applied to headings the comparison modules wrote
+    # rather than to fixture prose. A family whose title names no player
+    # renders the same heading under both cards, and the reader cannot tell
+    # which is whose. Pulled straight out of the rendered page rather than
+    # rebuilt through `ledger_row`, so a heading that is wrong but
+    # self-consistent with what the builder produced is still caught.
     findings, html = a_real_two_player_comparison()
+    headings = []
     for finding in findings:
-        if finding.player_slug:
-            assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+        if not finding.player_slug:
+            continue
+        match = re.search(
+            rf'id="finding-{re.escape(finding.id)}">.*?<h3>(.*?)</h3>', html, flags=re.S,
+        )
+        assert match, finding.id
+        headings.append(match.group(1))
+    assert len(headings) == len(set(headings)), headings
 
 
 def test_only_the_card_nobody_asked_for_carries_the_not_requested_sentence() -> None:
@@ -646,8 +678,14 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (HealthCurve, "height"),
     (HealthCurve, "plot_x0"),
     (HealthCurve, "plot_x1"),
+    (HealthCurve, "plot_y0"),       # a viewBox coordinate, not a quantity
+    (HealthCurve, "plot_y1"),       # a viewBox coordinate, not a quantity
     (HealthCurve, "label_x"),
     (HealthCurve, "tick_label_y"),
+    (HealthCurve, "plot_height"),   # a viewBox coordinate, not a quantity
+    (RecapRow, "marker_x"),         # a viewBox coordinate, not a quantity
+    (RecapRow, "cover_x"),          # a viewBox coordinate, not a quantity
+    (RecapRow, "cover_width"),      # a viewBox coordinate, not a quantity
     (CurvePoint, "x"),
     (CurvePoint, "y"),
     (CurveReading, "x"),
@@ -665,6 +703,9 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (DamageBar, "height"),
     (DamageTrack, "baseline_y"),
     (DamageTrack, "label_y"),
+    (DamageTrack, "axis_top_y"),  # a viewBox coordinate, not a quantity
+    (DamageTrack, "axis_x0"),  # a viewBox coordinate, not a quantity
+    (DamageTrack, "axis_x1"),  # a viewBox coordinate, not a quantity
     (Press, "x"),
     (Press, "icon_x"),
     (Span, "x"),
@@ -675,7 +716,8 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (PlayerTimeline, "width"),
     (PlayerTimeline, "height"),
     (PlayerTimeline, "band_y"),
-    (PlayerTimeline, "band_height"),
+    (PlayerTimeline, "column_height"),  # a viewBox coordinate, not a quantity
+    (PlayerTimeline, "pull_label_y"),  # a viewBox coordinate, not a quantity
     (PlayerTimeline, "tick_y1"),
     (PlayerTimeline, "tick_y2"),
     (PlayerTimeline, "tick_label_y"),
@@ -919,3 +961,43 @@ def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:
         )
     )
     assert 'id="losses"' not in html
+
+
+def test_running_prose_keeps_a_reading_measure_while_dense_content_takes_the_width() -> None:
+    # Removing the 760px cap alone would stretch a narrative paragraph to the
+    # width of a monitor, which is the one thing worse than a cramped one. The
+    # cap moves off the page and onto the text.
+    html = rich_html()
+    assert "main { max-width: 760px" not in html
+    assert "max-width: 68ch" in html
+    assert "repeat(auto-fit, minmax(330px, 1fr))" in html
+
+
+def test_no_empty_findings_wrappers_render() -> None:
+    # The .findings grid renders nothing when empty. Empty wrappers are dead
+    # markup in the golden file that prove unconditional wrappers exist where
+    # they should be guarded. This test covers both unindented and indented
+    # forms: prose sections use 0 indent, per-player sections use 2.
+    html = rich_html()
+    # No wrapper should consist of only the opening tag, optional whitespace, and closing tag.
+    # Unindented form: <div class="findings">\n</div> or similar.
+    assert "<div class=\"findings\">\n</div>" not in html
+    # Indented form (inside cards, inside per-player sections): spaces before the div,
+    # then opening, whitespace, closing.
+    assert re.search(r"  <div class=\"findings\">\n  </div>", html) is None
+
+
+def test_a_tooltip_is_markup_the_builder_wrote_and_never_names_a_mitigation_source() -> None:
+    # Spec 5: no tooltip renders a figure attributed to a single mitigation
+    # source. This reads the whole page rather than one tooltip, so a second
+    # tooltip added later is covered the day it exists.
+    # `rich_html()` renders no death card at all (see the note on
+    # `test_the_script_resolves_a_marker_by_id_suffix_and_computes_no_position`
+    # above), so it never carries a recap row or a tooltip to check;
+    # `minimal_html()` is the fixture whose one death actually has a hit event.
+    html = minimal_html()
+    assert 'class="tip"' in html
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
+    assert 'class="tip"' not in body
+    assert "prevented" not in html.lower()
+    assert "damage reduction" not in html.lower()

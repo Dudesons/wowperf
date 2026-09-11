@@ -342,6 +342,16 @@ table below supersedes them.
   text on it. `icon` is a bare lower-case file name ending `.jpg`, e.g.
   `spell_holy_magicalsentry.jpg`; all 2511 rows of one report carried one, and three carried
   a literal `?cachebust` suffix naming a file the other rows also named.
+- **On a damage event, `overkill` appears only on a lethal blow, and `buffs` is a
+  dot-terminated list of ability game ids.** Measured 2026-09-11 against the cached
+  `DamageTaken` responses for report `6Kx1P9GbNXrcLdHa` fight 36 — 11,368 damage events. Key
+  frequencies: `timestamp`, `type`, `sourceID`, `targetID`, `abilityGameID`, `fight`,
+  `hitType`, `amount`, `unmitigatedAmount` and `isAoE` on all 11,368; `mitigated` on 10,177;
+  `buffs` on 10,138; `sourceInstance` on 5,930; `absorbed` on 5,785; `tick` on 3,766;
+  `sourceMarker` on 1,335; `overkill` on 18; `blocked` on 2. An absent key means the log said
+  nothing, so each reads as zero or false. `buffs` looks like `"391395.391398.391571."` — ids
+  separated *and* terminated by a period. **`hitType` is an integer (1, 2 and 4 observed) and
+  nothing here documents what those integers mean**, so no code may translate one.
 
 ## The event stream, probed for a death recap
 
@@ -447,6 +457,24 @@ Two consequences. The uptime is pre-aggregated, so no event pagination is needed
 carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls, say — is an
 intersection rather than a second query. Confirmed by recomputing one aura's uptime over
 fight 36's three boss pulls and matching the boss window the analyzers already derive.
+
+**A buff band's `startTime` coincides with the cast that applied it, closely enough to trust
+`start <= press <= end`.** Measured 2026-09-11 against the cached responses for report
+`6Kx1P9GbNXrcLdHa`: of 1241 band-starts paired to a cast of the same ability within five
+seconds, 842 were exactly equal. The pairing is by ability id across the whole cache rather
+than per actor, because a cached `AuraTable` response carries no actor id — the actor lives in
+the query variables, which are not cached — so this figure is an approximation, and the 41
+later and 358 earlier pairings are as likely to be mispairings as real offsets. Same cache,
+same date: 1189 pairs of bands on one aura touch or overlap, which is why drawing what one
+press covered clips its own band rather than reusing the merged total `clipped_bands` computes
+for `uptime_seconds_in`.
+
+**An aura row's `guid` is the id of the buff, not of the spell cast to apply it.** Measured
+2026-09-11 against the cached responses for report `6Kx1P9GbNXrcLdHa`: of 139 entries in
+`data/defensives.toml`, 33 matched an aura guid directly and 2 distinct abilities matched only
+by name — Alter Time, cast `108978` against aura `342246`, and Greater Invisibility, cast
+`110959` against aura `110960` — while 100 did not appear because they were never cast in that
+run.
 
 ## The debuff half cannot be scoped to one caster
 

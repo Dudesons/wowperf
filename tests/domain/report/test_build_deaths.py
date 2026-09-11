@@ -9,6 +9,7 @@ from tests.domain.report.test_build_frame import (
     a_run,
 )
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -619,3 +620,301 @@ def test_a_killing_blow_id_of_zero_carries_none_not_zero() -> None:
         a_loaded_with((a_death(1, 60_000),), ()), NO_DEFENSIVES, NO_CONSUMABLES
     )[0]
     assert card.killing_blow_id is None
+
+
+def test_every_recap_row_carries_the_x_of_its_own_moment_on_the_curve() -> None:
+    # The marker is drawn where the curve puts that instant, not where the
+    # browser guesses: both come from `curve_x`, so a row and its mark cannot
+    # drift apart.
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    loaded = loaded.model_copy(update={"health_samples": (a_reading(50_000, 100_000),)})
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert card.health_curve is not None
+    row = next(row for row in card.timeline if row.kind == "hit")
+    assert row.marker_x is not None
+    assert card.health_curve.plot_x0 <= row.marker_x <= card.health_curve.plot_x1
+
+
+def test_a_recap_row_on_a_card_with_no_curve_carries_no_marker() -> None:
+    # A marker with nothing to sit on is a mark floating over a table.
+    loaded = a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    assert card.health_curve is None
+    assert all(row.marker_x is None for row in card.timeline)
+
+
+def test_every_marker_id_on_the_page_is_unique_across_cards() -> None:
+    # Two deaths in one run each produce a row zero. The script looks a marker
+    # up by id, so a collision would light the wrong card's curve.
+    deaths = (a_death(1, 60_000), a_death(1, 160_000))
+    hits = (a_hit(1, 54_200, "First", 900), a_hit(1, 154_200, "Second", 900))
+    cards = build_deaths(a_loaded_with(deaths, hits), NO_DEFENSIVES, NO_CONSUMABLES)
+    ids = [row.marker_id for card in cards for row in card.timeline]
+    assert len(ids) == len(set(ids))
+
+
+# `BLOOD` and `owns_icebound`, defined above, already give a defensive that is
+# both owned and pressed inside the run-up; these two fixtures add the aura
+# table's own account of the same press, or its deliberate absence.
+
+
+def a_loaded_run_with_a_pressed_defensive_and_its_band() -> LoadedRun:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+    return loaded.model_copy(update={
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=6_000, uses=1,
+                     bands=(AuraBand(start_ms=53_000, end_ms=59_000),)),
+            )),
+        ),
+    })
+
+
+def a_loaded_run_with_a_pressed_defensive_and_no_auras() -> LoadedRun:
+    return a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+
+
+def test_a_pressed_defensive_row_carries_the_window_that_press_covered() -> None:
+    # The band is measured: the aura table states when the buff was up. Only
+    # the width the reader sees is arithmetic, and it is arithmetic done here.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.cover_x is not None
+    assert row.cover_width is not None
+    assert row.cover_width > 0
+
+
+def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
+    # A report fetched without an aura table, or a press whose buff the table
+    # never recorded, must draw nothing rather than a window the width of a
+    # guess.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    assert all(row.cover_width is None for row in card.timeline)
+
+
+def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_window() -> None:
+    # The regression this fix is for: Alter Time casts as 108978 but the aura
+    # table keys the buff at 342246 (`.claude/skills/wcl-api/SKILL.md`,
+    # 2026-09-11). A lookup keyed only on the cast's own id would find nothing
+    # here forever; the name has to bridge the two.
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "casts": (
+            CastEvent(actor_id=1, ability_id=108_978, ability_name="Alter Time",
+                      timestamp_ms=55_000, pull_index=0),
+        ),
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=342_246, name="Alter Time", total_uptime_ms=6_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=61_000),)),
+            )),
+        ),
+    })
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.cover_x is not None
+    assert row.cover_width is not None
+    assert row.cover_width > 0
+
+
+def test_a_defensive_row_carries_a_measured_tooltip_when_its_aura_is_known() -> None:
+    # Of the inside hit's 900, only 350 was mitigated -- the other 250 that
+    # never reached health (900 - 300 - 350) was a shield's absorb, which the
+    # rate must not count as this ability's own reduction.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band().model_copy(update={
+        "damage_taken": (
+            a_hit(1, 54_000, "Frigid Roar", 900).model_copy(
+                update={"health_damage": 300, "mitigated": 350, "absorbed": 250}
+            ),
+            a_hit(1, 70_000, "Frigid Roar", 800),
+        ),
+    })
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = card.availability[0].rows[0]
+    assert row.tooltip is not None
+    labels = {line.label: line.value for line in row.tooltip.lines}
+    assert labels["Base cooldown"] == "180 s"
+    assert labels["Presses"] == "1"
+    assert labels["Cover"] == "6.0 s"
+    assert labels["Arrived while it was up"] == "900"
+    assert labels["Reached health"] == "300"
+    assert labels["Mitigated inside / outside"] == "39% / 0%"
+    assert "suggestive, not attributable" in row.tooltip.note
+
+
+def test_a_defensive_row_with_no_aura_table_carries_no_tooltip() -> None:
+    # No aura table was fetched for this player, so `resolve_aura` has nothing
+    # to check the id or the name against.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = card.availability[0].rows[0]
+    assert row.tooltip is None
+
+
+ALTER_TIME_DEFENSIVE = Defensives(entries=(
+    ("DeathKnight/Blood", (
+        DefensiveAbility(ability_id=108_978, name="Alter Time", cooldown_seconds=60.0),
+    )),
+))
+
+
+def test_an_availability_tooltip_uses_the_resolved_aura_id_not_the_cast_id() -> None:
+    # Alter Time casts as 108978 but the aura table keys the buff at 342246
+    # (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11). A hit's own `buff_ids`
+    # list carries buff ids, so comparing it against the cast id would silently
+    # match nothing and every hit would look like it landed outside the window,
+    # which is exactly the bug Task 11 found and fixed for the cover window.
+    loaded = a_loaded_with((a_death(1, 60_000),), (
+        a_hit(1, 55_500, "Frigid Roar", 900).model_copy(
+            update={"health_damage": 300, "buff_ids": (342_246,)}
+        ),
+    )).model_copy(update={
+        "casts": (
+            CastEvent(actor_id=1, ability_id=108_978, ability_name="Alter Time",
+                      timestamp_ms=55_000, pull_index=0),
+        ),
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=342_246, name="Alter Time", total_uptime_ms=6_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=61_000),)),
+            )),
+        ),
+    })
+    card = build_deaths(loaded, ALTER_TIME_DEFENSIVE, NO_CONSUMABLES)[0]
+    row = card.availability[0].rows[0]
+    assert row.tooltip is not None
+    labels = {line.label: line.value for line in row.tooltip.lines}
+    assert labels["Arrived while it was up"] == "900"
+    assert labels["Reached health"] == "300"
+
+
+def test_an_externals_row_carries_a_tooltip_from_the_dying_players_own_aura_table() -> None:
+    # An external's buff lands on the dying player regardless of who cast it,
+    # so the tooltip reads the dying player's own aura table and their own
+    # hits, not the caster's.
+    dude, tree = a_player(), Player(actor_id=2, name="Leafy", class_name="Druid",
+                                    spec="Restoration", item_level=680)
+    loaded = LoadedRun(
+        run=a_run(players=(dude, tree), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 60_000),),
+        casts=(CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                         timestamp_ms=55_000, target_id=1),),
+        auras=(
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=102342, name="Ironbark", total_uptime_ms=8_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=63_000),)),
+            )),
+        ),
+    )
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES,
+                        externals=Externals(entries=(("Druid/Restoration", (IRONBARK,)),)))[0]
+    mates = card.availability[2]
+    assert mates.rows[0].tooltip is not None
+    labels = {line.label: line.value for line in mates.rows[0].tooltip.lines}
+    assert labels["Base cooldown"] == "90 s"
+    assert labels["Presses"] == "1"
+
+
+def test_an_externals_tooltip_counts_only_presses_that_could_have_been_for_this_player() -> None:
+    # F5: `state_of` already scopes an external's PRESSED state to a cast on
+    # the dying player or with no target at all -- a cast on someone else was
+    # a use, not a save -- and the tooltip's own press count must agree with
+    # the row's own detail rather than reading every cast on any target. A
+    # healer who shielded a different ally must not have that cast counted as
+    # a press "for" the player who died.
+    dude = a_player()
+    caster = Player(actor_id=2, name="Emberkin", class_name="Druid", spec="Restoration",
+                    item_level=680)
+    bystander = Player(actor_id=3, name="Bríala", class_name="Priest", spec="Discipline",
+                       item_level=670)
+    loaded = LoadedRun(
+        run=a_run(players=(dude, caster, bystander), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 60_000),),
+        casts=(
+            CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                     timestamp_ms=55_000, target_id=1),
+            # Same ability, same caster, earlier in the run, aimed at someone
+            # else entirely -- never a save for the player who died at 60s.
+            CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
+                     timestamp_ms=20_000, target_id=3),
+        ),
+        auras=(
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=102342, name="Ironbark", total_uptime_ms=8_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=63_000),)),
+            )),
+        ),
+    )
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES,
+                        externals=Externals(entries=(("Druid/Restoration", (IRONBARK,)),)))[0]
+    mates = card.availability[2]
+    assert mates.rows[0].tooltip is not None
+    labels = {line.label: line.value for line in mates.rows[0].tooltip.lines}
+    assert labels["Presses"] == "1"
+
+
+def test_a_consumable_row_carries_no_tooltip() -> None:
+    # A consumable category names a cooldown group, not one ability id, so
+    # there is no aura to resolve it against.
+    loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(update={
+        "casts": (CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                            timestamp_ms=1_000, pull_index=0),),
+    })
+    drinks = build_deaths(loaded, NO_DEFENSIVES, POTIONS)[0].availability[1]
+    assert all(row.tooltip is None for row in drinks.rows)
+
+
+def test_a_hit_row_carries_a_tooltip_reporting_its_four_figures() -> None:
+    hit = a_hit(1, 54_200, "Snowdrift", 82_410).model_copy(
+        update={"amount": 145_434, "mitigated": 15_609}
+    )
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), (hit,)), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    tooltip = card.timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Struck for"] == "145,434"
+    assert labels["Mitigated"] == "15,609"
+    assert labels["Reached health"] == "82,410"
+    assert "does not attribute" in tooltip.note
+
+
+def test_a_heal_row_carries_a_tooltip_naming_its_caster() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "healing": (HealingEvent(actor_id=1, source_id=1, ability_id=7,
+                                 ability_name="Death Strike", amount=9_100,
+                                 timestamp_ms=55_000),),
+    })
+    tooltip = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Healed for"] == "9,100"
+    assert labels["From"] == "Stonewake"
+    assert "no overheal" in tooltip.note
+
+
+def test_an_absorb_row_carries_a_tooltip_naming_the_shields_caster() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "healing": (HealingEvent(actor_id=1, source_id=2, ability_id=17,
+                                 ability_name="Power Word: Shield", amount=12_000,
+                                 timestamp_ms=55_000, absorbed=True),),
+    })
+    tooltip = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Soaked"] == "12,000"
+
+
+def test_a_cast_row_carries_no_tooltip() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.tooltip is None
