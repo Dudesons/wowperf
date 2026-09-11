@@ -40,6 +40,12 @@ shortest ran 6.770s. The floor therefore falls in an empty stretch of the
 distribution rather than through a cluster of real packs, which is the whole of
 its justification. It is a claim about how the log cuts a route, not a view about
 how long a pack ought to last.
+
+Of the five that carried any enemy at all, four were the last few milliseconds
+of a boss pull, holding one of that pull's own enemies; the fifth was an
+isolated tag 45 seconds clear of anything either side. The floor is written on
+duration rather than on that shape because the shape is a tendency and the
+duration is the thing every one of them shares.
 """
 
 

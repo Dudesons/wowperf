@@ -29,10 +29,20 @@ class Alignment(Frozen):
     boss_indices: tuple[int, ...] = ()
 
     @property
+    def our_packs(self) -> frozenset[int]:
+        """Our trash pulls a route decision could have taken or left.
+
+        De-duplicated: `align_pulls` cannot emit an index twice, but this is a
+        public model that tests and callers build by hand, and a repeated index
+        would quietly deflate every share taken over it.
+        """
+        return frozenset(self.our_pack_indices)
+
+    @property
     def matched_packs(self) -> frozenset[int]:
         """Our packs that found a counterpart, by our own pull index."""
         return frozenset(
-            {match.ours_index for match in self.matched} & set(self.our_pack_indices)
+            {match.ours_index for match in self.matched} & self.our_packs
         )
 
     @property
@@ -50,13 +60,13 @@ class Alignment(Frozen):
         which is what keeps a finding from contradicting the rule that produced it.
         A run with no packs aligned everything it had.
         """
-        if not self.our_pack_indices:
+        if not self.our_packs:
             return 1.0
-        return len(self.matched_packs) / len(self.our_pack_indices)
+        return len(self.matched_packs) / len(self.our_packs)
 
 
 MIN_ALIGNED_SHARE = 0.5
-"""Below this share of our trash pulls with a counterpart, no pack is priced as skipped.
+"""Below this share of our packs with a counterpart, no pack is priced as skipped.
 
 When the two logs cut the route into pulls differently, an unmatched pull is not
 a skipped pack; it is a segmentation difference, and pricing it would put the

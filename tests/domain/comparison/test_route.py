@@ -82,6 +82,23 @@ def test_a_skipped_pack_is_priced_by_the_forces_its_deaths_awarded() -> None:
     assert "It awarded 12 enemy forces." in skipped.detail
 
 
+def test_a_chain_pull_with_several_counterparts_is_one_pack_in_common() -> None:
+    # Warcraft Logs records a stretch fought without a break as one pull, and
+    # alignment matches it to each separate pull it covers. Containment matching
+    # makes that the ordinary case, not an edge: the evidence counts pulls of
+    # ours with a counterpart, never the pairs.
+    ours = a_run((a_pull(0, (1, 2, 3)),))
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
+
+    alignment = align_pulls(ours, theirs)
+    summary = compare_route(ours, theirs, alignment, {})[0]
+
+    # Without this the fixture would stop exercising the many-to-one case and
+    # the assertion below would pass for the wrong reason.
+    assert len(alignment.matched) == 3
+    assert "1 pull in common" in summary.evidence
+
+
 def test_a_boss_is_never_reported_as_a_skipped_pack() -> None:
     ours = a_run((a_pull(0, (1,)), a_pull(1, (99,), boss=True)))
     theirs = a_run((a_pull(0, (1,)),))
@@ -191,7 +208,7 @@ def test_the_summary_pluralises_a_single_pack_correctly() -> None:
 
 
 def test_a_single_enemy_pack_is_singular_in_skipped_evidence() -> None:
-    # More than half our trash pulls must align for any pack to be priced. Three
+    # More than half our packs must align for any pack to be priced. Three
     # of four align here, clear of the threshold by a full pull, so the pack
     # under test is skipped beside the ones both routes share.
     ours = a_run(
@@ -268,7 +285,7 @@ def test_the_summary_states_how_many_trash_packs_found_a_counterpart() -> None:
 
 
 def test_below_the_aligned_share_no_pack_is_priced_as_skipped() -> None:
-    # One of five trash pulls aligned: the two logs cut the route differently.
+    # One of five packs aligned: the two logs cut the route differently.
     ours = a_run(
         (a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,)), a_pull(3, (4,)), a_pull(4, (5,)))
     )
@@ -489,7 +506,7 @@ def test_the_summary_discloses_how_many_of_the_sample_could_price_a_skip() -> No
             stranger,
         )
     )
-    # The fixture's own premise: two of the five matched 3 of our 8 trash pulls.
+    # The fixture's own premise: two of the five matched 3 of our 8 packs.
     assert len(sample.route_eligible) == 3
 
     findings = compare_route_sample(OUR_RUN, sample, forces={})

@@ -28,7 +28,7 @@ def compare_route(
     price the same pull with the same number.
     """
     matched_packs = len(alignment.matched_packs)
-    pack_count = len(alignment.our_pack_indices)
+    pack_count = len(alignment.our_packs)
     in_common = len({match.ours_index for match in alignment.matched})
     findings: list[Finding] = [
         Finding(
@@ -198,7 +198,7 @@ def _summary(ours: Run, eligible: Sequence[SpeedMember], sampled: int) -> Findin
     """
     total = len(eligible)
     low, high = observed_range([float(len(member.run.pulls)) for member in eligible])
-    pack_count = len(eligible[0].alignment.our_pack_indices)
+    pack_count = len(eligible[0].alignment.our_packs)
     matched_low, matched_high = observed_range(
         [float(len(member.alignment.matched_packs)) for member in eligible]
     )

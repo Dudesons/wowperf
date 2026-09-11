@@ -106,11 +106,11 @@ def test_a_run_with_no_trash_pulls_has_a_full_matched_share() -> None:
     assert align_pulls(ours, ours).matched_share == 1.0
 
 
-def test_matched_share_subtracts_matched_boss_pulls_from_the_numerator() -> None:
+def test_matched_boss_pulls_are_left_out_of_the_share() -> None:
     # Two boss pulls, matched on both sides, plus four trash pulls of which two
-    # match. Without subtracting the bosses from the numerator, matched_ours
-    # would hold all six indices over four trash pulls and the share would
-    # read 1.5, not 0.5.
+    # match. Bosses are absent from `our_packs`, so the intersection drops them
+    # from the numerator as well as the denominator. Counting them in the
+    # numerator alone would put all six indices over four packs and read 1.5.
     ours = a_run().model_copy(
         update={
             "pulls": (
