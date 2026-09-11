@@ -1496,16 +1496,18 @@ def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_extra_a
     counterpart's aura fetch never fires — a state `cli.analyze` already handles.
     Our own auras must not be fetched a second time for the comparison once
     `load_run_with_auras` has already fetched them for the whole roster before
-    the comparison ever runs: the one `AuraTable` query this run issues is that
-    roster-wide fetch, for our lone player. Nothing pays for the ghost's
-    unresolved counterpart, and nothing pays for `our_auras` again."""
+    the comparison ever runs: the only `AuraTable` queries this run issues are
+    that roster-wide fetch, one per roster player (`OUR_RUN`, the roster
+    `build_analyze_transport`'s default `player_name` answers for report
+    abc123). Nothing pays for the ghost's unresolved counterpart, and nothing
+    pays for `our_auras` again."""
     calls: list[str] = []
     ghost_row = {**_parse_row(16), "name": "Ghost"}
     transport = build_analyze_transport(parse_rows=[ghost_row], calls=calls)
     result = _invoke(tmp_path, [], transport)
 
     assert result.exit_code == 0, result.output
-    assert calls.count("AuraTable") == 1
+    assert calls.count("AuraTable") == len(OUR_RUN.players)
 
 
 def test_no_compare_still_fetches_the_roster_aura_table(tmp_path: Path) -> None:

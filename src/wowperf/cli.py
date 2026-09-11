@@ -735,8 +735,7 @@ def analyze(
         loaded = repository.load(code, fight if fight is not None else fight_from_url)
         # Fetched here, once, so the comparison below and the report builder
         # after it both see the same LoadedRun -- a --no-compare report still
-        # gets its own roster's cover windows, which used to be fetched only
-        # on the parse-comparison path.
+        # gets its own roster's cover windows.
         loaded = load_run_with_auras(repository, code, loaded.run.fight_id, loaded)
         # Loaded once and shared: the analysers and the death cards must read
         # the same cooldowns, or the page and the findings disagree.
