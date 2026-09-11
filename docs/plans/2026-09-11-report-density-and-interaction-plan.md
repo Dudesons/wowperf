@@ -76,7 +76,8 @@ decision, not a discovery to re-litigate; each says what it costs if wrong.
    already available. They are not: `PlayerAuras` is fetched in `cli.py::_auras` only inside the
    parse-comparison path, flows into the comparison inputs, and never reaches `LoadedRun` or the
    report builder. Task 2 plumbs it. Cost: one `AuraTable` query per roster player, measured at
-   **2.00 points** (`.claude/skills/wcl-api/SKILL.md`), and nothing at all for a player whose
+   **about 1.06 points** (`.claude/skills/wcl-api/SKILL.md`, measured 2026-09-11 over thirty
+   calls), and nothing at all for a player whose
    auras a parse comparison already fetched — our own run's responses are cached forever, so the
    second read is free. If wrong, cover windows are missing, not fabricated: the builder draws
    nothing where it has no band.
@@ -427,7 +428,7 @@ def load_run_with_auras(
 ) -> LoadedRun:
     """The run, with every roster player's buff bands attached.
 
-    One `AuraTable` query per player, measured at 2.00 points
+    One `AuraTable` query per player, measured at about 1.06 points
     (`.claude/skills/wcl-api/SKILL.md`). A player whose parse comparison
     already fetched theirs costs nothing the second time: our own run's cached
     responses never expire. A player whose fetch fails simply has no bands, and
@@ -897,19 +898,20 @@ rows as a macro argument and draw one hidden marker each:
   {% for row in rows %}
   {% if row.marker_x is not none %}
   <line class="hp-marker" id="{{ row.marker_id }}-mark"
-        x1="{{ row.marker_x }}" y1="{{ curve.plot_top }}"
-        x2="{{ row.marker_x }}" y2="{{ curve.plot_bottom }}"></line>
+        x1="{{ row.marker_x }}" y1="{{ curve.plot_y0 }}"
+        x2="{{ row.marker_x }}" y2="{{ curve.plot_y1 }}"></line>
   {% endif %}
   {% endfor %}
 ```
 
-`plot_top` and `plot_bottom` are new `HealthCurve` fields carrying `PLOT_TOP` and `PLOT_BOTTOM`,
+`plot_y0` and `plot_y1` are new `HealthCurve` fields carrying `PLOT_TOP` and `PLOT_BOTTOM`.
+They are named for the axis they bound, as `plot_x0` and `plot_x1` already are,
 which the builder already knows and the template must not. Add both to
 `NUMBERS_THAT_ARE_NOT_TOTALS` in `test_html_invariants.py`:
 
 ```python
-    (HealthCurve, "plot_top"),      # a viewBox coordinate, not a quantity
-    (HealthCurve, "plot_bottom"),   # a viewBox coordinate, not a quantity
+    (HealthCurve, "plot_y0"),       # a viewBox coordinate, not a quantity
+    (HealthCurve, "plot_y1"),       # a viewBox coordinate, not a quantity
     (RecapRow, "marker_x"),         # a viewBox coordinate, not a quantity
 ```
 
@@ -1201,7 +1203,7 @@ In the `health_curve` macro in `_deaths.html.j2`, beside the marker:
 ```jinja
   {% if row.cover_width is not none %}
   <rect class="hp-cover" id="{{ row.marker_id }}-cover"
-        x="{{ row.cover_x }}" y="{{ curve.plot_top }}"
+        x="{{ row.cover_x }}" y="{{ curve.plot_y0 }}"
         width="{{ row.cover_width }}" height="{{ curve.plot_height }}"></rect>
   {% endif %}
 ```

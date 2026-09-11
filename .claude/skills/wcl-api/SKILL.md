@@ -104,6 +104,12 @@ One approximation and three measurements:
   (2026-09-08). Conditions: one cold run, one dungeon, one keystone level; all ten candidates
   loaded, none excluded and none retried. `docs/plans/2026-09-08-sampling-design.md` projects ~111
   for that shape, so the reading came in about a quarter under.
+- **`AuraTable` costs about 1.06 points a call, not the 2.00 recorded above** (2026-09-11).
+  Thirty calls on one `--all-players` run spent 31.70 together. Every earlier reading of that
+  operation — 2.00 a call on 2026-09-05 and again on 2026-09-08 — was taken while the query still
+  selected a second, enemy-side table alongside the player's own buffs. `ee23732` removed that
+  selection, and the operation kept its name, so a reading from before that commit prices a query
+  that no longer exists. Treat the 2.00 rows below as historical.
 - The same analysis widened to the whole roster with `--all-players` — one speed sample for the
   run and a parse sample for each of five players — spent **190.90 points of 3600** (2026-09-11),
   against the 83.39 above for the same report and fight with one player. Conditions: one cold run,
@@ -122,6 +128,16 @@ One approximation and three measurements:
   shape, so this too came in about a quarter under. One reading, of one report, against one day's
   leaderboards: how much a roster shares depends on how much its specialisations' leaderboards
   overlap, and that is not a rate this measures.
+- **The same `--all-players` shape re-run against a warm cache spent 78.21 points of 3600**
+  (2026-09-11, report `6Kx1P9GbNXrcLdHa` fight 36, the first such report read by a person rather
+  than by a test). Composition as the command printed it: `AuraTable` 30 calls for 31.70,
+  `Talents` 9 for 18.45, `Fights` 6 for 12.06, `Casts` 9 for 9.00, `Abilities` 6 for 6.00,
+  `RateLimit` 2 for 1.00. **This prices a re-run, not a cold one, and the composition says so:**
+  no `CharacterRankings` or `FightRankings` call at all — both leaderboards came from the
+  24-hour reference cache — and no `Deaths`, `DamageTaken`, `Healing`, `Interrupts`,
+  `EnemyCasts`, `EnemyDeaths`, `Resurrects` or `Actors` call, all served from our own run's
+  permanent cache. The cold figure for this shape is the 190.90 above, and that reading predates
+  `ee23732`, so it over-prices every `AuraTable` in it by roughly half.
 
 ## Every query reports its own cost
 
