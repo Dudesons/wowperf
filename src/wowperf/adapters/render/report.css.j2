@@ -150,3 +150,16 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
 .press { fill: var(--ours); }
+/* Revealed by hover and by keyboard focus, and rendered into the page whether
+   or not it is shown: the panel is markup the builder wrote, never text the
+   script fetches or writes. */
+.ability { position: relative; }
+.tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
+  min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.ability:hover .tip, .ability:focus-within .tip { display: block; }
+.tip-line { display: flex; justify-content: space-between; gap: 12px; }
+.tip-label { color: var(--ink-dim); }
+.tip-value { font-variant-numeric: tabular-nums; }
+.tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }

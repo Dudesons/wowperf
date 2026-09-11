@@ -696,3 +696,54 @@ def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
     loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras()
     card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
     assert all(row.cover_width is None for row in card.timeline)
+
+
+def test_a_hit_row_carries_a_tooltip_reporting_its_four_figures() -> None:
+    hit = a_hit(1, 54_200, "Snowdrift", 82_410).model_copy(
+        update={"amount": 145_434, "mitigated": 15_609}
+    )
+    card = build_deaths(
+        a_loaded_with((a_death(1, 60_000),), (hit,)), NO_DEFENSIVES, NO_CONSUMABLES
+    )[0]
+    tooltip = card.timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Struck for"] == "145,434"
+    assert labels["Mitigated"] == "15,609"
+    assert labels["Reached health"] == "82,410"
+    assert "does not attribute" in tooltip.note
+
+
+def test_a_heal_row_carries_a_tooltip_naming_its_caster() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "healing": (HealingEvent(actor_id=1, source_id=1, ability_id=7,
+                                 ability_name="Death Strike", amount=9_100,
+                                 timestamp_ms=55_000),),
+    })
+    tooltip = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Healed for"] == "9,100"
+    assert labels["From"] == "Stonewake"
+    assert "no overheal" in tooltip.note
+
+
+def test_an_absorb_row_carries_a_tooltip_naming_the_shields_caster() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "healing": (HealingEvent(actor_id=1, source_id=2, ability_id=17,
+                                 ability_name="Power Word: Shield", amount=12_000,
+                                 timestamp_ms=55_000, absorbed=True),),
+    })
+    tooltip = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0].timeline[0].tooltip
+    assert tooltip is not None
+    labels = {line.label: line.value for line in tooltip.lines}
+    assert labels["Soaked"] == "12,000"
+
+
+def test_a_cast_row_carries_no_tooltip() -> None:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.tooltip is None

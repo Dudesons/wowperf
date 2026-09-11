@@ -46,6 +46,13 @@ class RecapEvent(Frozen):
     absorbed: int = 0
     source_id: int | None = None
     health_percent: int | None = None
+    # What the hit was worth before mitigation and absorption, and what the game
+    # reduced. `mitigated` is one figure the log never attributes to a cause.
+    unmitigated: int = 0
+    mitigated: int = 0
+    overkill: int = 0
+    is_area: bool = False
+    is_tick: bool = False
 
 
 def health_percent(hit_points: int, max_hit_points: int) -> int | None:
@@ -101,6 +108,11 @@ def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
                     ability_id=hit.ability_id,
                     amount=hit.health_damage,
                     absorbed=hit.absorbed,
+                    unmitigated=hit.amount,
+                    mitigated=hit.mitigated,
+                    overkill=hit.overkill,
+                    is_area=hit.is_area,
+                    is_tick=hit.is_tick,
                 )
             )
     for heal in loaded.healing:

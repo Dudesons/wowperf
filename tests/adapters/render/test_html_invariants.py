@@ -29,7 +29,6 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.frame import NOT_REQUESTED
-from wowperf.domain.report.ledger import ledger_row
 from wowperf.domain.report.model import (
     AvailabilityRow,
     CooldownRow,
@@ -413,15 +412,17 @@ PANEL_ORDER = [
 
 def test_the_page_hides_nothing_before_the_script_runs() -> None:
     # Without the script the root class is absent, so every hiding rule must be
-    # scoped under it. The tab bar is the one thing hidden *without* the script,
-    # by the bare `.tabs` rule, and that is checked by name.
+    # scoped under it. Two bare rules are hidden *without* the script: `.tabs`,
+    # which the script un-hides by adding the root class, and `.tip`, which
+    # needs no script at all -- a hover panel that CSS alone reveals on
+    # `:hover`/`:focus-within` and hides the rest of the time.
     html = rich_html()
     assert not re.search(r"<[^>]*\shidden[\s>=]", html)
     assert not re.search(r'style="[^"]*display', html)
     style = html[html.index("<style>"):html.index("</style>")]
     for rule in re.finditer(r"([^{}]+)\{[^{}]*display:\s*none", style):
         selector = rule.group(1).strip().splitlines()[-1].strip()
-        assert selector.startswith(".js ") or selector == ".tabs", selector
+        assert selector.startswith(".js ") or selector in (".tabs", ".tip"), selector
 
 
 def test_every_panel_appears_once_in_tab_order() -> None:
@@ -601,28 +602,23 @@ def test_the_two_player_comparison_fixture_exercises_every_parse_family() -> Non
 
 
 def test_no_two_players_share_a_comparison_row_heading() -> None:
-    # The once-only rule, applied to titles the comparison modules wrote rather
-    # than to fixture prose. A family whose title names no player renders the
-    # same heading under both cards, and the reader cannot tell which is whose.
-    # A heading that names an ability wraps it in one hoverable object (see
-    # `ability` in `_macros.html.j2`), so the expected heading is rebuilt
-    # through the same `ledger_row` split the template renders from, rather
-    # than compared against the finding's own plain-text title.
+    # The once-only rule, applied to headings the comparison modules wrote
+    # rather than to fixture prose. A family whose title names no player
+    # renders the same heading under both cards, and the reader cannot tell
+    # which is whose. Pulled straight out of the rendered page rather than
+    # rebuilt through `ledger_row`, so a heading that is wrong but
+    # self-consistent with what the builder produced is still caught.
     findings, html = a_real_two_player_comparison()
+    headings = []
     for finding in findings:
-        if finding.player_slug:
-            row = ledger_row(finding, {})
-            if row.title_ability:
-                ability_html = (
-                    f'<span class="ability"><span class="ability-name">'
-                    f"{escape(row.title_ability)}</span></span>"
-                )
-            else:
-                ability_html = ""
-            expected = (
-                f"<h3>{escape(row.title_before)}{ability_html}{escape(row.title_after)}</h3>"
-            )
-            assert html.count(expected) == 1, finding.id
+        if not finding.player_slug:
+            continue
+        match = re.search(
+            rf'id="finding-{re.escape(finding.id)}">.*?<h3>(.*?)</h3>', html, flags=re.S,
+        )
+        assert match, finding.id
+        headings.append(match.group(1))
+    assert len(headings) == len(set(headings)), headings
 
 
 def test_only_the_card_nobody_asked_for_carries_the_not_requested_sentence() -> None:
@@ -985,3 +981,19 @@ def test_no_empty_findings_wrappers_render() -> None:
     # Indented form (inside cards, inside per-player sections): spaces before the div,
     # then opening, whitespace, closing.
     assert re.search(r"  <div class=\"findings\">\n  </div>", html) is None
+
+
+def test_a_tooltip_is_markup_the_builder_wrote_and_never_names_a_mitigation_source() -> None:
+    # Spec 5: no tooltip renders a figure attributed to a single mitigation
+    # source. This reads the whole page rather than one tooltip, so a second
+    # tooltip added later is covered the day it exists.
+    # `rich_html()` renders no death card at all (see the note on
+    # `test_the_script_resolves_a_marker_by_id_suffix_and_computes_no_position`
+    # above), so it never carries a recap row or a tooltip to check;
+    # `minimal_html()` is the fixture whose one death actually has a hit event.
+    html = minimal_html()
+    assert 'class="tip"' in html
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
+    assert "tip" not in body
+    assert "prevented" not in html.lower()
+    assert "damage reduction" not in html.lower()

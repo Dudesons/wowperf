@@ -72,7 +72,7 @@
         {% for row in death.timeline %}
         <tr class="{{ row.kind }}"{% if row.marker_id %} id="{{ row.marker_id }}" tabindex="0"{% endif %}>
           <td>{{ row.seconds_before }}</td>
-          <td>{{ ability(row.ability_id, row.ability) }}</td>
+          <td>{{ ability(row.ability_id, row.ability, row.tooltip) }}</td>
           <td>{{ row.detail }}</td>
           <td class="hp">
             {%- if row.health_percent is not none %}<span class="hp-bar" style="width: {{ row.health_percent }}%"></span>{% endif -%}

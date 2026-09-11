@@ -37,6 +37,7 @@ from wowperf.domain.report.model import (
     DeathCard,
     RecapRow,
 )
+from wowperf.domain.report.tooltip import absorb_tooltip, heal_tooltip, hit_tooltip
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
 
@@ -128,6 +129,14 @@ def _recap_row(
         detail = f"+{event.amount:,} from {healer}"
     else:
         detail = ""
+    if event.kind == HIT:
+        tooltip = hit_tooltip(event)
+    elif event.kind == HEAL:
+        tooltip = heal_tooltip(event, names)
+    elif event.kind == ABSORB:
+        tooltip = absorb_tooltip(event, names)
+    else:
+        tooltip = None
     cover_x, cover_width = _cover_of(event, death, auras)
     return RecapRow(
         seconds_before=f"{(death.timestamp_ms - event.timestamp_ms) / 1000:.1f} s",
@@ -137,6 +146,7 @@ def _recap_row(
         health="" if event.health_percent is None else f"{event.health_percent}%",
         health_percent=event.health_percent,
         ability_id=event.ability_id or None,
+        tooltip=tooltip,
         marker_id=marker_id,
         # `curve_x` does not clamp its input to the run-up window: it trusts
         # that `recap_timeline` already filtered events to

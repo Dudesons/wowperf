@@ -217,6 +217,24 @@ class PlayerTimeline(Frozen):
     badge_inferred_caption: str = ""
 
 
+class TooltipLine(Frozen):
+    """One labelled figure of a tooltip. Formatted here; the template prints it."""
+
+    label: str
+    value: str
+
+
+class Tooltip(Frozen):
+    """What hovering an ability says: measured lines, and the caveat they need.
+
+    A tooltip with no lines is never built: the panel exists to carry figures,
+    and an empty one is a hover target that rewards nothing.
+    """
+
+    lines: tuple[TooltipLine, ...] = ()
+    note: str = ""
+
+
 class RecapRow(Frozen):
     """One event of a death's last seconds, formatted.
 
@@ -230,6 +248,9 @@ class RecapRow(Frozen):
     none. Zero is never used: the ability dictionary maps zero to "Unknown
     Ability" with a real icon file, so a zero would draw art beside a row
     nobody identified.
+
+    `tooltip` is what the log recorded about this one event, or None on a
+    cast, which carries no figures of its own to show.
     """
 
     seconds_before: str
@@ -239,6 +260,7 @@ class RecapRow(Frozen):
     health: str = ""
     health_percent: int | None = None
     ability_id: int | None = None
+    tooltip: Tooltip | None = None
     marker_id: str = ""
     """This row's own element id, shared with the marker it lights on the curve.
 
