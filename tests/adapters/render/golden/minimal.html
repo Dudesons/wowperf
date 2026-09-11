@@ -148,6 +148,9 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    a state a screenshot loses. */
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+/* The share of each cycle the ability was doing anything, at true scale. A
+   green head on a grey bar. */
+.cover { fill: var(--badge-measured); }
 .press { fill: var(--ours); }
 /* An open tick, not a filled mark: a press is something the player did and a
    comeback is something that merely became true, and the two must not read as
@@ -351,7 +354,7 @@ never be summed.</p>
   <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
 </svg>
 <p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds. Each bar is a 5-second bucket, and the axis runs from nothing to this player&#39;s own tallest, never the group&#39;s.</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight. An open tick is the moment the cooldown finished and the ability was available again.</p>
-<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars and the press marks. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming.</p>
+<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars, the press marks and the cover windows. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming.</p>
 
   <div class="findings">
   <div class="card" id="finding-compare.talents.emberkin-0">

@@ -762,8 +762,9 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     assert "not judged" in html
     # Which badge grades what is a claim the page makes, so it must be spoken
     # rather than left as two colours side by side: "measured" is captioned
-    # to the damage bars and press marks, "inferred" to the dimming.
-    assert "measured</a> — the damage bars and the press marks." in html
+    # to the damage bars, the press marks and the cover windows, "inferred"
+    # to the dimming.
+    assert "measured</a> — the damage bars, the press marks and the cover windows." in html
     assert "inferred</a> — the dimming." in html
 
 
@@ -1045,6 +1046,51 @@ def test_a_cooldown_row_with_a_ready_tick_draws_the_open_mark() -> None:
         '<rect class="ready-again" x="136.0" y="96.0"\n'
         '        width="4.0" height="16.0"/>'
     ) in body
+
+
+def test_a_cooldown_row_with_a_cover_window_draws_it_at_true_scale() -> None:
+    # The full opening tag is pinned, not just the class name: the span's own x
+    # and width, and the row's baseline_y, all have to reach the page -- the
+    # same proof every other mark on this row already carries. The width here
+    # (1.4) is deliberately narrower than MIN_BLOCK_WIDTH (2.0): the builder
+    # never floors a cover window, so the template must not either.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+        cover=(Span(x=46.0, width=1.4),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<rect class="cover" x="46.0" y="96.0"\n'
+        '        width="1.4" height="16.0"/>'
+    ) in body
+
+
+def test_a_cooldown_row_with_no_cover_window_draws_no_cover_rect() -> None:
+    # The half that catches an unconditional element: a row with a press but
+    # no cover window -- an ability whose buff the aura table never recorded,
+    # or a player with no aura table fetched at all -- must not render a
+    # "cover" element anywhere. Scoped to the body: the stylesheet always
+    # defines ".cover", so checking the whole page would pass even if the
+    # template drew the element unconditionally.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split(
+        "</style>"
+    )[1]
+    assert 'class="cover"' not in body
 
 
 def test_a_cooldown_row_with_no_ready_ticks_draws_no_ready_again_mark() -> None:

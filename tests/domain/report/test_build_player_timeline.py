@@ -3,6 +3,7 @@
 
 from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
 from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldowns
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.model import PlayerTimeline, SectionState
@@ -23,7 +24,13 @@ from wowperf.domain.report.player_timeline import (
     TRACK_ORIGIN_X,
     build_player_timeline,
 )
-from wowperf.domain.report.timeline import TRACK_X0, TRACK_X1, axis_scale, axis_ticks
+from wowperf.domain.report.timeline import (
+    MIN_BLOCK_WIDTH,
+    TRACK_X0,
+    TRACK_X1,
+    axis_scale,
+    axis_ticks,
+)
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives, ThroughputCooldowns
 
 NO_THROUGHPUT = ThroughputCooldowns(entries=())
@@ -529,3 +536,83 @@ def test_the_damage_axis_starts_at_the_same_origin_the_bars_do() -> None:
     timeline = a_timeline(loaded)
     assert timeline.damage is not None
     assert timeline.damage.axis_x0 == TRACK_ORIGIN_X
+
+
+def a_player_auras(actor_id: int, aura: Aura) -> PlayerAuras:
+    return PlayerAuras(actor_id=actor_id, on_self=(aura,))
+
+
+def test_a_cooldown_row_carries_the_windows_its_buff_actually_covered() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=SHIELD.ability_id,
+                    name=SHIELD.name,
+                    total_uptime_ms=8_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover != ()
+
+
+def test_a_cover_window_is_never_widened_to_make_it_visible() -> None:
+    # The guard the spec asks for. MIN_BLOCK_WIDTH floors a pull so it does not
+    # vanish; a cover window has no such floor, because its width IS the claim.
+    # A five-second buff on a thirty-three-minute (1980-second) axis draws at
+    # about 1.3 units, and that sliver is what must be drawn -- not widened to
+    # clear MIN_BLOCK_WIDTH (2.0).
+    run = a_run(pulls=(a_pull(0, 0, 1_980_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=SHIELD.ability_id,
+                    name=SHIELD.name,
+                    total_uptime_ms=5_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=305_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    span = row.cover[0]
+    assert span.width < MIN_BLOCK_WIDTH
+
+
+def test_a_player_with_no_aura_table_gets_no_cover_windows() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover == ()
+
+
+def test_an_aura_table_with_no_band_for_this_ability_gives_no_cover_windows() -> None:
+    # A player's own aura table can be present while saying nothing about this
+    # particular ability -- distinct from no table at all, and the branch
+    # `test_a_player_with_no_aura_table_gets_no_cover_windows` does not exercise.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(ability_id=999_999, name="Unrelated Buff", total_uptime_ms=0, uses=0),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.cover == ()

@@ -3,9 +3,11 @@
 
 from collections import defaultdict
 
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.report.cover import clipped_bands
 from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,
@@ -166,8 +168,9 @@ LEGEND = (
     "ability was available again."
 )
 
-BADGE_MEASURED_CAPTION = "the damage bars and the press marks."
-"""What the measured badge grades: both are events the log itself emitted."""
+BADGE_MEASURED_CAPTION = "the damage bars, the press marks and the cover windows."
+"""What the measured badge grades: the log itself reports all three directly -- casts
+and hits as events, the aura's own bands as the intervals it was up for."""
 
 BADGE_INFERRED_CAPTION = "the dimming."
 """What the inferred badge grades: a cooldown length assumed from its base value, since
@@ -272,6 +275,40 @@ def _damage_track(
     )
 
 
+def _cover_spans(
+    ability_id: int,
+    auras: PlayerAuras | None,
+    scale: float,
+    origin_ms: int,
+    span_seconds: float,
+) -> tuple[Span, ...]:
+    """Every stretch this ability's buff was up, drawn at the axis's own scale.
+
+    `MIN_BLOCK_WIDTH` is deliberately not applied. A pull is floored to that
+    width because a pull that vanishes tells the reader nothing; a cover
+    window's width *is* the claim, and widening a five-second buff on a
+    thirty-three-minute axis from 1.4 units to 2 would overstate its duration by
+    nearly half.
+
+    `clipped_bands` -- the merged view -- is used rather than `band_holding`:
+    this row draws the ability's total cover across the whole run, not the
+    window one particular press earned.
+    """
+    if auras is None:
+        return ()
+    aura = next((one for one in auras.on_self if one.ability_id == ability_id), None)
+    if aura is None:
+        return ()
+    end_ms = origin_ms + int(span_seconds * 1000)
+    return tuple(
+        Span(
+            x=round(_track_x((start - origin_ms) / 1000, scale), PRECISION),
+            width=round((end - start) / 1000 * scale, PRECISION),
+        )
+        for start, end in clipped_bands(aura, origin_ms, end_ms)
+    )
+
+
 def _cooldown_rows(
     casts: tuple[CastEvent, ...],
     abilities: tuple[CooldownAbility, ...],
@@ -279,6 +316,7 @@ def _cooldown_rows(
     scale: float,
     origin_ms: int,
     span_seconds: float,
+    auras: PlayerAuras | None,
 ) -> tuple[CooldownRow, ...]:
     """One row per ability in `abilities` this player cast at least once.
 
@@ -353,6 +391,7 @@ def _cooldown_rows(
                     if end < span_seconds
                 ),
                 not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
+                cover=_cover_spans(ability.ability_id, auras, scale, origin_ms, span_seconds),
             )
         )
     return tuple(rows)
@@ -397,6 +436,7 @@ def build_player_timeline(
         scale,
         origin,
         span,
+        loaded.auras_by_actor.get(actor_id),
     )
     damage = _damage_track(loaded.damage_taken, actor_id, scale, origin)
 

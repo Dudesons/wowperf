@@ -34,6 +34,10 @@
   {% if row.not_judged %}
   <rect class="not-judged" x="{{ row.not_judged.x }}" y="{{ row.baseline_y }}" width="{{ row.not_judged.width }}" height="{{ timeline.row_height }}"/>
   {% endif %}
+  {% for span in row.cover %}
+  <rect class="cover" x="{{ span.x }}" y="{{ row.baseline_y }}"
+        width="{{ span.width }}" height="{{ timeline.row_height }}"/>
+  {% endfor %}
   {% for press in row.presses %}
   {% if row.ability_id in icons_by_id %}
   <use href="#icon-{{ row.ability_id }}" x="{{ press.icon_x }}" y="{{ row.baseline_y }}" width="{{ timeline.row_height }}" height="{{ timeline.row_height }}"/>

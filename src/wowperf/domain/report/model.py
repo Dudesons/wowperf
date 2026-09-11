@@ -201,6 +201,16 @@ class CooldownRow(Frozen):
     unavailable: tuple[Span, ...] = ()
     ready_ticks: tuple[float, ...] = ()
     not_judged: Span | None = None
+    cover: tuple[Span, ...] = ()
+    """Every stretch this ability's buff was actually up, from the aura table's
+    own bands, clipped to the axis.
+
+    Drawn at true scale and never floored: a five-second buff on a
+    thirty-three-minute axis is about one and a half units wide, and widening it
+    to make it visible would be a claim about duration the log did not make.
+    Empty where no aura table was fetched for this player, or where the table
+    recorded no band for the ability.
+    """
 
 
 class PlayerTimeline(Frozen):
