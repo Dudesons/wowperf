@@ -164,17 +164,19 @@ LEGEND = (
     "computed from its base length: talents shorten cooldowns and the log records no reset, "
     "so this shows an ability as unavailable at least as often as it truly was. The pale "
     "stretch at the start is not judged at all — a press before the timer began is invisible "
-    "to a log fetched per fight. An open tick is the moment the cooldown finished and the "
-    "ability was available again."
+    "to a log fetched per fight. An open tick marks the earliest the ability could have come "
+    "back, computed from that same base length: talents may have freed it sooner, and the log "
+    "never says."
 )
 
 BADGE_MEASURED_CAPTION = "the damage bars, the press marks and the cover windows."
 """What the measured badge grades: the log itself reports all three directly -- casts
 and hits as events, the aura's own bands as the intervals it was up for."""
 
-BADGE_INFERRED_CAPTION = "the dimming."
+BADGE_INFERRED_CAPTION = "the dimming and the ready tick that ends it."
 """What the inferred badge grades: a cooldown length assumed from its base value, since
-talents shorten it and the log records no reset."""
+talents shorten it and the log records no reset -- the same assumption the ready tick is
+computed from, so it carries the same badge as the dimming it closes."""
 
 
 def _track_x(elapsed_seconds: float, scale: float) -> float:
@@ -191,6 +193,20 @@ def _track_x(elapsed_seconds: float, scale: float) -> float:
     offset half its own width before rounding).
     """
     return TRACK_ORIGIN_X + elapsed_seconds * scale
+
+
+def _press_x(instant: float) -> float:
+    """The left edge of a `PRESS_WIDTH`-wide mark centred on `instant`, rounded.
+
+    Shared by a press's own mark and the ready tick that answers it: both are
+    rects of the same width standing for a single moment, and `Press`'s own
+    docstring is the reason either needs offsetting at all -- an SVG rect's
+    `x` is its left edge, so a mark placed flush with the instant would sit
+    wholly to its right. Writing the offset a second time at the tick's call
+    site would let the two drift the way `_track_x` already exists to stop a
+    mark and its track from drifting.
+    """
+    return round(instant - PRESS_WIDTH / 2, PRECISION)
 
 
 def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, ...]:
@@ -340,7 +356,7 @@ def _cooldown_rows(
     def press_at(at: int) -> Press:
         instant = _track_x((at - origin_ms) / 1000, scale)
         return Press(
-            x=round(instant - PRESS_WIDTH / 2, PRECISION),
+            x=_press_x(instant),
             icon_x=round(instant - ROW_HEIGHT / 2, PRECISION),
         )
 
@@ -383,9 +399,12 @@ def _cooldown_rows(
                 # marked only when that moment falls before the axis does. A
                 # cooldown still running when the run ends would need a tick
                 # at the axis end, which claims the ability came back at the
-                # moment the run finished; the log never says that.
+                # moment the run finished; the log never says that. Anchored
+                # through `_press_x`, the same offsetting the press it
+                # answers already uses -- see that helper for why either
+                # mark needs offsetting at all.
                 ready_ticks=tuple(
-                    round(_track_x(end, scale), PRECISION)
+                    _press_x(_track_x(end, scale))
                     for end in (
                         (at - origin_ms) / 1000 + ability.cooldown_seconds for at in presses
                     )

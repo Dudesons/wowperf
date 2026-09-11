@@ -763,9 +763,9 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     # Which badge grades what is a claim the page makes, so it must be spoken
     # rather than left as two colours side by side: "measured" is captioned
     # to the damage bars, the press marks and the cover windows, "inferred"
-    # to the dimming.
+    # to the dimming and the ready tick that ends it.
     assert "measured</a> — the damage bars, the press marks and the cover windows." in html
-    assert "inferred</a> — the dimming." in html
+    assert "inferred</a> — the dimming and the ready tick that ends it." in html
 
 
 def test_a_timelines_badges_link_to_provenance_like_every_other_badge() -> None:

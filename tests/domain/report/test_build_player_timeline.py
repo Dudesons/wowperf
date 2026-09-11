@@ -15,6 +15,7 @@ from wowperf.domain.report.player_timeline import (
     FIRST_ROW_Y,
     LABEL_UNITS_PER_CHARACTER,
     LABEL_X,
+    LEGEND,
     NO_PULLS_RECORDED,
     NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
@@ -199,6 +200,24 @@ def test_the_badge_captions_are_not_interchangeable() -> None:
     assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
     assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
     assert BADGE_MEASURED_CAPTION != BADGE_INFERRED_CAPTION
+
+
+def test_the_legend_states_the_ready_tick_as_an_upper_bound_not_a_moment() -> None:
+    # F4: the tick is computed from an ability's base cooldown, and the same
+    # legend already admits, two sentences earlier, that this understates how
+    # often an ability was really available. Naming the tick "the moment" the
+    # ability came back contradicts the sentence right before it.
+    assert "is the moment" not in LEGEND
+    assert "earliest" in LEGEND
+
+
+def test_the_inferred_badge_also_grades_the_ready_tick() -> None:
+    # The tick is derived from the same base-cooldown assumption the dimming
+    # already carries the inferred badge for, so the caption has to name both
+    # -- a new mark on a badged drawing must not go ungraded.
+    assert "tick" in BADGE_INFERRED_CAPTION
+    # BADGE_MEASURED_CAPTION is untouched: the tick is not measured.
+    assert "tick" not in BADGE_MEASURED_CAPTION
 
 
 def test_an_ability_the_player_never_cast_gets_no_row_at_all() -> None:
@@ -496,16 +515,38 @@ def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> No
 
 
 def test_a_cooldown_that_finishes_inside_the_run_is_marked_ready_again() -> None:
-    # The stretch after a press is the cooldown; its end is the moment the
+    # The stretch after a press is the cooldown; its end is the instant the
     # ability came back, and an unmarked end reads as an absence rather than
     # as an event. The press lands at 10s and SHIELD's cooldown is 180s, so
-    # the ability comes back at 190s into the run -- the exact instant the
-    # tick has to sit at, not merely somewhere to the right of the press.
+    # the ability comes back at 190s into the run. The tick is centred on
+    # that instant the same way a press is centred on its own -- left-edged
+    # half a mark's width before it, per `Press`'s own docstring -- so this
+    # pins the anchored x, not the raw unoffset one.
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
     scale = a_scale(600.0)
-    assert row.ready_ticks == (round(TRACK_ORIGIN_X + 190.0 * scale, PRECISION),)
+    assert row.ready_ticks == (
+        round(TRACK_ORIGIN_X + 190.0 * scale - PRESS_WIDTH / 2, PRECISION),
+    )
+
+
+def test_a_ready_tick_is_anchored_the_same_way_its_press_is() -> None:
+    # F8: a `Press` centres its mark on the instant, left-edged half the
+    # mark's own width before it (`Press`'s own docstring). The ready tick is
+    # a mark of the same width answering that same press, so it has to use
+    # the same anchoring rule -- not the raw, unoffset x -- or the two read at
+    # different times on the same row despite marking the same cooldown.
+    # Tolerance mirrors `test_a_presss_mark_and_icon_are_both_centred_on_the_instant_they_mark`:
+    # both x's are independently rounded to PRECISION, so an exact comparison
+    # of the two offsets would fail on rounding noise smaller than a pixel.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    press_offset = row.presses[0].x - (TRACK_ORIGIN_X + 10.0 * a_scale(600.0))
+    tick_offset = row.ready_ticks[0] - (TRACK_ORIGIN_X + 190.0 * a_scale(600.0))
+    assert abs(tick_offset - press_offset) <= 0.1
+    assert abs(press_offset - (-PRESS_WIDTH / 2)) <= 0.1
 
 
 def test_a_cooldown_still_running_when_the_run_ends_is_not_marked_ready() -> None:
