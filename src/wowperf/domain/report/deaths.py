@@ -5,6 +5,7 @@ from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.recap import (
     ABSENT,
     ABSORB,
+    CAST,
     COOLDOWN,
     HEAL,
     HIT,
@@ -20,12 +21,15 @@ from wowperf.domain.analysis.recap import (
     readings_in_window,
     recap_timeline,
     return_of,
+    window_start,
 )
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.report.cover import clipped_bands
 from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
-from wowperf.domain.report.health_curve import build_health_curve, curve_x
+from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
     AvailabilityGroup,
     AvailabilityRow,
@@ -85,8 +89,40 @@ NO_CONSUMABLE_DATA = (
 )
 
 
+def _cover_of(
+    event: RecapEvent, death: Death, auras: PlayerAuras | None
+) -> tuple[float | None, float | None]:
+    """Where this press's buff was up, in the curve's coordinate space.
+
+    The window containing the press, not the ability's whole history: the row
+    describes one cast, and an earlier band of the same buff belongs to an
+    earlier one. Both values are None where no aura table was fetched, where
+    the table recorded no band for this ability, or where the press's own band
+    does not reach into the run-up the card draws.
+    """
+    if auras is None or event.kind != CAST:
+        return (None, None)
+    aura = next((one for one in auras.on_self if one.ability_id == event.ability_id), None)
+    if aura is None:
+        return (None, None)
+    windows = clipped_bands(aura, window_start(death), death.timestamp_ms)
+    holding = next(
+        (
+            (start, end)
+            for start, end in windows
+            if start <= event.timestamp_ms <= end
+        ),
+        None,
+    )
+    if holding is None:
+        return (None, None)
+    start_x = curve_x(holding[0], death)
+    return (start_x, round(curve_x(holding[1], death) - start_x, PRECISION))
+
+
 def _recap_row(
-    event: RecapEvent, death: Death, names: dict[int, str], marker_id: str, has_curve: bool
+    event: RecapEvent, death: Death, names: dict[int, str], marker_id: str, has_curve: bool,
+    auras: PlayerAuras | None,
 ) -> RecapRow:
     if event.kind == HIT:
         detail = f"{event.amount:,} to health"
@@ -100,6 +136,7 @@ def _recap_row(
         detail = f"+{event.amount:,} from {healer}"
     else:
         detail = ""
+    cover_x, cover_width = _cover_of(event, death, auras)
     return RecapRow(
         seconds_before=f"{(death.timestamp_ms - event.timestamp_ms) / 1000:.1f} s",
         kind=event.kind,
@@ -109,7 +146,15 @@ def _recap_row(
         health_percent=event.health_percent,
         ability_id=event.ability_id or None,
         marker_id=marker_id,
+        # `curve_x` does not clamp its input to the run-up window: it trusts
+        # that `recap_timeline` already filtered events to
+        # [window_start(death), death.timestamp_ms] before any of them reached
+        # this row. The two modules agree only because both read the same
+        # window; a caller that handed an unfiltered event to a row builder
+        # would get back an x that falls outside the plot it is drawn on.
         marker_x=curve_x(event.timestamp_ms, death) if has_curve else None,
+        cover_x=cover_x,
+        cover_width=cover_width,
     )
 
 
@@ -200,8 +245,9 @@ def build_deaths(
         events = recap_timeline(loaded, death)
         curve = build_health_curve(events, readings_in_window(loaded, death), death)
         slug = f"death-{index}"
+        auras = loaded.auras_by_actor.get(death.actor_id)
         timeline = tuple(
-            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None)
+            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras)
             for position, event in enumerate(events)
         )
         has_health = any(row.health_percent is not None for row in timeline)

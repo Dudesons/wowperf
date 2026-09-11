@@ -12,6 +12,13 @@
   {% for tick in curve.ticks %}
   <text class="hp-axis hp-time" x="{{ tick.x }}" y="{{ curve.tick_label_y }}">{{ tick.label }}</text>
   {% endfor %}
+  {% for row in rows %}
+  {% if row.cover_width is not none %}
+  <rect class="hp-cover" id="{{ row.marker_id }}-cover"
+        x="{{ row.cover_x }}" y="{{ curve.plot_y0 }}"
+        width="{{ row.cover_width }}" height="{{ curve.plot_height }}"></rect>
+  {% endif %}
+  {% endfor %}
   <polyline class="hp-line" points="
     {%- for point in curve.points %}
     {{ point.x }},{{ point.y }}

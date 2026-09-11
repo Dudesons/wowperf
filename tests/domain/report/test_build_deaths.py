@@ -9,6 +9,7 @@ from tests.domain.report.test_build_frame import (
     a_run,
 )
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -650,3 +651,48 @@ def test_every_marker_id_on_the_page_is_unique_across_cards() -> None:
     cards = build_deaths(a_loaded_with(deaths, hits), NO_DEFENSIVES, NO_CONSUMABLES)
     ids = [row.marker_id for card in cards for row in card.timeline]
     assert len(ids) == len(set(ids))
+
+
+# `BLOOD` and `owns_icebound`, defined above, already give a defensive that is
+# both owned and pressed inside the run-up; these two fixtures add the aura
+# table's own account of the same press, or its deliberate absence.
+
+
+def a_loaded_run_with_a_pressed_defensive_and_its_band() -> LoadedRun:
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+    return loaded.model_copy(update={
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=6_000, uses=1,
+                     bands=(AuraBand(start_ms=53_000, end_ms=59_000),)),
+            )),
+        ),
+    })
+
+
+def a_loaded_run_with_a_pressed_defensive_and_no_auras() -> LoadedRun:
+    return a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(55_000)}
+    )
+
+
+def test_a_pressed_defensive_row_carries_the_window_that_press_covered() -> None:
+    # The band is measured: the aura table states when the buff was up. Only
+    # the width the reader sees is arithmetic, and it is arithmetic done here.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.cover_x is not None
+    assert row.cover_width is not None
+    assert row.cover_width > 0
+
+
+def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
+    # A report fetched without an aura table, or a press whose buff the table
+    # never recorded, must draw nothing rather than a window the width of a
+    # guess.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras()
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+    assert all(row.cover_width is None for row in card.timeline)

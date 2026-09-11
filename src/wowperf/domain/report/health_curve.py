@@ -191,6 +191,7 @@ def build_health_curve(
         plot_x1=PLOT_X1,
         plot_y0=PLOT_TOP,
         plot_y1=PLOT_BOTTOM,
+        plot_height=PLOT_BOTTOM - PLOT_TOP,
         label_x=LABEL_X,
         tick_label_y=TICK_LABEL_Y,
         points=points,

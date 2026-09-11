@@ -465,6 +465,7 @@ def a_curve() -> HealthCurve:
         plot_x1=668.0,
         plot_y0=14.0,
         plot_y1=116.0,
+        plot_height=102.0,
         label_x=34.0,
         tick_label_y=136.0,
         points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=668.0, y=116.0)),
@@ -514,6 +515,7 @@ def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> N
     # the legend still sees two different claims.
     curve = HealthCurve(
         width=680.0, height=148.0, plot_x0=40.0, plot_x1=648.0, plot_y0=14.0, plot_y1=116.0,
+        plot_height=102.0,
         label_x=34.0,
         tick_label_y=136.0,
         points=(CurvePoint(x=40.0, y=14.0), CurvePoint(x=648.0, y=116.0)),
@@ -565,6 +567,29 @@ def test_a_recap_row_with_no_marker_draws_no_line_on_the_curve() -> None:
     # while one of its rows falls outside it (or before build_deaths ever ran).
     deaths = deaths_of(a_card(health_curve=a_curve()))
     assert "hp-marker" not in deaths
+
+
+def test_a_pressed_row_with_a_cover_window_draws_a_hidden_rect_on_the_curve() -> None:
+    # Same proof as the marker test above, for the window a press covered: the
+    # template itself draws the hidden `<rect>` a real row's cover_x and
+    # cover_width ask for, tied to the row's own id by the "-cover" suffix the
+    # script looks up.
+    curve = a_curve()
+    row = RecapRow(seconds_before="5.0 s", kind="cast", ability="Icebound Fortitude",
+                   marker_id="death-0-e0", cover_x=40.0, cover_width=12.0)
+    deaths = deaths_of(a_card(health_curve=curve, timeline=(row,)))
+    assert (
+        '<rect class="hp-cover" id="death-0-e0-cover"\n'
+        f'        x="40.0" y="{curve.plot_y0}"\n'
+        f'        width="12.0" height="{curve.plot_height}"></rect>'
+    ) in deaths
+
+
+def test_a_recap_row_with_no_cover_window_draws_no_rect_on_the_curve() -> None:
+    # A row that is not a press, or whose buff the aura table never recorded,
+    # must render no cover element at all -- not an empty or zero-width one.
+    deaths = deaths_of(a_card(health_curve=a_curve()))
+    assert "hp-cover" not in deaths
 
 
 def test_a_death_card_with_no_curve_emits_no_svg_at_all() -> None:

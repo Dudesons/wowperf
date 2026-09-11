@@ -105,6 +105,10 @@ p { margin: 0 0 10px; }
    layout to recompute when it appears. */
 .hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
 .hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. */
+.hp-cover { fill: var(--ours); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
 tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }

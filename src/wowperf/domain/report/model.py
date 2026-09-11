@@ -248,6 +248,11 @@ class RecapRow(Frozen):
     marker_x: float | None = None
     """Where this row's moment falls on the curve, or None when there is no curve
     to place it on. In the curve's own coordinate space, from `curve_x`."""
+    cover_x: float | None = None
+    """The left edge of the window this press covered, in the curve's coordinate
+    space, or None on a row that is not a press or whose buff the aura table
+    never recorded. Drawn only where the log stated a band."""
+    cover_width: float | None = None
 
 
 class CurvePoint(Frozen):
@@ -299,6 +304,9 @@ class HealthCurve(Frozen):
     plot_x1: float
     plot_y0: float
     plot_y1: float
+    plot_height: float
+    """`plot_y1 - plot_y0`, computed once so a cover window's `<rect>` needs no
+    arithmetic of its own to span the plot's full height."""
     label_x: float
     tick_label_y: float
     points: tuple[CurvePoint, ...] = ()

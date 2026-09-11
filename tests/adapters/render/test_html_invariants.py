@@ -686,7 +686,10 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (HealthCurve, "plot_y1"),       # a viewBox coordinate, not a quantity
     (HealthCurve, "label_x"),
     (HealthCurve, "tick_label_y"),
+    (HealthCurve, "plot_height"),   # a viewBox coordinate, not a quantity
     (RecapRow, "marker_x"),         # a viewBox coordinate, not a quantity
+    (RecapRow, "cover_x"),          # a viewBox coordinate, not a quantity
+    (RecapRow, "cover_width"),      # a viewBox coordinate, not a quantity
     (CurvePoint, "x"),
     (CurvePoint, "y"),
     (CurveReading, "x"),

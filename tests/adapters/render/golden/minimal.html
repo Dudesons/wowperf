@@ -110,6 +110,10 @@ p { margin: 0 0 10px; }
    layout to recompute when it appears. */
 .hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
 .hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. */
+.hp-cover { fill: var(--ours); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
 tr[id]:hover td { background: var(--line); }
 details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
   padding: 2px 0; }
@@ -455,9 +459,10 @@ fetched 2026-09-05 14:02.</p>
   window.addEventListener("load", resolve);
   resolve();
 
-  // Lighting a marker the builder already placed. No geometry here: the x of
-  // every marker was computed in Python and is already in the document, so
-  // this only decides which of them is visible.
+  // Lighting a marker, and the cover window beside it, that the builder
+  // already placed. No geometry here: the x of every marker and the x and
+  // width of every cover were computed in Python and are already in the
+  // document, so this only decides which of them is visible.
   var rows = document.querySelectorAll("tr[id]");
   for (var r = 0; r < rows.length; r++) {
     rows[r].addEventListener("mouseenter", light);
@@ -470,14 +475,22 @@ fetched 2026-09-05 14:02.</p>
     return document.getElementById(row.getAttribute("id") + "-mark");
   }
 
+  function coverOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-cover");
+  }
+
   function light(event) {
     var mark = markerOf(event.currentTarget);
     if (mark) { mark.classList.add("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.add("lit"); }
   }
 
   function darken(event) {
     var mark = markerOf(event.currentTarget);
     if (mark) { mark.classList.remove("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.remove("lit"); }
   }
 })();
 </script>
