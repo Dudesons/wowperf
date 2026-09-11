@@ -13,9 +13,38 @@ from wowperf.domain.model import Pull, Run
 MAX_PACKS_REPORTED = 5
 """Beyond five packs a reader stops reading and starts skimming."""
 
+MIN_PRICEABLE_SECONDS = 1.0
+"""Below this a pull cannot state what it cost, so it is never priced as a pack.
+
+Measured over 98 cached pulls on 2026-09-11: six ran under a second and the next
+shortest ran 6.77s, so the floor falls in an empty stretch of the distribution
+rather than through a cluster of real packs.
+"""
+
 
 def _pull_by_index(run: Run, index: int) -> Pull | None:
     return next((pull for pull in run.pulls if pull.index == index), None)
+
+
+def _is_a_pack(pull: Pull) -> bool:
+    """Whether a route decision could have taken or left this pull.
+
+    Two shapes of pull are not packs anybody chose. Warcraft Logs closes and
+    reopens a pull in the middle of an engagement, leaving one of a few
+    milliseconds whose enemies are a subset of the pull before it; and it
+    records pulls with no enemies at all, which `align_pulls` pairs with
+    nothing, so they reach `only_ours` whatever the reference did. Priced as a
+    skipped pack the first reads "We spent 0s on it" and the second names a
+    pack that is not there.
+
+    The floor is the resolution of the claim the finding makes, not a view
+    about small packs: under a second there is no cost left to state.
+
+    Only the pricing is scoped this way. Both summaries still count every pull
+    the log recorded, because how the log cut the route is what a pull count
+    describes.
+    """
+    return bool(pull.enemies) and pull.duration_seconds >= MIN_PRICEABLE_SECONDS
 
 
 def compare_route(
@@ -85,7 +114,9 @@ def compare_route(
     skippable = [
         pull
         for index in alignment.only_ours
-        if (pull := _pull_by_index(ours, index)) is not None and not pull.is_boss
+        if (pull := _pull_by_index(ours, index)) is not None
+        and not pull.is_boss
+        and _is_a_pack(pull)
     ]
     skippable.sort(key=lambda pull: pull.duration_seconds, reverse=True)
 
@@ -117,7 +148,9 @@ def compare_route(
     extra = [
         pull
         for index in alignment.only_theirs
-        if (pull := _pull_by_index(theirs, index)) is not None and not pull.is_boss
+        if (pull := _pull_by_index(theirs, index)) is not None
+        and not pull.is_boss
+        and _is_a_pack(pull)
     ]
     for rank, pull in enumerate(extra[:MAX_PACKS_REPORTED]):
         findings.append(
@@ -223,7 +256,9 @@ def _skipped(
     skippable = [
         (pull, counts[pull.index])
         for index in counts
-        if (pull := _pull_by_index(ours, index)) is not None and not pull.is_boss
+        if (pull := _pull_by_index(ours, index)) is not None
+        and not pull.is_boss
+        and _is_a_pack(pull)
     ]
     # Agreement first, price second, where the pairwise version sorted on price
     # alone. A pack one reference skipped is a coincidence whatever it cost; a
@@ -273,7 +308,9 @@ def _extra_from(member: SpeedMember, ours: Run) -> list[Finding]:
     extra = [
         pull
         for index in member.alignment.only_theirs
-        if (pull := _pull_by_index(theirs, index)) is not None and not pull.is_boss
+        if (pull := _pull_by_index(theirs, index)) is not None
+        and not pull.is_boss
+        and _is_a_pack(pull)
     ]
     findings = []
     for rank, pull in enumerate(extra[:MAX_PACKS_REPORTED]):

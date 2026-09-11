@@ -529,3 +529,141 @@ def test_the_extra_finding_names_a_run_not_a_report_code_as_the_subject() -> Non
 
     extra = findings_by_prefix(findings, "compare.route.extra.")[0]
     assert extra.detail.startswith("One fast run (report REF1, fight 1) killed a pack")
+
+
+# --- pulls that cannot honestly be priced ---------------------------------
+#
+# Warcraft Logs closes and reopens a pull mid-engagement, leaving a pull of a
+# few milliseconds whose enemies are a subset of the one before it, and it
+# records pulls with no enemies at all. Neither is a pack anybody skipped.
+
+ARTEFACT_RUN = a_run(
+    (
+        *tuple(a_pull(i, (i + 1,)) for i in range(6)),
+        a_pull(6, (90,), seconds=93.0, name="Real Pack"),
+        a_pull(7, (91,), seconds=0.048, name="Tail"),
+    )
+)
+
+
+def artefact_member(missing: tuple[int, ...], report_code: str = "REF1") -> SpeedMember:
+    """A reference that fought every pull of ARTEFACT_RUN except the ones named."""
+    theirs = a_run(tuple(pull for pull in ARTEFACT_RUN.pulls if pull.index not in missing))
+    return SpeedMember(
+        row=a_speed_row(report_code=report_code),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(ARTEFACT_RUN, theirs),
+    )
+
+
+def test_a_sub_second_pull_is_not_priced_as_a_pack_the_reference_skipped() -> None:
+    ours = a_run(
+        (
+            a_pull(0, (1,)),
+            a_pull(1, (2,)),
+            a_pull(2, (3,)),
+            a_pull(3, (4,), seconds=0.048, name="Tail"),
+            a_pull(4, (5,), seconds=93.0, name="Real Pack"),
+        )
+    )
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
+    skipped = findings_by_prefix(findings, "compare.route.skipped.")
+
+    assert [finding.pull_index for finding in skipped] == [4]
+    assert skipped[0].seconds_lost == 93.0
+
+
+def test_a_pull_with_no_recorded_enemies_is_not_priced_as_a_pack_the_reference_skipped() -> None:
+    # `align_pulls` never offers a counterpart to a pull with no enemies, so it
+    # always lands in `only_ours`. That says nothing about the reference's route.
+    ours = a_run(
+        (
+            a_pull(0, (1,)),
+            a_pull(1, (2,)),
+            a_pull(2, (3,)),
+            a_pull(3, ()),
+            a_pull(4, (5,), seconds=93.0, name="Real Pack"),
+        )
+    )
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
+    skipped = findings_by_prefix(findings, "compare.route.skipped.")
+
+    assert [finding.pull_index for finding in skipped] == [4]
+
+
+def test_a_pack_one_second_long_is_still_priced_as_skipped() -> None:
+    # The floor is the resolution of the finding's own claim, not a judgement
+    # about small packs: at one second it can still say what it cost.
+    ours = a_run(
+        (a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,)), a_pull(3, (4,), seconds=1.0))
+    )
+    theirs = a_run((a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (3,))))
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
+    skipped = findings_by_prefix(findings, "compare.route.skipped.")
+
+    assert [finding.pull_index for finding in skipped] == [3]
+    assert skipped[0].seconds_lost == 1.0
+
+
+def test_a_reference_artefact_pull_is_not_reported_as_a_pack_we_did_not_pull() -> None:
+    ours = a_run((a_pull(0, (1,)), a_pull(1, (2,))))
+    theirs = a_run(
+        (
+            a_pull(0, (1,)),
+            a_pull(1, (2,)),
+            a_pull(2, (98,), seconds=0.03, name="Their Tail"),
+            a_pull(3, (99,), name="Bonus Pack"),
+        )
+    )
+
+    findings = compare_route(ours, theirs, align_pulls(ours, theirs), {})
+    extra = findings_by_prefix(findings, "compare.route.extra.")
+
+    assert [finding.evidence[0] for finding in extra] == ["Bonus Pack"]
+
+
+def test_an_artefact_pull_does_not_outrank_the_pack_the_sample_really_skipped() -> None:
+    # Agreement sorts before price here, and no reference ever pulls a pack that
+    # existed for 48ms, so an artefact draws unanimous agreement by construction
+    # and takes the top row from a pack that really was skipped.
+    sample = SpeedSample(
+        members=(
+            artefact_member((7,), report_code="REF1"),
+            artefact_member((7,), report_code="REF2"),
+            artefact_member((6, 7), report_code="REF3"),
+        )
+    )
+
+    findings = compare_route_sample(ARTEFACT_RUN, sample, forces={})
+    skipped = findings_by_prefix(findings, "compare.route.skipped.")
+
+    assert [finding.pull_index for finding in skipped] == [6]
+    assert skipped[0].title == "1 of 3 fast runs skipped the pack at pull 6"
+
+
+def test_a_reference_artefact_pull_is_not_reported_as_extra_on_the_sampled_path() -> None:
+    theirs = a_run(
+        (
+            *tuple(a_pull(i, (i + 1,)) for i in range(8)),
+            a_pull(8, (98,), seconds=0.03, name="Their Tail"),
+            a_pull(9, (99,), name="Bonus Pack"),
+        )
+    )
+    member = SpeedMember(
+        row=a_speed_row(),
+        run=theirs,
+        comparability=Comparability(our_level=16, their_level=16),
+        alignment=align_pulls(OUR_RUN, theirs),
+    )
+    sample = SpeedSample(members=(member, member_full("REF2"), member_full("REF3")))
+
+    findings = compare_route_sample(OUR_RUN, sample, forces={})
+    extra = findings_by_prefix(findings, "compare.route.extra.")
+
+    assert [finding.evidence[0] for finding in extra] == ["Bonus Pack"]
