@@ -476,6 +476,22 @@ by name — Alter Time, cast `108978` against aura `342246`, and Greater Invisib
 `110959` against aura `110960` — while 100 did not appear because they were never cast in that
 run.
 
+**A name does not identify an ability, and an id does not identify a button.** Measured
+2026-09-11 against the cached responses for report `6Kx1P9GbNXrcLdHa`: of 1755 ability names in
+`masterData.abilities`, **475 own more than one `gameID`**, and across 73 actors with any cast at
+all, **29 cast two ids that share a name**. Those pairs are of two kinds, and the cast timestamps
+separate them cleanly rather than on a continuum. For some, one press emits both ids within the
+same second — Alter Time `342245`/`342247` paired 1 of 1, Greater Invisibility `110959`/`110960`
+paired 3 of 3, and one pair paired 15 of 15. For others the two ids never coincide at all —
+Demonic Gateway `1214675`/`1214740` paired 0 of 4, Overwhelming Onslaught `1243569`/`1297792`
+paired 0 of 6.
+
+Nothing in the schema states which kind a pair is. So **never sum casts across ids that share a
+name**: for the first kind that reports two presses where the player made one. Counting each id
+separately is right, because one press does emit one cast of that id; what needs handling is the
+report printing the same sentence twice, which `_one_row_per_sentence` in
+`src/wowperf/domain/comparison/spells.py` does on the sentence rather than on the name.
+
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's
