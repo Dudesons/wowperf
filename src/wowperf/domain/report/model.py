@@ -208,8 +208,12 @@ class CooldownRow(Frozen):
     Drawn at true scale and never floored: a five-second buff on a
     thirty-three-minute axis is about one and a half units wide, and widening it
     to make it visible would be a claim about duration the log did not make.
-    Empty where no aura table was fetched for this player, or where the table
-    recorded no band for the ability.
+    Empty where no aura table was fetched for this player, where the table
+    recorded no band for the ability, or where neither the ability's own id
+    nor its name matched an aura the table carries -- `resolve_aura` tries the
+    id first and the name second, because the table keys an aura on the buff
+    it applies, not on the spell cast to apply it, and a few abilities cast as
+    one spell and buff as another.
     """
 
 

@@ -599,6 +599,32 @@ def test_a_player_with_no_aura_table_gets_no_cover_windows() -> None:
     assert row.cover == ()
 
 
+def test_a_cast_id_that_differs_from_its_auras_id_still_gets_a_cover_window() -> None:
+    # The regression `resolve_aura` fixes, proven through a throughput cooldown
+    # rather than a defensive: `_cooldown_rows` builds both kinds of row
+    # through the same `_cover_spans` call, so the id/name bridge covers
+    # throughput cooldowns by construction, not by a second implementation.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(
+        run=run,
+        casts=(a_cast(1, BURST.ability_id, 300_000),),
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=999_111,  # deliberately not BURST.ability_id
+                    name=BURST.name,
+                    total_uptime_ms=8_000,
+                    uses=1,
+                    bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+                ),
+            ),
+        ),
+    )
+    row = a_timeline(loaded, throughput=BURSTS).cooldowns[0]
+    assert row.cover != ()
+
+
 def test_an_aura_table_with_no_band_for_this_ability_gives_no_cover_windows() -> None:
     # A player's own aura table can be present while saying nothing about this
     # particular ability -- distinct from no table at all, and the branch

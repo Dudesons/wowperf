@@ -1,8 +1,8 @@
 # ABOUTME: Behaviour tests for clipping one aura's bands to a drawing's window.
 # ABOUTME: Every edge a band can take against a window: before, after, straddling, touching.
 
-from wowperf.domain.auras import Aura, AuraBand
-from wowperf.domain.report.cover import band_holding, clipped_bands
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.report.cover import band_holding, clipped_bands, resolve_aura
 
 
 def test_a_band_is_clipped_to_the_window_rather_than_counted_whole() -> None:
@@ -138,3 +138,45 @@ def test_a_press_inside_two_overlapping_bands_resolves_to_the_one_that_started_l
     aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=10000, uses=2,
                 bands=(AuraBand(start_ms=0, end_ms=6_000), AuraBand(start_ms=4_000, end_ms=10_000)))
     assert band_holding(aura, 0, 10_000, 5_000) == (4_000, 10_000)
+
+
+# `resolve_aura` bridges a cast id to the aura table's own key. The table keys
+# an aura by the id of the buff itself, and `data/defensives.toml` (and
+# `data/throughput_cooldowns.toml` beside it) records the id of the spell
+# *cast* to apply it -- the same spell for most abilities, but not for Alter
+# Time (cast 108978, buff 342246) or Greater Invisibility (cast 110959, buff
+# 110960), measured against the cached aura tables for report
+# `6Kx1P9GbNXrcLdHa` (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11).
+
+
+def test_resolve_aura_finds_an_aura_by_its_own_id() -> None:
+    aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=8000, uses=1)
+    auras = PlayerAuras(actor_id=1, on_self=(aura,))
+    assert resolve_aura(auras, 48792, "Icebound Fortitude") is aura
+
+
+def test_resolve_aura_falls_back_to_the_name_when_the_id_does_not_match() -> None:
+    # The regression this resolver exists for: the cast id (108978, Alter
+    # Time's spell) finds nothing in a table keyed by the buff's own id
+    # (342246), so the name is what has to bridge the two.
+    aura = Aura(ability_id=342246, name="Alter Time", total_uptime_ms=4000, uses=1)
+    auras = PlayerAuras(actor_id=1, on_self=(aura,))
+    assert resolve_aura(auras, 108978, "Alter Time") is aura
+
+
+def test_resolve_aura_finds_nothing_when_neither_id_nor_name_match() -> None:
+    aura = Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=8000, uses=1)
+    auras = PlayerAuras(actor_id=1, on_self=(aura,))
+    assert resolve_aura(auras, 999_999, "Unrelated Buff") is None
+
+
+def test_an_id_match_wins_over_a_name_match_when_both_are_possible() -> None:
+    # The one case that matters: the name match is a heuristic and must never
+    # override an exact id match. Two auras sit in this player's own table --
+    # one whose id matches what was asked for but whose name does not, and a
+    # separate one whose name matches but whose id does not -- and the id
+    # match must win.
+    by_id = Aura(ability_id=100, name="Wrong Name Entirely", total_uptime_ms=1000, uses=1)
+    by_name = Aura(ability_id=999, name="Shield Wall", total_uptime_ms=2000, uses=1)
+    auras = PlayerAuras(actor_id=1, on_self=(by_id, by_name))
+    assert resolve_aura(auras, 100, "Shield Wall") is by_id

@@ -1,7 +1,25 @@
 # ABOUTME: Aura bands clipped to a drawing's window, merged, as milliseconds.
 # ABOUTME: One piece of arithmetic behind every cover window the report draws.
 
-from wowperf.domain.auras import Aura
+from wowperf.domain.auras import Aura, PlayerAuras
+
+
+def resolve_aura(auras: PlayerAuras, ability_id: int, ability_name: str) -> Aura | None:
+    """This player's own aura for the ability that cast it, by id first and by name second.
+
+    The aura table is keyed by the id of the buff itself, while
+    `data/defensives.toml` and `data/throughput_cooldowns.toml` record the id of
+    the spell *cast* to apply it. For most abilities those are the same spell,
+    but not always: Alter Time casts as 108978 and buffs as 342246, Greater
+    Invisibility casts as 110959 and buffs as 110960. The id match is exact and
+    always tried first; the name match is a heuristic fallback, tried only when
+    the id finds nothing, and scoped to one player's own `on_self` list, where
+    an unrelated ability sharing a name is not a realistic collision.
+    """
+    aura = next((one for one in auras.on_self if one.ability_id == ability_id), None)
+    if aura is not None:
+        return aura
+    return next((one for one in auras.on_self if one.name == ability_name), None)
 
 
 def _clip_to_window(aura: Aura, start_ms: int, end_ms: int) -> list[tuple[int, int]]:

@@ -698,6 +698,30 @@ def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
     assert all(row.cover_width is None for row in card.timeline)
 
 
+def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_window() -> None:
+    # The regression this fix is for: Alter Time casts as 108978 but the aura
+    # table keys the buff at 342246 (`.claude/skills/wcl-api/SKILL.md`,
+    # 2026-09-11). A lookup keyed only on the cast's own id would find nothing
+    # here forever; the name has to bridge the two.
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "casts": (
+            CastEvent(actor_id=1, ability_id=108_978, ability_name="Alter Time",
+                      timestamp_ms=55_000, pull_index=0),
+        ),
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=342_246, name="Alter Time", total_uptime_ms=6_000, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=61_000),)),
+            )),
+        ),
+    })
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+    row = next(row for row in card.timeline if row.kind == "cast")
+    assert row.cover_x is not None
+    assert row.cover_width is not None
+    assert row.cover_width > 0
+
+
 def test_a_hit_row_carries_a_tooltip_reporting_its_four_figures() -> None:
     hit = a_hit(1, 54_200, "Snowdrift", 82_410).model_copy(
         update={"amount": 145_434, "mitigated": 15_609}

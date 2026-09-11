@@ -7,7 +7,7 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
-from wowperf.domain.report.cover import clipped_bands
+from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,
@@ -277,6 +277,7 @@ def _damage_track(
 
 def _cover_spans(
     ability_id: int,
+    ability_name: str,
     auras: PlayerAuras | None,
     scale: float,
     origin_ms: int,
@@ -296,7 +297,7 @@ def _cover_spans(
     """
     if auras is None:
         return ()
-    aura = next((one for one in auras.on_self if one.ability_id == ability_id), None)
+    aura = resolve_aura(auras, ability_id, ability_name)
     if aura is None:
         return ()
     end_ms = origin_ms + int(span_seconds * 1000)
@@ -391,7 +392,9 @@ def _cooldown_rows(
                     if end < span_seconds
                 ),
                 not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
-                cover=_cover_spans(ability.ability_id, auras, scale, origin_ms, span_seconds),
+                cover=_cover_spans(
+                    ability.ability_id, ability.name, auras, scale, origin_ms, span_seconds
+                ),
             )
         )
     return tuple(rows)

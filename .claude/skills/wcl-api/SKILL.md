@@ -469,6 +469,13 @@ same date: 1189 pairs of bands on one aura touch or overlap, which is why drawin
 press covered clips its own band rather than reusing the merged total `clipped_bands` computes
 for `uptime_seconds_in`.
 
+**An aura row's `guid` is the id of the buff, not of the spell cast to apply it.** Measured
+2026-09-11 against the cached responses for report `6Kx1P9GbNXrcLdHa`: of 139 entries in
+`data/defensives.toml`, 33 matched an aura guid directly and 2 distinct abilities matched only
+by name — Alter Time, cast `108978` against aura `342246`, and Greater Invisibility, cast
+`110959` against aura `110960` — while 100 did not appear because they were never cast in that
+run.
+
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's

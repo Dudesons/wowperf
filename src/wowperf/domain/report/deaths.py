@@ -27,7 +27,7 @@ from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Run
-from wowperf.domain.report.cover import band_holding
+from wowperf.domain.report.cover import band_holding, resolve_aura
 from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_start_ms
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
@@ -103,7 +103,7 @@ def _cover_of(
     """
     if auras is None or event.kind != CAST:
         return (None, None)
-    aura = next((one for one in auras.on_self if one.ability_id == event.ability_id), None)
+    aura = resolve_aura(auras, event.ability_id, event.ability_name)
     if aura is None:
         return (None, None)
     holding = band_holding(aura, window_start(death), death.timestamp_ms, event.timestamp_ms)
