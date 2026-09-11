@@ -380,6 +380,11 @@ class AvailabilityRow(Frozen):
 
     `ability_id` is None on a consumable row, which names a cooldown group
     rather than one item, so those rows carry no icon.
+
+    `tooltip` carries what the run measured about this ability -- its
+    presses, its cover, and the derived mitigation-rate gap the design's
+    section 5 requires to be offered as suggestive rather than attributed --
+    or None where the dying player's own aura table names no matching buff.
     """
 
     ability: str
@@ -387,6 +392,7 @@ class AvailabilityRow(Frozen):
     owner: str = ""
     detail: str = ""
     ability_id: int | None = None
+    tooltip: Tooltip | None = None
 
 
 class AvailabilityGroup(Frozen):

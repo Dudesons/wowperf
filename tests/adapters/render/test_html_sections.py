@@ -1401,3 +1401,40 @@ def test_an_ability_with_no_tooltip_is_not_a_tab_stop() -> None:
     html = render(a_report(deaths=(card,)))
     assert '<span class="ability">' in html
     assert 'class="ability" tabindex' not in html
+
+
+def _li(html: str, state: str) -> str:
+    """The one `<li>` of this state, isolated from the rest of the page.
+
+    Task 8 already put `class="tip"` on the page for death-event tooltips, so a
+    bare substring check for it proves nothing about the availability rows this
+    task adds it to -- the check has to be scoped to this one list item.
+    """
+    start = html.index(f'<li class="{state}">')
+    return html[start:html.index("</li>", start)]
+
+
+def test_an_availability_row_with_a_tooltip_renders_it_inside_the_row() -> None:
+    tooltip = Tooltip(
+        lines=(TooltipLine(label="Base cooldown", value="120 s"),),
+        note="suggestive, not attributable",
+    )
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready", tooltip=tooltip),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert 'class="tip"' in row
+    assert "Base cooldown" in row and "120 s" in row
+    assert "suggestive, not attributable" in row
+
+
+def test_an_availability_row_with_no_tooltip_renders_no_tooltip_element() -> None:
+    card = a_card(availability=(
+        AvailabilityGroup(title="Defensives", rows=(
+            AvailabilityRow(ability="Icebound Fortitude", state="ready"),
+        )),
+    ))
+    row = _li(render(a_report(deaths=(card,))), "ready")
+    assert 'class="tip"' not in row

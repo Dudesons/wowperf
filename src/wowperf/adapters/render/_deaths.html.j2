@@ -108,7 +108,7 @@
         <ul>
           {% for row in group.rows %}
           <li class="{{ row.state }}">
-            <span class="avail-name">{{ ability(row.ability_id, row.ability) }}
+            <span class="avail-name">{{ ability(row.ability_id, row.ability, row.tooltip) }}
               {%- if row.owner %} <span class="owner">{{ row.owner }}</span>{% endif %}</span>
             <span class="avail-detail">{{ row.detail }}</span>
           </li>
