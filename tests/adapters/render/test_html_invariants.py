@@ -364,16 +364,24 @@ def test_the_page_executes_only_its_own_script() -> None:
     assert "getElementById" in body
 
 
-def test_the_script_lights_a_curve_marker_by_id_and_computes_no_position() -> None:
+def test_the_script_resolves_a_marker_by_id_suffix_and_computes_no_position() -> None:
     # Spec 3.2: every coordinate is computed in Python. The script may toggle a
-    # class on a marker already placed; the moment it multiplies or divides to
-    # find an x, the arithmetic has left the tested layer.
+    # class on a marker already placed; the moment it measures the rendered
+    # page to find an x, the arithmetic has left the tested layer. `rich_html()`
+    # renders no death card at all, so this cannot check for a lit marker or a
+    # rendered `hp-marker` line -- see the two render-layer tests in
+    # test_html_sections.py for that. What this proves is scoped to the script
+    # source: it resolves a marker from a row's own id by the "-mark" suffix
+    # (a string this task introduces, absent from every render template
+    # before it -- confirmed by grep against commit 7cced42), and it contains
+    # none of the measurement calls a script would need to compute a position
+    # itself.
     html = rich_html()
     body = re.findall(r"<script\b[^>]*>(.*?)</script>", html, flags=re.S | re.I)[0]
-    assert "hp-marker" in html
-    assert "classList" in body
+    assert "-mark" in body
     assert "getBoundingClientRect" not in body
-    assert "getAttribute" in body
+    assert "offsetLeft" not in body
+    assert "getComputedStyle" not in body
 
 
 def test_the_page_loads_no_image_over_the_network() -> None:

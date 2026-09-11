@@ -63,7 +63,7 @@
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
         {% for row in death.timeline %}
-        <tr class="{{ row.kind }}" id="{{ row.marker_id }}" tabindex="0">
+        <tr class="{{ row.kind }}"{% if row.marker_id %} id="{{ row.marker_id }}" tabindex="0"{% endif %}>
           <td>{{ row.seconds_before }}</td>
           <td>{{ ability(row.ability_id, row.ability) }}</td>
           <td>{{ row.detail }}</td>

@@ -249,7 +249,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
     html = render(a_report(deaths=(card,)))
 
     assert [kind for kind in ("hit", "absorb", "heal", "cast")
-            if f'<tr class="{kind}" id="" tabindex="0">' not in html] == []
+            if f'<tr class="{kind}">' not in html] == []
     assert [state for state in ("pressed", "ready", "cooldown", "unseen")
             if f'<li class="{state}">' not in html] == []
 
@@ -294,7 +294,7 @@ def test_a_death_card_renders_its_recap() -> None:
     html = render(a_report(deaths=(card,)))
     deaths = html[html.index('<h2 id="deaths">'):html.index('<h2 id="interrupts">')]
     assert str(escape("Frigid Roar")) in deaths
-    assert '<tr class="hit" id="" tabindex="0">' in deaths and str(escape("Snowdrift")) in deaths
+    assert '<tr class="hit">' in deaths and str(escape("Snowdrift")) in deaths
     assert 'style="width: 61%"' in deaths and "61%" in deaths
     assert "34.2 s after death" in deaths
     assert '<li class="cooldown">' in deaths and "at most 14 s left" in deaths
