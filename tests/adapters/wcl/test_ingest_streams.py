@@ -142,6 +142,52 @@ def test_damage_taken_keeps_the_health_damage_and_the_absorbed_share() -> None:
     assert (hit.amount, hit.health_damage, hit.absorbed) == (132_788, 9_218, 123_570)
 
 
+def test_a_damage_event_carries_what_was_mitigated_and_whether_it_was_periodic() -> None:
+    events = [
+        {
+            "type": "damage",
+            "targetID": 1,
+            "sourceID": 735,
+            "abilityGameID": 100,
+            "timestamp": 1000,
+            "amount": 67343,
+            "unmitigatedAmount": 145434,
+            "mitigated": 15609,
+            "isAoE": True,
+            "tick": True,
+            "buffs": "391395.391398.",
+        }
+    ]
+    taken = build_damage_taken(events, a_run(), {100: "Frigid Roar"})
+    assert taken[0].mitigated == 15609
+    assert taken[0].source_id == 735
+    assert taken[0].is_area is True
+    assert taken[0].is_tick is True
+    assert taken[0].buff_ids == (391395, 391398)
+
+
+def test_a_lethal_blow_carries_its_overkill_and_an_ordinary_hit_carries_none() -> None:
+    # Measured 2026-09-11 against the cached DamageTaken stream of report
+    # 6Kx1P9GbNXrcLdHa fight 36: 18 of 11,368 damage events carry `overkill`,
+    # and they are the lethal ones. An absent key must read as zero rather than
+    # as a hit that overkilled by an unknown amount.
+    lethal = {"type": "damage", "targetID": 1, "abilityGameID": 100, "timestamp": 1000,
+              "amount": 67343, "unmitigatedAmount": 145434, "overkill": 62482}
+    ordinary = {"type": "damage", "targetID": 1, "abilityGameID": 100, "timestamp": 2000,
+                "amount": 100, "unmitigatedAmount": 100}
+    taken = build_damage_taken([lethal, ordinary], a_run(), {100: "Frigid Roar"})
+    assert taken[0].overkill == 62482
+    assert taken[1].overkill == 0
+
+
+def test_a_hit_with_no_buffs_field_carries_no_buff_ids() -> None:
+    # 1,230 of that run's 11,368 damage events carry no `buffs` key at all.
+    # An empty tuple says "the log listed none"; it must not become `(0,)`.
+    events = [{"type": "damage", "targetID": 1, "abilityGameID": 100, "timestamp": 1000,
+               "amount": 100, "unmitigatedAmount": 100}]
+    assert build_damage_taken(events, a_run(), {100: "Frigid Roar"})[0].buff_ids == ()
+
+
 def test_a_cast_carrying_hit_points_becomes_a_health_sample() -> None:
     events: list[dict[str, Any]] = [
         {"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000,

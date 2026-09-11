@@ -110,6 +110,20 @@ class DamageTakenEvent(Frozen):
     pull_index: int | None = None
     health_damage: int = 0
     absorbed: int = 0
+    # What the game reduced before the hit landed, as one figure the log never
+    # attributes: armour, Versatility, spec passives, a concurrent defensive and
+    # a teammate's external all land here together. Reportable as a figure for
+    # this hit, and never divisible between its causes.
+    mitigated: int = 0
+    # Damage past zero health, present only on a lethal blow.
+    overkill: int = 0
+    # The enemy that dealt it, joined against the report's actor list for a name.
+    source_id: int | None = None
+    is_area: bool = False
+    # A damage-over-time tick rather than a discrete hit.
+    is_tick: bool = False
+    # Every aura on the player when the hit landed, as ability game ids.
+    buff_ids: tuple[int, ...] = ()
 
 
 class HealthSample(Frozen):

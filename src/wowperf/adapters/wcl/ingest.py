@@ -329,6 +329,20 @@ def build_enemy_deaths(
     return tuple(deaths)
 
 
+def parse_buff_ids(raw: str | None) -> tuple[int, ...]:
+    """The `buffs` field's dot-terminated id list, as game ids.
+
+    Measured 2026-09-11 against the cached DamageTaken stream of report
+    6Kx1P9GbNXrcLdHa fight 36: the field is a string of ability game ids
+    separated and terminated by a period, e.g. "391395.391398.". The trailing
+    separator yields an empty final part, which is why the parts are filtered
+    rather than trusted.
+    """
+    if not raw:
+        return ()
+    return tuple(int(part) for part in raw.split(".") if part)
+
+
 def build_damage_taken(
     events: list[dict[str, Any]],
     run: Run,
@@ -353,6 +367,12 @@ def build_damage_taken(
                 pull_index=pull_index_at(run, event["timestamp"]),
                 health_damage=int(event.get("amount") or 0),
                 absorbed=int(event.get("absorbed") or 0),
+                mitigated=int(event.get("mitigated") or 0),
+                overkill=int(event.get("overkill") or 0),
+                source_id=event.get("sourceID"),
+                is_area=bool(event.get("isAoE")),
+                is_tick=bool(event.get("tick")),
+                buff_ids=parse_buff_ids(event.get("buffs")),
             )
         )
     return tuple(taken)
