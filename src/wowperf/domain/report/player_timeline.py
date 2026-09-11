@@ -162,7 +162,8 @@ LEGEND = (
     "computed from its base length: talents shorten cooldowns and the log records no reset, "
     "so this shows an ability as unavailable at least as often as it truly was. The pale "
     "stretch at the start is not judged at all — a press before the timer began is invisible "
-    "to a log fetched per fight."
+    "to a log fetched per fight. An open tick is the moment the cooldown finished and the "
+    "ability was available again."
 )
 
 BADGE_MEASURED_CAPTION = "the damage bars and the press marks."
@@ -238,6 +239,12 @@ def _damage_track(
         peak_label=(
             f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds"
         ),
+        axis_top_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
+        axis_top_label=f"{peak:,}",
+        bucket_caption=(
+            f"One bar is {int(BUCKET_SECONDS)} seconds of unmitigated damage taken. The axis "
+            f"runs from nothing to this player's own tallest bucket, never the group's."
+        ),
     )
 
 
@@ -308,6 +315,18 @@ def _cooldown_rows(
                         ),
                     )
                     for at in presses
+                ),
+                # A cooldown's own end is the moment the ability came back --
+                # marked only when that moment falls before the axis does. A
+                # cooldown still running when the run ends would need a tick
+                # at the axis end, which claims the ability came back at the
+                # moment the run finished; the log never says that.
+                ready_ticks=tuple(
+                    round(TRACK_ORIGIN_X + end * scale, PRECISION)
+                    for end in (
+                        (at - origin_ms) / 1000 + ability.cooldown_seconds for at in presses
+                    )
+                    if end < span_seconds
                 ),
                 not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
             )

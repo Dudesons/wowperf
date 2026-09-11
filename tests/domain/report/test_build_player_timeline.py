@@ -486,3 +486,32 @@ def test_a_player_whose_every_hit_was_fully_avoided_gets_no_damage_track() -> No
     run = a_run(pulls=(a_pull(0, 0, 100_000),))
     loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 0), a_hit(1, 50_000, 0)))
     assert a_timeline(loaded).damage is None
+
+
+def test_a_cooldown_that_finishes_inside_the_run_is_marked_ready_again() -> None:
+    # The stretch after a press is the cooldown; its end is the moment the
+    # ability came back, and an unmarked end reads as an absence rather than
+    # as an event.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 10_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert len(row.ready_ticks) == 1
+    assert row.ready_ticks[0] > row.presses[0].x
+
+
+def test_a_cooldown_still_running_when_the_run_ends_is_not_marked_ready() -> None:
+    # Marking a tick at the axis end would claim the ability came back at the
+    # moment the run finished, which the log never says.
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 590_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.ready_ticks == ()
+
+
+def test_the_damage_row_states_its_own_scale_and_bucket_width() -> None:
+    run = a_run(pulls=(a_pull(0, 0, 100_000),))
+    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 2000),))
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.axis_top_label != ""
+    assert "5 seconds" in timeline.damage.bucket_caption

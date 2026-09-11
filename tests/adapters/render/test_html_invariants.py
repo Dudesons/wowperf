@@ -703,6 +703,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (DamageBar, "height"),
     (DamageTrack, "baseline_y"),
     (DamageTrack, "label_y"),
+    (DamageTrack, "axis_top_y"),  # a viewBox coordinate, not a quantity
     (Press, "x"),
     (Press, "icon_x"),
     (Span, "x"),

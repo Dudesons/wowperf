@@ -1026,6 +1026,89 @@ def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> Non
     assert on_cooldown_at < not_judged_at
 
 
+def test_a_cooldown_row_with_a_ready_tick_draws_the_open_mark() -> None:
+    # The full opening tag is pinned, not just the class name: the tick's own
+    # x and the row's baseline_y both have to reach the page, the same way a
+    # press's own coordinates do.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=90.0),),
+        ready_ticks=(136.0,),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<rect class="ready-again" x="136.0" y="96.0"\n'
+        '        width="4.0" height="16.0"/>'
+    ) in body
+
+
+def test_a_cooldown_row_with_no_ready_ticks_draws_no_ready_again_mark() -> None:
+    # The half that catches an unconditional element: a row with a press but
+    # no ready tick -- the ordinary case for a cooldown still running when the
+    # run ends -- must not render a "ready-again" element anywhere at all.
+    row = CooldownRow(
+        label="Ice Block", ability_id=45438, baseline_y=96.0,
+        presses=(Press(x=46.0, icon_x=38.0),),
+        unavailable=(Span(x=46.0, width=600.0),),
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        row_height=16.0, press_width=4.0, cooldowns=(row,),
+    )
+    # Scoped to the body: the stylesheet always defines ".ready-again", so
+    # checking the whole page would pass even if the template drew the
+    # element unconditionally.
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split(
+        "</style>"
+    )[1]
+    assert "ready-again" not in body
+
+
+def test_the_damage_row_draws_its_own_axis_line() -> None:
+    # The full opening tag is pinned: the line has to sit at the track's own
+    # axis_top_y, not at some value the template invented.
+    damage = DamageTrack(
+        baseline_y=76.0, label_y=60.0,
+        bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+        axis_top_y=44.0,
+        axis_top_label="120,000",
+        bucket_caption="One bar is 5 seconds of unmitigated damage taken.",
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        label_x=126.0, damage=damage,
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert (
+        '<line class="damage-axis" x1="126.0" y1="44.0"\n'
+        '        x2="680.0" y2="44.0"/>'
+    ) in body
+
+
+def test_the_damage_rows_axis_label_and_bucket_caption_reach_the_page() -> None:
+    damage = DamageTrack(
+        baseline_y=76.0, label_y=60.0,
+        bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
+        peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds",
+        axis_top_y=44.0,
+        axis_top_label="120,000",
+        bucket_caption="One bar is 5 seconds of unmitigated damage taken.",
+    )
+    timeline = PlayerTimeline(
+        section=Section(state=SectionState.PRESENT), width=680.0, height=140.0,
+        label_x=126.0, damage=damage,
+    )
+    html = render(a_report(players=(a_player_card(timeline=timeline),)))
+    assert "120,000" in html
+    assert "One bar is 5 seconds of unmitigated damage taken." in html
+
+
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     # The death card's killing blow forces id 45438 into `icons_by_id` through
     # the path that already resolves it, so this test populates `icons_by_id`

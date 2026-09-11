@@ -134,13 +134,20 @@ class DamageTrack(Frozen):
 
     `baseline_y` is the foot the bars stand on; `label_y` is where the track's
     name sits, centred on the band the bars grow through rather than on that
-    foot, so the name reads level with what it names.
+    foot, so the name reads level with what it names. `axis_top_y` is the
+    same peak drawn as a line rather than implied by the tallest bar's own
+    top edge, `axis_top_label` names the figure that line stands for, and
+    `bucket_caption` states the bucket width so a bar's meaning does not have
+    to be guessed from its own thickness.
     """
 
     baseline_y: float = 0.0
     label_y: float = 0.0
     bars: tuple[DamageBar, ...] = ()
     peak_label: str = ""
+    axis_top_y: float = 0.0
+    axis_top_label: str = ""
+    bucket_caption: str = ""
 
 
 class Press(Frozen):
@@ -175,6 +182,12 @@ class CooldownRow(Frozen):
     `baseline_y` is the row's top edge, which every rect on it hangs from;
     `label_y` is the row's middle, where its name sits. They differ because a
     name drawn from the top edge would fall across the row above.
+
+    `ready_ticks` marks the instant each `unavailable` span ends -- the
+    moment the ability came back -- but only for a press whose cooldown
+    finished before the axis did. A cooldown still running when the run ends
+    gets no tick: the log never says the ability came back, so nothing is
+    drawn claiming it did.
     """
 
     label: str
@@ -183,6 +196,7 @@ class CooldownRow(Frozen):
     label_y: float = 0.0
     presses: tuple[Press, ...] = ()
     unavailable: tuple[Span, ...] = ()
+    ready_ticks: tuple[float, ...] = ()
     not_judged: Span | None = None
 
 

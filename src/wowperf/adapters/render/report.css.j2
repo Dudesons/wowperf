@@ -152,6 +152,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .on-cooldown { fill: var(--cooldown); }
 .not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
 .press { fill: var(--ours); }
+/* An open tick, not a filled mark: a press is something the player did and a
+   comeback is something that merely became true, and the two must not read as
+   the same event. */
+.ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+.damage-axis { stroke: var(--line); stroke-width: 1; }
 .pull-name { fill: var(--ink-dim); font-size: 8px; }
 /* Revealed by hover and by keyboard focus, and rendered into the page whether
    or not it is shown: the panel is markup the builder wrote, never text the
