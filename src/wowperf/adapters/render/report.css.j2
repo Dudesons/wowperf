@@ -134,7 +134,8 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 {% endif %}
 /* The pair is one object: it wraps as one, and the name carries the page's
    full ink weight so the eye lands on the word rather than only on the art. */
-.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  position: relative; }
 .ability .icon { margin-right: 0; vertical-align: baseline; }
 .ability-name { color: var(--ink); font-weight: 500; }
 .player-head { display: flex; align-items: baseline; gap: 8px; }
@@ -168,7 +169,6 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 /* Revealed by hover and by keyboard focus, and rendered into the page whether
    or not it is shown: the panel is markup the builder wrote, never text the
    script fetches or writes. */
-.ability { position: relative; }
 .tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
   min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
   background: var(--card); border: 1px solid var(--line); border-radius: 6px;
