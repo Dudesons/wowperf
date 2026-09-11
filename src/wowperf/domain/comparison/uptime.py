@@ -160,7 +160,7 @@ def compare_uptime(
     their_auras: PlayerAuras | None,
     their_name: str,
 ) -> list[Finding]:
-    """Where the reference kept an aura up markedly more of the boss fight than we did.
+    """Where an aura was up markedly more of the reference's boss fight than of ours.
 
     `our_name` is the roster's disambiguated spelling of the player being
     compared — never `Player.name`, which two roster members can share, and
@@ -202,7 +202,7 @@ def compare_uptime_sample(
     our_name: str,
     sample: ParseSample,
 ) -> list[Finding]:
-    """Where the sample's top parses kept an aura up markedly more of the boss fight than we did.
+    """Where an aura was up over markedly more of the sample's boss fights than of ours.
 
     `our_name` is the roster's disambiguated spelling, for the reason
     `compare_uptime` above gives.
@@ -271,7 +271,7 @@ def _gap_findings_sample(
     missing_aura_data: int,
     total: int,
 ) -> list[Finding]:
-    """Abilities the sample's top parses kept up markedly more than we did, by median.
+    """Auras up over markedly more of the sample's boss fights than of ours, by median.
 
     A member's fraction for an ability only counts as "carried" when it is above zero: a
     band that never overlaps a boss pull reads the same as never having the aura at all, the
@@ -325,7 +325,7 @@ def _gap_findings_sample(
         findings.append(
             Finding(
                 id=f"compare.uptime.self.{rank}",
-                # Presence, never agency -- see the pairwise branch above.
+                # Presence, never agency — see the pairwise branch above.
                 title=(
                     f"{name} was up a median {their_median:.0%} of boss time across "
                     f"{len(carried)} top parses; {our_fraction:.0%} for {our_name}"

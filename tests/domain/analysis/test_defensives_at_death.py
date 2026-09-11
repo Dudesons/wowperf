@@ -194,3 +194,26 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
     deaths = (a_death(actor_id=11), a_death(actor_id=12))
     ids = {finding.id for finding in analyse_defensives_at_death(run, casts, DEFENSIVES, deaths)}
     assert ids == {"defensives.unused.emberkin.11", "defensives.unused.emberkin.12"}
+
+
+def test_players_whose_names_slug_alike_get_ids_that_tell_them_apart() -> None:
+    """The name guard never fires here, because these two do not share a name.
+
+    `Bríala` and `Briala` share only a slug, and the slug is what the id
+    carries. Disambiguation therefore has to count slugs; counting names
+    would leave both deaths addressing one element on the page.
+    """
+    run = a_run()
+    mage = run.players[0]
+    run = run.model_copy(update={
+        "players": (
+            mage.model_copy(update={"name": "Bríala"}),
+            mage.model_copy(update={"actor_id": 12, "name": "Briala"}),
+        ),
+    })
+    casts = owns_both(11) + owns_both(12)
+    deaths = (a_death(actor_id=11), a_death(actor_id=12))
+
+    ids = {finding.id for finding in analyse_defensives_at_death(run, casts, DEFENSIVES, deaths)}
+
+    assert ids == {"defensives.unused.briala.11", "defensives.unused.briala.12"}

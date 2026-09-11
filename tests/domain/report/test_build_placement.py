@@ -65,7 +65,13 @@ FAMILY_HOMES = {
     "interrupts.summary": "interrupts",
     "compare.interrupts": "interrupts",
     "compare.parse.unavailable": "group_rows",
-    "defensives.emberkin.45438": "group_rows",
+    "defensives.never.emberkin.45438": "group_rows",
+    # A player whose display name slugs to a word another defensives family
+    # uses. The `never` segment is what keeps the player out of the position a
+    # claim is read from; without it this id would match `defensives.unused.`
+    # and file a never-cast row on the Deaths tab.
+    "defensives.never.unused.45438": "group_rows",
+    "defensives.never.ceiling.45438": "group_rows",
     "defensives.ceiling.45438": "group_rows",
     "throughput.alignment.12345": "group_rows",
     "throughput.ceiling.12345": "group_rows",

@@ -6,7 +6,7 @@ import unicodedata
 SLUG_FALLBACK = "player"
 """What a name reduces to when nothing in it survives the transliteration.
 
-A wholly non-Latin name -- `Кириллица` -- keeps no ASCII letter after
+A wholly non-Latin name — `Кириллица` — keeps no ASCII letter after
 decomposition, and an empty id is not addressable. The caller is responsible
 for whatever keeps two such names apart.
 """
@@ -16,15 +16,13 @@ def player_slug(display_name: str) -> str:
     """A display name reduced to what an HTML id and a URL fragment both carry.
 
     Accents decompose and their marks are dropped, so `Bríala` and `Briala`
-    reach the same slug -- which is why every caller disambiguates rather than
+    reach the same slug — which is why every caller disambiguates rather than
     trusting this to be unique. Everything else outside the ASCII alphabet and
     digits becomes a hyphen, and runs of hyphens collapse.
 
     This lives below both the analysis and the report layers because both mint
-    finding ids and every finding id becomes an element id on the page. It sat
-    in the report layer once, and `defensives.*` -- which analysis mints --
-    embedded a raw display name instead, so a non-Latin character reached the
-    page's own ids.
+    finding ids and every finding id becomes an element id on the page, and an
+    element id has a narrower alphabet than a character name.
     """
     decomposed = unicodedata.normalize("NFKD", display_name)
     kept = [

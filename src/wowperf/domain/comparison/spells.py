@@ -57,7 +57,6 @@ def _their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
     return None
 
 
-
 def _one_row_per_sentence(findings: list[Finding]) -> list[Finding]:
     """One row per distinct title, at most `MAX_SPELLS_REPORTED` of each family.
 
@@ -67,15 +66,15 @@ def _one_row_per_sentence(findings: list[Finding]) -> list[Finding]:
     a pointer into a hole lands nowhere.
 
     **Ability names do not identify abilities, and ability ids do not identify
-    buttons.** Measured against the cached responses for one report on
-    2026-09-11 and recorded in `.claude/skills/wcl-api/SKILL.md`: 475 of 1755
-    names own more than one game id, and 29 of 73 actors cast two ids sharing
-    a name. Those pairs are of two kinds. For some -- Alter Time, Greater
-    Invisibility -- one press emits both ids within the same second, so
-    summing their casts would report two presses where the player made one.
-    For others -- Demonic Gateway -- the two never coincide and are two real
-    abilities. Nothing in the log distinguishes the kinds, so neither merging
-    by name nor keeping every id is right.
+    buttons.** Measured 2026-09-11 against the cached responses and recorded in
+    `.claude/skills/wcl-api/SKILL.md`: 475 of 1755 ability names own more than
+    one game id, and 22 of the 73 report-and-actor pairs that cast anything
+    cast some name under two ids. Those pairs are of two kinds. For some —
+    Alter Time, Greater Invisibility — one press emits both ids within the same
+    second, so summing their casts would report two presses where the player
+    made one. For others — Demonic Gateway — the two never coincide and are two
+    real abilities. Nothing in the log distinguishes the kinds, so neither
+    merging by name nor keeping every id is right.
 
     What is right is narrower, and needs no such distinction. Each row's own
     rate is already correct, because one press does emit one cast of that id.

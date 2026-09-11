@@ -333,7 +333,13 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
-    assert "across 4 top parses" in gap.title and "a median" in gap.title
+    # Both percentages are pinned, and against the right side of the sentence.
+    # The reference's median is the higher of the two by construction, so a
+    # title that swapped them would praise the player for the gap it reports.
+    assert gap.title == (
+        "Coagulopathy was up a median 75% of boss time across 4 top parses; 20% for "
+        f"{OUR_NAME}"
+    )
     assert gap.confidence is Confidence.DERIVED
     assert gap.seconds_lost is None
     # A median title states no count for a digit-free narrative to echo.
@@ -459,7 +465,11 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
-    assert "Bríala" in gap.title
+    # The pairwise branch's own wording, both percentages against the name
+    # whose boss time each was measured over.
+    assert gap.title == (
+        f"Icebound Fortitude was up for 90% of Bríala's boss time, 10% of {OUR_NAME}'s"
+    )
     assert any("below the floor of" in line for line in gap.evidence)
 
 
@@ -548,4 +558,6 @@ def test_an_uptime_title_names_the_aura_before_it_names_anyone() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
-    assert gap.title.startswith(f"{gap.ability_name} was up")
+    # The literal, not `gap.ability_name`: an expected value read off the
+    # object under test passes when the object is wrong in both places.
+    assert gap.title.startswith("Coagulopathy was up")

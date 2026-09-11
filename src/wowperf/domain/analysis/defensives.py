@@ -264,7 +264,13 @@ def analyse_defensives(
 
             findings.append(
                 Finding(
-                    id=f"defensives.{base_id}",
+                    # `never` rather than the bare family, so that every
+                    # defensives id reads `defensives.<claim>.<player>` and a
+                    # player never occupies the segment a claim is read from.
+                    # Without it a player slugged `unused` would mint
+                    # `defensives.unused.<ability>`, which `PLACEMENTS` routes
+                    # to the Deaths tab by prefix.
+                    id=f"defensives.never.{base_id}",
                     title=f"{player.name} never cast {ability.name}",
                     detail=(
                         f"{ability.name} was not cast at any point in the run. This is "

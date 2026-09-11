@@ -74,7 +74,7 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         a_finding("interrupts.summary", title="Three casts uninterrupted"),
         a_finding("players.damage.0", title="Emberkin took 2.3x the group median"),
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
-        a_finding("defensives.emberkin.45438", title="Emberkin never cast Ice Block"),
+        a_finding("defensives.never.emberkin.45438", title="Emberkin never cast Ice Block"),
         # A death-family finding, so the union below covers the Deaths rows too.
         a_finding("defensives.unused.0", title="Emberkin died with Ice Block available"),
         # A finding no PLACEMENTS prefix matches, so the catch-all is exercised too.

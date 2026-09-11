@@ -4,6 +4,7 @@
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import (
+    MAX_SPELLS_REPORTED,
     MIN_CASTS_TO_COMPARE,
     MIN_MEMBERS_WITH_ABILITY,
     boss_casts,
@@ -492,12 +493,12 @@ def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
     assert rate.ability_name in rate.title
 
 
-# Measured against the cached responses for report 6Kx1P9GbNXrcLdHa on
-# 2026-09-11: 475 of 1755 ability names own more than one game id, and 29 of
-# 73 actors cast two ids that share a name. Both numbers are recorded in
-# `.claude/skills/wcl-api/SKILL.md`. That is why the two tests below exist and
-# why neither of them merges casts: for some of those pairs one press emits
-# both ids, so summing the counts would report two presses where there was one.
+# Measured 2026-09-11 against the cached responses: 475 of 1755 ability names
+# own more than one game id, and 22 of the 73 report-and-actor pairs that cast
+# anything cast some name under two ids. Both figures are recorded in
+# `.claude/skills/wcl-api/SKILL.md`. That is why the tests below exist and why
+# none of them merges casts: for some of those pairs one press emits both ids,
+# so summing the counts would report two presses where there was one.
 
 
 def test_one_sentence_is_printed_once_however_many_ids_produced_it() -> None:
@@ -590,3 +591,82 @@ def test_collapsing_leaves_the_rank_numbering_without_a_hole_in_it() -> None:
 
     assert len(rates) == 2, [f.title for f in rates]
     assert [f.id for f in rates] == ["compare.spells.rate.0", "compare.spells.rate.1"]
+
+
+def three_rate_gaps() -> tuple[LoadedRun, ParseMember]:
+    """One run and one reference differing on three abilities by three margins.
+
+    Arcane Blast has the widest gap, then Fire Blast, then Frostbolt, so the
+    ranking is decided by the numbers and not by the order the abilities were
+    inserted into any dictionary.
+    """
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        (
+            cast(693, 30451, "Arcane Blast", 1_000, 0),
+            cast(693, 108853, "Fire Blast", 1_100, 0),
+            cast(693, 116, "Frostbolt", 1_200, 0),
+        ),
+    )
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(20))
+        + tuple(cast(11, 108853, "Fire Blast", n * 1_000 + 100, 0) for n in range(12))
+        + tuple(cast(11, 116, "Frostbolt", n * 1_000 + 200, 0) for n in range(6)),
+    )
+    return ours, theirs
+
+
+def test_the_widest_rate_gap_is_ranked_first() -> None:
+    """The rank is assigned after the collapse, so the sort has to survive it.
+
+    Pinned on which ability each rank names, not merely on the ranks being
+    contiguous: a collapse that reversed or reshuffled its input would still
+    number 0, 1, 2 and would still put the least useful row at the top of the
+    card.
+    """
+    ours, theirs = three_rate_gaps()
+
+    rates = [
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    ]
+
+    assert [f.ability_name for f in rates] == ["Arcane Blast", "Fire Blast", "Frostbolt"]
+
+
+def test_no_more_of_one_spell_family_is_reported_than_the_cap_allows() -> None:
+    """`MAX_SPELLS_REPORTED` now caps distinct sentences rather than candidates.
+
+    Nothing else in the suite observes the cap, and the collapse routed all
+    four spell families through one truncation, so one edit there would uncap
+    every one of them.
+    """
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        tuple(
+            cast(693, 500 + n, f"Spell {n}", 1_000 + n, 0)
+            for n in range(MAX_SPELLS_REPORTED + 3)
+        ),
+    )
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 60.0),),
+        tuple(
+            cast(11, 500 + n, f"Spell {n}", m * 1_000 + n, 0)
+            for n in range(MAX_SPELLS_REPORTED + 3)
+            for m in range(6)
+        ),
+    )
+
+    rates = [
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.rate.")
+    ]
+
+    # Every one of the eight is a real gap, so the cap is the only thing that
+    # can be holding the count down.
+    assert len(rates) == MAX_SPELLS_REPORTED

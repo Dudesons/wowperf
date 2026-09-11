@@ -197,7 +197,7 @@ def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
     findings = analyse_defensives(run, (), BLOOD_DEFENSIVES, ())
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    assert findings_by_prefix(findings, "defensives.tank.") != []
+    assert findings_by_prefix(findings, "defensives.never.tank.") != []
 
 
 def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> None:
@@ -285,7 +285,7 @@ def test_a_death_with_unmeasured_cost_disables_the_ceiling_but_not_never_cast() 
     findings = analyse_defensives(run, casts, defensives, (a_death(1, None),))
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    never_cast = findings_by_prefix(findings, "defensives.tank.")
+    never_cast = findings_by_prefix(findings, "defensives.never.tank.")
     assert any("Rune Tap" in finding.title for finding in never_cast)
 
 
@@ -388,6 +388,6 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
     findings = analyse_defensives(a_run(), (), DEFENSIVES, ())
 
     assert {finding.id for finding in findings} == {
-        "defensives.emberkin.235450",
-        "defensives.emberkin.45438",
+        "defensives.never.emberkin.235450",
+        "defensives.never.emberkin.45438",
     }
