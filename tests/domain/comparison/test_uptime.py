@@ -87,11 +87,11 @@ def test_boss_windows_covers_boss_pulls_only() -> None:
 
 def test_an_uptime_gap_on_self_is_reported() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
     reported = [f for f in findings if f.id.startswith("compare.uptime.self.")]
 
     assert len(reported) == 1
@@ -102,39 +102,39 @@ def test_an_uptime_gap_on_self_is_reported() -> None:
 
 def test_uptime_outside_boss_pulls_is_not_counted() -> None:
     ours = a_run(BOSS, TRASH)
-    theirs = a_run(BOSS, TRASH, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, TRASH, player=a_player("Bríala", 3))
     # Ours is up for the whole boss pull; theirs only during trash.
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 100_000)),))
     their_auras = PlayerAuras(
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (100_000, 200_000)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
 
     assert ids(findings, "compare.uptime.") == []
 
 
 def test_a_gap_below_the_cut_off_is_left_alone() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     gap = int((UPTIME_GAP_FRACTION - 0.05) * 100_000)
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 80_000)),))
     their_auras = PlayerAuras(
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 80_000 + gap)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
 
     assert ids(findings, "compare.uptime.") == []
 
 
 def test_an_aura_the_reference_barely_carried_is_not_argued_from() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 5_000)),))
 
     findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Wipsdk"
+        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Bríala"
     )
 
     assert ids(findings, "compare.uptime.") == []
@@ -142,9 +142,9 @@ def test_an_aura_the_reference_barely_carried_is_not_argued_from() -> None:
 
 def test_a_missing_reference_says_so_rather_than_reporting_nothing() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
 
-    findings = compare_uptime(ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, None, "Wipsdk")
+    findings = compare_uptime(ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, None, "Bríala")
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
@@ -155,10 +155,10 @@ def test_a_missing_reference_says_so_rather_than_reporting_nothing() -> None:
 def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:
     """Our aura data can be the missing half even when the reference's own data is real."""
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, None, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, None, OUR_NAME, theirs, their_auras, "Bríala")
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
@@ -168,10 +168,10 @@ def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:
 
 def test_a_run_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() -> None:
     ours = a_run(TRASH)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
 
     findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, PlayerAuras(actor_id=3), "Wipsdk"
+        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, PlayerAuras(actor_id=3), "Bríala"
     )
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
@@ -181,11 +181,11 @@ def test_a_gap_findings_detail_warns_the_comparison_is_by_exact_ability() -> Non
     """A 0% gap can be a different item of the same kind, or gear the player lacks —
     not proof that nothing was used, since the comparison keys on exact ability id."""
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
     reported = [f for f in findings if f.id.startswith("compare.uptime.self.")]
 
     assert "gear this player does not own" in reported[0].detail
@@ -193,7 +193,7 @@ def test_a_gap_findings_detail_warns_the_comparison_is_by_exact_ability() -> Non
 
 def test_no_more_than_the_cap_is_reported() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     # Our side must carry each ability at a nonzero fraction, or every one of
     # these gaps would now be dropped as "we never had it at all" (see
     # test_an_aura_we_never_carried_at_all_produces_no_finding below).
@@ -206,7 +206,7 @@ def test_no_more_than_the_cap_is_reported() -> None:
         on_self=tuple(an_aura(100 + n, f"Buff {n}", (0, 90_000)) for n in range(8)),
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
 
     assert len(ids(findings, "compare.uptime.self.")) == 5
 
@@ -220,13 +220,13 @@ def test_an_aura_we_never_carried_at_all_produces_no_finding() -> None:
     "they used it and we never did" for anything a player actually casts is already
     covered by `compare_spells`'s missing-spell branch."""
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     their_auras = PlayerAuras(
         actor_id=3, on_self=(an_aura(10060, "Power Infusion", (0, 33_000)),)
     )
 
     findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Wipsdk"
+        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Bríala"
     )
 
     assert ids(findings, "compare.uptime.") == []
@@ -236,7 +236,7 @@ def test_an_aura_both_sides_carried_still_reports_a_real_gap() -> None:
     """Skipping abilities we never carried at all must not swallow the case the
     feature exists for: both sides had it, and one carried it much longer."""
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     our_auras = PlayerAuras(
         actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),)
     )
@@ -244,7 +244,7 @@ def test_an_aura_both_sides_carried_still_reports_a_real_gap() -> None:
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
 
     assert ids(findings, "compare.uptime.self.") == ["compare.uptime.self.0"]
 
@@ -506,11 +506,11 @@ def test_every_finding_id_is_unique_over_the_sample() -> None:
 
 def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
     gap = next(
-        f for f in compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Wipsdk")
+        f for f in compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477

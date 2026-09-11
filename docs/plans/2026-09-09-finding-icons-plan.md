@@ -423,11 +423,11 @@ In `tests/domain/comparison/test_uptime.py`. `compare_uptime(ours, our_auras, ou
 ```python
 def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
     ours = a_run(BOSS)
-    theirs = a_run(BOSS, player=a_player("Wipsdk", 3))
+    theirs = a_run(BOSS, player=a_player("Bríala", 3))
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
     gap = next(
-        f for f in compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Wipsdk")
+        f for f in compare_uptime(ours, our_auras, a_player(), theirs, their_auras, "Bríala")
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477

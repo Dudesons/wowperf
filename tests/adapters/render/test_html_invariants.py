@@ -142,7 +142,7 @@ def minimal_findings() -> tuple[Finding, ...]:
             # Apostrophe and ampersand on purpose: Jinja's autoescape turns
             # apostrophes into &#39;, so the title must be escaped before
             # comparing against the rendered HTML.
-            title="Wipsdk let Death's Advance & Ice Block go uninterrupted",
+            title="Emberkin let Death's Advance & Ice Block go uninterrupted",
             detail="Grouped by spell.",
             confidence=Confidence.DERIVED,
         ),
