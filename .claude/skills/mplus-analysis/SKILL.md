@@ -214,8 +214,16 @@ instead of adjusting for them, because adjusting would invent a number:
   between-pull downtime do not depend on how much health a mob had, so they are still compared. A
   reference more than one level away is never offered at all.
 - **Pull segmentation.** Warcraft Logs records a chain of packs fought without a break as one
-  pull. Alignment matches a pull to every separate pull it covers. A reference whose route lined
-  up with fewer than half of our trash pulls is dropped from the skipped-pack counts outright, and
+  pull. It also cuts a single engagement in two, leaving a pull of a few milliseconds whose
+  enemies are a subset of the pull before it, and it records pulls with no enemies at all.
+  Neither is a pack a route decision could have taken or left, so neither is ever named as
+  skipped, drawn as skipped on the timeline, or counted in any figure about how well two routes
+  agreed — `Pull.is_a_pack` is the test, and `MIN_PACK_SECONDS` its floor, measured 2026-09-11
+  against 98 cached pulls where six ran under a second and the next shortest ran 6.770s. A pull
+  count is the exception and still counts every pull the log recorded, which is why a summary can
+  say our route was ten pulls and eight trash packs in the same breath. Alignment matches a pull
+  to every separate pull it covers. A reference whose route lined up with fewer than half of our
+  packs is dropped from the skipped-pack counts outright, and
   `compare.route.summary` states how many were left to price a skip against — which is why route
   rows can carry a smaller denominator than tempo rows on the same page. No
   `compare.route.unaligned` finding marks that exclusion; read the summary's own count, and never
