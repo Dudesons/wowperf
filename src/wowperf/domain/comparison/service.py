@@ -13,6 +13,7 @@ from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo_sample
+from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -115,6 +116,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
     assert top is not None  # parse.members is non-empty here, so a top member exists
     return [
         *compare_spells_sample(ours, subject.player, subject.display_name, parse),
+        *compare_trash_spells_sample(ours, subject.player, subject.display_name, parse),
         *compare_talents(
             subject.player,
             subject.display_name,

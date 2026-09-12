@@ -551,3 +551,24 @@ def test_one_player_is_withheld_while_another_is_present() -> None:
     assert by_name["Emberkin"].state is SectionState.PRESENT
     assert by_name["Stonewake"].state is SectionState.WITHHELD
     assert by_name["Stonewake"].reason == "The score leaderboard returned nothing."
+
+
+def test_a_trash_spell_row_lands_under_the_players_card() -> None:
+    """COMPARISON_PREFIXES matches on "compare.spells.", so the trash family is
+    routed by the same rule as the boss rows. Pinned because a family that fell
+    through would land in the Summary catch-all without failing anything else."""
+    findings = (
+        a_finding(
+            "compare.spells.trash.rate.0.stonewake-0",
+            title="3 top parses cast Blood Boil a median 9.1 times a minute across "
+            "4 aligned packs; Stonewake casts it 6.0",
+            slug="stonewake-0",
+        ),
+    )
+    card = build_players(
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )[0]
+
+    assert card.spell_and_talent.state is SectionState.PRESENT
+    assert ids(card.spell_and_talent_rows) == ["compare.spells.trash.rate.0.stonewake-0"]

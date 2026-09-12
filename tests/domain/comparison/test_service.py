@@ -488,3 +488,88 @@ def test_a_player_with_no_specialisation_is_not_told_the_leaderboard_was_empty()
     assert "leaderboard returned nothing" not in unavailable.detail
     # The title names the player without a trailing gap where the spec would be.
     assert unavailable.title == f"No ranked parse was available for {OURS.name} (Mage)"
+
+
+def test_a_trash_row_carries_the_players_slug_like_every_parse_finding() -> None:
+    """The parse family is a statement about one player, and the page matches a
+    card by the slug. A family that forgot it would render nowhere."""
+    findings = compare(our_run(), None, only_ours(a_parse_sample()))
+
+    trash = [f for f in findings if f.id.startswith("compare.spells.trash.")]
+    assert trash, "the trash family produced nothing to check"
+    for finding in trash:
+        assert finding.player_slug == OUR_SLUG
+        assert finding.id.endswith(f".{OUR_SLUG}")
+
+
+ARCANE_BLAST = 30451
+
+
+def a_shared_pack_member(report_code: str) -> ParseMember:
+    """A parse reference whose route shares our first pack, and who presses harder on it.
+
+    `a_parse_member` fights a boss and nothing else, so the trash family can only
+    ever report itself unavailable against it. This one is the other case.
+    """
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull(0, (1,)), a_pull(1, (9,), boss=True)),
+        casts=tuple(
+            CastEvent(
+                actor_id=THEIRS.actor_id,
+                ability_id=ARCANE_BLAST,
+                ability_name="Arcane Blast",
+                timestamp_ms=1_000 * n,
+                pull_index=0,
+            )
+            for n in range(6)
+        ),
+    )
+    return ParseMember(
+        row=ParseRow(
+            report_code=report_code,
+            fight_id=16,
+            keystone_level=16,
+            duration_ms=1_399_143,
+            character_name="Bríala",
+            class_name="Mage",
+            spec="Arcane",
+        ),
+        run=theirs.run,
+        casts=theirs.casts,
+    )
+
+
+def a_run_sharing_a_pack() -> LoadedRun:
+    """Our run, pressing the same ability twice on the pack the references share."""
+    return a_loaded(
+        (OURS,),
+        (a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (9,), boss=True)),
+        casts=tuple(
+            CastEvent(
+                actor_id=OURS.actor_id,
+                ability_id=ARCANE_BLAST,
+                ability_name="Arcane Blast",
+                timestamp_ms=1_000 * n,
+                pull_index=0,
+            )
+            for n in range(2)
+        ),
+    )
+
+
+def test_a_trash_rate_row_reaches_the_findings_with_its_pack_count() -> None:
+    """The row a reader actually sees, through the whole service rather than the
+    module alone: three references sharing one of our packs and pressing an ability
+    three times our rate on it."""
+    sample = ParseSample(
+        members=tuple(a_shared_pack_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+
+    findings = compare(a_run_sharing_a_pack(), None, only_ours(sample))
+
+    rate = next(f for f in findings if f.id.startswith("compare.spells.trash.rate."))
+    assert rate.id == f"compare.spells.trash.rate.0.{OUR_SLUG}"
+    assert rate.player_slug == OUR_SLUG
+    assert "across 1 aligned pack" in rate.title
+    assert rate.seconds_lost is None
