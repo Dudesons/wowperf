@@ -912,7 +912,13 @@ def test_the_consumable_group_carries_its_caveat_beside_it() -> None:
     # a defensive is only named once the player demonstrably cast it, while a
     # consumable never proves it was carried. Without the caveat next to it, a
     # reader concludes the player had a potion and did not drink it.
-    section = deaths_section(a_page_with_consumables())
+    # Drunk at 10s, because since 2026-09-12 a category nobody drank from gets
+    # no row at all. The caveat is what still qualifies the row that remains:
+    # this one is ready because its cooldown ran out, not because the log can
+    # see a second potion in the bag.
+    drunk_early = CastEvent(actor_id=1, ability_id=1234768, ability_name="Health Potion",
+                            timestamp_ms=10_000, pull_index=0)
+    section = deaths_section(a_page_with_consumables(drunk_early))
     assert "not that one was carried" in section
 
 

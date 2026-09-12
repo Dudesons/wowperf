@@ -291,8 +291,13 @@ def test_the_availability_groups_come_in_order_with_their_badges_and_notes() -> 
     loaded = LoadedRun(
         run=a_run(players=(dude, tree), pulls=(a_pull(0, 0, 120_000),)),
         deaths=(a_death(1, 200_000),),
+        # The stone is drunk at 100s, well outside the run-up the timeline
+        # draws: since 2026-09-12 a category nobody drank from carries no row,
+        # so without a press the consumables group this test is about is empty.
         casts=(CastEvent(actor_id=2, ability_id=102342, ability_name="Ironbark",
-                         timestamp_ms=150_000, target_id=3),),
+                         timestamp_ms=150_000, target_id=3),
+               CastEvent(actor_id=1, ability_id=6262, ability_name="Healthstone",
+                         timestamp_ms=100_000),),
     )
     defensives = Defensives(entries=(("DeathKnight/Blood", (
         DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0),

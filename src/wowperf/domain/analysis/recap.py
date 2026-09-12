@@ -300,16 +300,20 @@ def state_of(
 
 def consumable_state(
     presses: tuple[CastEvent, ...], category: ConsumableCategory, death_ms: int
-) -> AbilityState:
-    """A consumable category's state: as an ability's, except that never drunk is READY.
+) -> AbilityState | None:
+    """A consumable category's state, or None where the player never drank from it all run.
 
-    No talent gates a potion, so silence is not ambiguity here — the caveat
-    that the log never proves one was carried stays on the card instead.
+    A category nobody touched is not an opportunity missed, it is a category
+    the log says nothing about: a consumable reaches the log only when it is
+    drunk, so silence cannot tell a bag with one in it from a bag without.
+    `analysis/consumables.py::consumables_up_at` settled this for the finding
+    and its docstring records the run that settled it — every death of every
+    player carried a healthstone line, "true, unarguable and worth nothing".
+    The card said the opposite of the finding on the same page until this
+    returned None.
     """
     state = state_of(presses, category.name, category.cooldown_seconds, 1, death_ms)
-    if state.state == UNSEEN:
-        return AbilityState(name=category.name, state=READY)
-    return state
+    return None if state.state == UNSEEN else state
 
 
 def availability_at(
@@ -354,9 +358,12 @@ def availability_at(
     drinks = None
     if player is not None and consumables.categories:
         drinks = tuple(
-            consumable_state(presses_of(death.actor_id, category.ability_ids), category, death_ms)
+            state
             for category in consumables.categories
             if consumable_window_start(category, death_ms) >= visible_from_ms
+            and (state := consumable_state(
+                presses_of(death.actor_id, category.ability_ids), category, death_ms
+            )) is not None
         )
 
     mates = []

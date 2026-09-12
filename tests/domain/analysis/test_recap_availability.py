@@ -139,17 +139,49 @@ def test_an_untargeted_external_reads_as_pressed_for_the_dying_player() -> None:
     assert (on_other.state, on_other.seconds) == (COOLDOWN, 177)
 
 
-def test_a_consumable_never_drunk_is_ready_because_no_talent_gates_a_potion() -> None:
-    assert consumable_state((), STONE, DEATH_MS).state == READY
+def test_a_category_never_drunk_is_not_listed_at_all() -> None:
+    # Was `..._is_ready_because_no_talent_gates_a_potion` until 2026-09-12.
+    # The log proves nothing about a consumable nobody used: the run-level
+    # finding says so once, and the card says nothing.
+    assert consumable_state((), STONE, DEATH_MS) is None
+
+
+def test_a_category_drunk_long_ago_is_listed_as_ready() -> None:
+    late = 400_000
+    state = consumable_state((press(6262, late - 300_000),), STONE, late)
+    assert state is not None and state.state == READY
 
 
 def test_a_consumable_drunk_in_the_run_up_is_pressed() -> None:
-    assert consumable_state((press(6262, 58_000),), STONE, DEATH_MS).state == PRESSED
+    state = consumable_state((press(6262, 58_000),), STONE, DEATH_MS)
+    assert state is not None and state.state == PRESSED
+
+
+def test_availability_omits_the_row_for_a_category_never_drunk() -> None:
+    # Paired against the same category drunk on the same window, because the
+    # rule that hides a category whose window reaches back before the fight
+    # would otherwise be what empties this list, and the test would pass
+    # without the new rule existing.
+    drunk = availability_at(
+        loaded(casts=(press(6262, 100_000),)), a_death(at_ms=200_000), Defensives(),
+        Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
+    )
+    never = availability_at(
+        loaded(), a_death(at_ms=200_000), Defensives(),
+        Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
+    )
+    assert drunk.consumables is not None
+    assert [state.name for state in drunk.consumables] == ["healthstone"]
+    assert never.consumables == ()
 
 
 def test_availability_groups_own_defensives_consumables_and_teammates_externals() -> None:
+    # The stone is drunk at 100s: since 2026-09-12 a category nobody drank
+    # from is not listed at all, so a fixture that never drinks one asserts
+    # an empty group rather than the three-group shape this test is about.
     run = loaded(
-        casts=(press(48792, 1_000), press(102342, 150_000, actor_id=2, target_id=3)),
+        casts=(press(48792, 1_000), press(6262, 100_000),
+               press(102342, 150_000, actor_id=2, target_id=3)),
     )
     run = run.model_copy(update={"run": run.run.model_copy(update={"players": (DUDE, TREE)})})
     at = availability_at(
