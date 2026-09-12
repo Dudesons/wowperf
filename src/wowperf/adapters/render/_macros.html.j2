@@ -30,6 +30,17 @@
 </a>
 {% endmacro %}
 
+{# A panel of figures, revealed by CSS alone. `heading` names the panel's
+   subject for a surface that does not already show it beside the panel: a
+   ledger card's panel hangs off the ability's own name and passes none, a
+   timeline row's is laid over a drawing and passes the row's label. #}
+{%- macro tip(tooltip, heading="") -%}
+<span class="tip" role="note">
+{%- if heading %}<span class="tip-head">{{ heading }}</span>{% endif %}
+{%- for line in tooltip.lines %}<span class="tip-line"><span class="tip-label">{{ line.label }}{% if line.tier %} <span class="badge {{ line.tier.tint }}">{{ line.tier.label }}</span>{% endif %}</span><span class="tip-value">{{ line.value }}</span></span>{% endfor %}
+{%- if tooltip.note %}<span class="tip-note">{{ tooltip.note }}</span>{% endif %}</span>
+{%- endmacro %}
+
 {# One hoverable object per ability: the art and the word are the same thing to a
    reader, so they are the same element to the page. An optional tooltip rides on
    the same element, since that is the one hover target the page already has.
@@ -40,7 +51,5 @@
    navigation to buy nothing. #}
 {% macro ability(ability_id, name, tooltip=None) %}
 <span class="ability"{% if tooltip %} tabindex="0"{% endif %}>{% if ability_id in icons_by_id %}<span class="icon i-{{ ability_id }}" aria-hidden="true"></span>{% endif %}<span class="ability-name">{{ name }}</span>
-{%- if tooltip %}<span class="tip" role="note">
-{%- for line in tooltip.lines %}<span class="tip-line"><span class="tip-label">{{ line.label }}{% if line.tier %} <span class="badge {{ line.tier.tint }}">{{ line.tier.label }}</span>{% endif %}</span><span class="tip-value">{{ line.value }}</span></span>{% endfor %}
-{%- if tooltip.note %}<span class="tip-note">{{ tooltip.note }}</span>{% endif %}</span>{% endif %}</span>
+{%- if tooltip %}{{ tip(tooltip) }}{% endif %}</span>
 {%- endmacro %}

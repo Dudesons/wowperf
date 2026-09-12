@@ -1542,3 +1542,36 @@ def test_a_tooltip_line_with_no_tier_renders_no_badge() -> None:
     ))
     row = _li(render(a_report(deaths=(card,))), "ready")
     assert "badge" not in row
+
+
+def test_a_panel_can_carry_a_heading_for_a_surface_that_is_not_its_own_label() -> None:
+    # A ledger card's panel hangs off the ability's name, so it needs no
+    # heading. A timeline row's panel is laid over a drawing and can open a
+    # long way from the label it belongs to, so it names its subject itself.
+    from wowperf.adapters.render.html import _environment
+
+    macros = _environment().get_template("_macros.html.j2").module
+    panel = str(macros.tip(  # type: ignore[attr-defined]
+        Tooltip(lines=(TooltipLine(label="Presses", value="4"),)), "Ice Block"
+    ))
+    assert '<span class="tip-head">Ice Block</span>' in panel
+    assert '<span class="tip-label">Presses</span><span class="tip-value">4</span>' in panel
+
+
+def test_a_ledger_cards_panel_still_names_nothing_above_its_figures() -> None:
+    # The other half of the refactor: `ability()` passes no heading, so the
+    # ledger's panels must render exactly as they did. The golden file is the
+    # byte-level check; this states the rule in one place a reader will find.
+    # Read past the stylesheet: `.tip-head`'s own rule is in it, and a check
+    # over the whole document would answer about the CSS and never the markup.
+    row = a_row(
+        "defensives.ceiling.stonewake.48792",
+        title_before="Stonewake used ",
+        title_ability="Icebound Fortitude",
+        title_after=" 2 of a possible 9 times",
+        ability_id=48792,
+        tooltip=Tooltip(lines=(TooltipLine(label="Presses", value="2"),)),
+    )
+    body = render(a_report(ledger_decomposition=(row,))).split("</style>")[1]
+    assert '<span class="tip" role="note"><span class="tip-line">' in body
+    assert "tip-head" not in body
