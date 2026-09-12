@@ -258,9 +258,35 @@ disagree: a swatch takes the same rule as the rectangle it stands for.
 which is the one a reader is least able to guess.
 """
 
-BADGE_MEASURED_CAPTION = "the damage taken bars, the press marks and the cover windows."
-"""What the measured badge grades: the log itself reports all three directly -- casts
-and hits as events, the aura's own bands as the intervals it was up for."""
+def _graded_caption(layers: tuple[str, ...]) -> str:
+    """The layers a badge grades, as one sentence naming those and no others.
+
+    A badge's caption is a claim about this page, not about the chart in
+    general, and every layer below is optional: a player can take damage and
+    press nothing, press something the aura tables know nothing about, or press
+    it late enough that the cooldown outlasts the run. Naming a layer the chart
+    did not draw grades something absent from it, which is the same defect as a
+    badge over an absent track, one level finer.
+
+    Given every layer, this reproduces the sentence each caption had when it was
+    a constant, so a complete chart's wording does not move.
+    """
+    if not layers:
+        return ""
+    if len(layers) == 1:
+        return f"{layers[0]}."
+    return f"{', '.join(layers[:-1])} and {layers[-1]}."
+
+
+MEASURED_DAMAGE_TAKEN = "the damage taken bars"
+MEASURED_PRESS_MARKS = "the press marks"
+MEASURED_COVER_WINDOWS = "the cover windows"
+BADGE_MEASURED_CAPTION = _graded_caption(
+    (MEASURED_DAMAGE_TAKEN, MEASURED_PRESS_MARKS, MEASURED_COVER_WINDOWS)
+)
+"""What the measured badge grades when a chart draws all three: the log itself reports
+them directly -- casts and hits as events, the aura's own bands as the intervals it was
+up for. A chart drawing fewer is captioned with fewer; see `_graded_caption`."""
 
 BADGE_DERIVED_CAPTION = (
     "the damage done bars, rebuilt from the per-second figures the log's own graph reports."
@@ -270,10 +296,16 @@ that rate multiplied back up by the interval it covers. The reconstruction lands
 a percent of the figure the API reports for the whole run, and does not close exactly --
 which is the difference between this and the measured bars above it."""
 
-BADGE_INFERRED_CAPTION = "the dimming and the ready tick that ends it."
+INFERRED_DIMMING = "the dimming"
+INFERRED_READY_TICK = "the ready tick that ends it"
+BADGE_INFERRED_CAPTION = _graded_caption((INFERRED_DIMMING, INFERRED_READY_TICK))
 """What the inferred badge grades: a cooldown length assumed from its base value, since
 talents shorten it and the log records no reset -- the same assumption the ready tick is
-computed from, so it carries the same badge as the dimming it closes."""
+computed from, so it carries the same badge as the dimming it closes.
+
+The tick is the half that can be missing. Every press dims the track after it, but a
+press whose cooldown outlasts the run gets no tick, because the log never says the
+ability came back. A chart of only such presses is captioned for the dimming alone."""
 
 
 def _track_x(elapsed_seconds: float, scale: float) -> float:
@@ -881,6 +913,30 @@ def build_player_timeline(
             width=TIMELINE_WIDTH,
         )
 
+    # What the page actually drew, which is all either badge may claim. Every
+    # one of these is optional on its own: a player can take damage and press
+    # nothing, press an ability the aura tables know nothing about, or press it
+    # late enough that the cooldown is still running when the run ends.
+    measured_layers = tuple(
+        layer
+        for layer, drawn in (
+            (MEASURED_DAMAGE_TAKEN, damage is not None),
+            (MEASURED_PRESS_MARKS, bool(rows)),
+            (MEASURED_COVER_WINDOWS, any(row.cover for row in rows)),
+        )
+        if drawn
+    )
+    inferred_layers = tuple(
+        layer
+        for layer, drawn in (
+            # Every press dims the track after it, so the dimming stands or
+            # falls with the rows themselves.
+            (INFERRED_DIMMING, bool(rows)),
+            (INFERRED_READY_TICK, any(row.ready_ticks for row in rows)),
+        )
+        if drawn
+    )
+
     height = _chart_height(len(rows))
     # Stamped once the chart's height is known, which it is not while the rows
     # are being built: the height depends on how many of them there turned out
@@ -918,16 +974,16 @@ def build_player_timeline(
         press_width=PRESS_WIDTH,
         state_key=STATE_KEY,
         legend=LEGEND,
-        # Each badge is guarded on the layer it grades, because any one of the
-        # three layers can be the only one a chart draws. Measured names the
-        # damage taken bars, the press marks and the cover windows, so it
-        # survives on either source; inferred names a dimming only a row draws;
-        # derived names the damage done bars alone. A grade on something absent
-        # from the page is a claim about nothing.
-        badge_measured=badge_for(Confidence.MEASURED) if damage or rows else None,
-        badge_measured_caption=BADGE_MEASURED_CAPTION if damage or rows else "",
+        # Each badge is shown only where it has something to grade, and says
+        # which layers those are. A grade on something absent from the page is
+        # a claim about nothing, and a caption listing layers the chart did not
+        # draw is the same claim in smaller print -- which is why the badge and
+        # its caption are decided together, from one list.
+        badge_measured=badge_for(Confidence.MEASURED) if measured_layers else None,
+        badge_measured_caption=_graded_caption(measured_layers),
+        # Derived grades one layer, so its caption never varies.
         badge_derived=badge_for(Confidence.DERIVED) if damage_done else None,
         badge_derived_caption=BADGE_DERIVED_CAPTION if damage_done else "",
-        badge_inferred=badge_for(Confidence.INFERRED) if rows else None,
-        badge_inferred_caption=BADGE_INFERRED_CAPTION if rows else "",
+        badge_inferred=badge_for(Confidence.INFERRED) if inferred_layers else None,
+        badge_inferred_caption=_graded_caption(inferred_layers),
     )

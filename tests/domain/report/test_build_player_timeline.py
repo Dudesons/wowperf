@@ -192,28 +192,12 @@ def test_the_height_grows_with_the_rows_it_has_to_hold() -> None:
     assert timeline.height == FIRST_ROW_Y + len(timeline.cooldowns) * ROW_HEIGHT + 28.0
 
 
-def a_timeline_drawing_both_graded_layers() -> PlayerTimeline:
-    """A chart with damage taken bars and a cooldown row, so both badges render.
-
-    Each badge is guarded on the layer it grades, so a fixture drawing only one
-    of them carries only one badge — and a swap between two fields where one is
-    `None` is not the swap these tests are about.
-    """
-    run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    loaded = LoadedRun(
-        run=run,
-        damage_taken=(a_hit(1, 1_000, 1),),
-        casts=(a_cast(1, SHIELD.ability_id, 1_000),),
-    )
-    return a_timeline(loaded, defensives=KIT)
-
-
 def test_the_measured_and_inferred_badges_are_not_interchangeable() -> None:
     # A test that only checked both badges exist would still pass with the two
     # swapped: `build_player_timeline` must put `measured` on the field the
     # damage bars and press marks read, and `inferred` on the one the dimming
     # reads, exactly as `HealthCurve.line_badge`/`reading_badge` do.
-    timeline = a_timeline_drawing_both_graded_layers()
+    timeline = a_complete_chart()
     assert timeline.badge_measured is not None and timeline.badge_measured.label == "measured"
     assert timeline.badge_inferred is not None and timeline.badge_inferred.label == "inferred"
 
@@ -222,8 +206,10 @@ def test_the_badge_captions_are_not_interchangeable() -> None:
     # Mirrors the test above: a caption is a claim about what its own badge
     # grades, so swapping the two would misdescribe both. A test only
     # checking that each caption is non-empty would not catch the swap; this
-    # pins each caption's exact words against its own badge.
-    timeline = a_timeline_drawing_both_graded_layers()
+    # pins each caption's exact words against its own badge. The chart has to
+    # draw every layer, or each caption is a shorter sentence than the
+    # constant and the comparison says nothing about a swap.
+    timeline = a_complete_chart()
     assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
     assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
     assert BADGE_MEASURED_CAPTION != BADGE_INFERRED_CAPTION
@@ -1208,6 +1194,93 @@ def test_a_timeline_that_draws_the_track_does_grade_it() -> None:
     assert timeline.badge_derived_caption == BADGE_DERIVED_CAPTION
 
 
+def a_complete_chart() -> PlayerTimeline:
+    """A chart drawing every layer the three badges grade.
+
+    Damage taken bars, a press with its cover window, the dimming after it, and
+    a ready tick -- the press is early enough in the run that its cooldown ends
+    before the axis does -- plus a damage done series.
+    """
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    ).model_copy(
+        update={
+            "damage_taken": (a_hit(1, 100_000, 500),),
+            "damage_done": (a_done_series(1, (600,)),),
+        }
+    )
+    return a_timeline(loaded, defensives=KIT)
+
+
+def test_a_chart_drawing_every_layer_reads_as_the_whole_sentence() -> None:
+    """Composing a caption from the layers drawn must reproduce the full one.
+
+    Otherwise every page that draws all of them changes wording for no reason,
+    and the two captions stop matching the constants the swap-guards pin.
+    """
+    timeline = a_complete_chart()
+    assert timeline.damage is not None
+    row = timeline.cooldowns[0]
+    assert row.presses and row.cover and row.unavailable and row.ready_ticks
+
+    # Literals, not the two constants. Both are built by `_graded_caption`
+    # themselves, so comparing a composed caption against one asks the function
+    # whether it agrees with itself: joining every layer with a comma and no
+    # "and" changes both sides together and passes.
+    assert timeline.badge_measured_caption == (
+        "the damage taken bars, the press marks and the cover windows."
+    )
+    assert timeline.badge_inferred_caption == "the dimming and the ready tick that ends it."
+    # And the constants still say what a complete chart says, since the page's
+    # other captions and the swap-guards are pinned against them.
+    assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
+    assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
+
+
+def test_the_measured_caption_names_only_the_layers_the_chart_drew() -> None:
+    """The caption is the badge's claim about this page, not about the chart in
+    general. Naming the press marks and the cover windows over a chart that
+    drew neither grades two things absent from it -- the same defect as a badge
+    on an absent track, one level finer."""
+    timeline = a_timeline_with_damage(amount=500_000, at_seconds=100.0, pull="Atroxus")
+    assert timeline.damage is not None and timeline.cooldowns == ()
+    assert timeline.badge_measured_caption == "the damage taken bars."
+
+
+def test_a_row_with_no_aura_data_is_not_credited_with_cover_windows() -> None:
+    # The row draws a press and its dimming, and nothing for its cover: the
+    # run's aura tables say nothing about the ability, which is the abstention
+    # `NO_AURA_DATA` states on the row's own panel.
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_taken=(a_hit(1, 100_000, 500),),
+        casts=(a_cast(1, SHIELD.ability_id, 100_000),),
+    )
+    timeline = a_timeline(loaded, defensives=KIT)
+    assert timeline.cooldowns and not any(row.cover for row in timeline.cooldowns)
+    assert timeline.badge_measured_caption == "the damage taken bars and the press marks."
+
+
+def test_a_press_whose_cooldown_outlasts_the_run_grades_no_ready_tick() -> None:
+    """The tick is drawn only where the ability came back before the axis ended.
+
+    A press late enough that its cooldown is still running at the last pull
+    gets none, because the log never says it came back -- so the inferred badge
+    must stop naming one.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 500_000),),
+    )
+    timeline = a_timeline(loaded, defensives=KIT)
+    row = timeline.cooldowns[0]
+    assert row.unavailable and row.ready_ticks == ()
+
+    assert timeline.badge_inferred_caption == "the dimming."
+    assert timeline.badge_measured_caption == "the press marks."
+
+
 def test_a_chart_that_draws_neither_track_says_why_for_each_of_them() -> None:
     """Absence stated, so the blank is not read as a run of nothing.
 
@@ -1368,6 +1441,8 @@ def test_damage_taken_alone_grades_the_bars_and_not_the_dimming() -> None:
     assert timeline.cooldowns == ()
 
     assert timeline.badge_measured == badge_for(Confidence.MEASURED)
-    assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
+    # And the caption names that one layer alone, not the two absent ones the
+    # full sentence would also have claimed.
+    assert timeline.badge_measured_caption == "the damage taken bars."
     assert timeline.badge_inferred is None
     assert timeline.badge_inferred_caption == ""
