@@ -382,9 +382,10 @@ def build_damage_done(payload: dict[str, Any]) -> tuple[DamageDoneSeries, ...]:
     """The damage graph as domain series, with its rate converted to amounts.
 
     The response's numbers are damage per second. Multiplying by the interval
-    reproduces the series' own `total` to within 0.3% to 0.7%, the residual
-    being the last bucket overhanging the window -- measured 2026-09-12 and
-    recorded in the wcl-api skill. Reading them as amounts instead would
+    reproduces the series' own `total` to within 0.3% to 0.7%, always short and
+    for a reason nobody has established -- measured 2026-09-12, and the wcl-api
+    skill records why the overhang it was once blamed on cannot be it. Reading
+    them as amounts instead would
     understate every bucket by the interval in seconds, which was 6.4 on the
     run this was measured against, and the chart would look entirely plausible.
 

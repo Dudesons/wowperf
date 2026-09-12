@@ -533,8 +533,8 @@ is the string `"Total"` and whose `guid` and `total` are null.
 - **The numbers in `data` are damage per second, not damage in the bucket.** Verified on all five
   series independently: `sum(points) * pointInterval/1000` reproduces that series' own `total` to
   within 0.3% to 0.7%. Reading them as amounts understates every bucket by `pointInterval` in
-  seconds, which was 6.4 here. The residual is the overhang: 241 points of 6411.679 ms span
-  1545.2 s of a 1538.8 s window, 0.4% more than the window holds.
+  seconds, which was 6.4 here. The residual's cause is not established -- see the reconciliation
+  note below, which corrects an earlier claim recorded here.
 - **The interval is the API's choice and there is no argument to set it.** 241 points across the
   window on this fight, so it appears to target about 240 buckets.
 - **The five player series sum to the `Total` series** — largest gap at any bucket, 0.2.
@@ -566,9 +566,21 @@ this API's queries serves a whole roster, however many players are analysed.
 
 **The rebuilt amounts reconcile with the API's own `total` to within 0.66%**, measured the same
 day across all five series of that fight: −0.26%, −0.26%, −0.34%, −0.35% and −0.66%, every one of
-them short rather than over. The residual is the last bucket overhanging the fight — 241 buckets
-of 6411.679 ms span 1545.2 s of a 1538.8 s window — plus per-bucket rounding. A gap near a factor
-of 6.4 instead would mean the rate conversion was dropped somewhere after ingest.
+them short rather than over.
+
+**The cause of that shortfall is not established, and the explanation recorded here until
+2026-09-12 was wrong.** It said the residual was the last bucket overhanging the fight: 241 buckets
+of 6411.679 ms span 1545.2 s of a 1538.8 s window, 0.4% more than the window holds. That mechanism
+predicts the wrong sign. Summing `rate x interval` over a stream that spans *more* time than the
+window can only come out equal, if the extra bucket is empty, or **long** if it is not — never
+short, and all five readings are short. Per-bucket rounding cannot account for it either: 0.26% of
+a series totalling in the hundreds of millions is hundreds of thousands of damage, and rounding to
+the nearest whole number over 241 buckets is bounded by a few hundred.
+
+So the figures above stand as measurements and the mechanism does not. Re-measuring costs one
+`DamageDoneGraph` call. What the reading is still good for is the diagnostic it was taken for: a
+gap near a factor of 6.4 means the rate conversion was dropped somewhere after ingest, and a gap
+under a percent means it was not.
 
 **That reading was taken by summing the rendered page's bar hovers, and since 2026-09-12 it can no
 longer be reproduced that way.** The figures above are about what `ingest.py` rebuilds, which is

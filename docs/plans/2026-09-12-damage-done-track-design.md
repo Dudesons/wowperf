@@ -141,6 +141,15 @@ exactly: it lands within 0.3% to 0.7% of the API's own `total`, and the residual
 buckets of 6.4117 s span 1545.2 s of a 1538.8 s window, so the last bucket overhangs the fight by
 0.4%. A figure that near the truth by a documented rule is what `derived` means here.
 
+> **Corrected 2026-09-12.** The residual is measured; the explanation above is wrong, and the
+> badge does not depend on it. A stream spanning 0.4% *more* time than the window can only make
+> `sum(rate x interval)` come out equal or **long**, never short, and all five readings are short.
+> The cause is not established and re-measuring costs one call. `derived` is still the right badge
+> for a different and simpler reason: the amount a bar draws is not in the response at all, it is
+> a rate multiplied back up by an interval, and that is a documented rule rather than a reading.
+> The correction and what the figures are still good for are recorded in
+> `.claude/skills/wcl-api/SKILL.md`.
+
 The chart's legend therefore gains a third badge line; it carries `measured` and `inferred` today.
 
 **Rescaling the buckets to hit `total` exactly is refused.** It would move damage away from the

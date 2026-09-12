@@ -541,9 +541,10 @@ def _bar_width(x: float, width: float) -> float:
     """A bar's drawn width, stopped at the axis's own end.
 
     The last bucket of a stream overhangs the window it covers -- 241 buckets of
-    6.4117 s span 1545.2 s of a 1538.8 s fight -- and the overhang is the reason
-    the rebuilt total lands a fraction under the API's, which §4 of the design
-    states rather than rescales. What it must not do is put marks past
+    6.4117 s span 1545.2 s of a 1538.8 s fight. That overhang is real geometry,
+    whatever else it was once blamed for: the wcl-api skill records that it
+    cannot be the reason the rebuilt total lands under the API's, since it
+    predicts the opposite sign. What it must not do is put marks past
     `TRACK_X1`, in the right margin the axis deliberately stops at.
 
     A bar clipped here can end up narrower than `MIN_BLOCK_WIDTH`. That floor
