@@ -31,9 +31,11 @@ class FindingFact(Frozen):
     back strings the analysis had just formatted -- "range 0.7 to 2.1 casts a
     minute across 5 top parses" taken apart into four numbers again.
 
-    `confidence` is None where the finding's own badge grades the figure. Set
-    it only where one line belongs to a different tier than its neighbours: an
-    assumption read from a data file beside a count read from the log.
+    `confidence` is None for a figure read straight from the log, matching
+    `report.model.TooltipLine.tier`, where None is the panel's default tier and
+    means measured. Set it on anything that is not: a rate the report computed
+    is `derived`, a cooldown assumed from a data file is `inferred`. Leaving
+    one of those unset does not abstain -- it badges the figure measured.
     """
 
     label: str

@@ -130,9 +130,11 @@ def _interruptible(kicks: int) -> tuple[str, FindingFact]:
     A spell nobody kicked is unknown, and says unknown. It must never read as
     a miss: a reader met a card saying a spell landed eighteen times with
     nothing on it about whether anyone could have stopped it, and supplied the
-    missing half himself. The abstention carries no tier of its own because it
-    grades no claim; the count behind a proven one is read straight from the
-    log, and carries measured.
+    missing half himself.
+
+    Both facts rest on a kick count read straight from the log, so both are
+    measured. The proven one says so; the unproven one leaves the tier unset,
+    which is the panel's own default for measured and so says the same thing.
     """
     if kicks:
         claim = f"kicked {kicks} time{'s' if kicks != 1 else ''} this run"

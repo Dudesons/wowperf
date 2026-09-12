@@ -18,7 +18,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, FindingFact
 from wowperf.domain.model import Run
 
 MAX_AURAS_REPORTED = 5
@@ -144,6 +144,15 @@ def _gap_findings(
                     f"ability {ability_id}",
                     f"ours over {our_seconds:.0f}s of boss pulls",
                     f"theirs over {their_seconds:.0f}s of boss pulls",
+                ),
+                facts=(
+                    FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Reference", value=f"{their_fraction:.0%} of boss time",
+                                confidence=Confidence.DERIVED),
+                    # No median and no range in this shape: one reference run,
+                    # and a label claiming otherwise would claim a sample.
+                    FindingFact(label="Sample", value="1 reference run"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,
@@ -346,6 +355,20 @@ def _gap_findings_sample(
                     f"ours over {our_seconds:.0f}s of boss pulls",
                     f"range {low:.0%} to {high:.0%} across {len(carried)} top parses",
                     f"{count_phrase(missing_aura_data, total)} references had no aura data",
+                ),
+                # The same figures the title and the evidence already state.
+                # Each share is a division this module did, so each says
+                # derived: an unset tier is what a panel draws measured with.
+                # The parse count is a count, and is not.
+                facts=(
+                    FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Reference median",
+                                value=f"{their_median:.0%} of boss time",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Observed range", value=f"{low:.0%} to {high:.0%}",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Sample", value=f"{len(carried)} top parses"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,

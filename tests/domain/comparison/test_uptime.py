@@ -346,6 +346,36 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
     assert gap.quantifier == ""
 
 
+def test_a_sampled_uptime_finding_carries_both_sides_as_facts() -> None:
+    # The same figures the title above pins, taken a third way for a panel to
+    # lay out. Nothing recomputed, nothing parsed back out of the title.
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "20% of boss time"),
+        ("Reference median", "75% of boss time"),
+        ("Observed range", "60% to 90%"),
+        ("Sample", "4 top parses"),
+    ]
+
+
+def test_an_uptime_fact_is_derived_because_a_share_is_computed() -> None:
+    # An unset tier is what a panel draws measured with, so a share this
+    # report divided out has to say derived rather than leave the line bare.
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    assert all(fact.confidence is Confidence.DERIVED for fact in gap.facts[:3])
+    assert gap.facts[3].confidence is None  # a count of parses, read not computed
+
+
+def test_a_sampled_uptime_panel_reports_a_median_and_a_range_never_a_mean() -> None:
+    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    labels = [fact.label for fact in
+              next(f for f in findings if f.id == "compare.uptime.self.0").facts]
+    assert "Reference median" in labels and "Observed range" in labels
+    assert not any("mean" in label.lower() for label in labels)
+
+
 def test_no_reference_player_is_named_in_a_sampled_uptime_finding() -> None:
     """An aggregate uptime is a claim about a population, the same as a sampled
     spell finding, so no member's character name may reach the page. The one

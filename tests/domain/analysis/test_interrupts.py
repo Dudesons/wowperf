@@ -229,9 +229,10 @@ def test_the_interruptible_claim_is_measured_not_derived() -> None:
     assert fact.confidence is Confidence.MEASURED
 
 
-def test_an_unproven_interruptible_claims_no_tier_of_its_own() -> None:
-    # Abstention, not measurement. Stamping "measured" on the word unknown
-    # would grade a claim nobody made; the finding's own badge covers it.
+def test_an_unproven_interruptible_leaves_the_panels_default_tier() -> None:
+    # Zero kicks is a count read from the log, so measured is right, and an
+    # unset tier is what a panel draws measured with -- see TooltipLine.tier.
+    # The word "unknown" qualifies what follows from the count, not the count.
     findings = a_landed_spell_and()
     ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
     fact = next(f for f in ability.facts if f.label == "Interruptible")

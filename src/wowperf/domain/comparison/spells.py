@@ -7,7 +7,7 @@ from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.events import CastEvent
-from wowperf.domain.findings import Confidence, Finding, quantifier_for
+from wowperf.domain.findings import Confidence, Finding, FindingFact, quantifier_for
 from wowperf.domain.model import LoadedRun, Player, Run
 
 MAX_SPELLS_REPORTED = 5
@@ -217,6 +217,16 @@ def compare_spells(
                     f"ours over {our_boss_seconds:.0f}s of boss pulls",
                     f"theirs over {their_boss_seconds:.0f}s of boss pulls",
                 ),
+                facts=(
+                    FindingFact(label="Ours", value=f"{our_rate:.1f} casts a minute",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Reference", value=f"{their_rate:.1f} casts a minute",
+                                confidence=Confidence.DERIVED),
+                    # Named rather than left implicit: this shape has no median
+                    # and no range, and a panel that printed either label here
+                    # would claim a sample the comparison never drew.
+                    FindingFact(label="Sample", value="1 reference run"),
+                ),
                 ability_id=ability_id,
                 ability_name=name,
             )
@@ -383,6 +393,21 @@ def _rate_sample(
                     f"ours over {our_boss_seconds:.0f}s of boss pulls",
                     f"range {low:.1f} to {high:.1f} casts a minute across "
                     f"{len(rates)} top parses",
+                ),
+                # The same four numbers the title and the evidence above
+                # already state, as labels and values a panel can lay out.
+                # Both rates and the range are divisions this module did, so
+                # each says derived: an unset tier is what a panel draws
+                # measured with. The parse count is a count, and is not.
+                facts=(
+                    FindingFact(label="Ours", value=f"{our_rate:.1f} casts a minute",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Reference median",
+                                value=f"{their_median:.1f} casts a minute",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Observed range", value=f"{low:.1f} to {high:.1f}",
+                                confidence=Confidence.DERIVED),
+                    FindingFact(label="Sample", value=f"{len(rates)} top parses"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,

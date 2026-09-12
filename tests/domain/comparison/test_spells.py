@@ -14,7 +14,7 @@ from wowperf.domain.comparison.spells import (
     compare_talents,
 )
 from wowperf.domain.events import CastEvent
-from wowperf.domain.findings import Confidence
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
 OURS = Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane", item_level=318)
@@ -407,6 +407,57 @@ def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
     assert "4 top parses cast" in rate.title and "a median" in rate.title
     assert rate.confidence is Confidence.DERIVED
     assert any("range" in line for line in rate.evidence)
+
+
+def a_sampled_rate_finding() -> Finding:
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    return next(f for f in findings if f.id == "compare.spells.rate.0")
+
+
+def test_a_spell_rate_finding_carries_both_sides_as_facts() -> None:
+    # The same numbers the title and the evidence already state, taken a third
+    # way. Nothing here is a second measurement, and nothing is parsed back out
+    # of a string the analyser had just formatted.
+    rate = a_sampled_rate_finding()
+    assert [fact.label for fact in rate.facts] == [
+        "Ours", "Reference median", "Observed range", "Sample",
+    ]
+    values = {fact.label: fact.value for fact in rate.facts}
+    assert values["Ours"].endswith(" casts a minute")
+    assert values["Reference median"].endswith(" casts a minute")
+    assert values["Sample"] == "4 top parses"
+    assert values["Ours"].split()[0] in rate.title
+    assert values["Reference median"].split()[0] in rate.title
+
+
+def test_the_reference_side_is_a_median_and_a_range_and_never_a_mean() -> None:
+    # This project reports a median and an observed range, never a mean, and a
+    # panel is one more surface that has to keep saying so.
+    labels = [fact.label for fact in a_sampled_rate_finding().facts]
+    assert "Reference median" in labels and "Observed range" in labels
+    assert not any("mean" in label.lower() for label in labels)
+
+
+def test_a_rate_fact_is_derived_because_a_rate_is_computed() -> None:
+    # An unset tier is what a panel draws measured with, so a rate this report
+    # divided out has to say derived rather than leave the line bare.
+    rate = a_sampled_rate_finding()
+    assert all(fact.confidence is Confidence.DERIVED for fact in rate.facts[:3])
+    assert rate.facts[3].confidence is None  # a count of parses, read not computed
+
+
+def test_a_pairwise_rate_finding_names_one_reference_rather_than_a_median() -> None:
+    # The fallback shape, drawn when the sample has too few comparable members.
+    # It has no median and no range, and must not print labels claiming either.
+    ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),))
+    theirs = a_member(
+        THEIRS, (boss_pull(0, 60.0),),
+        tuple(cast(11, METEOR, "Meteor", n * 1_000, 0) for n in range(8)),
+    )
+    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    rate = next(f for f in findings if f.id.startswith("compare.spells.rate."))
+    assert [fact.label for fact in rate.facts] == ["Ours", "Reference", "Sample"]
+    assert {fact.value for fact in rate.facts} >= {"1 reference run"}
 
 
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
