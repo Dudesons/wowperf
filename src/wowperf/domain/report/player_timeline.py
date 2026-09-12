@@ -537,7 +537,6 @@ def _chart_height(row_count: int) -> float:
 
 
 def _row_panel(
-    label: str,
     presses: int,
     bands: tuple[tuple[int, int], ...] | None,
     shares: tuple[int, int, int],
@@ -655,7 +654,6 @@ def _cooldown_rows(
                 label=ability.name,
                 ability_id=ability.ability_id,
                 tooltip=_row_panel(
-                    ability.name,
                     len(presses),
                     bands,
                     _row_shares(not_judged, unavailable),
