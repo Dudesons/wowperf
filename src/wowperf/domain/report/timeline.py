@@ -227,6 +227,13 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
 
     theirs_track = None
     if member is not None and sample is not None:
+        # Naming the run beside the span this caption already states is the one
+        # place the report pairs an identified reference with a figure about it.
+        # `ReferenceRecord` states the rule that forbids it in general and
+        # carries the ruling that allows it here: one run on one picture is not
+        # a table of many, and without the name a reader cannot tell whether
+        # this drawing is of the same run the extra-pack rows below name, which
+        # it need not be -- the two are chosen from different eligible sets.
         theirs_track = TimelineTrack(
             caption=_timeline_caption(
                 "Reference",

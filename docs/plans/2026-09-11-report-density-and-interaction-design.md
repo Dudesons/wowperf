@@ -167,6 +167,27 @@ drawing it bigger is a lie about duration. Two conclusions:
 The damage row also gains an axis (`0` to the run's tallest bucket) and a caption saying a bar
 is a five-second bucket. Previously the only scale cue sat below the chart.
 
+> **Ruled 2026-09-12: the reference track's caption names the run it drew.** It reads
+> "Reference — 24:31 from first pull to last, one of 3 fast runs (report abc123, fight 12)".
+>
+> This is the one place the report pairs an identified other-players' run with a figure about it,
+> and it is a deliberate exception to the rule `ReferenceRecord` states — "a link and never a
+> figure", because a file tabulating other players' durations and death counts is the corpus
+> RPGLogs §5d forbids and the 24-hour reference cache exists to avoid. Three things make it
+> narrow. It is **one run on one picture**, chosen for this page, not a row in a table of many.
+> The **figure was already on the page** — the span is what the caption has always stated — so
+> what is added is the attribution, not the measurement. And the reader **needs** it: the
+> extra-pack rows below the drawing name their own run outright, the track is drawn from
+> `duration_eligible` while those rows come from `route_eligible`, and the two sets can name
+> different runs on one page with nothing to tell them apart.
+>
+> **What this does not license.** No figure may join `ReferenceRecord`'s fields, so the provenance
+> table cannot become the tabulation the rule is about; no reference *player* is ever named; and
+> nothing here extends to a second such pairing without its own ruling.
+> `test_a_reference_record_has_no_field_for_a_figure` and
+> `test_the_findings_json_names_no_reference_character` hold those three, and neither is weakened
+> by this.
+
 ### 4.5 Ability tooltips, and the three tiers
 
 An ability tooltip carries, in this order:

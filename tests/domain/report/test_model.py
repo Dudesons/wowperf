@@ -187,6 +187,11 @@ def test_a_reference_record_has_no_field_for_a_figure() -> None:
     # A closed field set is what keeps a `ReferenceRecord` a link rather than a
     # tabulation: there is no field this test would need to police for a
     # duration, a death count or a score, because none exists to fill.
+    # This is the rule's whole enforcement, and it is the tabulation it guards:
+    # the run timeline's caption names the one run it drew beside that run's
+    # span, a ruled exception recorded on `ReferenceRecord` itself. A reader
+    # meeting this test should not read it as "no figure about a reference
+    # appears anywhere", which is not what it says and not what the page does.
     # `player_slug` and `player_name` name one of our own roster, never the
     # reference's, and the report already prints that name on the player's card.
     assert set(ReferenceRecord.model_fields) == {

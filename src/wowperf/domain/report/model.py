@@ -593,6 +593,21 @@ class ReferenceRecord(Frozen):
     Carries a link and never a figure: the findings JSON and this report are
     kept forever, and a file that tabulates other players' durations and death
     counts is the corpus the 24-hour reference cache exists to avoid.
+
+    **The rule governs the tabulation, and one exception is ruled and narrow.**
+    The run timeline's reference caption names the run it drew beside the span
+    it already stated -- "one of 3 fast runs (report abc123, fight 12)". That
+    is one run on one picture, not a row in a table of many, and the reader
+    needs it: the extra-pack rows below the drawing name their own run, the two
+    are chosen from different eligible sets, and without the name there is no
+    way to tell whether they are about the same run. Ruled 2026-09-12 and
+    recorded in `docs/plans/2026-09-11-report-density-and-interaction-design.md`
+    §4.4.
+
+    What the rule still forbids is unchanged: no figure may join the fields
+    below, so this record cannot become that table, and no reference player is
+    ever named. `test_a_reference_record_has_no_field_for_a_figure` and
+    `test_the_findings_json_names_no_reference_character` hold both halves.
     """
 
     report_code: str
