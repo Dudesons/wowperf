@@ -250,20 +250,18 @@ class CooldownRow(Frozen):
 
     label: str
     ability_id: int | None = None
-    hover: str = ""
-    """The row's measured facts, as the plain text a native SVG title holds.
+    tooltip: Tooltip | None = None
+    """The row's figures: presses, the three states the run divides into, and
+    the cover the buff earned.
 
     The row draws presses, cover, ready marks and unavailable stretches as
     bare rectangles against a single name, so this is the only place a reader
     can learn what those rectangles are worth.
-    """
-    tooltip: Tooltip | None = None
-    """The row's figures as the page's own panel: presses, the three states the
-    run divides into, and the cover the buff earned.
 
-    A native SVG title carries no badge, which is why `hover` states measured
-    figures only. This carries tiers, so it states the assumed figures too --
-    which is what promoting the row to a panel buys, and not merely a change of
+    A native SVG title held these until 2026-09-12 and could state only the
+    measured ones, having no badge to grade the rest with. A panel carries
+    tiers, so the assumed figures can be stated and marked as assumed -- which
+    is what promoting the row to a panel buys, and not merely a change of
     styling.
     """
     hit_top: float = 0.0

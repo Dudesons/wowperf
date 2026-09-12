@@ -748,7 +748,22 @@ def a_drawn_timeline() -> PlayerTimeline:
             peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438,
-                               hover="Ice Block — 1 press, 8.0 s of cover",
+                               # 96/140 of the chart's height, and 16/140 of it
+                               # for `row_hit_height` below.
+                               tooltip=Tooltip(lines=(
+                                   TooltipLine(label="Presses", value="1"),
+                                   TooltipLine(label="Not judged", value="30%",
+                                               tier=Badge(label="inferred",
+                                                          tint="badge-inferred")),
+                                   TooltipLine(label="On cooldown", value="30%",
+                                               tier=Badge(label="inferred",
+                                                          tint="badge-inferred")),
+                                   TooltipLine(label="Ready and unpressed", value="40%",
+                                               tier=Badge(label="inferred",
+                                                          tint="badge-inferred")),
+                                   TooltipLine(label="Buff up", value="8.0 s"),
+                               )),
+                               hit_top=68.6,
                                baseline_y=96.0,
                                label_y=104.0,
                                presses=(Press(x=200.0),),
@@ -756,6 +771,7 @@ def a_drawn_timeline() -> PlayerTimeline:
                                not_judged=Span(x=130.0, width=90.0)),),
         row_icon_x=130.0,
         row_icon_size=16.0,
+        row_hit_height=11.4,
         ticks=((130.0, "0:00"),),
         tick_y1=22.0,
         tick_y2=112.0,
@@ -897,21 +913,60 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
     assert '<text class="pull-name" x="130.0" y="25.0">Pull 7</text>' not in body
 
 
-def test_a_cooldown_rows_measured_facts_reach_the_page_as_its_groups_title() -> None:
-    # A row draws presses, cover, ready marks and unavailable stretches as bare
-    # rects against a single name, so the facts behind them ride on a <g>
-    # wrapping the whole row: hovering any mark on it, or its label, states the
-    # same thing.
-    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+def a_drawn_body() -> str:
+    return render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
         "</style>"
     )[1]
-    opening = "<g><title>Ice Block — 1 press, 8.0 s of cover</title>"
-    assert opening in body
-    group = body[body.index(opening):]
+
+
+# Restates test_a_cooldown_rows_measured_facts_reach_the_page_as_its_groups_title,
+# which held that the facts rode on a native <title> wrapping the row. They now
+# ride on a strip laid over it, which is a hover target the whole width of the
+# row rather than only the parts of it something was painted on.
+def test_a_cooldown_rows_facts_reach_the_page_as_the_pages_own_panel() -> None:
+    body = a_drawn_body()
+    assert '<div class="row-hit" tabindex="0" aria-label="Ice Block"' in body
+    assert 'style="top: 68.6%; height: 11.4%"' in body
+    assert '<span class="tip-head">Ice Block</span>' in body
+    assert '<span class="tip-label">Presses</span><span class="tip-value">1</span>' in body
+    # The row still draws what the panel describes: the old test held this of
+    # the same <g>, and the rects did not move when the title did.
+    group = body[body.index('<rect class="on-cooldown"'):]
     group = group[:group.index("</g>")]
     assert '<rect class="press"' in group
-    assert '<rect class="on-cooldown"' in group
     assert 'class="track-label row-label"' in group
+
+
+def test_a_cooldown_row_carries_no_native_title_beside_its_panel() -> None:
+    # Design section 5.2: one key beneath the chart, one panel on the row. A
+    # <title> on the group would win the pointer for about a second and then
+    # answer in the operating system's styling, beside the panel that had
+    # already appeared.
+    body = a_drawn_body()
+    svg = body[body.index('<svg class="player-timeline"'):]
+    svg = svg[:svg.index("</svg>")]
+    assert "<g><title>" not in svg
+    assert "1 press, 8.0 s of cover" not in svg
+
+
+def test_the_strips_are_siblings_of_the_chart_and_never_children_of_it() -> None:
+    # A strip inside the <svg> positions against nothing: CSS positioning does
+    # not apply to the children of an SVG, so the panel would render at the
+    # chart's origin for every row, silently and identically.
+    body = a_drawn_body()
+    wrap = body[body.index('<div class="timeline-wrap">'):]
+    assert wrap.index("</svg>") < wrap.index('<div class="row-hit"')
+
+
+def test_the_chart_keeps_the_aspect_ratio_the_strips_percentages_assume() -> None:
+    # The strips are placed at baseline_y over the chart's height. That is only
+    # the right place while the rendered height stays width x H/680 -- which a
+    # height attribute or a preserveAspectRatio override would end, moving every
+    # panel off its row with no test to notice.
+    body = a_drawn_body()
+    opening = body[body.index('<svg class="player-timeline"'):][:200]
+    assert "preserveAspectRatio" not in opening
+    assert "height=" not in opening
 
 
 def test_a_timelines_tick_labels_are_centred_the_way_the_run_timelines_are() -> None:

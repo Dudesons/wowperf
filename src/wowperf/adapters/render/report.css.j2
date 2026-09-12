@@ -151,7 +151,17 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .player-head { display: flex; align-items: baseline; gap: 8px; }
 .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
-.player-timeline { display: block; width: 100%; margin: 10px 0 2px; }
+/* The chart's own box, so a row's hover strip can be placed against it. A
+   percentage top resolves against this height, so the margin lives here and
+   not on the svg: a margin inside the wrapper would offset every strip by its
+   own height. */
+.timeline-wrap { position: relative; margin: 10px 0 2px; }
+.player-timeline { display: block; width: 100%; margin: 0; }
+/* A transparent strip over each row, carrying the row's panel. It is what
+   makes a whole row hoverable: the row paints only where something happened,
+   and across the rest the pull band behind it is what a pointer finds, so
+   without this most of most rows answer with the pull's name. */
+.row-hit { position: absolute; left: 0; right: 0; }
 /* Every row is named, and the name is right-aligned into the gutter left of the
    track so it never crosses the row it labels. Its own size, smaller than the
    run timeline's captions, is what lets the longest ability name in the data
@@ -194,7 +204,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
   background: var(--card); border: 1px solid var(--line); border-radius: 6px;
   font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
 .ability:hover .tip, .ability:focus-within .tip { display: block; }
+.row-hit:hover .tip, .row-hit:focus-within .tip { display: block; }
 .tip-line { display: flex; justify-content: space-between; gap: 12px; }
+/* Only a panel that opens away from the thing it describes names it: a row's
+   strip is laid over a drawing, so the panel says which row it belongs to. */
+.tip-head { display: block; font-weight: 500; margin-bottom: 4px; color: var(--ink); }
 .tip-label { color: var(--ink-dim); }
 .tip-value { font-variant-numeric: tabular-nums; }
 .tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }

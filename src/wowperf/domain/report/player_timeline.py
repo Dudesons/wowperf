@@ -292,8 +292,8 @@ def _bucket_pulls(run: Run, start_ms: int, end_ms: int) -> tuple[str, ...]:
 
     Resolved from the pulls' own bounds rather than from the hits' recorded
     `pull_index`, so the sentence a reader hovers names the band they can see
-    the bar standing on. The same discipline `_cooldown_hover` states for its
-    cover figure: the number and the rectangles behind it cannot disagree.
+    the bar standing on. The same discipline `_row_panel` states for its
+    figures: the number and the rectangles behind it cannot disagree.
 
     More than one where a bucket straddles a boundary, which five seconds
     readily does. Both are named: choosing between them would be a judgement
@@ -531,30 +531,6 @@ panel over an empty stretch of chart most invites.
 """
 
 
-def _cooldown_hover(
-    label: str, presses: int, bands: tuple[tuple[int, int], ...] | None
-) -> str:
-    """What one row's rectangles are worth, as the plain text a native title holds.
-
-    Measured only, and deliberately so. The row also draws the stretches the
-    ability was unavailable, but those are a base cooldown from `data/` laid
-    over the presses rather than anything the log stated, and an SVG title
-    carries no badge to grade such a figure with. So this states what was
-    counted and leaves what was assumed to the drawing, where the timeline's
-    own inferred badge and its caption already account for it.
-
-    The cover figure is summed from the drawn windows and never from the aura
-    table's own total, so a buff still up when the axis ends reports the part
-    the chart shows: the number a reader hovers and the rectangles they are
-    looking at cannot disagree.
-    """
-    counted = f"{presses} press{'es' if presses != 1 else ''}"
-    if bands is None:
-        return f"{label} — {counted}. {NO_AURA_DATA}"
-    seconds = sum(end - start for start, end in bands) / 1000
-    return f"{label} — {counted}, {seconds:.1f} s of cover"
-
-
 def _chart_height(row_count: int) -> float:
     """The viewBox's own height, and so what a row's strip is a percentage of."""
     return FIRST_ROW_Y + row_count * ROW_HEIGHT + BOTTOM_MARGIN
@@ -657,7 +633,6 @@ def _cooldown_rows(
             CooldownRow(
                 label=ability.name,
                 ability_id=ability.ability_id,
-                hover=_cooldown_hover(ability.name, len(presses), bands),
                 tooltip=_row_panel(
                     ability.name,
                     len(presses),
