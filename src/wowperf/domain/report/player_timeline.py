@@ -555,6 +555,11 @@ def _cooldown_hover(
     return f"{label} — {counted}, {seconds:.1f} s of cover"
 
 
+def _chart_height(row_count: int) -> float:
+    """The viewBox's own height, and so what a row's strip is a percentage of."""
+    return FIRST_ROW_Y + row_count * ROW_HEIGHT + BOTTOM_MARGIN
+
+
 def _row_panel(
     label: str,
     presses: int,
@@ -736,7 +741,14 @@ def build_player_timeline(
             width=TIMELINE_WIDTH,
         )
 
-    height = FIRST_ROW_Y + len(rows) * ROW_HEIGHT + BOTTOM_MARGIN
+    height = _chart_height(len(rows))
+    # Stamped once the chart's height is known, which it is not while the rows
+    # are being built: the height depends on how many of them there turned out
+    # to be.
+    rows = tuple(
+        row.model_copy(update={"hit_top": round(row.baseline_y / height * 100, PRECISION)})
+        for row in rows
+    )
 
     return PlayerTimeline(
         section=Section(state=SectionState.PRESENT),
@@ -758,6 +770,7 @@ def build_player_timeline(
         label_x=LABEL_X,
         row_icon_x=ICON_X,
         row_icon_size=ICON_SIZE,
+        row_hit_height=round(ROW_HEIGHT / height * 100, PRECISION),
         row_height=ROW_HEIGHT,
         press_width=PRESS_WIDTH,
         state_key=STATE_KEY,

@@ -981,3 +981,32 @@ def test_a_cooldown_running_under_the_unjudged_opening_is_not_counted_twice() ->
 
 def test_a_row_with_no_presses_is_ready_for_everything_it_was_judged_on() -> None:
     assert _row_shares(Span(x=150.0, width=151.8), ()) == (30, 0, 70)
+
+
+def test_a_rows_strip_is_a_percentage_of_the_chart_and_never_a_viewbox_unit() -> None:
+    """The strip is HTML laid over an SVG, so it is positioned in the rendered
+    box and not in the drawing's own units. The viewBox fixes the aspect ratio,
+    which is what makes the percentage exact at every window size -- and is why
+    no script has to measure the page to find a row."""
+    timeline = a_timeline_with_presses(count=1)
+    row = timeline.cooldowns[0]
+    assert row.hit_top == round(row.baseline_y / timeline.height * 100, PRECISION)
+    assert timeline.row_hit_height == round(ROW_HEIGHT / timeline.height * 100, PRECISION)
+    # A percentage, so it can never be the viewBox number it was derived from.
+    assert row.hit_top != row.baseline_y
+
+
+def test_every_rows_strip_sits_below_the_one_above_it_and_inside_the_chart() -> None:
+    timeline = a_timeline(
+        LoadedRun(
+            run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+            casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, BURST.ability_id, 200_000)),
+        ),
+        defensives=KIT,
+        throughput=BURSTS,
+    )
+    tops = [row.hit_top for row in timeline.cooldowns]
+    assert len(tops) == 2
+    assert tops == sorted(tops)
+    assert tops[0] + timeline.row_hit_height <= tops[1]
+    assert tops[-1] + timeline.row_hit_height <= 100.0

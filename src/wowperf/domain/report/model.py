@@ -266,6 +266,16 @@ class CooldownRow(Frozen):
     which is what promoting the row to a panel buys, and not merely a change of
     styling.
     """
+    hit_top: float = 0.0
+    """Where this row's hover strip starts, as a percentage of the chart's
+    rendered height.
+
+    Not a viewBox unit. The strip is HTML laid over the drawing, so it is
+    positioned in the rendered box, and the two scales differ by whatever width
+    the page was given. A percentage is exact at every width because the viewBox
+    fixes the aspect ratio -- which is what lets the panel be placed without the
+    script measuring anything, as the invariants require.
+    """
     baseline_y: float = 0.0
     label_y: float = 0.0
     presses: tuple[Press, ...] = ()
@@ -317,6 +327,10 @@ class PlayerTimeline(Frozen):
     every row's icon sits in the same column."""
     row_icon_size: float = 0.0
     """The icon's width and height, which are the same: it is square."""
+    row_hit_height: float = 0.0
+    """How tall every row's hover strip is, as a percentage of the chart's
+    rendered height. One figure for the whole drawing, because every row is
+    drawn the same height -- the same split `row_icon_size` already makes."""
     row_height: float = 0.0
     press_width: float = 0.0
     state_key: tuple[StateKey, ...] = ()

@@ -709,6 +709,11 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (Press, "x"),
     (PlayerTimeline, "row_icon_x"),  # a viewBox coordinate, not a quantity
     (PlayerTimeline, "row_icon_size"),  # a drawn width, not a quantity
+    # Where a row's hover strip is placed and how tall it is drawn, each a share
+    # of the chart's own rendered height rather than of anything the run did. A
+    # column of them sums to the chart, which is not a figure about the player.
+    (CooldownRow, "hit_top"),
+    (PlayerTimeline, "row_hit_height"),
     (Span, "x"),
     (Span, "width"),
     (CooldownRow, "ability_id"),  # a spell's identity, not a duration
