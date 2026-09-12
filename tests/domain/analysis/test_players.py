@@ -83,6 +83,55 @@ def test_the_damage_detail_formats_the_amount_with_thousands_separators() -> Non
     assert "1,500,000 unmitigated damage" in outlier.detail
 
 
+def test_a_damage_outlier_carries_both_sides_of_its_comparison_as_facts() -> None:
+    """The panel lays this player's figure beside the median it is a multiple of.
+
+    Both are already in the analyser's hand where the multiple is divided, so
+    the panel states them rather than leaving a reader to divide the title's
+    multiple back out of the detail's amount.
+    """
+    damage = (
+        hit(0, 100_000), hit(1, 10_000), hit(2, 10_000), hit(3, 10_000), hit(4, 10_000),
+    )
+    findings = analyse_players(a_run(), (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    assert [(fact.label, fact.value) for fact in outlier.facts] == [
+        ("This player", "100,000 unmitigated"),
+        ("Group median", "10,000 unmitigated"),
+        ("Multiple", "10.0x"),
+        ("Median over", "5 players who took it"),
+    ]
+
+
+def test_only_the_divided_figure_in_a_damage_panel_is_graded_derived() -> None:
+    # The two amounts are sums of logged hits and the last line is a count, so
+    # each is measured -- which `FindingFact` spells as no tier of its own. The
+    # multiple is the one division this analyser did.
+    damage = (hit(0, 100_000), hit(1, 10_000), hit(2, 10_000))
+    findings = analyse_players(a_run(), (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    tiers = {fact.label: fact.confidence for fact in outlier.facts}
+    assert tiers == {
+        "This player": None,
+        "Group median": None,
+        "Multiple": Confidence.DERIVED,
+        "Median over": None,
+    }
+
+
+def test_a_damage_panel_states_no_figure_the_card_contradicts() -> None:
+    # The panel and the card are two renderings of one measurement, so the
+    # amount and the multiple must be the same numbers the title and detail
+    # already print. A panel that disagreed with the card above it would be
+    # the report arguing with itself.
+    damage = (hit(0, 1_500_000), hit(1, 1_000), hit(2, 1_000))
+    findings = analyse_players(a_run(), (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+    values = {fact.label: fact.value for fact in outlier.facts}
+    assert values["This player"].split()[0] in outlier.detail
+    assert values["Multiple"].rstrip("x") in outlier.title
+
+
 def test_the_median_definition_is_stated_in_the_evidence() -> None:
     damage = (
         hit(0, 100_000), hit(1, 10_000), hit(2, 10_000), hit(3, 10_000), hit(4, 10_000),

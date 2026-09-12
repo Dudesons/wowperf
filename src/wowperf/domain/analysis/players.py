@@ -6,7 +6,7 @@ from statistics import median
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, InterruptEvent
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, FindingFact
 from wowperf.domain.model import Run
 from wowperf.domain.season import Roles
 
@@ -109,11 +109,36 @@ def display_names(run: Run) -> dict[int, str]:
     }
 
 
+class _DamageOutlier(Frozen):
+    """One player's total from one ability, against the median of those who took it.
+
+    Carries the median and how many players it was taken over, not only the
+    multiple, because the finding states all three: the title the multiple, the
+    detail the amount, and the hover panel both sides of the division.
+    """
+
+    actor_id: int
+    ability_id: int
+    player_name: str
+    ability_name: str
+    amount: int
+    median_amount: float
+    took_count: int
+
+    @property
+    def multiple(self) -> float:
+        """Held as a property rather than a field so it cannot drift from its inputs.
+
+        `median_amount` is a median over amounts greater than zero, so it is
+        never zero itself and this never divides by one.
+        """
+        return self.amount / self.median_amount
+
+
 def _damage_outliers(
     run: Run, damage_taken: tuple[DamageTakenEvent, ...], roles: Roles
-) -> list[tuple[int, int, str, str, int, float]]:
-    """(actor id, ability id, player name, ability name, amount, multiple of the median),
-    worst first.
+) -> list[_DamageOutlier]:
+    """Every player far above the median of one ability, worst first.
 
     Keyed by actor id throughout, not display name, so two players sharing a
     name are never conflated. The caller disambiguates the title with the
@@ -144,19 +169,19 @@ def _damage_outliers(
             continue
         baseline = median(took)
         for actor_id, amount in per_player.items():
-            multiple = amount / baseline
-            if multiple >= MEDIAN_MULTIPLE:
+            if amount / baseline >= MEDIAN_MULTIPLE:
                 outliers.append(
-                    (
-                        actor_id,
-                        ability_id,
-                        names.get(actor_id, f"Actor {actor_id}"),
-                        ability_names[ability_id],
-                        amount,
-                        multiple,
+                    _DamageOutlier(
+                        actor_id=actor_id,
+                        ability_id=ability_id,
+                        player_name=names.get(actor_id, f"Actor {actor_id}"),
+                        ability_name=ability_names[ability_id],
+                        amount=amount,
+                        median_amount=baseline,
+                        took_count=len(took),
                     )
                 )
-    return sorted(outliers, key=lambda row: -row[5])
+    return sorted(outliers, key=lambda row: -row.multiple)
 
 
 def analyse_players(
@@ -205,9 +230,15 @@ def analyse_players(
             )
         )
 
-    for rank, (actor_id, ability_id, name, ability, amount, multiple) in enumerate(
+    for rank, outlier in enumerate(
         _damage_outliers(run, damage_taken, roles)[:MAX_OUTLIERS_REPORTED]
     ):
+        actor_id = outlier.actor_id
+        ability_id = outlier.ability_id
+        name = outlier.player_name
+        ability = outlier.ability_name
+        amount = outlier.amount
+        multiple = outlier.multiple
         # Two players can share a display name; `display_names` disambiguates
         # with the actor id, matching the roster-wide rule used elsewhere.
         # `name` (from `_damage_outliers`) is the fallback for an actor id
@@ -234,6 +265,28 @@ def analyse_players(
                     "median is over the players who took at least one hit of this ability",
                     "unmitigated: before absorbs and mitigation",
                     class_and_spec,
+                ),
+                # The same figures the title and detail state, as labels and
+                # values a panel can lay out -- this finding's two sides side
+                # by side, which is what earns it a panel where
+                # `compare.spells.missing.*` has only one side and gets none.
+                # Both amounts are sums of logged hits and the last line is a
+                # count, so each is measured, which `FindingFact` spells as no
+                # tier at all. The multiple is the one division done here.
+                facts=(
+                    FindingFact(label="This player", value=f"{amount:,} unmitigated"),
+                    FindingFact(
+                        label="Group median", value=f"{outlier.median_amount:,.0f} unmitigated"
+                    ),
+                    FindingFact(
+                        label="Multiple",
+                        value=f"{multiple:.1f}x",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(
+                        label="Median over",
+                        value=f"{outlier.took_count} players who took it",
+                    ),
                 ),
                 ability_id=ability_id,
                 ability_name=ability,

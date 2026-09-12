@@ -2,7 +2,10 @@
 # ABOUTME: Two rules and no third: a defensive is measured against the run, anything else brings
 # ABOUTME: its figures with it on the finding.
 
+from tests.domain.analysis.test_players import a_run as an_analysed_run
+from tests.domain.analysis.test_players import hit as damage_hit
 from tests.domain.report.test_build_frame import a_pull, a_run
+from wowperf.domain.analysis.players import analyse_players
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding, FindingFact
@@ -97,6 +100,35 @@ def test_a_facts_own_tier_reaches_its_line_and_no_tier_stays_no_tier() -> None:
     )["interrupts.ability.0"].lines
     assert lines[0].tier is not None and lines[0].tier.label == "measured"
     assert lines[1].tier is None
+
+
+def test_a_damage_outlier_the_analyser_built_earns_a_panel() -> None:
+    """The seam, walked with a real finding rather than a hand-built one.
+
+    `players.damage.*` carries an ability id but was named in neither list of
+    the second-reading design, so nothing decided whether it got a panel and
+    nothing wired one. The producer sets `facts` now, and this is the test that
+    the family reaches a panel rather than only that facts in general do: a
+    hand-built fixture would pass on either side of that change.
+    """
+    damage = (
+        damage_hit(0, 100_000), damage_hit(1, 10_000), damage_hit(2, 10_000),
+        damage_hit(3, 10_000), damage_hit(4, 10_000),
+    )
+    findings = analyse_players(an_analysed_run(), (), (), (), damage)
+    outlier = next(f for f in findings if f.id.startswith("players.damage."))
+
+    panel = tooltips_by_finding_id((outlier,), a_loaded_run(), a_defensives_file())[outlier.id]
+    assert [(line.label, line.value) for line in panel.lines] == [
+        ("This player", "100,000 unmitigated"),
+        ("Group median", "10,000 unmitigated"),
+        ("Multiple", "10.0x"),
+        ("Median over", "5 players who took it"),
+    ]
+    # The divided figure carries its own tier and the logged sums carry none.
+    tiers = {line.label: line.tier for line in panel.lines}
+    assert tiers["Multiple"] is not None and tiers["Multiple"].label == "derived"
+    assert tiers["This player"] is None and tiers["Group median"] is None
 
 
 def test_a_finding_with_no_ability_and_no_facts_gets_no_panel() -> None:

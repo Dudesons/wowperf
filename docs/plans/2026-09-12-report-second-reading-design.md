@@ -226,6 +226,19 @@ Thirteen of this run's 34 findings carry an ability id, across five families:
 | `interrupts.ability.*` | 5 | new; see §7 |
 | `compare.spells.rate.*` | 1 | new: our rate against the reference's, both sides named |
 | `compare.uptime.self.*` | 1 | new: our boss-pull seconds against the reference's |
+| `players.damage.*` | — | added 2026-09-12: this player's total against the group median |
+
+> **Added 2026-09-12.** `players.damage.*` belongs in this table and was left out of it. The five
+> families above were taken from one run's findings, and that count of thirteen has never matched
+> the rows beneath it, which is how the omission survived. It qualifies on the same ground every
+> other row here does: it sets two figures side by side — a player's unmitigated total from one
+> ability against the median of the players who took it — and the analyser holds both at the
+> moment it divides them, so the panel states them instead of leaving a reader to divide the
+> title's multiple back out of the detail's amount. The multiple carries `derived` as the one
+> division; the two amounts and the count of players are read off the log and carry no tier of
+> their own. The panel states figures only: that a difference is not a mistake, and that no log
+> records whether a hit was avoidable, stay in the detail where §5.5's refusal of "avoidable
+> damage" put them.
 
 **Nothing is threaded into `build_report`, and no string is parsed back.** Planning found that
 the figures a panel wants are indeed all present, but present as prose and as evidence strings —
@@ -270,8 +283,8 @@ it was written.
 >
 > This settles that family and no other. `players.damage.*` also carries an ability id and is
 > named in neither list, and the category above does **not** cover it: it sets one player's
-> damage from an ability against the median of the players who took it, which is two sides.
-> Whether it should carry a panel is open.
+> damage from an ability against the median of the players who took it, which is two sides. It
+> was ruled on the same day and **does** carry a panel; see the addition to §6.2's table above.
 
 - **The death card heading.** Its ground was never answered: the heading names the killing blow
   and the recap row beneath it already carries that hit's own figures, with `hit_tooltip` on
