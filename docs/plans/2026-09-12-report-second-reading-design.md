@@ -207,6 +207,16 @@ requires.
 
 ### 6.2 The builders
 
+> **Amended 2026-09-12.** The table below over-counts the defensives panels. It promises
+> `ability_tooltip` for all five `defensives.ceiling.*` and `defensives.never.*` findings, and one
+> panel appeared on the page. The cause is not a defect: `run_ability_tooltip` abstains where
+> `resolve_aura` finds nothing, the three `defensives.never.*` findings name abilities their player
+> never cast, and the Warrior's Impending Victory is one of three abilities the page already says
+> "No aura data for it" about on its own timeline row. The abstention is right — a panel there
+> would print assumptions. What is wrong is the count, which counted findings rather than findings
+> whose ability resolves an aura. Recorded in
+> `docs/plans/2026-09-12-timeline-row-panels-design.md` §8.
+
 Thirteen of this run's 34 findings carry an ability id, across five families:
 
 | Family | Count | Panel |

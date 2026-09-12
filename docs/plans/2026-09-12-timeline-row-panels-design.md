@@ -241,11 +241,10 @@ rendered report on disk and the offline fixtures are enough to read every change
 four states; three of those four overlap, and the panel states a three-way partition with cover
 beside it instead.
 
-**§6.2's count is still outstanding.** That section promised `ability_tooltip` for all five
-`defensives.ceiling.*` and `defensives.never.*` findings, and one panel appeared on the live page.
-The cause is honest: `run_ability_tooltip` abstains where `resolve_aura` finds nothing, the three
-`defensives.never.*` findings name abilities their player never cast, and the Warrior's Impending
-Victory is one of three abilities the page already says "No aura data for it" about on its own
-timeline row. The abstention is correct; the count was wrong, because it counted findings rather
-than findings whose ability resolves an aura. Recorded here rather than fixed, because that file
-is not in this design's scope.
+**§6.2's count was wrong, and that section now carries an amendment note saying so.** It promised
+`ability_tooltip` for all five `defensives.ceiling.*` and `defensives.never.*` findings, and one
+panel appeared on the live page. The cause is honest: `run_ability_tooltip` abstains where
+`resolve_aura` finds nothing, the three `defensives.never.*` findings name abilities their player
+never cast, and the Warrior's Impending Victory is one of three abilities the page already says
+"No aura data for it" about on its own timeline row. The abstention is correct; the count was
+wrong, because it counted findings rather than findings whose ability resolves an aura.
