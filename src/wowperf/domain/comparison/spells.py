@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
@@ -365,16 +366,32 @@ def _missing_sample(
     return _one_row_per_sentence(findings)
 
 
-def _rate_sample(
-    our_name: str,
+def verdict_for(ours: float, their_median: float) -> Verdict:
+    """Which of the three branches a rate falls in, at the one bar both directions use.
+
+    `their_median` is never zero here: a member only contributes a rate after
+    clearing `MIN_CASTS_TO_COMPARE` over non-zero seconds.
+    """
+    if ours / their_median >= RATE_GAP_MULTIPLE:
+        return Verdict.ABOVE
+    if their_median / ours >= RATE_GAP_MULTIPLE:
+        return Verdict.BELOW
+    return Verdict.LEVEL
+
+
+def rate_measures(
     ours_on_bosses: dict[int, tuple[str, int]],
     our_boss_seconds: float,
     per_member: Sequence[tuple[float, dict[int, int]]],
-) -> list[Finding]:
-    """Abilities both sides cast, where the sample's median rate is materially higher."""
-    gaps = []
-    above = []
-    level: list[str] = []
+) -> tuple[AbilityRate, ...]:
+    """Every ability compared on boss pulls, with the verdict it earned.
+
+    The one place a boss cast rate is computed. `_rate_sample` turns these into
+    findings and `comparison.tables` turns them into table rows; computing them
+    twice is how a row and the table beneath it come to state different numbers
+    for one player.
+    """
+    measures: list[AbilityRate] = []
     for ability_id, (name, our_count) in ours_on_bosses.items():
         rates = [
             qualifying[ability_id] / their_boss_seconds * 60
@@ -384,81 +401,94 @@ def _rate_sample(
         if len(rates) < MIN_MEMBERS_WITH_ABILITY:
             continue
         our_rate = our_count / our_boss_seconds * 60
-        their_median = median(rates)
         if our_rate <= 0:
             continue
-        if our_rate / their_median >= RATE_GAP_MULTIPLE:
-            # Tested before the band, because every ability that reaches this
-            # bar is inside the band read the other way and would otherwise be
-            # filed as level. `their_median` cannot be zero: a member only
-            # contributes a rate after clearing `MIN_CASTS_TO_COMPARE`.
-            above.append(
-                (our_rate - their_median, ability_id, name, our_rate, their_median, rates)
-            )
-            continue
-        if their_median / our_rate < RATE_GAP_MULTIPLE:
-            # Compared against enough of the sample to argue from, and no gap
-            # wide enough to report. Collected rather than dropped: silence on
-            # the page read the same as never having been compared at all.
-            level.append(name)
-            continue
-        gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
-    gaps.sort(key=lambda row: row[0], reverse=True)
-    above.sort(key=lambda row: row[0], reverse=True)
-
-    findings = []
-    for _, ability_id, name, our_rate, their_median, rates in gaps:
-        low, high = observed_range(rates)
-        findings.append(
-            Finding(
-                id="compare.spells.rate",
-                title=(
-                    f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
-                    f"minute on bosses; {our_name} casts it {our_rate:.1f}"
-                ),
-                detail=(
-                    "Both rates are casts per minute of boss-pull time, which is the one "
-                    "stretch of a dungeon where every run fought the same encounter. The "
-                    "reference side is the median across the sample, not one parse, so a "
-                    "single busy or quiet run cannot carry the comparison alone."
-                ),
-                confidence=Confidence.DERIVED,
-                seconds_lost=None,
-                evidence=(
-                    f"ability {ability_id}",
-                    f"ours over {our_boss_seconds:.0f}s of boss pulls",
-                    f"range {low:.1f} to {high:.1f} casts a minute across "
-                    f"{len(rates)} top parses",
-                ),
-                # The same four numbers the title and the evidence above
-                # already state, as labels and values a panel can lay out.
-                # Both rates and the range are divisions this module did, so
-                # each says derived: an unset tier is what a panel draws
-                # measured with. The parse count is a count, and is not.
-                facts=(
-                    FindingFact(label="Ours", value=f"{our_rate:.1f} casts a minute",
-                                confidence=Confidence.DERIVED),
-                    FindingFact(label="Reference median",
-                                value=f"{their_median:.1f} casts a minute",
-                                confidence=Confidence.DERIVED),
-                    FindingFact(label="Observed range", value=f"{low:.1f} to {high:.1f}",
-                                confidence=Confidence.DERIVED),
-                    FindingFact(label="Sample", value=f"{len(rates)} top parses"),
-                ),
+        their_median = median(rates)
+        measures.append(
+            AbilityRate(
                 ability_id=ability_id,
-                ability_name=name,
+                name=name,
+                ours=our_rate,
+                their_median=their_median,
+                their_rates=tuple(rates),
+                stretch=Stretch.BOSS,
+                verdict=verdict_for(our_rate, their_median),
             )
         )
-    for _, ability_id, name, our_rate, their_median, rates in above:
-        findings.append(
-            _above_finding(
-                our_name, ability_id, name, our_rate, their_median, rates, our_boss_seconds
-            )
+    return tuple(measures)
+
+
+def _rate_sample(
+    our_name: str,
+    ours_on_bosses: dict[int, tuple[str, int]],
+    our_boss_seconds: float,
+    per_member: Sequence[tuple[float, dict[int, int]]],
+) -> list[Finding]:
+    """Abilities both sides cast, where the sample's median rate is materially higher."""
+    measures = rate_measures(ours_on_bosses, our_boss_seconds, per_member)
+    gaps = sorted(
+        (m for m in measures if m.verdict is Verdict.BELOW),
+        key=lambda m: m.their_median - m.ours,
+        reverse=True,
+    )
+    above = sorted(
+        (m for m in measures if m.verdict is Verdict.ABOVE),
+        key=lambda m: m.ours - m.their_median,
+        reverse=True,
+    )
+    level = [m.name for m in measures if m.verdict is Verdict.LEVEL]
+
+    findings = [_gap_finding(our_name, m, our_boss_seconds) for m in gaps]
+    findings += [
+        _above_finding(
+            our_name, m.ability_id, m.name, m.ours, m.their_median,
+            list(m.their_rates), our_boss_seconds,
         )
+        for m in above
+    ]
     rows = _one_row_per_sentence(findings)
     if level:
         rows.append(_level_finding(our_name, level))
     return rows
+
+
+def _gap_finding(our_name: str, measure: AbilityRate, our_boss_seconds: float) -> Finding:
+    """An ability the sample's median rate clears by `RATE_GAP_MULTIPLE`."""
+    low, high = observed_range(measure.their_rates)
+    return Finding(
+        id="compare.spells.rate",
+        title=(
+            f"{len(measure.their_rates)} top parses cast {measure.name} a median "
+            f"{measure.their_median:.1f} times a minute on bosses; "
+            f"{our_name} casts it {measure.ours:.1f}"
+        ),
+        detail=(
+            "Both rates are casts per minute of boss-pull time, which is the one "
+            "stretch of a dungeon where every run fought the same encounter. The "
+            "reference side is the median across the sample, not one parse, so a "
+            "single busy or quiet run cannot carry the comparison alone."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            f"ability {measure.ability_id}",
+            f"ours over {our_boss_seconds:.0f}s of boss pulls",
+            f"range {low:.1f} to {high:.1f} casts a minute across "
+            f"{len(measure.their_rates)} top parses",
+        ),
+        facts=(
+            FindingFact(label="Ours", value=f"{measure.ours:.1f} casts a minute",
+                        confidence=Confidence.DERIVED),
+            FindingFact(label="Reference median",
+                        value=f"{measure.their_median:.1f} casts a minute",
+                        confidence=Confidence.DERIVED),
+            FindingFact(label="Observed range", value=f"{low:.1f} to {high:.1f}",
+                        confidence=Confidence.DERIVED),
+            FindingFact(label="Sample", value=f"{len(measure.their_rates)} top parses"),
+        ),
+        ability_id=measure.ability_id,
+        ability_name=measure.name,
+    )
 
 
 def _above_finding(

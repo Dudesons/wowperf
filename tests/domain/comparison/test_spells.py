@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for the individual comparison: which spells and which build.
 # ABOUTME: Everything here is restricted to boss pulls, where the encounter is the same fight.
 
+from wowperf.domain.comparison.measures import Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import (
@@ -13,6 +14,7 @@ from wowperf.domain.comparison.spells import (
     compare_spells,
     compare_spells_sample,
     compare_talents,
+    rate_measures,
 )
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
@@ -858,3 +860,43 @@ def test_casting_somewhat_more_than_the_sample_is_not_reported() -> None:
     findings = compare_spells_sample(ours, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(f.id.startswith("compare.spells.above") for f in findings)
+
+
+def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -> None:
+    """The one place a boss cast rate is computed. The findings are a projection of
+    these, and so is the table, so a second computation would let a row and the
+    table beneath it disagree about one player's figure."""
+    ours_on_bosses = {METEOR: ("Meteor", 2), SHIFTING_POWER: ("Shifting Power", 3)}
+    per_member = [
+        (60.0, {METEOR: 6, SHIFTING_POWER: 3}),
+        (60.0, {METEOR: 8, SHIFTING_POWER: 3}),
+        (60.0, {METEOR: 4, SHIFTING_POWER: 3}),
+        (60.0, {METEOR: 10, SHIFTING_POWER: 3}),
+    ]
+
+    measures = {m.name: m for m in rate_measures(ours_on_bosses, 60.0, per_member)}
+
+    assert measures["Meteor"].ours == 2.0
+    assert measures["Meteor"].their_median == 7.0
+    assert measures["Meteor"].their_rates == (6.0, 8.0, 4.0, 10.0)
+    assert measures["Meteor"].verdict is Verdict.BELOW
+    assert measures["Meteor"].stretch is Stretch.BOSS
+    assert measures["Shifting Power"].verdict is Verdict.LEVEL
+
+
+def test_rate_measures_marks_an_ability_we_cast_far_more_as_above() -> None:
+    per_member = [(60.0, {METEOR: 6}), (60.0, {METEOR: 8}), (60.0, {METEOR: 4})]
+
+    measures = rate_measures({METEOR: ("Meteor", 20)}, 60.0, per_member)
+
+    assert [m.verdict for m in measures] == [Verdict.ABOVE]
+
+
+def test_rate_measures_skips_an_ability_too_few_of_the_sample_cast() -> None:
+    """Below MIN_MEMBERS_WITH_ABILITY there is no median to argue from, and the
+    table must show only what was actually compared."""
+    per_member = [(60.0, {METEOR: 6}), (60.0, {METEOR: 8}), (60.0, {}), (60.0, {})]
+
+    measures = rate_measures({METEOR: ("Meteor", 2)}, 60.0, per_member)
+
+    assert measures == ()
