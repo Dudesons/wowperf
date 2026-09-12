@@ -203,6 +203,37 @@ NOTHING_TRACKED_OR_TAKEN = (
     "recorded no damage they took or dealt, so there is nothing to draw."
 )
 
+NO_DAMAGE_TAKEN = (
+    "No damage taken is drawn: the log recorded none for this player. A flat track would read "
+    "as a run of zero-damage buckets rather than as an absence."
+)
+"""Said where the damage taken track's caption would sit, when none is drawn.
+
+The chart still renders on its other layers, so without this the blank is left
+for a reader to explain, and the likeliest explanation -- that the player did
+nothing -- is the one the absence does not support. The same abstention
+`NO_AURA_DATA` makes for an ability whose cover cannot be drawn.
+
+The claim is about the log rather than about the player, and deliberately so.
+`_damage_track` abstains on two causes -- no events for this actor, or every
+recorded hit fully avoided -- and "recorded no damage" is true of both without
+having to tell them apart.
+"""
+
+NO_DAMAGE_DONE = (
+    "No damage done is drawn: the run's graph carried none for this player. A flat track would "
+    "read as a run of empty buckets, which is a claim nobody measured."
+)
+"""The mirror of `NO_DAMAGE_TAKEN`, and not the same claim as it.
+
+Damage taken is read from an event stream, so its silence is a fact about the
+player. This track is read from `graph`, a separate response that can carry no
+series at all for a player who certainly dealt damage, so its silence is a fact
+about the data. Naming the graph rather than the log is what keeps the two
+apart on the page, and `_damage_done_track`'s other cause -- a series whose
+every bucket is zero -- is covered by the same words.
+"""
+
 LEGEND = (
     "A mark is a cast the log recorded. The stretch after it is the ability's cooldown, "
     "computed from its base length: talents shorten cooldowns and the log records no reset, "
@@ -870,6 +901,8 @@ def build_player_timeline(
         pull_label_y=BAND_Y - PULL_LABEL_GAP,
         damage=damage,
         damage_done=damage_done,
+        damage_abstention="" if damage else NO_DAMAGE_TAKEN,
+        damage_done_abstention="" if damage_done else NO_DAMAGE_DONE,
         cooldowns=rows,
         ticks=tuple(
             (round(x, PRECISION), label) for x, label in axis_ticks(span, scale, TRACK_ORIGIN_X)

@@ -1,9 +1,13 @@
 # The damage done track
 
-**Status:** Approved and implemented 2026-09-12. One section is not implemented: §5 and §6 test 5
-ask that a player with no series draws no track **and says so**, and only the absence shipped. The
-abstention is unwritten here and on the damage taken track beside it, which is why it is left open
-rather than closed for one track alone.
+**Status:** Approved and implemented 2026-09-12.
+
+The abstention of §5 and §6 test 5 shipped a day late and wider than this design asked. It was
+written for this track, and the damage taken track beside it had been equally silent since it was
+built, so both now state their own absence rather than leaving one explained and the other blank.
+They do not state the same thing: damage taken is read from an event stream, so its silence is a
+fact about the player, while this track is read from `graph`, which can carry no series at all for
+a player who certainly dealt damage, so its silence is a fact about the data.
 
 A second bar track on the player timeline, drawn from Warcraft Logs' own pre-aggregated series, so
 a reader can see whether a cooldown press produced anything.

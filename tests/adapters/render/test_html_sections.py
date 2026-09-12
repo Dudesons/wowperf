@@ -814,6 +814,29 @@ def test_a_timeline_draws_the_damage_done_bars() -> None:
     assert 'class="damage-done-bar"' in a_timeline_body()
 
 
+def test_an_undrawn_track_says_so_where_its_caption_would_sit() -> None:
+    # The abstention is decided in the domain and printed here. A chart that
+    # draws neither track is the one a reader is likeliest to misread, and the
+    # markup for it is the half the builder's own tests cannot reach.
+    timeline = a_drawn_timeline().model_copy(
+        update={
+            "damage": None,
+            "damage_done": None,
+            "damage_abstention": "No damage taken is drawn: the log recorded none.",
+            "damage_done_abstention": "No damage done is drawn: the graph carried none.",
+        }
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split("</style>", 1)[1]
+    assert "No damage taken is drawn: the log recorded none." in body
+    assert "No damage done is drawn: the graph carried none." in body
+    # Marked as an abstention rather than as a figure, which is what the
+    # italic `withheld` rule is for; `sub` puts it where a caption would sit.
+    assert body.count('<p class="sub withheld">') == 2
+    # And the bars it stands in for are genuinely gone.
+    assert 'class="damage-bar"' not in body
+    assert 'class="damage-done-bar"' not in body
+
+
 def test_a_timeline_names_the_damage_done_track_beside_it() -> None:
     assert "Damage done" in a_timeline_body()
 

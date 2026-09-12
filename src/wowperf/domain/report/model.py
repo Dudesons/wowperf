@@ -316,6 +316,13 @@ class PlayerTimeline(Frozen):
     # The same view model as `damage`: a track of bars scaled to this player's
     # own peak is the same object whichever direction the damage went.
     damage_done: DamageTrack | None = None
+    # Why its track is not drawn, said where that track's caption would sit.
+    # Empty whenever the track beside it is present: a caption and an
+    # abstention about one track state opposite things. The two are separate
+    # fields because the two absences are separate claims -- one about the
+    # event log, one about the graph response.
+    damage_abstention: str = ""
+    damage_done_abstention: str = ""
     cooldowns: tuple[CooldownRow, ...] = ()
     ticks: tuple[tuple[float, str], ...] = ()
     tick_y1: float = 0.0

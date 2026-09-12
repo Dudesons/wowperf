@@ -27,6 +27,8 @@ from wowperf.domain.report.player_timeline import (
     LABEL_X,
     LEGEND,
     NO_AURA_DATA,
+    NO_DAMAGE_DONE,
+    NO_DAMAGE_TAKEN,
     NO_PULLS_RECORDED,
     NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
@@ -1204,6 +1206,73 @@ def test_a_timeline_that_draws_the_track_does_grade_it() -> None:
     assert timeline.damage_done is not None
     assert timeline.badge_derived == badge_for(Confidence.DERIVED)
     assert timeline.badge_derived_caption == BADGE_DERIVED_CAPTION
+
+
+def test_a_chart_that_draws_neither_track_says_why_for_each_of_them() -> None:
+    """Absence stated, so the blank is not read as a run of nothing.
+
+    This is the abstention `NO_AURA_DATA` already makes for cover. A chart that
+    simply omits a track leaves a reader to supply their own reason, and the
+    likeliest one -- "they did nothing" -- is the reading neither track's
+    absence supports.
+    """
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    timeline = a_timeline(loaded, defensives=KIT)
+    # The chart renders on its rows alone; neither track has anything to draw.
+    assert timeline.section.state is SectionState.PRESENT
+    assert timeline.damage is None and timeline.damage_done is None
+
+    assert timeline.damage_abstention == NO_DAMAGE_TAKEN
+    assert timeline.damage_done_abstention == NO_DAMAGE_DONE
+
+
+def test_the_two_abstentions_are_not_interchangeable() -> None:
+    """Each names the source that came up empty, and they are not the same source.
+
+    The log records damage taken as events, so its silence is a measured fact
+    about the player. The graph is a separate response, and its silence is a
+    fact about the data -- it can carry no series for a player who certainly
+    dealt damage. Swapping the two would state each as the other's kind of
+    claim, and a test that only checked both were non-empty would not notice.
+    """
+    assert NO_DAMAGE_TAKEN != NO_DAMAGE_DONE
+    assert "log" in NO_DAMAGE_TAKEN and "graph" not in NO_DAMAGE_TAKEN
+    assert "graph" in NO_DAMAGE_DONE
+    # Neither says the player did nothing, which is the reading they exist to
+    # prevent: the absence is attributed to what was read, not to the player.
+    for sentence in (NO_DAMAGE_TAKEN, NO_DAMAGE_DONE):
+        for forbidden in ("did nothing", "dealt nothing", "took nothing", "you did"):
+            assert forbidden not in sentence.lower(), sentence
+
+
+def test_a_drawn_track_states_no_abstention_for_itself() -> None:
+    """The two must not appear together: a caption and an abstention about one
+    track say opposite things, and only one of them can be about the page."""
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_taken=(a_hit(1, 100_000, 500),),
+        damage_done=(a_done_series(1, (600,)),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    assert timeline.damage is not None and timeline.damage_done is not None
+    assert timeline.damage_abstention == ""
+    assert timeline.damage_done_abstention == ""
+
+
+def test_one_track_drawn_leaves_only_the_other_ones_abstention() -> None:
+    # The two are decided separately, so a fixture with both absent or both
+    # present cannot tell a pair of independent guards from one shared guard.
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_done=(a_done_series(1, (600,)),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    assert timeline.damage is None and timeline.damage_done is not None
+    assert timeline.damage_abstention == NO_DAMAGE_TAKEN
+    assert timeline.damage_done_abstention == ""
 
 
 def test_the_damage_done_track_is_drawn_clear_of_the_track_above_it() -> None:
