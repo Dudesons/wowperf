@@ -14,7 +14,7 @@ from wowperf.domain.comparison.spells import (
     casts_in,
     their_actor_id,
 )
-from wowperf.domain.comparison.statistics import median, observed_range
+from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
 from wowperf.domain.model import LoadedRun, Player, Run
 
@@ -132,7 +132,7 @@ def compare_trash_spells_sample(
         )
 
     if not ours_aligned:
-        return []
+        return [_unavailable_row(our_name, len(sample.members))]
 
     # Our own denominator is the union of every pack that aligned with anybody:
     # a pack one reference skipped is still a pack we fought and were compared on.
@@ -141,9 +141,29 @@ def compare_trash_spells_sample(
         pull.duration_seconds for pull in ours.run.pulls if pull.index in our_pulls
     )
     if our_seconds <= 0:
-        return []
+        return [_unavailable_row(our_name, len(sample.members))]
     ours_on_trash = casts_in(ours.casts, our_player.actor_id, our_pulls)
     return _rate_rows(our_name, ours_on_trash, our_seconds, len(our_pulls), per_member)
+
+
+def _unavailable_row(our_name: str, total: int) -> Finding:
+    """No reference shared enough trash with our route to state a rate."""
+    return Finding(
+        id="compare.spells.trash.unavailable",
+        title=f"Trash cast rates could not be compared for {our_name}",
+        detail=(
+            "A trash comparison needs packs both routes fought, matched by the enemy types in "
+            "them, and enough time on them to divide by. No reference in the sample reached "
+            "that, so no trash rates are reported rather than rates from packs only one group "
+            "fought. Boss-pull rates are unaffected and are reported above."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            f"{count_phrase(0, total)} references shared enough trash to compare",
+            f"a side must reach {MIN_ALIGNED_TRASH_SECONDS:.0f}s of aligned trash",
+        ),
+    )
 
 
 def _rate_rows(

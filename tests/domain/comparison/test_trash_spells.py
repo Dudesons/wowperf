@@ -289,3 +289,26 @@ def test_a_single_level_ability_on_trash_is_counted_in_the_singular() -> None:
     row = next(f for f in findings if f.id == "compare.spells.trash.level")
     assert row.title.startswith("1 ability ")
     assert "1 aligned pack " in row.title
+
+
+def test_no_comparable_reference_says_so_rather_than_going_quiet() -> None:
+    """A withheld comparison and a comparison that found nothing must not look alike."""
+    no_shared_packs = a_loaded(
+        OURS,
+        a_pull(0, 60.0, 900, 901),
+        casts=(cast(693, BLOOD_BOIL, "Blood Boil", 100, 0),),
+    )
+
+    findings = compare_trash_spells_sample(no_shared_packs, OURS, OUR_NAME, TRASH_SAMPLE)
+
+    row = next(f for f in findings if f.id == "compare.spells.trash.unavailable")
+    assert OUR_NAME in row.title
+    assert row.confidence is Confidence.DERIVED
+
+
+def test_an_empty_sample_stays_silent_here() -> None:
+    """service.compare already says compare.parse.unavailable once for a sample that
+    does not exist. Saying it again in this family prints one absence twice."""
+    findings = compare_trash_spells_sample(OURS_LOADED, OURS, OUR_NAME, ParseSample())
+
+    assert findings == []
