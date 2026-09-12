@@ -84,12 +84,18 @@ For each compared player and each member of their parse sample:
    could have taken or left, so `Pull.is_a_pack` has already excluded pulls with no recorded
    enemies and the sub-`MIN_PACK_SECONDS` fragments Warcraft Logs leaves when it cuts one
    engagement in two.
-3. Our seconds: the summed `duration_seconds` of the distinct pulls of ours in that set.
+3. Our seconds: the summed `duration_seconds` of the **distinct** pulls of ours those matches
+   name. **De-duplicate by `ours_index` before summing.** `align_pulls` runs a second sweep
+   after its main pass, pairing each of their trash pulls that nobody claimed back to the best
+   counterpart among ours, with nothing marked as taken. One chain-pulled stretch of ours can
+   therefore appear in several matches — which is the whole point of containment matching — and
+   counting its duration once per match would inflate our own denominator and depress our own
+   rate. The error makes the player look worse than they were.
 4. Their seconds: the summed `duration_seconds` of the distinct pulls of **theirs** those
-   matches name. **De-duplicate by `theirs_index` before summing.** Several of our pulls can
-   match one of theirs, and counting that pull once per match would inflate their denominator
-   and depress their rate — which would flatter our own side, the worst direction for an error
-   in a report a player reads about themselves.
+   matches name. Their indices are already unique: the main pass claims each counterpart in
+   `taken_theirs`, and the sweep-back visits only unclaimed pulls. De-duplicating this side is
+   therefore defensive rather than load-bearing, and the code should say so rather than imply
+   a hazard that the matching rules out.
 5. Count each side's casts inside exactly those pull indices.
 
 A member whose alignment yields less than `MIN_ALIGNED_TRASH_SECONDS` on either side
@@ -194,8 +200,10 @@ optional; without it this posture is indefensible.
 
 Per CLAUDE.md, all three levels, no exceptions.
 
-- **Unit.** Alignment to denominator, including the de-duplication which is the defect
-  most likely to ship silently and in the direction that flatters us (§5, step 4). The
+- **Unit.** Alignment to denominator, including the de-duplication of our own pull indices
+  (§5, step 3) — the defect most likely to ship silently, because a plausible implementation
+  that sums over `matched` directly passes every one-to-one fixture and only fails where the
+  sweep-back produced a repeat. A fixture must reproduce that sweep-back. The
   `MIN_ALIGNED_TRASH_SECONDS` floor. Each threshold's boundary. The level and unavailable rows,
   including that an ability below `MIN_MEMBERS_WITH_ABILITY` is never called level.
 - **Integration.** The three families through `compare_spells_sample` and out to the findings
