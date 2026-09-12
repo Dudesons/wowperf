@@ -1,0 +1,73 @@
+name: A finding looks wrong
+description: The report said something you believe is not true of the run
+labels: ["finding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please do not attach the findings JSON or the HTML report.** Both carry the real
+        character names of everyone in your group, and this issue is public. The report code
+        below is enough for anyone to reproduce what you saw.
+
+  - type: input
+    id: report
+    attributes:
+      label: Report code or URL
+      description: From the address bar on Warcraft Logs. The log must be public or unlisted.
+      placeholder: https://www.warcraftlogs.com/reports/aBc123XyZ
+    validations:
+      required: true
+
+  - type: input
+    id: fight
+    attributes:
+      label: Fight number
+      description: The `--fight N` you passed, or "only one key in the report".
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: The command you ran
+      placeholder: uv run wowperf analyze <url> --all-players
+    validations:
+      required: true
+
+  - type: textarea
+    id: finding
+    attributes:
+      label: Which finding, and what it said
+      description: >
+        Name the tab and the card. Quote the sentence if you can — but replace your
+        groupmates' names with their class or role.
+      placeholder: |
+        Deaths tab, third death card: said the healer's defensive was "ready" at the moment
+        of death.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you believe actually happened
+      description: >
+        The important half. What do you know about the run that the report got wrong, and how
+        do you know it?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: What the finding was labelled
+      description: >
+        Every finding carries a badge. A wrong `measured` finding is a bug in the code; a wrong
+        `inferred` one may just be a judgement worth arguing about.
+      options:
+        - measured
+        - derived
+        - inferred
+        - did not notice
+    validations:
+      required: true

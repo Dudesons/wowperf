@@ -7,6 +7,28 @@ description: Use when given a Warcraft Logs Mythic+ URL to analyse — runs the 
 
 You are given a Warcraft Logs URL. You hand back one HTML file and say what it found.
 
+## Before the first run
+
+Only on a clone that has never been run. Both checks are cheap and both stay passed, so skip
+them once you have seen the tool work in this directory.
+
+- **Dependencies.** Run `uv sync` if `.venv/` is absent. `uv` is the only toolchain here; there
+  is no pip and no hand-managed virtualenv.
+- **Credentials.** The tool reads `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` from the environment,
+  or from a `.env` in the directory the command runs from. If that file is absent, copy
+  `.env.example` to `.env` and ask the person to paste in the two values; they create a client of
+  their own at <https://www.warcraftlogs.com/api/clients/>. It takes a minute and is free.
+
+**Never read, echo, print or commit those two values**, and never put them in a command line.
+Confirm the file has them by whether the tool works, not by opening it.
+
+If the tool reports missing credentials, this is the reason, and the message names the file to
+copy. Walk the person through it rather than working around it — there is no way to analyse a run
+without an API client of their own.
+
+A run is analysable only if the report is public or unlisted. A report the owner set to private
+needs a Warcraft Logs login this project does not implement; say so plainly rather than retrying.
+
 ## The workflow
 
 1. **Run the tool.**

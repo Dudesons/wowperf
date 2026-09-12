@@ -73,6 +73,17 @@ def test_every_flag_the_command_offers_is_named_in_the_workflow() -> None:
     assert missing == [], f"offered by the command but never named in the skill: {missing}"
 
 
+def test_the_template_the_workflow_tells_you_to_copy_is_one_the_repository_ships() -> None:
+    # The workflow opens by sending a reader to copy a template into place. A
+    # rename that misses the skill sends them to a file that is not there, and
+    # the failure surfaces as "no credentials" rather than as a missing file.
+    workflow = ANALYZING_SKILL.read_text(encoding="utf-8")
+    templates = set(re.findall(r"`([\w.-]+\.example)`", workflow))
+    assert templates, "the workflow names no template to copy, so setup is undocumented"
+    missing = sorted(name for name in templates if not (REPO_ROOT / name).is_file())
+    assert missing == [], f"named in the workflow but not shipped: {missing}"
+
+
 def paragraph_naming(marker: str) -> str:
     """The one paragraph of the interpretation skill that contains `marker`.
 
