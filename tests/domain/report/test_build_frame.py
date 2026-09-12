@@ -263,6 +263,32 @@ def test_no_seconds_formats_as_nothing_rather_than_zero() -> None:
     assert format_seconds(None) is None
 
 
+def test_a_negative_figure_counts_back_from_zero_rather_than_wrapping() -> None:
+    """Floor division and modulo disagree about sign, and the result reads as a
+    time that is not close to the one meant.
+
+    `-6 // 60` is -1 and `-6 % 60` is 54, so six seconds before an origin
+    printed as "-1:54" -- off by nearly two minutes, and in the direction that
+    makes it look like a real figure rather than a bug. It also ordered wrongly:
+    across the minute boundary an earlier moment printed as the later one.
+    """
+    assert format_seconds(-6.0) == "-0:06"
+    assert format_seconds(-9.8) == "-0:10"
+    assert format_seconds(-110.0) == "-1:50"
+    assert format_seconds(-117.0) == "-1:57"
+    # Zero keeps no sign, and the boundary does not gain one by rounding.
+    assert format_seconds(-0.4) == "0:00"
+
+
+def test_negative_figures_keep_their_order_when_formatted() -> None:
+    # The defect this replaces was not only a wrong figure: -10 printed as
+    # "-1:50" and -3 as "-1:57", so a reader comparing two hovers read the
+    # earlier moment as the later one.
+    marks = [-117.0, -110.0, -60.0, -6.0, 0.0, 6.0]
+    formatted = [format_seconds(second) for second in marks]
+    assert formatted == ["-1:57", "-1:50", "-1:00", "-0:06", "0:00", "0:06"]
+
+
 def test_run_seconds_spans_first_pull_start_to_last_pull_end() -> None:
     run = a_run(pulls=(a_pull(0, 10_000, 40_000), a_pull(1, 50_000, 130_000)))
     assert run_seconds(run) == 120.0

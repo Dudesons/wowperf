@@ -45,11 +45,22 @@ def format_seconds(seconds: float | None) -> str | None:
 
     `None` stays `None` rather than becoming "0:00": a finding with no honest
     seconds figure must not read as one that cost no time.
+
+    A negative figure counts back from zero, and the sign is taken off before
+    the split rather than left to `//` and `%`. Those two disagree about which
+    way to round a negative: `-6 // 60` is -1 and `-6 % 60` is 54, so six
+    seconds before an origin printed as "-1:54" -- wrong by nearly two minutes,
+    and wrong in the direction that looks like a real reading rather than a
+    bug. It also inverted the order across a minute boundary, which is how it
+    was found: two damage buckets six seconds apart printed as "-1:50" and
+    "-1:57", so the earlier one read as the later.
     """
     if seconds is None:
         return None
     whole = int(round(seconds))
-    return f"{whole // 60}:{whole % 60:02d}"
+    sign = "-" if whole < 0 else ""
+    whole = abs(whole)
+    return f"{sign}{whole // 60}:{whole % 60:02d}"
 
 
 def finding_by_id(findings: Sequence[Finding], finding_id: str) -> Finding | None:
