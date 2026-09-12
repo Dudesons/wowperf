@@ -5,8 +5,16 @@ from tests.domain.report.test_build_frame import NO_DEFENSIVES, a_pull, a_run
 from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldowns
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
+from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun
-from wowperf.domain.report.model import PlayerTimeline, SectionState, Span
+from wowperf.domain.report.frame import badge_for
+from wowperf.domain.report.model import (
+    CooldownRow,
+    PlayerTimeline,
+    SectionState,
+    Span,
+    TooltipLine,
+)
 from wowperf.domain.report.player_timeline import (
     BADGE_INFERRED_CAPTION,
     BADGE_MEASURED_CAPTION,
@@ -16,6 +24,7 @@ from wowperf.domain.report.player_timeline import (
     LABEL_UNITS_PER_CHARACTER,
     LABEL_X,
     LEGEND,
+    NO_AURA_DATA,
     NO_PULLS_RECORDED,
     NOTHING_TRACKED_OR_TAKEN,
     PRECISION,
@@ -813,25 +822,38 @@ def a_covered_run(bands: tuple[AuraBand, ...], casts: tuple[CastEvent, ...]) -> 
     )
 
 
-def test_a_cooldown_rows_hover_states_its_presses_and_its_cover() -> None:
+def a_panel_line(row: CooldownRow, label: str) -> TooltipLine:
+    """The one line of a row's panel with this label, or a clear failure."""
+    assert row.tooltip is not None
+    matches = [line for line in row.tooltip.lines if line.label == label]
+    assert len(matches) == 1, f"{label} appears {len(matches)} times"
+    return matches[0]
+
+
+# Restates test_a_cooldown_rows_hover_states_its_presses_and_its_cover, which held
+# the same two figures as one line of plain text on a native SVG title.
+def test_a_cooldown_rows_panel_states_its_presses_and_its_cover() -> None:
     loaded = a_covered_run(
         bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
         casts=(a_cast(1, SHIELD.ability_id, 300_000),),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == "Icebound Fortitude — 1 press, 8.0 s of cover"
+    assert a_panel_line(row, "Presses").value == "1"
+    assert a_panel_line(row, "Buff up").value == "8.0 s"
 
 
-def test_a_cooldown_rows_hover_counts_every_press() -> None:
+# Restates test_a_cooldown_rows_hover_counts_every_press.
+def test_a_cooldown_rows_panel_counts_every_press() -> None:
     loaded = a_covered_run(
         bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
         casts=tuple(a_cast(1, SHIELD.ability_id, at) for at in (100_000, 300_000, 500_000)),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == "Icebound Fortitude — 3 presses, 8.0 s of cover"
+    assert a_panel_line(row, "Presses").value == "3"
 
 
-def test_a_cooldown_rows_hover_sums_every_window_the_buff_was_up() -> None:
+# Restates test_a_cooldown_rows_hover_sums_every_window_the_buff_was_up.
+def test_a_cooldown_rows_panel_sums_every_window_the_buff_was_up() -> None:
     loaded = a_covered_run(
         bands=(
             AuraBand(start_ms=100_000, end_ms=108_000),
@@ -840,10 +862,11 @@ def test_a_cooldown_rows_hover_sums_every_window_the_buff_was_up() -> None:
         casts=tuple(a_cast(1, SHIELD.ability_id, at) for at in (100_000, 300_000)),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == "Icebound Fortitude — 2 presses, 10.5 s of cover"
+    assert a_panel_line(row, "Buff up").value == "10.5 s"
 
 
-def test_a_cooldown_rows_hover_counts_only_the_cover_the_drawing_shows() -> None:
+# Restates test_a_cooldown_rows_hover_counts_only_the_cover_the_drawing_shows.
+def test_a_cooldown_rows_panel_counts_only_the_cover_the_drawing_shows() -> None:
     """The figure is the drawn windows, never the aura table's own total.
 
     A buff still up when the axis ends is clipped where the drawing clips it,
@@ -855,13 +878,15 @@ def test_a_cooldown_rows_hover_counts_only_the_cover_the_drawing_shows() -> None
         casts=(a_cast(1, SHIELD.ability_id, 595_000),),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == "Icebound Fortitude — 1 press, 5.0 s of cover"
+    assert a_panel_line(row, "Buff up").value == "5.0 s"
 
 
+# Restates test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cover,
+# which held the same distinction as the tail of a native title's one line.
 def test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cover() -> None:
     """An absence of aura data is not a buff that was never up.
 
-    The row draws no cover in either case, so the hover is the only place the
+    The row draws no cover in either case, so the panel is the only place the
     two can be told apart, and reporting the missing table as zero seconds
     would state as measured a fact nobody measured.
     """
@@ -870,16 +895,48 @@ def test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cove
         casts=(a_cast(1, SHIELD.ability_id, 300_000),),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == (
-        "Icebound Fortitude — 1 press. No aura data for it, so its cover is not drawn."
-    )
-    assert "0.0 s of cover" not in row.hover
+    assert row.tooltip is not None
+    assert row.tooltip.note == NO_AURA_DATA
+    assert [line.label for line in row.tooltip.lines if line.label == "Buff up"] == []
 
 
+# Restates test_a_cooldown_row_whose_aura_was_never_up_reports_no_seconds_of_cover.
 def test_a_cooldown_row_whose_aura_was_never_up_reports_no_seconds_of_cover() -> None:
     loaded = a_covered_run(bands=(), casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert row.hover == "Icebound Fortitude — 1 press, 0.0 s of cover"
+    assert a_panel_line(row, "Buff up").value == "0.0 s"
+    assert row.tooltip is not None
+    assert row.tooltip.note == ""
+
+
+def test_a_cooldown_rows_panel_grades_the_assumed_figures_and_not_the_counted_ones() -> None:
+    """`TooltipLine.tier` means measured when it is None, so an ungraded share
+    would badge an assumed cooldown as something read from the log. The three
+    shares rest on a base cooldown from `data/` that talents shorten and the log
+    never records, which is the claim the chart's own inferred badge grades."""
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    inferred = badge_for(Confidence.INFERRED)
+    assert a_panel_line(row, "Presses").tier is None
+    assert a_panel_line(row, "Buff up").tier is None
+    for label in ("Not judged", "On cooldown", "Ready and unpressed"):
+        assert a_panel_line(row, label).tier == inferred
+
+
+def test_a_cooldown_rows_panel_reports_the_share_the_partition_computed() -> None:
+    """One press at 300s of a 600s run, on a 180s cooldown: 30% unjudged,
+    30% on cooldown, and 40% of the run ready and never pressed."""
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert a_panel_line(row, "Not judged").value == "30%"
+    assert a_panel_line(row, "On cooldown").value == "30%"
+    assert a_panel_line(row, "Ready and unpressed").value == "40%"
 
 
 def test_a_pull_bands_hover_names_the_pull_and_how_long_it_ran() -> None:

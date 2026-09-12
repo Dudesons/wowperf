@@ -257,6 +257,15 @@ class CooldownRow(Frozen):
     bare rectangles against a single name, so this is the only place a reader
     can learn what those rectangles are worth.
     """
+    tooltip: Tooltip | None = None
+    """The row's figures as the page's own panel: presses, the three states the
+    run divides into, and the cover the buff earned.
+
+    A native SVG title carries no badge, which is why `hover` states measured
+    figures only. This carries tiers, so it states the assumed figures too --
+    which is what promoting the row to a panel buys, and not merely a change of
+    styling.
+    """
     baseline_y: float = 0.0
     label_y: float = 0.0
     presses: tuple[Press, ...] = ()

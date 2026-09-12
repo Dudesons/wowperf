@@ -21,6 +21,8 @@ from wowperf.domain.report.model import (
     Span,
     StateKey,
     TimelineBlock,
+    Tooltip,
+    TooltipLine,
 )
 from wowperf.domain.report.timeline import (
     MIN_BLOCK_WIDTH,
@@ -553,6 +555,40 @@ def _cooldown_hover(
     return f"{label} — {counted}, {seconds:.1f} s of cover"
 
 
+def _row_panel(
+    label: str,
+    presses: int,
+    bands: tuple[tuple[int, int], ...] | None,
+    shares: tuple[int, int, int],
+) -> Tooltip:
+    """What one row's rectangles are worth, as the page's own panel.
+
+    The counted figures carry no tier, which is this panel's way of saying
+    measured. The three shares carry `inferred`, because the cooldown they
+    divide by is a base value from `data/` that talents shorten and the log
+    never records a reset -- the same claim `BADGE_INFERRED_CAPTION` grades on
+    the chart.
+
+    `bands` of None is not an empty tuple: the first says no aura table covers
+    this ability, the second that a table covered it and recorded no window.
+    The row draws nothing either way, so the note is the only place a reader
+    can tell them apart, and printing zero seconds for the first would state as
+    measured a thing nobody measured.
+    """
+    not_judged, on_cooldown, ready = shares
+    inferred = badge_for(Confidence.INFERRED)
+    lines = [
+        TooltipLine(label="Presses", value=str(presses)),
+        TooltipLine(label="Not judged", value=f"{not_judged}%", tier=inferred),
+        TooltipLine(label="On cooldown", value=f"{on_cooldown}%", tier=inferred),
+        TooltipLine(label="Ready and unpressed", value=f"{ready}%", tier=inferred),
+    ]
+    if bands is not None:
+        seconds = sum(end - start for start, end in bands) / 1000
+        lines.append(TooltipLine(label="Buff up", value=f"{seconds:.1f} s"))
+    return Tooltip(lines=tuple(lines), note="" if bands is not None else NO_AURA_DATA)
+
+
 def _cooldown_rows(
     casts: tuple[CastEvent, ...],
     abilities: tuple[CooldownAbility, ...],
@@ -594,34 +630,41 @@ def _cooldown_rows(
         bands = _cover_bands(
             ability.ability_id, ability.name, auras, origin_ms, span_seconds
         )
+        unavailable = tuple(
+            Span(
+                x=round(_track_x((at - origin_ms) / 1000, scale), PRECISION),
+                # Clamped to the time remaining in the run after this press, not
+                # to the run's whole length: the ability can only be judged
+                # unavailable up to the axis end, never past it.
+                width=round(
+                    min(
+                        ability.cooldown_seconds,
+                        max(0.0, span_seconds - (at - origin_ms) / 1000),
+                    )
+                    * scale,
+                    PRECISION,
+                ),
+            )
+            for at in presses
+        )
+        not_judged = Span(x=TRACK_ORIGIN_X, width=not_judged_width)
         rows.append(
             CooldownRow(
                 label=ability.name,
                 ability_id=ability.ability_id,
                 hover=_cooldown_hover(ability.name, len(presses), bands),
+                tooltip=_row_panel(
+                    ability.name,
+                    len(presses),
+                    bands,
+                    _row_shares(not_judged, unavailable),
+                ),
                 baseline_y=FIRST_ROW_Y + len(rows) * ROW_HEIGHT,
                 # The label sits on the row's own middle, not on its top edge:
                 # a baseline at the top would draw the glyphs over the row above.
                 label_y=round(FIRST_ROW_Y + len(rows) * ROW_HEIGHT + ROW_HEIGHT / 2, PRECISION),
                 presses=tuple(press_at(at) for at in presses),
-                unavailable=tuple(
-                    Span(
-                        x=round(_track_x((at - origin_ms) / 1000, scale), PRECISION),
-                        # Clamped to the time remaining in the run after this
-                        # press, not to the run's whole length: the ability can
-                        # only be judged unavailable up to the axis end, never
-                        # past it.
-                        width=round(
-                            min(
-                                ability.cooldown_seconds,
-                                max(0.0, span_seconds - (at - origin_ms) / 1000),
-                            )
-                            * scale,
-                            PRECISION,
-                        ),
-                    )
-                    for at in presses
-                ),
+                unavailable=unavailable,
                 # A cooldown's own end is the moment the ability came back --
                 # marked only when that moment falls before the axis does. A
                 # cooldown still running when the run ends would need a tick
@@ -637,7 +680,7 @@ def _cooldown_rows(
                     )
                     if end < span_seconds
                 ),
-                not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
+                not_judged=not_judged,
                 cover=_cover_spans(bands, scale, origin_ms),
             )
         )
