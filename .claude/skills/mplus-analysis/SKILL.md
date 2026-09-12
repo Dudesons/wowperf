@@ -261,10 +261,15 @@ invent a better-sounding one.
 `out/<code>-<fight>.findings.json` carries the run's metadata (`report_code`, `fight_id`,
 `dungeon_name`, `keystone_level`, `keystone_time_seconds`, `in_time`, `player`), a `comparison`
 block, the `findings_are_ranked_not_additive` warning, and the findings themselves — each with an
-`id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `pull_index`,
-an `ability_id`, an `ability_name`, a `quantifier` and a `player_slug`. Every finding carries the
-last of those, and it is empty on any finding that is a statement about the run rather than about
-one player: a route, a tempo or a confound belongs to nobody.
+`id`, a `title`, a `detail`, a `confidence`, a `seconds_lost`, an `evidence` list, a `facts` list,
+a `pull_index`, an `ability_id`, an `ability_name`, a `quantifier` and a `player_slug`. Every
+finding carries the last of those, and it is empty on any finding that is a statement about the
+run rather than about one player: a route, a tempo or a confound belongs to nobody.
+
+`facts` holds the same figures the `evidence` states in prose, as a `label`, a `value` and an
+optional `confidence` of the line's own — what the page lays out in the hover panel at the
+finding's ability name. It says nothing `evidence` does not; read either, and never both as two
+measurements.
 
 `comparison.references` lists every candidate the sample considered, loaded or not, each carrying
 its `axis` (`speed` or `parse`), the `report_code`, `fight_id` and `keystone_level` that name it,

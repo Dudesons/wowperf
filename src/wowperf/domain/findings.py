@@ -22,6 +22,25 @@ class Confidence(StrEnum):
     INFERRED = "inferred"
 
 
+class FindingFact(Frozen):
+    """One labelled figure a finding carries, for a panel to render.
+
+    A finding states its figures twice already: in a title a person reads and
+    in evidence strings a person scans. A hover panel wants them a third way,
+    as labels and values, and the only alternative was for the report to parse
+    back strings the analysis had just formatted -- "range 0.7 to 2.1 casts a
+    minute across 5 top parses" taken apart into four numbers again.
+
+    `confidence` is None where the finding's own badge grades the figure. Set
+    it only where one line belongs to a different tier than its neighbours: an
+    assumption read from a data file beside a count read from the log.
+    """
+
+    label: str
+    value: str
+    confidence: Confidence | None = None
+
+
 class Finding(Frozen):
     id: str
     title: str
@@ -29,6 +48,10 @@ class Finding(Frozen):
     confidence: Confidence
     seconds_lost: float | None = None
     evidence: tuple[str, ...] = ()
+    # The same figures the evidence states in prose, as labels and values a
+    # hover panel can lay out. Empty on a finding with nothing a panel would
+    # add to what its card already prints.
+    facts: tuple[FindingFact, ...] = ()
     pull_index: int | None = None
     # The ability this finding is about, for the icon the page draws at its name.
     # `ability_id` is None on a finding that names no single ability; `ability_name`

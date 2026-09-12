@@ -753,8 +753,8 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
     assert "trash.overage" in sentence
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
-            "id", "title", "detail", "confidence", "seconds_lost", "evidence", "pull_index",
-            "ability_id", "ability_name", "quantifier", "player_slug",
+            "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",
+            "pull_index", "ability_id", "ability_name", "quantifier", "player_slug",
         }
 
 

@@ -4,7 +4,13 @@
 import pytest
 from pydantic import ValidationError
 
-from wowperf.domain.findings import Confidence, Finding, quantifier_for, rank_findings
+from wowperf.domain.findings import (
+    Confidence,
+    Finding,
+    FindingFact,
+    quantifier_for,
+    rank_findings,
+)
 
 
 def a_finding(finding_id: str, seconds_lost: float | None) -> Finding:
@@ -57,6 +63,25 @@ def test_findings_without_a_time_cost_rank_last_in_stable_order() -> None:
 )
 def test_the_quantifier_reads_the_ratio(matching: int, total: int, expected: str) -> None:
     assert quantifier_for(matching, total) == expected
+
+
+def test_a_finding_carries_no_facts_by_default() -> None:
+    # Most findings have nothing a hover panel would add to what their card
+    # already prints.
+    assert a_finding("x", None).facts == ()
+
+
+def test_a_fact_may_carry_its_own_confidence_tier() -> None:
+    # A panel mixes tiers -- an assumed cooldown beside a measured count -- so
+    # a tier belongs to the line, not to the panel.
+    fact = FindingFact(label="Base cooldown", value="25 s", confidence=Confidence.INFERRED)
+    assert fact.confidence is Confidence.INFERRED
+
+
+def test_a_fact_claims_no_tier_unless_it_is_given_one() -> None:
+    # The finding's own badge grades it otherwise. A fact defaulting to
+    # measured would stamp that word on figures nobody graded.
+    assert FindingFact(label="Presses", value="6").confidence is None
 
 
 def test_a_finding_carries_no_quantifier_unless_it_is_given_one() -> None:
