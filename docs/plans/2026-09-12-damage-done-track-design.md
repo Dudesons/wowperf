@@ -1,5 +1,10 @@
 # The damage done track
 
+**Status:** Approved and implemented 2026-09-12. One section is not implemented: §5 and §6 test 5
+ask that a player with no series draws no track **and says so**, and only the absence shipped. The
+abstention is unwritten here and on the damage taken track beside it, which is why it is left open
+rather than closed for one track alone.
+
 A second bar track on the player timeline, drawn from Warcraft Logs' own pre-aggregated series, so
 a reader can see whether a cooldown press produced anything.
 

@@ -253,10 +253,33 @@ it was written.
 
 ### 6.3 What still carries no tooltip
 
+> **Amended 2026-09-12.** A third category, added after `compare.spells.missing.*` was found to
+> sit in neither list: it carries an ability id, so "findings with no ability" below does not
+> reach it, and §6.2's table does not name it, so it was unaddressed rather than decided. The
+> ruling is that it carries no panel.
+>
+> The category is **a comparison with only one side**. Every family in §6.2's table sets two
+> figures beside each other — our rate against theirs, our boss-pull seconds against theirs — and
+> that is the whole of what a panel does which the card's prose does not. This family's own side
+> is zero: the title already says the player never cast the ability anywhere in the run, and
+> there is no second figure to lay beside the reference's count. Two things follow that make the
+> absence cost nothing. The card's `evidence` list is rendered on the page, so a panel here would
+> repeat three lines a reader already has without hovering. And nothing reads as broken for want
+> of one: `.ability` is styled identically whether or not a panel is attached, so no affordance
+> is offered and left unanswered.
+>
+> This settles that family and no other. `players.damage.*` also carries an ability id and is
+> named in neither list, and the category above does **not** cover it: it sets one player's
+> damage from an ability against the median of the players who took it, which is two sides.
+> Whether it should carry a panel is open.
+
 - **The death card heading.** Its ground was never answered: the heading names the killing blow
   and the recap row beneath it already carries that hit's own figures, with `hit_tooltip` on
   them.
 - **Findings with no ability.** Twenty-one of this run's 34. There is no ability to hover.
+- **A comparison with only one side.** `compare.spells.missing.*` names an ability absent from
+  our run altogether, so our side of it is zero and a panel would set nothing beside the
+  reference's count. See the amendment above.
 
 ### 6.4 The timeline rows
 
