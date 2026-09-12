@@ -6,7 +6,7 @@ from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldo
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.model import LoadedRun
-from wowperf.domain.report.model import PlayerTimeline, SectionState
+from wowperf.domain.report.model import PlayerTimeline, SectionState, Span
 from wowperf.domain.report.player_timeline import (
     BADGE_INFERRED_CAPTION,
     BADGE_MEASURED_CAPTION,
@@ -23,6 +23,8 @@ from wowperf.domain.report.player_timeline import (
     ROW_HEIGHT,
     RUN_SPANS_NO_TIME,
     TRACK_ORIGIN_X,
+    TRACK_WIDTH,
+    _row_shares,
     build_player_timeline,
 )
 from wowperf.domain.report.timeline import (
@@ -888,3 +890,37 @@ def test_a_pull_bands_hover_names_the_pull_and_how_long_it_ran() -> None:
     bands = a_timeline(loaded).pulls
     assert bands[0].hover == "Pull 0 — ran 0:47"
     assert bands[0].label == "Pull 0"
+
+
+def test_the_three_shares_of_a_row_always_sum_to_a_hundred() -> None:
+    """Rounded independently these are 26 + 41 + 34 = 101, which reads as a broken
+    panel. Largest remainder gives the leftover points to the largest fractions,
+    so the column a reader adds up comes to 100 whatever the spans were."""
+    shares = _row_shares(
+        Span(x=150.0, width=0.257 * TRACK_WIDTH),
+        (Span(x=300.0, width=0.406 * TRACK_WIDTH),),
+    )
+    assert shares == (26, 40, 34)
+    assert sum(shares) == 100
+
+
+def test_overlapping_cooldowns_are_unioned_and_never_summed() -> None:
+    """Two presses inside one cooldown cover 194 units of track, not 303.6. A run
+    of presses closer together than the cooldown is the normal case, not the edge
+    one, so summing the widths would overstate every busy row."""
+    not_judged = Span(x=150.0, width=151.8)
+    unavailable = (Span(x=403.0, width=151.8), Span(x=445.2, width=151.8))
+    assert _row_shares(not_judged, unavailable) == (30, 38, 32)
+
+
+def test_a_cooldown_running_under_the_unjudged_opening_is_not_counted_twice() -> None:
+    """The opening is not judged whatever else is true of it, so a cooldown lying
+    under it belongs to neither total twice. Here the press at the origin is
+    covered entirely by the opening, so on-cooldown counts only the two later ones."""
+    not_judged = Span(x=150.0, width=151.8)
+    unavailable = tuple(Span(x=x, width=151.8) for x in (150.0, 318.7, 487.3))
+    assert _row_shares(not_judged, unavailable) == (30, 60, 10)
+
+
+def test_a_row_with_no_presses_is_ready_for_everything_it_was_judged_on() -> None:
+    assert _row_shares(Span(x=150.0, width=151.8), ()) == (30, 0, 70)

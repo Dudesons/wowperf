@@ -2,6 +2,7 @@
 # ABOUTME: Pull bands behind, damage taken above, one row per cooldown the player owns.
 
 from collections import defaultdict
+from collections.abc import Iterable
 
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
@@ -433,6 +434,90 @@ def _cover_spans(
         )
         for start, end in bands or ()
     )
+
+
+TRACK_WIDTH = TRACK_X1 - TRACK_ORIGIN_X
+"""How wide a row's track is drawn, and so what a share of the run is a share of."""
+
+
+def _intervals(spans: Iterable[Span]) -> tuple[tuple[float, float], ...]:
+    return tuple((span.x, span.x + span.width) for span in spans)
+
+
+def _merged(intervals: Iterable[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
+    """The same stretches with every overlap collapsed.
+
+    A press landing inside a running cooldown is the normal case on a busy row,
+    so the drawn spans overlap routinely and summing their widths would report
+    more track than the row has.
+    """
+    merged: list[list[float]] = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return tuple((start, end) for start, end in merged)
+
+
+def _without(
+    intervals: tuple[tuple[float, float], ...], holes: tuple[tuple[float, float], ...]
+) -> tuple[tuple[float, float], ...]:
+    """`intervals` with every part lying inside `holes` removed. `holes` must be merged."""
+    kept: list[tuple[float, float]] = []
+    for start, end in intervals:
+        cursor = start
+        for hole_start, hole_end in holes:
+            if hole_end <= cursor or hole_start >= end:
+                continue
+            if hole_start > cursor:
+                kept.append((cursor, hole_start))
+            cursor = max(cursor, hole_end)
+        if cursor < end:
+            kept.append((cursor, end))
+    return tuple(kept)
+
+
+def _length(intervals: Iterable[tuple[float, float]]) -> float:
+    return sum(end - start for start, end in intervals)
+
+
+def _apportion(lengths: tuple[float, float, float]) -> tuple[int, int, int]:
+    """Three lengths as whole percentages of the track that sum to 100.
+
+    By largest remainder: floor each, then give the leftover points to the
+    largest fractions. Rounding the three independently sums to 99 or 101 often
+    enough to reach a reader, and a panel whose own column does not add up
+    invites the one doubt this page cannot afford.
+    """
+    exact = [length / TRACK_WIDTH * 100 for length in lengths]
+    shares = [int(part) for part in exact]
+    by_remainder = sorted(range(3), key=lambda index: exact[index] - shares[index], reverse=True)
+    for index in by_remainder[: 100 - sum(shares)]:
+        shares[index] += 1
+    return shares[0], shares[1], shares[2]
+
+
+def _row_shares(not_judged: Span | None, unavailable: tuple[Span, ...]) -> tuple[int, int, int]:
+    """What share of the run this row was unjudged, on cooldown, and ready but unpressed.
+
+    These three cover the track exactly once, which is why the drawing's fourth
+    state is not among them: cover overlaps the cooldown almost always, because
+    the buff is up while the cooldown runs, and four shares of one run would sum
+    past 100. Design section 2.1 records the measurement that settled it.
+
+    Read from the drawn spans and not from the milliseconds behind them, for the
+    reason the cover figure already states: the panel's claim is about what the
+    reader is looking at, so the number and the rectangles cannot disagree.
+    """
+    opening = _merged(_intervals([not_judged] if not_judged is not None else []))
+    cooldown = _without(_merged(_intervals(unavailable)), opening)
+    opening_length = _length(opening)
+    cooldown_length = _length(cooldown)
+    # Clamped against float error only: every span is already clipped to the
+    # axis, so the complement cannot truly be negative.
+    ready = max(0.0, TRACK_WIDTH - opening_length - cooldown_length)
+    return _apportion((opening_length, cooldown_length, ready))
 
 
 NO_AURA_DATA = "No aura data for it, so its cover is not drawn."
