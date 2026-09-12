@@ -409,6 +409,67 @@ def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
     assert any("range" in line for line in rate.evidence)
 
 
+LEVEL_SAMPLE = ParseSample(
+    members=(
+        a_parse_member("Bríala", 11, {METEOR: 10}),
+        a_parse_member("Dawnseeker", 12, {METEOR: 11}),
+        a_parse_member("Emberfall", 13, {METEOR: 12}),
+        a_parse_member("Frostwhisper", 14, {}),
+        a_parse_member("Glimmerose", 15, {}),
+    )
+)
+"""Three parses cast Meteor a touch more often than the run below: compared, no gap."""
+
+LEVEL_LOADED = a_loaded(
+    OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),) * 10
+)
+
+
+def test_an_ability_compared_and_found_inside_the_band_is_named() -> None:
+    """Silence meant three different things — never compared, compared and level, or
+    dropped below a threshold — and the page gave a reader no way to tell them apart.
+    A player asking "am I fine on this button" needs the second said out loud."""
+    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+
+    level = next(f for f in findings if f.id == "compare.spells.level")
+    assert "Meteor" in " ".join(level.evidence)
+
+
+def test_no_level_row_is_written_when_every_ability_showed_a_gap() -> None:
+    """An empty row would say "nothing was level" in a voice indistinguishable from
+    "nothing was compared", which is the confusion this family exists to end."""
+    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    assert not any(f.id.startswith("compare.spells.level") for f in findings)
+
+
+def test_an_ability_too_few_parses_cast_is_not_called_level() -> None:
+    """Level means compared and no gap found. An ability the sample barely cast was
+    never compared at all, and claiming it as level would invent a reassurance."""
+    ours = a_loaded(
+        OURS,
+        (boss_pull(0, 60.0),),
+        (cast(693, METEOR, "Meteor", 1_000, 0),) * 10
+        + (cast(693, RUNE_OF_POWER, "Rune of Power", 2_000, 0),) * 10,
+    )
+
+    findings = compare_spells_sample(ours, OURS, OUR_NAME, LEVEL_SAMPLE)
+
+    level = next(f for f in findings if f.id == "compare.spells.level")
+    assert "Meteor" in " ".join(level.evidence)
+    assert "Rune of Power" not in " ".join(level.evidence)
+
+
+def test_the_level_row_is_one_sentence_rather_than_a_ranked_family() -> None:
+    """The gap rows compete with each other and are collapsed and numbered. This one
+    states a set, so a rank suffix would promise rivals it does not have."""
+    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+
+    assert [f.id for f in findings if f.id.startswith("compare.spells.level")] == [
+        "compare.spells.level"
+    ]
+
+
 def a_sampled_rate_finding() -> Finding:
     findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
     return next(f for f in findings if f.id == "compare.spells.rate.0")

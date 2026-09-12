@@ -355,6 +355,7 @@ def _rate_sample(
 ) -> list[Finding]:
     """Abilities both sides cast, where the sample's median rate is materially higher."""
     gaps = []
+    level: list[str] = []
     for ability_id, (name, our_count) in ours_on_bosses.items():
         rates = [
             qualifying[ability_id] / their_boss_seconds * 60
@@ -365,7 +366,13 @@ def _rate_sample(
             continue
         our_rate = our_count / our_boss_seconds * 60
         their_median = median(rates)
-        if our_rate <= 0 or their_median / our_rate < RATE_GAP_MULTIPLE:
+        if our_rate <= 0:
+            continue
+        if their_median / our_rate < RATE_GAP_MULTIPLE:
+            # Compared against enough of the sample to argue from, and no gap
+            # wide enough to report. Collected rather than dropped: silence on
+            # the page read the same as never having been compared at all.
+            level.append(name)
             continue
         gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
     gaps.sort(key=lambda row: row[0], reverse=True)
@@ -413,7 +420,40 @@ def _rate_sample(
                 ability_name=name,
             )
         )
-    return _one_row_per_sentence(findings)
+    rows = _one_row_per_sentence(findings)
+    if level:
+        rows.append(_level_finding(our_name, level))
+    return rows
+
+
+def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
+    """The abilities compared on bosses that produced no gap row.
+
+    Kept out of `_one_row_per_sentence`: that collapses and ranks a family of
+    competing rows, and this is one sentence about a set, not a row that could
+    have rivals.
+    """
+    ordered = sorted(set(names))
+    return Finding(
+        id="compare.spells.level",
+        title=(
+            f"{len(ordered)} abilities {our_name} cast on bosses were compared "
+            "and showed no gap"
+        ),
+        detail=(
+            "Enough of the sample cast each of these to argue from, and our own rate was "
+            f"inside the bar the gap rows use: the sample's median has to be {RATE_GAP_MULTIPLE} "
+            "times ours before one is written. That bar is what this row states, so read it as "
+            "'no gap wide enough to report', never as 'the same rate' — a rate below the "
+            "sample's median but inside the bar is reported nowhere else on this page."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            ", ".join(ordered),
+            f"compared against at least {MIN_MEMBERS_WITH_ABILITY} top parses each",
+        ),
+    )
 
 
 def compare_talents(
