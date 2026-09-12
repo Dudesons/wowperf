@@ -2,6 +2,7 @@
 # ABOUTME: The template does no arithmetic: every coordinate here was computed in build_timeline.
 
 import re
+from pathlib import Path
 
 import pytest
 from markupsafe import escape
@@ -762,12 +763,37 @@ def a_drawn_timeline() -> PlayerTimeline:
         label_x=126.0,
         row_height=16.0,
         press_width=4.0,
+        state_key=player_timeline_module.STATE_KEY,
         legend="The pale stretch at the start is not judged at all.",
         badge_measured=Badge(label="measured", tint="badge-measured"),
         badge_measured_caption=player_timeline_module.BADGE_MEASURED_CAPTION,
         badge_inferred=Badge(label="inferred", tint="badge-inferred"),
         badge_inferred_caption=player_timeline_module.BADGE_INFERRED_CAPTION,
     )
+
+
+def test_the_state_key_reaches_the_page_as_a_swatch_per_state() -> None:
+    html = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),)))
+    body = html.split("</style>")[1]
+    assert body.count('<span class="state-swatch ') == len(player_timeline_module.STATE_KEY)
+    for key in player_timeline_module.STATE_KEY:
+        assert f'<span class="state-swatch {key.css_class}"></span>{key.label}' in body
+
+
+def test_every_state_the_key_names_is_a_class_the_track_actually_paints() -> None:
+    # The key carries a class rather than a colour so it cannot drift from the
+    # track. That only holds if the class it carries is one the drawing really
+    # paints and one the stylesheet gives the swatch a fill for. Neither can be
+    # seen from a view model, so both are read off the files themselves.
+    render_dir = Path(__file__).parents[3] / "src" / "wowperf" / "adapters" / "render"
+    template = (render_dir / "_player_timeline.html.j2").read_text(encoding="utf-8")
+    stylesheet = (render_dir / "report.css.j2").read_text(encoding="utf-8")
+    # Stated rather than derived, so an emptied key makes the loop below
+    # vacuous and this line fails instead of the whole test passing over it.
+    assert len(player_timeline_module.STATE_KEY) == 4
+    for key in player_timeline_module.STATE_KEY:
+        assert f'<rect class="{key.css_class}"' in template, key.css_class
+        assert f".state-swatch.{key.css_class} {{" in stylesheet, key.css_class
 
 
 def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:

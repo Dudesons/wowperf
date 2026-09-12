@@ -54,6 +54,7 @@
   {% endfor %}
 </svg>
 {% if timeline.damage %}<p class="sub">{{ timeline.damage.peak_label }} {{ timeline.damage.bucket_caption }}</p>{% endif %}
+<p class="state-key">{% for key in timeline.state_key %}<span class="state-swatch {{ key.css_class }}"></span>{{ key.label }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
 <p class="legend">{{ timeline.legend }}</p>
 <p class="legend">{% if timeline.badge_measured %}<a class="badge {{ timeline.badge_measured.tint }}" href="#provenance">{{ timeline.badge_measured.label }}</a> — {{ timeline.badge_measured_caption }}{% endif %}{% if timeline.badge_inferred %} <a class="badge {{ timeline.badge_inferred.tint }}" href="#provenance">{{ timeline.badge_inferred.label }}</a> — {{ timeline.badge_inferred_caption }}{% endif %}</p>
 {% endif %}

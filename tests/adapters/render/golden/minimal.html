@@ -171,6 +171,16 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    comeback is something that merely became true, and the two must not read as
    the same event. */
 .ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+/* A swatch takes the same fill as the rectangle it stands for, so the key
+   cannot drift from the track. `.not-judged` is a stroke and no fill, so the
+   swatch shows its dash the way the track does. */
+.state-key { color: var(--ink-dim); font-size: 12px; margin: 2px 0; }
+.state-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+  vertical-align: -1px; border-radius: 2px; }
+.state-swatch.press { background: var(--ours); }
+.state-swatch.cover { background: var(--badge-measured); }
+.state-swatch.on-cooldown { background: var(--cooldown); }
+.state-swatch.not-judged { border: 1px dashed var(--ink-faint); }
 .damage-axis { stroke: var(--line); stroke-width: 1; }
 .pull-name { fill: var(--ink-dim); font-size: 8px; }
 /* Revealed by hover and by keyboard focus, and rendered into the page whether
@@ -367,7 +377,8 @@ never be summed.</p>
   <rect class="damage-bar" x="263.9" y="44.0" width="12.6" height="32.0"/>
   <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
 </svg>
-<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds. Each bar is a 5-second bucket, and the axis runs from nothing to this player&#39;s own tallest, never the group&#39;s.</p><p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight. An open tick marks the earliest the ability could have come back, computed from that same base length: talents may have freed it sooner, and the log never says.</p>
+<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds. Each bar is a 5-second bucket, and the axis runs from nothing to this player&#39;s own tallest, never the group&#39;s.</p><p class="state-key"><span class="state-swatch press"></span>a press · <span class="state-swatch cover"></span>the buff up · <span class="state-swatch on-cooldown"></span>on cooldown · <span class="state-swatch not-judged"></span>not judged</p>
+<p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight. An open tick marks the earliest the ability could have come back, computed from that same base length: talents may have freed it sooner, and the log never says.</p>
 <p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage bars, the press marks and the cover windows. <a class="badge badge-inferred" href="#provenance">inferred</a> — the dimming and the ready tick that ends it.</p>
 
   <div class="findings">

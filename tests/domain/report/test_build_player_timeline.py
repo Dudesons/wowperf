@@ -355,6 +355,28 @@ def test_the_icon_sits_between_the_label_and_the_track() -> None:
     assert timeline.row_icon_x + timeline.row_icon_size <= TRACK_ORIGIN_X
 
 
+def test_the_key_names_every_state_the_track_draws() -> None:
+    # Green was never named anywhere near the chart: LEGEND covers the mark,
+    # the cooldown stretch, the pale opening and the ready tick, and stops.
+    # The class is carried rather than the colour so the key and the track
+    # cannot disagree -- a swatch takes the same rule as the rectangle it
+    # stands for.
+    timeline = a_timeline_with_presses(count=3)
+    assert [key.css_class for key in timeline.state_key] == [
+        "press", "cover", "on-cooldown", "not-judged",
+    ]
+    assert [key.label for key in timeline.state_key] == [
+        "a press", "the buff up", "on cooldown", "not judged",
+    ]
+
+
+def test_the_legend_still_leaves_the_cover_to_the_key() -> None:
+    # The one state LEGEND has never named is the one the key exists for. If
+    # LEGEND ever grows a sentence about it, this fails and the key is
+    # redundant rather than silently duplicated.
+    assert "cover" not in LEGEND and "buff" not in LEGEND
+
+
 def test_a_rows_icon_clears_even_a_press_at_the_very_origin() -> None:
     # The worst case the gutter has to survive: 31 presses is what one real
     # player's Prismatic Barrier row carried, and the first of them lands on

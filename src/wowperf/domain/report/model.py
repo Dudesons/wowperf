@@ -178,6 +178,18 @@ class Press(Frozen):
     x: float
 
 
+class StateKey(Frozen):
+    """One state the cooldown track paints, named in the class it is painted with.
+
+    `css_class` is the same class the track's own rectangles carry, so a
+    swatch takes the same rule as the rectangle it stands for and the key
+    cannot drift from what it names.
+    """
+
+    label: str
+    css_class: str
+
+
 class Span(Frozen):
     """A stretch of a cooldown row, in viewBox units."""
 
@@ -265,6 +277,7 @@ class PlayerTimeline(Frozen):
     """The icon's width and height, which are the same: it is square."""
     row_height: float = 0.0
     press_width: float = 0.0
+    state_key: tuple[StateKey, ...] = ()
     legend: str = ""
     badge_measured: Badge | None = None
     badge_measured_caption: str = ""

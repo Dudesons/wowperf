@@ -18,6 +18,7 @@ from wowperf.domain.report.model import (
     Section,
     SectionState,
     Span,
+    StateKey,
     TimelineBlock,
 )
 from wowperf.domain.report.timeline import (
@@ -190,6 +191,20 @@ LEGEND = (
     "back, computed from that same base length: talents may have freed it sooner, and the log "
     "never says."
 )
+
+STATE_KEY = (
+    StateKey(label="a press", css_class="press"),
+    StateKey(label="the buff up", css_class="cover"),
+    StateKey(label="on cooldown", css_class="on-cooldown"),
+    StateKey(label="not judged", css_class="not-judged"),
+)
+"""The four states the track paints, each named in the class it is painted with.
+
+The class is carried rather than the colour so the key and the track cannot
+disagree: a swatch takes the same rule as the rectangle it stands for.
+`LEGEND` explains three of these four in prose and has never named the cover,
+which is the one a reader is least able to guess.
+"""
 
 BADGE_MEASURED_CAPTION = "the damage bars, the press marks and the cover windows."
 """What the measured badge grades: the log itself reports all three directly -- casts
@@ -583,6 +598,7 @@ def build_player_timeline(
         row_icon_size=ICON_SIZE,
         row_height=ROW_HEIGHT,
         press_width=PRESS_WIDTH,
+        state_key=STATE_KEY,
         legend=LEGEND,
         badge_measured=badge_for(Confidence.MEASURED),
         badge_measured_caption=BADGE_MEASURED_CAPTION,
