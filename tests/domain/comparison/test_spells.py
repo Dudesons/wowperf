@@ -435,6 +435,16 @@ def test_an_ability_compared_and_found_inside_the_band_is_named() -> None:
     assert "Meteor" in " ".join(level.evidence)
 
 
+def test_a_single_level_ability_is_counted_in_the_singular() -> None:
+    """A title states its count back to the reader, and "1 abilities" gets noticed
+    before the finding does."""
+    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+
+    level = next(f for f in findings if f.id == "compare.spells.level")
+    assert level.title.startswith("1 ability ")
+    assert "was compared" in level.title
+
+
 def test_no_level_row_is_written_when_every_ability_showed_a_gap() -> None:
     """An empty row would say "nothing was level" in a voice indistinguishable from
     "nothing was compared", which is the confusion this family exists to end."""

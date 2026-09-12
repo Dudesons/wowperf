@@ -397,6 +397,48 @@ def test_members_without_aura_data_are_reported_not_silently_dropped() -> None:
     assert "1 of 5 references had no aura data" in gap.evidence
 
 
+OUR_AURAS_WITHOUT_COAGULOPATHY = PlayerAuras(
+    actor_id=7, on_self=(an_aura(ICEBOUND, "Icebound Fortitude", (0, 10_000)),)
+)
+"""Our side carries none of the aura four of the five members carry."""
+
+
+def test_an_aura_the_sample_carried_and_we_did_not_is_named_as_unjudged() -> None:
+    """Dropping it silently reads exactly like having nothing to say about it.
+
+    The drop itself stays — `onSelf` has no source filter, so a zero here may be a
+    teammate's buff this player was never given rather than a button they never
+    pressed. What changes is that the reader is told the aura exists and was set
+    aside, instead of the page implying it was never looked at.
+    """
+    findings = compare_uptime_sample(
+        OUR_RUN, OUR_AURAS_WITHOUT_COAGULOPATHY, OUR_NAME, SAMPLE_OF_FIVE
+    )
+
+    unjudged = next(f for f in findings if f.id == "compare.uptime.unjudged")
+    assert "Coagulopathy" in " ".join(unjudged.evidence)
+
+
+def test_an_unjudged_aura_produces_no_gap_row() -> None:
+    """Naming it must not smuggle it back in as a measured gap: the whole reason it
+    is set aside is that its zero cannot be attributed to this player."""
+    findings = compare_uptime_sample(
+        OUR_RUN, OUR_AURAS_WITHOUT_COAGULOPATHY, OUR_NAME, SAMPLE_OF_FIVE
+    )
+
+    assert not any(f.id.startswith("compare.uptime.self.") for f in findings)
+
+
+def test_an_aura_carried_by_too_few_parses_is_not_called_unjudged() -> None:
+    """Icebound Fortitude reaches 2 of 5, below the aggregate floor, so the sample
+    never had a figure to set aside. Naming it would invent a comparison."""
+    ours = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
+
+    findings = compare_uptime_sample(OUR_RUN, ours, OUR_NAME, SAMPLE_OF_FIVE)
+
+    assert not any(f.id == "compare.uptime.unjudged" for f in findings)
+
+
 def test_the_detail_no_longer_blames_a_single_players_gear() -> None:
     findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 

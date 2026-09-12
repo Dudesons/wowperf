@@ -18,7 +18,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
-from wowperf.domain.findings import Confidence, Finding, FindingFact
+from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
 from wowperf.domain.model import Run
 
 MAX_AURAS_REPORTED = 5
@@ -305,6 +305,7 @@ def _gap_findings_sample(
         per_member.append(qualifying)
 
     gaps = []
+    unjudged: list[str] = []
     for ability_id, name in names.items():
         carried = [q[ability_id] for q in per_member if ability_id in q]
         if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
@@ -318,6 +319,11 @@ def _gap_findings_sample(
             continue
         our_fraction = our_fractions.get(ability_id, (name, 0.0))[1]
         if our_fraction <= 0.0:
+            # Set aside rather than reported: `onSelf` carries no source, so a
+            # zero may be a teammate's buff this player was never given. Named
+            # anyway, because dropping it silently read like having nothing to
+            # say about an aura the sample plainly carried.
+            unjudged.append(name)
             continue
         if their_median - our_fraction < UPTIME_GAP_FRACTION:
             continue
@@ -374,4 +380,40 @@ def _gap_findings_sample(
                 ability_name=name,
             )
         )
+    if unjudged:
+        findings.append(_unjudged_finding(our_name, unjudged))
     return findings
+
+
+def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
+    """Auras the sample carried that our own boss pulls show none of.
+
+    Deliberately not a gap row. `onSelf` has no source filter, so it returns
+    teammate-cast buffs, consumables and gear procs alongside the player's own,
+    and a zero cannot be told apart from a buff nobody gave them — reporting it
+    as a shortfall would blame a player for a button that is not theirs. What
+    this row adds is that the aura is named instead of disappearing, so silence
+    on the page stops meaning both "nothing to say" and "set aside".
+    """
+    ordered = sorted(set(names))
+    return Finding(
+        id="compare.uptime.unjudged",
+        title=(
+            f"{quantity(len(ordered), 'aura', 'auras')} the sample carried "
+            f"{'is' if len(ordered) == 1 else 'are'} not judged for {our_name}"
+        ),
+        detail=(
+            "Each of these was present over enough of the sample's boss time to compare, and "
+            "absent from ours. It is named rather than measured: the aura table cannot say "
+            "whose buff a row was, so a zero here may be a button this player never pressed "
+            "or one a teammate never gave them, and the log does not separate the two. Check "
+            "whether the build produces it before reading anything into it."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            ", ".join(ordered),
+            f"carried by at least {MIN_SAMPLE_FOR_AGGREGATE} top parses each",
+            "absent from our own boss pulls",
+        ),
+    )

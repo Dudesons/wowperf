@@ -7,7 +7,13 @@ from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.events import CastEvent
-from wowperf.domain.findings import Confidence, Finding, FindingFact, quantifier_for
+from wowperf.domain.findings import (
+    Confidence,
+    Finding,
+    FindingFact,
+    quantifier_for,
+    quantity,
+)
 from wowperf.domain.model import LoadedRun, Player, Run
 
 MAX_SPELLS_REPORTED = 5
@@ -437,8 +443,8 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
     return Finding(
         id="compare.spells.level",
         title=(
-            f"{len(ordered)} abilities {our_name} cast on bosses were compared "
-            "and showed no gap"
+            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast on bosses "
+            f"{'was' if len(ordered) == 1 else 'were'} compared and showed no gap"
         ),
         detail=(
             "Enough of the sample cast each of these to argue from, and our own rate was "
