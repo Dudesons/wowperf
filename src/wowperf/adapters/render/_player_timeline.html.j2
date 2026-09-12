@@ -56,7 +56,7 @@
   {% endfor %}
 </svg>
 {% for row in timeline.cooldowns %}{% if row.tooltip %}
-<div class="row-hit" tabindex="0" aria-label="{{ row.label }}" style="top: {{ row.hit_top }}%; height: {{ timeline.row_hit_height }}%">{{ tip(row.tooltip, row.label) }}</div>
+<div class="row-hit" tabindex="0" aria-label="{{ row.label }}" style="top: {{ row.hit_top }}%; height: {{ timeline.row_hit_height }}%">{{ tip(row.tooltip, row.label, row.ability_id) }}</div>
 {% endif %}{% endfor %}
 </div>
 {% if timeline.damage %}<p class="sub">{{ timeline.damage.peak_label }} {{ timeline.damage.bucket_caption }}</p>{% endif %}

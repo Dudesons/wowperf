@@ -991,6 +991,29 @@ def test_a_strips_percentage_is_the_one_the_builder_computed() -> None:
         assert f'style="top: {row.baseline_y}%' not in body
 
 
+def test_a_row_panels_heading_carries_the_abilitys_icon() -> None:
+    # The panel can open a long way from the row it describes, and the art is
+    # how a reader finds that row again among near-identical grey bars. The
+    # `ability()` macro has paired the two since it was written, for the reason
+    # its own comment gives: the art and the word are one object to a reader.
+    body = render(
+        a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
+        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+    ).split("</style>")[1]
+    assert ('<span class="tip-head"><span class="icon i-45438" aria-hidden="true"></span>'
+            "Ice Block</span>") in body
+
+
+def test_a_row_panels_heading_is_just_the_name_when_no_icon_resolved() -> None:
+    # No empty icon box where nothing resolved: the silent fallback every other
+    # missing icon on the page already takes.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    assert '<span class="tip-head">Ice Block</span>' in body
+    assert 'class="icon i-None"' not in body
+
+
 def test_the_chart_keeps_the_aspect_ratio_the_strips_percentages_assume() -> None:
     # The strips are placed at baseline_y over the chart's height. That is only
     # the right place while the rendered height stays width x H/680 -- which a
