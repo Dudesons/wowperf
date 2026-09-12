@@ -15,7 +15,7 @@ from wowperf.domain.events import (
     InterruptEvent,
     Resurrection,
 )
-from wowperf.domain.model import EnemyNpc, Player, Pull, Run
+from wowperf.domain.model import DamageDoneSeries, EnemyNpc, Player, Pull, Run
 
 
 class IngestError(ValueError):
@@ -376,6 +376,50 @@ def build_damage_taken(
             )
         )
     return tuple(taken)
+
+
+def build_damage_done(payload: dict[str, Any]) -> tuple[DamageDoneSeries, ...]:
+    """The damage graph as domain series, with its rate converted to amounts.
+
+    The response's numbers are damage per second. Multiplying by the interval
+    reproduces the series' own `total` to within 0.3% to 0.7%, the residual
+    being the last bucket overhanging the window -- measured 2026-09-12 and
+    recorded in the wcl-api skill. Reading them as amounts instead would
+    understate every bucket by the interval in seconds, which was 6.4 on the
+    run this was measured against, and the chart would look entirely plausible.
+
+    A player's series is keyed by an integer actor id and the run-wide sum by
+    the string "Total", which is what drops the latter: nothing here has a use
+    for it, and a run-wide damage total sitting in the model is one import away
+    from a page that ranks.
+    """
+    report = (payload.get("reportData") or {}).get("report") or {}
+    graph = report.get("graph") or {}
+    rows = (graph.get("data") or {}).get("series") or []
+
+    built: list[DamageDoneSeries] = []
+    for row in rows:
+        actor_id = row.get("id")
+        if not isinstance(actor_id, int):
+            continue
+        interval_ms = float(row.get("pointInterval") or 0.0)
+        # Guards the division below rather than any observed response: a
+        # zero interval would make every bucket zero seconds wide, and a
+        # silent column of noughts is worse than no track.
+        if interval_ms <= 0:
+            continue
+        built.append(
+            DamageDoneSeries(
+                actor_id=actor_id,
+                point_start_ms=int(row.get("pointStart") or 0),
+                interval_ms=interval_ms,
+                amounts=tuple(
+                    int(round(float(point) * interval_ms / 1000))
+                    for point in row.get("data") or []
+                ),
+            )
+        )
+    return tuple(built)
 
 
 def build_health_samples(events: list[dict[str, Any]]) -> tuple[HealthSample, ...]:

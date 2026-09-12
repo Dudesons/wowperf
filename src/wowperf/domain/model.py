@@ -156,6 +156,21 @@ class Run(Frozen):
         return tuple(pull for pull in self.pulls if not pull.is_boss)
 
 
+class DamageDoneSeries(Frozen):
+    """One player's damage output over the run, in the buckets the API chose.
+
+    `amounts` holds damage, never a rate: the response states damage per
+    second and `build_damage_done` multiplies it back up at the adapter
+    boundary, so nothing above it can print a figure section 5.5 refuses to
+    produce. Bucket `i` covers `point_start_ms + i * interval_ms`.
+    """
+
+    actor_id: int
+    point_start_ms: int
+    interval_ms: float
+    amounts: tuple[int, ...] = ()
+
+
 class LoadedRun(Frozen):
     """Everything fetched about one run. Pure data — no adapter may leak into it."""
 
@@ -166,6 +181,10 @@ class LoadedRun(Frozen):
     interrupts: tuple[InterruptEvent, ...] = ()
     enemy_deaths: tuple[EnemyDeath, ...] = ()
     damage_taken: tuple[DamageTakenEvent, ...] = ()
+    # One graph call serves every player, so this carries the whole roster
+    # however many are analysed. Fetched on the full profile only: no
+    # comparison reads it.
+    damage_done: tuple[DamageDoneSeries, ...] = ()
     # The three streams the death recap reads. Health samples come off the
     # player's own casts, healing is fetched per death, and resurrections are
     # fetched once for the whole fight.

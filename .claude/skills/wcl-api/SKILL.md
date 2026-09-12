@@ -52,7 +52,7 @@ covers it otherwise.
 | `targetID` | `events` argument | 2026-09-07 | yes |
 | `includeResources` | `events` argument | 2026-09-07 | yes |
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
-| `graph` | `Report` | 2026-09-12 | no |
+| `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
 

@@ -242,6 +242,27 @@ query DamageTaken($code: String!, $fightId: Int!, $startTime: Float!, $endTime: 
 }
 """
 
+# Pre-aggregated, so this is one call rather than an unknown number of event
+# pages: `events(dataType: DamageDone)` returns at most 10000 rows a page and
+# this fight alone logs 8804 damage-taken events. `graph` also folds a pet's
+# damage into its owner, which `events` does not -- see the wcl-api skill,
+# measured 2026-09-12. Its numbers are a rate; `build_damage_done` converts.
+DAMAGE_DONE_GRAPH_QUERY = """
+query DamageDoneGraph($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      graph(
+        dataType: DamageDone
+        hostilityType: Friendlies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+      )
+    }
+  }
+}
+"""
+
 # Issued once per death, bounded to one actor and a few seconds, so it returns
 # a handful of rows. Scoping by `targetID` is what keeps a ten-death run from
 # paying for ten full streams; the healing stream honours that scoping.
