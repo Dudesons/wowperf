@@ -313,6 +313,9 @@ class PlayerTimeline(Frozen):
     column_height: float = 0.0
     pull_label_y: float = 0.0
     damage: DamageTrack | None = None
+    # The same view model as `damage`: a track of bars scaled to this player's
+    # own peak is the same object whichever direction the damage went.
+    damage_done: DamageTrack | None = None
     cooldowns: tuple[CooldownRow, ...] = ()
     ticks: tuple[tuple[float, str], ...] = ()
     tick_y1: float = 0.0
@@ -337,6 +340,8 @@ class PlayerTimeline(Frozen):
     badge_measured_caption: str = ""
     badge_inferred: Badge | None = None
     badge_inferred_caption: str = ""
+    badge_derived: Badge | None = None
+    badge_derived_caption: str = ""
 
 
 

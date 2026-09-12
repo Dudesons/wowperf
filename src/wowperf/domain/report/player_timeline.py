@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import LoadedRun, Pull, Run
+from wowperf.domain.model import DamageDoneSeries, LoadedRun, Pull, Run
 from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
@@ -116,6 +116,18 @@ DAMAGE_BASELINE_Y = 76.0
 DAMAGE_HEIGHT = 32.0
 """How tall the largest bucket is drawn. Every other bar is a fraction of it."""
 
+DAMAGE_DONE_GAP = 8.0
+"""Clear space between the damage taken bars' baseline and the done track's top."""
+
+DAMAGE_DONE_BASELINE_Y = DAMAGE_BASELINE_Y + DAMAGE_DONE_GAP + DAMAGE_HEIGHT
+"""The foot of the damage done bars, which also grow upward from it.
+
+Below the damage taken track and immediately above the first cooldown row,
+which is the placement the reader's eye path decides: a press mark is read
+against the output that followed it, so the two sit together and nothing goes
+between them.
+"""
+
 BUCKET_SECONDS = 5.0
 """How much of the run one damage bar covers.
 
@@ -153,8 +165,14 @@ accepts a mild, single-neighbour overdraw for half the seconds any one bar can b
 together. 5 is kept for the finer resolution at that modest cost.
 """
 
-FIRST_ROW_Y = 96.0
-"""The baseline of the first cooldown row."""
+FIRST_ROW_Y = 136.0
+"""The baseline of the first cooldown row.
+
+Forty units below the damage taken track rather than eight: the damage done
+bars take the band between them, and a row left at the older figure would be
+drawn straight through those bars. Every row's hover strip is placed as a
+share of the chart's own height, so moving this moves all of them.
+"""
 
 BOTTOM_MARGIN = 28.0
 """Gap between the last row and the viewBox's bottom edge, holding the tick labels."""
@@ -181,8 +199,8 @@ RUN_SPANS_NO_TIME = (
 )
 
 NOTHING_TRACKED_OR_TAKEN = (
-    "This player cast none of the cooldowns tracked for their specialisation and took no "
-    "damage the log recorded, so there is nothing to draw."
+    "This player cast none of the cooldowns tracked for their specialisation, and the log "
+    "recorded no damage they took or dealt, so there is nothing to draw."
 )
 
 LEGEND = (
@@ -209,9 +227,17 @@ disagree: a swatch takes the same rule as the rectangle it stands for.
 which is the one a reader is least able to guess.
 """
 
-BADGE_MEASURED_CAPTION = "the damage bars, the press marks and the cover windows."
+BADGE_MEASURED_CAPTION = "the damage taken bars, the press marks and the cover windows."
 """What the measured badge grades: the log itself reports all three directly -- casts
 and hits as events, the aura's own bands as the intervals it was up for."""
+
+BADGE_DERIVED_CAPTION = (
+    "the damage done bars, rebuilt from the per-second figures the log's own graph reports."
+)
+"""What the derived badge grades: the graph states a rate, and the amount a bar draws is
+that rate multiplied back up by the interval it covers. The reconstruction lands within
+a percent of the figure the API reports for the whole run, and does not close exactly --
+which is the difference between this and the measured bars above it."""
 
 BADGE_INFERRED_CAPTION = "the dimming and the ready tick that ends it."
 """What the inferred badge grades: a cooldown length assumed from its base value, since
@@ -317,7 +343,92 @@ def _bucket_hover(amount: int, bucket_index: int, run: Run, origin_ms: int) -> s
     assert at is not None  # a float input always formats to a string
     names = _bucket_pulls(run, start_ms, start_ms + int(BUCKET_SECONDS * 1000))
     where = f"during {' and '.join(names)}" if names else "between pulls"
-    return f"{amount:,} unmitigated in {int(BUCKET_SECONDS)} s, at {at}, {where}"
+    return f"{amount:,} unmitigated in {_bucket_width_text(BUCKET_SECONDS)} s, at {at}, {where}"
+
+
+def _bucket_width_text(seconds: float) -> str:
+    """A bucket width as a reader would write it: "5", and "6.4".
+
+    The damage taken track buckets at a whole five seconds and the graph hands
+    back 6.4117, so one formatter serves both without the first gaining a
+    decimal it never had.
+    """
+    return f"{round(seconds, 1):g}"
+
+
+def _done_bucket_hover(
+    amount: int, at_seconds: float, bucket_seconds: float, run: Run, origin_ms: int
+) -> str:
+    """What one damage done bar holds, when it fell, and which pull it fell in.
+
+    States an amount, never a rate. The response this is built from is in
+    damage per second, and printing that would hand the reader the throughput
+    figure the postmortem design's section 5.5 refuses to produce.
+    """
+    start_ms = origin_ms + int(at_seconds * 1000)
+    at = format_seconds(at_seconds)
+    assert at is not None  # a float input always formats to a string
+    names = _bucket_pulls(run, start_ms, start_ms + int(bucket_seconds * 1000))
+    where = f"during {' and '.join(names)}" if names else "between pulls"
+    return f"{amount:,} damage done in {_bucket_width_text(bucket_seconds)} s, at {at}, {where}"
+
+
+def _damage_done_track(
+    series: tuple[DamageDoneSeries, ...],
+    actor_id: int,
+    run: Run,
+    scale: float,
+    origin_ms: int,
+) -> DamageTrack | None:
+    """This player's output, in the buckets the API chose, scaled to their own peak.
+
+    Never to the group's, for the reason `_damage_track` states below: a shared
+    scale across five players would rank them.
+
+    Returns None where the graph carried no series for this player, so the
+    absence is drawn as an absence. A track of zero-height bars would read as a
+    run of empty buckets, which is a different claim and one nobody measured.
+    """
+    ours = next((one for one in series if one.actor_id == actor_id), None)
+    if ours is None or not ours.amounts:
+        return None
+
+    peak = max(ours.amounts)
+    if peak == 0:
+        return None
+
+    bucket_seconds = ours.interval_ms / 1000
+    offset_seconds = (ours.point_start_ms - origin_ms) / 1000
+    width = round(bucket_seconds * scale, PRECISION)
+    bars = tuple(
+        DamageBar(
+            x=round(_track_x(offset_seconds + index * bucket_seconds, scale), PRECISION),
+            width=max(width, MIN_BLOCK_WIDTH),
+            y=round(DAMAGE_DONE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
+            height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
+            hover=_done_bucket_hover(
+                amount, offset_seconds + index * bucket_seconds, bucket_seconds, run, origin_ms
+            ),
+        )
+        for index, amount in enumerate(ours.amounts)
+    )
+    return DamageTrack(
+        baseline_y=DAMAGE_DONE_BASELINE_Y,
+        label_y=round(DAMAGE_DONE_BASELINE_Y - DAMAGE_HEIGHT / 2, PRECISION),
+        bars=bars,
+        peak_label=(
+            f"Tallest bar: {peak:,} damage done in "
+            f"{_bucket_width_text(bucket_seconds)} seconds."
+        ),
+        axis_top_y=round(DAMAGE_DONE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
+        axis_x0=TRACK_ORIGIN_X,
+        axis_x1=TRACK_X1,
+        axis_top_label=f"{peak:,}",
+        bucket_caption=(
+            f"Each bar is a {_bucket_width_text(bucket_seconds)}-second bucket, and the axis "
+            f"runs from nothing to this player's own tallest, never the group's."
+        ),
+    )
 
 
 def _damage_track(
@@ -366,7 +477,8 @@ def _damage_track(
         label_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT / 2, PRECISION),
         bars=bars,
         peak_label=(
-            f"Tallest bar: {peak:,} unmitigated damage in {int(BUCKET_SECONDS)} seconds."
+            f"Tallest bar: {peak:,} unmitigated damage in "
+            f"{_bucket_width_text(BUCKET_SECONDS)} seconds."
         ),
         axis_top_y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT, PRECISION),
         # The same origin the bars and every span on the chart already start
@@ -384,7 +496,8 @@ def _damage_track(
         # nothing `peak_label` already said -- no repeated "unmitigated
         # damage" -- since the two sentences sit side by side on the page.
         bucket_caption=(
-            f"Each bar is a {int(BUCKET_SECONDS)}-second bucket, and the axis runs from "
+            f"Each bar is a {_bucket_width_text(BUCKET_SECONDS)}-second bucket, and the "
+            f"axis runs from "
             f"nothing to this player's own tallest, never the group's."
         ),
     )
@@ -729,8 +842,9 @@ def build_player_timeline(
         loaded.auras_by_actor.get(actor_id),
     )
     damage = _damage_track(loaded.damage_taken, actor_id, run, scale, origin)
+    damage_done = _damage_done_track(loaded.damage_done, actor_id, run, scale, origin)
 
-    if not rows and damage is None:
+    if not rows and damage is None and damage_done is None:
         return PlayerTimeline(
             section=Section(state=SectionState.WITHHELD, reason=NOTHING_TRACKED_OR_TAKEN),
             width=TIMELINE_WIDTH,
@@ -755,6 +869,7 @@ def build_player_timeline(
         column_height=height - BAND_Y - BOTTOM_MARGIN,
         pull_label_y=BAND_Y - PULL_LABEL_GAP,
         damage=damage,
+        damage_done=damage_done,
         cooldowns=rows,
         ticks=tuple(
             (round(x, PRECISION), label) for x, label in axis_ticks(span, scale, TRACK_ORIGIN_X)
@@ -772,6 +887,8 @@ def build_player_timeline(
         legend=LEGEND,
         badge_measured=badge_for(Confidence.MEASURED),
         badge_measured_caption=BADGE_MEASURED_CAPTION,
+        badge_derived=badge_for(Confidence.DERIVED),
+        badge_derived_caption=BADGE_DERIVED_CAPTION,
         badge_inferred=badge_for(Confidence.INFERRED),
         badge_inferred_caption=BADGE_INFERRED_CAPTION,
     )

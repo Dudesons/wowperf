@@ -824,9 +824,9 @@ def test_every_layer_of_a_players_timeline_reaches_the_page() -> None:
     assert "not judged" in html
     # Which badge grades what is a claim the page makes, so it must be spoken
     # rather than left as two colours side by side: "measured" is captioned
-    # to the damage bars, the press marks and the cover windows, "inferred"
-    # to the dimming and the ready tick that ends it.
-    assert "measured</a> — the damage bars, the press marks and the cover windows." in html
+    # to the damage taken bars, the press marks and the cover windows,
+    # "inferred" to the dimming and the ready tick that ends it.
+    assert "measured</a> — the damage taken bars, the press marks and the cover windows." in html
     assert "inferred</a> — the dimming and the ready tick that ends it." in html
 
 

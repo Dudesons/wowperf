@@ -6,7 +6,7 @@ from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldo
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import LoadedRun
+from wowperf.domain.model import DamageDoneSeries, LoadedRun
 from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import (
     CooldownRow,
@@ -19,6 +19,7 @@ from wowperf.domain.report.player_timeline import (
     BADGE_INFERRED_CAPTION,
     BADGE_MEASURED_CAPTION,
     BUCKET_SECONDS,
+    DAMAGE_DONE_BASELINE_Y,
     DAMAGE_HEIGHT,
     FIRST_ROW_Y,
     LABEL_UNITS_PER_CHARACTER,
@@ -1028,5 +1029,121 @@ def test_every_rows_strip_sits_below_the_one_above_it_and_inside_the_chart() -> 
     tops = [row.hit_top for row in timeline.cooldowns]
     assert len(tops) == 2
     assert tops == sorted(tops)
-    assert tops[0] + timeline.row_hit_height <= tops[1]
+    # The epsilon is binary representation, not slack: two strips may abut
+    # exactly, and 69.4 + 8.2 is 77.60000000000001 in a float.
+    assert tops[0] + timeline.row_hit_height - tops[1] <= 1e-9
     assert tops[-1] + timeline.row_hit_height <= 100.0
+
+
+def a_done_series(
+    actor_id: int, amounts: tuple[int, ...], interval_ms: float = 6000.0
+) -> DamageDoneSeries:
+    return DamageDoneSeries(
+        actor_id=actor_id, point_start_ms=0, interval_ms=interval_ms, amounts=amounts
+    )
+
+
+def test_a_players_damage_done_track_is_scaled_to_their_own_tallest_bucket() -> None:
+    """Never to the group's. Two players an order of magnitude apart both draw
+    a full-height bar at their own peak, which is the postmortem design's
+    section 5.5 expressed as a drawing: a shared scale would rank them."""
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (100, 50)), a_done_series(2, (10_000, 5_000))),
+    )
+    small = a_timeline(loaded, actor_id=1, defensives=KIT).damage_done
+    large = a_timeline(loaded, actor_id=2, defensives=KIT).damage_done
+    assert small is not None and large is not None
+    assert small.bars[0].height == large.bars[0].height
+    assert small.bars[1].height == small.bars[0].height / 2
+
+
+def test_a_damage_done_bar_sits_where_its_bucket_falls_on_the_axis() -> None:
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (100, 100, 100)),),
+    )
+    track = a_timeline(loaded, actor_id=1, defensives=KIT).damage_done
+    assert track is not None
+    # One bucket's width in drawn units, which is what consecutive bars must
+    # sit apart. Every x is rounded to a tenth before it reaches the view
+    # model, so two gaps over the same step can differ by that tenth -- which
+    # is why this pins the step itself rather than asserting the gaps are
+    # equal to each other.
+    step = 6.0 * a_scale(600.0)
+    gaps = [track.bars[i + 1].x - track.bars[i].x for i in range(len(track.bars) - 1)]
+    assert len(gaps) == 2
+    assert all(abs(gap - step) <= 0.1 for gap in gaps), (gaps, step)
+    assert step > 0
+
+
+def test_a_player_with_no_series_draws_no_damage_done_track() -> None:
+    """Absence, not a flat line: a track of zero-height bars reads as a run of
+    empty buckets rather than as a figure nobody measured."""
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(2, (100,)),),
+    )
+    assert a_timeline(loaded, actor_id=1, defensives=KIT).damage_done is None
+
+
+def test_a_damage_done_hover_states_an_amount_and_never_a_rate() -> None:
+    """The response gives damage per second natively and printing it would
+    cost one line. It is the figure section 5.5 refuses to produce."""
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (600,)),),
+    )
+    track = a_timeline(loaded, actor_id=1, defensives=KIT).damage_done
+    assert track is not None
+    hover = track.bars[0].hover
+    assert "600 damage done" in hover
+    assert "6 s" in hover
+    for forbidden in ("per second", "a second", "DPS", "dps"):
+        assert forbidden not in hover
+
+
+def test_the_damage_done_caption_keeps_a_fractional_bucket_width() -> None:
+    """The API's interval is not a whole number of seconds. Rounding it to one
+    would claim 6-second buckets for 6.4-second bars."""
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (600,), interval_ms=6411.7),),
+    )
+    track = a_timeline(loaded, actor_id=1, defensives=KIT).damage_done
+    assert track is not None
+    assert "6.4-second bucket" in track.bucket_caption
+
+
+def test_the_damage_taken_caption_still_reads_as_a_whole_number() -> None:
+    """The shared formatter must not turn the existing track's 5 into 5.0."""
+    timeline = a_timeline_with_damage(amount=1000, at_seconds=10.0, pull="Atroxus")
+    assert timeline.damage is not None
+    assert "5-second bucket" in timeline.damage.bucket_caption
+
+
+def test_the_chart_leaves_room_for_the_damage_done_track() -> None:
+    """The done bars grow upward from their own baseline, and rows are drawn
+    downward from theirs, so a first row left where it was would be struck
+    through by the new track.
+
+    The constants are asserted against each other rather than a row against
+    the formula that placed it: the latter agrees with itself wherever the
+    rows sit, and would pass just as happily with the track drawn over them.
+    Every strip is then placed as a share of the chart's own height, so the
+    move has to reach them too.
+    """
+    assert DAMAGE_DONE_BASELINE_Y <= FIRST_ROW_Y
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    timeline = a_timeline(loaded, defensives=KIT)
+    row = timeline.cooldowns[0]
+    assert row.baseline_y == FIRST_ROW_Y
+    assert row.hit_top == round(row.baseline_y / timeline.height * 100, 1)
