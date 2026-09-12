@@ -1,7 +1,12 @@
 # ABOUTME: Behaviour tests for the trash-pack half of the individual comparison.
 # ABOUTME: Only packs two routes shared are compared, and only their own seconds count.
 
-from wowperf.domain.comparison.trash_spells import aligned_trash
+from wowperf.domain.comparison.trash_spells import (
+    MIN_ALIGNED_TRASH_SECONDS,
+    AlignedTrash,
+    aligned_trash,
+    is_comparable,
+)
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 OURS = Player(
@@ -87,3 +92,40 @@ def test_boss_pulls_are_not_aligned_trash() -> None:
 
     assert aligned.our_pulls == frozenset({1})
     assert aligned.our_seconds == 40.0
+
+
+def test_a_denominator_below_the_floor_is_not_comparable() -> None:
+    """A handful of seconds turns two casts into a wild rate. The floor is the only
+    guard the rate rows have against a tiny denominator."""
+    thin = AlignedTrash(
+        our_pulls=frozenset({0}),
+        their_pulls=frozenset({0}),
+        our_seconds=MIN_ALIGNED_TRASH_SECONDS - 0.1,
+        their_seconds=MIN_ALIGNED_TRASH_SECONDS * 10,
+    )
+
+    assert not is_comparable(thin)
+
+
+def test_either_side_below_the_floor_disqualifies_the_pair() -> None:
+    """A rate needs both denominators. A reference with almost no aligned trash is
+    as useless as our own side having almost none."""
+    theirs_thin = AlignedTrash(
+        our_pulls=frozenset({0}),
+        their_pulls=frozenset({0}),
+        our_seconds=MIN_ALIGNED_TRASH_SECONDS * 10,
+        their_seconds=MIN_ALIGNED_TRASH_SECONDS - 0.1,
+    )
+
+    assert not is_comparable(theirs_thin)
+
+
+def test_both_sides_at_the_floor_are_comparable() -> None:
+    at_floor = AlignedTrash(
+        our_pulls=frozenset({0}),
+        their_pulls=frozenset({0}),
+        our_seconds=MIN_ALIGNED_TRASH_SECONDS,
+        their_seconds=MIN_ALIGNED_TRASH_SECONDS,
+    )
+
+    assert is_comparable(at_floor)
