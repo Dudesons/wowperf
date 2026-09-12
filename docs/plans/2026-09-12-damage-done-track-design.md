@@ -147,6 +147,24 @@ The chart's legend therefore gains a third badge line; it carries `measured` and
 moment the API placed it so that a sum looks tidy — trading a stated 0.4% for a silent
 misplacement, on a chart whose whole subject is when things happened.
 
+> **Amended 2026-09-12.** The overhang above is arithmetic about the reconciliation, and it was
+> read as licence to draw past the axis as well. It is not. `graph` covers the fight and this
+> chart's axis covers the first pull to the last, so a series opens with a bucket or two before
+> the origin and closes with one running past the end; drawn, those landed 3.2 units into the
+> label gutter and 2.2 units into the right margin that `_damage_track`'s own comment says this
+> drawing never places anything in. Worse, an out-of-window bucket carried a hover stating a time
+> the axis has no origin for, and `format_seconds` floors, so ten seconds before the first pull
+> read as "-1:50".
+>
+> A bucket starting outside the drawn window is therefore not drawn, and the bar holding the last
+> one inside it stops at the axis. The same rule applies to the damage taken track, which buckets
+> from the same origin and could always reach either side of it. Two consequences worth stating:
+> the chart omits damage dealt before the first pull — over a million for one player on the report
+> this was measured against — and the axis top is now the tallest bucket *drawn*, since one the
+> chart does not draw would otherwise label a figure no bar on it reaches. Moving such a bucket
+> inside the window instead was refused for the reason this section already gives: it would place
+> damage at a moment it did not happen.
+
 ## 5. What this design refuses
 
 - **No rate reaches the page.** The response gives DPS natively and printing it would cost one

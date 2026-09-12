@@ -570,6 +570,15 @@ them short rather than over. The residual is the last bucket overhanging the fig
 of 6411.679 ms span 1545.2 s of a 1538.8 s window — plus per-bucket rounding. A gap near a factor
 of 6.4 instead would mean the rate conversion was dropped somewhere after ingest.
 
+**That reading was taken by summing the rendered page's bar hovers, and since 2026-09-12 it can no
+longer be reproduced that way.** The figures above are about what `ingest.py` rebuilds, which is
+unchanged and still every bucket the response carried. The player timeline now draws only the
+buckets starting inside its own axis — first pull to last — and `graph` covers the whole fight, so
+the page omits the bucket or two before the first pull, which on that report held over a million
+damage for one player. Sum the ingested series to check this claim, never the hovers: the hovers
+are now short by whatever fell outside the drawn window, and reading a shortfall there as a broken
+conversion is the false alarm this note exists to prevent.
+
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's

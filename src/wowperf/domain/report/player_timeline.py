@@ -456,24 +456,36 @@ def _damage_done_track(
     if ours is None or not ours.amounts:
         return None
 
-    peak = max(ours.amounts)
+    bucket_seconds = ours.interval_ms / 1000
+    offset_seconds = (ours.point_start_ms - origin_ms) / 1000
+    span_seconds = run_seconds(run)
+    # `graph` covers the fight and this axis covers the first pull to the last,
+    # so a real series opens with a bucket or two before the origin.
+    drawn = tuple(
+        (at, amount)
+        for at, amount in (
+            (offset_seconds + index * bucket_seconds, amount)
+            for index, amount in enumerate(ours.amounts)
+        )
+        if _bucket_is_drawn(at, span_seconds)
+    )
+    if not drawn:
+        return None
+
+    peak = max(amount for _at, amount in drawn)
     if peak == 0:
         return None
 
-    bucket_seconds = ours.interval_ms / 1000
-    offset_seconds = (ours.point_start_ms - origin_ms) / 1000
-    width = round(bucket_seconds * scale, PRECISION)
+    width = max(round(bucket_seconds * scale, PRECISION), MIN_BLOCK_WIDTH)
     bars = tuple(
         DamageBar(
-            x=round(_track_x(offset_seconds + index * bucket_seconds, scale), PRECISION),
-            width=max(width, MIN_BLOCK_WIDTH),
+            x=(x := round(_track_x(at, scale), PRECISION)),
+            width=_bar_width(x, width),
             y=round(DAMAGE_DONE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
             height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
-            hover=_done_bucket_hover(
-                amount, offset_seconds + index * bucket_seconds, bucket_seconds, run, origin_ms
-            ),
+            hover=_done_bucket_hover(amount, at, bucket_seconds, run, origin_ms),
         )
-        for index, amount in enumerate(ours.amounts)
+        for at, amount in drawn
     )
     return DamageTrack(
         baseline_y=DAMAGE_DONE_BASELINE_Y,
@@ -492,6 +504,38 @@ def _damage_done_track(
             f"runs from nothing to this player's own tallest, never the group's."
         ),
     )
+
+
+def _bucket_is_drawn(start_seconds: float, span_seconds: float) -> bool:
+    """Whether a bucket starting here falls inside the window this axis draws.
+
+    The axis runs from the first pull to the last, and both bucket streams are
+    wider than it: `graph` covers the whole fight, and a hit can land before the
+    first pull or after the last one ends. A bucket outside has nowhere honest
+    to go. Drawn at its true position it lands in the label gutter, where a row
+    name is about to be written, and it carries a hover stating a time this
+    axis has no origin for -- `format_seconds` floors, so ten seconds before
+    the first pull reads as "-1:50" rather than as anything a reader can use.
+
+    Moving it inside would be worse: it would place damage at a moment it did
+    not happen, on a chart whose whole subject is when things happened.
+    """
+    return 0.0 <= start_seconds < span_seconds
+
+
+def _bar_width(x: float, width: float) -> float:
+    """A bar's drawn width, stopped at the axis's own end.
+
+    The last bucket of a stream overhangs the window it covers -- 241 buckets of
+    6.4117 s span 1545.2 s of a 1538.8 s fight -- and the overhang is the reason
+    the rebuilt total lands a fraction under the API's, which §4 of the design
+    states rather than rescales. What it must not do is put marks past
+    `TRACK_X1`, in the right margin the axis deliberately stops at.
+
+    A bar clipped here can end up narrower than `MIN_BLOCK_WIDTH`. That floor
+    keeps a bucket from vanishing mid-chart; at the boundary the axis wins.
+    """
+    return round(min(x + width, TRACK_X1) - x, PRECISION)
 
 
 def _damage_track(
@@ -518,20 +562,32 @@ def _damage_track(
         index = int((event.timestamp_ms - origin_ms) / 1000 // BUCKET_SECONDS)
         buckets[index] += event.amount
 
-    peak = max(buckets.values())
+    span_seconds = run_seconds(run)
+    drawn = sorted(
+        (index, amount)
+        for index, amount in buckets.items()
+        if _bucket_is_drawn(index * BUCKET_SECONDS, span_seconds)
+    )
+    if not drawn:
+        return None
+
+    # The tallest bucket on the chart, not the tallest in the stream: a bucket
+    # the chart does not draw setting the axis top would label the track with a
+    # figure no bar on it reaches, and squash every bar that is there.
+    peak = max(amount for _index, amount in drawn)
     if peak == 0:
         return None
 
-    width = round(BUCKET_SECONDS * scale, PRECISION)
+    width = max(round(BUCKET_SECONDS * scale, PRECISION), MIN_BLOCK_WIDTH)
     bars = tuple(
         DamageBar(
-            x=round(_track_x(index * BUCKET_SECONDS, scale), PRECISION),
-            width=max(width, MIN_BLOCK_WIDTH),
+            x=(x := round(_track_x(index * BUCKET_SECONDS, scale), PRECISION)),
+            width=_bar_width(x, width),
             y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
             height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
             hover=_bucket_hover(amount, index, run, origin_ms),
         )
-        for index, amount in sorted(buckets.items())
+        for index, amount in drawn
     )
     return DamageTrack(
         baseline_y=DAMAGE_BASELINE_Y,

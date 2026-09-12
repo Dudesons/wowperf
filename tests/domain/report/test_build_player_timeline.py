@@ -6,7 +6,7 @@ from wowperf.adapters.config.toml import load_defensives, load_throughput_cooldo
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import DamageDoneSeries, LoadedRun
+from wowperf.domain.model import DamageDoneSeries, LoadedRun, Run
 from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import (
     CooldownRow,
@@ -1346,6 +1346,103 @@ def test_one_track_drawn_leaves_only_the_other_ones_abstention() -> None:
     assert timeline.damage is None and timeline.damage_done is not None
     assert timeline.damage_abstention == NO_DAMAGE_TAKEN
     assert timeline.damage_done_abstention == ""
+
+
+def a_run_starting_two_minutes_in() -> Run:
+    """A run whose first pull is 120 s after the fight began.
+
+    The gap is what makes these tests bite: `graph` covers the fight and this
+    axis covers first pull to last, so the early buckets of a real series fall
+    before the origin. On the report this was measured against the gap was ten
+    seconds; the shape is the same and the arithmetic is easier to read at two
+    minutes.
+    """
+    return a_run(pulls=(a_pull(0, 120_000, 600_000),))
+
+
+def test_a_bucket_before_the_first_pull_is_not_drawn_beside_the_axis() -> None:
+    """The drawn window is the axis, and a bar outside it has nowhere honest to go.
+
+    Drawn, it lands in the label gutter -- 3.2 units into it on the report this
+    was measured against, clearing the icon column by 0.8 -- and it carries a
+    hover stating a negative time, which `format_seconds` renders by flooring:
+    ten seconds before the first pull reads as "-1:50".
+    """
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        # 6-second buckets from the fight's start: the first twenty fall in the
+        # two minutes before the first pull.
+        damage_done=(a_done_series(1, tuple(range(1, 101)), interval_ms=6000.0),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    track = timeline.damage_done
+    assert track is not None
+    assert len(track.bars) == 80, "the twenty buckets before the first pull were drawn"
+    for bar in track.bars:
+        assert bar.x >= TRACK_ORIGIN_X
+        assert "-" not in bar.hover, bar.hover
+
+
+def test_no_bar_on_either_track_overhangs_the_axis_it_is_measured_against() -> None:
+    """The axis stops at `TRACK_X1`, and `_damage_track` says in its own comment
+    that the twenty-four units past it are a margin this drawing never places
+    anything in. A bucket whose width runs past the last pull put bars there.
+
+    The run is 478 seconds, which is a multiple of neither bucket width. That
+    is the whole point of the number: with a span the buckets divide evenly the
+    last one ends exactly on the axis, nothing overhangs, and this guard passes
+    on arithmetic rather than on the clamp.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 120_000, 598_000),)),
+        damage_taken=tuple(a_hit(1, 120_000 + step * 1_000, 100) for step in range(0, 478, 7)),
+        damage_done=(a_done_series(1, tuple(range(1, 101)), interval_ms=6000.0),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    assert timeline.damage is not None and timeline.damage_done is not None
+    for track in (timeline.damage, timeline.damage_done):
+        assert track.bars
+        assert min(bar.x for bar in track.bars) >= TRACK_ORIGIN_X
+        assert max(bar.x + bar.width for bar in track.bars) <= TRACK_X1
+        # Non-vacuous: the last bucket of each stream starts inside the window
+        # and runs past its end, so it is the one bar the clamp had to narrow.
+        assert track.bars[-1].width < track.bars[0].width
+
+
+def test_a_hit_before_the_first_pull_draws_no_bar_left_of_the_axis() -> None:
+    # The taken track buckets from the same origin, so it has the same reach:
+    # a pack pulled on the way in lands at a negative bucket index.
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        damage_taken=(a_hit(1, 60_000, 900), a_hit(1, 200_000, 500)),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    track = timeline.damage
+    assert track is not None
+    assert len(track.bars) == 1, "the hit before the first pull was drawn"
+    assert track.bars[0].x >= TRACK_ORIGIN_X
+    assert "-" not in track.bars[0].hover
+
+
+def test_a_bucket_outside_the_window_does_not_set_the_axis_top() -> None:
+    """The scale is this player's own tallest *drawn* bucket.
+
+    A bucket the chart does not draw setting the axis top would label the track
+    with a figure no bar on it reaches, and squash every bar that is there.
+    """
+    before_the_pull = (10_000_000,) + (0,) * 19
+    inside = tuple(range(1, 81))
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        damage_done=(a_done_series(1, before_the_pull + inside, interval_ms=6000.0),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    track = timeline.damage_done
+    assert track is not None
+    assert track.axis_top_label == "80"
+    assert "10,000,000" not in track.peak_label
+    # And the tallest drawn bar still reaches the top of its own axis.
+    assert max(bar.height for bar in track.bars) == DAMAGE_HEIGHT
 
 
 def test_the_damage_done_track_is_drawn_clear_of_the_track_above_it() -> None:
