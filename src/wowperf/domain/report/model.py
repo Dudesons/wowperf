@@ -166,16 +166,16 @@ class DamageTrack(Frozen):
 class Press(Frozen):
     """One cast of a tracked cooldown, placed on its row's axis.
 
-    Both fields are left edges, and both centre their own element on the same
-    instant: an SVG element's `x` is its left edge, so a mark placed flush with
-    the instant would sit wholly to the right of the moment it marks. `x` is
-    the left edge of the narrow mark the template always draws, half its width
-    before the instant; `icon_x` is the left edge of the ability's icon, drawn
-    only once one resolves and several times wider, half of that before it.
+    `x` is a left edge and it centres the mark on the instant: an SVG
+    element's `x` is its left edge, so a mark placed flush with the instant
+    would sit wholly to the right of the moment it marks.
+
+    A press carried an `icon_x` beside it until 2026-09-12, for an icon drawn
+    at each one. The icon now belongs to the row rather than to the press and
+    is drawn once in the gutter -- see `PlayerTimeline.row_icon_x`.
     """
 
     x: float
-    icon_x: float
 
 
 class Span(Frozen):
@@ -257,6 +257,12 @@ class PlayerTimeline(Frozen):
     tick_y2: float = 0.0
     tick_label_y: float = 0.0
     label_x: float = 0.0
+    row_icon_x: float = 0.0
+    """The left edge of every row's icon, drawn once in the gutter between the
+    row's name and its track. One coordinate for the whole drawing, because
+    every row's icon sits in the same column."""
+    row_icon_size: float = 0.0
+    """The icon's width and height, which are the same: it is square."""
     row_height: float = 0.0
     press_width: float = 0.0
     legend: str = ""

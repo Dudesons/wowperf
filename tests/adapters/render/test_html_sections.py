@@ -750,9 +750,11 @@ def a_drawn_timeline() -> PlayerTimeline:
                                hover="Ice Block — 1 press, 8.0 s of cover",
                                baseline_y=96.0,
                                label_y=104.0,
-                               presses=(Press(x=200.0, icon_x=194.0),),
+                               presses=(Press(x=200.0),),
                                unavailable=(Span(x=200.0, width=90.0),),
                                not_judged=Span(x=130.0, width=90.0)),),
+        row_icon_x=130.0,
+        row_icon_size=16.0,
         ticks=((130.0, "0:00"),),
         tick_y1=22.0,
         tick_y2=112.0,
@@ -912,27 +914,30 @@ def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() ->
     # stylesheet off and require both the embedded payload and the element that
     # draws it from there, in the body. The coordinate is pinned too -- matching
     # only `'<use href="#icon-45438"'` would stay green even if the template
-    # printed `press.x` instead of the centred `press.icon_x`.
+    # printed the press's own x rather than the row's gutter column.
     body = html.split("</style>")[1]
     assert ('<symbol id="icon-45438" viewBox="0 0 1 1">'
             '<image href="data:image/jpeg;base64,AAA"') in body
-    assert '<use href="#icon-45438" x="194.0"' in body
+    assert '<use href="#icon-45438" x="130.0"' in body
 
 
-def test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too() -> None:
-    # The exact instant must stay readable even where an icon would overlap a
-    # neighbouring press, so the narrow mark is drawn whether or not an icon
-    # resolved -- never replaced by the icon. And SVG paints in document order,
-    # so the mark must come *after* the icon in the markup: the icon's box is
-    # several times wider than the mark and fully opaque, so painted second it
-    # would cover the mark completely.
+def test_an_icon_that_resolves_is_drawn_clear_of_the_marks_on_the_track() -> None:
+    # Was `test_a_press_whose_icon_resolves_still_draws_its_plain_mark_too`,
+    # which required the mark to be painted after the icon because the icon
+    # sat on the track, opaque and several times wider, and would otherwise
+    # cover it. That is the defect itself: painted in that order the icon is
+    # what looked cut. The icon is now drawn in the gutter, so the two cannot
+    # overlap at all -- and the mark is still drawn whether or not an icon
+    # resolved, never replaced by one.
     html = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
         icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
     )
     body = html.split("</style>")[1]
-    assert '<rect class="press"' in body
-    assert body.index('<use href="#icon-45438"') < body.index('<rect class="press"')
+    assert '<rect class="press" x="200.0"' in body
+    icon = re.search(r'<use href="#icon-45438" x="([\d.]+)"[^>]*width="([\d.]+)"', body)
+    assert icon is not None
+    assert float(icon.group(1)) + float(icon.group(2)) <= 200.0
 
 
 def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
@@ -953,7 +958,7 @@ def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_h
     # must cost one call, not two, the same guarantee the death-card walk
     # already gives the ids it meets more than once.
     row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
+                      presses=(Press(x=200.0), Press(x=210.0)))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(row,))
     icons = FakeIcons({})
@@ -961,20 +966,25 @@ def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_h
     assert icons.asked == [45438]
 
 
-def test_two_presses_of_the_same_ability_share_one_copy_of_the_icon() -> None:
-    # The resolver test above proves the id is asked once; this proves the
-    # payload itself is not copied once per press into the SVG that draws
-    # them -- a regression back to a per-press `<image href="data:...">`
-    # would double this count without ever asking the resolver twice.
+def test_a_row_draws_one_icon_however_many_presses_it_has() -> None:
+    # Was `test_two_presses_of_the_same_ability_share_one_copy_of_the_icon`,
+    # which pinned that the payload is not copied once per press. The `<use>`
+    # was: at ROW_HEIGHT an icon covers about seventeen seconds of a
+    # twenty-three minute run, so one real report drew 281 of them across five
+    # players and 67 overlapped a neighbour. The payload claim is kept in the
+    # first assertion; the second is the one that changed, and the third keeps
+    # it from passing because the presses themselves disappeared.
     row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                      presses=(Press(x=200.0, icon_x=192.0), Press(x=210.0, icon_x=202.0)))
+                      presses=(Press(x=200.0), Press(x=210.0)))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
-                              height=140.0, cooldowns=(row,))
+                              height=140.0, cooldowns=(row,), row_icon_x=126.0,
+                              row_icon_size=16.0)
     html = render(a_report(players=(a_player_card(timeline=timeline),)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
     body = html.split("</style>")[1]
     assert body.count("data:image/jpeg;base64,AAA") == 1
-    assert body.count('<use href="#icon-45438"') == 2
+    assert body.count('<use href="#icon-45438"') == 1
+    assert body.count('<rect class="press"') == 2
 
 
 def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> None:
@@ -985,9 +995,9 @@ def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> N
     # unidentified one is the case that actually occurs, so `icons_by_id` is
     # given a resolving id here rather than left empty.
     unidentified = CooldownRow(label="Unknown", ability_id=None, baseline_y=96.0,
-                               presses=(Press(x=200.0, icon_x=192.0),))
+                               presses=(Press(x=200.0),))
     identified = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=112.0,
-                             presses=(Press(x=210.0, icon_x=202.0),))
+                             presses=(Press(x=210.0),))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(unidentified, identified))
     icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
@@ -1009,7 +1019,7 @@ def test_two_players_pressing_the_same_ability_share_one_copy_of_the_icon() -> N
     # impossible: there is exactly one element bearing this id anywhere on the
     # page, and both players' presses resolve against it.
     row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                      presses=(Press(x=200.0, icon_x=192.0),))
+                      presses=(Press(x=200.0),))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(row,))
     html = render(
@@ -1047,7 +1057,7 @@ def test_a_cooldown_that_outlasts_the_run_still_shows_its_dashed_border() -> Non
     # the filled span and vanish; this proves it paints on top instead.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0, icon_x=38.0),),
+        presses=(Press(x=46.0),),
         unavailable=(Span(x=46.0, width=600.0),),
         not_judged=Span(x=46.0, width=600.0),
     )
@@ -1067,7 +1077,7 @@ def test_a_cooldown_row_with_a_ready_tick_draws_the_open_mark() -> None:
     # press's own coordinates do.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0, icon_x=38.0),),
+        presses=(Press(x=46.0),),
         unavailable=(Span(x=46.0, width=90.0),),
         ready_ticks=(136.0,),
     )
@@ -1090,7 +1100,7 @@ def test_a_cooldown_row_with_a_cover_window_draws_it_at_true_scale() -> None:
     # never floors a cover window, so the template must not either.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0, icon_x=38.0),),
+        presses=(Press(x=46.0),),
         unavailable=(Span(x=46.0, width=90.0),),
         cover=(Span(x=46.0, width=1.4),),
     )
@@ -1114,7 +1124,7 @@ def test_a_cooldown_row_with_no_cover_window_draws_no_cover_rect() -> None:
     # template drew the element unconditionally.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0, icon_x=38.0),),
+        presses=(Press(x=46.0),),
         unavailable=(Span(x=46.0, width=90.0),),
     )
     timeline = PlayerTimeline(
@@ -1133,7 +1143,7 @@ def test_a_cooldown_row_with_no_ready_ticks_draws_no_ready_again_mark() -> None:
     # run ends -- must not render a "ready-again" element anywhere at all.
     row = CooldownRow(
         label="Ice Block", ability_id=45438, baseline_y=96.0,
-        presses=(Press(x=46.0, icon_x=38.0),),
+        presses=(Press(x=46.0),),
         unavailable=(Span(x=46.0, width=600.0),),
     )
     timeline = PlayerTimeline(

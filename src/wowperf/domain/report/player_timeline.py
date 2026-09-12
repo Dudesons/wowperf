@@ -37,7 +37,7 @@ player. Unrounded binary fractions would fill the page, and its golden file,
 with digits no reader and no reviewer can use.
 """
 
-TRACK_ORIGIN_X = 130.0
+TRACK_ORIGIN_X = 150.0
 """Where this drawing's axis starts, and so how wide the gutter left of it is.
 
 Not `timeline.TRACK_X0` (46). Every row here is named, and a name has to end
@@ -53,6 +53,11 @@ characters. Measured in Chromium against the report's own font stack at the
 be measured on the machine that took the reading. `LABEL_X` at 126 clears the
 widest of those by 2.4 units, and `LABEL_GAP` keeps the label off the track.
 
+The gutter holds the row's icon as well as its name, which is what 150 buys
+over the 130 it was: `ICON_SIZE + LABEL_GAP` of it, leaving `LABEL_X` where it
+already stood so the measurement above still holds. The track gives up 20 of
+its 1260 units for that, which is 1.6%.
+
 The 12px the run timeline's captions use would need 172 units for the same
 name. That is why these labels take a size of their own: the track is what is
 left of `TRACK_X1`, so every unit of gutter is a unit the run is not drawn on.
@@ -61,9 +66,27 @@ left of `TRACK_X1`, so every unit of gutter is a unit the run is not drawn on.
 LABEL_GAP = 4.0
 """Clear space between where a row's label ends and where its track begins."""
 
-LABEL_X = TRACK_ORIGIN_X - LABEL_GAP
+ROW_HEIGHT = 16.0
+"""How tall one cooldown row is drawn. Stated here rather than beside the other
+vertical constants below because the gutter's width is derived from it: a row's
+icon is square and as tall as its row, and `LABEL_X` is what is left over."""
+
+ICON_SIZE = ROW_HEIGHT
+"""A row's icon is as tall as its row, and square.
+
+Drawn once, in the gutter. It was drawn at every press until 2026-09-12, at
+this same size -- which is about seventeen seconds of a twenty-three minute
+run, so any ability pressed oftener than that overlapped itself. Across five
+players one report drew 281 of them and 67 overlapped a neighbour, and the
+press mark was painted over each one, which is why they looked cut.
+"""
+
+ICON_X = TRACK_ORIGIN_X - LABEL_GAP - ICON_SIZE
+"""Where the row's icon starts: immediately left of the track, clear of it by `LABEL_GAP`."""
+
+LABEL_X = ICON_X - LABEL_GAP
 """Where a row's ability name ends. The label is right-aligned to this x, so it
-runs leftward into the gutter and never over the track it names."""
+runs leftward into the gutter and never over the icon or the track it names."""
 
 LABEL_UNITS_PER_CHARACTER = 4.0
 """A label's drawn width per character, at the `.row-label` size.
@@ -129,8 +152,6 @@ together. 5 is kept for the finer resolution at that modest cost.
 FIRST_ROW_Y = 96.0
 """The baseline of the first cooldown row."""
 
-ROW_HEIGHT = 16.0
-
 BOTTOM_MARGIN = 28.0
 """Gap between the last row and the viewBox's bottom edge, holding the tick labels."""
 
@@ -140,8 +161,8 @@ PRESS_WIDTH = 4.0
 """How wide the narrow mark at a press is drawn.
 
 Narrow enough that two presses close together stay two marks, wide enough to
-survive the page being screenshotted. The mark is centred on the instant, as
-the icon behind it is, so its own width never displaces the moment it marks.
+survive the page being screenshotted. The mark is centred on the instant, so
+its own width never displaces the moment it marks.
 """
 
 TITLE = "One player's run on one elapsed-time axis"
@@ -426,11 +447,7 @@ def _cooldown_rows(
     owned = {cast.ability_id for cast in ours}
 
     def press_at(at: int) -> Press:
-        instant = _track_x((at - origin_ms) / 1000, scale)
-        return Press(
-            x=_press_x(instant),
-            icon_x=round(instant - ROW_HEIGHT / 2, PRECISION),
-        )
+        return Press(x=_press_x(_track_x((at - origin_ms) / 1000, scale)))
 
     rows: list[CooldownRow] = []
     for ability in abilities:
@@ -562,6 +579,8 @@ def build_player_timeline(
         tick_y2=height - BOTTOM_MARGIN,
         tick_label_y=height - TICK_LABEL_MARGIN,
         label_x=LABEL_X,
+        row_icon_x=ICON_X,
+        row_icon_size=ICON_SIZE,
         row_height=ROW_HEIGHT,
         press_width=PRESS_WIDTH,
         legend=LEGEND,

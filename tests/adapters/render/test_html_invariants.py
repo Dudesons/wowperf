@@ -707,7 +707,8 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (DamageTrack, "axis_x0"),  # a viewBox coordinate, not a quantity
     (DamageTrack, "axis_x1"),  # a viewBox coordinate, not a quantity
     (Press, "x"),
-    (Press, "icon_x"),
+    (PlayerTimeline, "row_icon_x"),  # a viewBox coordinate, not a quantity
+    (PlayerTimeline, "row_icon_size"),  # a drawn width, not a quantity
     (Span, "x"),
     (Span, "width"),
     (CooldownRow, "ability_id"),  # a spell's identity, not a duration

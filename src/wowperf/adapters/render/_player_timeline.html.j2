@@ -39,10 +39,10 @@
   <rect class="cover" x="{{ span.x }}" y="{{ row.baseline_y }}"
         width="{{ span.width }}" height="{{ timeline.row_height }}"/>
   {% endfor %}
-  {% for press in row.presses %}
   {% if row.ability_id in icons_by_id %}
-  <use href="#icon-{{ row.ability_id }}" x="{{ press.icon_x }}" y="{{ row.baseline_y }}" width="{{ timeline.row_height }}" height="{{ timeline.row_height }}"/>
+  <use href="#icon-{{ row.ability_id }}" x="{{ timeline.row_icon_x }}" y="{{ row.baseline_y }}" width="{{ timeline.row_icon_size }}" height="{{ timeline.row_icon_size }}"/>
   {% endif %}
+  {% for press in row.presses %}
   <rect class="press" x="{{ press.x }}" y="{{ row.baseline_y }}" width="{{ timeline.press_width }}" height="{{ timeline.row_height }}"/>
   {% endfor %}
   {% for tick in row.ready_ticks %}

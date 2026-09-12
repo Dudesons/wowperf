@@ -320,20 +320,48 @@ def test_a_second_press_inside_the_first_covers_still_draws_its_own_mark() -> No
     assert row.unavailable[0].x + row.unavailable[0].width > row.unavailable[1].x
 
 
-def test_a_presss_mark_and_icon_are_both_centred_on_the_instant_they_mark() -> None:
-    # Both elements are placed by their own left edge, and both are wider than
-    # the moment they stand for: the mark by `PRESS_WIDTH`, the icon by a whole
-    # row height. Either one placed flush with the instant would sit entirely
-    # to the right of it -- several seconds late on a half-hour run -- and the
-    # two would then disagree about where the press happened.
+def test_a_presss_mark_is_centred_on_the_instant_it_marks() -> None:
+    # The mark is placed by its left edge and is wider than the moment it
+    # stands for, so one placed flush with the instant would sit entirely to
+    # its right -- several seconds late on a half-hour run.
+    #
+    # Until 2026-09-12 this also pinned a `Press.icon_x` centred on the same
+    # instant. The icon left the track that day: at ROW_HEIGHT it covered
+    # about seventeen seconds of a twenty-three minute run, so it overlapped
+    # its neighbours and the press mark was painted over it. What replaces
+    # that half is the gutter test below.
     run = a_run(pulls=(a_pull(0, 0, 600_000),))
     loaded = LoadedRun(run=run, casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     press = a_timeline(loaded, defensives=KIT).cooldowns[0].presses[0]
     instant = TRACK_ORIGIN_X + 300.0 * a_scale(600.0)
     assert press.x == round(instant - PRESS_WIDTH / 2, PRECISION)
-    assert press.icon_x == round(instant - ROW_HEIGHT / 2, PRECISION)
-    # Same centre, to within the rounding both coordinates carry.
-    assert abs((press.x + PRESS_WIDTH / 2) - (press.icon_x + ROW_HEIGHT / 2)) <= 0.1
+
+
+def a_timeline_with_presses(count: int) -> PlayerTimeline:
+    """One row pressed `count` times across a ten-minute run, the first at its origin."""
+    run = a_run(pulls=(a_pull(0, 0, 600_000),))
+    casts = tuple(
+        a_cast(1, SHIELD.ability_id, index * (600_000 // count)) for index in range(count)
+    )
+    return a_timeline(LoadedRun(run=run, casts=casts), defensives=KIT)
+
+
+def test_the_icon_sits_between_the_label_and_the_track() -> None:
+    # One coordinate a row rather than one a press, and it lives in the
+    # gutter: clear of the name to its left and of the track to its right.
+    timeline = a_timeline_with_presses(count=1)
+    assert timeline.row_icon_size == ROW_HEIGHT
+    assert LABEL_X <= timeline.row_icon_x
+    assert timeline.row_icon_x + timeline.row_icon_size <= TRACK_ORIGIN_X
+
+
+def test_a_rows_icon_clears_even_a_press_at_the_very_origin() -> None:
+    # The worst case the gutter has to survive: 31 presses is what one real
+    # player's Prismatic Barrier row carried, and the first of them lands on
+    # the axis origin, where a press mark reaches half its own width left of
+    # TRACK_ORIGIN_X. The icon must still end before it.
+    timeline = a_timeline_with_presses(count=31)
+    assert timeline.row_icon_x + timeline.row_icon_size <= timeline.cooldowns[0].presses[0].x
 
 
 def test_every_tick_coordinate_is_rounded_like_every_other_coordinate() -> None:
