@@ -155,6 +155,7 @@ def _rate_rows(
 ) -> list[Finding]:
     """Abilities both sides cast on shared packs, where the sample's median is higher."""
     gaps = []
+    level: list[str] = []
     for ability_id, (name, our_count) in ours_on_trash.items():
         rates = [
             qualifying[ability_id] / their_seconds * 60
@@ -165,7 +166,13 @@ def _rate_rows(
             continue
         our_rate = our_count / our_seconds * 60
         their_median = median(rates)
-        if our_rate <= 0 or their_median / our_rate < RATE_GAP_MULTIPLE:
+        if our_rate <= 0:
+            continue
+        if their_median / our_rate < RATE_GAP_MULTIPLE:
+            # Compared against enough of the sample to argue from, and no gap
+            # wide enough to report. Collected rather than dropped: silence on
+            # the page read the same as never having been compared at all.
+            level.append(name)
             continue
         gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
     gaps.sort(key=lambda row: row[0], reverse=True)
@@ -220,4 +227,31 @@ def _rate_rows(
                 ability_name=name,
             )
         )
+    if level:
+        findings.append(_level_row(our_name, level, pack_count))
     return findings
+
+
+def _level_row(our_name: str, names: Sequence[str], pack_count: int) -> Finding:
+    """Abilities compared on the shared packs that produced no gap row."""
+    ordered = sorted(set(names))
+    return Finding(
+        id="compare.spells.trash.level",
+        title=(
+            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast across "
+            f"{quantity(pack_count, 'aligned pack', 'aligned packs')} "
+            f"{'was' if len(ordered) == 1 else 'were'} compared and showed no gap"
+        ),
+        detail=(
+            "Enough of the sample cast each of these on packs both routes fought, and our own "
+            f"rate was inside the bar the gap rows use: the sample's median has to be "
+            f"{RATE_GAP_MULTIPLE} times ours before one is written. Read it as 'no gap wide "
+            "enough to report', never as 'the same rate'."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            ", ".join(ordered),
+            f"compared against at least {MIN_MEMBERS_WITH_ABILITY} top parses each",
+        ),
+    )

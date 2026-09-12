@@ -254,3 +254,38 @@ def test_a_side_below_the_floor_contributes_no_rate() -> None:
     findings = compare_trash_spells_sample(half_the_floor, OURS, OUR_NAME, TRASH_SAMPLE)
 
     assert not any(f.id.startswith("compare.spells.trash.rate") for f in findings)
+
+
+def test_an_ability_compared_on_trash_and_level_is_named() -> None:
+    """Silence must not mean both "not compared on trash" and "compared and fine"."""
+    level = a_loaded(
+        OURS,
+        a_pull(0, 60.0, 100, 101),
+        casts=tuple(cast(693, BLOOD_BOIL, "Blood Boil", n * 1_000, 0) for n in range(9)),
+    )
+
+    findings = compare_trash_spells_sample(level, OURS, OUR_NAME, TRASH_SAMPLE)
+
+    row = next(f for f in findings if f.id == "compare.spells.trash.level")
+    assert "Blood Boil" in " ".join(row.evidence)
+    assert not any(f.id.startswith("compare.spells.trash.rate") for f in findings)
+
+
+def test_no_trash_level_row_when_every_ability_showed_a_gap() -> None:
+    findings = compare_trash_spells_sample(OURS_LOADED, OURS, OUR_NAME, TRASH_SAMPLE)
+
+    assert not any(f.id == "compare.spells.trash.level" for f in findings)
+
+
+def test_a_single_level_ability_on_trash_is_counted_in_the_singular() -> None:
+    level = a_loaded(
+        OURS,
+        a_pull(0, 60.0, 100, 101),
+        casts=tuple(cast(693, BLOOD_BOIL, "Blood Boil", n * 1_000, 0) for n in range(9)),
+    )
+
+    findings = compare_trash_spells_sample(level, OURS, OUR_NAME, TRASH_SAMPLE)
+
+    row = next(f for f in findings if f.id == "compare.spells.trash.level")
+    assert row.title.startswith("1 ability ")
+    assert "1 aligned pack " in row.title
