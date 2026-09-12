@@ -26,6 +26,7 @@ from wowperf.domain.report.deaths import (
     NO_TIMELINE_EVENT,
     build_deaths,
 )
+from wowperf.domain.report.model import DeathCard
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -692,10 +693,11 @@ def test_a_pressed_defensive_row_carries_the_window_that_press_covered() -> None
 def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
     # A report fetched without an aura table, or a press whose buff the table
     # never recorded, must draw nothing rather than a window the width of a
-    # guess.
+    # guess. Since 2026-09-12 it draws no row either: a press the card cannot
+    # place a window for has nothing left to tell a reader.
     loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras()
     card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
-    assert all(row.cover_width is None for row in card.timeline)
+    assert [row.ability for row in card.timeline] == []
 
 
 def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_window() -> None:
@@ -911,13 +913,23 @@ def test_an_absorb_row_carries_a_tooltip_naming_the_shields_caster() -> None:
     assert labels["Soaked"] == "12,000"
 
 
-def test_a_cast_row_carries_no_tooltip() -> None:
-    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
-        update={"casts": owns_icebound(55_000)}
-    )
-    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
-    row = next(row for row in card.timeline if row.kind == "cast")
-    assert row.tooltip is None
+def test_every_cast_row_a_card_draws_carries_a_panel() -> None:
+    # Was `test_a_cast_row_carries_no_tooltip`, which pinned that a bandless
+    # press offered no panel. The card stopped drawing bandless presses on
+    # 2026-09-12, so the fact worth holding is the complement: a cast row
+    # always explains itself, because the band that earned it its row is the
+    # same band its panel measures. The first assertion keeps the second from
+    # passing over an empty list.
+    loaded = a_loaded_run_with_a_pressed_defensive_and_its_band().model_copy(update={
+        "casts": owns_icebound(55_000) + (
+            CastEvent(actor_id=1, ability_id=116, ability_name="Frostbolt",
+                      timestamp_ms=56_000, pull_index=0),
+        ),
+    })
+    casts = [row for row in build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].timeline
+             if row.kind == "cast"]
+    assert casts != []
+    assert all(row.tooltip is not None for row in casts)
 
 
 def test_a_press_row_carries_a_tooltip_measuring_its_own_cover_window() -> None:
@@ -950,15 +962,16 @@ def test_a_press_tooltip_counts_only_the_damage_that_arrived_inside_its_band() -
     assert labels["Reached health"] == "9,001"
 
 
-def test_a_press_with_no_band_in_the_log_carries_no_tooltip_either() -> None:
+def test_a_press_with_no_band_goes_while_the_hits_around_it_stay() -> None:
     # The panel explains the rectangle beside it, so a press that draws no
-    # rectangle must offer no panel. Anchored on the hit rows, which do carry
-    # tooltips in the same card, so this cannot pass by tooltips being off.
+    # rectangle has no row to hang one on. Anchored on the hit rows in the
+    # same card, which the filter must not touch: only casts are judged on
+    # whether the card can draw them.
     loaded = a_loaded_run_with_a_pressed_defensive_and_no_auras().model_copy(update={
         "damage_taken": (a_hit(1, 54_000, "Frigid Roar", 9_001),),
     })
     card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
-    assert all(row.tooltip is None for row in card.timeline if row.kind == "cast")
+    assert [row.kind for row in card.timeline] == ["hit"]
     assert all(row.tooltip is not None for row in card.timeline if row.kind == "hit")
 
 
@@ -974,5 +987,61 @@ def test_an_ordinary_cast_that_leaves_no_self_buff_carries_no_tooltip() -> None:
     })
     card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
     rows = {row.ability: row for row in card.timeline if row.kind == "cast"}
-    assert rows["Frostbolt"].tooltip is None
+    assert "Frostbolt" not in rows
     assert rows["Icebound Fortitude"].tooltip is not None
+
+
+def a_card_with_casts(*casts: tuple[str, int], auras: PlayerAuras | None) -> DeathCard:
+    """A card whose run-up holds nothing but the dying player's own presses."""
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
+        "casts": tuple(
+            CastEvent(actor_id=1, ability_id=ability_id, ability_name=name,
+                      timestamp_ms=55_000, pull_index=0)
+            for name, ability_id in casts
+        ),
+        "auras": () if auras is None else (auras,),
+    })
+    return build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+
+def auras_covering(name: str) -> PlayerAuras:
+    """An aura table whose one band holds the press `a_card_with_casts` places.
+
+    Keyed on the name rather than on the cast's own id, the way a real table
+    keys Alter Time: `resolve_aura` tries the id first and falls back to the
+    name, so this fixture exercises the fallback.
+    """
+    return PlayerAuras(actor_id=1, on_self=(
+        Aura(ability_id=999_999, name=name, total_uptime_ms=6_000, uses=1,
+             bands=(AuraBand(start_ms=53_000, end_ms=59_000),)),
+    ))
+
+
+def a_card_with_heal(amount: int) -> DeathCard:
+    """A card whose run-up holds one heal, landed on the dying player by a teammate."""
+    loaded = LoadedRun(
+        run=a_run(players=(a_player(), a_player(actor_id=2, name="Emberkin")),
+                  pulls=(a_pull(0, 0, 120_000),)),
+        deaths=(a_death(1, 60_000),),
+        healing=(HealingEvent(actor_id=1, source_id=2, ability_id=7, ability_name="Holy Light",
+                              amount=amount, timestamp_ms=55_000),),
+    )
+    return build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+
+def test_a_cast_with_no_resolvable_buff_is_not_a_row() -> None:
+    """An offensive cast says nothing a death card can draw, so it is not drawn."""
+    card = a_card_with_casts(("Rampage", 845_000), auras=None)
+    assert [row.ability for row in card.timeline] == []
+
+
+def test_a_cast_whose_buff_the_card_can_draw_stays() -> None:
+    """A press with a cover band has a window and figures worth a row."""
+    card = a_card_with_casts(("Whirlwind", 845_000), auras=auras_covering("Whirlwind"))
+    assert [row.ability for row in card.timeline] == ["Whirlwind"]
+
+
+def test_a_heal_that_landed_for_nothing_still_gets_a_row() -> None:
+    """Overheal is a fact about who was healing; only casts are filtered."""
+    card = a_card_with_heal(amount=0)
+    assert [row.detail for row in card.timeline] == ["+0 from Emberkin"]

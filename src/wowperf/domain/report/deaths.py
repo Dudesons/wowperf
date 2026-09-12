@@ -368,10 +368,19 @@ def build_deaths(
         curve = build_health_curve(events, readings_in_window(loaded, death), death)
         slug = f"death-{index}"
         auras = loaded.auras_by_actor.get(death.actor_id)
+        # Every event still reaches the curve and the press tooltips below:
+        # health is reconstructed from the whole run-up, and a press sums what
+        # arrived inside its cover from the same unfiltered list. Only which
+        # rows a reader is shown narrows here -- see design section 4.1.
+        drawn = tuple(
+            event
+            for event in events
+            if event.kind != CAST or _press_band(event, death, auras) is not None
+        )
         timeline = tuple(
             _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras,
                        events)
-            for position, event in enumerate(events)
+            for position, event in enumerate(drawn)
         )
         has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
