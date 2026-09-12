@@ -29,6 +29,16 @@
   {% endfor %}
   <text class="track-label row-label" x="{{ timeline.label_x }}" y="{{ timeline.damage.label_y }}">Damage taken</text>
   {% endif %}
+  {% if timeline.damage_done %}
+  <line class="damage-axis" x1="{{ timeline.damage_done.axis_x0 }}" y1="{{ timeline.damage_done.axis_top_y }}"
+        x2="{{ timeline.damage_done.axis_x1 }}" y2="{{ timeline.damage_done.axis_top_y }}"/>
+  <text class="tick-label row-label" x="{{ timeline.label_x }}"
+        y="{{ timeline.damage_done.axis_top_y }}">{{ timeline.damage_done.axis_top_label }}</text>
+  {% for bar in timeline.damage_done.bars %}
+  <rect class="damage-done-bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.hover }}</title></rect>
+  {% endfor %}
+  <text class="track-label row-label" x="{{ timeline.label_x }}" y="{{ timeline.damage_done.label_y }}">Damage done</text>
+  {% endif %}
   {% for row in timeline.cooldowns %}
   <g>
   {% for span in row.unavailable %}
@@ -60,8 +70,9 @@
 {% endif %}{% endfor %}
 </div>
 {% if timeline.damage %}<p class="sub">{{ timeline.damage.peak_label }} {{ timeline.damage.bucket_caption }}</p>{% endif %}
+{% if timeline.damage_done %}<p class="sub">{{ timeline.damage_done.peak_label }} {{ timeline.damage_done.bucket_caption }}</p>{% endif %}
 <p class="state-key">{% for key in timeline.state_key %}<span class="state-swatch {{ key.css_class }}"></span>{{ key.label }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
 <p class="legend">{{ timeline.legend }}</p>
-<p class="legend">{% if timeline.badge_measured %}<a class="badge {{ timeline.badge_measured.tint }}" href="#provenance">{{ timeline.badge_measured.label }}</a> — {{ timeline.badge_measured_caption }}{% endif %}{% if timeline.badge_inferred %} <a class="badge {{ timeline.badge_inferred.tint }}" href="#provenance">{{ timeline.badge_inferred.label }}</a> — {{ timeline.badge_inferred_caption }}{% endif %}</p>
+<p class="legend">{% if timeline.badge_measured %}<a class="badge {{ timeline.badge_measured.tint }}" href="#provenance">{{ timeline.badge_measured.label }}</a> — {{ timeline.badge_measured_caption }}{% endif %}{% if timeline.badge_derived %} <a class="badge {{ timeline.badge_derived.tint }}" href="#provenance">{{ timeline.badge_derived.label }}</a> — {{ timeline.badge_derived_caption }}{% endif %}{% if timeline.badge_inferred %} <a class="badge {{ timeline.badge_inferred.tint }}" href="#provenance">{{ timeline.badge_inferred.label }}</a> — {{ timeline.badge_inferred_caption }}{% endif %}</p>
 {% endif %}
 {% endmacro %}

@@ -747,6 +747,13 @@ def a_drawn_timeline() -> PlayerTimeline:
             bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
             peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         ),
+        damage_done=DamageTrack(
+            baseline_y=116.0,
+            label_y=100.0,
+            bars=(DamageBar(x=130.0, width=6.0, y=84.0, height=32.0,
+                            hover="600 damage done in 6.4 s, at 0:00, during Pack 0"),),
+            peak_label="Tallest bar: 600 damage done in 6.4 seconds.",
+        ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438,
                                # 96/140 of the chart's height, and 16/140 of it
                                # for `row_hit_height` below.
@@ -787,7 +794,32 @@ def a_drawn_timeline() -> PlayerTimeline:
         badge_measured_caption=player_timeline_module.BADGE_MEASURED_CAPTION,
         badge_inferred=Badge(label="inferred", tint="badge-inferred"),
         badge_inferred_caption=player_timeline_module.BADGE_INFERRED_CAPTION,
+        badge_derived=Badge(label="derived", tint="badge-derived"),
+        badge_derived_caption=player_timeline_module.BADGE_DERIVED_CAPTION,
     )
+
+
+def a_timeline_body() -> str:
+    return render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>", 1
+    )[1]
+
+
+def test_a_timeline_draws_the_damage_done_bars() -> None:
+    assert 'class="damage-done-bar"' in a_timeline_body()
+
+
+def test_a_timeline_names_the_damage_done_track_beside_it() -> None:
+    assert "Damage done" in a_timeline_body()
+
+
+def test_a_timeline_legend_grades_the_damage_done_bars_as_derived() -> None:
+    body = a_timeline_body()
+    # The anchor, not the bare class name: a row panel's "Buff up" line already
+    # carries a derived badge, so `"badge-derived" in body` would pass on a
+    # page whose legend said nothing at all.
+    assert '<a class="badge badge-derived" href="#provenance">derived</a>' in body
+    assert "the damage done bars, rebuilt from the per-second figures" in body
 
 
 def test_the_state_key_reaches_the_page_as_a_swatch_per_state() -> None:

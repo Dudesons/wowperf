@@ -887,8 +887,12 @@ def build_player_timeline(
         legend=LEGEND,
         badge_measured=badge_for(Confidence.MEASURED),
         badge_measured_caption=BADGE_MEASURED_CAPTION,
-        badge_derived=badge_for(Confidence.DERIVED),
-        badge_derived_caption=BADGE_DERIVED_CAPTION,
+        # Guarded where the other two are not: this badge grades the damage
+        # done bars and nothing else, and a player the graph carried no series
+        # for still draws a chart. A grade on something absent from the page
+        # is a claim about nothing.
+        badge_derived=badge_for(Confidence.DERIVED) if damage_done else None,
+        badge_derived_caption=BADGE_DERIVED_CAPTION if damage_done else "",
         badge_inferred=badge_for(Confidence.INFERRED),
         badge_inferred_caption=BADGE_INFERRED_CAPTION,
     )

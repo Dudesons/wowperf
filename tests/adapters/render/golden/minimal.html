@@ -9,7 +9,7 @@
   --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
   --page: #16181c; --card: #1e2126; --line: #2c3038;
   --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c; --hit: #e07a7a;
-  --cooldown: #6a7280;
+  --cooldown: #6a7280; --done: #b08ad6;
   --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
   --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
   --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
@@ -168,6 +168,10 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    that forty of them do not become the drawing. */
 .pull-band { fill: var(--line); opacity: 0.55; }
 .damage-bar { fill: var(--hit); }
+/* The other direction, in a hue of its own: red is what hit this player,
+   blue is a press, green is the buff up and grey is a cooldown, so the
+   output track takes the one part of the wheel the drawing has left. */
+.damage-done-bar { fill: var(--done); }
 /* Opaque and lighter than the band behind it: this is the layer the inferred
    badge grades, and a state marker fainter than the background it sits on is
    a state a screenshot loses. */

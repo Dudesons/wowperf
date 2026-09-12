@@ -16,6 +16,7 @@ from wowperf.domain.report.model import (
     TooltipLine,
 )
 from wowperf.domain.report.player_timeline import (
+    BADGE_DERIVED_CAPTION,
     BADGE_INFERRED_CAPTION,
     BADGE_MEASURED_CAPTION,
     BUCKET_SECONDS,
@@ -1147,3 +1148,37 @@ def test_the_chart_leaves_room_for_the_damage_done_track() -> None:
     row = timeline.cooldowns[0]
     assert row.baseline_y == FIRST_ROW_Y
     assert row.hit_top == round(row.baseline_y / timeline.height * 100, 1)
+
+
+def test_a_timeline_with_no_damage_done_track_carries_no_derived_badge() -> None:
+    """A badge is a grade on something the page drew.
+
+    The measured badge holds that property without a condition: a timeline
+    with neither damage taken nor a row is withheld outright, so its legend
+    never renders. The derived badge grades one thing only, and that thing can
+    be missing from a chart that still draws, which is why it takes a guard
+    the other does not need.
+    """
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    timeline = a_timeline(loaded, defensives=KIT)
+    assert timeline.damage_done is None
+    assert timeline.badge_derived is None
+    assert timeline.badge_derived_caption == ""
+    # The other two are unconditional, and stay so.
+    assert timeline.badge_measured is not None
+    assert timeline.badge_inferred is not None
+
+
+def test_a_timeline_that_draws_the_track_does_grade_it() -> None:
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (600,)),),
+    )
+    timeline = a_timeline(loaded, actor_id=1, defensives=KIT)
+    assert timeline.damage_done is not None
+    assert timeline.badge_derived == badge_for(Confidence.DERIVED)
+    assert timeline.badge_derived_caption == BADGE_DERIVED_CAPTION

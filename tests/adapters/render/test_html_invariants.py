@@ -26,7 +26,7 @@ from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import LoadedRun, Player
+from wowperf.domain.model import DamageDoneSeries, LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.model import (
@@ -218,6 +218,17 @@ def rich_loaded() -> LoadedRun:
                        item_level=675),
             ),
             pulls=(a_pull(0, 0, 60_000), a_pull(1, 120_000, 200_000, encounter_id=12825)),
+        ),
+        # Two players' output, so the page draws a real damage done track built
+        # by `_damage_done_track` rather than one written out by hand. The
+        # no-rate invariant below is vacuous without it.
+        damage_done=(
+            DamageDoneSeries(
+                actor_id=1, point_start_ms=0, interval_ms=6411.7, amounts=(600, 300)
+            ),
+            DamageDoneSeries(
+                actor_id=2, point_start_ms=0, interval_ms=6411.7, amounts=(90, 45)
+            ),
         ),
     )
 
@@ -731,6 +742,21 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (PlayerTimeline, "row_height"),
     (PlayerTimeline, "press_width"),
 }
+
+
+def test_no_timeline_hover_states_a_damage_rate() -> None:
+    """The graph this track is built from reports damage per second, and the
+    postmortem design's section 5.5 refuses to produce that figure. The
+    conversion happens in ingest; this holds the page to it.
+
+    The first assertion is what keeps the rest from being a guard nobody can
+    fail: the fixture draws a real damage done track, whose hovers come from
+    `_done_bucket_hover` rather than from a literal in a test.
+    """
+    body = rich_html().split("</style>", 1)[1]
+    assert 'class="damage-done-bar"' in body
+    for forbidden in ("damage a second", "per second", "DPS"):
+        assert forbidden not in body
 
 
 def test_the_report_carries_no_total_row() -> None:
