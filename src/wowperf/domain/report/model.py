@@ -32,6 +32,32 @@ class Badge(Frozen):
     tint: str
 
 
+class TooltipLine(Frozen):
+    """One labelled figure of a tooltip. Formatted here; the template prints it."""
+
+    label: str
+    value: str
+    tier: Badge | None = None
+    """Which confidence tier this line's figure belongs to, or None for measured --
+    this tooltip's default and the one tier common enough that marking it would
+    mark everything. Set only on a line that is not a measured sum: an inferred
+    assumption from a data file, or a derived rate computed from the measured
+    lines beside it. Rendered as a small marker beside the label, styled like
+    the page's other badges but linking nowhere, since a tooltip is not a
+    finding with its own row in Provenance."""
+
+
+class Tooltip(Frozen):
+    """What hovering an ability says: measured lines, and the caveat they need.
+
+    A tooltip with no lines is never built: the panel exists to carry figures,
+    and an empty one is a hover target that rewards nothing.
+    """
+
+    lines: tuple[TooltipLine, ...] = ()
+    note: str = ""
+
+
 class LedgerRow(Frozen):
     """One finding, formatted for display.
 
@@ -64,6 +90,10 @@ class LedgerRow(Frozen):
     nests_inside: str | None = None
     evidence: tuple[str, ...] = ()
     group_note: str = ""
+    tooltip: Tooltip | None = None
+    """The panel the heading's ability name reveals, or None where the finding
+    earned none. Decided in `report/finding_tooltip.py` and looked up by
+    `ledger_row`, which formats and never measures."""
 
 
 class TimelineBlock(Frozen):
@@ -288,30 +318,6 @@ class PlayerTimeline(Frozen):
     badge_inferred_caption: str = ""
 
 
-class TooltipLine(Frozen):
-    """One labelled figure of a tooltip. Formatted here; the template prints it."""
-
-    label: str
-    value: str
-    tier: Badge | None = None
-    """Which confidence tier this line's figure belongs to, or None for measured --
-    this tooltip's default and the one tier common enough that marking it would
-    mark everything. Set only on a line that is not a measured sum: an inferred
-    assumption from a data file, or a derived rate computed from the measured
-    lines beside it. Rendered as a small marker beside the label, styled like
-    the page's other badges but linking nowhere, since a tooltip is not a
-    finding with its own row in Provenance."""
-
-
-class Tooltip(Frozen):
-    """What hovering an ability says: measured lines, and the caveat they need.
-
-    A tooltip with no lines is never built: the panel exists to carry figures,
-    and an empty one is a hover target that rewards nothing.
-    """
-
-    lines: tuple[TooltipLine, ...] = ()
-    note: str = ""
 
 
 class RecapRow(Frozen):

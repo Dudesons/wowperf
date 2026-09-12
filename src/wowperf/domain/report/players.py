@@ -1,7 +1,7 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.players import display_names, summarise_players
 from wowperf.domain.findings import Finding
@@ -15,8 +15,8 @@ from wowperf.domain.report.frame import (
     plural,
     section_for,
 )
-from wowperf.domain.report.ledger import collapse_repeated_details, ledger_row
-from wowperf.domain.report.model import PlayerCard, Section, SectionState
+from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
+from wowperf.domain.report.model import PlayerCard, Section, SectionState, Tooltip
 from wowperf.domain.report.player_timeline import build_player_timeline
 from wowperf.domain.season import Defensives, ThroughputCooldowns
 from wowperf.domain.slug import player_slug
@@ -96,6 +96,7 @@ def build_players(
     titles_by_id: dict[str, str],
     defensives: Defensives,
     throughput: ThroughputCooldowns,
+    tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
 
@@ -148,7 +149,7 @@ def build_players(
         slug = slugs[summary.actor_id]
         mine = collapse_repeated_details(
             [
-                ledger_row(finding, titles_by_id)
+                ledger_row(finding, titles_by_id, tooltips)
                 for finding in damage
                 if finding.title.startswith(f"{display_name} took ")
             ]
@@ -170,7 +171,7 @@ def build_players(
                 spell_and_talent=_comparison_section(findings, slug, compared_slugs),
                 spell_and_talent_rows=collapse_repeated_details(
                     [
-                        ledger_row(finding, titles_by_id)
+                        ledger_row(finding, titles_by_id, tooltips)
                         for finding in comparison
                         if finding.player_slug == slug
                     ]

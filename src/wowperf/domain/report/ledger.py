@@ -1,7 +1,8 @@
 # ABOUTME: Findings turned into rows, and which tab each row belongs on.
 # ABOUTME: Nesting and placement are stated here, copied from what the analysers measure.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
 from wowperf.domain.findings import Finding
 from wowperf.domain.report.frame import (
@@ -10,7 +11,7 @@ from wowperf.domain.report.frame import (
     badge_for,
     format_seconds,
 )
-from wowperf.domain.report.model import LedgerRow, PlayerCard
+from wowperf.domain.report.model import LedgerRow, PlayerCard, Tooltip
 
 DECOMPOSITION_IDS = ("compare.duration", "time.residual", "deaths.total")
 """Figures that contain others. They head the ledger; everything else is ranked beneath."""
@@ -96,13 +97,27 @@ def _split_title(finding: Finding) -> tuple[str, str, str]:
     return before, name, after
 
 
-def ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
+NO_TOOLTIPS: Mapping[str, Tooltip] = MappingProxyType({})
+"""The default for every caller that has no panels to offer: tests, and any
+surface where a finding's heading is drawn without the run behind it."""
+
+
+def ledger_row(
+    finding: Finding,
+    titles_by_id: dict[str, str],
+    tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
+) -> LedgerRow:
     """Format one finding for display.
 
     `nests_inside` carries the parent finding's title, not its id: the id is
     an internal identifier and never belongs on a page a person reads. When
     the parent finding is not among this run's findings, `nests_inside` stays
     `None` — a pointer to a row that is not on the page is worse than silence.
+
+    `tooltips` is looked up and never computed. Deciding which finding earns a
+    panel needs the run, the aura tables and the defensives data file, none of
+    which belongs in a formatter; `report/finding_tooltip.py` holds that
+    decision and `build.py` calls it once.
     """
     parent_id = parent_of(finding.id)
     before, ability, after = _split_title(finding)
@@ -120,6 +135,7 @@ def ledger_row(finding: Finding, titles_by_id: dict[str, str]) -> LedgerRow:
         seconds=format_seconds(finding.seconds_lost),
         nests_inside=titles_by_id.get(parent_id) if parent_id is not None else None,
         evidence=finding.evidence,
+        tooltip=tooltips.get(finding.id),
     )
 
 
@@ -157,7 +173,8 @@ def collapse_repeated_details(rows: Sequence[LedgerRow]) -> tuple[LedgerRow, ...
 
 
 def place_rows(
-    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
+    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str],
+    tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
 ) -> dict[str, tuple[LedgerRow, ...]]:
     """Every finding's row, keyed by the `Report` field it lands in.
 
@@ -172,7 +189,7 @@ def place_rows(
             continue
         field = _field_for(finding.id)
         if field is not None:
-            placed[field].append(ledger_row(finding, titles_by_id))
+            placed[field].append(ledger_row(finding, titles_by_id, tooltips))
     return {field: collapse_repeated_details(rows) for field, rows in placed.items()}
 
 
@@ -182,7 +199,8 @@ stay a list."""
 
 
 def build_summary_pointers(
-    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str]
+    findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str],
+    tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
 ) -> tuple[LedgerRow, ...]:
     """The first timed findings that are not decomposition rows, in the order given.
 
@@ -195,7 +213,9 @@ def build_summary_pointers(
         for finding in findings
         if finding.seconds_lost is not None and finding.id not in exclude
     ]
-    return tuple(ledger_row(finding, titles_by_id) for finding in timed[:POINTER_COUNT])
+    return tuple(
+        ledger_row(finding, titles_by_id, tooltips) for finding in timed[:POINTER_COUNT]
+    )
 
 
 def placed_finding_ids(
@@ -219,7 +239,8 @@ def placed_finding_ids(
 
 
 def build_observations(
-    findings: Sequence[Finding], placed_ids: set[str], titles_by_id: dict[str, str]
+    findings: Sequence[Finding], placed_ids: set[str], titles_by_id: dict[str, str],
+    tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
 ) -> tuple[LedgerRow, ...]:
     """Every finding no other section placed, in the order the analysis produced them.
 
@@ -229,5 +250,6 @@ def build_observations(
     being silently dropped until someone adds its prefix to a whitelist.
     """
     return collapse_repeated_details(
-        [ledger_row(finding, titles_by_id) for finding in findings if finding.id not in placed_ids]
+        [ledger_row(finding, titles_by_id, tooltips)
+         for finding in findings if finding.id not in placed_ids]
     )

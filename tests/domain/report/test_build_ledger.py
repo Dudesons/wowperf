@@ -10,8 +10,8 @@ from tests.domain.report.test_build_frame import (
 )
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.report.build import build_report
-from wowperf.domain.report.ledger import parent_of
-from wowperf.domain.report.model import LedgerRow
+from wowperf.domain.report.ledger import ledger_row, parent_of
+from wowperf.domain.report.model import LedgerRow, Tooltip, TooltipLine
 
 
 def a_finding(finding_id: str, seconds: float | None, title: str = "x") -> Finding:
@@ -143,3 +143,34 @@ def test_every_nesting_relationship_the_findings_file_declares() -> None:
     assert parent_of("compare.route.skipped.2") == "trash.overage"
     assert parent_of("trash.overage") is None
     assert parent_of("compare.duration") is None
+
+
+A_PANEL = Tooltip(lines=(TooltipLine(label="Presses", value="2"),))
+CEILING_ID = "defensives.ceiling.stonewake.48792"
+
+
+def a_ceiling_finding() -> Finding:
+    return Finding(
+        id=CEILING_ID,
+        title="Stonewake used Icebound Fortitude 2 of a possible 9 times",
+        detail="detail",
+        confidence=Confidence.INFERRED,
+        ability_id=48792,
+        ability_name="Icebound Fortitude",
+    )
+
+
+def test_a_ledger_row_carries_the_panel_its_finding_was_given() -> None:
+    # Looked up, never computed: the row builder stays a formatter, which is
+    # the part of the 2026-09-11 ruling against these tooltips that was right.
+    row = ledger_row(a_ceiling_finding(), {}, {CEILING_ID: A_PANEL})
+    assert row.tooltip is A_PANEL
+
+
+def test_a_ledger_row_with_no_panel_carries_none() -> None:
+    assert ledger_row(a_ceiling_finding(), {}, {}).tooltip is None
+
+
+def test_a_panel_for_a_different_finding_is_not_borrowed() -> None:
+    # Keyed by finding id, so a row takes its own panel or none at all.
+    assert ledger_row(a_ceiling_finding(), {}, {"interrupts.ability.0": A_PANEL}).tooltip is None

@@ -7,6 +7,7 @@ from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
+from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
 from wowperf.domain.report.frame import (
     NO_COMPARISON_RAN,
     SPEED_UNAVAILABLE_ID,
@@ -76,8 +77,13 @@ def build_report(
     route_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
 
     titles_by_id = {finding.id: finding.title for finding in findings}
+    # Built once, here, because this is where `loaded`, the per-actor aura
+    # tables and the defensives data file are all already in hand. Every row
+    # builder below looks a panel up and none of them computes one.
+    tooltips = tooltips_by_finding_id(findings, loaded, defensives)
     players = build_players(
-        loaded, findings, compared_slugs, subject, titles_by_id, defensives, throughput
+        loaded, findings, compared_slugs, subject, titles_by_id, defensives, throughput,
+        tooltips,
     )
 
     withheld: list[str] = []
@@ -104,13 +110,15 @@ def build_report(
         withheld.append(f"Route and tempo: {route_section.reason}")
 
     ledger_decomposition = tuple(
-        ledger_row(finding, titles_by_id)
+        ledger_row(finding, titles_by_id, tooltips)
         for finding in findings
         if finding.seconds_lost is not None and finding.id in DECOMPOSITION_IDS
     )
     decomposition_ids = {row.finding_id for row in ledger_decomposition}
-    placed_rows = place_rows(findings, titles_by_id, exclude=decomposition_ids)
-    summary_pointers = build_summary_pointers(findings, titles_by_id, exclude=decomposition_ids)
+    placed_rows = place_rows(findings, titles_by_id, decomposition_ids, tooltips)
+    summary_pointers = build_summary_pointers(
+        findings, titles_by_id, decomposition_ids, tooltips
+    )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
 
     deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)
@@ -129,7 +137,7 @@ def build_report(
         interrupts=placed_rows["interrupts"],
         players=players,
         group_rows=placed_rows["group_rows"],
-        observations=build_observations(findings, placed_ids, titles_by_id),
+        observations=build_observations(findings, placed_ids, titles_by_id, tooltips),
         provenance=Provenance(
             report_code=loaded.run.report_code,
             fight_id=loaded.run.fight_id,

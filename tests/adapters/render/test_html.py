@@ -6,6 +6,7 @@ from markupsafe import escape
 from wowperf.adapters.render.html import render
 from wowperf.domain.report.model import (
     Badge,
+    DeathCard,
     Header,
     LedgerRow,
     Provenance,
@@ -14,6 +15,8 @@ from wowperf.domain.report.model import (
     Section,
     SectionState,
     Timeline,
+    Tooltip,
+    TooltipLine,
 )
 
 
@@ -287,3 +290,45 @@ def test_the_confidence_legend_explains_all_three_badges() -> None:
         '<span class="badge badge-inferred">inferred</span> requires an assumption'
         in legend
     )
+
+
+def test_a_ledger_cards_heading_reveals_the_panel_its_row_carries() -> None:
+    # The view-model test in test_build_ledger.py proves the row carries the
+    # panel; only this proves the template hands it to `ability()`. Dropping
+    # that third argument leaves the row builder green and this red, which is
+    # the split this repository keeps getting wrong in the other direction.
+    row = a_row(
+        "defensives.ceiling.stonewake.48792",
+        title_before="Stonewake used ",
+        title_ability="Icebound Fortitude",
+        title_after=" 2 of a possible 9 times",
+        ability_id=48792,
+        tooltip=Tooltip(lines=(TooltipLine(label="Presses", value="2"),)),
+    )
+    html = render(a_report(ledger_decomposition=(row,)))
+    assert '<span class="ability" tabindex="0">' in html
+    assert '<span class="tip-label">Presses</span><span class="tip-value">2</span>' in html
+
+
+def test_a_ledger_cards_heading_without_a_panel_is_not_a_tab_stop() -> None:
+    # An ability with no panel to reveal has nothing for focus to earn, and
+    # making every icon on the page a tab stop would wreck keyboard navigation
+    # to buy nothing.
+    row = a_row("time.gap.0", title_before="A gap after ", title_ability="pull 7",
+                title_after="", ability_id=None)
+    html = render(a_report(ledger_decomposition=(row,)))
+    assert 'class="ability" tabindex="0"' not in html
+    assert 'class="tip"' not in html
+
+
+def test_the_death_card_heading_still_carries_no_panel() -> None:
+    # Its ground was never answered by the 2026-09-12 overturn: the heading
+    # names the killing blow, and the recap row beneath it already carries
+    # that hit's own figures.
+    html = render(a_report(deaths=(DeathCard(
+        player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
+        killing_blow="Frigid Roar", killing_blow_id=45438,
+    ),)))
+    head = html[html.index('<h2 id="deaths">'):html.index('<h2 id="interrupts">')]
+    assert 'class="row-head"' in head
+    assert 'class="tip"' not in head
