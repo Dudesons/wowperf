@@ -193,6 +193,37 @@ def cooldown_ceiling(alive_seconds: float, ability: CooldownAbility) -> float:
     return alive_seconds / ability.cooldown_seconds * ability.charges
 
 
+def defensive_base_ids(
+    run: Run, defensives: Defensives
+) -> dict[tuple[int, int], str]:
+    """The id fragment every `defensives.*` finding carries, by (actor, ability).
+
+    Minted here rather than inside `analyse_defensives` so that anything
+    needing to find a defensives finding again can generate the same id
+    instead of taking one apart. These findings carry no `player_slug`: the
+    owner lives only in this fragment, and a reader parsing it back would be
+    parsing a string this module had just formatted.
+
+    Counted on the slug rather than the name, because the slug is what the id
+    carries: `Bríala` and `Briala` are two players and one slug, and only the
+    actor id then tells their findings apart.
+    """
+    slug_counts: dict[str, int] = defaultdict(int)
+    for player in run.players:
+        slug_counts[player_slug(player.name)] += 1
+
+    ids: dict[tuple[int, int], str] = {}
+    for player in run.players:
+        slug = player_slug(player.name)
+        for ability in defensives.for_spec(player.class_name, player.spec):
+            ids[(player.actor_id, ability.ability_id)] = (
+                f"{slug}.{ability.ability_id}"
+                if slug_counts[slug] == 1
+                else f"{slug}.{player.actor_id}.{ability.ability_id}"
+            )
+    return ids
+
+
 def analyse_defensives(
     run: Run,
     casts: tuple[CastEvent, ...],
@@ -209,23 +240,13 @@ def analyse_defensives(
     for cast in casts:
         cast_counts[cast.actor_id][cast.ability_id] += 1
 
-    # Counted on the slug rather than the name, because the slug is what the id
-    # carries: `Bríala` and `Briala` are two players and one slug, and only the
-    # actor id then tells their findings apart.
-    slug_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
-        slug_counts[player_slug(player.name)] += 1
+    base_ids = defensive_base_ids(run, defensives)
 
     findings = []
     for player in run.players:
         known = defensives.for_spec(player.class_name, player.spec)
         for ability in known:
-            slug = player_slug(player.name)
-            base_id = (
-                f"{slug}.{ability.ability_id}"
-                if slug_counts[slug] == 1
-                else f"{slug}.{player.actor_id}.{ability.ability_id}"
-            )
+            base_id = base_ids[(player.actor_id, ability.ability_id)]
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
 
             if uses:
