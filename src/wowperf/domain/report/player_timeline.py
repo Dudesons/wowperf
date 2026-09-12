@@ -199,13 +199,21 @@ RUN_SPANS_NO_TIME = (
 )
 
 NOTHING_TRACKED_OR_TAKEN = (
-    "This player cast none of the cooldowns tracked for their specialisation, and the log "
-    "recorded no damage they took or dealt, so there is nothing to draw."
+    "This player cast none of the cooldowns tracked for their specialisation, and neither the "
+    "log nor the run's graph carried any damage for them inside the window this chart draws, "
+    "so there is nothing to draw."
 )
+"""Why the whole chart is withheld, naming both sources and the window.
+
+Both, because the two tracks are read from different places and `NO_DAMAGE_DONE`
+below turns on saying so; the window, because a stream can carry plenty and
+have none of it land between the first pull and the last.
+"""
 
 NO_DAMAGE_TAKEN = (
-    "No damage taken is drawn: the log recorded none for this player. A flat track would read "
-    "as a run of zero-damage buckets rather than as an absence."
+    "No damage taken is drawn: the log recorded none for this player inside the window this "
+    "axis draws. A flat track would read as a run of zero-damage buckets rather than as an "
+    "absence."
 )
 """Said where the damage taken track's caption would sit, when none is drawn.
 
@@ -215,14 +223,18 @@ nothing -- is the one the absence does not support. The same abstention
 `NO_AURA_DATA` makes for an ability whose cover cannot be drawn.
 
 The claim is about the log rather than about the player, and deliberately so.
-`_damage_track` abstains on two causes -- no events for this actor, or every
-recorded hit fully avoided -- and "recorded no damage" is true of both without
-having to tell them apart.
+`_damage_track` abstains on three causes -- no events for this actor, every
+recorded hit fully avoided, or every bucket falling outside the drawn window --
+and "recorded none inside the window this axis draws" is true of all three
+without having to tell them apart. The window clause is not decoration: a hit
+before the first pull is real damage the log did record, and a sentence
+blaming the log for it would be false.
 """
 
 NO_DAMAGE_DONE = (
-    "No damage done is drawn: the run's graph carried none for this player. A flat track would "
-    "read as a run of empty buckets, which is a claim nobody measured."
+    "No damage done is drawn: the run's graph carried none for this player inside the window "
+    "this axis draws. A flat track would read as a run of empty buckets, which is a claim "
+    "nobody measured."
 )
 """The mirror of `NO_DAMAGE_TAKEN`, and not the same claim as it.
 
@@ -448,12 +460,14 @@ def _damage_done_track(
     Never to the group's, for the reason `_damage_track` states below: a shared
     scale across five players would rank them.
 
-    Returns None where the graph carried no series for this player, so the
-    absence is drawn as an absence. A track of zero-height bars would read as a
-    run of empty buckets, which is a different claim and one nobody measured.
+    Returns None where nothing is left to draw -- no series for this player,
+    a series of nothing but zeros, or every bucket falling outside the window
+    this axis covers -- so the absence is drawn as an absence. A track of
+    zero-height bars would read as a run of empty buckets, which is a different
+    claim and one nobody measured.
     """
     ours = next((one for one in series if one.actor_id == actor_id), None)
-    if ours is None or not ours.amounts:
+    if ours is None:
         return None
 
     bucket_seconds = ours.interval_ms / 1000
@@ -547,11 +561,11 @@ def _damage_track(
     and absorbs — which is the same number the per-ability comparison reads, so
     the drawing and the findings cannot disagree about how hard something hit.
 
-    Returns `None` when this player took nothing the log recorded -- no
-    events, or every recorded hit fully avoided (a miss, dodge, or parry
-    carries an unmitigated amount of zero): an empty track drawn at full
-    height would read as a run of zero-damage buckets rather than as an
-    absence.
+    Returns `None` when nothing is left to draw -- no events, every recorded
+    hit fully avoided (a miss, dodge, or parry carries an unmitigated amount of
+    zero), or every bucket falling outside the window this axis covers: an
+    empty track drawn at full height would read as a run of zero-damage
+    buckets rather than as an absence.
     """
     ours = [event for event in events if event.actor_id == actor_id]
     if not ours:

@@ -130,7 +130,7 @@ class _DamageOutlier(Frozen):
         """Held as a property rather than a field so it cannot drift from its inputs.
 
         `median_amount` is a median over amounts greater than zero, so it is
-        never zero itself and this never divides by one.
+        never zero itself and this never divides by zero.
         """
         return self.amount / self.median_amount
 
@@ -233,18 +233,14 @@ def analyse_players(
     for rank, outlier in enumerate(
         _damage_outliers(run, damage_taken, roles)[:MAX_OUTLIERS_REPORTED]
     ):
-        actor_id = outlier.actor_id
-        ability_id = outlier.ability_id
-        name = outlier.player_name
-        ability = outlier.ability_name
-        amount = outlier.amount
-        multiple = outlier.multiple
         # Two players can share a display name; `display_names` disambiguates
         # with the actor id, matching the roster-wide rule used elsewhere.
-        # `name` (from `_damage_outliers`) is the fallback for an actor id
-        # that is not on the roster at all, which `display_names` cannot map.
-        display_name = names_by_actor.get(actor_id, f"{name} (actor {actor_id})")
-        taker = players_by_id.get(actor_id)
+        # The outlier's own `player_name` is the fallback for an actor id that
+        # is not on the roster at all, which `display_names` cannot map.
+        display_name = names_by_actor.get(
+            outlier.actor_id, f"{outlier.player_name} (actor {outlier.actor_id})"
+        )
+        taker = players_by_id.get(outlier.actor_id)
         # Tanks are left out of this comparison altogether: as the only member of
         # their role they have no honest median. The class and spec still name
         # the player for a reader.
@@ -252,16 +248,19 @@ def analyse_players(
         findings.append(
             Finding(
                 id=f"players.damage.{rank}",
-                title=f"{display_name} took {multiple:.1f}x the group median from {ability}",
+                title=(
+                    f"{display_name} took {outlier.multiple:.1f}x the group median "
+                    f"from {outlier.ability_name}"
+                ),
                 detail=(
-                    f"{amount:,} unmitigated damage from {ability}. This states a difference, "
-                    "not a mistake: whether any single hit was avoidable is not something "
-                    "the log records."
+                    f"{outlier.amount:,} unmitigated damage from {outlier.ability_name}. "
+                    "This states a difference, not a mistake: whether any single hit was "
+                    "avoidable is not something the log records."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"{multiple:.1f}x the median",
+                    f"{outlier.multiple:.1f}x the median",
                     "median is over the players who took at least one hit of this ability",
                     "unmitigated: before absorbs and mitigation",
                     class_and_spec,
@@ -274,13 +273,13 @@ def analyse_players(
                 # count, so each is measured, which `FindingFact` spells as no
                 # tier at all. The multiple is the one division done here.
                 facts=(
-                    FindingFact(label="This player", value=f"{amount:,} unmitigated"),
+                    FindingFact(label="This player", value=f"{outlier.amount:,} unmitigated"),
                     FindingFact(
                         label="Group median", value=f"{outlier.median_amount:,.0f} unmitigated"
                     ),
                     FindingFact(
                         label="Multiple",
-                        value=f"{multiple:.1f}x",
+                        value=f"{outlier.multiple:.1f}x",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(
@@ -288,8 +287,8 @@ def analyse_players(
                         value=f"{outlier.took_count} players who took it",
                     ),
                 ),
-                ability_id=ability_id,
-                ability_name=ability,
+                ability_id=outlier.ability_id,
+                ability_name=outlier.ability_name,
             )
         )
     return findings

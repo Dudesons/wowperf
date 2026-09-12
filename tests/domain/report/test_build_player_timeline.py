@@ -1424,6 +1424,88 @@ def test_a_hit_before_the_first_pull_draws_no_bar_left_of_the_axis() -> None:
     assert "-" not in track.bars[0].hover
 
 
+def test_a_hit_outside_the_window_does_not_set_the_damage_taken_axis_top() -> None:
+    """The mirror of the damage done test below, and the half that was missing.
+
+    The rule was applied to both tracks and pinned on one. Reverting the taken
+    track's peak to the tallest bucket in the whole stream passed every test in
+    this suite, which is the defect the change was made to fix: a figure on the
+    axis label that no bar on the chart reaches, and every bar that is there
+    squashed against the floor.
+    """
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        damage_taken=(a_hit(1, 60_000, 10_000_000),)
+        + tuple(a_hit(1, 120_000 + step * 1_000, 100) for step in range(0, 60, 10)),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    track = timeline.damage
+    assert track is not None
+    assert track.axis_top_label == "100"
+    assert max(bar.height for bar in track.bars) == DAMAGE_HEIGHT
+
+
+def test_damage_that_all_falls_outside_the_window_draws_no_track_and_says_so() -> None:
+    """Both guards the window filter added, and the sentence each leaves behind.
+
+    The filter gave each track a third reason to draw nothing, after the two
+    the abstentions were written for. Neither sentence may claim its source
+    carried nothing: here the log recorded 900,000 and the graph carried two
+    buckets, and every one of them fell before the first pull.
+    """
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        damage_taken=(a_hit(1, 60_000, 900_000),),
+        damage_done=(a_done_series(1, (500, 600), interval_ms=6000.0),),
+        casts=(a_cast(1, SHIELD.ability_id, 200_000),),
+    )
+    timeline = a_timeline(loaded, actor_id=1, defensives=KIT)
+    # The chart still renders on its row, so both abstentions are on the page.
+    assert timeline.section.state is SectionState.PRESENT
+    assert timeline.damage is None and timeline.damage_done is None
+    assert timeline.damage_abstention == NO_DAMAGE_TAKEN
+    assert timeline.damage_done_abstention == NO_DAMAGE_DONE
+
+
+def test_neither_abstention_blames_a_source_that_carried_something() -> None:
+    # The wording has to hold for all three causes, not the two it was written
+    # for. "The log recorded none" is false of a run whose damage simply landed
+    # outside the drawn window, and a stated wrong reason is worse than a blank.
+    for sentence in (NO_DAMAGE_TAKEN, NO_DAMAGE_DONE, NOTHING_TRACKED_OR_TAKEN):
+        assert "window" in sentence, sentence
+
+
+def test_a_series_of_nothing_but_zeros_draws_no_track() -> None:
+    # Distinct from a missing series: the graph carried one for this player and
+    # every bucket in it was empty. Without the guard the bars divide by a peak
+    # of zero.
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+        damage_done=(a_done_series(1, (0, 0, 0)),),
+    )
+    assert a_timeline(loaded, actor_id=1, defensives=KIT).damage_done is None
+
+
+def test_a_bucket_starting_exactly_at_the_axis_end_falls_outside_it() -> None:
+    """The window's upper bound is exclusive, and nothing else pins it.
+
+    A bucket starting on the axis end has no width left inside it: clamped, it
+    draws a zero-width rect that still carries a hover a pointer can find.
+    """
+    # Buckets every 6 s from the first pull: index 80 starts at 480, which is
+    # exactly where this 480-second run ends.
+    loaded = LoadedRun(
+        run=a_run_starting_two_minutes_in(),
+        damage_done=(
+            a_done_series(1, tuple(range(1, 82)), interval_ms=6000.0, point_start_ms=120_000),
+        ),
+    )
+    track = a_timeline(loaded, actor_id=1).damage_done
+    assert track is not None
+    assert len(track.bars) == 80
+
+
 def test_a_bucket_outside_the_window_does_not_set_the_axis_top() -> None:
     """The scale is this player's own tallest *drawn* bucket.
 
@@ -1466,7 +1548,10 @@ def test_the_damage_done_track_is_drawn_clear_of_the_track_above_it() -> None:
     # Lower on the page than the bars it sits under, and clear of their feet:
     # the two tracks share an axis and must not share pixels.
     assert done.baseline_y > taken.baseline_y
-    assert min(bar.y for bar in done.bars) >= taken.baseline_y
+    # Strictly clear, not merely non-overlapping: `DAMAGE_DONE_GAP` is the
+    # clear space between the two, and `>=` here is satisfied by a gap of zero,
+    # which leaves the constant with nothing behind it.
+    assert min(bar.y for bar in done.bars) > taken.baseline_y
     # And above the first row, whose baseline is that row's top edge.
     assert done.baseline_y <= timeline.cooldowns[0].baseline_y
     # Every bar grows from this track's own foot, not from the one above.
