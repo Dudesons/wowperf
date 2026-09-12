@@ -100,12 +100,18 @@ decision, not a discovery to re-litigate; each says what it costs if wrong.
    pending three questions only RwlRwlRwlRwl can answer. Nothing in this plan builds the static
    tier. Every tooltip here renders from the measured and derived tiers alone, which is what the
    spec's own §7 says it must be able to do. If wrong, the tooltips are shorter than intended and
-   a later task adds one line to a macro.
+   a later task adds one line to a macro. *Closed 2026-09-12:* the three questions no longer
+   block it. That spike's §9 now carries the answer and records this as a decision not to build
+   the tier rather than a deferral waiting on anyone.
 6. **Rich tooltips attach to HTML, not to SVG.** An HTML hover panel positioned over an SVG needs
    a script-computed position, which §3.2 forbids. So the recap table, the availability rows and
    the ledger card headings get the CSS hover panel; the player timeline's SVG rows keep their
    native `<title>`, enriched with the same measured facts. If wrong, the timeline's facts are one
-   hover-delay slower to read than the card's.
+   hover-delay slower to read than the card's. *Amended 2026-09-12:* half of this was wrong in
+   both directions. The ledger card headings carry no panel and will not: their measured facts
+   are already printed as the evidence list below them. The player timeline's cooldown rows had
+   no `<title>` to enrich, only the pull bands did, and those rows now carry one. The design's
+   §4.5.1 records both, and why.
 
 ---
 
