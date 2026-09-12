@@ -217,10 +217,26 @@ Thirteen of this run's 34 findings carry an ability id, across five families:
 | `compare.spells.rate.*` | 1 | new: our rate against the reference's, both sides named |
 | `compare.uptime.self.*` | 1 | new: our boss-pull seconds against the reference's |
 
-`ability_tooltip` needs a cooldown, a cover table, the run's hits and a press count. `build.py`
-already assembles all four for the same player's timeline rows, so the threading is a matter of
-passing what is computed rather than computing anything twice. The three new builders read
-figures the finding already carries.
+**Nothing is threaded into `build_report`, and no string is parsed back.** Planning found that
+the figures a panel wants are indeed all present, but present as prose and as evidence strings —
+"range 0.7 to 2.1 casts a minute across 5 top parses" — which a builder would have to take apart
+again. Two mechanisms avoid that, one per half of the table:
+
+- **The defensives families are built where `build.py` already stands.** It holds `loaded`, the
+  per-actor aura tables and the defensives data file, which is everything `ability_tooltip`
+  needs. It builds a `dict[str, Tooltip]` keyed by finding id, and the row builders look the
+  panel up rather than computing it. `ledger_row` stays a formatter, which is what the
+  overturned ruling was right to protect.
+- **The other three carry their figures on the finding.** `Finding` gains
+  `facts: tuple[FindingFact, ...]`, a label, a value and an optional confidence tier, populated
+  by the analyser at the moment it already has the numbers in hand. The report turns facts into
+  tooltip lines and computes nothing. This is the same discipline as `evidence`, in a shape a
+  panel can render: `evidence` is prose for a list, `facts` are figures for a panel.
+
+`report/deaths.py::_ability_tooltip` is already generic over its window and its hits, and a
+ledger card differs from a death only in passing the whole run instead of a run-up. It moves to
+`report/tooltip.py` as a public function and `deaths.py` imports it, rather than a second copy
+being written next to it.
 
 `ledger_row` passes the panel to `ability()`, which has taken an optional tooltip since the day
 it was written.
