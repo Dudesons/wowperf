@@ -156,6 +156,33 @@ def recording_repository(
     def events_payload(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return {"reportData": {"report": {"events": {"data": rows, "nextPageTimestamp": None}}}}
 
+    # Pre-aggregated rather than paginated, so it is not an events payload. Its
+    # one point is a rate: 100 a second over a six-second bucket, which the
+    # ingest turns into the 600 a test below reads.
+    damage_done_graph: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "graph": {
+                    "data": {
+                        "series": [
+                            {
+                                "id": 1,
+                                "guid": 1001,
+                                "type": "Mage",
+                                "pointStart": 0,
+                                "pointInterval": 6000.0,
+                                "total": 600,
+                                "data": [100.0],
+                            }
+                        ],
+                        "startTime": 0,
+                        "endTime": 1920000,
+                    }
+                }
+            }
+        }
+    }
+
     event_payloads: dict[str, dict[str, Any]] = {
         "Casts": events_payload(
             [{"type": "cast", "sourceID": 693, "abilityGameID": 100, "timestamp": 2000,
@@ -206,6 +233,8 @@ def recording_repository(
         if name == "Affixes":
             answer = next(affixes_answers) if affixes_answers is not None else affixes
             return httpx.Response(200, json={"data": answer})
+        if name == "DamageDoneGraph":
+            return httpx.Response(200, json={"data": damage_done_graph})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -247,8 +276,8 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert load_calls[0] == "Fights"
     assert set(load_calls) == {
         "Fights", "Affixes", "Abilities", "Casts", "Deaths",
-        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "Actors", "Talents",
-        "Healing", "Resurrects",
+        "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "DamageDoneGraph",
+        "Actors", "Talents", "Healing", "Resurrects",
     }
 
 
@@ -259,8 +288,9 @@ def test_a_get_after_a_load_costs_nothing() -> None:
 
     repository.load("abc123", 36)
     assert sorted(set(calls)) == [
-        "Abilities", "Actors", "Affixes", "Casts", "DamageTaken", "Deaths",
-        "EnemyCasts", "EnemyDeaths", "Fights", "Healing", "Interrupts", "Resurrects", "Talents",
+        "Abilities", "Actors", "Affixes", "Casts", "DamageDoneGraph", "DamageTaken",
+        "Deaths", "EnemyCasts", "EnemyDeaths", "Fights", "Healing", "Interrupts",
+        "Resurrects", "Talents",
     ]
 
     calls.clear()
@@ -297,6 +327,28 @@ def test_a_loaded_run_carries_every_stream() -> None:
     assert [interrupt.interrupted_ability_id for interrupt in loaded.interrupts] == [400]
     assert [death.actor_id for death in loaded.enemy_deaths] == [702]
     assert [taken.amount for taken in loaded.damage_taken] == [1000]
+
+
+def test_a_full_load_carries_the_damage_done_series() -> None:
+    """One graph call per run, on the profile that draws the timeline."""
+    loaded = recording_repository([]).load("abc123", 36)
+    assert [series.actor_id for series in loaded.damage_done] == [1]
+    assert loaded.damage_done[0].amounts == (600,)
+
+
+def test_a_speed_reference_never_fetches_the_damage_graph(tmp_path: Path) -> None:
+    """No comparison reads it, and a reference run paying for it would spend
+    quota on a track nothing draws.
+
+    The call is what is asserted, not only the empty field: a speed reference
+    builds its `LoadedRun` without a `damage_done` argument at all, so a fetch
+    moved above that early return would leave the field empty and still have
+    spent the point.
+    """
+    calls: list[str] = []
+    loaded, _ = recording_repository(calls, tmp_path).load_speed_reference("abc123", None)
+    assert "DamageDoneGraph" not in calls
+    assert loaded.damage_done == ()
 
 
 def test_load_fetches_a_healing_window_per_death_and_the_fight_s_resurrections(

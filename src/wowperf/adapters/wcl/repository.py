@@ -10,6 +10,7 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
     build_casts,
+    build_damage_done,
     build_damage_taken,
     build_deaths,
     build_enemy_cast_rows,
@@ -29,6 +30,7 @@ from wowperf.adapters.wcl.queries import (
     AFFIXES_QUERY,
     AURA_TABLE_QUERY,
     CASTS_QUERY,
+    DAMAGE_DONE_GRAPH_QUERY,
     DAMAGE_TAKEN_QUERY,
     DEATHS_QUERY,
     ENEMY_CASTS_QUERY,
@@ -364,6 +366,10 @@ class WclRunRepository:
 
         enemy_death_events = fetch_all_events(query, ENEMY_DEATHS_QUERY, event_variables)
         damage_taken_events = fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables)
+        # Pre-aggregated by the API, so one call rather than a paginated stream.
+        # One response carries a series for every player, which is why widening
+        # to the whole roster costs nothing more here.
+        damage_done = build_damage_done(query(DAMAGE_DONE_GRAPH_QUERY, event_variables))
         resurrections = build_resurrections(
             fetch_all_events(query, RESURRECTS_QUERY, event_variables), ability_names
         )
@@ -399,6 +405,7 @@ class WclRunRepository:
             interrupts=interrupts,
             enemy_deaths=enemy_deaths,
             damage_taken=damage_taken,
+            damage_done=damage_done,
             health_samples=build_health_samples(cast_events),
             healing=tuple(healing),
             resurrections=resurrections,
