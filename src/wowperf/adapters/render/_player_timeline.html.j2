@@ -23,7 +23,7 @@
   <text class="tick-label row-label" x="{{ timeline.label_x }}"
         y="{{ timeline.damage.axis_top_y }}">{{ timeline.damage.axis_top_label }}</text>
   {% for bar in timeline.damage.bars %}
-  <rect class="damage-bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"/>
+  <rect class="damage-bar" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.hover }}</title></rect>
   {% endfor %}
   <text class="track-label row-label" x="{{ timeline.label_x }}" y="{{ timeline.damage.label_y }}">Damage taken</text>
   {% endif %}

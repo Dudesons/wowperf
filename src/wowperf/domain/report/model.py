@@ -132,6 +132,9 @@ class DamageBar(Frozen):
     width: float
     y: float
     height: float
+    hover: str = ""
+    """What this bucket holds, how wide it is, when it fell and which pull it fell
+    in, as the plain text a native title carries."""
 
 
 class DamageTrack(Frozen):

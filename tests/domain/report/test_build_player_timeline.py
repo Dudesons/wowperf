@@ -355,6 +355,49 @@ def test_the_icon_sits_between_the_label_and_the_track() -> None:
     assert timeline.row_icon_x + timeline.row_icon_size <= TRACK_ORIGIN_X
 
 
+def a_timeline_with_damage(amount: int, at_seconds: float, pull: str) -> PlayerTimeline:
+    """A run of one boss pull, with one hit landing inside it."""
+    boss = a_pull(0, 0, 1_200_000, encounter_id=1).model_copy(update={"name": pull})
+    loaded = LoadedRun(
+        run=a_run(pulls=(boss,)),
+        damage_taken=(a_hit(1, int(at_seconds * 1000), amount),),
+    )
+    return a_timeline(loaded)
+
+
+def test_a_damage_bucket_says_what_it_holds_and_where() -> None:
+    # A spike is only a question until a reader knows which pull it fell in.
+    timeline = a_timeline_with_damage(amount=11_418_755, at_seconds=875.0, pull="Atroxus")
+    assert timeline.damage is not None
+    assert timeline.damage.bars[0].hover == (
+        "11,418,755 unmitigated in 5 s, at 14:35, during Atroxus"
+    )
+
+
+def test_a_damage_bucket_outside_every_pull_says_so_rather_than_naming_one() -> None:
+    # The log records damage between pulls too, and the honest answer there is
+    # that no pull holds it -- never the nearest one.
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 60_000), a_pull(1, 300_000, 400_000))),
+        damage_taken=(a_hit(1, 120_000, 5_000),),
+    )
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.bars[0].hover.endswith(", between pulls")
+
+
+def test_a_bucket_straddling_two_pulls_names_both_rather_than_picking_one() -> None:
+    # A five-second bucket can hold the end of one pull and the start of the
+    # next. Naming one of them would be a choice the log did not make.
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 61_000), a_pull(1, 62_000, 120_000))),
+        damage_taken=(a_hit(1, 60_500, 100), a_hit(1, 62_500, 100)),
+    )
+    timeline = a_timeline(loaded)
+    assert timeline.damage is not None
+    assert timeline.damage.bars[0].hover.endswith(", during Pull 0 and Pull 1")
+
+
 def test_the_key_names_every_state_the_track_draws() -> None:
     # Green was never named anywhere near the chart: LEGEND covers the mark,
     # the cooldown stretch, the pale opening and the ready tick, and stops.

@@ -284,8 +284,41 @@ def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, 
     )
 
 
+def _bucket_pulls(run: Run, start_ms: int, end_ms: int) -> tuple[str, ...]:
+    """Every pull this bucket's own span overlaps, in run order.
+
+    Resolved from the pulls' own bounds rather than from the hits' recorded
+    `pull_index`, so the sentence a reader hovers names the band they can see
+    the bar standing on. The same discipline `_cooldown_hover` states for its
+    cover figure: the number and the rectangles behind it cannot disagree.
+
+    More than one where a bucket straddles a boundary, which five seconds
+    readily does. Both are named: choosing between them would be a judgement
+    the log never made.
+    """
+    return tuple(
+        _band_label(pull)
+        for pull in run.pulls
+        if pull.start_ms < end_ms and start_ms < pull.end_ms
+    )
+
+
+def _bucket_hover(amount: int, bucket_index: int, run: Run, origin_ms: int) -> str:
+    """What one bar holds, how wide it is, when it fell, and which pull it fell in.
+
+    A spike is only a question until a reader knows which pull it belongs to,
+    and the chart draws forty bands behind the bars for them to find it by eye.
+    """
+    start_ms = origin_ms + int(bucket_index * BUCKET_SECONDS * 1000)
+    at = format_seconds(bucket_index * BUCKET_SECONDS)
+    assert at is not None  # a float input always formats to a string
+    names = _bucket_pulls(run, start_ms, start_ms + int(BUCKET_SECONDS * 1000))
+    where = f"during {' and '.join(names)}" if names else "between pulls"
+    return f"{amount:,} unmitigated in {int(BUCKET_SECONDS)} s, at {at}, {where}"
+
+
 def _damage_track(
-    events: tuple[DamageTakenEvent, ...], actor_id: int, scale: float, origin_ms: int
+    events: tuple[DamageTakenEvent, ...], actor_id: int, run: Run, scale: float, origin_ms: int
 ) -> DamageTrack | None:
     """Damage this player took, bucketed, scaled to their own largest bucket.
 
@@ -319,6 +352,7 @@ def _damage_track(
             width=max(width, MIN_BLOCK_WIDTH),
             y=round(DAMAGE_BASELINE_Y - DAMAGE_HEIGHT * amount / peak, PRECISION),
             height=round(DAMAGE_HEIGHT * amount / peak, PRECISION),
+            hover=_bucket_hover(amount, index, run, origin_ms),
         )
         for index, amount in sorted(buckets.items())
     )
@@ -566,7 +600,7 @@ def build_player_timeline(
         span,
         loaded.auras_by_actor.get(actor_id),
     )
-    damage = _damage_track(loaded.damage_taken, actor_id, scale, origin)
+    damage = _damage_track(loaded.damage_taken, actor_id, run, scale, origin)
 
     if not rows and damage is None:
         return PlayerTimeline(
