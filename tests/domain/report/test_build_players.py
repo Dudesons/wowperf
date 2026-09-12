@@ -572,3 +572,24 @@ def test_a_trash_spell_row_lands_under_the_players_card() -> None:
 
     assert card.spell_and_talent.state is SectionState.PRESENT
     assert ids(card.spell_and_talent_rows) == ["compare.spells.trash.rate.0.stonewake-0"]
+
+
+def test_an_above_row_lands_under_the_players_card() -> None:
+    """The reverse direction routes by the same "compare.spells." prefix. Pinned
+    separately because a family that fell through would land in the Summary
+    catch-all without failing anything else."""
+    findings = (
+        a_finding(
+            "compare.spells.above.0.stonewake-0",
+            title="Stonewake casts Marrowrend 2.9 times a minute on bosses; "
+            "5 top parses cast it a median 1.3",
+            slug="stonewake-0",
+        ),
+    )
+    card = build_players(
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )[0]
+
+    assert card.spell_and_talent.state is SectionState.PRESENT
+    assert ids(card.spell_and_talent_rows) == ["compare.spells.above.0.stonewake-0"]

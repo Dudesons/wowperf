@@ -573,3 +573,34 @@ def test_a_trash_rate_row_reaches_the_findings_with_its_pack_count() -> None:
     assert rate.player_slug == OUR_SLUG
     assert "across 1 aligned pack" in rate.title
     assert rate.seconds_lost is None
+
+
+def test_an_above_row_carries_the_players_slug_like_every_parse_finding() -> None:
+    """The reverse direction is a statement about one player like every other
+    parse row, and the page matches a card by the slug."""
+    sample = ParseSample(
+        members=tuple(a_shared_pack_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+    # The references press Arcane Blast 6 times over their 60s pack; we press it
+    # 18 over ours, which is 3x their median and well past the bar.
+    ours = a_loaded(
+        (OURS,),
+        (a_pull(0, (1,)), a_pull(1, (2,)), a_pull(2, (9,), boss=True)),
+        casts=tuple(
+            CastEvent(
+                actor_id=OURS.actor_id,
+                ability_id=ARCANE_BLAST,
+                ability_name="Arcane Blast",
+                timestamp_ms=1_000 * n,
+                pull_index=0,
+            )
+            for n in range(18)
+        ),
+    )
+
+    findings = compare(ours, None, only_ours(sample))
+
+    above = next(f for f in findings if f.id.startswith("compare.spells.trash.above."))
+    assert above.id == f"compare.spells.trash.above.0.{OUR_SLUG}"
+    assert above.player_slug == OUR_SLUG
+    assert above.seconds_lost is None

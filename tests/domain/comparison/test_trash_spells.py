@@ -312,3 +312,94 @@ def test_an_empty_sample_stays_silent_here() -> None:
     findings = compare_trash_spells_sample(OURS_LOADED, OURS, OUR_NAME, ParseSample())
 
     assert findings == []
+
+
+# --- the other direction: we cast it far more than the sample -----------------
+
+MARROWREND = 195182
+
+# Four references press Blood Boil 10 times a minute on the shared pack. Ours
+# presses it 15 (1.5x, the bar exactly) and Marrowrend at a rate none of them
+# reaches, so the level row has a member the above rows must be absent from.
+OURS_CASTING_MORE = a_loaded(
+    OURS,
+    a_pull(0, 60.0, 100, 101),
+    casts=tuple(cast(693, BLOOD_BOIL, "Blood Boil", n * 1_000, 0) for n in range(10))
+    + tuple(cast(693, MARROWREND, "Marrowrend", 20_000 + n * 100, 0) for n in range(30)),
+)
+
+
+def a_member_pressing(name: str, actor_id: int, counts: dict[int, int]) -> ParseMember:
+    """A reference on our pack for 60s, pressing each ability that many times."""
+    player = Player(
+        actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=320
+    )
+    casts = tuple(
+        cast(actor_id, ability_id, f"Ability {ability_id}", n * 1_000, 0)
+        for ability_id, count in counts.items()
+        for n in range(count)
+    )
+    return ParseMember(
+        row=ParseRow(
+            report_code=f"REF{actor_id}",
+            fight_id=1,
+            keystone_level=16,
+            duration_ms=1_909_000,
+            character_name=name,
+            class_name="DeathKnight",
+            spec="Blood",
+        ),
+        run=a_run(player, a_pull(0, 60.0, 100, 101)),
+        casts=casts,
+    )
+
+
+# Each presses Blood Boil 10 times and Marrowrend 5, over their own 60s pack.
+SAMPLE_PRESSING_LESS = ParseSample(
+    members=(
+        a_member_pressing("Bríala", 11, {BLOOD_BOIL: 10, MARROWREND: 5}),
+        a_member_pressing("Dawnseeker", 12, {BLOOD_BOIL: 10, MARROWREND: 5}),
+        a_member_pressing("Emberfall", 13, {BLOOD_BOIL: 10, MARROWREND: 5}),
+        a_member_pressing("Frostwhisper", 14, {BLOOD_BOIL: 10, MARROWREND: 5}),
+    )
+)
+
+
+def test_an_ability_we_cast_far_more_on_trash_is_reported() -> None:
+    """The trash half gets the same mirror the boss half does, and states the
+    pack count for the same reason every other trash row does."""
+    findings = compare_trash_spells_sample(
+        OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_PRESSING_LESS
+    )
+
+    above = next(f for f in findings if f.id == "compare.spells.trash.above.0")
+    assert above.title == (
+        "Emberkin (actor 693) casts Marrowrend 30.0 times a minute across 1 aligned pack; "
+        "4 top parses cast it a median 5.0"
+    )
+    assert above.confidence is Confidence.DERIVED
+    assert above.seconds_lost is None
+
+
+def test_a_trash_ability_reported_as_above_is_not_also_called_level() -> None:
+    """Three outcomes per ability, never two."""
+    findings = compare_trash_spells_sample(
+        OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_PRESSING_LESS
+    )
+
+    level = next(f for f in findings if f.id == "compare.spells.trash.level")
+    assert "Blood Boil" in " ".join(level.evidence)
+    assert "Marrowrend" not in " ".join(level.evidence)
+
+
+def test_casting_somewhat_more_on_trash_is_not_reported() -> None:
+    """Twelve a minute against their ten is 1.2x and stays inside the band."""
+    ours = a_loaded(
+        OURS,
+        a_pull(0, 60.0, 100, 101),
+        casts=tuple(cast(693, BLOOD_BOIL, "Blood Boil", n * 1_000, 0) for n in range(12)),
+    )
+
+    findings = compare_trash_spells_sample(ours, OURS, OUR_NAME, SAMPLE_PRESSING_LESS)
+
+    assert not any(f.id.startswith("compare.spells.trash.above") for f in findings)

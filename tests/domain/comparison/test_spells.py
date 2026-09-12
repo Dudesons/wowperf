@@ -811,3 +811,50 @@ def test_no_more_of_one_spell_family_is_reported_than_the_cap_allows() -> None:
     # Every one of the eight is a real gap, so the cap is the only thing that
     # can be holding the count down.
     assert len(rates) == MAX_SPELLS_REPORTED
+
+
+# --- the other direction: we cast it far more than the sample -----------------
+
+# Meteor's median across the four members who cast it is 7.0 a minute. Ours at 16
+# clears 1.5x it; Shifting Power at 3 sits level, so a level row exists for the
+# "above" abilities to be absent from.
+OURS_CASTING_MORE = a_loaded(
+    OURS,
+    (boss_pull(0, 60.0),),
+    (cast(693, METEOR, "Meteor", 1_000, 0),) * 16
+    + (cast(693, SHIFTING_POWER, "Shifting Power", 2_000, 0),) * 3,
+)
+
+
+def test_an_ability_we_cast_far_more_than_the_sample_is_reported() -> None:
+    """The gap rows only ever ask whether a button was pressed less. On a class
+    whose resources are shared, pressing one more is pressing another less, and
+    nothing on the page said so."""
+    findings = compare_spells_sample(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    above = next(f for f in findings if f.id == "compare.spells.above.0")
+    assert above.title == (
+        "Emberkin (actor 693) casts Meteor 16.0 times a minute on bosses; "
+        "4 top parses cast it a median 7.0"
+    )
+    assert above.confidence is Confidence.DERIVED
+    assert above.seconds_lost is None
+
+
+def test_an_ability_reported_as_above_is_not_also_called_level() -> None:
+    """Three outcomes per ability, never two: a gap row, an above row, or level."""
+    findings = compare_spells_sample(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    level = next(f for f in findings if f.id == "compare.spells.level")
+    assert "Shifting Power" in " ".join(level.evidence)
+    assert "Meteor" not in " ".join(level.evidence)
+
+
+def test_casting_somewhat_more_than_the_sample_is_not_reported() -> None:
+    """The same 1.5x bar the gap rows use, applied the other way. Ten a minute
+    against their seven is 1.43x and stays quiet."""
+    ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),) * 10)
+
+    findings = compare_spells_sample(ours, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    assert not any(f.id.startswith("compare.spells.above") for f in findings)

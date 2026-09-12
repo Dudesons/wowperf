@@ -373,6 +373,7 @@ def _rate_sample(
 ) -> list[Finding]:
     """Abilities both sides cast, where the sample's median rate is materially higher."""
     gaps = []
+    above = []
     level: list[str] = []
     for ability_id, (name, our_count) in ours_on_bosses.items():
         rates = [
@@ -386,6 +387,15 @@ def _rate_sample(
         their_median = median(rates)
         if our_rate <= 0:
             continue
+        if our_rate / their_median >= RATE_GAP_MULTIPLE:
+            # Tested before the band, because every ability that reaches this
+            # bar is inside the band read the other way and would otherwise be
+            # filed as level. `their_median` cannot be zero: a member only
+            # contributes a rate after clearing `MIN_CASTS_TO_COMPARE`.
+            above.append(
+                (our_rate - their_median, ability_id, name, our_rate, their_median, rates)
+            )
+            continue
         if their_median / our_rate < RATE_GAP_MULTIPLE:
             # Compared against enough of the sample to argue from, and no gap
             # wide enough to report. Collected rather than dropped: silence on
@@ -394,6 +404,7 @@ def _rate_sample(
             continue
         gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
     gaps.sort(key=lambda row: row[0], reverse=True)
+    above.sort(key=lambda row: row[0], reverse=True)
 
     findings = []
     for _, ability_id, name, our_rate, their_median, rates in gaps:
@@ -438,10 +449,76 @@ def _rate_sample(
                 ability_name=name,
             )
         )
+    for _, ability_id, name, our_rate, their_median, rates in above:
+        findings.append(
+            _above_finding(
+                our_name, ability_id, name, our_rate, their_median, rates, our_boss_seconds
+            )
+        )
     rows = _one_row_per_sentence(findings)
     if level:
         rows.append(_level_finding(our_name, level))
     return rows
+
+
+def _above_finding(
+    our_name: str,
+    ability_id: int,
+    name: str,
+    our_rate: float,
+    their_median: float,
+    rates: Sequence[float],
+    our_boss_seconds: float,
+) -> Finding:
+    """An ability we cast far more often than the sample's median.
+
+    The mirror of the gap row, at the same bar, and deliberately not phrased as
+    advice. The gap rows ask whether a button went unpressed, which has an
+    obvious remedy; this one has none, because casting something more often is
+    not a fault on its own. What it is good for is the question underneath it:
+    on a class whose resources are shared, a button pressed far more than the
+    sample is resources that did not go anywhere else.
+    """
+    low, high = observed_range(rates)
+    return Finding(
+        id="compare.spells.above",
+        title=(
+            f"{our_name} casts {name} {our_rate:.1f} times a minute on bosses; "
+            f"{len(rates)} top parses cast it a median {their_median:.1f}"
+        ),
+        detail=(
+            "Both rates are casts per minute of boss-pull time. This row states a difference "
+            "and no verdict: casting something more often than the sample is not a fault, and "
+            "on a class whose resources are shared it means those resources did not go "
+            "somewhere else, which is the thing worth checking. A defensive, a taunt or a "
+            "movement button pressed more often may simply be what the run demanded, and a "
+            "longer or harder key asks for more of them."
+        ),
+        confidence=Confidence.DERIVED,
+        seconds_lost=None,
+        evidence=(
+            f"ability {ability_id}",
+            f"ours over {our_boss_seconds:.0f}s of boss pulls",
+            f"range {low:.1f} to {high:.1f} casts a minute across {len(rates)} top parses",
+        ),
+        facts=(
+            FindingFact(
+                label="Ours", value=f"{our_rate:.1f} casts a minute",
+                confidence=Confidence.DERIVED,
+            ),
+            FindingFact(
+                label="Reference median", value=f"{their_median:.1f} casts a minute",
+                confidence=Confidence.DERIVED,
+            ),
+            FindingFact(
+                label="Observed range", value=f"{low:.1f} to {high:.1f}",
+                confidence=Confidence.DERIVED,
+            ),
+            FindingFact(label="Sample", value=f"{len(rates)} top parses"),
+        ),
+        ability_id=ability_id,
+        ability_name=name,
+    )
 
 
 def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
@@ -460,10 +537,11 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
         ),
         detail=(
             "Enough of the sample cast each of these to argue from, and our own rate was "
-            f"inside the bar the gap rows use: the sample's median has to be {RATE_GAP_MULTIPLE} "
-            "times ours before one is written. That bar is what this row states, so read it as "
-            "'no gap wide enough to report', never as 'the same rate' — a rate below the "
-            "sample's median but inside the bar is reported nowhere else on this page."
+            "inside the band the rate rows use, in either direction: the sample's median has "
+            f"to be {RATE_GAP_MULTIPLE} times ours, or ours {RATE_GAP_MULTIPLE} times theirs, "
+            "before a row is written. That band is what this row states, so read it as 'no gap "
+            "wide enough to report', never as 'the same rate' — a rate inside the band is "
+            "reported nowhere else on this page."
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,
