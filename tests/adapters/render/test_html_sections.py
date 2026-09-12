@@ -724,7 +724,8 @@ def a_drawn_timeline() -> PlayerTimeline:
         width=680.0,
         height=140.0,
         pulls=(TimelineBlock(label="Pack 0", x=130.0, width=100.0, is_boss=False,
-                             kind="band", css_class="pull-band"),),
+                             kind="band", css_class="pull-band",
+                             hover="Pack 0 — ran 1:40"),),
         band_y=28.0,
         damage=DamageTrack(
             baseline_y=76.0,
@@ -732,7 +733,9 @@ def a_drawn_timeline() -> PlayerTimeline:
             bars=(DamageBar(x=130.0, width=6.0, y=44.0, height=32.0),),
             peak_label="Tallest bar: 120,000 unmitigated damage in 5 seconds.",
         ),
-        cooldowns=(CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
+        cooldowns=(CooldownRow(label="Ice Block", ability_id=45438,
+                               hover="Ice Block — 1 press, 8.0 s of cover",
+                               baseline_y=96.0,
                                label_y=104.0,
                                presses=(Press(x=200.0, icon_x=194.0),),
                                unavailable=(Span(x=200.0, width=90.0),),
@@ -812,7 +815,7 @@ def test_a_timeline_names_itself_rather_than_claiming_to_be_an_unnamed_image() -
     # turns into "&#39;".
     assert f"<title>{escape(player_timeline_module.TITLE)}</title>" in svg
     assert "role=" not in svg
-    assert "<title>Pack 0</title>" in svg
+    assert "<title>Pack 0 — ran 1:40</title>" in svg
 
 
 def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> None:
@@ -828,7 +831,8 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
         height=140.0,
         pulls=(
             TimelineBlock(label="Pull 7", x=130.0, width=50.0, is_boss=False,
-                          kind="band", css_class="pull-band"),
+                          kind="band", css_class="pull-band",
+                          hover="Pull 7 — ran 0:50"),
             TimelineBlock(label="Nalorakk", x=200.0, width=60.0, is_boss=True,
                           kind="band", css_class="pull-band block-boss"),
         ),
@@ -848,8 +852,25 @@ def test_a_boss_pulls_column_reaches_column_height_and_only_it_is_named() -> Non
     assert '<text class="pull-name" x="200.0" y="25.0">Nalorakk</text>' in body
     # The trash pull's index label reaches the page as a <title> only -- no
     # on-chart <text> is drawn for it.
-    assert "<title>Pull 7</title>" in body
+    assert "<title>Pull 7 — ran 0:50</title>" in body
     assert '<text class="pull-name" x="130.0" y="25.0">Pull 7</text>' not in body
+
+
+def test_a_cooldown_rows_measured_facts_reach_the_page_as_its_groups_title() -> None:
+    # A row draws presses, cover, ready marks and unavailable stretches as bare
+    # rects against a single name, so the facts behind them ride on a <g>
+    # wrapping the whole row: hovering any mark on it, or its label, states the
+    # same thing.
+    body = render(a_report(players=(a_player_card(timeline=a_drawn_timeline()),))).split(
+        "</style>"
+    )[1]
+    opening = "<g><title>Ice Block — 1 press, 8.0 s of cover</title>"
+    assert opening in body
+    group = body[body.index(opening):]
+    group = group[:group.index("</g>")]
+    assert '<rect class="press"' in group
+    assert '<rect class="on-cooldown"' in group
+    assert 'class="track-label row-label"' in group
 
 
 def test_a_timelines_tick_labels_are_centred_the_way_the_run_timelines_are() -> None:

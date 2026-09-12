@@ -696,3 +696,102 @@ def test_an_aura_table_with_no_band_for_this_ability_gives_no_cover_windows() ->
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
     assert row.cover == ()
+
+
+def a_covered_run(bands: tuple[AuraBand, ...], casts: tuple[CastEvent, ...]) -> LoadedRun:
+    """A ten-minute run whose player owns the shield and has an aura table for it."""
+    return LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=casts,
+        auras=(
+            a_player_auras(
+                1,
+                Aura(
+                    ability_id=SHIELD.ability_id,
+                    name=SHIELD.name,
+                    total_uptime_ms=sum(band.end_ms - band.start_ms for band in bands),
+                    uses=len(bands),
+                    bands=bands,
+                ),
+            ),
+        ),
+    )
+
+
+def test_a_cooldown_rows_hover_states_its_presses_and_its_cover() -> None:
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == "Icebound Fortitude — 1 press, 8.0 s of cover"
+
+
+def test_a_cooldown_rows_hover_counts_every_press() -> None:
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
+        casts=tuple(a_cast(1, SHIELD.ability_id, at) for at in (100_000, 300_000, 500_000)),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == "Icebound Fortitude — 3 presses, 8.0 s of cover"
+
+
+def test_a_cooldown_rows_hover_sums_every_window_the_buff_was_up() -> None:
+    loaded = a_covered_run(
+        bands=(
+            AuraBand(start_ms=100_000, end_ms=108_000),
+            AuraBand(start_ms=300_000, end_ms=302_500),
+        ),
+        casts=tuple(a_cast(1, SHIELD.ability_id, at) for at in (100_000, 300_000)),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == "Icebound Fortitude — 2 presses, 10.5 s of cover"
+
+
+def test_a_cooldown_rows_hover_counts_only_the_cover_the_drawing_shows() -> None:
+    """The figure is the drawn windows, never the aura table's own total.
+
+    A buff still up when the axis ends is clipped where the drawing clips it,
+    so the number a reader hovers and the rectangles they are looking at
+    cannot disagree. `total_uptime_ms` here is 15s and the axis sees 5.
+    """
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=595_000, end_ms=610_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 595_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == "Icebound Fortitude — 1 press, 5.0 s of cover"
+
+
+def test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cover() -> None:
+    """An absence of aura data is not a buff that was never up.
+
+    The row draws no cover in either case, so the hover is the only place the
+    two can be told apart, and reporting the missing table as zero seconds
+    would state as measured a fact nobody measured.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == (
+        "Icebound Fortitude — 1 press. No aura data for it, so its cover is not drawn."
+    )
+    assert "0.0 s of cover" not in row.hover
+
+
+def test_a_cooldown_row_whose_aura_was_never_up_reports_no_seconds_of_cover() -> None:
+    loaded = a_covered_run(bands=(), casts=(a_cast(1, SHIELD.ability_id, 300_000),))
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert row.hover == "Icebound Fortitude — 1 press, 0.0 s of cover"
+
+
+def test_a_pull_bands_hover_names_the_pull_and_how_long_it_ran() -> None:
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 47_000), a_pull(1, 60_000, 600_000))),
+        damage_taken=(a_hit(1, 1_000, 1),),
+    )
+    bands = a_timeline(loaded).pulls
+    assert bands[0].hover == "Pull 0 — ran 0:47"
+    assert bands[0].label == "Pull 0"

@@ -189,6 +189,42 @@ Worked example, Icebound Fortitude, and the reason this section exists:
 Nothing in the measured or derived tiers is computed from the static one. That separation is
 what keeps a tuning change from silently corrupting a figure the page presents as measured.
 
+### 4.5.1 Which surfaces carry one, settled 2026-09-12
+
+Four surfaces on the page name an ability. Two carry the panel above — the death recap's event
+rows and its availability rows. Two do not, and will not.
+
+**The ledger card headings and the death card heading carry no tooltip.** Not for want of
+plumbing: `ability()` already takes an optional tooltip and the headings simply call it without
+one. The reason is that there is nothing worth putting in the panel.
+
+- **Every ability-carrying ledger card already prints its measured facts**, as the evidence list
+  three lines under the heading. `defensives.ceiling.*` gives its cast count against the seconds
+  the player was alive; `compare.uptime.*` gives both sides' boss-pull seconds; `interrupts.*`
+  gives what landed against what was kicked. The two surfaces that did earn a panel earned it
+  because a recap row is one line of a dense table with nowhere to print evidence.
+- **There is no one panel to build.** `ability_tooltip` is shaped for a defensive at a death:
+  base cooldown, presses, cover, mitigated inside and outside. Those fields say nothing about an
+  uptime gap or an unkicked cast. Doing this honestly means one tooltip builder per finding
+  family, a dispatcher over them, and `LoadedRun` and the per-player aura tables threaded through
+  all five `ledger_row` call sites into a function whose whole job is formatting — to print a
+  second copy of what is already on the screen.
+- The death card heading names the killing blow, and the recap row below it already carries that
+  hit's own figures, with `hit_tooltip` on them.
+
+**The player timeline's rows do carry their facts.** The promise was that its SVG rows would keep
+"their native `<title>` enriched with the same measured facts". They had no `<title>` to enrich:
+only the pull bands carried one, and it held the pull's name alone. A cooldown row is the one
+surface whose facts are genuinely absent — presses, cover, ready marks and unavailable stretches
+drawn as bare rectangles against a single name — so each row now carries a `<g>` title giving its
+press count and its cover, and each pull band says how long its pull ran.
+
+Those titles are measured only. They omit the time an ability spent unavailable, which is a base
+cooldown from `data/` laid over the presses rather than anything the log stated, and a native SVG
+title carries no badge to grade such a figure with. They do distinguish an ability the aura
+tables say nothing about from one whose buff was never up, because the drawing cannot: it shows
+no rectangle either way.
+
 ### 4.6 Icon and name as one object
 
 The icon and the name already sit adjacent in the markup; they are simply not bound into one

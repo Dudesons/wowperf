@@ -6,9 +6,9 @@ from collections import defaultdict
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.model import LoadedRun, Pull, Run
 from wowperf.domain.report.cover import clipped_bands, resolve_aura
-from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
+from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,
     DamageBar,
@@ -210,14 +210,34 @@ def _press_x(instant: float) -> float:
     return round(instant - PRESS_WIDTH / 2, PRECISION)
 
 
+def _band_label(pull: Pull) -> str:
+    """What a band is called.
+
+    A boss's name is worth the space; a trash pack's generated name is the
+    first mob the log happened to see, which names nothing a reader can find
+    again. The index is what the rest of the report calls it.
+    """
+    return pull.name if pull.is_boss else f"Pull {pull.index}"
+
+
+def _band_hover(pull: Pull) -> str:
+    """A band's name and how long it ran.
+
+    "ran" is there to stop the figure reading as the pull's start: every other
+    number on this axis is an elapsed time, and a band's own duration is the
+    one quantity a reader cannot recover by eye from a chart this wide.
+    """
+    duration = format_seconds(pull.duration_seconds)
+    assert duration is not None  # a float input always formats to a string
+    return f"{_band_label(pull)} — ran {duration}"
+
+
 def _pull_bands(run: Run, scale: float, origin_ms: int) -> tuple[TimelineBlock, ...]:
     """Every pull as a band behind the tracks, boss pulls outlined."""
     return tuple(
         TimelineBlock(
-            # A boss's name is worth the space; a trash pack's generated name is
-            # the first mob the log happened to see, which names nothing a reader
-            # can find again. The index is what the rest of the report calls it.
-            label=pull.name if pull.is_boss else f"Pull {pull.index}",
+            label=_band_label(pull),
+            hover=_band_hover(pull),
             x=round(_track_x((pull.start_ms - origin_ms) / 1000, scale), PRECISION),
             width=round(max(pull.duration_seconds * scale, MIN_BLOCK_WIDTH), PRECISION),
             is_boss=pull.is_boss,
@@ -297,39 +317,85 @@ def _damage_track(
     )
 
 
-def _cover_spans(
+def _cover_bands(
     ability_id: int,
     ability_name: str,
     auras: PlayerAuras | None,
-    scale: float,
     origin_ms: int,
     span_seconds: float,
+) -> tuple[tuple[int, int], ...] | None:
+    """Every stretch this ability's buff was up, in report milliseconds, clipped to the axis.
+
+    None where no aura table was fetched for this player, or where the table
+    holds nothing under this ability's id or name. An empty tuple is the
+    different answer: a table that covers the ability and recorded no window
+    inside the drawing. Nothing distinguishes the two on the chart, which
+    draws no rectangle either way, so the distinction is carried here for the
+    row's hover to state.
+
+    `clipped_bands` -- the merged view -- is used rather than `band_holding`:
+    this row describes the ability's total cover across the whole run, not the
+    window one particular press earned.
+    """
+    if auras is None:
+        return None
+    aura = resolve_aura(auras, ability_id, ability_name)
+    if aura is None:
+        return None
+    return clipped_bands(aura, origin_ms, origin_ms + int(span_seconds * 1000))
+
+
+def _cover_spans(
+    bands: tuple[tuple[int, int], ...] | None, scale: float, origin_ms: int
 ) -> tuple[Span, ...]:
-    """Every stretch this ability's buff was up, drawn at the axis's own scale.
+    """The cover windows drawn at the axis's own scale.
 
     `MIN_BLOCK_WIDTH` is deliberately not applied. A pull is floored to that
     width because a pull that vanishes tells the reader nothing; a cover
     window's width *is* the claim, and widening a five-second buff on a
     thirty-three-minute axis from 1.4 units to 2 would overstate its duration by
     nearly half.
-
-    `clipped_bands` -- the merged view -- is used rather than `band_holding`:
-    this row draws the ability's total cover across the whole run, not the
-    window one particular press earned.
     """
-    if auras is None:
-        return ()
-    aura = resolve_aura(auras, ability_id, ability_name)
-    if aura is None:
-        return ()
-    end_ms = origin_ms + int(span_seconds * 1000)
     return tuple(
         Span(
             x=round(_track_x((start - origin_ms) / 1000, scale), PRECISION),
             width=round((end - start) / 1000 * scale, PRECISION),
         )
-        for start, end in clipped_bands(aura, origin_ms, end_ms)
+        for start, end in bands or ()
     )
+
+
+NO_AURA_DATA = "No aura data for it, so its cover is not drawn."
+"""Said on a row whose ability the run's aura tables say nothing about.
+
+The alternative -- printing zero seconds of cover -- would state as a
+measured figure a thing nobody measured, which is the one reading a hover
+panel over an empty stretch of chart most invites.
+"""
+
+
+def _cooldown_hover(
+    label: str, presses: int, bands: tuple[tuple[int, int], ...] | None
+) -> str:
+    """What one row's rectangles are worth, as the plain text a native title holds.
+
+    Measured only, and deliberately so. The row also draws the stretches the
+    ability was unavailable, but those are a base cooldown from `data/` laid
+    over the presses rather than anything the log stated, and an SVG title
+    carries no badge to grade such a figure with. So this states what was
+    counted and leaves what was assumed to the drawing, where the timeline's
+    own inferred badge and its caption already account for it.
+
+    The cover figure is summed from the drawn windows and never from the aura
+    table's own total, so a buff still up when the axis ends reports the part
+    the chart shows: the number a reader hovers and the rectangles they are
+    looking at cannot disagree.
+    """
+    counted = f"{presses} press{'es' if presses != 1 else ''}"
+    if bands is None:
+        return f"{label} — {counted}. {NO_AURA_DATA}"
+    seconds = sum(end - start for start, end in bands) / 1000
+    return f"{label} — {counted}, {seconds:.1f} s of cover"
 
 
 def _cooldown_rows(
@@ -374,10 +440,14 @@ def _cooldown_rows(
             cast.timestamp_ms for cast in ours if cast.ability_id == ability.ability_id
         )
         not_judged_width = round(min(ability.cooldown_seconds, span_seconds) * scale, PRECISION)
+        bands = _cover_bands(
+            ability.ability_id, ability.name, auras, origin_ms, span_seconds
+        )
         rows.append(
             CooldownRow(
                 label=ability.name,
                 ability_id=ability.ability_id,
+                hover=_cooldown_hover(ability.name, len(presses), bands),
                 baseline_y=FIRST_ROW_Y + len(rows) * ROW_HEIGHT,
                 # The label sits on the row's own middle, not on its top edge:
                 # a baseline at the top would draw the glyphs over the row above.
@@ -417,9 +487,7 @@ def _cooldown_rows(
                     if end < span_seconds
                 ),
                 not_judged=Span(x=TRACK_ORIGIN_X, width=not_judged_width),
-                cover=_cover_spans(
-                    ability.ability_id, ability.name, auras, scale, origin_ms, span_seconds
-                ),
+                cover=_cover_spans(bands, scale, origin_ms),
             )
         )
     return tuple(rows)

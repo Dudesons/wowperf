@@ -80,6 +80,14 @@ class TimelineBlock(Frozen):
     is_boss: bool
     kind: str
     css_class: str = ""
+    hover: str = ""
+    """What the block's native SVG title says, where the drawing gives one.
+
+    Separate from `label` because a boss band draws its label as visible text
+    beside itself, and a duration belongs in the hover rather than across the
+    chart. Empty on the run timeline's blocks, whose title is the pull's name
+    alone.
+    """
 
 
 class TimelineTrack(Frozen):
@@ -197,6 +205,13 @@ class CooldownRow(Frozen):
 
     label: str
     ability_id: int | None = None
+    hover: str = ""
+    """The row's measured facts, as the plain text a native SVG title holds.
+
+    The row draws presses, cover, ready marks and unavailable stretches as
+    bare rectangles against a single name, so this is the only place a reader
+    can learn what those rectangles are worth.
+    """
     baseline_y: float = 0.0
     label_y: float = 0.0
     presses: tuple[Press, ...] = ()

@@ -12,7 +12,7 @@
   {% endfor %}
   {% for band in timeline.pulls %}
   <rect class="{{ band.css_class }}" x="{{ band.x }}" y="{{ timeline.band_y }}"
-        width="{{ band.width }}" height="{{ timeline.column_height }}"><title>{{ band.label }}</title></rect>
+        width="{{ band.width }}" height="{{ timeline.column_height }}"><title>{{ band.hover }}</title></rect>
   {% if band.is_boss and band.label %}
   <text class="pull-name" x="{{ band.x }}" y="{{ timeline.pull_label_y }}">{{ band.label }}</text>
   {% endif %}
@@ -28,6 +28,7 @@
   <text class="track-label row-label" x="{{ timeline.label_x }}" y="{{ timeline.damage.label_y }}">Damage taken</text>
   {% endif %}
   {% for row in timeline.cooldowns %}
+  <g><title>{{ row.hover }}</title>
   {% for span in row.unavailable %}
   <rect class="on-cooldown" x="{{ span.x }}" y="{{ row.baseline_y }}" width="{{ span.width }}" height="{{ timeline.row_height }}"/>
   {% endfor %}
@@ -49,6 +50,7 @@
         width="{{ timeline.press_width }}" height="{{ timeline.row_height }}"/>
   {% endfor %}
   <text class="track-label row-label" x="{{ timeline.label_x }}" y="{{ row.label_y }}">{{ row.label }}</text>
+  </g>
   {% endfor %}
 </svg>
 {% if timeline.damage %}<p class="sub">{{ timeline.damage.peak_label }} {{ timeline.damage.bucket_caption }}</p>{% endif %}
