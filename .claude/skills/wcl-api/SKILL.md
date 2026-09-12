@@ -52,6 +52,9 @@ covers it otherwise.
 | `targetID` | `events` argument | 2026-09-07 | yes |
 | `includeResources` | `events` argument | 2026-09-07 | yes |
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
+| `graph` | `Report` | 2026-09-12 | no |
+| `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
+| `petOwner` | `ReportActor` | 2026-09-12 | no |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -509,6 +512,51 @@ Counting each id separately is right, because one press does emit one cast of th
 handling instead is a report printing the same sentence twice, which
 `src/wowperf/domain/comparison/spells.py` does by collapsing on the rendered sentence rather than
 on the name.
+
+## The damage graph is pre-aggregated, and its points are a rate
+
+Verified 2026-09-12 against report `G7MBJZfNakrcPvAx` fight 3, by schema introspection and by
+running the queries. `Report` carries **`graph`** beside `events` and `table`: it takes the same
+arguments as `table` plus `viewBy`, and returns `JSON`.
+
+```
+graph(dataType: DamageDone, hostilityType: Friendlies, fightIDs: [Int],
+      startTime: Float, endTime: Float)
+```
+
+returns `{data: {series: [...], startTime, endTime}}`, where each series carries `name`, `id` (the
+actor id), `guid`, `type` (the class), `pointStart`, `pointInterval`, `total`, and `data` — a plain
+list of numbers whose times are implied by `pointStart + i * pointInterval`. **One call, no
+pagination.** On this fight it returned six series for five players: one each, plus one whose `id`
+is the string `"Total"` and whose `guid` and `total` are null.
+
+- **The numbers in `data` are damage per second, not damage in the bucket.** Verified on all five
+  series independently: `sum(points) * pointInterval/1000` reproduces that series' own `total` to
+  within 0.3% to 0.7%. Reading them as amounts understates every bucket by `pointInterval` in
+  seconds, which was 6.4 here. The residual is the overhang: 241 points of 6411.679 ms span
+  1545.2 s of a 1538.8 s window, 0.4% more than the window holds.
+- **The interval is the API's choice and there is no argument to set it.** 241 points across the
+  window on this fight, so it appears to target about 240 buckets.
+- **The five player series sum to the `Total` series** — largest gap at any bucket, 0.2.
+- **`graph` folds a pet's damage into its owner.** The Death Knight's series total of 213,303,506
+  equals that actor's `table(dataType: DamageDone)` entry total **with** its three pets, and not
+  the 173,621,604 without them. 39,681,902 of that player's damage — 18.6% — came from pets. Four
+  of the five players owned pets; only the Paladin owned none.
+- **`table(dataType: DamageDone, hostilityType: Friendlies, fightIDs: [Int])`** returns
+  `{data: {entries: [...]}}`, one entry per player, carrying `abilities`, `activeTime`,
+  `activeTimeReduced`, `damageAbilities`, `gear`, `guid`, `icon`, `id`, `itemLevel`, `name`,
+  `pets`, `talents`, `targets`, `total`, `totalReduced` and `type`. Each `pets` element carries its
+  own `total`, and the entry's `total` already includes them.
+- **`petOwner` on `masterData.actors` returns the owning actor's id**, and is absent on an actor
+  that is not a pet. 39 of this report's 221 actors carried one.
+- **`events(dataType: DamageDone)` is the wrong endpoint for a time series.** `queries.py` asks for
+  `limit: 10000` and gets it: measured offline across 31 cached event pages, exactly one came back
+  at 10000 rows carrying a `nextPageTimestamp` and every other came back short with none. This
+  fight logs 8804 damage-taken events and 8423 friendly casts in one page each, so the damage
+  **done** stream is a multiple of that and paginates. `graph` replaces those pages with one call.
+
+The whole probe — one introspection and six queries — was taken inside one quota window that read
+`pointsSpentThisHour: 8.44` at the end, so it cost at most that, of 3600.
 
 ## The debuff half cannot be scoped to one caster
 
