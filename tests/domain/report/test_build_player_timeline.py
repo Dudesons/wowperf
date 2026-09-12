@@ -1049,10 +1049,16 @@ def test_every_rows_strip_sits_below_the_one_above_it_and_inside_the_chart() -> 
 
 
 def a_done_series(
-    actor_id: int, amounts: tuple[int, ...], interval_ms: float = 6000.0
+    actor_id: int,
+    amounts: tuple[int, ...],
+    interval_ms: float = 6000.0,
+    point_start_ms: int = 0,
 ) -> DamageDoneSeries:
     return DamageDoneSeries(
-        actor_id=actor_id, point_start_ms=0, interval_ms=interval_ms, amounts=amounts
+        actor_id=actor_id,
+        point_start_ms=point_start_ms,
+        interval_ms=interval_ms,
+        amounts=amounts,
     )
 
 
@@ -1194,6 +1200,55 @@ def test_a_timeline_that_draws_the_track_does_grade_it() -> None:
     assert timeline.damage_done is not None
     assert timeline.badge_derived == badge_for(Confidence.DERIVED)
     assert timeline.badge_derived_caption == BADGE_DERIVED_CAPTION
+
+
+def test_the_damage_done_track_is_drawn_clear_of_the_track_above_it() -> None:
+    """Where the track sits, pinned against its neighbours rather than its own formula.
+
+    Nothing else asserts this. Swapping either the track's baseline or its
+    bars' feet to `DAMAGE_BASELINE_Y` draws this player's output straight over
+    the damage they took, in a second colour on the same pixels, and every
+    other test in this file and the golden file all stay green.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_taken=(a_hit(1, 100_000, 500),),
+        casts=(a_cast(1, SHIELD.ability_id, 100_000),),
+        damage_done=(a_done_series(1, (300, 600)),),
+    )
+    timeline = a_timeline(loaded, actor_id=1, defensives=KIT)
+    taken, done = timeline.damage, timeline.damage_done
+    assert taken is not None and done is not None
+
+    # Lower on the page than the bars it sits under, and clear of their feet:
+    # the two tracks share an axis and must not share pixels.
+    assert done.baseline_y > taken.baseline_y
+    assert min(bar.y for bar in done.bars) >= taken.baseline_y
+    # And above the first row, whose baseline is that row's top edge.
+    assert done.baseline_y <= timeline.cooldowns[0].baseline_y
+    # Every bar grows from this track's own foot, not from the one above.
+    for bar in done.bars:
+        assert bar.y + bar.height == done.baseline_y
+
+
+def test_a_series_that_starts_after_the_first_pull_is_drawn_where_it_starts() -> None:
+    """The graph's window and the drawing's origin are two different moments.
+
+    The API reports the fight, and this axis begins at the first pull, so the
+    series carries an offset that is zero in no real run. Every other fixture
+    here starts both at zero, which makes that subtraction vanish and lets it
+    be deleted outright without a test noticing.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_done=(a_done_series(1, (600,), point_start_ms=60_000),),
+    )
+    timeline = a_timeline(loaded, actor_id=1)
+    track = timeline.damage_done
+    assert track is not None
+    assert track.bars[0].x > TRACK_ORIGIN_X
+    assert track.bars[0].x == round(TRACK_ORIGIN_X + 60.0 * a_scale(600.0), PRECISION)
+    assert "at 1:00" in track.bars[0].hover
 
 
 def test_a_chart_of_damage_done_alone_grades_nothing_else() -> None:
