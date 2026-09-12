@@ -13,6 +13,7 @@ import httpx
 import typer
 
 from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
     load_consumables,
     load_defensives,
@@ -97,12 +98,18 @@ def main() -> None:
 
 
 def build_repository(cache_dir: Path) -> WclRunRepository:
+    # Credentials come from a `.env` in the working directory, which is how a
+    # fresh clone is told to hold them, or from the environment, which wins.
+    apply_dotenv(Path.cwd() / ".env", os.environ)
+
     client_id = os.environ.get("WCL_CLIENT_ID")
     client_secret = os.environ.get("WCL_CLIENT_SECRET")
     if not client_id or not client_secret:
         raise typer.BadParameter(
-            "Set WCL_CLIENT_ID and WCL_CLIENT_SECRET. "
-            "Create a client at https://www.warcraftlogs.com/api/clients/"
+            "Set WCL_CLIENT_ID and WCL_CLIENT_SECRET, either in your environment or "
+            "in a .env file in the directory you run this from: copy .env.example to "
+            ".env and fill both values in. Create a client at "
+            "https://www.warcraftlogs.com/api/clients/"
         )
 
     http = httpx.Client(timeout=60.0)

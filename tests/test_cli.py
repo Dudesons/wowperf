@@ -156,8 +156,12 @@ def test_fetch_rejects_a_value_that_is_not_a_report_url() -> None:
 
 
 def test_fetch_without_credentials_names_the_missing_variable(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # Runs from an empty directory: credentials are read from a dotfile beside
+    # the working directory as well as from the environment, and the real
+    # repository has one.
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("WCL_CLIENT_ID", raising=False)
     monkeypatch.delenv("WCL_CLIENT_SECRET", raising=False)
 
@@ -166,6 +170,42 @@ def test_fetch_without_credentials_names_the_missing_variable(
     assert result.exit_code != 0
     assert "WCL_CLIENT_ID" in result.output
     assert "Traceback" not in result.output
+
+
+def test_fetch_reads_credentials_from_a_dotfile_in_the_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Someone who followed the README has the two values in a file and none in their shell.
+
+    The assertion is on the token request itself rather than on the exit code,
+    because a run can succeed off the cache without ever authenticating.
+    """
+    inner = build_transport([100.0, 112.5])
+    credentials: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            credentials.append(request.headers["Authorization"])
+        return inner.handle_request(request)
+
+    real_client = httpx.Client
+
+    def fake_client(*args: Any, **kwargs: Any) -> httpx.Client:
+        return real_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(httpx, "Client", fake_client)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("WCL_CLIENT_ID", raising=False)
+    monkeypatch.delenv("WCL_CLIENT_SECRET", raising=False)
+    (tmp_path / ".env").write_text(
+        "WCL_CLIENT_ID=file-id\nWCL_CLIENT_SECRET=file-secret\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(app, ["fetch", "abc123", "--cache-dir", str(tmp_path / "cache")])
+
+    assert result.exit_code == 0, result.output
+    # Basic base64("file-id:file-secret"), hand-derived.
+    assert credentials == ["Basic ZmlsZS1pZDpmaWxlLXNlY3JldA=="]
 
 
 def test_an_unreadable_report_is_reported_as_a_message_not_a_traceback(
