@@ -2,8 +2,11 @@
 # ABOUTME: Reports the fields of a single event and apportions none of them between causes.
 
 from wowperf.domain.analysis.recap import HIT, RecapEvent
+from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Confidence
+from wowperf.domain.model import LoadedRun
+from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import Tooltip, TooltipLine
 
@@ -238,3 +241,58 @@ def press_tooltip(
         )
     )
     return Tooltip(lines=tuple(lines))
+
+
+def run_ability_tooltip(
+    ability_id: int,
+    ability_name: str,
+    cooldown_seconds: float,
+    owner_id: int,
+    loaded: LoadedRun,
+    auras: PlayerAuras | None,
+    hits: tuple[DamageTakenEvent, ...],
+    window: tuple[int, int],
+    on_target: int | None = None,
+) -> Tooltip | None:
+    """What the run measured about one ability, against one player's own aura table.
+
+    None where no aura table was fetched for that player, or where neither the
+    ability's own id nor its name matched an aura it carries -- the same two
+    reasons a cooldown row's own cover can be empty, since both read the same
+    table through `resolve_aura`.
+
+    `on_target` scopes the press count to casts that could have been meant for
+    the player in question: aimed at them, or aimed at no one in particular
+    (an untargeted cast covers an area or the whole group). None on a player's
+    own defensive, which needs no such scoping -- every press is already "for"
+    them. Set to the subject's own id for a teammate's external, matching the
+    rule `analysis/recap.py:state_of` already applies to that row's own
+    PRESSED state: a cast on someone else was a use, not a save, and the
+    tooltip beside that row must not disagree with it.
+
+    Generic over its window, which is what lets a death card and a ledger card
+    share it: a death passes the run-up it draws, a ledger card passes the
+    whole run.
+    """
+    if auras is None:
+        return None
+    aura = resolve_aura(auras, ability_id, ability_name)
+    if aura is None:
+        return None
+    start_ms, end_ms = window
+    presses = sum(
+        1 for cast in loaded.casts
+        if cast.actor_id == owner_id and cast.ability_id == ability_id
+        and (on_target is None or cast.target_id in (on_target, None))
+    )
+    return ability_tooltip(
+        cooldown_seconds=cooldown_seconds,
+        cover=clipped_bands(aura, start_ms, end_ms),
+        hits=hits,
+        # The aura table keys a buff on itself, not on the spell cast to apply
+        # it -- `resolve_aura`'s own docstring names the abilities where the
+        # two ids differ. Comparing a hit's `buff_ids` against the cast id
+        # here would silently match nothing for exactly those abilities.
+        buff_id=aura.ability_id,
+        presses=presses,
+    )
