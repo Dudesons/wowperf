@@ -60,7 +60,7 @@ widest of those by 2.4 units, and `LABEL_GAP` keeps the label off the track.
 The gutter holds the row's icon as well as its name, which is what 150 buys
 over the 130 it was: `ICON_SIZE + LABEL_GAP` of it, leaving `LABEL_X` where it
 already stood so the measurement above still holds. The track gives up 20 of
-its 1260 units for that, which is 1.6%.
+the 526 units it had for that, leaving 506, which is 3.8% of it.
 
 The 12px the run timeline's captions use would need 172 units for the same
 name. That is why these labels take a size of their own: the track is what is
@@ -137,13 +137,13 @@ comparison toward narrow buckets on exactly the case it exists to settle. That e
 seconds still loses on two of the four deaths despite that bias is the more telling reading
 of the table.
 
-What decides is geometry. The track spans `TRACK_X1 - TRACK_ORIGIN_X`, 526 units, over this
-run's 1,908.976 seconds — `axis_scale` = 0.2755 units per second — so consecutive buckets sit
-`BUCKET_SECONDS * scale` apart: 0.55, 1.38 and 2.76 units at 2, 5 and 10 seconds.
+What decides is geometry. The track spans `TRACK_X1 - TRACK_ORIGIN_X`, 506 units, over this
+run's 1,908.976 seconds — `axis_scale` = 0.2651 units per second — so consecutive buckets sit
+`BUCKET_SECONDS * scale` apart: 0.53, 1.33 and 2.65 units at 2, 5 and 10 seconds.
 `MIN_BLOCK_WIDTH` (2.0) floors how narrow a drawn bar may get, and at 2 seconds that floor
-draws every bar 3.6x wider than the gap between buckets — a lethal spike is not one bar, it
-is smeared across its own slot and two and a half more, which is the "one lethal spike is one
-bar" rule failing outright. At 5 seconds the floor still binds, but only to 1.45x, a bar
+draws every bar 3.77x wider than the gap between buckets — a lethal spike is not one bar, it
+is smeared across its own slot and nearly three more, which is the "one lethal spike is one
+bar" rule failing outright. At 5 seconds the floor still binds, but only to 1.51x, a bar
 spilling lightly into its one right-hand neighbour. At 10 seconds the gap already exceeds
 the floor, so nothing is drawn oversize.
 
