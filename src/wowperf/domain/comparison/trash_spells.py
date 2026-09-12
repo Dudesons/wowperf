@@ -1,9 +1,22 @@
 # ABOUTME: Compares one player's cast rates on the trash packs two routes shared.
 # ABOUTME: Only aligned packs count, so a rate measures play rather than the route.
 
+from collections.abc import Sequence
+
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.model import Run
+from wowperf.domain.comparison.sample import ParseSample
+from wowperf.domain.comparison.spells import (
+    MAX_SPELLS_REPORTED,
+    MIN_CASTS_TO_COMPARE,
+    MIN_MEMBERS_WITH_ABILITY,
+    RATE_GAP_MULTIPLE,
+    casts_in,
+    their_actor_id,
+)
+from wowperf.domain.comparison.statistics import median, observed_range
+from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
+from wowperf.domain.model import LoadedRun, Player, Run
 
 MIN_ALIGNED_TRASH_SECONDS = 60.0
 """Aligned trash seconds a side must reach before its rate is argued from.
@@ -80,3 +93,131 @@ def is_comparable(aligned: AlignedTrash) -> bool:
         aligned.our_seconds >= MIN_ALIGNED_TRASH_SECONDS
         and aligned.their_seconds >= MIN_ALIGNED_TRASH_SECONDS
     )
+
+
+def compare_trash_spells_sample(
+    ours: LoadedRun, our_player: Player, our_name: str, sample: ParseSample
+) -> list[Finding]:
+    """Cast rates on the trash packs our route shared with the sample's.
+
+    Boss pulls are `compare_spells_sample`'s subject and are excluded here, so
+    the two families never price the same seconds twice. No member is named:
+    the claim is about the sample as a population, exactly as on the boss rows.
+    """
+    if not sample.members:
+        return []
+
+    ours_aligned: list[AlignedTrash] = []
+    per_member: list[tuple[float, dict[int, int]]] = []
+    names: dict[int, str] = {}
+    for member in sample.members:
+        actor_id = their_actor_id(member, member.row.character_name)
+        aligned = aligned_trash(ours.run, member.run)
+        if actor_id is None or not is_comparable(aligned):
+            per_member.append((0.0, {}))
+            continue
+        ours_aligned.append(aligned)
+        their_casts = casts_in(member.casts, actor_id, aligned.their_pulls)
+        for ability_id, (name, _count) in their_casts.items():
+            names.setdefault(ability_id, name)
+        per_member.append(
+            (
+                aligned.their_seconds,
+                {
+                    ability_id: count
+                    for ability_id, (_name, count) in their_casts.items()
+                    if count >= MIN_CASTS_TO_COMPARE
+                },
+            )
+        )
+
+    if not ours_aligned:
+        return []
+
+    # Our own denominator is the union of every pack that aligned with anybody:
+    # a pack one reference skipped is still a pack we fought and were compared on.
+    our_pulls = frozenset().union(*(aligned.our_pulls for aligned in ours_aligned))
+    our_seconds = sum(
+        pull.duration_seconds for pull in ours.run.pulls if pull.index in our_pulls
+    )
+    if our_seconds <= 0:
+        return []
+    ours_on_trash = casts_in(ours.casts, our_player.actor_id, our_pulls)
+    return _rate_rows(our_name, ours_on_trash, our_seconds, len(our_pulls), per_member)
+
+
+def _rate_rows(
+    our_name: str,
+    ours_on_trash: dict[int, tuple[str, int]],
+    our_seconds: float,
+    pack_count: int,
+    per_member: Sequence[tuple[float, dict[int, int]]],
+) -> list[Finding]:
+    """Abilities both sides cast on shared packs, where the sample's median is higher."""
+    gaps = []
+    for ability_id, (name, our_count) in ours_on_trash.items():
+        rates = [
+            qualifying[ability_id] / their_seconds * 60
+            for their_seconds, qualifying in per_member
+            if ability_id in qualifying and their_seconds > 0
+        ]
+        if len(rates) < MIN_MEMBERS_WITH_ABILITY:
+            continue
+        our_rate = our_count / our_seconds * 60
+        their_median = median(rates)
+        if our_rate <= 0 or their_median / our_rate < RATE_GAP_MULTIPLE:
+            continue
+        gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
+    gaps.sort(key=lambda row: row[0], reverse=True)
+
+    findings = []
+    for rank, (_, ability_id, name, our_rate, their_median, rates) in enumerate(
+        gaps[:MAX_SPELLS_REPORTED]
+    ):
+        low, high = observed_range(rates)
+        findings.append(
+            Finding(
+                id=f"compare.spells.trash.rate.{rank}",
+                title=(
+                    f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
+                    f"minute across {quantity(pack_count, 'aligned pack', 'aligned packs')}; "
+                    f"{our_name} casts it {our_rate:.1f}"
+                ),
+                detail=(
+                    "Both rates are casts per minute of time spent on trash packs both routes "
+                    "fought, matched by the enemy types in them. Restricting to shared packs is "
+                    "what separates a rate about play from a rate about the route - but an "
+                    "aligned pair is a comparable pair, not an identical one, so pack size still "
+                    "varies within it and pull order still moves a rate."
+                ),
+                confidence=Confidence.DERIVED,
+                seconds_lost=None,
+                evidence=(
+                    f"ability {ability_id}",
+                    f"ours over {our_seconds:.0f}s of aligned trash",
+                    f"range {low:.1f} to {high:.1f} casts a minute across "
+                    f"{len(rates)} top parses",
+                ),
+                facts=(
+                    FindingFact(
+                        label="Ours",
+                        value=f"{our_rate:.1f} casts a minute",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(
+                        label="Reference median",
+                        value=f"{their_median:.1f} casts a minute",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(
+                        label="Observed range",
+                        value=f"{low:.1f} to {high:.1f}",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(label="Aligned packs", value=str(pack_count)),
+                ),
+                ability_id=ability_id,
+                ability_name=name,
+            )
+        )
+    return findings
