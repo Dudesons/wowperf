@@ -885,14 +885,16 @@ def build_player_timeline(
         press_width=PRESS_WIDTH,
         state_key=STATE_KEY,
         legend=LEGEND,
-        badge_measured=badge_for(Confidence.MEASURED),
-        badge_measured_caption=BADGE_MEASURED_CAPTION,
-        # Guarded where the other two are not: this badge grades the damage
-        # done bars and nothing else, and a player the graph carried no series
-        # for still draws a chart. A grade on something absent from the page
-        # is a claim about nothing.
+        # Each badge is guarded on the layer it grades, because any one of the
+        # three layers can be the only one a chart draws. Measured names the
+        # damage taken bars, the press marks and the cover windows, so it
+        # survives on either source; inferred names a dimming only a row draws;
+        # derived names the damage done bars alone. A grade on something absent
+        # from the page is a claim about nothing.
+        badge_measured=badge_for(Confidence.MEASURED) if damage or rows else None,
+        badge_measured_caption=BADGE_MEASURED_CAPTION if damage or rows else "",
         badge_derived=badge_for(Confidence.DERIVED) if damage_done else None,
         badge_derived_caption=BADGE_DERIVED_CAPTION if damage_done else "",
-        badge_inferred=badge_for(Confidence.INFERRED),
-        badge_inferred_caption=BADGE_INFERRED_CAPTION,
+        badge_inferred=badge_for(Confidence.INFERRED) if rows else None,
+        badge_inferred_caption=BADGE_INFERRED_CAPTION if rows else "",
     )

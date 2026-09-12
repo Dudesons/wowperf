@@ -190,14 +190,28 @@ def test_the_height_grows_with_the_rows_it_has_to_hold() -> None:
     assert timeline.height == FIRST_ROW_Y + len(timeline.cooldowns) * ROW_HEIGHT + 28.0
 
 
+def a_timeline_drawing_both_graded_layers() -> PlayerTimeline:
+    """A chart with damage taken bars and a cooldown row, so both badges render.
+
+    Each badge is guarded on the layer it grades, so a fixture drawing only one
+    of them carries only one badge — and a swap between two fields where one is
+    `None` is not the swap these tests are about.
+    """
+    run = a_run(pulls=(a_pull(0, 0, 60_000),))
+    loaded = LoadedRun(
+        run=run,
+        damage_taken=(a_hit(1, 1_000, 1),),
+        casts=(a_cast(1, SHIELD.ability_id, 1_000),),
+    )
+    return a_timeline(loaded, defensives=KIT)
+
+
 def test_the_measured_and_inferred_badges_are_not_interchangeable() -> None:
     # A test that only checked both badges exist would still pass with the two
     # swapped: `build_player_timeline` must put `measured` on the field the
     # damage bars and press marks read, and `inferred` on the one the dimming
     # reads, exactly as `HealthCurve.line_badge`/`reading_badge` do.
-    run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
-    timeline = a_timeline(loaded)
+    timeline = a_timeline_drawing_both_graded_layers()
     assert timeline.badge_measured is not None and timeline.badge_measured.label == "measured"
     assert timeline.badge_inferred is not None and timeline.badge_inferred.label == "inferred"
 
@@ -207,9 +221,7 @@ def test_the_badge_captions_are_not_interchangeable() -> None:
     # grades, so swapping the two would misdescribe both. A test only
     # checking that each caption is non-empty would not catch the swap; this
     # pins each caption's exact words against its own badge.
-    run = a_run(pulls=(a_pull(0, 0, 60_000),))
-    loaded = LoadedRun(run=run, damage_taken=(a_hit(1, 1_000, 1),))
-    timeline = a_timeline(loaded)
+    timeline = a_timeline_drawing_both_graded_layers()
     assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
     assert timeline.badge_inferred_caption == BADGE_INFERRED_CAPTION
     assert BADGE_MEASURED_CAPTION != BADGE_INFERRED_CAPTION
@@ -1153,11 +1165,11 @@ def test_the_chart_leaves_room_for_the_damage_done_track() -> None:
 def test_a_timeline_with_no_damage_done_track_carries_no_derived_badge() -> None:
     """A badge is a grade on something the page drew.
 
-    The measured badge holds that property without a condition: a timeline
-    with neither damage taken nor a row is withheld outright, so its legend
-    never renders. The derived badge grades one thing only, and that thing can
-    be missing from a chart that still draws, which is why it takes a guard
-    the other does not need.
+    All three take the same guard, each on the layer it names, because any one
+    of the three can be the only layer a chart draws. Here the chart draws a
+    press and its cover window and no damage done at all, so the two badges
+    that grade those survive and the one that grades the missing track does
+    not.
     """
     loaded = a_covered_run(
         bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
@@ -1167,7 +1179,7 @@ def test_a_timeline_with_no_damage_done_track_carries_no_derived_badge() -> None
     assert timeline.damage_done is None
     assert timeline.badge_derived is None
     assert timeline.badge_derived_caption == ""
-    # The other two are unconditional, and stay so.
+    # The two layers this chart does draw are still graded.
     assert timeline.badge_measured is not None
     assert timeline.badge_inferred is not None
 
@@ -1182,3 +1194,52 @@ def test_a_timeline_that_draws_the_track_does_grade_it() -> None:
     assert timeline.damage_done is not None
     assert timeline.badge_derived == badge_for(Confidence.DERIVED)
     assert timeline.badge_derived_caption == BADGE_DERIVED_CAPTION
+
+
+def test_a_chart_of_damage_done_alone_grades_nothing_else() -> None:
+    """The state this chart can now reach, and the three claims it must not make.
+
+    Adding damage done to the withholding condition opened a chart that draws
+    only that track: a player the graph carried a series for, whose log
+    recorded no damage taken and none of whose tracked cooldowns were pressed.
+    The measured caption names bars, presses and cover windows and the
+    inferred caption names a dimming, and in this chart none of the five is
+    drawn. A grade on something absent from the page is a claim about nothing,
+    which is the property the derived badge was guarded to keep.
+    """
+    loaded = LoadedRun(
+        run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+        damage_done=(a_done_series(1, (600,)),),
+    )
+    timeline = a_timeline(loaded, actor_id=1, defensives=KIT)
+    # The chart renders, which is what makes the badges reachable at all.
+    assert timeline.section.state is SectionState.PRESENT
+    assert timeline.damage_done is not None
+    assert timeline.cooldowns == ()
+    assert timeline.damage is None
+
+    assert timeline.badge_measured is None
+    assert timeline.badge_measured_caption == ""
+    assert timeline.badge_inferred is None
+    assert timeline.badge_inferred_caption == ""
+    # The one layer that is drawn is still graded.
+    assert timeline.badge_derived == badge_for(Confidence.DERIVED)
+
+
+def test_damage_taken_alone_grades_the_bars_and_not_the_dimming() -> None:
+    """The two guards are not the same guard, and this is where they part.
+
+    The measured badge grades the damage taken bars as well as the presses, so
+    a chart with bars and no rows keeps it. The inferred badge grades only a
+    dimming a row draws, so the same chart must lose that one. Guarding both
+    on the rows alone would pass every other test in this file and drop a
+    grade on bars that are plainly on the page.
+    """
+    timeline = a_timeline_with_damage(amount=500_000, at_seconds=100.0, pull="Atroxus")
+    assert timeline.damage is not None
+    assert timeline.cooldowns == ()
+
+    assert timeline.badge_measured == badge_for(Confidence.MEASURED)
+    assert timeline.badge_measured_caption == BADGE_MEASURED_CAPTION
+    assert timeline.badge_inferred is None
+    assert timeline.badge_inferred_caption == ""
