@@ -34,6 +34,23 @@ TICK_LABEL_MARGIN = 16.0
 CAPTION_DY = -10.0
 """How far above its track's baseline a caption's text sits."""
 
+CAPTION_UNITS_PER_CHARACTER = 6.0
+"""A caption's drawn width per character, at the `.track-label` size of 12px.
+
+Measured in Chromium against the report's own font stack, the same way
+`player_timeline.LABEL_UNITS_PER_CHARACTER` was. A reference caption at its
+real length draws 5.05 units a character; one whose report code is sixteen
+capital Ws -- wider than any code Warcraft Logs issues -- draws 6.0. The wider
+figure is the one kept, because the only question asked with it is whether the
+longest caption still fits, and an average would answer a different one.
+
+Crude on purpose, like its counterpart: it exists so a test can ask whether a
+caption that grew still fits the track it is drawn over. The caption naming its
+reference run already spends 594 of the track's 610 units at that worst case,
+so there is no room left for another clause -- adding "at our keystone level"
+to it measured 621, which runs off the drawing.
+"""
+
 BLOCK_HEIGHT = 26.0
 """Every block's height, shared by both tracks."""
 
@@ -154,7 +171,13 @@ def _timeline_caption(label: str, seconds: float, suffix: str = "") -> str:
     penalties. Naming the span here keeps a reader from seeing two numbers
     for the same run and assuming one of them is wrong. `suffix`, when
     given, names the sample size a reference track was drawn from, so a
-    reader never mistakes one picture for the whole sample.
+    reader never mistakes one picture for the whole sample, and the run
+    itself, so they can tell whether it is the run the rows below name.
+
+    That size is the eligible subset and never `len(sample.members)`: the
+    track is drawn from the members whose keystone level matches ours, and
+    a count over the whole sample would credit the picture to runs it could
+    not have come from.
     """
     formatted = format_seconds(seconds)
     assert formatted is not None  # a float input always formats to a string
@@ -206,7 +229,12 @@ def build_timeline(ours: Run, sample: SpeedSample | None, section: Section) -> T
     if member is not None and sample is not None:
         theirs_track = TimelineTrack(
             caption=_timeline_caption(
-                "Reference", their_seconds, suffix=f"one of {len(sample.members)} fast runs"
+                "Reference",
+                their_seconds,
+                suffix=(
+                    f"one of {len(eligible)} fast runs "
+                    f"(report {member.row.report_code}, fight {member.row.fight_id})"
+                ),
             ),
             baseline_y=THEIRS_BASELINE_Y,
             blocks=_blocks(

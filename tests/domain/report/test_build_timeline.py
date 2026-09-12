@@ -17,6 +17,7 @@ from wowperf.domain.model import Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import Section, SectionState
 from wowperf.domain.report.timeline import (
+    CAPTION_UNITS_PER_CHARACTER,
     COMPARED_TIMELINE_LEGEND,
     LONE_TIMELINE_LEGEND,
     TRACK_X0,
@@ -28,11 +29,15 @@ PRESENT = Section(state=SectionState.PRESENT)
 WITHHELD = Section(state=SectionState.WITHHELD, reason="no faster run was available")
 
 
-def a_member(ours: Run, theirs: Run, level: int = 16, code: str = "ref1") -> SpeedMember:
+def a_member(
+    ours: Run, theirs: Run, level: int = 16, code: str = "ref1", fight_id: int = 1
+) -> SpeedMember:
     """A speed member wrapping `theirs`, with the comparability and alignment `_samples`
     computes once against `ours` at sample-build time, and `build_timeline` must reuse."""
     return SpeedMember(
-        row=SpeedRow(report_code=code, fight_id=1, keystone_level=level, duration_ms=0, deaths=0),
+        row=SpeedRow(
+            report_code=code, fight_id=fight_id, keystone_level=level, duration_ms=0, deaths=0
+        ),
         run=theirs,
         comparability=Comparability(our_level=ours.keystone_level, their_level=level),
         alignment=align_pulls(ours, theirs),
@@ -160,7 +165,7 @@ def test_the_caption_names_the_run_and_the_span_it_measures() -> None:
     assert timeline.ours.caption == "Ours — 10:00 from first pull to last"
     assert timeline.theirs is not None
     assert timeline.theirs.caption == (
-        "Reference — 10:00 from first pull to last, one of 1 fast runs"
+        "Reference — 10:00 from first pull to last, one of 1 fast runs (report ref1, fight 1)"
     )
 
 
@@ -234,7 +239,68 @@ def test_the_timeline_track_names_the_member_it_drew_and_the_sample_size() -> No
     )
     timeline = build_timeline(ours, sample, PRESENT)
     assert timeline.theirs is not None
-    assert timeline.theirs.caption.endswith("one of 5 fast runs")
+    assert timeline.theirs.caption.endswith("one of 5 fast runs (report ref0, fight 1)")
+
+
+def test_the_reference_caption_names_the_run_it_drew() -> None:
+    """Which of the sample's runs this picture is of, said on the picture.
+
+    The extra-pack rows below name their run outright, and `compare.talents`
+    names and links the parse it asks a reader to copy. The track was the one
+    place a figure about another run appeared with nothing to trace it to, and
+    a reader comparing it against those rows could not tell whether the two
+    were about the same run -- which, drawn from two different eligible sets,
+    they need not be.
+    """
+    ours = a_run(pulls=(a_pull(0, 0, 600_000),))
+    sample = a_sample(a_member(ours, ours, code="abc123"))
+    timeline = build_timeline(ours, sample, PRESENT)
+    assert timeline.theirs is not None
+    assert "(report abc123, fight 1)" in timeline.theirs.caption
+
+
+def test_the_longest_caption_this_builder_can_draw_still_fits_its_track() -> None:
+    """A caption is SVG text, so nothing wraps it and nothing clips it.
+
+    It simply runs past the track it labels and out over the right margin.
+    Naming the reference run spent most of the room the caption had, and this
+    is what stops the next clause from being added blind: the numbers here are
+    the widest of everything the builder varies -- a three-digit fight, a run
+    over a hundred minutes, and a report code of sixteen capital Ws, wider
+    than any code Warcraft Logs issues.
+    """
+    ours = a_run(pulls=(a_pull(0, 0, 6_000_000),))
+    sample = a_sample(a_member(ours, ours, code="W" * 16, fight_id=123))
+    timeline = build_timeline(ours, sample, PRESENT)
+    assert timeline.theirs is not None
+
+    drawn = len(timeline.theirs.caption) * CAPTION_UNITS_PER_CHARACTER
+    assert drawn <= TRACK_X1 - TRACK_X0, timeline.theirs.caption
+
+
+def test_the_reference_caption_counts_only_the_runs_it_could_have_drawn() -> None:
+    """The suffix names the set the track was drawn from, not the whole sample.
+
+    A member at another keystone level is never drawn here: `compare.duration`
+    refuses a number across that gap and this track refuses a picture. Counting
+    one would credit the drawing to runs it could not have come from, and
+    inflate the denominator by exactly the members `compare.confound.keystone
+    _level` exists to announce.
+    """
+    ours = a_run(pulls=(a_pull(0, 0, 600_000),))
+    theirs = a_run(pulls=(a_pull(0, 0, 600_000),))
+    sample = a_sample(
+        *(a_member(ours, theirs, code=f"same{index}") for index in range(3)),
+        *(a_member(ours, theirs, level=17, code=f"higher{index}") for index in range(2)),
+    )
+    # The two sets the caption could count, and they differ.
+    assert len(sample.members) == 5
+    assert len(sample.duration_eligible) == 3
+
+    timeline = build_timeline(ours, sample, PRESENT)
+    assert timeline.theirs is not None
+    assert "one of 3 fast runs" in timeline.theirs.caption
+    assert "one of 5" not in timeline.theirs.caption
 
 
 def test_among_several_duration_eligible_members_the_best_aligned_one_is_drawn() -> None:
