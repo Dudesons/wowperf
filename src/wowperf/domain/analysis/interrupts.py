@@ -9,7 +9,7 @@ from wowperf.domain.events import (
     EnemyCastRow,
     InterruptEvent,
 )
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, FindingFact
 
 FOLLOW_WINDOW_MS = 3_000
 """Damage from a spell lands within a few seconds of the cast completing."""
@@ -119,6 +119,34 @@ def _damage_after(cast: EnemyCast, damage_taken: tuple[DamageTakenEvent, ...]) -
     )
 
 
+def _interruptible(kicks: int) -> tuple[str, FindingFact]:
+    """What the run proved about whether this spell can be stopped at all.
+
+    The log carries no interruptible flag -- `.claude/skills/wcl-api/SKILL.md`
+    lists the verified fields for `dataType: Interrupts` and holds none -- so
+    this invents none. What it can say is narrower and real: a spell somebody
+    kicked was interruptible, provably, because the kick is in the log.
+
+    A spell nobody kicked is unknown, and says unknown. It must never read as
+    a miss: a reader met a card saying a spell landed eighteen times with
+    nothing on it about whether anyone could have stopped it, and supplied the
+    missing half himself. The abstention carries no tier of its own because it
+    grades no claim; the count behind a proven one is read straight from the
+    log, and carries measured.
+    """
+    if kicks:
+        claim = f"kicked {kicks} time{'s' if kicks != 1 else ''} this run"
+        return (
+            f"interruptible: {claim}",
+            FindingFact(label="Interruptible", value=claim,
+                        confidence=Confidence.MEASURED),
+        )
+    return (
+        "never kicked this run; the log does not say whether it could be",
+        FindingFact(label="Interruptible", value="unknown; never kicked this run"),
+    )
+
+
 def analyse_interrupts(
     casts: tuple[EnemyCast, ...],
     damage_taken: tuple[DamageTakenEvent, ...],
@@ -157,6 +185,13 @@ def analyse_interrupts(
         )
     ]
 
+    # Counted across every cast of the run, not only the landed ones: a spell
+    # is proven interruptible by any kick of it, and a kicked cast is by
+    # definition not among the landed.
+    kicks_by_ability: dict[int, int] = defaultdict(int)
+    for cast in kicked:
+        kicks_by_ability[cast.ability_id] += 1
+
     damage_by_ability: dict[int, int] = defaultdict(int)
     names: dict[int, str] = {}
     counts: dict[int, int] = defaultdict(int)
@@ -169,6 +204,7 @@ def analyse_interrupts(
     for rank, (ability_id, damage) in enumerate(ranked[:MAX_ABILITIES_REPORTED]):
         if damage <= 0:
             break
+        interruptible, fact = _interruptible(kicks_by_ability[ability_id])
         findings.append(
             Finding(
                 id=f"interrupts.ability.{rank}",
@@ -183,7 +219,9 @@ def analyse_interrupts(
                 evidence=(
                     f"{damage:,} unmitigated damage attributed",
                     "unmitigated: before absorbs and mitigation",
+                    interruptible,
                 ),
+                facts=(fact,),
                 ability_id=ability_id,
                 ability_name=names[ability_id],
             )

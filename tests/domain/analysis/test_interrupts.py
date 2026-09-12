@@ -3,7 +3,7 @@
 
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.events import DamageTakenEvent, EnemyCastRow, InterruptEvent
-from wowperf.domain.findings import Confidence
+from wowperf.domain.findings import Confidence, Finding
 
 SPELL = 1241214
 OTHER = 1238440
@@ -188,6 +188,68 @@ def test_the_summary_title_pluralises_a_single_landed_cast_correctly() -> None:
     findings = analyse_interrupts(casts, ())
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.title == "1 cast landed, 0 were kicked"
+
+
+def a_landed_spell_and(
+    *extra: EnemyCastRow, kicks: tuple[InterruptEvent, ...] = ()
+) -> list[Finding]:
+    """One cast of SPELL that landed and hurt, plus whatever else a test needs.
+
+    A landed cast followed by damage is what makes an `interrupts.ability.`
+    finding at all, so every test of that finding has to start from one.
+    """
+    casts = reconstruct_enemy_casts((row(1_000, True), row(3_000, False)) + extra, kicks)
+    return analyse_interrupts(casts, (hit(3_100, 5_000),))
+
+
+def test_a_spell_kicked_at_least_once_is_reported_interruptible() -> None:
+    findings = a_landed_spell_and(row(10_000, True), kicks=(kick(10_500),))
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert "interruptible: kicked 1 time this run" in ability.evidence
+
+
+def test_a_spell_never_kicked_is_reported_unknown_and_not_as_a_miss() -> None:
+    # The log carries no interruptible flag -- `.claude/skills/wcl-api/SKILL.md`
+    # lists the verified fields for `dataType: Interrupts` and there is none.
+    # Silence is not a failure to kick, and a card that implied one would have
+    # a reader supplying the missing half himself, wrongly.
+    findings = a_landed_spell_and()
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert "never kicked this run; the log does not say whether it could be" in ability.evidence
+    assert not any("missed" in item for item in ability.evidence)
+
+
+def test_the_interruptible_claim_is_measured_not_derived() -> None:
+    # It rests on interrupt events, not on a reconstruction: a kick that
+    # happened proves the spell could be kicked.
+    findings = a_landed_spell_and(row(10_000, True), kicks=(kick(10_500),))
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    fact = next(f for f in ability.facts if f.label == "Interruptible")
+    assert fact.value == "kicked 1 time this run"
+    assert fact.confidence is Confidence.MEASURED
+
+
+def test_an_unproven_interruptible_claims_no_tier_of_its_own() -> None:
+    # Abstention, not measurement. Stamping "measured" on the word unknown
+    # would grade a claim nobody made; the finding's own badge covers it.
+    findings = a_landed_spell_and()
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    fact = next(f for f in ability.facts if f.label == "Interruptible")
+    assert fact.value == "unknown; never kicked this run"
+    assert fact.confidence is None
+
+
+def test_a_kick_of_a_different_spell_never_makes_this_one_interruptible() -> None:
+    # Kicks are counted per ability id. Counting them across the run would
+    # report every landed spell as provably interruptible the moment anybody
+    # kicked anything.
+    findings = a_landed_spell_and(
+        row(10_000, True, ability=OTHER), kicks=(kick(10_500, ability=OTHER),)
+    )
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert ability.ability_id == SPELL
+    fact = next(f for f in ability.facts if f.label == "Interruptible")
+    assert fact.value == "unknown; never kicked this run"
 
 
 def test_an_unkicked_ability_finding_names_the_ability_it_is_about() -> None:
