@@ -756,7 +756,12 @@ def a_drawn_timeline() -> PlayerTimeline:
         ),
         cooldowns=(CooldownRow(label="Ice Block", ability_id=45438,
                                # 96/140 of the chart's height, and 16/140 of it
-                               # for `row_hit_height` below.
+                               # for `row_hit_height` below. These coordinates
+                               # are hand-picked to exercise the template,
+                               # which prints them and computes none of them;
+                               # they are no longer a layout the builder can
+                               # produce, since the damage done track now sits
+                               # between the bars above and this row below.
                                tooltip=Tooltip(lines=(
                                    TooltipLine(label="Presses", value="1"),
                                    TooltipLine(label="Not judged", value="30%",

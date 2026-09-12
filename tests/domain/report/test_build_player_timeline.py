@@ -1165,7 +1165,11 @@ def test_the_chart_leaves_room_for_the_damage_done_track() -> None:
     timeline = a_timeline(loaded, defensives=KIT)
     row = timeline.cooldowns[0]
     assert row.baseline_y == FIRST_ROW_Y
-    assert row.hit_top == round(row.baseline_y / timeline.height * 100, 1)
+    # A literal, not the formula that produced it: restating
+    # `hit_top = baseline_y / height * 100` agrees with itself wherever the row
+    # sits, which is the same weakness this test was rewritten to escape one
+    # assertion earlier. 136 of a 180-unit chart.
+    assert (timeline.height, row.hit_top) == (180.0, 75.6)
 
 
 def test_a_timeline_with_no_damage_done_track_carries_no_derived_badge() -> None:
