@@ -958,6 +958,39 @@ def test_the_strips_are_siblings_of_the_chart_and_never_children_of_it() -> None
     assert wrap.index("</svg>") < wrap.index('<div class="row-hit"')
 
 
+def test_a_strips_percentage_is_the_one_the_builder_computed() -> None:
+    """The other strip tests hand-write `hit_top`, so they would all still pass if
+    `build_player_timeline` stamped the wrong number. This one renders a timeline
+    the builder actually made, and reads the emitted percentage back against the
+    row's own figure -- the only test that joins the two halves on a page."""
+    from tests.domain.report.test_build_player_timeline import BURST as A_BURST
+    from tests.domain.report.test_build_player_timeline import (
+        BURSTS,
+        KIT,
+        SHIELD,
+        a_cast,
+        a_timeline,
+    )
+
+    timeline = a_timeline(
+        LoadedRun(
+            run=a_run(pulls=(a_pull(0, 0, 600_000),)),
+            casts=(a_cast(1, SHIELD.ability_id, 300_000), a_cast(1, A_BURST.ability_id, 120_000)),
+        ),
+        defensives=KIT,
+        throughput=BURSTS,
+    )
+    body = render(a_report(players=(a_player_card(timeline=timeline),))).split("</style>")[1]
+
+    assert len(timeline.cooldowns) == 2
+    for row in timeline.cooldowns:
+        emitted = f'aria-label="{row.label}" style="top: {row.hit_top}%; '
+        assert emitted in body, emitted
+        # The viewBox number must not be what reached the page: a strip placed at
+        # `baseline_y` per cent sits nowhere near the row it describes.
+        assert f'style="top: {row.baseline_y}%' not in body
+
+
 def test_the_chart_keeps_the_aspect_ratio_the_strips_percentages_assume() -> None:
     # The strips are placed at baseline_y over the chart's height. That is only
     # the right place while the rendered height stays width x H/680 -- which a
