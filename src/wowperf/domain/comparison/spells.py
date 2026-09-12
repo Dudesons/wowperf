@@ -36,18 +36,30 @@ def boss_seconds(run: Run) -> float:
     return sum(pull.duration_seconds for pull in run.boss_pulls)
 
 
-def boss_casts(
-    run: Run, casts: tuple[CastEvent, ...], actor_id: int
+def casts_in(
+    casts: tuple[CastEvent, ...], actor_id: int, indices: frozenset[int]
 ) -> dict[int, tuple[str, int]]:
-    """One player's casts inside boss pulls, as ability id to (name, count)."""
-    boss_indices = {pull.index for pull in run.boss_pulls}
+    """One player's casts inside `indices`, as ability id to (name, count).
+
+    The one counting rule in this package. `boss_casts` is this scoped to the
+    boss pulls; the trash comparison is this scoped to the packs two routes
+    shared. Two callers counting casts two ways is how a page ends up stating
+    a rate its own evidence cannot reproduce.
+    """
     counted: dict[int, tuple[str, int]] = {}
     for event in casts:
-        if event.actor_id != actor_id or event.pull_index not in boss_indices:
+        if event.actor_id != actor_id or event.pull_index not in indices:
             continue
         name, count = counted.get(event.ability_id, (event.ability_name, 0))
         counted[event.ability_id] = (name, count + 1)
     return counted
+
+
+def boss_casts(
+    run: Run, casts: tuple[CastEvent, ...], actor_id: int
+) -> dict[int, tuple[str, int]]:
+    """One player's casts inside boss pulls, as ability id to (name, count)."""
+    return casts_in(casts, actor_id, frozenset(pull.index for pull in run.boss_pulls))
 
 
 def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[int]:
@@ -55,7 +67,7 @@ def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[in
     return {event.ability_id for event in casts if event.actor_id == actor_id}
 
 
-def _their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
+def their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
     folded = their_name.casefold()
     for player in theirs.run.players:
         if player.name.casefold() == folded:
@@ -123,11 +135,11 @@ def compare_spells(
     members can share it, and a run comparing both would then emit two
     identical titles.
     """
-    their_actor_id = _their_actor_id(theirs, their_name)
+    actor_id = their_actor_id(theirs, their_name)
     their_boss_seconds = boss_seconds(theirs.run)
     our_boss_seconds = boss_seconds(ours.run)
 
-    if their_actor_id is None or their_boss_seconds <= 0 or our_boss_seconds <= 0:
+    if actor_id is None or their_boss_seconds <= 0 or our_boss_seconds <= 0:
         return [
             Finding(
                 id="compare.spells.unavailable",
@@ -143,12 +155,12 @@ def compare_spells(
                     f"our boss time {our_boss_seconds:.0f}s",
                     f"their boss time {their_boss_seconds:.0f}s",
                     f"reference player {their_name!r} "
-                    f"{'found' if their_actor_id is not None else 'not found'}",
+                    f"{'found' if actor_id is not None else 'not found'}",
                 ),
             )
         ]
 
-    theirs_on_bosses = boss_casts(theirs.run, theirs.casts, their_actor_id)
+    theirs_on_bosses = boss_casts(theirs.run, theirs.casts, actor_id)
     ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
     ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
 
@@ -283,12 +295,12 @@ def compare_spells_sample(
     names: dict[int, str] = {}
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in sample.members:
-        their_actor_id = _their_actor_id(member, member.row.character_name)
+        actor_id = their_actor_id(member, member.row.character_name)
         their_boss_seconds = boss_seconds(member.run)
-        if their_actor_id is None or their_boss_seconds <= 0:
+        if actor_id is None or their_boss_seconds <= 0:
             per_member.append((0.0, {}))
             continue
-        casts_by_ability = boss_casts(member.run, member.casts, their_actor_id)
+        casts_by_ability = boss_casts(member.run, member.casts, actor_id)
         for ability_id, (name, _count) in casts_by_ability.items():
             names.setdefault(ability_id, name)
         qualifying = {

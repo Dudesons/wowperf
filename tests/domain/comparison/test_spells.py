@@ -9,6 +9,7 @@ from wowperf.domain.comparison.spells import (
     MIN_MEMBERS_WITH_ABILITY,
     boss_casts,
     boss_seconds,
+    casts_in,
     compare_spells,
     compare_spells_sample,
     compare_talents,
@@ -131,6 +132,23 @@ def test_boss_casts_ignore_trash_and_other_players() -> None:
     counted = boss_casts(run, casts, actor_id=693)
 
     assert counted == {30451: ("Arcane Blast", 2)}
+
+
+def test_casts_in_counts_only_the_given_pulls_for_the_given_actor() -> None:
+    """The counting rule boss_casts uses, taken out so a trash-scoped caller
+    shares it rather than writing a second one that can drift."""
+    casts = (
+        cast(693, 100, "Kept", 1_000, 0),
+        cast(693, 100, "Kept", 2_000, 0),
+        cast(693, 100, "Kept", 3_000, 5),
+        cast(693, 200, "Other pull", 4_000, 9),
+        cast(11, 100, "Other actor", 5_000, 0),
+        cast(693, 300, "No pull", 6_000, None),
+    )
+
+    counted = casts_in(casts, 693, frozenset({0, 5}))
+
+    assert counted == {100: ("Kept", 3)}
 
 
 def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
