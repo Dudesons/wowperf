@@ -541,14 +541,28 @@ def _row_panel(
     presses: int,
     bands: tuple[tuple[int, int], ...] | None,
     shares: tuple[int, int, int],
+    span_seconds: float,
 ) -> Tooltip:
     """What one row's rectangles are worth, as the page's own panel.
 
-    The counted figures carry no tier, which is this panel's way of saying
+    The press count carries no tier, which is this panel's way of saying
     measured. The three shares carry `inferred`, because the cooldown they
     divide by is a base value from `data/` that talents shorten and the log
     never records a reset -- the same claim `BADGE_INFERRED_CAPTION` grades on
     the chart.
+
+    The cover line carries `derived`, and states its share on the same line as
+    its seconds. Both figures come from the aura table and both are clipped to
+    the drawn axis rather than to the fight, and that window is a choice: it is
+    why this figure sits a fraction below the uptime Warcraft Logs reports for
+    the same aura over the whole fight. `comparison/uptime.py` grades an aura's
+    share of a chosen window the same way. Dividing by the axis is still the
+    only reading that agrees with the rectangles, which is the discipline
+    `_row_shares` keeps for the same reason. The share rides on the seconds
+    rather than taking a line of its own because the three lines above it
+    partition the track and sum to 100 -- a fourth percentage in that column
+    would read as a partition that does not add up, which is the measurement
+    design section 2.1 records.
 
     `bands` of None is not an empty tuple: the first says no aura table covers
     this ability, the second that a table covered it and recorded no window.
@@ -566,7 +580,14 @@ def _row_panel(
     ]
     if bands is not None:
         seconds = sum(end - start for start, end in bands) / 1000
-        lines.append(TooltipLine(label="Buff up", value=f"{seconds:.1f} s"))
+        share = round(seconds / span_seconds * 100)
+        lines.append(
+            TooltipLine(
+                label="Buff up",
+                value=f"{seconds:.1f} s ({share}%)",
+                tier=badge_for(Confidence.DERIVED),
+            )
+        )
     return Tooltip(lines=tuple(lines), note="" if bands is not None else NO_AURA_DATA)
 
 
@@ -638,6 +659,7 @@ def _cooldown_rows(
                     len(presses),
                     bands,
                     _row_shares(not_judged, unavailable),
+                    span_seconds,
                 ),
                 baseline_y=FIRST_ROW_Y + len(rows) * ROW_HEIGHT,
                 # The label sits on the row's own middle, not on its top edge:

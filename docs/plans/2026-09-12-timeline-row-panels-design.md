@@ -38,7 +38,7 @@ row's SVG `<text>` prints, so the heading and the drawn label cannot disagree.
 | Not judged | `8%` | inferred |
 | On cooldown | `88%` | inferred |
 | Ready and unpressed | `4%` | inferred |
-| Buff up | `646.0 s` | measured |
+| Buff up | `646.0 s (42%)` | derived |
 
 **Note:** where the run's aura tables say nothing about the ability, `NO_AURA_DATA` appears and
 the *Buff up* line is absent. `_cover_bands` already distinguishes "no table for this ability"
@@ -71,6 +71,16 @@ stretch that is judged, off cooldown, and unused — and it is the gap a reader 
 and cannot currently put a number to. On the same page it runs from 0% on Recklessness to 94% on
 Impending Victory, and it is the same claim `defensives.ceiling.*` already makes in words.
 
+**Amended 2026-09-12: the cover line states a share as well as its seconds.** The objection above
+stands and nothing about the measurement changed — a fourth entry in that column would still read
+as a partition summing past 100. So the share does not take a line of its own; it rides on the
+seconds, as `646.0 s (42%)`. The value column already mixes a bare count and a duration with the
+three shares, which is what makes a parenthetical on a seconds value visibly not a fourth slice.
+The reason for the change is that seconds alone cannot be checked against the percentage Warcraft
+Logs prints for the same aura, which is the check that prompted it. The denominator is the drawn
+axis, forced rather than chosen: `_cover_bands` already clips the seconds to it, so dividing by the
+fight would mix two windows.
+
 ### 2.2 Apportionment
 
 Three shares rounded independently can sum to 99 or 101, and computing the third as
@@ -87,6 +97,17 @@ written, and that convention stands.
 The three shares carry **inferred**, because the cooldown length is a base value from `data/`
 that talents shorten and the log never records a reset — the same claim
 `BADGE_INFERRED_CAPTION` already grades on the chart itself.
+
+**Amended 2026-09-12: the cover line carries `derived`, not measured.** Its seconds and its share
+are both clipped to the drawn axis rather than to the fight, and that window is a choice — the
+one that puts our 646.0 s a fraction below the 646.2 s Warcraft Logs reports for the same aura over
+the whole fight. A bare duration did not invite that comparison; a percentage does.
+`comparison/uptime.py` grades an aura's share of a chosen window `derived` for exactly this reason,
+which makes it the precedent rather than the computed rates in `comparison/spells.py`.
+
+This retires the reading in section 2.1 that **the unit carries the tier**: seconds are not
+measured by virtue of being seconds, and shares are not all inferred. Each line is graded by what
+it rests on — a base cooldown from `data/` for the three shares, a chosen window for the cover.
 
 ## 3. How it is drawn
 

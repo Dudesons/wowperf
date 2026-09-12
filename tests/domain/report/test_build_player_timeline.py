@@ -839,7 +839,7 @@ def test_a_cooldown_rows_panel_states_its_presses_and_its_cover() -> None:
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
     assert a_panel_line(row, "Presses").value == "1"
-    assert a_panel_line(row, "Buff up").value == "8.0 s"
+    assert a_panel_line(row, "Buff up").value == "8.0 s (1%)"
 
 
 # Restates test_a_cooldown_rows_hover_counts_every_press.
@@ -862,7 +862,7 @@ def test_a_cooldown_rows_panel_sums_every_window_the_buff_was_up() -> None:
         casts=tuple(a_cast(1, SHIELD.ability_id, at) for at in (100_000, 300_000)),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert a_panel_line(row, "Buff up").value == "10.5 s"
+    assert a_panel_line(row, "Buff up").value == "10.5 s (2%)"
 
 
 # Restates test_a_cooldown_rows_hover_counts_only_the_cover_the_drawing_shows.
@@ -871,14 +871,15 @@ def test_a_cooldown_rows_panel_counts_only_the_cover_the_drawing_shows() -> None
 
     A buff still up when the axis ends is clipped where the drawing clips it,
     so the number a reader hovers and the rectangles they are looking at
-    cannot disagree. `total_uptime_ms` here is 15s and the axis sees 5.
+    cannot disagree. `total_uptime_ms` here is 15s and the axis sees 5, which
+    the share separates too: the table's own total would read 2% of the run.
     """
     loaded = a_covered_run(
         bands=(AuraBand(start_ms=595_000, end_ms=610_000),),
         casts=(a_cast(1, SHIELD.ability_id, 595_000),),
     )
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert a_panel_line(row, "Buff up").value == "5.0 s"
+    assert a_panel_line(row, "Buff up").value == "5.0 s (1%)"
 
 
 # Restates test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cover,
@@ -904,16 +905,35 @@ def test_a_cooldown_row_with_no_aura_for_its_ability_says_so_rather_than_no_cove
 def test_a_cooldown_row_whose_aura_was_never_up_reports_no_seconds_of_cover() -> None:
     loaded = a_covered_run(bands=(), casts=(a_cast(1, SHIELD.ability_id, 300_000),))
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
-    assert a_panel_line(row, "Buff up").value == "0.0 s"
+    assert a_panel_line(row, "Buff up").value == "0.0 s (0%)"
     assert row.tooltip is not None
     assert row.tooltip.note == ""
 
 
-def test_a_cooldown_rows_panel_grades_the_assumed_figures_and_not_the_counted_ones() -> None:
+def test_a_cooldown_rows_panel_states_the_buffs_share_of_the_drawn_run() -> None:
+    """Seconds alone cannot be read against the share Warcraft Logs prints for
+    the same aura, so the line carries both. The denominator is the run the row
+    is drawn on -- 150s of this 600s axis is a quarter of it -- which is the
+    same span the three partition lines above it divide by."""
+    loaded = a_covered_run(
+        bands=(AuraBand(start_ms=300_000, end_ms=450_000),),
+        casts=(a_cast(1, SHIELD.ability_id, 300_000),),
+    )
+    row = a_timeline(loaded, defensives=KIT).cooldowns[0]
+    assert a_panel_line(row, "Buff up").value == "150.0 s (25%)"
+
+
+def test_a_cooldown_rows_panel_grades_each_line_by_what_it_rests_on() -> None:
     """`TooltipLine.tier` means measured when it is None, so an ungraded share
     would badge an assumed cooldown as something read from the log. The three
     shares rest on a base cooldown from `data/` that talents shorten and the log
-    never records, which is the claim the chart's own inferred badge grades."""
+    never records, which is the claim the chart's own inferred badge grades.
+
+    The cover line is graded too, and derived rather than inferred: both its
+    figures come from the aura table, but both are clipped to the drawn axis,
+    and that window is a choice. It is the choice that puts our seconds a
+    fraction below the uptime Warcraft Logs reports over the whole fight.
+    `comparison/uptime.py` grades the same quantity the same way."""
     loaded = a_covered_run(
         bands=(AuraBand(start_ms=300_000, end_ms=308_000),),
         casts=(a_cast(1, SHIELD.ability_id, 300_000),),
@@ -921,7 +941,7 @@ def test_a_cooldown_rows_panel_grades_the_assumed_figures_and_not_the_counted_on
     row = a_timeline(loaded, defensives=KIT).cooldowns[0]
     inferred = badge_for(Confidence.INFERRED)
     assert a_panel_line(row, "Presses").tier is None
-    assert a_panel_line(row, "Buff up").tier is None
+    assert a_panel_line(row, "Buff up").tier == badge_for(Confidence.DERIVED)
     for label in ("Not judged", "On cooldown", "Ready and unpressed"):
         assert a_panel_line(row, label).tier == inferred
 
