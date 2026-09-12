@@ -558,6 +558,18 @@ is the string `"Total"` and whose `guid` and `total` are null.
 The whole probe — one introspection and six queries — was taken inside one quota window that read
 `pointsSpentThisHour: 8.44` at the end, so it cost at most that, of 3600.
 
+**`DamageDoneGraph` costs 1.00 point**, measured 2026-09-12 on the first run that issued it from
+`repository.py`: an otherwise warm-cache `--all-players` analysis of the same report and fight
+spent 2.00 in total, composed as the command printed it — `DamageDoneGraph` 1 call for 1.00, and
+`RateLimit` 2 calls for 1.00 with its last read unpriced. So one call at the same price as most of
+this API's queries serves a whole roster, however many players are analysed.
+
+**The rebuilt amounts reconcile with the API's own `total` to within 0.66%**, measured the same
+day across all five series of that fight: −0.26%, −0.26%, −0.34%, −0.35% and −0.66%, every one of
+them short rather than over. The residual is the last bucket overhanging the fight — 241 buckets
+of 6411.679 ms span 1545.2 s of a 1538.8 s window — plus per-bucket rounding. A gap near a factor
+of 6.4 instead would mean the rate conversion was dropped somewhere after ingest.
+
 ## The debuff half cannot be scoped to one caster
 
 Corrected 2026-09-05 after Plan D's first run against the live API, which found this endpoint's

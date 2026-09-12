@@ -754,8 +754,21 @@ def test_no_timeline_hover_states_a_damage_rate() -> None:
     `_done_bucket_hover` rather than from a literal in a test.
     """
     body = rich_html().split("</style>", 1)[1]
-    assert 'class="damage-done-bar"' in body
-    for forbidden in ("damage a second", "per second", "DPS"):
+    hovers = re.findall(
+        r'<rect class="damage-done-bar"[^>]*><title>([^<]*)</title>', body
+    )
+    assert hovers, "the fixture drew no damage done bars, so this guard checks nothing"
+    for hover in hovers:
+        # The positive half first, so a reworded hover says what it lost
+        # rather than leaving the refusals below with nothing to refuse.
+        assert "damage done in" in hover, hover
+        for forbidden in ("per second", "a second", "DPS", "dps"):
+            assert forbidden not in hover, hover
+    # Page-wide, but only the damage-specific phrasings. A bare "per second"
+    # is a real page's own vocabulary -- `trash.pull.*` states enemy forces
+    # per second -- and "DPS" turns up by chance inside the base64 of an
+    # embedded icon. Both measured on a rendered report, 2026-09-12.
+    for forbidden in ("damage per second", "damage a second"):
         assert forbidden not in body
 
 
