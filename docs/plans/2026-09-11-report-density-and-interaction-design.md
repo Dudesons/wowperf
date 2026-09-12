@@ -191,6 +191,13 @@ what keeps a tuning change from silently corrupting a figure the page presents a
 
 ### 4.5.1 Which surfaces carry one, settled 2026-09-12
 
+> **Amended 2026-09-12 by `docs/plans/2026-09-12-report-second-reading-design.md` §6.**
+> The ruling below on **ledger card headings** is overturned: they carry a tooltip after all.
+> A second reading of a real report found a reader looking for the panel with the evidence list
+> already on screen, and the cost was overstated — the five families that name an ability need
+> three new builders, not five, because `ability_tooltip` fits both defensives families. The
+> ruling on **the death card heading** stands, on the ground given here.
+
 Four surfaces on the page name an ability. Two carry the panel above — the death recap's event
 rows and its availability rows. Two do not, and will not.
 
