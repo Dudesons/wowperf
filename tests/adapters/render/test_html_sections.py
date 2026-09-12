@@ -511,6 +511,19 @@ def test_the_curve_prints_the_legend_and_both_badges_the_builder_wrote() -> None
     assert "measured" in deaths and "derived" in deaths
 
 
+def test_the_health_curve_and_its_legends_share_a_pinned_wrapper() -> None:
+    # A reader hovering a row 1400px down the table still needs the curve that
+    # row lights, and the card stands 2007px against a 900px viewport. Nothing
+    # inside the wrapper is itself a div, so the first closing tag after it is
+    # the wrapper's own.
+    html = render(a_report(deaths=(a_card(health_curve=a_curve()),)))
+    start = html.index('<div class="hp-pinned">')
+    pinned = html[start:html.index("</div>", start)]
+    assert '<svg class="hp-curve"' in pinned
+    assert pinned.count('<p class="legend">') == 2
+    assert ".hp-pinned { position: sticky;" in html
+
+
 def test_the_curve_draws_arithmetic_dashed_and_a_stated_reading_as_a_ring() -> None:
     # The line is derived and the dots are measured, and the badges beneath say
     # so. Saying it in shape as well as in words means a reader who never reads

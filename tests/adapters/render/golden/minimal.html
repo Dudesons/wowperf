@@ -95,6 +95,13 @@ p { margin: 0 0 10px; }
 .timeline tr.cast td { color: var(--ink-faint); }
 .hp { position: relative; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
 .hp-bar { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--badge-measured); }
+/* The curve outlives the table's scroll. A row's hover lights a marker on the
+   curve and a press lights the window its buff covered; both were invisible
+   while the card stood 2007px tall and the curve left the screen at 300.
+   No script: this asks the page's one inline script for nothing.
+   Safe because nothing in this card's ancestry sets `overflow` -- the whole
+   stylesheet sets it once, on `.icon-defs`. */
+.hp-pinned { position: sticky; top: 0; z-index: 4; background: var(--card); }
 .hp-curve { display: block; margin: 10px 0 2px; }
 .hp-guide { stroke: var(--line); stroke-width: 1; }
 .hp-axis { fill: var(--ink-faint); font-size: 11px; }

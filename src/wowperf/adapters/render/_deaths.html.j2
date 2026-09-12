@@ -2,6 +2,7 @@
 {# ABOUTME: A recap says what was pressed and what was ready, never what should have been. #}
 {% from "_macros.html.j2" import ability, ledger_row with context %}
 {% macro health_curve(curve, rows) %}
+<div class="hp-pinned">
 <svg class="hp-curve" width="100%" viewBox="0 0 {{ curve.width }} {{ curve.height }}">
   <title>Health through the seconds before the death</title>
   {% for guide in curve.guides %}
@@ -44,6 +45,7 @@
 <p class="legend">{{ curve.line_legend }}
   {%- if curve.line_badge %} <a class="badge {{ curve.line_badge.tint }}"
      href="#provenance">{{ curve.line_badge.label }}</a>{% endif %}</p>
+</div>
 {% endmacro %}
 <section class="panel" data-tab-panel="main" id="tab-deaths">
 
