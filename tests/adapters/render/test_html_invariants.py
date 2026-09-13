@@ -418,9 +418,9 @@ def compared_tables(html: str) -> list[RenderedTable]:
 
 
 def test_every_compared_cell_lands_under_the_heading_it_claims() -> None:
-    """The page is where §8's promise is kept or broken: a reader compares our
-    figure with the sample's median by reading across one row, and nothing else
-    in the suite looks at which column either of them came out in.
+    """The page is where the comparison table design's §8 is kept or broken: a
+    reader compares our figure with the sample's median by reading across one
+    row, and nothing else in the suite looks at which column either came out in.
 
     `test_every_compared_row_reaches_the_page` above asks only whether a name
     reaches the markup, so the Median column could print our own rate, the
@@ -460,8 +460,12 @@ def test_the_two_compared_rows_differ_in_every_column() -> None:
     column print the other row's value, or the neighbouring column's, and still
     match -- the identity-fixture shape this repository keeps producing. The
     fixture's own rows are what make each of those comparisons able to fail."""
-    rows = [row for card in rich_report().players
-            for table in card.comparison_tables for row in table.rows]
+    rows = [
+        row
+        for card in rich_report().players
+        for table in card.comparison_tables
+        for row in table.rows
+    ]
     assert len(rows) == 2
     first, second = rows
     assert first.name != second.name
