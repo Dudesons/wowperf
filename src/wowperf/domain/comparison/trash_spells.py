@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.comparison.spells import (
     MAX_SPELLS_REPORTED,
@@ -13,6 +14,7 @@ from wowperf.domain.comparison.spells import (
     RATE_GAP_MULTIPLE,
     casts_in,
     their_actor_id,
+    verdict_for,
 )
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
@@ -166,17 +168,17 @@ def _unavailable_row(our_name: str, total: int) -> Finding:
     )
 
 
-def _rate_rows(
-    our_name: str,
+def trash_rate_measures(
     ours_on_trash: dict[int, tuple[str, int]],
     our_seconds: float,
-    pack_count: int,
     per_member: Sequence[tuple[float, dict[int, int]]],
-) -> list[Finding]:
-    """Abilities both sides cast on shared packs, where the sample's median is higher."""
-    gaps = []
-    above = []
-    level: list[str] = []
+) -> tuple[AbilityRate, ...]:
+    """Every ability compared on the shared packs, with the verdict it earned.
+
+    The trash twin of `rate_measures`, sharing its bar through `verdict_for`
+    so the two stretches cannot drift apart on what counts as a gap.
+    """
+    measures: list[AbilityRate] = []
     for ability_id, (name, our_count) in ours_on_trash.items():
         rates = [
             qualifying[ability_id] / their_seconds * 60
@@ -186,40 +188,58 @@ def _rate_rows(
         if len(rates) < MIN_MEMBERS_WITH_ABILITY:
             continue
         our_rate = our_count / our_seconds * 60
-        their_median = median(rates)
         if our_rate <= 0:
             continue
-        if our_rate / their_median >= RATE_GAP_MULTIPLE:
-            # Tested before the band, because every ability that reaches this
-            # bar is inside the band read the other way and would otherwise be
-            # filed as level. `their_median` cannot be zero: a member only
-            # contributes a rate after clearing `MIN_CASTS_TO_COMPARE`.
-            above.append(
-                (our_rate - their_median, ability_id, name, our_rate, their_median, rates)
+        their_median = median(rates)
+        measures.append(
+            AbilityRate(
+                ability_id=ability_id,
+                name=name,
+                ours=our_rate,
+                their_median=their_median,
+                their_rates=tuple(rates),
+                stretch=Stretch.TRASH,
+                verdict=verdict_for(our_rate, their_median),
             )
-            continue
-        if their_median / our_rate < RATE_GAP_MULTIPLE:
-            # Compared against enough of the sample to argue from, and no gap
-            # wide enough to report. Collected rather than dropped: silence on
-            # the page read the same as never having been compared at all.
-            level.append(name)
-            continue
-        gaps.append((their_median - our_rate, ability_id, name, our_rate, their_median, rates))
-    gaps.sort(key=lambda row: row[0], reverse=True)
-    above.sort(key=lambda row: row[0], reverse=True)
+        )
+    return tuple(measures)
+
+
+def _rate_rows(
+    our_name: str,
+    ours_on_trash: dict[int, tuple[str, int]],
+    our_seconds: float,
+    pack_count: int,
+    per_member: Sequence[tuple[float, dict[int, int]]],
+) -> list[Finding]:
+    """Abilities both sides cast on shared packs, where the sample's median is higher."""
+    measures = trash_rate_measures(ours_on_trash, our_seconds, per_member)
+    gaps = sorted(
+        (m for m in measures if m.verdict is Verdict.BELOW),
+        key=lambda m: m.their_median - m.ours,
+        reverse=True,
+    )
+    above = sorted(
+        (m for m in measures if m.verdict is Verdict.ABOVE),
+        key=lambda m: m.ours - m.their_median,
+        reverse=True,
+    )
+    # Compared against enough of the sample to argue from, and no gap wide
+    # enough to report. Collected rather than dropped: silence on the page
+    # read the same as never having been compared at all.
+    level = [m.name for m in measures if m.verdict is Verdict.LEVEL]
 
     findings = []
-    for rank, (_, ability_id, name, our_rate, their_median, rates) in enumerate(
-        gaps[:MAX_SPELLS_REPORTED]
-    ):
-        low, high = observed_range(rates)
+    for rank, m in enumerate(gaps[:MAX_SPELLS_REPORTED]):
+        low, high = observed_range(m.their_rates)
         findings.append(
             Finding(
                 id=f"compare.spells.trash.rate.{rank}",
                 title=(
-                    f"{len(rates)} top parses cast {name} a median {their_median:.1f} times a "
-                    f"minute across {quantity(pack_count, 'aligned pack', 'aligned packs')}; "
-                    f"{our_name} casts it {our_rate:.1f}"
+                    f"{len(m.their_rates)} top parses cast {m.name} a median "
+                    f"{m.their_median:.1f} times a minute across "
+                    f"{quantity(pack_count, 'aligned pack', 'aligned packs')}; "
+                    f"{our_name} casts it {m.ours:.1f}"
                 ),
                 detail=(
                     "Both rates are casts per minute of time spent on trash packs both routes "
@@ -231,20 +251,20 @@ def _rate_rows(
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"ability {ability_id}",
+                    f"ability {m.ability_id}",
                     f"ours over {our_seconds:.0f}s of aligned trash",
                     f"range {low:.1f} to {high:.1f} casts a minute across "
-                    f"{len(rates)} top parses",
+                    f"{len(m.their_rates)} top parses",
                 ),
                 facts=(
                     FindingFact(
                         label="Ours",
-                        value=f"{our_rate:.1f} casts a minute",
+                        value=f"{m.ours:.1f} casts a minute",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(
                         label="Reference median",
-                        value=f"{their_median:.1f} casts a minute",
+                        value=f"{m.their_median:.1f} casts a minute",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(
@@ -254,21 +274,19 @@ def _rate_rows(
                     ),
                     FindingFact(label="Aligned packs", value=str(pack_count)),
                 ),
-                ability_id=ability_id,
-                ability_name=name,
+                ability_id=m.ability_id,
+                ability_name=m.name,
             )
         )
-    for rank, (_, ability_id, name, our_rate, their_median, rates) in enumerate(
-        above[:MAX_SPELLS_REPORTED]
-    ):
-        low, high = observed_range(rates)
+    for rank, m in enumerate(above[:MAX_SPELLS_REPORTED]):
+        low, high = observed_range(m.their_rates)
         findings.append(
             Finding(
                 id=f"compare.spells.trash.above.{rank}",
                 title=(
-                    f"{our_name} casts {name} {our_rate:.1f} times a minute across "
+                    f"{our_name} casts {m.name} {m.ours:.1f} times a minute across "
                     f"{quantity(pack_count, 'aligned pack', 'aligned packs')}; "
-                    f"{len(rates)} top parses cast it a median {their_median:.1f}"
+                    f"{len(m.their_rates)} top parses cast it a median {m.their_median:.1f}"
                 ),
                 detail=(
                     "Both rates are casts per minute of time spent on trash packs both routes "
@@ -282,20 +300,20 @@ def _rate_rows(
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"ability {ability_id}",
+                    f"ability {m.ability_id}",
                     f"ours over {our_seconds:.0f}s of aligned trash",
                     f"range {low:.1f} to {high:.1f} casts a minute across "
-                    f"{len(rates)} top parses",
+                    f"{len(m.their_rates)} top parses",
                 ),
                 facts=(
                     FindingFact(
                         label="Ours",
-                        value=f"{our_rate:.1f} casts a minute",
+                        value=f"{m.ours:.1f} casts a minute",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(
                         label="Reference median",
-                        value=f"{their_median:.1f} casts a minute",
+                        value=f"{m.their_median:.1f} casts a minute",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(
@@ -305,8 +323,8 @@ def _rate_rows(
                     ),
                     FindingFact(label="Aligned packs", value=str(pack_count)),
                 ),
-                ability_id=ability_id,
-                ability_name=name,
+                ability_id=m.ability_id,
+                ability_name=m.name,
             )
         )
     if level:

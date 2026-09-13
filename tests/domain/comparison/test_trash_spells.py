@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for the trash-pack half of the individual comparison.
 # ABOUTME: Only packs two routes shared are compared, and only their own seconds count.
 
+from wowperf.domain.comparison.measures import Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.trash_spells import (
@@ -9,6 +10,7 @@ from wowperf.domain.comparison.trash_spells import (
     aligned_trash,
     compare_trash_spells_sample,
     is_comparable,
+    trash_rate_measures,
 )
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
@@ -196,6 +198,19 @@ def test_both_sides_at_the_floor_are_comparable() -> None:
     )
 
     assert is_comparable(at_floor)
+
+
+def test_trash_rate_measures_stamp_the_trash_stretch() -> None:
+    """The two stretches never share a denominator, so a row carries which it is
+    rather than leaving a reader to infer it from the figure."""
+    per_member = [(60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10})]
+
+    measures = trash_rate_measures({BLOOD_BOIL: ("Blood Boil", 4)}, 60.0, per_member)
+
+    assert [m.stretch for m in measures] == [Stretch.TRASH]
+    assert measures[0].verdict is Verdict.BELOW
+    assert measures[0].ours == 4.0
+    assert measures[0].their_median == 10.0
 
 
 def test_a_trash_rate_gap_states_its_pack_count_in_the_title() -> None:
