@@ -892,7 +892,14 @@ def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -
 
 
 def test_rate_measures_marks_an_ability_we_cast_far_more_as_above() -> None:
-    per_member = [(60.0, {METEOR: 6}), (60.0, {METEOR: 8}), (60.0, {METEOR: 4})]
+    # The reference side is spread across 4.0, 6.0 and 10.0 rather than 4.0,
+    # 6.0 and 8.0 -- with a fixed member at 8.0, a raw count substituted for
+    # the varied member's rate could push the median only as far as 8.0,
+    # which is exactly 12.0 / 1.5, the above boundary itself, so the verdict
+    # would never move no matter how that one entry were mutated. Spread to
+    # 10.0 instead, the same substitution pushes the median to 9.0 and the
+    # row falls out of above.
+    per_member = [(135.0, {METEOR: 9}), (60.0, {METEOR: 6}), (60.0, {METEOR: 10})]
 
     # 6 casts over 30s of boss time is 12.0 a minute, twice the sample's
     # median of 6.0. The raw count of 6 alone would not clear that bar, so
