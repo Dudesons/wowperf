@@ -544,8 +544,11 @@ class ComparisonRow(Frozen):
     """One ability or aura the comparison measured, formatted for a table cell.
 
     Strings, not floats: the template decides nothing, including how a number
-    is spelled. `verdict` is the word the row is styled by -- below, above,
-    level or unjudged -- and never a colour.
+    is spelled. `verdict` is the branch the comparison took -- below, above,
+    level or unjudged -- and is what the row is styled by; `verdict_label` is
+    the same branch spelled for a reader, and is what the row's own column
+    holds. A tint carries no meaning alone: a reader who cannot separate the
+    two colours, or who printed the page, reads the word instead.
     """
 
     ability_id: int
@@ -555,6 +558,7 @@ class ComparisonRow(Frozen):
     spread: str
     sample: str
     verdict: str
+    verdict_label: str
 
 
 class ComparisonTable(Frozen):

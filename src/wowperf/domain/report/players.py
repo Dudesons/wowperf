@@ -5,7 +5,12 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 from wowperf.domain.analysis.players import display_names, summarise_players
-from wowperf.domain.comparison.measures import AbilityRate, AuraUptime, PlayerMeasures
+from wowperf.domain.comparison.measures import (
+    AbilityRate,
+    AuraUptime,
+    PlayerMeasures,
+    Verdict,
+)
 from wowperf.domain.comparison.statistics import observed_range
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -244,6 +249,21 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
     return tuple(built)
 
 
+VERDICT_LABELS = {
+    Verdict.BELOW: "Below",
+    Verdict.ABOVE: "Above",
+    Verdict.LEVEL: "Level",
+    Verdict.UNJUDGED: "Not judged",
+}
+"""Each branch, spelled for the reader of a column rather than for a stylesheet.
+
+Only `unjudged` is spelled differently from the value it comes from, because
+only it is not ordinary English: what the table means by it is that the
+comparison declined to read anything into the figure, and a reader meeting the
+bare word would have no way to know that.
+"""
+
+
 def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
     """Cast rates, widest difference first, whichever direction it runs in."""
     ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
@@ -259,6 +279,7 @@ def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
                 spread=f"{low:.1f} to {high:.1f}",
                 sample=f"{len(m.their_rates)} top parses",
                 verdict=m.verdict.value,
+                verdict_label=VERDICT_LABELS[m.verdict],
             )
         )
     return tuple(rows)
@@ -279,6 +300,7 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
                 spread=f"{low:.0%} to {high:.0%}",
                 sample=f"{len(m.their_fractions)} top parses",
                 verdict=m.verdict.value,
+                verdict_label=VERDICT_LABELS[m.verdict],
             )
         )
     return tuple(rows)

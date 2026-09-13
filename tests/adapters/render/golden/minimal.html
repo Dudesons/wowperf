@@ -222,9 +222,12 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
   padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .compared-rows td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .compared-rows .num { text-align: right; font-variant-numeric: tabular-nums; }
-/* The verdict is a word in the markup and a tint here, never a colour alone.
-   --ours and --theirs are the palette the report already uses for the two sides
-   of a comparison, so this table tints the way the drawings above it do. */
+/* The verdict is a word in its own column and a tint here, never a colour alone:
+   a reader who cannot separate the two tints, or who printed the page, still
+   has the column. Both tints land on the second cell, our own figure, which is
+   the one the verdict is about -- --theirs mutes it where we sit under the
+   sample's median and --ours picks it out where we sit over it. An unjudged row
+   is greyed whole, because none of its figures was read as a shortfall. */
 .compared-rows tr.v-below td:nth-child(2) { color: var(--theirs); }
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
 .compared-rows tr.v-unjudged td { color: var(--ink-faint); }

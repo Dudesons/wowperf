@@ -388,6 +388,94 @@ def test_every_compared_row_reaches_the_page() -> None:
                 assert escape(row.name) in html
 
 
+COMPARED_TABLE = re.compile(r'<table class="compared-rows">(.*?)</table>', re.DOTALL)
+COMPARED_HEADING = re.compile(r"<th[^>]*>(.*?)</th>", re.DOTALL)
+COMPARED_ROW = re.compile(r'<tr class="(v-[^"]*)">(.*?)</tr>', re.DOTALL)
+COMPARED_CELL = re.compile(r"<td[^>]*>(.*?)</td>", re.DOTALL)
+MARKUP = re.compile(r"<[^>]*>")
+
+RenderedTable = tuple[list[str], list[tuple[str, list[str]]]]
+
+
+def compared_tables(html: str) -> list[RenderedTable]:
+    """Every comparison table the page drew, as its headings and its rows.
+
+    A row is its own `class` and its cells in the order they were written, so a
+    caller can pair a cell with the heading standing over it. Read out of the
+    markup rather than off the view model: which column a figure lands in is
+    decided in the template alone, and reading it back is the only way to see
+    that decision.
+    """
+    tables = []
+    for body in COMPARED_TABLE.findall(html):
+        headings = [MARKUP.sub("", cell).strip() for cell in COMPARED_HEADING.findall(body)]
+        rows = [
+            (row_class, COMPARED_CELL.findall(cells))
+            for row_class, cells in COMPARED_ROW.findall(body)
+        ]
+        tables.append((headings, rows))
+    return tables
+
+
+def test_every_compared_cell_lands_under_the_heading_it_claims() -> None:
+    """The page is where §8's promise is kept or broken: a reader compares our
+    figure with the sample's median by reading across one row, and nothing else
+    in the suite looks at which column either of them came out in.
+
+    `test_every_compared_row_reaches_the_page` above asks only whether a name
+    reaches the markup, so the Median column could print our own rate, the
+    Range and Sample columns could vanish, and the verdict could be hardcoded,
+    with the whole suite green. Every cell is checked against the heading over
+    it, against the very `Report` the page was rendered from.
+    """
+    report = rich_report()
+    rendered = compared_tables(render(report))
+    built = [table for card in report.players for table in card.comparison_tables]
+    assert built, "the fixture drew no comparison table, so this guard checks nothing"
+    assert len(rendered) == len(built)
+
+    for (headings, rows), table in zip(rendered, built, strict=True):
+        assert headings == ["Ability", "Ours", "Median", "Range", "Sample", "Verdict"]
+        assert len(rows) == len(table.rows)
+        for (row_class, cells), row in zip(rows, table.rows, strict=True):
+            # The class is what the stylesheet tints by; the Verdict cell is what
+            # a reader who cannot separate two tints reads instead. Both say the
+            # same branch, and both are pinned.
+            assert row_class == f"v-{row.verdict}"
+            assert len(cells) == len(headings)
+            under = dict(zip(headings, cells, strict=True))
+            # The name rides inside the ability element, which is where the icon
+            # hangs when one resolves. A bare name in this cell would satisfy a
+            # substring check and draw no icon ever again.
+            assert f'class="ability-name">{escape(row.name)}</span>' in under["Ability"]
+            assert MARKUP.sub("", under["Ours"]) == escape(row.ours)
+            assert MARKUP.sub("", under["Median"]) == escape(row.theirs)
+            assert MARKUP.sub("", under["Range"]) == escape(row.spread)
+            assert MARKUP.sub("", under["Sample"]) == escape(row.sample)
+            assert MARKUP.sub("", under["Verdict"]) == escape(row.verdict_label)
+
+
+def test_the_two_compared_rows_differ_in_every_column() -> None:
+    """The guard under the test above. Two rows agreeing on a figure would let a
+    column print the other row's value, or the neighbouring column's, and still
+    match -- the identity-fixture shape this repository keeps producing. The
+    fixture's own rows are what make each of those comparisons able to fail."""
+    rows = [row for card in rich_report().players
+            for table in card.comparison_tables for row in table.rows]
+    assert len(rows) == 2
+    first, second = rows
+    assert first.name != second.name
+    assert first.ours != second.ours
+    assert first.theirs != second.theirs
+    assert first.spread != second.spread
+    assert first.verdict != second.verdict
+    assert first.verdict_label != second.verdict_label
+    # Ours against Median within one row, so a column printing its neighbour
+    # cannot pass either.
+    assert first.ours != first.theirs
+    assert second.ours != second.theirs
+
+
 def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
     # The three-prefix rule below is proved against `rich_html()`, which never
     # resolves a press icon at all -- so a future edit drawing `<image
