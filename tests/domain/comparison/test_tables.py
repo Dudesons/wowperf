@@ -16,7 +16,7 @@ from wowperf.domain.comparison.measures import Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
-from wowperf.domain.comparison.spells import boss_seconds
+from wowperf.domain.comparison.spells import MIN_CASTS_TO_COMPARE, boss_casts, boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.trash_spells import (
     MIN_ALIGNED_TRASH_SECONDS,
@@ -675,6 +675,16 @@ def test_the_awkward_members_stay_awkward() -> None:
     assert without_boss_seconds(rates) == ("REF5",)
     assert carried_only_outside_boss_pulls(a_sample_carrying_an_aura_unevenly()) == ("REF4",)
 
+    # REF5's third condition, which neither helper above states. `rate_measures`
+    # iterates the abilities *we* cast on bosses, so a member's zero-second boss
+    # pull can only decide anything for an ability that is also one of ours:
+    # trim our own boss casts down and the guard stops being reached at all,
+    # with every assertion above still green.
+    ref5 = next(member for member in rates.members if member.row.report_code == "REF5")
+    theirs = boss_casts(ref5.run, ref5.casts, THEIRS.actor_id)
+    assert theirs.keys() & boss_casts(ours.run, ours.casts, OURS.actor_id).keys()
+    assert all(count >= MIN_CASTS_TO_COMPARE for _name, count in theirs.values())
+
 
 def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None:
     """The same property for the third measure, which is built the same way.
@@ -683,6 +693,15 @@ def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None
     own member loop, so it can drift from the rows exactly as the two rate
     builders can. Uptimes are shares rather than rates, and a row spells them
     as whole percents, which is the figure a reader would have to reconcile.
+
+    The sample here aggregates, and this pairing needs it to. `compare_uptime`
+    falls back to a pairwise comparison below `MIN_SAMPLE_FOR_AGGREGATE` and
+    keeps the same `compare.uptime.self.` id, so a below-floor run reaches the
+    same filter with facts labelled `Reference` and no median drawn at all --
+    `fact_value` would find no `Reference median` to read and raise rather than
+    fail. `tables._auras` returns nothing for that sample, both sides behaving
+    as designed, so what a caller meets there is a missing row and not a drift.
+    This is the uptime half of the caveat `RATE_FAMILIES` carries for rates.
     """
     ours = a_run_with_a_two_minute_boss()
     subjects = only_ours(a_sample_carrying_an_aura_unevenly(), our_auras=OUR_UPTIME)

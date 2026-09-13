@@ -101,6 +101,9 @@ def _boss(
         actor_id = their_actor_id(member, member.row.character_name)
         their_boss_seconds = boss_seconds(member.run)
         if actor_id is None or their_boss_seconds <= 0:
+            # The seconds half of this is what keeps a zero out of
+            # `rate_measures`' denominator: it divides by a member's seconds
+            # with no guard of its own, and says why in its own docstring.
             per_member.append((0.0, {}))
             continue
         casts_by_ability = boss_casts(member.run, member.casts, actor_id)

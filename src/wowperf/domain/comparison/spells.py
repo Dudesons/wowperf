@@ -293,6 +293,8 @@ def compare_spells_sample(
     # cannot be found in their own report, or who fought no boss at all,
     # contributes an empty qualifying set rather than being dropped: dropping it
     # would let `total` drift from the number of members a title actually names.
+    # The empty set is also the only thing keeping a zero out of `rate_measures`'
+    # denominator, which divides by these seconds unguarded on purpose.
     names: dict[int, str] = {}
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in sample.members:
@@ -393,6 +395,16 @@ def rate_measures(
     findings and `comparison.tables` turns them into table rows; computing them
     twice is how a row and the table beneath it come to state different numbers
     for one player.
+
+    A member's seconds are divided by with no guard of their own, where
+    `trash_rate_measures` checks them first. The asymmetry is the contract, not
+    an oversight: every caller drops a member who fought no boss on the way in,
+    giving it an empty qualifying set, so an ability can never be found against
+    seconds of zero. Guarding it here as well would leave those membership lines
+    with no observable consequence at all -- and a line indistinguishable from
+    its own absence is one the next reader deletes, taking the real protection
+    with it. `compare_spells_sample` and `tables._boss` are the two callers that
+    hold up this end.
     """
     measures: list[AbilityRate] = []
     for ability_id, (name, our_count) in ours_on_bosses.items():

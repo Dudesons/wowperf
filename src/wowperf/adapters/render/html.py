@@ -35,6 +35,13 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
 
     Only the adapter can build this: which ids resolve is a question about a CDN
     and a cache, and the builder that made the report is forbidden from asking it.
+
+    A player card's comparison tables are deliberately not walked. Those rows run
+    to dozens per player and each icon is embedded in full, so a table draws art
+    only for an ability the page already carries for another reason -- a death
+    card, a ledger row or a player timeline. That is the fallback the comparison
+    table design names in its §12, and the `ability` macro already renders a bare
+    name for an id absent here, so the rest cost the page nothing.
     """
     resolved: dict[int, str] = {}
     asked: set[int] = set()
