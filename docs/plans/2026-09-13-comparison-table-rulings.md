@@ -425,9 +425,14 @@ honestly, but it arrived by omission rather than decision. A comment naming §12
 
 ## 4. Known gaps, recorded and left
 
-- **Aura anti-drift has never been exercised on real data.** The report used produced zero
-  uptime gap rows, so the real run confirmed the aura table exists but not that it agrees with
-  an uptime finding. Unit-covered only.
+- ~~**Aura anti-drift has never been exercised on real data.**~~ **Closed 2026-09-13.** The
+  report the branch was written against produced zero uptime gap rows, so the real run
+  confirmed the aura table exists but not that it agrees with an uptime finding. Report
+  `HpYwCAvmPFDtz1Jj` fight 1 produces eight below-verdict auras and therefore five findings,
+  and every one pairs to a row stating the same figures. The e2e now asserts both halves:
+  `len(gaps) == min(len(below), MAX_AURAS_REPORTED)`, which holds on a run with no gaps too,
+  and the figures per finding. Proven by doubling `tables._auras`'s own fraction, which turns
+  it red on the median.
 - **Design §11 specifies the anti-drift test as covering "every rate and uptime finding on the
   page".** What shipped compares `Finding` objects to `AbilityRate` objects. The plan narrowed
   it in its own Task 8 Step 1, so the narrowing predates implementation. The page-level

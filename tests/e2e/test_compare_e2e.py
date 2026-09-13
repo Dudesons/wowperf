@@ -15,10 +15,12 @@ from wowperf.cli import (
     build_repository,
 )
 from wowperf.domain.analysis.players import display_names
+from wowperf.domain.comparison.measures import Verdict
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.trash_spells import aligned_trash
+from wowperf.domain.comparison.uptime import MAX_AURAS_REPORTED
 from wowperf.domain.findings import Confidence
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.urls import parse_report_url
@@ -250,4 +252,33 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
         assert fact_value(finding, "Ours") == f"{row.ours:.1f} casts a minute"
         assert fact_value(finding, "Reference median") == (
             f"{row.their_median:.1f} casts a minute"
+        )
+
+    # The same property for the third mirrored builder, which `measures.auras`
+    # reaches through `tables._auras` and the findings through
+    # `_gap_findings_sample`. Unlike the rate half this cannot assert that some
+    # row cleared the bar: a run may honestly produce no uptime gap at all, and
+    # the first report this was written against produced none while another
+    # produced eight. A bare loop would then check nothing and read as a pass.
+    # Exercised on 2026-09-13 against report HpYwCAvmPFDtz1Jj fight 1, whose
+    # subject held eight below-verdict auras and so five findings; doubling
+    # `tables._auras`'s own fraction turned it red on the median.
+    #
+    # The count is what holds either way. `_gap_findings_sample` mints a finding
+    # per BELOW measure, best gap first, capped at MAX_AURAS_REPORTED, so the
+    # two sides agree on exactly this many or they have drifted -- and zero
+    # findings asserts just as hard as eight, because it claims the table found
+    # no shortfall either.
+    gaps = [f for f in findings if f.id.startswith("compare.uptime.self.")]
+    below = [m for m in measures.auras if m.verdict is Verdict.BELOW]
+    assert len(gaps) == min(len(below), MAX_AURAS_REPORTED)
+
+    by_aura = {m.ability_id: m for m in measures.auras}
+    for finding in gaps:
+        assert finding.ability_id is not None
+        aura = by_aura[finding.ability_id]
+        assert finding.ability_name == aura.name
+        assert fact_value(finding, "Ours") == f"{aura.ours:.0%} of boss time"
+        assert fact_value(finding, "Reference median") == (
+            f"{aura.their_median:.0%} of boss time"
         )
