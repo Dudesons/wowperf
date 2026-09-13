@@ -2,6 +2,7 @@
 # ABOUTME: The interesting cases are a missing reference, a small sample, and a gap below cut-off.
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.measures import Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.uptime import (
@@ -9,6 +10,7 @@ from wowperf.domain.comparison.uptime import (
     boss_windows,
     compare_uptime,
     compare_uptime_sample,
+    uptime_measures,
 )
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
@@ -633,3 +635,41 @@ def test_an_uptime_title_names_the_aura_before_it_names_anyone() -> None:
     # The literal, not `gap.ability_name`: an expected value read off the
     # object under test passes when the object is wrong in both places.
     assert gap.title.startswith("Coagulopathy was up")
+
+
+# --- uptime_measures -----------------------------------------------------------
+
+
+def test_uptime_measures_carry_a_verdict_per_aura() -> None:
+    """Four outcomes, and the table has to tell them apart: a gap, a level aura,
+    one we show none of, and one too few of the sample carried to judge."""
+    names = {1: "Wide gap", 2: "Level", 3: "We have none", 4: "Too few carried it"}
+    # Wide gap's three carriers are spread across 0.70, 0.90 and 0.95 rather than
+    # a flat 0.90: with every carrier alike, their_median could be a mean, a
+    # first or a last reading and still land on 0.90. Spread this way, only the
+    # true middle value produces it -- a mean would read 0.85.
+    per_member = [
+        {1: 0.70, 2: 0.80, 3: 0.70, 4: 0.60},
+        {1: 0.90, 2: 0.80, 3: 0.70},
+        {1: 0.95, 2: 0.80, 3: 0.70},
+    ]
+    our_fractions = {1: ("Wide gap", 0.10), 2: ("Level", 0.78), 3: ("We have none", 0.0)}
+
+    measures = {m.name: m for m in uptime_measures(our_fractions, per_member, names)}
+
+    assert measures["Wide gap"].verdict is Verdict.BELOW
+    assert measures["Wide gap"].their_median == 0.90
+    assert measures["Level"].verdict is Verdict.LEVEL
+    assert measures["We have none"].verdict is Verdict.UNJUDGED
+    assert "Too few carried it" not in measures
+
+
+def test_an_aura_the_sample_barely_carried_is_not_measured() -> None:
+    """Below MIN_UPTIME_FRACTION the reference barely had it either, so there is
+    nothing to argue from and nothing to put in a table."""
+    names = {1: "Barely up"}
+    per_member = [{1: 0.05}, {1: 0.05}, {1: 0.05}]
+
+    measures = uptime_measures({1: ("Barely up", 0.0)}, per_member, names)
+
+    assert measures == ()

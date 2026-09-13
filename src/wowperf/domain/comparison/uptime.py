@@ -10,6 +10,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
+from wowperf.domain.comparison.measures import AuraUptime, Verdict
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
     ParseMember,
@@ -272,6 +273,50 @@ def compare_uptime_sample(
     )
 
 
+def uptime_measures(
+    our_fractions: dict[int, tuple[str, float]],
+    per_member: Sequence[dict[int, float]],
+    names: dict[int, str],
+) -> tuple[AuraUptime, ...]:
+    """Every aura the sample carried often enough to judge, with its verdict.
+
+    The one place an uptime fraction is compared. An aura below
+    `MIN_SAMPLE_FOR_AGGREGATE` carriers or below `MIN_UPTIME_FRACTION` is
+    absent entirely rather than carrying a verdict: neither was compared, and
+    a table that showed them would claim a judgement nobody made.
+    """
+    measures: list[AuraUptime] = []
+    for ability_id, name in names.items():
+        carried = [q[ability_id] for q in per_member if ability_id in q]
+        if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
+            # A one-off proc or a teammate's buff bleeding through `onSelf`'s
+            # missing source filter cannot reach this many parses; requiring
+            # it here is what retires the old hedge about a single player's
+            # gear.
+            continue
+        their_median = median(carried)
+        if their_median < MIN_UPTIME_FRACTION:
+            continue
+        our_fraction = our_fractions.get(ability_id, (name, 0.0))[1]
+        if our_fraction <= 0.0:
+            verdict = Verdict.UNJUDGED
+        elif their_median - our_fraction >= UPTIME_GAP_FRACTION:
+            verdict = Verdict.BELOW
+        else:
+            verdict = Verdict.LEVEL
+        measures.append(
+            AuraUptime(
+                ability_id=ability_id,
+                name=name,
+                ours=our_fraction,
+                their_median=their_median,
+                their_fractions=tuple(carried),
+                verdict=verdict,
+            )
+        )
+    return tuple(measures)
+
+
 def _gap_findings_sample(
     our_fractions: dict[int, tuple[str, float]],
     eligible: Sequence[ParseMember],
@@ -304,46 +349,27 @@ def _gap_findings_sample(
             qualifying[ability_id] = fraction
         per_member.append(qualifying)
 
-    gaps = []
-    unjudged: list[str] = []
-    for ability_id, name in names.items():
-        carried = [q[ability_id] for q in per_member if ability_id in q]
-        if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
-            # A one-off proc or a teammate's buff bleeding through `onSelf`'s
-            # missing source filter cannot reach this many parses; requiring it
-            # here is what lets the detail below retire the old hedge about a
-            # single player's gear.
-            continue
-        their_median = median(carried)
-        if their_median < MIN_UPTIME_FRACTION:
-            continue
-        our_fraction = our_fractions.get(ability_id, (name, 0.0))[1]
-        if our_fraction <= 0.0:
-            # Set aside rather than reported: `onSelf` carries no source, so a
-            # zero may be a teammate's buff this player was never given. Named
-            # anyway, because dropping it silently read like having nothing to
-            # say about an aura the sample plainly carried.
-            unjudged.append(name)
-            continue
-        if their_median - our_fraction < UPTIME_GAP_FRACTION:
-            continue
-        gaps.append(
-            (their_median - our_fraction, ability_id, name, our_fraction, their_median, carried)
-        )
-    gaps.sort(key=lambda row: row[0], reverse=True)
+    measures = uptime_measures(our_fractions, per_member, names)
+    gaps = sorted(
+        (m for m in measures if m.verdict is Verdict.BELOW),
+        key=lambda m: m.their_median - m.ours,
+        reverse=True,
+    )
+    # Named rather than dropped: an unjudged aura is one the sample plainly
+    # carried, and dropping it silently would read like having nothing to
+    # say about it.
+    unjudged = [m.name for m in measures if m.verdict is Verdict.UNJUDGED]
 
     findings = []
-    for rank, (_, ability_id, name, our_fraction, their_median, carried) in enumerate(
-        gaps[:MAX_AURAS_REPORTED]
-    ):
-        low, high = observed_range(carried)
+    for rank, m in enumerate(gaps[:MAX_AURAS_REPORTED]):
+        low, high = observed_range(m.their_fractions)
         findings.append(
             Finding(
                 id=f"compare.uptime.self.{rank}",
                 # Presence, never agency — see the pairwise branch above.
                 title=(
-                    f"{name} was up a median {their_median:.0%} of boss time across "
-                    f"{len(carried)} top parses; {our_fraction:.0%} for {our_name}"
+                    f"{m.name} was up a median {m.their_median:.0%} of boss time across "
+                    f"{len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
                 ),
                 detail=(
                     "Both figures are the share of boss-pull time the aura was present, which "
@@ -357,9 +383,9 @@ def _gap_findings_sample(
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
-                    f"ability {ability_id}",
+                    f"ability {m.ability_id}",
                     f"ours over {our_seconds:.0f}s of boss pulls",
-                    f"range {low:.0%} to {high:.0%} across {len(carried)} top parses",
+                    f"range {low:.0%} to {high:.0%} across {len(m.their_fractions)} top parses",
                     f"{count_phrase(missing_aura_data, total)} references had no aura data",
                 ),
                 # The same figures the title and the evidence already state.
@@ -367,17 +393,17 @@ def _gap_findings_sample(
                 # derived: an unset tier is what a panel draws measured with.
                 # The parse count is a count, and is not.
                 facts=(
-                    FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
+                    FindingFact(label="Ours", value=f"{m.ours:.0%} of boss time",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Reference median",
-                                value=f"{their_median:.0%} of boss time",
+                                value=f"{m.their_median:.0%} of boss time",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Observed range", value=f"{low:.0%} to {high:.0%}",
                                 confidence=Confidence.DERIVED),
-                    FindingFact(label="Sample", value=f"{len(carried)} top parses"),
+                    FindingFact(label="Sample", value=f"{len(m.their_fractions)} top parses"),
                 ),
-                ability_id=ability_id,
-                ability_name=name,
+                ability_id=m.ability_id,
+                ability_name=m.name,
             )
         )
     if unjudged:
