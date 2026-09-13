@@ -222,7 +222,15 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     # The anti-drift property the unit suite pins against fixtures whose
     # denominators it chose, held to a route the group actually ran.
     by_row = {(m.stretch, m.ability_id): m for m in measures.boss + measures.trash}
-    for finding in (f for f in findings if f.id.startswith(RATE_FAMILIES)):
+    rate_rows = [f for f in findings if f.id.startswith(RATE_FAMILIES)]
+    # A row exists only where an ability cleared the gap bar, and most do not:
+    # on the run this was written against, 24 of 34 measured abilities came out
+    # level. With none of them clearing it the loop below would check nothing
+    # while the assertions above passed — and `measured - named_in_rows` gets
+    # easier in exactly that case, so it would read as a confident pass.
+    assert rate_rows, "no rate row cleared the gap bar, so nothing was cross-checked"
+
+    for finding in rate_rows:
         assert finding.ability_id is not None
         row = by_row[(stretch_of(finding), finding.ability_id)]
         assert finding.ability_name == row.name

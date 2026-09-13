@@ -366,10 +366,20 @@ RATE_FAMILIES = (
     "compare.spells.trash.rate.",
     "compare.spells.trash.above.",
 )
-"""Every family whose row states a rate and the sample median beside it.
+"""The sample rate families: both directions of both stretches.
 
-Both directions of both stretches. A row from any other family states no
-median, so there is nothing in it for a table row to agree or disagree with.
+Matching one of these prefixes is not on its own a promise that the row states
+a median. `compare_spells_sample` falls back to a pairwise comparison below
+`MIN_SAMPLE_FOR_AGGREGATE`, and `too_few` leaves the id untouched, so a
+below-floor row is still `compare.spells.rate.<rank>` while its facts read
+`Reference` rather than `Reference median` and no median was ever drawn. No
+prefix can separate the two. `tables._boss` returns nothing for that same
+sample, both sides behaving exactly as designed, so a caller that pairs rows
+with table entries would meet a missing entry rather than a drift.
+
+A caller that may be handed a below-floor sample must therefore check
+`can_aggregate` itself; the tests here use samples large enough to aggregate,
+and the end-to-end test asserts it.
 """
 
 
@@ -384,6 +394,15 @@ def stretch_of(finding: Finding) -> Stretch:
     return Stretch.TRASH if finding.id.startswith("compare.spells.trash.") else Stretch.BOSS
 
 
+def family_of(finding: Finding) -> str:
+    """The `RATE_FAMILIES` prefix a rate row belongs to.
+
+    The four prefixes are disjoint — none is a prefix of another — so the first
+    match is the only match.
+    """
+    return next(family for family in RATE_FAMILIES if finding.id.startswith(family))
+
+
 def fact_value(finding: Finding, label: str) -> str:
     """The value of one labelled fact, which is where a row states a figure unambiguously.
 
@@ -395,53 +414,96 @@ def fact_value(finding: Finding, label: str) -> str:
 
 
 def a_boss_and_trash_member(
-    code: str, trash_seconds: float, trash_casts: int, boss_seconds: float, boss_casts: int
+    code: str,
+    *,
+    trash_seconds: float,
+    boss_seconds: float,
+    trash_blasts: int,
+    trash_meteors: int,
+    boss_meteors: int,
+    boss_blasts: int,
 ) -> ParseMember:
     """A reference our route shares a pack with, who also fought the boss.
 
     Both stretches on one member, so a single sample reaches the boss builder
-    and the trash builder together, each with an ability of its own — Arcane
-    Blast on the pack, Meteor on the boss — so that a figure asserted about one
-    stretch cannot have come from the other.
+    and the trash builder together. Both abilities are cast on both stretches,
+    which is what a real run does: a button pressed on the packs and on the
+    boss owns a row in each table under one id, and a figure asserted about one
+    stretch must not be reachable from the other's row.
     """
     theirs = a_loaded(
         (THEIRS,),
         (a_pull_of(0, (1,), trash_seconds), a_pull_of(1, (9,), boss_seconds, boss=True)),
         casts=(
-            casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, trash_casts)
-            + casts_on(THEIRS.actor_id, METEOR, "Meteor", 1, boss_casts)
+            casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, trash_blasts)
+            + casts_on(THEIRS.actor_id, METEOR, "Meteor", 0, trash_meteors)
+            + casts_on(THEIRS.actor_id, METEOR, "Meteor", 1, boss_meteors)
+            + casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 1, boss_blasts)
         ),
     )
     return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
 
 
 def a_run_with_a_boss_and_a_shared_pack() -> LoadedRun:
-    """Our run: three Arcane Blasts over a 90s pack, three Meteors over a 120s boss."""
+    """Our run: a 90s pack and a 120s boss, both abilities pressed on each.
+
+    Our four rates are 2.0 and 6.0 a minute on the pack, 1.5 and 9.0 on the
+    boss. Neither denominator is a minute, so none of them is the cast count
+    that produced it and no assertion below survives deleting the division.
+    """
     return a_loaded(
         (OURS,),
         (a_pull_of(0, (1,), 90.0), a_pull_of(1, (9,), 120.0, boss=True)),
         casts=(
             casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, 3)
+            + casts_on(OURS.actor_id, METEOR, "Meteor", 0, 9)
             + casts_on(OURS.actor_id, METEOR, "Meteor", 1, 3)
+            + casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 1, 18)
         ),
     )
 
 
-def a_sample_pressing_harder_on_both() -> ParseSample:
-    """Three references, each above us on the pack and on the boss.
+def a_sample_reaching_every_rate_family() -> ParseSample:
+    """A sample that puts one row in each of the four rate families.
 
-    The four figures the assertions compare are 2.0 and 6.0 on trash, 1.5 and
-    9.0 on bosses: all distinct, and none of them equal to a cast count, so no
-    two of them can stand in for each other and no denominator is a minute.
+    Against `a_run_with_a_boss_and_a_shared_pack`, the medians are Arcane Blast
+    6.0 a minute on trash and 3.0 on bosses, Meteor 2.0 on trash and 9.0 on
+    bosses. Set against our own 2.0, 9.0, 6.0 and 1.5 that is one row below and
+    one above on each stretch, which is what reaches both directions of both
+    families.
+
+    The fourth member is the awkward one, and it is what makes a change to
+    *which* members the table counts visible rather than only a change to how
+    it divides. Thirty seconds of shared trash is under
+    `MIN_ALIGNED_TRASH_SECONDS`, so `is_comparable` drops it from the trash
+    stretch while it stays an ordinary member of the boss stretch. Counted, its
+    30.0 a minute would carry the trash Arcane Blast median to 9.0 and the
+    Meteor median to 7.0. Its boss rates deliberately sit on both medians, so
+    admitting it changes nothing there and a trash failure cannot be confused
+    for a boss one.
     """
     return ParseSample(
         members=(
-            # Trash 3.0 a minute, boss 2.0.
-            a_boss_and_trash_member("REF1", 120.0, 6, 90.0, 3),
-            # Trash 6.0, boss 9.0 — the median on both stretches.
-            a_boss_and_trash_member("REF2", 150.0, 15, 60.0, 9),
-            # Trash 12.0, boss 16.0.
-            a_boss_and_trash_member("REF3", 65.0, 13, 30.0, 8),
+            # Trash 3.0 and 2.0 a minute; boss 2.0 and 2.0.
+            a_boss_and_trash_member(
+                "REF1", trash_seconds=120.0, boss_seconds=90.0,
+                trash_blasts=6, trash_meteors=4, boss_meteors=3, boss_blasts=3,
+            ),
+            # Trash 6.0 and 2.0; boss 9.0 and 3.0 — on the median of both.
+            a_boss_and_trash_member(
+                "REF2", trash_seconds=150.0, boss_seconds=60.0,
+                trash_blasts=15, trash_meteors=5, boss_meteors=9, boss_blasts=3,
+            ),
+            # Trash 12.0 and 12.0; boss 16.0 and 6.0.
+            a_boss_and_trash_member(
+                "REF3", trash_seconds=65.0, boss_seconds=30.0,
+                trash_blasts=13, trash_meteors=13, boss_meteors=8, boss_blasts=3,
+            ),
+            # Below the aligned-trash floor: compared on the boss, not on trash.
+            a_boss_and_trash_member(
+                "REF4", trash_seconds=30.0, boss_seconds=60.0,
+                trash_blasts=15, trash_meteors=15, boss_meteors=9, boss_blasts=3,
+            ),
         )
     )
 
@@ -457,16 +519,19 @@ def test_every_rate_finding_has_a_table_row_stating_the_same_figures() -> None:
     Nothing else in the suite puts the two side by side.
     """
     ours = a_run_with_a_boss_and_a_shared_pack()
-    subjects = only_ours(a_sample_pressing_harder_on_both())
+    subjects = only_ours(a_sample_reaching_every_rate_family())
 
     findings = compare(ours, None, subjects)
     measures = comparison_measures(ours, subjects)[OUR_SLUG]
 
     by_row = {(m.stretch, m.ability_id): m for m in measures.boss + measures.trash}
     rate_rows = [f for f in findings if f.id.startswith(RATE_FAMILIES)]
-    # Both stretches, or the fixture has stopped reaching one of the two
-    # builders and the loop below would pass on whichever survived.
-    assert {stretch_of(f) for f in rate_rows} == {Stretch.BOSS, Stretch.TRASH}
+    # All four families, or the fixture has stopped reaching one of them and
+    # the loop below would pass on whichever survived. Both stretches, because
+    # each has a mirrored builder of its own; both directions, because the
+    # above rows are built separately from the gap rows and nothing else
+    # offline holds their fact labels to anything.
+    assert {family_of(f) for f in rate_rows} == set(RATE_FAMILIES)
 
     for finding in rate_rows:
         # By id, never by name: a name can belong to more than one game id, and
@@ -498,6 +563,12 @@ def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None
             an_aura_parse_member("REF1", 60.0, 45_000),
             an_aura_parse_member("REF2", 90.0, 54_000),
             an_aura_parse_member("REF3", 60.0, 57_000),
+            # The awkward one, and what makes a change to which members the
+            # aura table counts visible rather than only a change to how it
+            # divides. This reference carried the aura, but never while it was
+            # on a boss, which reads the same as never having carried it.
+            # Counted as a zero it would drag the median to 0.675.
+            an_aura_parse_member("REF4", 60.0, 30_000, band_start_ms=100_000),
         )
     )
     subjects = only_ours(sample, our_auras=OUR_UPTIME)
