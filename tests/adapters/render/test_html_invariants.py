@@ -290,7 +290,11 @@ def rich_comparison_measures() -> dict[str, PlayerMeasures]:
                 AbilityRate(ability_id=1, name="Arcane Blast", ours=12.0, their_median=9.0,
                             their_rates=(8.0, 9.0, 10.0), stretch=Stretch.BOSS,
                             verdict=Verdict.ABOVE),
-                AbilityRate(ability_id=2, name="Ice Block", ours=0.5, their_median=1.0,
+                # Apostrophe on purpose, the same precedent `minimal_findings()`
+                # sets above: Jinja's autoescape turns it into `&#39;`, so only
+                # an escaped comparison can tell an escaped row from a row a
+                # hypothetical `|safe` let through unchanged.
+                AbilityRate(ability_id=2, name="Guardian's Ward", ours=0.5, their_median=1.0,
                             their_rates=(1.0, 1.0, 1.0), stretch=Stretch.BOSS,
                             verdict=Verdict.BELOW),
             ),
@@ -368,8 +372,17 @@ def test_every_compared_row_reaches_the_page() -> None:
     # `render()` turned into the markup in `html` below.
     report = rich_report()
     html = render(report)
+    # Self-contained: a fixture whose slug stopped matching any card would
+    # leave every loop below with nothing to iterate, and every assertion
+    # inside it unexecuted -- this guard is what turns that silence into a
+    # failure, without relying on a differently-named test elsewhere to
+    # cover it.
+    assert any(card.comparison_tables for card in report.players), (
+        "the fixture drew no comparison table, so this guard checks nothing"
+    )
     for card in report.players:
         for table in card.comparison_tables:
+            assert escape(table.heading) in html
             assert escape(table.caption) in html
             for row in table.rows:
                 assert escape(row.name) in html
