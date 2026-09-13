@@ -22,6 +22,7 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
+from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
@@ -48,6 +49,7 @@ from wowperf.domain.report.model import (
     Provenance,
     RecapRow,
     ReferenceRecord,
+    Report,
     Span,
     Timeline,
     TimelineBlock,
@@ -277,16 +279,39 @@ def rich_findings() -> tuple[Finding, ...]:
     )
 
 
-def rich_html() -> str:
+def rich_comparison_measures() -> dict[str, PlayerMeasures]:
+    """One player's measured figures, keyed to the slug `rich_loaded()`'s own
+    roster actually produces for Emberkin -- confirmed against
+    `slugs_by_actor`, not assumed. Two rows, so a row-reaching-the-page check
+    has more than one to distinguish."""
+    return {
+        "emberkin-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Arcane Blast", ours=12.0, their_median=9.0,
+                            their_rates=(8.0, 9.0, 10.0), stretch=Stretch.BOSS,
+                            verdict=Verdict.ABOVE),
+                AbilityRate(ability_id=2, name="Ice Block", ours=0.5, their_median=1.0,
+                            their_rates=(1.0, 1.0, 1.0), stretch=Stretch.BOSS,
+                            verdict=Verdict.BELOW),
+            ),
+            boss_seconds=90.0,
+        ),
+    }
+
+
+def rich_report() -> Report:
     # No parse sample is passed, so the spell-and-talent comparison on each
     # player card is withheld, giving the page a withheld section as well.
-    return render(
-        build_report(
-            rich_loaded(), rich_findings(), rich_speed_sample(), None, SUBJECT, None, FETCHED,
-            NO_DEFENSIVES, NO_CONSUMABLES,
-            reference_records=rich_reference_records(),
-        )
+    return build_report(
+        rich_loaded(), rich_findings(), rich_speed_sample(), None, SUBJECT, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+        reference_records=rich_reference_records(),
+        comparison_measures=rich_comparison_measures(),
     )
+
+
+def rich_html() -> str:
+    return render(rich_report())
 
 
 def rich_html_with_icon() -> str:
@@ -316,11 +341,38 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     assert any(href.startswith("#") for href in hrefs)
     assert any(href.startswith("https://www.warcraftlogs.com/reports/") for href in hrefs)
 
+    # Proves this fixture actually carries a comparison table -- without this,
+    # a loop over zero tables in the test below would pass and assert nothing.
+    assert '<details class="compared"' in html
+
     # Same guard, for the fixture above: proves it actually resolves an icon
     # rather than passing the scoping test below by never exercising a
     # `data:image/` href at all.
     icon_hrefs = re.findall(r'href="([^"]*)"', rich_html_with_icon())
     assert any(href.startswith("data:image/") for href in icon_hrefs)
+
+
+def test_a_comparison_table_renders_collapsed_and_adds_no_script() -> None:
+    """`<details>` is native HTML. The page is allowed exactly one inline script
+    and that script may only show, hide and highlight what is already there, so a
+    collapsible built from a second script would break the invariant above."""
+    html = rich_html()
+
+    assert '<details class="compared"' in html
+    assert html.count("<script") == 1
+
+
+def test_every_compared_row_reaches_the_page() -> None:
+    # Checked against the very `Report` the page was rendered from, not a
+    # separately built one: `card.comparison_tables` here is exactly what
+    # `render()` turned into the markup in `html` below.
+    report = rich_report()
+    html = render(report)
+    for card in report.players:
+        for table in card.comparison_tables:
+            assert escape(table.caption) in html
+            for row in table.rows:
+                assert escape(row.name) in html
 
 
 def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:

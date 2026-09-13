@@ -1,6 +1,6 @@
 {# ABOUTME: The Players panel: one card per player, carrying their measured facts. #}
 {# ABOUTME: Damage reads against the group median, never as avoidable. #}
-{% from "_macros.html.j2" import ledger_row with context %}
+{% from "_macros.html.j2" import ability, ledger_row with context %}
 {% from "_player_timeline.html.j2" import player_timeline with context %}
 <section class="panel" data-tab-panel="main" id="tab-players">
 
@@ -39,6 +39,26 @@
   {% endfor %}
   </div>
   {% endif %}
+  {% for table in player.comparison_tables %}
+  <details class="compared">
+  <summary>{{ table.heading }}</summary>
+  <p class="sub">{{ table.caption }}</p>
+  <table class="compared-rows">
+    <thead><tr><th scope="col">Ability</th><th scope="col">Ours</th><th scope="col">Median</th><th scope="col">Range</th><th scope="col">Sample</th></tr></thead>
+    <tbody>
+    {% for row in table.rows %}
+    <tr class="v-{{ row.verdict }}">
+      <td>{{ ability(row.ability_id, row.name) }}</td>
+      <td class="num">{{ row.ours }}</td>
+      <td class="num">{{ row.theirs }}</td>
+      <td class="num">{{ row.spread }}</td>
+      <td>{{ row.sample }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </details>
+  {% endfor %}
 </div>
 {% endfor %}
 
