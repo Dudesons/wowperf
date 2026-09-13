@@ -60,6 +60,22 @@ compare several players at once, so routing these to the subject's card would
 put one player's rows under another player's name.
 """
 
+VERDICT_LABELS = {
+    Verdict.BELOW: "Below",
+    Verdict.ABOVE: "Above",
+    Verdict.LEVEL: "Level",
+    Verdict.UNJUDGED: "Not judged",
+}
+"""Each branch, spelled for the reader of a column rather than for a stylesheet.
+
+The table's own column holds these, because a tint carries no meaning alone:
+several readers cannot separate two colours and every printed page separates
+none of them. Only `unjudged` is spelled differently from the value it comes
+from, being the one word here that is not ordinary English -- what the table
+means by it is that the comparison declined to read anything into the figure
+beside it, and a reader meeting the bare word would have no way to know that.
+"""
+
 
 def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
@@ -247,21 +263,6 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
             )
         )
     return tuple(built)
-
-
-VERDICT_LABELS = {
-    Verdict.BELOW: "Below",
-    Verdict.ABOVE: "Above",
-    Verdict.LEVEL: "Level",
-    Verdict.UNJUDGED: "Not judged",
-}
-"""Each branch, spelled for the reader of a column rather than for a stylesheet.
-
-Only `unjudged` is spelled differently from the value it comes from, because
-only it is not ordinary English: what the table means by it is that the
-comparison declined to read anything into the figure, and a reader meeting the
-bare word would have no way to know that.
-"""
 
 
 def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
