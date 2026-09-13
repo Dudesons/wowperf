@@ -211,13 +211,26 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     findings = compare(loaded, speed_sample, subjects)
     measures = comparison_measures(loaded, subjects)[subject_slug]
 
+    # Compared by name here, where the anti-drift block below keys the same
+    # measures by `(stretch, ability_id)`. Names do not identify abilities — 475 of 1755
+    # own more than one game id — so the two blocks look like they disagree.
+    # They do not: this one claims only that *some* measured ability produced no
+    # row, and a name collision can merge two entries into one, which makes that
+    # difference harder to be non-empty, never easier. The lookup below reads
+    # one specific row and has no such slack, so it cannot compare by name.
     named_in_rows = {f.ability_name for f in findings if f.ability_name}
     measured = {m.name for m in measures.boss + measures.trash}
     assert measured, "no ability was measured at all, so there is no table to judge"
     assert measured - named_in_rows, (
         "every measured ability produced a row, so the table adds nothing on this run"
     )
-    assert measures.auras, "a real parse sample should carry aura data"
+    assert measures.auras, (
+        "no aura was measured. This needs MIN_SAMPLE_FOR_AGGREGATE members carrying "
+        "aura data, and one aura whose median across its carriers clears "
+        "MIN_UPTIME_FRACTION. A thin specialisation can miss that with nothing "
+        "broken, so try a report with a deeper parse sample before reading this "
+        "as a defect"
+    )
 
     # The anti-drift property the unit suite pins against fixtures whose
     # denominators it chose, held to a route the group actually ran.
