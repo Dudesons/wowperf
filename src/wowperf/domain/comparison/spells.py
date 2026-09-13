@@ -369,8 +369,11 @@ def _missing_sample(
 def verdict_for(ours: float, their_median: float) -> Verdict:
     """Which of the three branches a rate falls in, at the one bar both directions use.
 
-    `their_median` is never zero here: a member only contributes a rate after
-    clearing `MIN_CASTS_TO_COMPARE` over non-zero seconds.
+    Above has to stand as its own test: drop it, and an ability far enough
+    above the median reads as comfortably inside the band from the other
+    side, and gets filed as level instead of above. `their_median` is never
+    zero here: a member only contributes a rate after clearing
+    `MIN_CASTS_TO_COMPARE` over non-zero seconds.
     """
     if ours / their_median >= RATE_GAP_MULTIPLE:
         return Verdict.ABOVE
@@ -436,6 +439,9 @@ def _rate_sample(
         key=lambda m: m.ours - m.their_median,
         reverse=True,
     )
+    # Collected rather than dropped: an ability that was compared and found
+    # level is not the same as one that was never compared at all, and a
+    # page that dropped this list would read the two alike.
     level = [m.name for m in measures if m.verdict is Verdict.LEVEL]
 
     findings = [_gap_finding(our_name, m, our_boss_seconds) for m in gaps]
@@ -476,6 +482,11 @@ def _gap_finding(our_name: str, measure: AbilityRate, our_boss_seconds: float) -
             f"range {low:.1f} to {high:.1f} casts a minute across "
             f"{len(measure.their_rates)} top parses",
         ),
+        # The same four numbers the title and the evidence above already
+        # state, as labels and values a panel can lay out. Ours, the
+        # reference median and the range are divisions this function did, so
+        # each says derived: an unset tier is what a panel draws measured
+        # with. The parse count is a count, and is not.
         facts=(
             FindingFact(label="Ours", value=f"{measure.ours:.1f} casts a minute",
                         confidence=Confidence.DERIVED),
