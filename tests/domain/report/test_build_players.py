@@ -16,6 +16,7 @@ from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import place_rows
 from wowperf.domain.report.model import LedgerRow, PlayerCard, SectionState
 from wowperf.domain.report.players import (
+    VERDICT_LABELS,
     build_players,
     class_colour,
     slugs_by_actor,
@@ -852,3 +853,59 @@ def test_an_aura_the_comparison_refused_to_judge_keeps_that_verdict() -> None:
     assert row.verdict == "unjudged"
     assert row.spread == "94% to 99%"
     assert row.sample == "3 top parses"
+
+
+def test_each_verdict_reaches_a_row_as_its_own_word() -> None:
+    """The word and the tint are two readings of one branch, so they must not be
+    able to say opposite things about it.
+
+    Every other assertion about a verdict reads both halves off the same row --
+    the class against `row.verdict`, the cell against `row.verdict_label` -- and
+    is therefore true of any mapping at all, permuted ones included. Two labels
+    trading places leaves each row still internally consistent and still
+    different from its neighbour, and a reader who cannot separate the two
+    tints, which is the reader the column exists for, would be told the reverse
+    of the truth. This is what pins the branch to its English, each of the four
+    to its own, against words written out here rather than read back off the
+    map.
+    """
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Under", ours=2.0, their_median=9.0,
+                            their_rates=(9.0,), stretch=Stretch.BOSS, verdict=Verdict.BELOW),
+                AbilityRate(ability_id=2, name="Over", ours=9.0, their_median=2.0,
+                            their_rates=(2.0,), stretch=Stretch.BOSS, verdict=Verdict.ABOVE),
+                AbilityRate(ability_id=3, name="Alongside", ours=5.0, their_median=5.0,
+                            their_rates=(5.0,), stretch=Stretch.BOSS, verdict=Verdict.LEVEL),
+            ),
+            # No cast rate is ever unjudged -- a cast is unambiguously the
+            # player's own -- so the fourth branch is asked of the builder that
+            # can really produce it.
+            auras=(
+                AuraUptime(ability_id=4, name="Someone's buff", ours=0.0, their_median=0.97,
+                           their_fractions=(0.97,), verdict=Verdict.UNJUDGED),
+            ),
+            boss_seconds=648.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+    boss, auras = card.comparison_tables
+
+    # A set, because `_rate_rows` orders by the size of the gap and this says
+    # nothing about order. Exact equality: it pins that no branch borrowed
+    # another's word just as much as that each kept its own.
+    assert {(row.verdict, row.verdict_label) for row in boss.rows} == {
+        ("below", "Below"),
+        ("above", "Above"),
+        ("level", "Level"),
+    }
+    assert [(row.verdict, row.verdict_label) for row in auras.rows] == [
+        ("unjudged", "Not judged")
+    ]
+    # A branch added with no word would reach `VERDICT_LABELS` as a KeyError at
+    # render time, on a page nobody is running a test against.
+    assert set(VERDICT_LABELS) == set(Verdict)
