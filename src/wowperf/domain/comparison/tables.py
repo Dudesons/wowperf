@@ -81,6 +81,21 @@ def _boss(
     row and the finding above it from stating different numbers about one
     player.
     """
+    if not parse.can_aggregate(parse.members):
+        # The gate `compare_spells_sample` opens on, asked of the sample itself
+        # so that both read one definition of when a sample may be argued from
+        # as a population, rather than each enforcing a floor of its own.
+        #
+        # While `MIN_SAMPLE_FOR_AGGREGATE` and `MIN_MEMBERS_WITH_ABILITY` are
+        # both 3 this changes no rate: no ability can gather more rates than
+        # the sample has members, so `rate_measures` finds nothing below the
+        # floor whether it is asked or not. All it settles at those values is
+        # that the denominator reads zero instead of naming boss seconds no
+        # comparison was ever drawn over. Raise the first above the second and
+        # it decides the rates as well, which is what keeps a median off the
+        # page beside a finding that withheld one.
+        return (), 0.0
+
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in parse.members:
         actor_id = their_actor_id(member, member.row.character_name)
@@ -116,7 +131,14 @@ def _trash(
     When no reference shares enough of our route, the seconds come back zero
     rather than as the trash time we happened to spend: this denominator is
     aligned trash, and with nothing aligned there is none. `_boss` is not
-    symmetric with it — boss seconds are ours whether or not anything compared.
+    symmetric with it — boss seconds are ours whenever a comparison was drawn
+    over them, whether or not it found anything worth a row.
+
+    There is no aggregate gate here to match `_boss`'s, because
+    `compare_trash_spells_sample` has none: a trash rate is already floored on
+    seconds of aligned trash per side, and a sample too small to aggregate
+    reaches `trash_rate_measures`, which needs `MIN_MEMBERS_WITH_ABILITY` rates
+    for a median of its own.
     """
     ours_aligned: list[AlignedTrash] = []
     per_member: list[tuple[float, dict[int, int]]] = []

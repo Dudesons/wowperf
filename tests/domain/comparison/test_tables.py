@@ -179,6 +179,27 @@ def test_a_boss_rate_is_the_sample_median_against_our_own_per_minute_figure() ->
     assert measures.trash_seconds == 0.0
 
 
+def test_a_sample_too_small_to_aggregate_names_no_boss_denominator() -> None:
+    """Two references are below MIN_SAMPLE_FOR_AGGREGATE, so no boss comparison
+    was drawn against this sample as a population at all.
+
+    The empty table cannot say that on its own — a sample that was compared and
+    matched nothing is empty too — so the denominator is what carries it: zero
+    seconds, rather than naming the two minutes of boss pulls no comparison was
+    drawn over. That is the only thing the aggregate gate decides while the
+    sample floor and the per-ability floor are the same number, and it is the
+    whole of what this test can hold it to.
+    """
+    sample = ParseSample(
+        members=(a_boss_parse_member("REF1", 90.0, 3), a_boss_parse_member("REF2", 90.0, 9))
+    )
+
+    measures = comparison_measures(a_run_with_a_long_boss_pull(), only_ours(sample))[OUR_SLUG]
+
+    assert measures.boss == ()
+    assert measures.boss_seconds == 0.0
+
+
 def a_trash_parse_member(
     code: str, game_ids: tuple[int, ...], seconds: float, casts: int
 ) -> ParseMember:
