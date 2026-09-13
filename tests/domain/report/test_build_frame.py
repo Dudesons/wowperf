@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for the report's frame: header, narrative, provenance, withholding.
 # ABOUTME: The withheld reason must come from the finding, never from a string in the template.
 
+from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.report.build import build_report
@@ -330,3 +331,26 @@ def test_the_report_builder_accepts_the_throughput_cooldowns_the_analysers_read(
     # a_loaded() carries no players, so this call shape produces no cards either
     # way -- the point of this test is that build_report takes the keyword at all.
     assert report.players == ()
+
+
+def test_build_report_passes_measures_through_to_the_card() -> None:
+    """One parameter, threaded rather than recomputed: the report layer must not
+    reach back into the comparison for figures it was handed."""
+    measures = {
+        "emberkin-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Meteor", ours=2.0, their_median=9.0,
+                            their_rates=(9.0,), stretch=Stretch.BOSS, verdict=Verdict.BELOW),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    loaded = a_loaded(players=(a_player(1, "Emberkin"),))
+    report = build_report(
+        loaded, (), None, None, a_player(1, "Emberkin"), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+        comparison_measures=measures,
+    )
+
+    card = next(c for c in report.players if c.slug == "emberkin-0")
+    assert [t.heading for t in card.comparison_tables] == ["Casts on boss pulls"]

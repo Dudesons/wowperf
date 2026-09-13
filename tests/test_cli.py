@@ -34,6 +34,7 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.comparison.alignment import Alignment
+from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -781,6 +782,7 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
         "comparison": payload["comparison"],
         "findings_are_ranked_not_additive": payload["findings_are_ranked_not_additive"],
         "findings": payload["findings"],
+        "comparison_tables": payload["comparison_tables"],
     }
     sentence = payload["findings_are_ranked_not_additive"]
     assert "not additive" in sentence
@@ -791,6 +793,48 @@ def test_analyze_writes_the_full_findings_shape(tmp_path: Path) -> None:
     assert "deaths.total" in sentence
     assert "compare.route.skipped" in sentence
     assert "trash.overage" in sentence
+    for finding in payload["findings"]:
+        assert set(finding.keys()) == {
+            "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",
+            "pull_index", "ability_id", "ability_name", "quantifier", "player_slug",
+        }
+
+
+def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The table is evidence, not a finding: it must not enter the ranked array,
+    where every entry is a claim with a badge and a place in the order.
+
+    Real ability rates need three aggregatable parse members
+    (`MIN_SAMPLE_FOR_AGGREGATE`) with real cast data behind each -- arithmetic
+    Tasks 1-5's own suites already cover. Standing that fixture up again here
+    would test that arithmetic a second time and nothing about this task's own
+    wiring, so `comparison_measures` (the module-level import `cli.py` now
+    carries) is patched to hand back one concrete measure instead. What this
+    test proves is only what Task 6 added: that whatever `comparison_measures`
+    returns lands under its own key, verbatim, and never inside `findings`.
+    """
+    measured = {
+        "emberkin-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Meteor", ours=2.0, their_median=9.0,
+                            their_rates=(9.0, 8.0, 7.0), stretch=Stretch.BOSS,
+                            verdict=Verdict.BELOW),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    monkeypatch.setattr("wowperf.cli.comparison_measures", lambda **_kwargs: measured)
+
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+    payload = written_findings(tmp_path)
+
+    assert payload["comparison_tables"] == {
+        "emberkin-0": measured["emberkin-0"].model_dump(mode="json")
+    }
+    assert payload["comparison_tables"]["emberkin-0"]["boss"][0]["name"] == "Meteor"
     for finding in payload["findings"]:
         assert set(finding.keys()) == {
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",

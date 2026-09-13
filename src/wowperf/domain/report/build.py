@@ -1,8 +1,9 @@
 # ABOUTME: Turns a loaded run and its findings into the value the template renders.
 # ABOUTME: Assembles what the modules beside it build; each judgement lives in one of those.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
+from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -24,7 +25,7 @@ from wowperf.domain.report.ledger import (
     placed_finding_ids,
 )
 from wowperf.domain.report.model import Provenance, ReferenceRecord, Report, SectionState
-from wowperf.domain.report.players import build_players
+from wowperf.domain.report.players import NO_MEASURES, build_players
 from wowperf.domain.report.timeline import build_timeline
 from wowperf.domain.season import (
     Consumables,
@@ -49,6 +50,7 @@ def build_report(
     self_resurrections: SelfResurrections = SelfResurrections(),
     throughput: ThroughputCooldowns = ThroughputCooldowns(),
     reference_records: tuple[ReferenceRecord, ...] = (),
+    comparison_measures: Mapping[str, PlayerMeasures] = NO_MEASURES,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -71,6 +73,9 @@ def build_report(
     complaint from the type checker.
     `reference_records` is every candidate `_samples` weighed, loaded or not —
     carried onto the provenance unchanged, a link and never a figure.
+    `comparison_measures` is what the comparison measured, keyed by player
+    slug — threaded onto each card rather than recomputed here, so this layer
+    never reaches back into the comparison for a figure it was already handed.
     """
     compared_speed = sampled(speed)
     timeline_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
@@ -83,7 +88,7 @@ def build_report(
     tooltips = tooltips_by_finding_id(findings, loaded, defensives)
     players = build_players(
         loaded, findings, compared_slugs, subject, titles_by_id, defensives, throughput,
-        tooltips,
+        tooltips, measures=comparison_measures,
     )
 
     withheld: list[str] = []

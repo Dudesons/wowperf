@@ -36,6 +36,7 @@ from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.reference import (
     REPORT_URL,
     Comparability,
@@ -50,6 +51,7 @@ from wowperf.domain.comparison.sample import (
     SpeedSample,
 )
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
+from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
@@ -781,6 +783,7 @@ def analyze(
         subjects: list[ComparisonSubject] = []
         compared_slugs: frozenset[str] | None = None
         reference_records: tuple[ReferenceRecord, ...] = ()
+        tables: dict[str, PlayerMeasures] = {}
         if not no_compare:
             rankings, references = build_reference_repositories(repository.client, cache_dir)
             # The only place this command mints a slug: the comparison stamps a
@@ -822,6 +825,7 @@ def analyze(
             compared_slugs = frozenset(one.slug for one in subjects)
 
             findings += compare(ours=loaded, speed=speed_sample, subjects=subjects)
+            tables = comparison_measures(ours=loaded, subjects=subjects)
             findings = rank_findings(findings)
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -871,6 +875,9 @@ def analyze(
         },
         "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
         "findings": [finding.model_dump(mode="json") for finding in findings],
+        "comparison_tables": {
+            slug: measured.model_dump(mode="json") for slug, measured in tables.items()
+        },
     }
 
     written = out / f"{run.report_code}-{run.fight_id}.findings.json"
@@ -902,6 +909,7 @@ def analyze(
                     self_resurrections=load_self_resurrections(),
                     throughput=throughput,
                     reference_records=reference_records,
+                    comparison_measures=tables,
                 ),
                 icons=build_icons(
                     loaded,
