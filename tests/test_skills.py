@@ -6,6 +6,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from tests.test_cli import plain
 from wowperf.cli import app
 from wowperf.domain.findings import Finding
 from wowperf.domain.report.model import ReferenceRecord
@@ -56,7 +57,7 @@ def test_every_flag_the_workflow_tells_you_to_type_exists() -> None:
     # Asserted against the command's own help rather than against cli.py's text:
     # typer infers `--player` and `--narrative` from their parameter names, so
     # neither string appears in the source at all.
-    help_text = CliRunner().invoke(app, ["analyze", "--help"]).output
+    help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
     flags = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
     assert flags, "the workflow names no flags at all, so this test proves nothing"
     missing = sorted(flag for flag in flags if flag not in help_text)
@@ -66,8 +67,9 @@ def test_every_flag_the_workflow_tells_you_to_type_exists() -> None:
 def test_every_flag_the_command_offers_is_named_in_the_workflow() -> None:
     # The reverse of the test above. A flag the command has and the workflow never
     # mentions is a feature nobody following the workflow can reach.
-    help_text = CliRunner().invoke(app, ["analyze", "--help"]).output
+    help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
     offered = set(FLAG.findall(help_text)) - {"--help"}
+    assert offered, "the command's help names no flags at all, so this test proves nothing"
     named = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
     missing = sorted(offered - named)
     assert missing == [], f"offered by the command but never named in the skill: {missing}"

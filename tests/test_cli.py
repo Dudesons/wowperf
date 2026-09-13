@@ -47,6 +47,21 @@ runner = CliRunner()
 
 FIXTURE = Path(__file__).parent / "adapters" / "wcl" / "fixtures" / "report_fights.json"
 
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(output: str) -> str:
+    """Command output with Rich's styling removed, so that a search reads the text.
+
+    Rich colourises whenever it believes it is writing to a terminal, and under
+    GitHub Actions it believes that however the output is captured. It styles an
+    option by splitting it: `--fight` reaches the buffer as escape codes wrapped
+    around `--` and around `fight`, which no plain substring or regex finds. An
+    assertion that a flag is offered then fails, and one that a flag is absent
+    passes without ever having looked.
+    """
+    return ANSI.sub("", output)
+
 
 def quota_response(spent: float) -> httpx.Response:
     return httpx.Response(
@@ -136,8 +151,8 @@ def test_fetch_help_exits_cleanly() -> None:
     result = runner.invoke(app, ["fetch", "--help"])
     assert result.exit_code == 0
     assert "report" in result.output.lower()
-    assert "--fight" in result.output
-    assert "--cache-dir" in result.output
+    assert "--fight" in plain(result.output)
+    assert "--cache-dir" in plain(result.output)
 
 
 def test_top_level_help_lists_fetch_as_a_subcommand() -> None:
@@ -862,7 +877,7 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
 def test_analyze_is_a_subcommand_of_its_own() -> None:
     result = CliRunner().invoke(app, ["analyze", "--help"])
     assert result.exit_code == 0
-    assert "--out" in result.output
+    assert "--out" in plain(result.output)
 
 
 def test_analyze_reports_a_bad_url_as_a_message_not_a_traceback() -> None:
@@ -3035,8 +3050,8 @@ def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None
     from typer.testing import CliRunner
 
     runner = CliRunner()
-    assert "--throughput-ceiling" in runner.invoke(app, ["analyze", "--help"]).output
-    assert "--throughput-ceiling" not in runner.invoke(app, ["fetch", "--help"]).output
+    assert "--throughput-ceiling" in plain(runner.invoke(app, ["analyze", "--help"]).output)
+    assert "--throughput-ceiling" not in plain(runner.invoke(app, ["fetch", "--help"]).output)
 
 
 def test_the_breakdown_names_each_operation_its_calls_and_its_points() -> None:
