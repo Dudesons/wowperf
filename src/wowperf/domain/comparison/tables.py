@@ -22,7 +22,7 @@ from wowperf.domain.comparison.trash_spells import (
     trash_rate_measures,
 )
 from wowperf.domain.comparison.uptime import (
-    _fractions,
+    aura_fractions,
     boss_windows,
     uptime_measures,
 )
@@ -211,14 +211,14 @@ def _auras(
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
         their_seconds = boss_seconds(member.run)
         fractions = (
-            _fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            aura_fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
             if their_seconds > 0
             else {}
         )
         qualifying: dict[int, float] = {}
         for ability_id, (name, fraction) in fractions.items():
             # A band that never overlaps a boss pull reads the same as never
-            # having carried the aura at all, the reading `_fractions` already
+            # having carried the aura at all, the reading `aura_fractions` already
             # gives the pairwise comparison.
             if fraction <= 0.0:
                 continue
@@ -226,5 +226,5 @@ def _auras(
             qualifying[ability_id] = fraction
         per_member.append(qualifying)
 
-    our_fractions = _fractions(our_auras.on_self, boss_windows(ours.run), our_seconds)
+    our_fractions = aura_fractions(our_auras.on_self, boss_windows(ours.run), our_seconds)
     return uptime_measures(our_fractions, per_member, names)

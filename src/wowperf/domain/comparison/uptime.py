@@ -36,7 +36,7 @@ def boss_windows(run: Run) -> tuple[tuple[int, int], ...]:
     return tuple((pull.start_ms, pull.end_ms) for pull in run.boss_pulls)
 
 
-def _fractions(
+def aura_fractions(
     auras: tuple[Aura, ...], windows: tuple[tuple[int, int], ...], seconds: float
 ) -> dict[int, tuple[str, float]]:
     """Ability id to (name, fraction of boss time this aura was up)."""
@@ -197,8 +197,8 @@ def compare_uptime(
     # same-typed values, and a swap inside either pair would put one player's
     # figure under the other's name without failing a type check.
     return _gap_findings(
-        _fractions(our_auras.on_self, our_windows, our_seconds),
-        _fractions(their_auras.on_self, their_windows, their_seconds),
+        aura_fractions(our_auras.on_self, our_windows, our_seconds),
+        aura_fractions(their_auras.on_self, their_windows, their_seconds),
         our_name=our_name,
         their_name=their_name,
         our_seconds=our_seconds,
@@ -267,7 +267,7 @@ def compare_uptime_sample(
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
-    our_fractions = _fractions(our_auras.on_self, our_windows, our_seconds)
+    our_fractions = aura_fractions(our_auras.on_self, our_windows, our_seconds)
     return _gap_findings_sample(
         our_fractions, eligible, our_name, our_seconds, missing_aura_data, total
     )
@@ -329,7 +329,7 @@ def _gap_findings_sample(
 
     A member's fraction for an ability only counts as "carried" when it is above zero: a
     band that never overlaps a boss pull reads the same as never having the aura at all, the
-    same reading `_fractions` already gives the pairwise comparison.
+    same reading `aura_fractions` already gives the pairwise comparison.
     """
     names: dict[int, str] = {}
     per_member: list[dict[int, float]] = []
@@ -337,7 +337,7 @@ def _gap_findings_sample(
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
         their_seconds = boss_seconds(member.run)
         fractions = (
-            _fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            aura_fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
             if their_seconds > 0
             else {}
         )
