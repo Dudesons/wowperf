@@ -37,6 +37,7 @@ from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
+from wowperf.domain.comparison.service import ComparisonSubject
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
@@ -811,9 +812,12 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
     Tasks 1-5's own suites already cover. Standing that fixture up again here
     would test that arithmetic a second time and nothing about this task's own
     wiring, so `comparison_measures` (the module-level import `cli.py` now
-    carries) is patched to hand back one concrete measure instead. What this
-    test proves is only what Task 6 added: that whatever `comparison_measures`
-    returns lands under its own key, verbatim, and never inside `findings`.
+    carries) is patched to hand back one concrete measure instead. The stub
+    also records the keywords it was called with: what this test proves is not
+    only that whatever `comparison_measures` returns lands under its own key,
+    verbatim, and never inside `findings`, but that `cli.py` calls it with its
+    own `ours` and its own `subjects` -- not an empty list, and not
+    `to_compare`, the raw requested players that carry no slug at all.
     """
     measured = {
         "emberkin-0": PlayerMeasures(
@@ -825,11 +829,24 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
             boss_seconds=600.0,
         )
     }
-    monkeypatch.setattr("wowperf.cli.comparison_measures", lambda **_kwargs: measured)
+    captured: dict[str, Any] = {}
+
+    def fake_comparison_measures(**kwargs: Any) -> dict[str, PlayerMeasures]:
+        captured.update(kwargs)
+        return measured
+
+    monkeypatch.setattr("wowperf.cli.comparison_measures", fake_comparison_measures)
 
     result = invoke_analyze(tmp_path)
     assert result.exit_code == 0, result.output
     payload = written_findings(tmp_path)
+
+    assert isinstance(captured["ours"], LoadedRun)
+    assert captured["ours"].run.report_code == "abc123"
+    subjects = captured["subjects"]
+    assert len(subjects) == 1
+    assert all(isinstance(one, ComparisonSubject) for one in subjects)
+    assert subjects[0].slug == "emberkin-0"
 
     assert payload["comparison_tables"] == {
         "emberkin-0": measured["emberkin-0"].model_dump(mode="json")
@@ -1036,6 +1053,9 @@ def test_no_compare_skips_both_references(tmp_path: Path) -> None:
     assert payload["comparison"]["sample_size"] == {"speed": 0, "parse": {}}
     assert payload["comparison"]["references"] == []
     assert not any(f["id"].startswith("compare.") for f in payload["findings"])
+    # An empty table and an absent key are different claims: this one says the
+    # tool measured nobody, not that it forgot to say.
+    assert payload["comparison_tables"] == {}
 
 
 def test_reference_responses_are_cached_apart_from_the_runs_own(tmp_path: Path) -> None:
