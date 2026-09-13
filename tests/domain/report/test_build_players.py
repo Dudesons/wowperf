@@ -14,7 +14,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import place_rows
-from wowperf.domain.report.model import LedgerRow, SectionState
+from wowperf.domain.report.model import LedgerRow, PlayerCard, SectionState
 from wowperf.domain.report.players import (
     build_players,
     class_colour,
@@ -733,3 +733,122 @@ def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
     auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
     assert auras.rows[0].ours == "98%"
     assert auras.rows[0].theirs == "100%"
+
+
+def a_card_with_all_three_tables() -> PlayerCard:
+    """One card carrying every table at once, over denominators that differ.
+
+    648 boss seconds, 950 trash seconds and 8 packs are three distinct numbers,
+    so a caption that reached for the wrong one of them reads as a different
+    sentence rather than the same one by coincidence. Each table holds one row,
+    which is all the caption assertions need and keeps the sort order out of
+    them.
+    """
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=50842, name="Blood Boil", ours=6.0, their_median=9.1,
+                            their_rates=(8.4, 9.1, 9.9), stretch=Stretch.BOSS,
+                            verdict=Verdict.BELOW),
+            ),
+            trash=(
+                AbilityRate(ability_id=195182, name="Marrowrend", ours=2.9, their_median=1.3,
+                            their_rates=(1.1, 1.3, 1.6), stretch=Stretch.TRASH,
+                            verdict=Verdict.ABOVE),
+            ),
+            auras=(
+                AuraUptime(ability_id=195181, name="Bone Shield", ours=0.62,
+                           their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                           verdict=Verdict.BELOW),
+            ),
+            boss_seconds=648.0,
+            trash_seconds=950.0,
+            pack_count=8,
+        )
+    }
+    return build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+
+def test_the_three_tables_come_under_their_own_headings_in_one_order() -> None:
+    """Each heading is pinned exactly rather than by a substring, and all three
+    are read as a sequence. Two tables swapping places would leave a reader the
+    denominator of the other one's caption; a heading loosened to a word both
+    share would stop saying which table is which at all."""
+    assert [t.heading for t in a_card_with_all_three_tables().comparison_tables] == [
+        "Casts on boss pulls",
+        "Casts on shared trash packs",
+        "Buff uptime on boss pulls",
+    ]
+
+
+def test_the_table_captions_are_not_interchangeable() -> None:
+    """A caption is a claim about which stretch its figures were drawn over, so
+    the boss caption under the trash table misdescribes both. Checking that each
+    caption is non-empty would not catch the swap; this pins each caption's exact
+    words against its own denominator, the way
+    `test_build_player_timeline.test_the_badge_captions_are_not_interchangeable`
+    pins each of those against its own badge.
+
+    The word "Derived." is part of every one of them: the table is a page of
+    divisions, and the project badges every claim it makes.
+    """
+    boss, trash, auras = a_card_with_all_three_tables().comparison_tables
+
+    assert boss.caption == (
+        "Casts a minute over 648s of boss pulls, against the median of the "
+        "parses that cast each. Derived."
+    )
+    assert trash.caption == (
+        "Casts a minute over 950s of trash across 8 packs both routes fought, "
+        "against the median of the parses that cast each. Derived."
+    )
+    assert auras.caption == (
+        "Share of 648s of boss pulls, against the median of the parses that "
+        "carried each. Derived."
+    )
+    assert len({boss.caption, trash.caption, auras.caption}) == 3
+
+
+def test_every_row_carries_the_ability_id_its_measure_named() -> None:
+    """The id is the icon key, and a name is not one: a zeroed or swapped id
+    draws the wrong art beside the right name, which is the single failure a
+    name-only assertion cannot see. Both builders mint their own row, so both
+    are read here."""
+    boss, trash, auras = a_card_with_all_three_tables().comparison_tables
+
+    assert [(row.name, row.ability_id) for row in boss.rows] == [("Blood Boil", 50842)]
+    assert [(row.name, row.ability_id) for row in trash.rows] == [("Marrowrend", 195182)]
+    assert [(row.name, row.ability_id) for row in auras.rows] == [("Bone Shield", 195181)]
+
+
+def test_an_aura_the_comparison_refused_to_judge_keeps_that_verdict() -> None:
+    """`_aura_rows` is `_rate_rows`'s twin and mints every field over again, so
+    the rate side's coverage says nothing about it.
+
+    `UNJUDGED` is reached by auras alone: `onSelf` carries no source, so an aura
+    we show none of may be a teammate's buff nobody gave this player. A row
+    rendered as `level` instead would style that silence as a measured match,
+    and `.compared-rows tr.v-unjudged` would match nothing on the page.
+    """
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraUptime(ability_id=1459, name="Arcane Intellect", ours=0.0,
+                           their_median=0.97, their_fractions=(0.94, 0.97, 0.99),
+                           verdict=Verdict.UNJUDGED),
+            ),
+            boss_seconds=648.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    row = card.comparison_tables[0].rows[0]
+    assert row.verdict == "unjudged"
+    assert row.spread == "94% to 99%"
+    assert row.sample == "3 top parses"
