@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.domain.comparison.test_tables import RATE_FAMILIES, fact_value, stretch_of
 from wowperf.cli import (
     RequestedPlayer,
+    _fetch_parse_auras,
     _samples,
     build_reference_repositories,
     build_repository,
@@ -15,6 +17,7 @@ from wowperf.cli import (
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
+from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.trash_spells import aligned_trash
 from wowperf.domain.findings import Confidence
 from wowperf.domain.report.players import slugs_by_actor
@@ -155,4 +158,75 @@ def test_a_real_run_compares_trash_packs_against_real_parses(tmp_path: Path) -> 
         assert aligned.our_seconds <= our_trash + 0.001, (
             f"aligned trash {aligned.our_seconds:.1f}s exceeds our own {our_trash:.1f}s, "
             "so a pull of ours was counted more than once"
+        )
+
+
+@pytest.mark.e2e
+def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
+    """Offline fixtures compare a handful of abilities chosen by hand. Only a real
+    run shows whether the table holds abilities the rows are silent about — which
+    is the whole of its reason to exist — and whether the two still state one
+    figure over denominators nobody picked."""
+    if not REPORT:
+        pytest.fail(
+            "Set WOWPERF_E2E_REPORT to a public Warcraft Logs Mythic+ report URL to run this"
+        )
+
+    code, fight = parse_report_url(REPORT)
+    runs = build_repository(tmp_path)
+    loaded = runs.load(code, fight)
+    rankings, references = build_reference_repositories(runs.client, tmp_path)
+
+    subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
+    assert subject is not None, "the report owner should be in the roster"
+
+    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run)[subject.actor_id]
+    speed_sample, parse_samples, _records = _samples(
+        rankings,
+        references,
+        loaded.run,
+        (RequestedPlayer(player=subject, slug=subject_slug, name=subject_name),),
+    )
+    # The aura streams the CLI fetches before it compares. Without them our own
+    # side has nothing to take a share of, and the aura table would come back
+    # empty for a reason that is this test's setup rather than the run's.
+    parse_sample, our_auras = _fetch_parse_auras(
+        parse_samples[subject.actor_id], runs, references, loaded.run, subject
+    )
+    assert parse_sample.can_aggregate(parse_sample.members), (
+        "this specialisation drew too small a sample to state any median, so neither "
+        "a rate row nor a table row exists to compare"
+    )
+
+    subjects = (
+        ComparisonSubject(
+            player=subject,
+            slug=subject_slug,
+            display_name=subject_name,
+            parse=parse_sample,
+            our_auras=our_auras,
+        ),
+    )
+    findings = compare(loaded, speed_sample, subjects)
+    measures = comparison_measures(loaded, subjects)[subject_slug]
+
+    named_in_rows = {f.ability_name for f in findings if f.ability_name}
+    measured = {m.name for m in measures.boss + measures.trash}
+    assert measured, "no ability was measured at all, so there is no table to judge"
+    assert measured - named_in_rows, (
+        "every measured ability produced a row, so the table adds nothing on this run"
+    )
+    assert measures.auras, "a real parse sample should carry aura data"
+
+    # The anti-drift property the unit suite pins against fixtures whose
+    # denominators it chose, held to a route the group actually ran.
+    by_row = {(m.stretch, m.ability_id): m for m in measures.boss + measures.trash}
+    for finding in (f for f in findings if f.id.startswith(RATE_FAMILIES)):
+        assert finding.ability_id is not None
+        row = by_row[(stretch_of(finding), finding.ability_id)]
+        assert finding.ability_name == row.name
+        assert fact_value(finding, "Ours") == f"{row.ours:.1f} casts a minute"
+        assert fact_value(finding, "Reference median") == (
+            f"{row.their_median:.1f} casts a minute"
         )

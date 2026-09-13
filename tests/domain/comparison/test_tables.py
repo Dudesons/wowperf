@@ -15,9 +15,10 @@ from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.measures import Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
-from wowperf.domain.comparison.service import ComparisonSubject
+from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.events import CastEvent
+from wowperf.domain.findings import Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Pull
 
 METEOR = 153561
@@ -357,3 +358,164 @@ def test_no_aura_row_when_our_own_side_returned_none() -> None:
     measures = comparison_measures(a_run_with_a_two_minute_boss(), only_ours(sample))[OUR_SLUG]
 
     assert measures.auras == ()
+
+
+RATE_FAMILIES = (
+    "compare.spells.rate.",
+    "compare.spells.above.",
+    "compare.spells.trash.rate.",
+    "compare.spells.trash.above.",
+)
+"""Every family whose row states a rate and the sample median beside it.
+
+Both directions of both stretches. A row from any other family states no
+median, so there is nothing in it for a table row to agree or disagree with.
+"""
+
+
+def stretch_of(finding: Finding) -> Stretch:
+    """Which denominator a rate row was drawn over, from the family it belongs to.
+
+    The finding does not carry a `Stretch`, and one ability id is routinely
+    measured on both — a button pressed on the boss and on the packs owns a
+    row in each table. Without this, a boss row could be checked against the
+    trash figure for the same button, with neither of them wrong.
+    """
+    return Stretch.TRASH if finding.id.startswith("compare.spells.trash.") else Stretch.BOSS
+
+
+def fact_value(finding: Finding, label: str) -> str:
+    """The value of one labelled fact, which is where a row states a figure unambiguously.
+
+    A title states both figures in one sentence, so a bare substring found
+    there could be either of them — and a row that had swapped the two would
+    still contain both. The label says which figure is which.
+    """
+    return next(fact.value for fact in finding.facts if fact.label == label)
+
+
+def a_boss_and_trash_member(
+    code: str, trash_seconds: float, trash_casts: int, boss_seconds: float, boss_casts: int
+) -> ParseMember:
+    """A reference our route shares a pack with, who also fought the boss.
+
+    Both stretches on one member, so a single sample reaches the boss builder
+    and the trash builder together, each with an ability of its own — Arcane
+    Blast on the pack, Meteor on the boss — so that a figure asserted about one
+    stretch cannot have come from the other.
+    """
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull_of(0, (1,), trash_seconds), a_pull_of(1, (9,), boss_seconds, boss=True)),
+        casts=(
+            casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, trash_casts)
+            + casts_on(THEIRS.actor_id, METEOR, "Meteor", 1, boss_casts)
+        ),
+    )
+    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+
+
+def a_run_with_a_boss_and_a_shared_pack() -> LoadedRun:
+    """Our run: three Arcane Blasts over a 90s pack, three Meteors over a 120s boss."""
+    return a_loaded(
+        (OURS,),
+        (a_pull_of(0, (1,), 90.0), a_pull_of(1, (9,), 120.0, boss=True)),
+        casts=(
+            casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, 3)
+            + casts_on(OURS.actor_id, METEOR, "Meteor", 1, 3)
+        ),
+    )
+
+
+def a_sample_pressing_harder_on_both() -> ParseSample:
+    """Three references, each above us on the pack and on the boss.
+
+    The four figures the assertions compare are 2.0 and 6.0 on trash, 1.5 and
+    9.0 on bosses: all distinct, and none of them equal to a cast count, so no
+    two of them can stand in for each other and no denominator is a minute.
+    """
+    return ParseSample(
+        members=(
+            # Trash 3.0 a minute, boss 2.0.
+            a_boss_and_trash_member("REF1", 120.0, 6, 90.0, 3),
+            # Trash 6.0, boss 9.0 — the median on both stretches.
+            a_boss_and_trash_member("REF2", 150.0, 15, 60.0, 9),
+            # Trash 12.0, boss 16.0.
+            a_boss_and_trash_member("REF3", 65.0, 13, 30.0, 8),
+        )
+    )
+
+
+def test_every_rate_finding_has_a_table_row_stating_the_same_figures() -> None:
+    """The property the table's honesty rests on, on both stretches.
+
+    A rate row and a table row are two projections of one `AbilityRate`, so
+    this cannot fail while that holds. What it is worth pinning against is the
+    case that breaks it: `tables` builds its own per-member input for each
+    stretch, mirroring the finding builder rather than sharing it, and a drift
+    between either pair would move a median under a row that never stated it.
+    Nothing else in the suite puts the two side by side.
+    """
+    ours = a_run_with_a_boss_and_a_shared_pack()
+    subjects = only_ours(a_sample_pressing_harder_on_both())
+
+    findings = compare(ours, None, subjects)
+    measures = comparison_measures(ours, subjects)[OUR_SLUG]
+
+    by_row = {(m.stretch, m.ability_id): m for m in measures.boss + measures.trash}
+    rate_rows = [f for f in findings if f.id.startswith(RATE_FAMILIES)]
+    # Both stretches, or the fixture has stopped reaching one of the two
+    # builders and the loop below would pass on whichever survived.
+    assert {stretch_of(f) for f in rate_rows} == {Stretch.BOSS, Stretch.TRASH}
+
+    for finding in rate_rows:
+        # By id, never by name: a name can belong to more than one game id, and
+        # a run's aura table really does carry several such pairs with figures
+        # of their own.
+        assert finding.ability_id is not None
+        measured = by_row[(stretch_of(finding), finding.ability_id)]
+        assert finding.ability_name == measured.name
+        assert fact_value(finding, "Ours") == f"{measured.ours:.1f} casts a minute"
+        assert fact_value(finding, "Reference median") == (
+            f"{measured.their_median:.1f} casts a minute"
+        )
+        # The sentence a reader actually reads, not only the panel beside it.
+        assert f"{measured.ours:.1f}" in finding.title
+        assert f"{measured.their_median:.1f}" in finding.title
+
+
+def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None:
+    """The same property for the third measure, which is built the same way.
+
+    An aura table is `tables._auras` mirroring `uptime._gap_findings_sample`'s
+    own member loop, so it can drift from the rows exactly as the two rate
+    builders can. Uptimes are shares rather than rates, and a row spells them
+    as whole percents, which is the figure a reader would have to reconcile.
+    """
+    ours = a_run_with_a_two_minute_boss()
+    sample = ParseSample(
+        members=(
+            an_aura_parse_member("REF1", 60.0, 45_000),
+            an_aura_parse_member("REF2", 90.0, 54_000),
+            an_aura_parse_member("REF3", 60.0, 57_000),
+        )
+    )
+    subjects = only_ours(sample, our_auras=OUR_UPTIME)
+
+    findings = compare(ours, None, subjects)
+    measures = comparison_measures(ours, subjects)[OUR_SLUG]
+
+    by_aura = {m.ability_id: m for m in measures.auras}
+    gaps = [f for f in findings if f.id.startswith("compare.uptime.self.")]
+    assert gaps, "no uptime finding to check against"
+
+    for finding in gaps:
+        assert finding.ability_id is not None
+        measured = by_aura[finding.ability_id]
+        assert finding.ability_name == measured.name
+        assert fact_value(finding, "Ours") == f"{measured.ours:.0%} of boss time"
+        assert fact_value(finding, "Reference median") == (
+            f"{measured.their_median:.0%} of boss time"
+        )
+        assert f"{measured.ours:.0%}" in finding.title
+        assert f"{measured.their_median:.0%}" in finding.title
