@@ -11,12 +11,19 @@ from tests.domain.comparison.test_service import (
     a_shared_pack_member,
     only_ours,
 )
-from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.measures import Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
+from wowperf.domain.comparison.trash_spells import (
+    MIN_ALIGNED_TRASH_SECONDS,
+    aligned_trash,
+    is_comparable,
+)
+from wowperf.domain.comparison.uptime import boss_windows
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Pull
@@ -403,6 +410,40 @@ def family_of(finding: Finding) -> str:
     return next(family for family in RATE_FAMILIES if finding.id.startswith(family))
 
 
+def below_the_aligned_trash_floor(ours: LoadedRun, sample: ParseSample) -> tuple[str, ...]:
+    """Codes that shared trash with our route, but too little of it to be compared.
+
+    Deliberately not `is_comparable`'s complement: a reference that shared no
+    trash at all fails that too, and is a different kind of member. This names
+    only the shape that makes the floor itself decide something.
+    """
+    codes = []
+    for member in sample.members:
+        aligned = aligned_trash(ours.run, member.run)
+        if aligned.their_seconds > 0 and not is_comparable(aligned):
+            codes.append(member.row.report_code)
+    return tuple(codes)
+
+
+def without_boss_seconds(sample: ParseSample) -> tuple[str, ...]:
+    """Codes whose boss pulls add up to no time at all to measure a rate over."""
+    return tuple(
+        member.row.report_code for member in sample.members if boss_seconds(member.run) <= 0
+    )
+
+
+def carried_only_outside_boss_pulls(sample: ParseSample) -> tuple[str, ...]:
+    """Codes carrying an aura whose bands never overlap one of their own boss pulls."""
+    codes = []
+    for member in sample.members:
+        if member.auras is None or not member.auras.on_self:
+            continue
+        windows = boss_windows(member.run)
+        if all(uptime_seconds_in(aura, windows) <= 0 for aura in member.auras.on_self):
+            codes.append(member.row.report_code)
+    return tuple(codes)
+
+
 def fact_value(finding: Finding, label: str) -> str:
     """The value of one labelled fact, which is where a row states a figure unambiguously.
 
@@ -444,6 +485,24 @@ def a_boss_and_trash_member(
     return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
 
 
+def a_member_whose_boss_pull_has_no_duration(code: str) -> ParseMember:
+    """A reference whose boss pull was recorded with no duration, and holds casts in it.
+
+    The shape that makes `_boss`'s `their_boss_seconds <= 0` guard decide
+    something. A reference that simply fought no boss does not: `boss_casts`
+    scopes to the boss pull indices, so with none it counts nothing and the
+    guarded and unguarded paths reach the same empty result by different
+    roads. Here the pull exists, so its casts are counted, and only the guard
+    stops them becoming a rate over zero seconds.
+    """
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull_of(0, (9,), 0.0, boss=True),),
+        casts=casts_on(THEIRS.actor_id, METEOR, "Meteor", 0, 5),
+    )
+    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+
+
 def a_run_with_a_boss_and_a_shared_pack() -> LoadedRun:
     """Our run: a 90s pack and a 120s boss, both abilities pressed on each.
 
@@ -472,15 +531,20 @@ def a_sample_reaching_every_rate_family() -> ParseSample:
     one above on each stretch, which is what reaches both directions of both
     families.
 
-    The fourth member is the awkward one, and it is what makes a change to
-    *which* members the table counts visible rather than only a change to how
-    it divides. Thirty seconds of shared trash is under
-    `MIN_ALIGNED_TRASH_SECONDS`, so `is_comparable` drops it from the trash
-    stretch while it stays an ordinary member of the boss stretch. Counted, its
-    30.0 a minute would carry the trash Arcane Blast median to 9.0 and the
-    Meteor median to 7.0. Its boss rates deliberately sit on both medians, so
-    admitting it changes nothing there and a trash failure cannot be confused
-    for a boss one.
+    The last two members are the awkward ones, and they are what make a change
+    to *which* members the table counts visible rather than only a change to
+    how it divides. One shares half the aligned-trash floor, so `is_comparable`
+    drops it from the trash stretch while it stays an ordinary member of the
+    boss stretch; counted, its 30.0 a minute would carry the trash Arcane Blast
+    median to 9.0 and the Meteor median to 7.0. Its boss rates deliberately sit
+    on both boss medians, so admitting it changes nothing there and a trash
+    failure cannot be mistaken for a boss one. The other has a boss pull of no
+    duration holding casts, which is the one shape the boss stretch's own
+    membership guard decides anything about.
+
+    Both are tied to the thing that makes them awkward rather than described
+    beside it: `test_the_awkward_members_stay_awkward` holds each to its own
+    guard, so neither can quietly become an ordinary member if a floor moves.
     """
     return ParseSample(
         members=(
@@ -501,9 +565,15 @@ def a_sample_reaching_every_rate_family() -> ParseSample:
             ),
             # Below the aligned-trash floor: compared on the boss, not on trash.
             a_boss_and_trash_member(
-                "REF4", trash_seconds=30.0, boss_seconds=60.0,
+                "REF4",
+                trash_seconds=MIN_ALIGNED_TRASH_SECONDS / 2,
+                boss_seconds=60.0,
                 trash_blasts=15, trash_meteors=15, boss_meteors=9, boss_blasts=3,
             ),
+            # The second awkward member, for the boss stretch's own membership
+            # guard. It contributes no rate either way; what it decides is
+            # whether its casts are divided by its zero seconds.
+            a_member_whose_boss_pull_has_no_duration("REF5"),
         )
     )
 
@@ -549,6 +619,63 @@ def test_every_rate_finding_has_a_table_row_stating_the_same_figures() -> None:
         assert f"{measured.their_median:.1f}" in finding.title
 
 
+A_SHORT_REFERENCE_BOSS = 60.0
+"""How long the boss pull runs for a reference built at this length.
+
+`an_aura_parse_member` starts every boss pull at zero, so a band beginning
+after this has ended never overlaps one. Named rather than written twice, so
+the band below cannot drift back inside the window it is meant to sit outside.
+"""
+
+
+def a_sample_carrying_an_aura_unevenly() -> ParseSample:
+    """Three references carrying an aura across their boss time, and one that did not.
+
+    The three sit at 0.75, 0.6 and 0.95 of their own boss pulls, each a
+    division by a different denominator, so no fraction is the band length that
+    produced it. Their median is 0.75 against our own 0.25.
+
+    The fourth is the awkward one, and what makes a change to which members the
+    aura table counts visible rather than only a change to how it divides. It
+    carried the aura, but never while it was on a boss, which reads the same as
+    never having carried it at all. Counted as a zero it would drag the median
+    to 0.675.
+    """
+    return ParseSample(
+        members=(
+            an_aura_parse_member("REF1", A_SHORT_REFERENCE_BOSS, 45_000),
+            an_aura_parse_member("REF2", 90.0, 54_000),
+            an_aura_parse_member("REF3", A_SHORT_REFERENCE_BOSS, 57_000),
+            an_aura_parse_member(
+                "REF4",
+                A_SHORT_REFERENCE_BOSS,
+                30_000,
+                band_start_ms=int(A_SHORT_REFERENCE_BOSS * 1000) + 1_000,
+            ),
+        )
+    )
+
+
+def test_the_awkward_members_stay_awkward() -> None:
+    """The membership coverage the two samples add, pinned so it cannot evaporate.
+
+    Each sample carries members that exist only to make a membership guard
+    decide something, and each is awkward by a hair. A floor moving, a literal
+    drifting, or an aura band sliding back inside a boss pull would make them
+    ordinary again — and then the membership mutations would pass unnoticed,
+    the net would be back to catching arithmetic alone, and nothing would fail
+    to say so. This is what fails instead.
+    """
+    rates = a_sample_reaching_every_rate_family()
+    ours = a_run_with_a_boss_and_a_shared_pack()
+
+    # Equality, not membership: it pins that the others are ordinary just as
+    # much as that these two are not.
+    assert below_the_aligned_trash_floor(ours, rates) == ("REF4",)
+    assert without_boss_seconds(rates) == ("REF5",)
+    assert carried_only_outside_boss_pulls(a_sample_carrying_an_aura_unevenly()) == ("REF4",)
+
+
 def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None:
     """The same property for the third measure, which is built the same way.
 
@@ -558,20 +685,7 @@ def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None
     as whole percents, which is the figure a reader would have to reconcile.
     """
     ours = a_run_with_a_two_minute_boss()
-    sample = ParseSample(
-        members=(
-            an_aura_parse_member("REF1", 60.0, 45_000),
-            an_aura_parse_member("REF2", 90.0, 54_000),
-            an_aura_parse_member("REF3", 60.0, 57_000),
-            # The awkward one, and what makes a change to which members the
-            # aura table counts visible rather than only a change to how it
-            # divides. This reference carried the aura, but never while it was
-            # on a boss, which reads the same as never having carried it.
-            # Counted as a zero it would drag the median to 0.675.
-            an_aura_parse_member("REF4", 60.0, 30_000, band_start_ms=100_000),
-        )
-    )
-    subjects = only_ours(sample, our_auras=OUR_UPTIME)
+    subjects = only_ours(a_sample_carrying_an_aura_unevenly(), our_auras=OUR_UPTIME)
 
     findings = compare(ours, None, subjects)
     measures = comparison_measures(ours, subjects)[OUR_SLUG]
