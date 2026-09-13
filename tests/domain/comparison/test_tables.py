@@ -1,0 +1,338 @@
+# ABOUTME: The per-player measures the report's comparison table is built from.
+# ABOUTME: One entry per compared player, keyed by the slug the page matches cards on.
+
+from tests.domain.comparison.test_service import (
+    ARCANE_BLAST,
+    OUR_SLUG,
+    OURS,
+    THEIRS,
+    a_loaded,
+    a_run_sharing_a_pack,
+    a_shared_pack_member,
+    only_ours,
+)
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.measures import Stretch, Verdict
+from wowperf.domain.comparison.reference import ParseRow
+from wowperf.domain.comparison.sample import ParseMember, ParseSample
+from wowperf.domain.comparison.service import ComparisonSubject
+from wowperf.domain.comparison.tables import comparison_measures
+from wowperf.domain.events import CastEvent
+from wowperf.domain.model import EnemyNpc, LoadedRun, Pull
+
+METEOR = 153561
+ARCANE_POWER = 12042
+
+
+def a_pull_of(index: int, game_ids: tuple[int, ...], seconds: float, boss: bool = False) -> Pull:
+    """`test_service.a_pull`, with a duration of our own choosing.
+
+    Every pull that fixture builds runs sixty seconds, and a rate over sixty
+    seconds is indistinguishable from the cast count behind it: `count / 60 *
+    60` is `count`. A denominator that is not a minute is what lets an asserted
+    rate fail when the division it claims to check is deleted.
+    """
+    return Pull(
+        index=index,
+        pull_id=index + 1,
+        name="Nalorakk" if boss else "Pack",
+        encounter_id=2607 if boss else 0,
+        start_ms=index * 200_000,
+        end_ms=index * 200_000 + int(seconds * 1000),
+        killed=True,
+        x=index,
+        y=index,
+        enemies=tuple(EnemyNpc(actor_id=100 + n, game_id=g) for n, g in enumerate(game_ids)),
+    )
+
+
+def casts_on(
+    actor_id: int, ability_id: int, name: str, pull_index: int, count: int
+) -> tuple[CastEvent, ...]:
+    """`count` presses of one ability inside one pull."""
+    return tuple(
+        CastEvent(
+            actor_id=actor_id,
+            ability_id=ability_id,
+            ability_name=name,
+            timestamp_ms=pull_index * 200_000 + 1_000 * n,
+            pull_index=pull_index,
+        )
+        for n in range(count)
+    )
+
+
+def a_parse_row(code: str) -> ParseRow:
+    return ParseRow(
+        report_code=code,
+        fight_id=16,
+        keystone_level=16,
+        duration_ms=1_399_143,
+        character_name="Bríala",
+        class_name="Mage",
+        spec="Arcane",
+    )
+
+
+def test_every_compared_player_gets_one_entry_keyed_by_slug() -> None:
+    sample = ParseSample(
+        members=tuple(a_shared_pack_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+    subject = ComparisonSubject(
+        player=OURS, slug=OUR_SLUG, display_name=OURS.name, parse=sample
+    )
+
+    measures = comparison_measures(a_run_sharing_a_pack(), (subject,))
+
+    assert set(measures) == {OUR_SLUG}
+    trash = {m.name: m for m in measures[OUR_SLUG].trash}
+    assert trash["Arcane Blast"].verdict is Verdict.BELOW
+    assert trash["Arcane Blast"].stretch is Stretch.TRASH
+    assert measures[OUR_SLUG].pack_count == 1
+    # The id, not only the name: the page draws an icon from it, and a name
+    # can belong to more than one game id.
+    assert trash["Arcane Blast"].ability_id == ARCANE_BLAST
+
+
+def test_a_player_with_no_parse_sample_gets_no_entry() -> None:
+    """A slug with an empty table and a slug that is absent read differently: the
+    first says a comparison ran and found nothing, the second that none ran."""
+    subject = ComparisonSubject(
+        player=OURS, slug=OUR_SLUG, display_name=OURS.name, parse=None
+    )
+
+    assert comparison_measures(a_run_sharing_a_pack(), (subject,)) == {}
+
+
+def test_a_player_whose_sample_came_back_empty_gets_no_entry() -> None:
+    """The other half of the same guard. A sample object holding no members is
+    what a leaderboard that answered with nothing leaves behind, and it says the
+    same thing about the player as no sample at all: nothing was compared."""
+    subject = ComparisonSubject(
+        player=OURS, slug=OUR_SLUG, display_name=OURS.name, parse=ParseSample()
+    )
+
+    assert comparison_measures(a_run_sharing_a_pack(), (subject,)) == {}
+
+
+def a_boss_parse_member(
+    code: str, seconds: float, boss_casts: int, trash_casts: int = 0
+) -> ParseMember:
+    """A reference whose boss pull runs `seconds` and carries `boss_casts` Meteors.
+
+    `trash_casts` puts the same ability on a pack of enemy types our route never
+    fought. A boss rate that counted those would be counting presses from a
+    stretch the boss comparison does not measure, and the pack matches nothing
+    of ours, so it cannot reach the trash half either.
+    """
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull_of(0, (9,), seconds, boss=True), a_pull_of(1, (7,), 60.0)),
+        casts=(
+            casts_on(THEIRS.actor_id, METEOR, "Meteor", 0, boss_casts)
+            + casts_on(THEIRS.actor_id, METEOR, "Meteor", 1, trash_casts)
+        ),
+    )
+    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+
+
+def a_run_with_a_long_boss_pull() -> LoadedRun:
+    """Our run: four Meteors over a two-minute boss pull, and two more off it."""
+    return a_loaded(
+        (OURS,),
+        (a_pull_of(0, (1,), 60.0), a_pull_of(1, (9,), 120.0, boss=True)),
+        casts=(
+            casts_on(OURS.actor_id, METEOR, "Meteor", 0, 2)
+            + casts_on(OURS.actor_id, METEOR, "Meteor", 1, 4)
+        ),
+    )
+
+
+def test_a_boss_rate_is_the_sample_median_against_our_own_per_minute_figure() -> None:
+    """Four Meteors over 120s is 2.0 a minute, not the 4 we pressed; the sample's
+    three qualifying references sit at 2.0, 6.0 and 16.0, a median of 6.0 rather
+    than their counts' median of 8. Neither figure is reachable without dividing."""
+    sample = ParseSample(
+        members=(
+            a_boss_parse_member("REF1", 90.0, 3),
+            a_boss_parse_member("REF2", 90.0, 9, trash_casts=5),
+            a_boss_parse_member("REF3", 30.0, 8),
+            # Two presses is below MIN_CASTS_TO_COMPARE, so this reference's own
+            # sample is too small to argue from. Counted, its 2.0 a minute would
+            # drag the median to 4.0.
+            a_boss_parse_member("REF4", 60.0, 2),
+        )
+    )
+
+    measures = comparison_measures(a_run_with_a_long_boss_pull(), only_ours(sample))[OUR_SLUG]
+
+    boss = {m.name: m for m in measures.boss}
+    assert boss["Meteor"].ours == 2.0
+    assert boss["Meteor"].their_median == 6.0
+    assert boss["Meteor"].their_rates == (2.0, 6.0, 16.0)
+    assert boss["Meteor"].stretch is Stretch.BOSS
+    assert boss["Meteor"].verdict is Verdict.BELOW
+    assert measures.boss_seconds == 120.0
+    # Our route and the sample's share no pack, so the trash half of the same
+    # player's table is empty rather than restating the boss figures.
+    assert measures.trash == ()
+    assert measures.trash_seconds == 0.0
+
+
+def a_trash_parse_member(
+    code: str, game_ids: tuple[int, ...], seconds: float, casts: int
+) -> ParseMember:
+    """A reference whose route holds one pack of `game_ids`, fought for `seconds`."""
+    theirs = a_loaded(
+        (THEIRS,),
+        (a_pull_of(0, game_ids, seconds), a_pull_of(1, (9,), 60.0, boss=True)),
+        casts=casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, casts),
+    )
+    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+
+
+def a_run_with_three_packs() -> LoadedRun:
+    """Our run: two packs the sample shares between them, one it never fought, one boss."""
+    return a_loaded(
+        (OURS,),
+        (
+            a_pull_of(0, (1,), 90.0),
+            a_pull_of(1, (2,), 70.0),
+            a_pull_of(2, (5,), 80.0),
+            a_pull_of(3, (9,), 60.0, boss=True),
+        ),
+        casts=(
+            casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, 4)
+            + casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 1, 4)
+            + casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 2, 10)
+            + casts_on(OURS.actor_id, ARCANE_BLAST, "Arcane Blast", 3, 10)
+        ),
+    )
+
+
+def test_trash_denominators_are_every_pack_that_aligned_with_anybody() -> None:
+    """No reference shares both of our packs, so our own denominator is the union
+    of the two: 160 seconds, over which eight presses are 3.0 a minute rather than
+    the 28 we pressed across the whole run. The sample's qualifying references sit
+    at 3.0, 6.0 and 12.0, a median of 6.0 their raw counts cannot reach."""
+    sample = ParseSample(
+        members=(
+            a_trash_parse_member("REF1", (1,), 120.0, 6),
+            a_trash_parse_member("REF2", (2,), 150.0, 15),
+            a_trash_parse_member("REF3", (1,), 60.0, 12),
+            # Thirty seconds of shared trash is under MIN_ALIGNED_TRASH_SECONDS,
+            # so this reference is not comparable on this stretch at all.
+            # Counted, its 60.0 a minute would drag the median to 9.0.
+            a_trash_parse_member("REF4", (1,), 30.0, 30),
+            # Comparable, but two presses are below MIN_CASTS_TO_COMPARE.
+            # Counted, its 2.0 a minute would drag the median to 4.5.
+            a_trash_parse_member("REF5", (1,), 60.0, 2),
+        )
+    )
+
+    measures = comparison_measures(a_run_with_three_packs(), only_ours(sample))[OUR_SLUG]
+
+    trash = {m.name: m for m in measures.trash}
+    assert trash["Arcane Blast"].ours == 3.0
+    assert trash["Arcane Blast"].their_median == 6.0
+    assert trash["Arcane Blast"].their_rates == (3.0, 6.0, 12.0)
+    assert trash["Arcane Blast"].stretch is Stretch.TRASH
+    assert trash["Arcane Blast"].verdict is Verdict.BELOW
+    assert measures.trash_seconds == 160.0
+    assert measures.pack_count == 2
+
+
+def an_aura(band_ms: int, start_ms: int = 0) -> Aura:
+    return Aura(
+        ability_id=ARCANE_POWER,
+        name="Arcane Power",
+        total_uptime_ms=band_ms,
+        uses=1,
+        bands=(AuraBand(start_ms=start_ms, end_ms=start_ms + band_ms),),
+    )
+
+
+def an_aura_parse_member(
+    code: str,
+    seconds: float,
+    band_ms: int,
+    fought_a_boss: bool = True,
+    band_start_ms: int = 0,
+) -> ParseMember:
+    """A reference carrying Arcane Power for `band_ms` of a boss pull `seconds` long.
+
+    A boss pull built here always starts at zero, so a `band_start_ms` past the
+    end of one is an aura the reference carried outside every boss pull.
+    """
+    pulls = (
+        (a_pull_of(0, (9,), seconds, boss=True),)
+        if fought_a_boss
+        else (a_pull_of(0, (7,), seconds),)
+    )
+    theirs = a_loaded((THEIRS,), pulls)
+    return ParseMember(
+        row=a_parse_row(code),
+        run=theirs.run,
+        auras=PlayerAuras(
+            actor_id=THEIRS.actor_id, on_self=(an_aura(band_ms, band_start_ms),)
+        ),
+    )
+
+
+def a_parse_member_without_auras(code: str) -> ParseMember:
+    """A reference whose aura query never came back, which is a real state."""
+    theirs = a_loaded((THEIRS,), (a_pull_of(0, (9,), 60.0, boss=True),))
+    return ParseMember(row=a_parse_row(code), run=theirs.run)
+
+
+def a_run_with_a_two_minute_boss() -> LoadedRun:
+    return a_loaded((OURS,), (a_pull_of(0, (9,), 120.0, boss=True),))
+
+
+OUR_UPTIME = PlayerAuras(actor_id=OURS.actor_id, on_self=(an_aura(30_000),))
+
+
+def test_an_aura_row_is_a_share_of_boss_time_on_both_sides() -> None:
+    """Thirty seconds of a two-minute boss pull is a quarter of it, and the
+    sample's three boss-fighting references carried it over 0.75, 0.6 and 0.95 of
+    theirs. Every one of those is a division by a different denominator, so none
+    of them is the band length that produced it."""
+    sample = ParseSample(
+        members=(
+            an_aura_parse_member("REF1", 60.0, 45_000),
+            an_aura_parse_member("REF2", 90.0, 54_000),
+            an_aura_parse_member("REF3", 60.0, 57_000),
+            # Aura data but no boss pull: there is no boss time to take a share
+            # of, so this reference carries nothing rather than dividing by zero.
+            an_aura_parse_member("REF4", 60.0, 45_000, fought_a_boss=False),
+            # No aura data at all, so not an eligible member of the sample.
+            a_parse_member_without_auras("REF5"),
+            # The aura was up, but never while this reference was on a boss,
+            # which reads the same as never having carried it. Counted as a
+            # zero, it would pull the median down to 0.675.
+            an_aura_parse_member("REF6", 60.0, 30_000, band_start_ms=100_000),
+        )
+    )
+
+    measures = comparison_measures(
+        a_run_with_a_two_minute_boss(), only_ours(sample, our_auras=OUR_UPTIME)
+    )[OUR_SLUG]
+
+    auras = {m.name: m for m in measures.auras}
+    assert auras["Arcane Power"].ours == 0.25
+    assert auras["Arcane Power"].their_median == 0.75
+    assert auras["Arcane Power"].their_fractions == (0.75, 0.6, 0.95)
+    assert auras["Arcane Power"].verdict is Verdict.BELOW
+
+
+def test_no_aura_row_when_our_own_side_returned_none() -> None:
+    """Our own aura query may never have been issued, and a comparison with one
+    side missing states a single reference rather than a statistic. One reference
+    has no median, so there is nothing for an aura row to hold."""
+    sample = ParseSample(
+        members=tuple(an_aura_parse_member(c, 60.0, 45_000) for c in ("REF1", "REF2", "REF3"))
+    )
+
+    measures = comparison_measures(a_run_with_a_two_minute_boss(), only_ours(sample))[OUR_SLUG]
+
+    assert measures.auras == ()
