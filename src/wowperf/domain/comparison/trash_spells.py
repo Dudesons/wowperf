@@ -111,7 +111,6 @@ def compare_trash_spells_sample(
 
     ours_aligned: list[AlignedTrash] = []
     per_member: list[tuple[float, dict[int, int]]] = []
-    names: dict[int, str] = {}
     for member in sample.members:
         actor_id = their_actor_id(member, member.row.character_name)
         aligned = aligned_trash(ours.run, member.run)
@@ -120,8 +119,6 @@ def compare_trash_spells_sample(
             continue
         ours_aligned.append(aligned)
         their_casts = casts_in(member.casts, actor_id, aligned.their_pulls)
-        for ability_id, (name, _count) in their_casts.items():
-            names.setdefault(ability_id, name)
         per_member.append(
             (
                 aligned.their_seconds,
