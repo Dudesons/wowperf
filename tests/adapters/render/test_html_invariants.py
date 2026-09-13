@@ -480,6 +480,28 @@ def test_the_two_compared_rows_differ_in_every_column() -> None:
     assert second.ours != second.theirs
 
 
+def test_every_verdict_a_row_can_carry_is_tinted_by_the_stylesheet() -> None:
+    """The class reaches the page under the test above; whether the stylesheet
+    says anything about it is a separate question, and this is the only place
+    it is asked.
+
+    A verdict with no rule does not render as unstyled-looking. It inherits the
+    body's `--ink`, which is the brightest ink on the page -- so the row a
+    reader has nothing to do about shouts louder than the row that sits under
+    the sample. Four branches reach `tr.v-*`, and a fifth added later would
+    reach it too, silently, with every other assertion about verdicts green.
+    """
+    page = render(rich_report())
+    for verdict in Verdict:
+        tint = re.compile(
+            r"\.compared-rows tr\.v-" + verdict.value + r"\b[^{]*\{[^}]*color:"
+        )
+        assert tint.search(page), (
+            f"the stylesheet sets no colour for v-{verdict.value}, so that row "
+            f"falls through to the body's ink and reads as the loudest of the four"
+        )
+
+
 def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
     # The three-prefix rule below is proved against `rich_html()`, which never
     # resolves a press icon at all -- so a future edit drawing `<image

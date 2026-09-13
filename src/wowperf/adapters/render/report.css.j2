@@ -226,11 +226,16 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .compared-rows td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
 .compared-rows .num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The verdict is a word in its own column and a tint here, never a colour alone:
-   a reader who cannot separate the two tints, or who printed the page, still
-   has the column. Both tints land on the second cell, our own figure, which is
-   the one the verdict is about -- --theirs mutes it where we sit under the
-   sample's median and --ours picks it out where we sit over it. An unjudged row
-   is greyed whole, because none of its figures was read as a shortfall. */
+   a reader who cannot separate the tints, or who printed the page, still has
+   the column. Three of the four land on the second cell, our own figure, which
+   is the one the verdict is about -- --theirs mutes it where we sit under the
+   sample's median, --ours picks it out where we sit over it, and --ink-dim
+   settles it where the two are level. Level is tinted rather than left to
+   inherit: the body's ink is the brightest on the page, so a rule-less row with
+   nothing to do about it would shout over the row that sits under the sample.
+   An unjudged row is greyed whole, because none of its figures was read as a
+   shortfall. */
 .compared-rows tr.v-below td:nth-child(2) { color: var(--theirs); }
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
+.compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
 .compared-rows tr.v-unjudged td { color: var(--ink-faint); }
