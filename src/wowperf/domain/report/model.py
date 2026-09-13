@@ -540,6 +540,36 @@ class DeathCard(Frozen):
     """
 
 
+class ComparisonRow(Frozen):
+    """One ability or aura the comparison measured, formatted for a table cell.
+
+    Strings, not floats: the template decides nothing, including how a number
+    is spelled. `verdict` is the word the row is styled by -- below, above,
+    level or unjudged -- and never a colour.
+    """
+
+    ability_id: int
+    name: str
+    ours: str
+    theirs: str
+    spread: str
+    sample: str
+    verdict: str
+
+
+class ComparisonTable(Frozen):
+    """One stretch's worth of measured figures, under its own denominator.
+
+    The caption states the denominator because a rate per minute means nothing
+    to a reader who cannot see how many minutes it came from, and the three
+    tables never share one.
+    """
+
+    heading: str
+    caption: str
+    rows: tuple[ComparisonRow, ...] = ()
+
+
 class PlayerCard(Frozen):
     """One player's measured facts.
 
@@ -576,6 +606,9 @@ class PlayerCard(Frozen):
     `None` only on a card built without one: the builder always supplies a
     timeline, withheld when it has nothing to draw.
     """
+    comparison_tables: tuple[ComparisonTable, ...] = ()
+    """Every figure this player's comparison measured, as the evidence for the
+    rows above. Empty for a player nobody compared."""
 
 
 class Header(Frozen):

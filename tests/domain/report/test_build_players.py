@@ -2,6 +2,13 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
+from wowperf.domain.comparison.measures import (
+    AbilityRate,
+    AuraUptime,
+    PlayerMeasures,
+    Stretch,
+    Verdict,
+)
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -593,3 +600,136 @@ def test_an_above_row_lands_under_the_players_card() -> None:
 
     assert card.spell_and_talent.state is SectionState.PRESENT
     assert ids(card.spell_and_talent_rows) == ["compare.spells.above.0.stonewake-0"]
+
+
+def test_a_compared_players_card_carries_its_tables_sorted_by_gap() -> None:
+    """The top of each table is the end worth reading, so the largest difference
+    comes first whichever direction it runs in."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Small gap", ours=9.0, their_median=10.0,
+                            their_rates=(10.0,), stretch=Stretch.BOSS, verdict=Verdict.LEVEL),
+                AbilityRate(ability_id=2, name="Big gap", ours=2.0, their_median=9.0,
+                            their_rates=(9.0,), stretch=Stretch.BOSS, verdict=Verdict.BELOW),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    boss = next(t for t in card.comparison_tables if "boss" in t.heading.lower())
+    assert [row.name for row in boss.rows] == ["Big gap", "Small gap"]
+    assert boss.rows[0].ours == "2.0"
+    assert boss.rows[0].theirs == "9.0"
+    assert boss.rows[0].verdict == "below"
+
+
+def test_a_rate_row_states_every_field_to_one_decimal_place() -> None:
+    """The sort-order test above uses whole numbers, which print the same whether
+    or not each figure is rounded to one decimal place; this uses fractional ones
+    so every field's own formatting is what the assertion actually depends on."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss=(
+                AbilityRate(ability_id=1, name="Only ability", ours=2.34, their_median=9.06,
+                            their_rates=(7.02, 9.06, 11.04), stretch=Stretch.BOSS,
+                            verdict=Verdict.BELOW),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    row = next(t for t in card.comparison_tables if "boss" in t.heading.lower()).rows[0]
+    assert row.ours == "2.3"
+    assert row.theirs == "9.1"
+    assert row.spread == "7.0 to 11.0"
+    assert row.sample == "3 top parses"
+
+
+def test_a_zero_boss_denominator_beside_a_real_trash_one_only_shows_the_trash_table() -> None:
+    """`_boss` can return no rates and a boss_seconds of 0.0 while `_trash` still
+    carries a real denominator, because trash has no aggregate-size gate of its
+    own. A heading built over "0s of boss pulls" would be wrong; dropping a table
+    that has no rows -- which an empty `boss` always pairs with here -- is what
+    keeps that from being built at all."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            trash=(
+                AbilityRate(ability_id=1, name="Blood Boil", ours=6.0, their_median=9.1,
+                            their_rates=(9.1, 8.4, 9.9), stretch=Stretch.TRASH,
+                            verdict=Verdict.BELOW),
+            ),
+            boss_seconds=0.0,
+            trash_seconds=950.0,
+            pack_count=4,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    assert [t.heading for t in card.comparison_tables] == ["Casts on shared trash packs"]
+
+
+def test_an_uncompared_player_gets_no_tables() -> None:
+    card = build_players(
+        a_loaded(), (), frozenset(), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures={},
+    )[0]
+
+    assert card.comparison_tables == ()
+
+
+def test_an_uptime_tables_rows_are_also_sorted_by_gap() -> None:
+    """The boss-table sort test above only reaches `_rate_rows`; `_aura_rows` sorts
+    with the same rule on its own line, so a second table needs its own two rows
+    to prove that copy sorts too rather than happening to inherit the first's order."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
+                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
+                AuraUptime(ability_id=2, name="Big gap", ours=0.40, their_median=1.0,
+                           their_fractions=(1.0,), verdict=Verdict.BELOW),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
+    assert [row.name for row in auras.rows] == ["Big gap", "Small gap"]
+
+
+def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
+    """Rates are casts a minute and uptimes are a share of boss time. A column
+    that spelled both the same way would invite reading one as the other."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraUptime(ability_id=3, name="Bone Shield", ours=0.984,
+                           their_median=1.0, their_fractions=(1.0,), verdict=Verdict.LEVEL),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
+    assert auras.rows[0].ours == "98%"
+    assert auras.rows[0].theirs == "100%"

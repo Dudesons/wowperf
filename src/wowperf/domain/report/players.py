@@ -2,8 +2,11 @@
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
 from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
 from wowperf.domain.analysis.players import display_names, summarise_players
+from wowperf.domain.comparison.measures import AbilityRate, AuraUptime, PlayerMeasures
+from wowperf.domain.comparison.statistics import observed_range
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.frame import (
@@ -16,10 +19,21 @@ from wowperf.domain.report.frame import (
     section_for,
 )
 from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
-from wowperf.domain.report.model import PlayerCard, Section, SectionState, Tooltip
+from wowperf.domain.report.model import (
+    ComparisonRow,
+    ComparisonTable,
+    PlayerCard,
+    Section,
+    SectionState,
+    Tooltip,
+)
 from wowperf.domain.report.player_timeline import build_player_timeline
 from wowperf.domain.season import Defensives, ThroughputCooldowns
 from wowperf.domain.slug import player_slug
+
+NO_MEASURES: Mapping[str, PlayerMeasures] = MappingProxyType({})
+"""The default for every caller that has no comparison measures to offer: tests,
+and any surface where a card is built without the comparison behind it."""
 
 CLASS_COLOURS = (
     "DeathKnight", "DemonHunter", "Druid", "Evoker", "Hunter", "Mage", "Monk",
@@ -97,6 +111,7 @@ def build_players(
     defensives: Defensives,
     throughput: ThroughputCooldowns,
     tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
+    measures: Mapping[str, PlayerMeasures] = NO_MEASURES,
 ) -> tuple[PlayerCard, ...]:
     """One card per player.
 
@@ -181,6 +196,89 @@ def build_players(
                     loaded, summary.actor_id, summary.class_name, summary.spec,
                     defensives, throughput,
                 ),
+                comparison_tables=_tables(measures.get(slug)),
             )
         )
     return tuple(cards)
+
+
+def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
+    """The three tables, each dropped when it has no rows to show."""
+    if measures is None:
+        return ()
+    built = []
+    if measures.boss:
+        built.append(
+            ComparisonTable(
+                heading="Casts on boss pulls",
+                caption=(
+                    f"Casts a minute over {measures.boss_seconds:.0f}s of boss pulls, "
+                    "against the median of the parses that cast each. Derived."
+                ),
+                rows=_rate_rows(measures.boss),
+            )
+        )
+    if measures.trash:
+        built.append(
+            ComparisonTable(
+                heading="Casts on shared trash packs",
+                caption=(
+                    f"Casts a minute over {measures.trash_seconds:.0f}s of trash across "
+                    f"{measures.pack_count} {plural(measures.pack_count, 'pack')} both routes "
+                    "fought, against the median of the parses that cast each. Derived."
+                ),
+                rows=_rate_rows(measures.trash),
+            )
+        )
+    if measures.auras:
+        built.append(
+            ComparisonTable(
+                heading="Buff uptime on boss pulls",
+                caption=(
+                    f"Share of {measures.boss_seconds:.0f}s of boss pulls, against the "
+                    "median of the parses that carried each. Derived."
+                ),
+                rows=_aura_rows(measures.auras),
+            )
+        )
+    return tuple(built)
+
+
+def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
+    """Cast rates, widest difference first, whichever direction it runs in."""
+    ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
+    rows = []
+    for m in ordered:
+        low, high = observed_range(m.their_rates)
+        rows.append(
+            ComparisonRow(
+                ability_id=m.ability_id,
+                name=m.name,
+                ours=f"{m.ours:.1f}",
+                theirs=f"{m.their_median:.1f}",
+                spread=f"{low:.1f} to {high:.1f}",
+                sample=f"{len(m.their_rates)} top parses",
+                verdict=m.verdict.value,
+            )
+        )
+    return tuple(rows)
+
+
+def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
+    """Aura uptimes, as a share of boss time rather than as seconds."""
+    ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
+    rows = []
+    for m in ordered:
+        low, high = observed_range(m.their_fractions)
+        rows.append(
+            ComparisonRow(
+                ability_id=m.ability_id,
+                name=m.name,
+                ours=f"{m.ours:.0%}",
+                theirs=f"{m.their_median:.0%}",
+                spread=f"{low:.0%} to {high:.0%}",
+                sample=f"{len(m.their_fractions)} top parses",
+                verdict=m.verdict.value,
+            )
+        )
+    return tuple(rows)

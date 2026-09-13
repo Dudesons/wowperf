@@ -31,6 +31,7 @@ from wowperf.domain.report.build import build_report
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.model import (
     AvailabilityRow,
+    ComparisonRow,
     CooldownRow,
     CurveGuide,
     CurvePoint,
@@ -681,6 +682,7 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (AvailabilityRow, "ability_id"),  # a spell's identity, not a duration
     (DeathCard, "killing_blow_id"),  # a spell's identity, not a duration
     (LedgerRow, "ability_id"),  # a spell's identity, not a duration
+    (ComparisonRow, "ability_id"),  # a spell's identity, not a duration
     # The health curve's geometry. Every one of these is a viewBox coordinate
     # computed in `health_curve.py`: a position on a fixed axis rather than a
     # quantity, so a column of them summed would mean nothing a reader could
