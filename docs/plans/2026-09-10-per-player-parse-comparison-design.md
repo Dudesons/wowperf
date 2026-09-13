@@ -1,6 +1,6 @@
 # The Per-Player Parse Comparison (J2) — Design
 
-**Status:** Approved 2026-09-10, not implemented. Phase J of
+**Status:** Approved and implemented 2026-09-10, from `47f6286`. Phase J of
 `2026-09-06-audit-and-improvement-roadmap.md`, second half.
 
 **Authority:** `2026-09-03-mplus-postmortem-design.md` remains the authority on analysers,

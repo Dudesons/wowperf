@@ -1,6 +1,8 @@
 # The Comparison Table — Design
 
-**Status:** Proposed 2026-09-13. Not implemented.
+**Status:** Approved and implemented 2026-09-13, in `ff2318e..1ebc1b8`. The rulings taken
+during that execution, and the trades they leave standing, are in
+`2026-09-13-comparison-table-rulings.md`.
 
 **Authority:** `2026-09-03-mplus-postmortem-design.md` remains the authority on analysers, badges
 and refusals; nothing here reopens its §6.5, and its rule against ranking per-player throughput

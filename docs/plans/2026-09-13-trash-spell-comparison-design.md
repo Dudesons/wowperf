@@ -1,6 +1,6 @@
 # The Trash Spell Comparison — Design
 
-**Status:** Proposed 2026-09-13. Not implemented.
+**Status:** Approved and implemented 2026-09-13, from `85a4da2`.
 
 **Authority:** `2026-09-03-mplus-postmortem-design.md` remains the authority on analysers,
 badges and refusals. This design amends its §6.5, which restricts the spell comparison to boss
