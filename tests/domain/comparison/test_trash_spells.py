@@ -205,11 +205,13 @@ def test_trash_rate_measures_stamp_the_trash_stretch() -> None:
     rather than leaving a reader to infer it from the figure."""
     per_member = [(60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10})]
 
-    measures = trash_rate_measures({BLOOD_BOIL: ("Blood Boil", 4)}, 60.0, per_member)
+    # Our own side runs 120s, not 60, so `ours` cannot be mistaken for the raw
+    # count: a rate that skipped the division would read 4.0 here, not 2.0.
+    measures = trash_rate_measures({BLOOD_BOIL: ("Blood Boil", 4)}, 120.0, per_member)
 
     assert [m.stretch for m in measures] == [Stretch.TRASH]
     assert measures[0].verdict is Verdict.BELOW
-    assert measures[0].ours == 4.0
+    assert measures[0].ours == 2.0
     assert measures[0].their_median == 10.0
 
 

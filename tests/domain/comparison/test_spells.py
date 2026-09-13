@@ -866,7 +866,11 @@ def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -
     """The one place a boss cast rate is computed. The findings are a projection of
     these, and so is the table, so a second computation would let a row and the
     table beneath it disagree about one player's figure."""
-    ours_on_bosses = {METEOR: ("Meteor", 2), SHIFTING_POWER: ("Shifting Power", 3)}
+    # Our own boss time is 120s, not 60, so a figure below cannot be mistaken
+    # for a raw count that skipped the division: Meteor's count is 2 and its
+    # rate is 1.0, and Shifting Power's count is 6 to hold its rate at the
+    # sample's own median of 3.0, so it still lands on level rather than above.
+    ours_on_bosses = {METEOR: ("Meteor", 2), SHIFTING_POWER: ("Shifting Power", 6)}
     per_member = [
         (60.0, {METEOR: 6, SHIFTING_POWER: 3}),
         (60.0, {METEOR: 8, SHIFTING_POWER: 3}),
@@ -874,9 +878,9 @@ def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -
         (60.0, {METEOR: 10, SHIFTING_POWER: 3}),
     ]
 
-    measures = {m.name: m for m in rate_measures(ours_on_bosses, 60.0, per_member)}
+    measures = {m.name: m for m in rate_measures(ours_on_bosses, 120.0, per_member)}
 
-    assert measures["Meteor"].ours == 2.0
+    assert measures["Meteor"].ours == 1.0
     assert measures["Meteor"].their_median == 7.0
     assert measures["Meteor"].their_rates == (6.0, 8.0, 4.0, 10.0)
     assert measures["Meteor"].verdict is Verdict.BELOW
@@ -887,7 +891,10 @@ def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -
 def test_rate_measures_marks_an_ability_we_cast_far_more_as_above() -> None:
     per_member = [(60.0, {METEOR: 6}), (60.0, {METEOR: 8}), (60.0, {METEOR: 4})]
 
-    measures = rate_measures({METEOR: ("Meteor", 20)}, 60.0, per_member)
+    # 6 casts over 30s of boss time is 12.0 a minute, twice the sample's
+    # median of 6.0. The raw count of 6 alone would not clear that bar, so
+    # this only reads as above once the division actually runs.
+    measures = rate_measures({METEOR: ("Meteor", 6)}, 30.0, per_member)
 
     assert [m.verdict for m in measures] == [Verdict.ABOVE]
 
