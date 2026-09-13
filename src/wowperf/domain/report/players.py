@@ -287,7 +287,7 @@ def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
 
 
 def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
-    """Aura uptimes, as a share of boss time rather than as seconds."""
+    """Aura uptimes, widest difference first, as shares of boss time not seconds."""
     ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
     rows = []
     for m in ordered:
