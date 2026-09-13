@@ -502,6 +502,34 @@ def test_every_verdict_a_row_can_carry_is_tinted_by_the_stylesheet() -> None:
         )
 
 
+def test_only_a_verdict_that_differs_from_the_sample_carries_weight() -> None:
+    """Which rows have presence, pinned as the pair it is rather than one rule
+    at a time.
+
+    Hue says which side of the comparison our figure landed on; weight says
+    whether the comparison found a difference at all. Those are two readings,
+    and only the second decides what a reader's eye is pulled to. Below and
+    above are the two the reader can act on, so both carry weight; level and
+    unjudged recede. Asserting only that below is weighted would leave a later
+    edit free to weight all four, which says nothing, or to weight level alone,
+    which says the opposite -- so each verdict is checked against whether it
+    should have weight, not merely whether it has some.
+    """
+    page = render(rich_report())
+    differs = {Verdict.BELOW.value, Verdict.ABOVE.value}
+    for verdict in Verdict:
+        rule = re.search(
+            r"\.compared-rows tr\.v-" + verdict.value + r"\b[^{]*\{([^}]*)\}", page
+        )
+        assert rule is not None, f"no rule at all for v-{verdict.value}"
+        weighted = "font-weight" in rule.group(1)
+        assert weighted is (verdict.value in differs), (
+            f"v-{verdict.value} {'carries' if weighted else 'lacks'} font-weight; "
+            f"the two verdicts that differ from the sample carry it and the two "
+            f"that do not recede"
+        )
+
+
 def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
     # The three-prefix rule below is proved against `rich_html()`, which never
     # resolves a press icon at all -- so a future edit drawing `<image
