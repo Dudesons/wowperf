@@ -203,10 +203,16 @@ def test_both_sides_at_the_floor_are_comparable() -> None:
 def test_trash_rate_measures_stamp_the_trash_stretch() -> None:
     """The two stretches never share a denominator, so a row carries which it is
     rather than leaving a reader to infer it from the figure."""
-    per_member = [(60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 10})]
-
     # Our own side runs 120s, not 60, so `ours` cannot be mistaken for the raw
     # count: a rate that skipped the division would read 4.0 here, not 2.0.
+    # The reference side carries three different rates rather than three
+    # copies of 10 -- with every member identical, a skipped division on any
+    # one of them cannot move the median of three at all, since the other
+    # two still sort to the middle. Spread across 8.0, 10.0 and 14.0 (median
+    # still 10.0), the first member also runs 120s, so a raw count in place
+    # of its rate is a different number that sorts to a different place.
+    per_member = [(120.0, {BLOOD_BOIL: 16}), (60.0, {BLOOD_BOIL: 10}), (60.0, {BLOOD_BOIL: 14})]
+
     measures = trash_rate_measures({BLOOD_BOIL: ("Blood Boil", 4)}, 120.0, per_member)
 
     assert [m.stretch for m in measures] == [Stretch.TRASH]

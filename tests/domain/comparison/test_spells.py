@@ -869,10 +869,13 @@ def test_rate_measures_carries_one_row_per_compared_ability_with_its_verdict() -
     # Our own boss time is 120s, not 60, so a figure below cannot be mistaken
     # for a raw count that skipped the division: Meteor's count is 2 and its
     # rate is 1.0, and Shifting Power's count is 6 to hold its rate at the
-    # sample's own median of 3.0, so it still lands on level rather than above.
+    # sample's own median of 3.0 -- left at the original 3 it would read as
+    # below, not level. The first member also runs 120s rather than 60, with
+    # both its counts doubled to hold the same per-member rates, so the
+    # reference side's own division is exercised too.
     ours_on_bosses = {METEOR: ("Meteor", 2), SHIFTING_POWER: ("Shifting Power", 6)}
     per_member = [
-        (60.0, {METEOR: 6, SHIFTING_POWER: 3}),
+        (120.0, {METEOR: 12, SHIFTING_POWER: 6}),
         (60.0, {METEOR: 8, SHIFTING_POWER: 3}),
         (60.0, {METEOR: 4, SHIFTING_POWER: 3}),
         (60.0, {METEOR: 10, SHIFTING_POWER: 3}),
