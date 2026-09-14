@@ -3,13 +3,17 @@
 
 import re
 
+import pytest
+
 from wowperf.domain.comparison.loadout import (
     compare_enchants,
     compare_stats,
     compare_tier,
     item_sourced,
     loadouts_of,
+    stat_measures,
 )
+from wowperf.domain.comparison.measures import Verdict
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.findings import Confidence
@@ -528,3 +532,130 @@ def test_nothing_is_compared_below_the_sample_floor_for_stats() -> None:
     ours = a_stat_loadout(crit=1000, mastery=400)
     theirs = [a_stat_loadout(crit=1000, mastery=1400) for _ in range(2)]
     assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+# --- stat_measures -------------------------------------------------------------
+
+# The share of a player's own secondary budget is what "balance" means here, and
+# it is the reading item level cannot explain: a top parse out-gears the run and
+# so carries more of every secondary at once. The verdict is the share's position
+# against the observed range of the sample's own shares, so nothing in this
+# section rests on a threshold somebody picked.
+
+
+def a_balanced_sample(size: int = 5) -> list[Loadout]:
+    """References that all sit at the same shares, so the observed range is a point."""
+    return [a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0) for _ in range(size)]
+
+
+def test_a_share_inside_the_samples_range_reads_as_level() -> None:
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    by_name = {m.name: m for m in stat_measures(ours, a_balanced_sample())}
+    assert by_name["crit"].verdict is Verdict.LEVEL
+    assert by_name["mastery"].verdict is Verdict.LEVEL
+
+
+def test_a_share_under_every_reference_reads_as_below() -> None:
+    # Matching the sample's crit *rating* would not save this row: what moves is
+    # the share, and it moves because the rest of the budget did.
+    ours = a_stat_loadout(crit=100, haste=900, mastery=400, versatility=0)
+    by_name = {m.name: m for m in stat_measures(ours, a_balanced_sample())}
+    assert by_name["crit"].verdict is Verdict.BELOW
+
+
+def test_a_share_over_every_reference_reads_as_above() -> None:
+    """Above must stand as its own branch. A balance table that only ever said
+    "below" could not report over-stacking, which is the commonest real stat
+    mistake and the one a reader can act on soonest."""
+    ours = a_stat_loadout(crit=2000, haste=300, mastery=100, versatility=0)
+    by_name = {m.name: m for m in stat_measures(ours, a_balanced_sample())}
+    assert by_name["crit"].verdict is Verdict.ABOVE
+
+
+def test_the_verdict_widens_with_the_samples_own_spread() -> None:
+    """The point of reading position against the observed range rather than a
+    fixed gap: one figure is a real difference against references that agree,
+    and unremarkable against references that do not. A constant threshold
+    cannot tell those apart, and picking one is the guess this avoids."""
+    ours = a_stat_loadout(crit=1300, haste=500, mastery=400, versatility=0)
+    spread = [
+        a_stat_loadout(crit=400, haste=1400, mastery=400, versatility=0),
+        a_stat_loadout(crit=1500, haste=300, mastery=400, versatility=0),
+        a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0),
+    ]
+
+    against_agreeing = {m.name: m for m in stat_measures(ours, a_balanced_sample())}["crit"]
+    against_spread = {m.name: m for m in stat_measures(ours, spread)}["crit"]
+
+    assert against_agreeing.verdict is Verdict.ABOVE
+    assert against_spread.verdict is Verdict.LEVEL
+
+
+def test_a_row_carries_the_rating_beside_the_share() -> None:
+    # The share is the judgement; the rating is the fact a reader recognises.
+    # Dropping either leaves the table unable to answer one of its two questions.
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    crit = {m.name: m for m in stat_measures(ours, a_balanced_sample())}["crit"]
+    assert crit.our_rating == 900
+    assert crit.ours == pytest.approx(900 / 2200)
+    assert crit.their_median_rating == pytest.approx(900)
+    assert len(crit.their_shares) == 5
+
+
+def test_a_secondary_neither_side_carries_is_not_given_a_row() -> None:
+    # Leech, avoidance and speed are zero on most gear. A row reading 0% against
+    # 0% is noise in a table whose whole job is to be read across quickly.
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    names = [m.name for m in stat_measures(ours, a_balanced_sample())]
+    assert "leech" not in names
+    assert "crit" in names
+
+
+def test_nothing_is_measured_below_the_sample_floor() -> None:
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    assert stat_measures(ours, a_balanced_sample(size=2)) == ()
+
+
+def test_nothing_is_measured_when_our_own_stats_were_never_read() -> None:
+    assert stat_measures(None, a_balanced_sample()) == ()
+    assert stat_measures(Loadout(items=(an_item(),)), a_balanced_sample()) == ()
+
+
+def test_a_reference_carrying_a_negative_rating_is_left_out_of_the_range() -> None:
+    """Measured on report 43HaCNQwPrKqtYgn, fight 2: one reference came back
+    from `combatantInfo` with a negative versatility rating, which put a share
+    of -1.8% into the observed range.
+
+    A share of a budget cannot be negative, so that block is not the thing this
+    reads it as -- and the damage is not cosmetic. A negative drags the low
+    bound down, and a player genuinely under every readable reference then
+    lands inside the range and reads as level. Here our 20% sits under all four
+    sound references and must say so.
+    """
+    sound = [a_stat_loadout(crit=900, haste=400, mastery=400, versatility=900)
+             for _ in range(4)]
+    negative = a_stat_loadout(crit=900, haste=400, mastery=400, versatility=-900)
+
+    ours = a_stat_loadout(crit=900, haste=900, mastery=900, versatility=650)
+    by_name = {m.name: m for m in stat_measures(ours, [*sound, negative])}
+
+    assert by_name["versatility"].verdict is Verdict.BELOW
+    assert len(by_name["versatility"].their_shares) == 4
+    assert min(by_name["versatility"].their_shares) > 0
+
+
+def test_discarding_unreadable_references_can_drop_the_sample_below_the_floor() -> None:
+    # The floor counts blocks that can actually be read, not blocks that were
+    # fetched. Three fetched of which two are unreadable is a sample of one.
+    sound = [a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)]
+    negative = [a_stat_loadout(crit=900, haste=900, mastery=400, versatility=-10)
+                for _ in range(2)]
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    assert stat_measures(ours, [*sound, *negative]) == ()
+
+
+def test_our_own_negative_rating_withholds_the_whole_table() -> None:
+    # Our budget is the denominator of every row, so one negative rating makes
+    # every share on the card wrong, not just its own.
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=-50)
+    assert stat_measures(ours, a_balanced_sample()) == ()

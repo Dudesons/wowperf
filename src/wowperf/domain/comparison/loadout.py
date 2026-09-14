@@ -3,10 +3,11 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.measures import StatShare, Verdict
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, find_player
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, quantifier_for, quantity
-from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout
+from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
 from wowperf.domain.season import SlotNames
 
 NO_SLOT_NAMES = SlotNames()
@@ -282,3 +283,101 @@ def compare_stats(
             )
         )
     return findings
+
+
+def _share_of(stats: StatBlock, name: str) -> float:
+    budget = stats.total_secondary()
+    return dict(stats.secondaries())[name] / budget if budget else 0.0
+
+
+def _readable_as_shares(stats: StatBlock) -> bool:
+    """Whether this block can be read as shares of a budget at all.
+
+    Measured 2026-09-14 on report 43HaCNQwPrKqtYgn fight 2: one reference came
+    back from `combatantInfo` with a **negative** versatility rating, which put
+    a share of -1.8% into an observed range. A share of a budget cannot be
+    negative, so whatever that block records, it is not the thing this reads it
+    as -- and the negative also shrinks the block's own budget, so every other
+    share on it is off too.
+
+    The damage is not cosmetic. A negative drags the low bound of the range
+    down, and a player genuinely below every sound reference then lands inside
+    it and reads as level. Discarding the block is the same withholding
+    `build_loadouts` already does for a stat block whose readings disagree with
+    each other: a reading that cannot mean what it says is not evidence.
+    """
+    return all(rating >= 0 for _, rating in stats.secondaries())
+
+
+def stat_measures(
+    our_loadout: Loadout | None, their_loadouts: Sequence[Loadout]
+) -> tuple[StatShare, ...]:
+    """Each secondary's share of the budget against the sample's, for the table.
+
+    The verdict is the share's position against the **observed range** of the
+    sample's own shares, not a gap somebody chose. Two reasons. A fixed
+    threshold cannot tell a real difference from an unremarkable one, because
+    what counts as a difference depends on how far the references themselves
+    disagree -- the same figure means both things against two samples. And
+    every threshold this area has carried so far was a guess: `STAT_GAP_SHARE`
+    is fifteen percentage points of a player's own budget, which two players of
+    one specialisation essentially never reach, which is why the finding beside
+    this has never fired on real data.
+
+    Inside the range reads as level, and honestly so: the reader sits where top
+    parses of their own specialisation already sit. Outside it is a claim the
+    sample supports on its own terms -- no reference chose what this player
+    chose.
+
+    Rows keep `secondaries()` order rather than sorting by the widest gap the
+    way the cast tables do. A balance is read down a column, and a reader
+    comparing two cards wants crit in the same place on both.
+    """
+    if our_loadout is None or our_loadout.stats is None:
+        return ()
+    if not _readable_as_shares(our_loadout.stats):
+        return ()
+    # The floor counts blocks that can be read, not blocks that were fetched:
+    # discarding the unreadable ones first is what stops a sample of one
+    # arguing from a range it drew on its own.
+    theirs = [
+        loadout.stats
+        for loadout in their_loadouts
+        if loadout.stats is not None and _readable_as_shares(loadout.stats)
+    ]
+    if len(theirs) < MIN_SAMPLE_FOR_AGGREGATE:
+        return ()
+    our_budget = our_loadout.stats.total_secondary()
+    if not our_budget:
+        return ()
+
+    measures = []
+    for name, our_rating in our_loadout.stats.secondaries():
+        shares = [_share_of(stats, name) for stats in theirs]
+        ratings = [float(dict(stats.secondaries())[name]) for stats in theirs]
+        their_median_share = median(shares)
+        # Leech, avoidance and speed are zero on most gear. A row reading 0%
+        # against 0% is noise in a table whose whole job is to be read across
+        # at a glance.
+        if our_rating == 0 and their_median_share == 0.0:
+            continue
+        our_share = our_rating / our_budget
+        low, high = observed_range(shares)
+        if our_share > high:
+            verdict = Verdict.ABOVE
+        elif our_share < low:
+            verdict = Verdict.BELOW
+        else:
+            verdict = Verdict.LEVEL
+        measures.append(
+            StatShare(
+                name=name,
+                ours=our_share,
+                their_median=their_median_share,
+                their_shares=tuple(shares),
+                our_rating=our_rating,
+                their_median_rating=median(ratings),
+                verdict=verdict,
+            )
+        )
+    return tuple(measures)

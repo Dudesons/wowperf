@@ -6,6 +6,7 @@ from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
     PlayerMeasures,
+    StatShare,
     Stretch,
     Verdict,
 )
@@ -932,3 +933,69 @@ def test_each_verdict_reaches_a_row_as_its_own_word() -> None:
     # A branch added with no word would reach `VERDICT_LABELS` as a KeyError at
     # render time, on a page nobody is running a test against.
     assert set(VERDICT_LABELS) == set(Verdict)
+
+
+def a_card_with_a_stat_table() -> PlayerCard:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            stats=(
+                StatShare(name="crit", ours=0.42, their_median=0.31,
+                          their_shares=(0.29, 0.31, 0.33), our_rating=1183,
+                          their_median_rating=1402.0, verdict=Verdict.ABOVE),
+                StatShare(name="mastery", ours=0.11, their_median=0.24,
+                          their_shares=(0.22, 0.24, 0.27), our_rating=310,
+                          their_median_rating=1090.0, verdict=Verdict.BELOW),
+            ),
+        )
+    }
+    return build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+
+def test_a_stat_row_carries_the_share_the_rating_and_no_ability() -> None:
+    """Both figures in one cell, because the share is the judgement and the
+    rating is the fact a reader recognises. The share is what "balance" means
+    and what item level cannot explain; the rating alone would put every row
+    below the sample on gear difference alone.
+
+    `ability_id` is None rather than a stand-in id: a stat has no spell behind
+    it, and a stand-in would draw whatever art that id happened to address.
+    """
+    table = next(t for t in a_card_with_a_stat_table().comparison_tables
+                 if "stat" in t.heading.lower())
+    crit, mastery = table.rows
+
+    assert crit.name == "Crit"
+    assert crit.ours == "42% (1183)"
+    assert crit.theirs == "31% (1402)"
+    assert crit.spread == "29% to 33%"
+    assert crit.sample == "3 top parses"
+    assert crit.verdict == "above"
+    assert crit.ability_id is None
+
+    # The second row differs in every column, so a cell printing its
+    # neighbour's value cannot pass the block above by coincidence.
+    assert mastery.name == "Mastery"
+    assert mastery.ours == "11% (310)"
+    assert mastery.verdict == "below"
+
+
+def test_the_stat_table_keeps_the_order_the_stats_were_held_in() -> None:
+    # The three tables above sort by widest gap. This one must not: a balance is
+    # read down a column, and mastery's gap here is wider than crit's, so a sort
+    # would swap them and this test would see it.
+    table = next(t for t in a_card_with_a_stat_table().comparison_tables
+                 if "stat" in t.heading.lower())
+    assert [row.name for row in table.rows] == ["Crit", "Mastery"]
+
+
+def test_a_player_with_no_readable_stats_gets_no_stat_table() -> None:
+    # An empty table and a missing one are different claims. Withholding it is
+    # what the report does everywhere else the data was never fetched.
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures={"stonewake-0": PlayerMeasures()},
+    )[0]
+    assert not [t for t in card.comparison_tables if "stat" in t.heading.lower()]

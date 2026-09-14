@@ -226,7 +226,15 @@ instead of adjusting for them, because adjusting would invent a number:
 - **Item level.** A gap here is still declared rather than corrected, and so is the aggregate
   throughput effect of better gear — but item level is no longer the only gear difference the
   tool can see. `compare.gear.enchant.<slot>`, `compare.gear.tier` and
-  `compare.stats.rating.<stat>` each draw their own finding now. An item the references wore
+  `compare.stats.rating.<stat>` each draw their own finding now. Secondary stats also draw a
+  **table** on every player card, one row per secondary, and the table is the part worth
+  reading: it reports each stat's share of that player's own rating budget against the
+  sample's median, and calls a share level whenever it sits inside the range every reference
+  sat in. Shares, not ratings — a top parse out-gears the run and holds more of every stat at
+  once, so raw ratings would read as "behind on everything" whatever the player chose. A
+  reference whose `combatantInfo` carries a negative rating is discarded from that sample
+  (measured on `43HaCNQwPrKqtYgn` fight 2), so a table's `n` can be smaller than five. An item
+  the references wore
   and the analysed player does not own draws **no finding at all**: the join that detects it
   still runs, and its only effect is to suppress the `compare.spells.missing` row that would
   otherwise tell the player to press a button they do not have. Do not read the absence of such
