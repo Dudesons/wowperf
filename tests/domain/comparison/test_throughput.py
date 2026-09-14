@@ -1,8 +1,8 @@
 # ABOUTME: Behaviour tests for compare_rank, the raid percentile stated as triage.
 # ABOUTME: The interesting cases are a metric gap, agreement, a wipe, and an absent player.
 
-from wowperf.domain.comparison.raid_reference import RankedPlayer, ReportRankings
-from wowperf.domain.comparison.throughput import compare_rank
+from wowperf.domain.comparison.raid_reference import RaidParseRow, RankedPlayer, ReportRankings
+from wowperf.domain.comparison.throughput import compare_damage_total, compare_rank
 from wowperf.domain.findings import Confidence
 
 
@@ -77,3 +77,89 @@ def test_a_player_absent_from_the_rankings_row_is_not_given_a_rank_of_zero() -> 
     findings = compare_rank(standing(96, 94, 247358.0), None, "Stonewake")
     assert findings[0].id == "compare.rank.unavailable"
     assert "0" not in findings[0].title
+
+
+def board(*amounts: float) -> tuple[RaidParseRow, ...]:
+    return tuple(
+        RaidParseRow(
+            report_code=f"code{i:012d}", fight_id=i, duration_ms=300_000 + i * 1000,
+            character_name="Stonewake", class_name="Evoker", spec="Devastation",
+            amount=amount, size=25 + i,
+        )
+        for i, amount in enumerate(amounts)
+    )
+
+
+def ranked(amount: float) -> RankedPlayer:
+    return RankedPlayer(
+        character_name="Emberkin", class_name="Evoker", spec="Devastation", role="dps",
+        amount=amount, rank="~12", best="~9", rank_percent=96, bracket_percent=94,
+        total_parses=31004,
+    )
+
+
+def test_our_rate_is_compared_against_the_board_median_without_dividing_anything() -> None:
+    """Both sides are already per-second rates -- measured 2026-09-14. The median
+    of 100, 200, 300, 400, 500 is 300, and none of the five is 300, so a
+    mutation that picks a row instead of the median cannot pass."""
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0),
+        board(100.0, 200.0, 300.0, 400.0, 500.0),
+        board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
+    )
+    assert len(findings) == 1
+    values = {fact.label: fact.value for fact in findings[0].facts}
+    assert "300" in values["All damage"]
+    assert "150" in values["All damage"]
+    assert "150" in values["Boss damage only"]
+    assert "90" in values["Boss damage only"]
+
+
+def test_a_player_above_one_median_and_below_the_other_is_told_so() -> None:
+    """The signal the side-by-side pair exists for: ahead on everything, behind
+    on the boss, means damage went into adds."""
+    findings = compare_damage_total(
+        ranked(400.0), ranked(90.0),
+        board(100.0, 200.0, 300.0, 400.0, 500.0),
+        board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
+    )
+    title = findings[0].title.lower()
+    assert "above" in title and "below" in title
+
+
+def test_the_observed_range_is_stated_and_is_not_the_median() -> None:
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0),
+        board(100.0, 200.0, 300.0, 400.0, 500.0),
+        board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
+    )
+    evidence = " ".join(findings[0].evidence)
+    assert "100" in evidence and "500" in evidence
+
+
+def test_only_the_first_five_of_a_longer_board_are_counted() -> None:
+    """SAMPLE_SIZE is 5 everywhere else in this codebase and is 5 here."""
+    long_board = board(100.0, 200.0, 300.0, 400.0, 500.0, 10_000.0, 20_000.0)
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), long_board, long_board, "Emberkin"
+    )
+    values = {fact.label: fact.value for fact in findings[0].facts}
+    assert "300" in values["All damage"]
+    assert "10" not in values["All damage"].replace("300", "")
+
+
+def test_two_references_fall_back_to_a_single_one_and_say_so() -> None:
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), board(100.0, 200.0), board(50.0, 100.0), "Emberkin"
+    )
+    assert any("a single reference, not an aggregate" in note for note in findings[0].evidence)
+
+
+def test_no_damage_comparison_is_printed_for_an_attempt_that_did_not_kill() -> None:
+    findings = compare_damage_total(None, None, (), (), "Emberkin")
+    assert len(findings) == 1
+    assert findings[0].id == "compare.damage.total.unavailable"
+    assert "did not kill" in findings[0].detail
