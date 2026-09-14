@@ -6,7 +6,7 @@ from collections import defaultdict
 from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Run
+from wowperf.domain.model import Player, Run
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
 from wowperf.domain.slug import player_slug
 
@@ -166,15 +166,22 @@ def analyse_defensives_at_death(
     return findings
 
 
-def alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> float | None:
+def alive_combat_seconds(
+    combat_seconds: float, deaths: tuple[Death, ...], actor_id: int
+) -> float | None:
     """Combat time this player could actually have pressed a button in.
 
+    `combat_seconds` is the denominator the caller's aggregate defines: summed
+    pull time for a keystone, fight duration for a raid boss. Taking the number
+    rather than the aggregate is what lets both ask this question; taking a
+    `Run` meant a raid fight silently supplied zero.
+
     Returns `None` when any of this player's deaths has `seconds_until_next_action`
-    of `None` — that death's cost cannot be measured because the player's last
-    recorded action in the run was dying, so nothing follows it to measure to.
-    There is no honest dead-time figure to subtract in that case, so there is no
-    honest alive-time figure either; the caller must report no ceiling finding
-    for this player rather than treat the unmeasured death as zero seconds dead.
+    of `None` -- that death's cost cannot be measured because the player's last
+    recorded action was dying, so nothing follows it to measure to. There is no
+    honest dead-time figure to subtract, so there is no honest alive-time figure
+    either; the caller must report no ceiling finding for this player rather
+    than treat the unmeasured death as zero seconds dead.
 
     Otherwise approximate on purpose, and one of the reasons the finding is
     `inferred`: a run-back can extend past the pull it started in, so the
@@ -185,7 +192,7 @@ def alive_combat_seconds(run: Run, deaths: tuple[Death, ...], actor_id: int) -> 
     if any(death.seconds_until_next_action is None for death in theirs):
         return None
     dead = sum(death.seconds_until_next_action or 0.0 for death in theirs)
-    return max(run.total_pull_seconds - dead, 0.0)
+    return max(combat_seconds - dead, 0.0)
 
 
 def cooldown_ceiling(alive_seconds: float, ability: CooldownAbility) -> float:
@@ -194,7 +201,7 @@ def cooldown_ceiling(alive_seconds: float, ability: CooldownAbility) -> float:
 
 
 def defensive_base_ids(
-    run: Run, defensives: Defensives
+    players: tuple[Player, ...], defensives: Defensives
 ) -> dict[tuple[int, int], str]:
     """The id fragment every `defensives.*` finding carries, by (actor, ability).
 
@@ -209,11 +216,11 @@ def defensive_base_ids(
     actor id then tells their findings apart.
     """
     slug_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
+    for player in players:
         slug_counts[player_slug(player.name)] += 1
 
     ids: dict[tuple[int, int], str] = {}
-    for player in run.players:
+    for player in players:
         slug = player_slug(player.name)
         for ability in defensives.for_spec(player.class_name, player.spec):
             ids[(player.actor_id, ability.ability_id)] = (
@@ -225,7 +232,8 @@ def defensive_base_ids(
 
 
 def analyse_defensives(
-    run: Run,
+    players: tuple[Player, ...],
+    combat_seconds: float,
     casts: tuple[CastEvent, ...],
     defensives: Defensives,
     deaths: tuple[Death, ...],
@@ -240,17 +248,17 @@ def analyse_defensives(
     for cast in casts:
         cast_counts[cast.actor_id][cast.ability_id] += 1
 
-    base_ids = defensive_base_ids(run, defensives)
+    base_ids = defensive_base_ids(players, defensives)
 
     findings = []
-    for player in run.players:
+    for player in players:
         known = defensives.for_spec(player.class_name, player.spec)
         for ability in known:
             base_id = base_ids[(player.actor_id, ability.ability_id)]
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
 
             if uses:
-                alive = alive_combat_seconds(run, deaths, player.actor_id)
+                alive = alive_combat_seconds(combat_seconds, deaths, player.actor_id)
                 if alive is None:
                     continue
                 ceiling = cooldown_ceiling(alive, ability)

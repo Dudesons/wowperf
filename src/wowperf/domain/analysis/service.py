@@ -58,7 +58,10 @@ def analyse(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken,
         roles=roles,
     )
-    findings += analyse_defensives(loaded.run, loaded.casts, defensives, loaded.deaths)
+    findings += analyse_defensives(
+        loaded.run.players, loaded.run.total_pull_seconds, loaded.casts, defensives,
+        loaded.deaths,
+    )
     findings += analyse_defensives_at_death(
         loaded.run, loaded.casts, defensives, loaded.deaths
     )
