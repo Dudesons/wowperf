@@ -1,8 +1,15 @@
 # Raid Analysis — Design
 
-- **Date:** 2026-09-13
-- **Status:** Proposed
+- **Date:** 2026-09-13, amended 2026-09-14
+- **Status:** Approved; plan 1 merged, §14 resolved
 - **Scope:** Second vertical slice of the `wow_perf` project
+
+**Reading the amendments.** §14's nine open items were resolved on 2026-09-14 by measurement
+against the live API. Four of those measurements contradicted a section written before them:
+§2.1, §2.5, §6.3, §6.8, §6.9 and §8.2 each carry an inline amendment note, and the section
+they amend is left standing above it so the correction is legible as a correction. §15 records
+how the remaining work is cut into plans. **Where an unamended section disagrees with §14,
+§14 is later and wins.**
 
 **Authority.** `2026-09-03-mplus-postmortem-design.md` remains the authority on architecture,
 badges and refusals. This document amends three of its sections by name in §9 and reopens
@@ -51,7 +58,9 @@ Each row carries `amount`, `duration`, `startTime`, `bracketData`, `size`, `clas
 `report { code, fightID }` — the same fields `build_parse_rows` already reads.
 
 `CharacterRankingMetricType` offers `dps`, `bossdps`, `rdps`, `ndps`, `cdps`, `hps`, `tankhps`
-and `playerscore`, among others. Mythic+ uses `playerscore` from this same enum.
+and `playerscore`, among others. **Amended 2026-09-14 (§14 item 5): `rdps`, `ndps` and `cdps`
+are not World of Warcraft metrics.** Each describes itself in the schema as "unique to FFXIV",
+and `rdps` fails at the server. The choice for raid is `dps` or `bossdps`. Mythic+ uses `playerscore` from this same enum.
 `FightRankingMetricType` offers `default`, `execution`, `feats`, `score`, `speed` and `progress`.
 
 ### 2.2 A report carries its own players' ranks
@@ -99,13 +108,35 @@ ability set, and the difference is what remains.
 
 ### 2.5 Three details the probe exposed
 
+**Two of the three claims below were measured wrong. Read the amendment under each.**
+
 - **The damage-taken table includes friendly abilities.** Paladin damage transfers appeared as
   damage taken. `hostilityType` is the argument that excludes them; a name filter is not.
+
+  **Amended 2026-09-14.** `hostilityType` does not exclude them. Omitting the argument and
+  passing `Friendlies` return byte-identical JSON; `Enemies` returns the enemy side of the
+  fight, a different table of 223 rows, not a filtered one. The argument selects *whose*
+  damage-taken is tabulated, not which sources are counted, so friendly-sourced rows survive
+  by design — 8 of 26 rows and 1.97% of damage on one measured fight. The row's own
+  `sources[].type` is what distinguishes them, and sources were homogeneous on every row
+  observed.
+
 - **The hit count is wrong for damage over time.** One ability reported 3.1 million damage and a
   zero count, so the field read was not the one that counts ticks. The correct field names are an
   open item (§14) and must reach `.claude/skills/wcl-api/SKILL.md` with a date before use.
+
+  **Resolved 2026-09-14 (§14 item 1).** No single field counts landings. `hitCount` counts
+  direct hits, `tickCount` counts damage-over-time ticks, and an ability may carry both;
+  `missCount` and `tickMissCount` count attempts that did not land. All four summed over one
+  fight's 26 rows came to 11,456, matching the event count exactly.
+
 - **An unscoped table sums the whole raid.** One ability read 1068 hits per minute across twenty
   players. Per-player figures need `targetID`, which changes the claim from "we" to "you".
+
+  **Amended 2026-09-14.** The argument is `sourceID`, not `targetID`. On a damage-taken table
+  `sourceID` scopes to the victim; `targetID` selects who dealt the damage and returned zero
+  rows for a tank who had taken 26 million. A scoped sum matches the unscoped table's
+  per-player entry to the unit.
 
 ### 2.6 The current tier
 
@@ -162,7 +193,7 @@ depends on the question being asked.
 | Frame | Compared against | Answers | Requires a kill |
 | --- | --- | --- | --- |
 | **External** | top parses of the subject's specialisation on this boss, at this difficulty and partition | damage, target focus, cooldown casts, buff uptime, rank | yes |
-| **Internal** | the rest of the subject's own raid, and one reference raid's profile of the same boss | who took what, deaths, mechanics | no |
+| **Internal** | the rest of the subject's own raid, and a sample of reference raids' profiles of the same boss | who took what, deaths, mechanics | no |
 
 The internal frame is not a degraded external one. For mechanics it is the better of the two:
 every player in a pull met the same mechanic, at the same moment, under the same tuning, and no
@@ -256,6 +287,12 @@ Compared as counts while the two durations are close, and as casts per minute of
 are not, with the difference stated either way. The threshold between the two is chosen, not
 derived, and §14 records it as owing a measurement.
 
+**Amended 2026-09-14 (§14 item 8): the count half is not built.** Measured against real
+reference durations, the top five references spread 33.9% of our own duration on one boss and
+16.1% on another. No threshold a five-reference sample reliably clears, so casts per minute of
+fight is the only expression, not a fallback. This also keeps `ParseMember`'s stated reason for
+carrying no `comparability` true: nothing on the parse axis is shaped like a duration.
+
 ### 6.4 `casts.missing` — `measured`
 
 Abilities the sample cast and the subject never did. Exists as `compare_spells_sample`.
@@ -280,6 +317,16 @@ it is never an optimisation target.
 The per-ability damage-taken profile, compared twice: the subject against the rest of their own
 raid, and the subject's raid against one reference raid's kill of the same boss.
 
+**Amended 2026-09-14: the reference is a sample, not one raid.** "One reference raid" here
+contradicted §13 — "one reference is one guild on one night with one composition" — and the
+sampling authority this design's header says it changes none of, `2026-09-08-sampling-design.md`.
+§13 and the authority win. `SAMPLE_SIZE` reference kills are drawn from the `execution`
+leaderboard, filtered to our own raid `size`, and the finding states a median with an observed
+range. Below `MIN_SAMPLE_FOR_AGGREGATE` matching references it states one reference and says so,
+through the existing `too_few` wording. The cost stays trivial: §8.1 measures the damage-taken
+table at 1.0 point and a reference contributes exactly one, so a full sample is about five
+points against the parse axis's 7.29 *per reference*.
+
 **The finding states hits and damage. It never states that a mechanic was missed.** "You took
 four hits from Ravenous Feast; eighteen of twenty players took none" is a fact the reader
 interprets. "You missed the soak" is a claim about intent that no table supports, and §5.5 of the
@@ -288,6 +335,28 @@ counted, not judged.
 
 Restricted to hostile sources by `hostilityType`, for the reason in §2.5.
 
+**Amended 2026-09-14: the finding states landings only, and both sides come from the table.**
+
+The damage half is not buildable as written. The table's `total` is *mitigated* — it equals the
+event stream's `health_damage + absorbed`, exact on 23 of 25 rows and within 0.0018% fight-wide
+— and `totalReduced` equals `health_damage` exactly. The unmitigated figure is not exposed and
+not reconstructible. §6.9 ranks on unmitigated, so the same ability on the same fight reads
+51,059,709 from the event stream against 11,070,173 from the table, and the factor ranges 0.88
+to 4.61 within one fight, so no constant corrects it. A report stating both would print two
+damage figures for one ability that its own evidence cannot reconcile, which
+`2026-09-13-comparison-table-rulings.md` names as a defect.
+
+So this finding states `hitCount + tickCount` and says nothing about damage. Both sides are
+drawn from the same endpoint, which makes the counts reconcile exactly and keeps either side
+from joining to the event stream — necessary, because **the table and the event stream disagree
+on ability ids**: one ability measured as `guid 1302265` in the table and `abilityGameID
+1287955` in the stream, the same 240 occurrences under two identifiers. Joining the endpoints on
+id drops rows silently. §6.9 keeps damage, unmitigated, from events. Two findings, two units,
+and nothing that looks as though it should reconcile.
+
+The friendly-source restriction comes from the row's `sources[].type`, not from
+`hostilityType`, per §2.5's amendment.
+
 ### 6.9 `damage.taken.outlier` — `measured`
 
 Damage per ability against the group median for that ability, as §5.5 specifies. Exists, is
@@ -295,6 +364,15 @@ generic. Its 2026-09-06 amendment excluded tanks because a keystone's single tan
 median to be measured against". A raid has two, so a tank median exists — drawn from one other
 player. Whether two is enough to rank against is a judgement the finding must make out loud, and
 §14 records it as undecided.
+
+**Resolved 2026-09-14 (§14 item 9): tanks stay excluded.** Two is not enough, by a rule the code
+already states — `MIN_PLAYERS_FOR_MEDIAN = 3` in `analysis/players.py` — and the measurements
+agree. Tank against tank ran a median ratio of 1.24 and 1.28 across two real fights; a non-tank
+against a real median of the other non-tanks ran 1.08 and 1.10, with a 90th percentile of 1.68
+and 2.24. The distributions overlap, the tank outliers rest on between one and eight landings,
+and four abilities had no non-tank observation at all. For the eighteen non-tanks of a
+twenty-player raid the median is real, so this finding works on a raid with no change beyond
+taking `players` instead of a `Run`.
 
 ### 6.10 `deaths` — `measured`
 
@@ -350,6 +428,29 @@ health samples, auras, resurrections, talents, abilities — works on a raid fig
 `top_parses(encounter_id, keystone_level, class_name, spec)`. `keystone_level: int` becomes a
 type that expresses both axes, so that a raid caller cannot pass a keystone level and a Mythic+
 caller cannot pass a difficulty. Which type is an open item (§14).
+
+**Amended 2026-09-14 (§14 item 3): siblings, not a widened parameter.** No type replaces
+`keystone_level: int`, because a union of two axis types leaves the wrong axis representable —
+a Mythic+ caller can construct a raid axis and mypy accepts it, leaving a runtime guard as the
+only defence, which is the "merely unlikely" item 3 rules out. Instead a second Protocol,
+`EncounterRankingRepository`, takes the raid axis and returns raid row types.
+`RankingRepository` is untouched; one adapter class implements both. A consumer typed against
+the Mythic+ protocol cannot see the raid method at all, so the wrong axis is unrepresentable by
+absence. This contradicts the paragraph above and follows the one below it — "siblings rather
+than conditionals" — and applies plan 1's narrowing rule at the port.
+
+The axis distinction dies at the adapter. Above it, one `ParseMember` and one `ParseSample`
+serve both axes, because a member is read for only four things: `boss_seconds`, the roster, the
+casts, and the row's `character_name`. `ParseMember` therefore stops holding a `Run` and holds
+those values instead. `too_few`, `SAMPLE_SIZE`, `MIN_SAMPLE_FOR_AGGREGATE` and `can_aggregate`
+are already axis-blind.
+
+**A trap on that path.** The counting rule is
+`casts_in(casts, actor_id, indices: frozenset[int])`, filtering on
+`event.pull_index not in indices`. A raid cast carries `pull_index=None`, which is in no
+frozenset, so handed a raid sample today it returns zero casts for every ability and every
+player and raises nothing. `casts_in` must take a predicate, the shape plan 1 established with
+`locate: Callable[[Death], str]`.
 
 `rankings.py`'s `bracket_for`, `assert_bracket` and the `level < 2` skip gain raid siblings
 rather than conditionals. The bracket assertion's reasoning carries over intact: an undocumented
@@ -432,6 +533,11 @@ is worse than two commands that each do one.
 flag, `raid` compares the report owner alone. A twenty-player roster makes that default matter
 more than it did at five.
 
+**Amended 2026-09-14.** The flags select subjects for whichever comparisons exist. Under §15's
+cut they first become live in plan 2, where they scope the mechanics comparison per player with
+`sourceID`, and `--no-compare` skips fetching the reference kill. Plan 3 extends the same flags
+over the parse axis. Plan 1 accepts all three and ignores them, saying so on every run.
+
 Output is `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out`, and the command
 closes by printing what it spent from the hourly budget, dearest operation first.
 
@@ -483,26 +589,135 @@ End-to-end tests spend quota and stay behind `-m e2e`.
   190.90 points of 3600. The raid figure is unmeasured and must be measured before any claim
   about it is written down.
 
+  **Amended 2026-09-14 (§14 item 6).** Projected, not measured, at roughly 730 points of 3600
+  for the parse axis — 19 distinct specialisations, 5 references each, 7.29 points a reference.
+  The mechanics comparison is not part of that figure: it scopes per player with `sourceID` at
+  roughly a point each. The projection remains a projection and must not be stated as a
+  measurement.
+
 ---
 
-## 14. Open items for the implementation plan
+## 14. Open items, resolved
 
-1. **The damage-taken table's count fields.** Which field counts hits, and which counts ticks of
-   a damage-over-time effect. Verify against the live API, then add a dated row to
-   `.claude/skills/wcl-api/SKILL.md` before any code reads it.
-2. **`hostilityType`'s exact effect** on the damage-taken table. Measure; do not assume.
-3. **The type that replaces `keystone_level: int` in the ranking port.** It must make a wrong
-   axis unrepresentable rather than merely unlikely.
-4. **The reference sample for a wipe.** `fightRankings(metric: speed)` gives kills; whether
-   `execution` or `progress` gives something better for a wiping raid is unexplored.
-5. **Which damage metric is the default.** `dps`, `bossdps` and `rdps` answer different
-   questions, and the choice belongs in the report's own words.
-6. **The cost of `--all-players` at twenty.** Measure once, record the figure, and state it
-   nowhere until then.
-7. **Whether `Report.rankings` returns ranks for a wipe.** If it does, §6.7 extends to wipes; if
-   it does not, the withholding must say so.
-8. **The duration gap at which `casts.count` switches from counts to rates** (§6.3). Pick it
-   against real reference durations rather than by eye.
-9. **Whether two tanks are enough to rank one against the other** (§6.9). If they are not, tanks
-   stay excluded from the damage-taken comparison as they are in Mythic+, and the finding says
-   why.
+All nine were measured or decided on 2026-09-14, at a cost of 155 points against the
+3600-an-hour budget. Every figure below was run, not read. Where a resolution contradicts an
+earlier section, that section carries an inline amendment note pointing here.
+
+1. **The damage-taken table's count fields — resolved.** `hitCount` counts direct hits,
+   `tickCount` counts damage-over-time ticks, `missCount` and `tickMissCount` count attempts
+   that did not land. No single field counts landings; an ability may carry both hit and tick
+   counts. All four summed over one fight's 26 rows equalled the event count exactly, 11,456,
+   difference zero. Landings are `hitCount + tickCount`. Dated rows reach
+   `.claude/skills/wcl-api/SKILL.md` with the code that first selects them.
+
+2. **`hostilityType`'s effect — resolved, and §2.5 was wrong.** It selects whose damage-taken is
+   tabulated, not which sources are counted. Omitting it and passing `Friendlies` return
+   byte-identical JSON; `Enemies` returns the enemy side of the fight. Friendly-sourced rows
+   survive either way. Exclude them by the row's `sources[].type`.
+
+3. **The ranking port — resolved as siblings.** See §8.2's amendment. No type replaces
+   `keystone_level: int`; a second Protocol exists beside the first, and the wrong axis is
+   unrepresentable because the method is absent rather than guarded.
+
+4. **The reference sample for a wipe — resolved: there is none.** `Encounter.fightRankings` is a
+   kill leaderboard under every metric it accepts. `default` and `speed` returned byte-identical
+   row sets; `execution` is a deathless-kill board overlapping `default` on 7 of 50 rows;
+   `progress` carries no loadable report code on 39 of 50 and is guild-progression bookkeeping.
+   No row on any metric carries a `kill` field, a `fightPercentage`, or any percentage at all.
+   **A wiping raid therefore has no external reference of a wipe, and the whole external frame
+   is withheld for an attempt that did not kill.** The wipe is answered by the internal frame of
+   §4 — §6.8 and §6.9 — which needs no external sample.
+
+   The reference kills for §6.8 are drawn from `execution`, filtered to our own raid `size`,
+   and there are `SAMPLE_SIZE` of them rather than one — see §6.8's amendment, which resolves a
+   contradiction between §4 and §6.8 on one side and §13 on the other. Deathless kills are the
+   better teacher for what a raid handling the boss cleanly actually ate, and `execution`'s
+   longer durations — 60 to 100 seconds above `default`'s — normalise away under a per-minute
+   rate.
+
+5. **The default damage metric — narrowed to two, still open.** `rdps`, `ndps` and `cdps` are
+   not World of Warcraft metrics: each describes itself in the schema as "unique to FFXIV", and
+   `rdps` fails at the server. §2.1 is amended. `dps` and `bossdps` both return 100 fully
+   populated rows; `bossdps` is 0.634 to 0.743 of `dps` for the same run, median 0.676, and
+   reorders the board by a median of 21 positions, while the subject's own percentile moved only
+   97 to 96. The choice belongs with the plan that builds §6.1, and it belongs in the report's
+   own words.
+
+6. **The cost of `--all-players` at twenty — projected, not measured.** A 20-player roster held
+   19 distinct class and specialisation pairs, so a full-roster parse comparison draws 19
+   samples. One reference fight cost 7.29 points measured across two real references, and a
+   sample is five of them, so one sample is 37.46 and the roster is roughly **730 points of
+   3600** — an upper bound assuming no two samples share a report. How much they overlap is
+   unmeasured and would bring it down. **This cost belongs to the parse axis, not the
+   mechanics comparison**, which scopes per player with `sourceID` at roughly one point each.
+
+   Sizing note for whoever builds it: per-player *totals* for twenty players cost one query and
+   1.00 point at `viewBy: Default`, but per-player *per-ability* costs twenty queries and about
+   twenty points, because `abilities`, `sources` and `targets` are each capped at five rows.
+   Aliasing twenty tables into one operation cost 20.05 — points are billed per table, not per
+   request.
+
+7. **`Report.rankings` for a wipe — resolved: zero rows.** A kill returned one row carrying
+   `kill`, `difficulty`, `partition`, `size`, `bracket`, `duration`, `deaths`,
+   `damageTakenExcludingTanks`, `execution`, `speed`, `roles`, `guild`, `encounter` and `zone`.
+   The wipe returned an empty list. No field distinguishes the cases, so the code tests for
+   emptiness and §6.7 states that no percentile exists rather than printing one.
+
+8. **The duration gap for `casts.count` — resolved by removing the question.** Top five
+   reference durations spread 33.9% of our own on one boss and 16.1% on another. No threshold a
+   five-reference sample reliably clears, so the count half of §6.3 is not built and casts per
+   minute is the only expression.
+
+9. **Two tanks — resolved: not enough, tanks stay excluded.** See §6.9's amendment. The rule
+   already existed as `MIN_PLAYERS_FOR_MEDIAN = 3`, and the measured spreads agree.
+
+### 14.1 Facts measured on 2026-09-14 that no section above owns
+
+- **The damage-taken table reports mitigated damage.** `total` equals the event stream's
+  `health_damage + absorbed`; `totalReduced` equals `health_damage`. The unmitigated figure is
+  not exposed and not reconstructible from the table. §6.8's amendment turns on this.
+- **The table and the event stream can disagree on an ability's id.** One ability appeared as
+  `guid 1302265` in the table and `abilityGameID 1287955` in the stream, the same 240
+  occurrences. Joining the two endpoints on id drops rows silently — 1 of 26 on the fight
+  measured.
+- **A raid `size` confound the design did not record.** Ours is 20; the top five parse
+  references were 22 to 30, the full parse board 11 to 30, and a single page of kill rankings
+  spanned 14 to 30. Heroic is flexible-size and scales. Both ranking rows carry `size`, so
+  matching it is free, and `compare.confound.raid_size` exists only for when no same-size
+  reference is found.
+- **The per-death healing fan-out can be replaced.** One fight-wide fetch cost 8.00 points over
+  8 pages against the 21 per-death windows' 21.00, and the data was identical — symmetric
+  difference zero against 1384 in-window events. Break-even is about eight deaths. **The obvious
+  implementation is wrong:** the server-side filter `target.id in (...)` returns zero rows for
+  one point, silently. This is a change to `repository.py` shared with the Mythic+ path and does
+  not belong to any plan here.
+
+---
+
+## 15. How this slice is cut into plans
+
+Plan 1, `2026-09-14-raid-foundation-plan.md`, is merged: `Encounter` beside `Run`, the shared
+analysers narrowed, and `wowperf raid <url>` writing ranked findings for one boss fight.
+
+**The remaining two plans were re-cut on 2026-09-14**, after §14 item 4 established that a
+wiping raid has no external reference. The original order gave the external parse axis to plan 2
+and the mechanics comparison to plan 3, which would have produced a tool good at kills and
+silent on wipes — the opposite of what this slice is for. The wipe diagnosis lives entirely in
+the internal frame of §4.
+
+**Plan 2 — the internal frame.** §6.8 and §6.9, and §7's ranking. The damage-taken table scoped
+raid-wide and per player; the per-ability profile against a sample of `execution` references of
+matching size; the damage-outlier half split out of `analyse_players` and narrowed to take
+`players`; the severity ranker. Works identically on a kill and on a wipe, and needs no parse sample.
+Output stays findings JSON; §10's report is whole in plan 3.
+
+§7's ranking is built here because this plan creates the need for it: these findings cost no
+seconds, and `rank_findings` sorts by `seconds_lost` with every `None` falling to the bottom in
+arbitrary order. The sibling ranker holds a severity table keyed by finding-id family, guarded
+by a test that enumerates every family the raid path can emit. **No `severity` field is added to
+`Finding`** — a required one touches every slice-1 analyser, which §7 says not to disturb, and
+an optional one defaults quietly, which is this repository's documented failure mode.
+
+**Plan 3 — the external frame and the report.** §6.1 to §6.7, §8.1, §8.2's parse half, and §10.
+The `ParseMember` narrowing and the `casts_in` predicate described in §8.2's amendment belong
+here, with the axis they serve. §14 items 5 and 6 are resolved by this plan.
