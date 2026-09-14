@@ -18,34 +18,22 @@ fixed per-fight overhead -- so "under 20" is not a safe claim for a chaotic wipe
 clean kill. Both numbers came from `uv run wowperf raid <code> --fight <id> --cache-dir
 <fresh>`, read from the command's own "Rate limit: ... points spent" line.
 
-Plan 2 tried to add a matching pair of figures for the mechanics comparison on top of these
-two. It could not: measured 2026-09-14, `uv run wowperf raid <code> --fight <id> --cache-dir
-<fresh>` (mechanics engaged, the default) crashes with an uncaught `KeyError: 'difficulty'`
-inside `build_reference_kill_rows` (`src/wowperf/adapters/wcl/encounter_rankings.py`), for
-both fight 2 (the kill) and fight 30 (the wipe). `raid`'s own `except (ValueError, WclError,
-httpx.HTTPError, OSError)` does not catch a `KeyError`, so the command prints a raw traceback,
-writes no findings file, and never reaches its own "Rate limit: ... points spent" line -- there
-is no figure to state. The two tests below hit the identical error reconstructing the same
-inputs `raid` builds.
+Mechanics engaged (the default, no `--no-compare`), measured the same way: 16.22 points for the
+kill, 39.22 for the wipe. Both add one `EncounterKillRankings` call (1.01 points) plus one
+`AbilityTakenTable` call per report actually weighed -- our own report always, plus one per
+reference kill whose size matched. The kill's own leaderboard page carried no row at our size 20
+(its 50 rows ran 10 to 25, none of them 20), so only our own report's table was fetched: 14.21 +
+1.01 + 1.00 = 16.22, exactly. The wipe's page offered two rows at size 20, so three tables were
+fetched (39.22, against a naive 34.21 + 1.01 + 3.00 = 38.22; the two 34.21-shaped runs were
+measured minutes apart against a cost the API does not document per query, so a one-point gap
+between them is not chased further here).
 
-The cause: a live `fightRankings(metric: execution)` row carries no `difficulty` key at all.
-Confirmed by reading the cached payload directly for both fights (50 rows each): every row's
-keys are exactly `server, duration, startTime, report, damageTaken, deaths, tanks, healers,
-melee, ranged, guild, bracketData, size` -- `difficulty` is absent from all 100 rows checked.
-This contradicts `.claude/skills/wcl-api/SKILL.md`'s "`fightRankings` takes `difficulty` and
-`partition`" section, which claims the field was "verified... 2026-09-13 against a real raid
-encounter." The matching offline fixture, `tests/adapters/wcl/test_encounter_rankings.py`,
-hardcodes `"difficulty": 4` into every row it hands `build_reference_kill_rows`, which is why
-the offline suite never caught this: the row shape it was tested against does not occur.
-
-`--no-compare` still works, and was remeasured the same way rather than assumed: 1.00 points
-for the kill (a fully cached repeat run -- two `RateLimit` reads only, confirming the mechanics
-fetch is skipped entirely rather than merely unreported) and 35.21 points cold for the wipe
-(`Healing` x21 = 21.00, `Talents` 2.20, `Fights` 2.01, `DamageTaken` x2 = 2.00, one point each
-for `Abilities`, `Casts`, `DamageDoneGraph`, `Deaths`, `EnemyCasts`, `Interrupts` and
-`Resurrects`, `RateLimit` x2 = 1.00) -- close to the 34.21 measured for plan 1, the difference
-being one extra `DamageTaken` call this run made that the earlier one did not; not chased
-further here since it is not this step's question.
+Below the aggregate floor of three comparable members, a two-reference sample like the wipe's
+still produces a finding -- stated as one reference, not an aggregate, per `too_few` in
+`src/wowperf/domain/comparison/mechanics.py` -- while the kill's zero-reference sample produces
+none. Both are real, current outcomes of `select_reference_kills`' size filter meeting this
+report's own leaderboard, not a defect: see `.claude/skills/wcl-api/SKILL.md`, "`fightRankings`
+echoes no `difficulty` per row" (2026-09-14), for why the filter matches size alone.
 """
 
 import os

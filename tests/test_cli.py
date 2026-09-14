@@ -260,14 +260,17 @@ def _reference_kill_row(
     report_code: str = RAID_REFERENCE_CODE,
     fight_id: int = RAID_REFERENCE_FIGHT,
     *,
-    difficulty: int = RAID_DIFFICULTY,
     size: int = RAID_SIZE,
     duration_ms: int = 380_000,
     deaths: int = 1,
 ) -> dict[str, Any]:
+    # No `difficulty` key: a live `fightRankings(metric: execution)` row never
+    # carries one -- see `.claude/skills/wcl-api/SKILL.md`, "`fightRankings`
+    # echoes no `difficulty` per row" -- so a fixture inventing one would be
+    # exactly the defect that let this comparison ship broken against real
+    # data.
     return {
         "report": {"code": report_code, "fightID": fight_id, "startTime": 1},
-        "difficulty": difficulty,
         "size": size,
         "duration": duration_ms,
         "deaths": deaths,

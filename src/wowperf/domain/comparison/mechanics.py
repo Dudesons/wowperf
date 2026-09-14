@@ -51,7 +51,6 @@ class ReferenceKillRow(Frozen):
 
     report_code: str
     fight_id: int
-    difficulty: int
     size: int
     duration_ms: int
     deaths: int = 0
@@ -65,21 +64,26 @@ def select_reference_kills(
     rows: tuple[ReferenceKillRow, ...],
     *,
     our_size: int,
-    our_difficulty: int,
     limit: int = SAMPLE_SIZE,
 ) -> tuple[ReferenceKillRow, ...]:
     """References comparable to our own fight, in leaderboard order.
 
-    Both filters refuse rather than annotate. Difficulty because the master
-    design already refuses a cross-difficulty comparison outright. Size because
-    this comparison is a landing rate over a whole raid: measured 2026-09-14, a
-    single page spanned 14 to 30 against our 20, and a 30-player reference
-    reports half again as many landings for headcount alone. A page holds
-    fifty rows, so matching exactly usually leaves plenty.
+    Size alone: this comparison is a landing rate over a whole raid, measured
+    2026-09-14, a single page spanned 14 to 30 against our 20, and a 30-player
+    reference reports half again as many landings for headcount alone. A page
+    holds fifty rows, so matching exactly usually leaves plenty.
+
+    There is no difficulty filter here, on purpose: `reference_kills` already
+    passes our own difficulty as the query's own argument, so the API never
+    returns a row at another one, and a row carries no `difficulty` field to
+    re-check against in any case (see `.claude/skills/wcl-api/SKILL.md`,
+    "`fightRankings` echoes no `difficulty` per row", dated 2026-09-14). An
+    earlier version of this function filtered on `row.difficulty ==
+    our_difficulty`, a comparison the fixture that tested it could satisfy but
+    the live API never sent a row to fail -- removed rather than kept as a
+    filter that can never fire in production.
     """
-    matching = [
-        row for row in rows if row.size == our_size and row.difficulty == our_difficulty
-    ]
+    matching = [row for row in rows if row.size == our_size]
     return tuple(matching[:limit])
 
 
@@ -156,8 +160,8 @@ def compare_mechanics(
         return []
 
     # A member with a zero or negative duration has nothing to divide by, and
-    # nothing upstream refuses it: `select_reference_kills` matches size and
-    # difficulty only. Dropped before `total` is computed, so the denominator
+    # nothing upstream refuses it: `select_reference_kills` matches size
+    # only. Dropped before `total` is computed, so the denominator
     # and every "N of M" phrase in the evidence see the same set of members
     # that the rates themselves were drawn from.
     members = tuple(member for member in sample.members if member.row.duration_seconds > 0)

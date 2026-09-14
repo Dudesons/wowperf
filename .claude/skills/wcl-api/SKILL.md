@@ -704,12 +704,30 @@ kills a mechanics comparison wants as its reference. `progress` carried a null `
 of its 50 rows; `execution` carried none, but the shape exists and `build_reference_kill_rows`
 drops any row it finds.
 
-A `fightRankings(metric: execution)` row carries `report { code, fightID }`, `difficulty`, `size`,
-`duration` and `deaths` — response keys nested inside the endpoint's opaque JSON, the same class
-of field as the aura table's `totalUptime`/`totalUses`/`bands` above, so they are documented here
-rather than as rows of the machine-checked table: nothing in `queries.py` selects them by name,
-because `fightRankings(...)` returns a `JSON` scalar with no sub-selection to check against.
+A `fightRankings(metric: execution)` row carries `report { code, fightID }`, `size`, `duration`
+and `deaths` — response keys nested inside the endpoint's opaque JSON, the same class of field
+as the aura table's `totalUptime`/`totalUses`/`bands` above, so they are documented here rather
+than as rows of the machine-checked table: nothing in `queries.py` selects them by name, because
+`fightRankings(...)` returns a `JSON` scalar with no sub-selection to check against.
 `ReferenceKillRow.duration_seconds` divides `duration` by 1000, exactly as `SpeedRow` does.
+
+**Corrected 2026-09-14: `fightRankings` echoes no `difficulty` per row.** The paragraph above
+used to list `difficulty` alongside `size`, `duration` and `deaths` as a field the row itself
+carries, on the strength of an entry "verified... 2026-09-13 against a real raid encounter."
+That entry was wrong. Measured live against report `cW38jmwdnZfbHVL4`, both fight 2 (encounter
+3470) and fight 30 (encounter 3492), 50 rows apiece: every row's keys are exactly `server`,
+`duration`, `startTime`, `report`, `damageTaken`, `deaths`, `tanks`, `healers`, `melee`, `ranged`,
+`guild`, `bracketData`, `size` -- `difficulty` is absent from all 100 rows checked, on two
+different encounters, both requested with `difficulty: 4`. `difficulty` is a request argument to
+`fightRankings` only (see the paragraph above this one); the API never echoes it back on a row,
+and no field in the response substitutes for it -- `bracketData` was observed but its meaning is
+not verified, and this project does not guess at what an unverified field holds. The offline
+fixture exercising `build_reference_kill_rows` had hardcoded `"difficulty": 4` into its rows,
+which is why this went unnoticed until a live run: the row shape under test did not occur.
+`select_reference_kills` filtered on `row.difficulty == our_difficulty` for the same reason and
+has had that filter removed rather than back-filled, since `reference_kills` already passes our
+own difficulty as the query argument -- every row the API returns is at that difficulty already,
+so the per-row check could never have failed in production.
 
 ## Terms of service
 

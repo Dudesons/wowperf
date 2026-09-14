@@ -631,8 +631,8 @@ def _mechanics_record(
 
     A `ReferenceKillRow` carries no keystone level at all -- a boss kill has
     none -- so `keystone_level` is written as 0 here, a value no real keystone
-    level ever is, rather than reusing `difficulty` or `size` under a field
-    named for a different game mode's number.
+    level ever is, rather than reusing `size` under a field named for a
+    different game mode's number.
 
     `player_slug` and `player_name` stay at their empty default: the mechanics
     axis is drawn once for the whole encounter, exactly as the speed axis is
@@ -685,16 +685,16 @@ def _mechanics_sample(
     to load is skipped, never fatal, with the reason recorded rather than
     silently dropped.
 
-    `select_reference_kills` has already refused a difficulty or size that
-    does not match ours, so what reaches this loop is comparable by
-    construction; only reachability is judged here.
+    `select_reference_kills` has already refused a size that does not match
+    ours, so what reaches this loop is comparable by construction; only
+    reachability is judged here. Difficulty needs no matching filter here:
+    `reference_kills` already passes `encounter.difficulty` as the query's own
+    argument, so every row it returns is at that difficulty already.
     """
     rows = rankings.reference_kills(
         encounter.encounter_id, encounter.difficulty, encounter.partition
     )
-    selected = select_reference_kills(
-        rows, our_size=encounter.size, our_difficulty=encounter.difficulty
-    )
+    selected = select_reference_kills(rows, our_size=encounter.size)
 
     members: list[MechanicsMember] = []
     records: list[ReferenceRecord] = []

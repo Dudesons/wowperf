@@ -172,7 +172,7 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
         members=(
             MechanicsMember(
                 row=ReferenceKillRow(
-                    report_code="ref", fight_id=1, difficulty=4, size=20,
+                    report_code="ref", fight_id=1, size=20,
                     duration_ms=120_000, deaths=0,
                 ),
                 abilities=(),

@@ -21,7 +21,6 @@ def build_reference_kill_rows(rows: list[dict[str, Any]]) -> tuple[ReferenceKill
             ReferenceKillRow(
                 report_code=report["code"],
                 fight_id=report["fightID"],
-                difficulty=row["difficulty"],
                 size=row["size"],
                 duration_ms=row["duration"],
                 deaths=row.get("deaths") or 0,

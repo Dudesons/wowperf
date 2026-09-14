@@ -9,7 +9,6 @@ def test_a_row_becomes_a_reference_kill() -> None:
         [
             {
                 "report": {"code": "abc123", "fightID": 12},
-                "difficulty": 4,
                 "size": 20,
                 "duration": 480000,
                 "deaths": 0,
@@ -31,9 +30,9 @@ def test_a_blank_report_code_is_dropped() -> None:
     # assertion below is what fails, not `ReferenceKillRow`'s own validation.
     rows = build_reference_kill_rows(
         [
-            {"report": {"code": "", "fightID": 13}, "difficulty": 4, "size": 20,
+            {"report": {"code": "", "fightID": 13}, "size": 20,
              "duration": 490000, "deaths": 0},
-            {"report": {"code": "abc123", "fightID": 12}, "difficulty": 4, "size": 20,
+            {"report": {"code": "abc123", "fightID": 12}, "size": 20,
              "duration": 500000, "deaths": 1},
         ]
     )
@@ -55,9 +54,9 @@ def test_a_null_report_code_is_dropped() -> None:
     # lives in `test_a_blank_report_code_is_dropped`, above.
     rows = build_reference_kill_rows(
         [
-            {"report": {"code": None, "fightID": None}, "difficulty": 4, "size": 20,
+            {"report": {"code": None, "fightID": None}, "size": 20,
              "duration": 480000, "deaths": 0},
-            {"report": {"code": "abc123", "fightID": 12}, "difficulty": 4, "size": 20,
+            {"report": {"code": "abc123", "fightID": 12}, "size": 20,
              "duration": 500000, "deaths": 1},
         ]
     )
