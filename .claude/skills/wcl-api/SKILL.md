@@ -687,6 +687,30 @@ project surfaces as `WclError: The rankings response carried no encounter`. Both
 called an encounter id and only one addresses a leaderboard. A query with the wrong one still
 costs its point.
 
+## `fightRankings` takes `difficulty` and `partition`, and `execution` is a deathless-kill board
+
+Verified 2026-09-04 against the live schema (recorded in
+`docs/plans/2026-09-04-mplus-comparison-plan.md`'s "Verified schema" table) and again 2026-09-13
+against a real raid encounter (`docs/plans/2026-09-13-raid-analysis-design.md` §2.1):
+`Encounter.fightRankings` and `Encounter.characterRankings` each accept `difficulty: Int` and
+`partition: Int` alongside `bracket`. Mythic+ passes `bracket`; a raid boss has no keystone level
+and passes `difficulty` and `partition` instead. `FightRankingMetricType` offers `default`,
+`execution`, `feats`, `score`, `speed` and `progress`.
+
+Measured 2026-09-14: querying one boss's `fightRankings` under three metrics, `default` and
+`speed` return byte-identical row sets with deaths ranging 0 to 20, while `execution` is a
+separate board overlapping them on 7 of 50 rows with deaths ranging 0 to 1 — the near-deathless
+kills a mechanics comparison wants as its reference. `progress` carried a null `report.code` on 39
+of its 50 rows; `execution` carried none, but the shape exists and `build_reference_kill_rows`
+drops any row it finds.
+
+A `fightRankings(metric: execution)` row carries `report { code, fightID }`, `difficulty`, `size`,
+`duration` and `deaths` — response keys nested inside the endpoint's opaque JSON, the same class
+of field as the aura table's `totalUptime`/`totalUses`/`bands` above, so they are documented here
+rather than as rows of the machine-checked table: nothing in `queries.py` selects them by name,
+because `fightRankings(...)` returns a `JSON` scalar with no sub-selection to check against.
+`ReferenceKillRow.duration_seconds` divides `duration` by 1000, exactly as `SpeedRow` does.
+
 ## Terms of service
 
 Read 2026-09-03 from the RPGLogs API Terms of Service. §5d prohibits scraping, building

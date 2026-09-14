@@ -36,3 +36,23 @@ class AbilityTakenRow(Frozen):
         counts are what did not.
         """
         return self.hit_count + self.tick_count
+
+
+class ReferenceKillRow(Frozen):
+    """One kill from the `execution` leaderboard, as a reference candidate.
+
+    Carries no keystone level, no bracket and no affixes: a boss fight has
+    none of them, and a row that cannot express a keystone level cannot be
+    handed to a Mythic+ comparison by accident.
+    """
+
+    report_code: str
+    fight_id: int
+    difficulty: int
+    size: int
+    duration_ms: int
+    deaths: int = 0
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.duration_ms / 1000

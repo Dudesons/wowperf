@@ -364,6 +364,31 @@ query CharacterRankings(
 }
 """
 
+# `execution` rather than `speed`. Measured 2026-09-14: `default` and `speed`
+# return byte-identical row sets with deaths ranging 0 to 20, while `execution`
+# is a separate board overlapping them on 7 of 50 rows with deaths ranging 0 to
+# 1. A near-deathless kill is the better reference for what a raid handling the
+# boss cleanly actually took. Its durations run 60 to 100 seconds longer, which
+# a per-minute rate normalises away.
+ENCOUNTER_KILL_RANKINGS_QUERY = """
+query EncounterKillRankings(
+  $encounterId: Int!, $difficulty: Int!, $partition: Int!, $page: Int!
+) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      fightRankings(
+        metric: execution
+        difficulty: $difficulty
+        partition: $partition
+        page: $page
+      )
+    }
+  }
+}
+"""
+
 
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
