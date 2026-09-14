@@ -76,6 +76,9 @@ query Fights($code: String!) {
         startTime
         endTime
         kill
+        difficulty
+        size
+        fightPercentage
         keystoneLevel
         keystoneAffixes
         keystoneTime

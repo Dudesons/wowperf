@@ -47,7 +47,7 @@ def test_a_begincast_and_a_cast_become_two_rows_flagged_differently() -> None:
         {"type": "begincast", "abilityGameID": 1238440, "sourceID": 699, "timestamp": 2000},
         {"type": "cast", "abilityGameID": 1238440, "sourceID": 699, "timestamp": 3500},
     ]
-    rows = build_enemy_cast_rows(events, a_run(), ABILITY_NAMES)
+    rows = build_enemy_cast_rows(events, a_run().pulls, ABILITY_NAMES)
     assert [row.is_start for row in rows] == [True, False]
     assert rows[0].ability_name == "Molten Scar"
     assert rows[0].pull_index == 0
@@ -59,7 +59,7 @@ def test_a_missing_source_instance_reads_as_zero() -> None:
         {"type": "begincast", "abilityGameID": 1238440, "sourceID": 699,
          "sourceInstance": 3, "timestamp": 2100},
     ]
-    rows = build_enemy_cast_rows(events, a_run(), ABILITY_NAMES)
+    rows = build_enemy_cast_rows(events, a_run().pulls, ABILITY_NAMES)
     assert [row.source_instance for row in rows] == [0, 3]
 
 
@@ -70,7 +70,7 @@ def test_only_interrupt_rows_become_interrupts() -> None:
         {"type": "interrupt", "abilityGameID": 47528, "extraAbilityGameID": 1241214,
          "sourceID": 693, "targetID": 702, "targetInstance": 1, "timestamp": 12000},
     ]
-    interrupts = build_interrupts(events, a_run(), PLAYERS)
+    interrupts = build_interrupts(events, a_run().pulls, PLAYERS)
     assert len(interrupts) == 1
     assert interrupts[0].player_name == "Emberkin"
     assert interrupts[0].interrupted_ability_id == 1241214
@@ -119,7 +119,7 @@ def test_damage_taken_uses_the_unmitigated_amount() -> None:
         {"type": "damage", "abilityGameID": 1238440, "targetID": 693, "amount": 0,
          "absorbed": 123570, "unmitigatedAmount": 132788, "timestamp": 2500},
     ]
-    taken = build_damage_taken(events, a_run(), ABILITY_NAMES)
+    taken = build_damage_taken(events, a_run().pulls, ABILITY_NAMES)
     assert taken[0].amount == 132788
     assert taken[0].ability_name == "Molten Scar"
     assert taken[0].actor_id == 693
@@ -130,7 +130,7 @@ def test_damage_taken_falls_back_to_amount_when_unmitigated_is_absent() -> None:
         {"type": "damage", "abilityGameID": 1238440, "targetID": 693, "amount": 900,
          "timestamp": 2500},
     ]
-    assert build_damage_taken(events, a_run(), ABILITY_NAMES)[0].amount == 900
+    assert build_damage_taken(events, a_run().pulls, ABILITY_NAMES)[0].amount == 900
 
 
 def test_damage_taken_keeps_the_health_damage_and_the_absorbed_share() -> None:
@@ -138,7 +138,7 @@ def test_damage_taken_keeps_the_health_damage_and_the_absorbed_share() -> None:
         {"type": "damage", "abilityGameID": 1238440, "targetID": 693, "amount": 9_218,
          "absorbed": 123_570, "unmitigatedAmount": 132_788, "timestamp": 2500},
     ]
-    hit = build_damage_taken(events, a_run(), RECAP_NAMES)[0]
+    hit = build_damage_taken(events, a_run().pulls, RECAP_NAMES)[0]
     assert (hit.amount, hit.health_damage, hit.absorbed) == (132_788, 9_218, 123_570)
 
 
@@ -158,7 +158,7 @@ def test_a_damage_event_carries_what_was_mitigated_and_whether_it_was_periodic()
             "buffs": "391395.391398.",
         }
     ]
-    taken = build_damage_taken(events, a_run(), {100: "Frigid Roar"})
+    taken = build_damage_taken(events, a_run().pulls, {100: "Frigid Roar"})
     assert taken[0].mitigated == 15609
     assert taken[0].source_id == 735
     assert taken[0].is_area is True
@@ -175,7 +175,7 @@ def test_a_lethal_blow_carries_its_overkill_and_an_ordinary_hit_carries_none() -
               "amount": 67343, "unmitigatedAmount": 145434, "overkill": 62482}
     ordinary = {"type": "damage", "targetID": 1, "abilityGameID": 100, "timestamp": 2000,
                 "amount": 100, "unmitigatedAmount": 100}
-    taken = build_damage_taken([lethal, ordinary], a_run(), {100: "Frigid Roar"})
+    taken = build_damage_taken([lethal, ordinary], a_run().pulls, {100: "Frigid Roar"})
     assert taken[0].overkill == 62482
     assert taken[1].overkill == 0
 
@@ -185,7 +185,7 @@ def test_a_hit_with_no_buffs_field_carries_no_buff_ids() -> None:
     # An empty tuple says "the log listed none"; it must not become `(0,)`.
     events = [{"type": "damage", "targetID": 1, "abilityGameID": 100, "timestamp": 1000,
                "amount": 100, "unmitigatedAmount": 100}]
-    assert build_damage_taken(events, a_run(), {100: "Frigid Roar"})[0].buff_ids == ()
+    assert build_damage_taken(events, a_run().pulls, {100: "Frigid Roar"})[0].buff_ids == ()
 
 
 def test_a_cast_carrying_hit_points_becomes_a_health_sample() -> None:

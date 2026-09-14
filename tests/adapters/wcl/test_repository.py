@@ -851,3 +851,193 @@ def test_a_cache_hit_records_no_reading_because_it_spent_no_points(tmp_path: Pat
     repository.get("abc123", None)
 
     assert len(repository.client.costs.costs()) == after_first_run
+
+
+# A raid report, the boss-fight counterpart of FIGHTS_PAYLOAD above: trash carries
+# encounterID 0, and two boss fights carry difficulty/size/fightPercentage, which a
+# keystone fight never does. Report code and player names match the fixtures
+# tests/adapters/wcl/test_ingest.py already builds for build_encounter, so the whole
+# slice tells one consistent fixture story.
+RAID_REPORT_CODE = "cW38jmwdnZfbHVL4"
+
+RAID_FIGHTS_PAYLOAD: dict[str, Any] = {
+    "reportData": {
+        "report": {
+            "code": RAID_REPORT_CODE,
+            "title": "Raid Night",
+            "startTime": 0,
+            "endTime": 700_000,
+            "fights": [
+                {"id": 1, "name": "Trash", "encounterID": 0, "kill": None,
+                 "keystoneLevel": None},
+                {
+                    "id": 22, "name": "The Twin Fangs", "encounterID": 3421,
+                    "keystoneLevel": None, "difficulty": 4, "size": 20,
+                    "kill": True, "fightPercentage": 0.01,
+                    "startTime": 1_000, "endTime": 375_000,
+                    "friendlyPlayers": [11, 12],
+                    "friendlySpecs": ["Arcane", "Protection"],
+                    "friendlyItemLevels": [700, 702],
+                },
+                {
+                    "id": 30, "name": "Ula'tek", "encounterID": 3492,
+                    "keystoneLevel": None, "difficulty": 4, "size": 20,
+                    "kill": False, "fightPercentage": 16.49,
+                    "startTime": 400_000, "endTime": 700_000,
+                    "friendlyPlayers": [11, 12],
+                    "friendlySpecs": ["Arcane", "Protection"],
+                    "friendlyItemLevels": [700, 702],
+                },
+            ],
+            "masterData": {
+                "actors": [
+                    {"id": 11, "name": "Emberkin", "subType": "Mage", "server": "Hyjal"},
+                    {"id": 12, "name": "Stonewake", "subType": "Warrior", "server": "Hyjal"},
+                ]
+            },
+        }
+    }
+}
+
+
+def recording_raid_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
+    """One repository whose mock transport answers a raid report, recording every
+    GraphQL operation name -- the boss-fight counterpart of `recording_repository`.
+
+    Every event stream carries a real row, distinguishable from every other, so a
+    field swap in `load_encounter` (assigning `interrupts` the `enemy_cast_rows`
+    builder's result, say) would make a test built on this fixture fail.
+    """
+
+    def events_payload(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"reportData": {"report": {"events": {"data": rows, "nextPageTimestamp": None}}}}
+
+    abilities: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "masterData": {
+                    "abilities": [{"gameID": 900, "name": "Venom Bolt", "icon": "spell_x.jpg"}]
+                }
+            }
+        }
+    }
+    damage_done_graph: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "graph": {
+                    "data": {
+                        "series": [
+                            {
+                                "id": 11, "guid": 1001, "type": "Mage",
+                                "pointStart": 0, "pointInterval": 6000.0,
+                                "total": 600, "data": [100.0],
+                            }
+                        ],
+                        "startTime": 0, "endTime": 700_000,
+                    }
+                }
+            }
+        }
+    }
+    event_payloads: dict[str, dict[str, Any]] = {
+        "Casts": events_payload(
+            [{"type": "cast", "sourceID": 11, "abilityGameID": 900, "timestamp": 2_000}]
+        ),
+        "Deaths": events_payload(
+            [{"type": "death", "sourceID": -1, "targetID": 11, "timestamp": 5_000}]
+        ),
+        "EnemyCasts": events_payload(
+            [{"type": "cast", "sourceID": 701, "abilityGameID": 950, "timestamp": 2_500}]
+        ),
+        "Interrupts": events_payload(
+            [
+                {
+                    "type": "interrupt", "abilityGameID": 300, "extraAbilityGameID": 950,
+                    "sourceID": 11, "targetID": 701, "targetInstance": 0, "timestamp": 2_600,
+                }
+            ]
+        ),
+        "DamageTaken": events_payload(
+            [{"type": "damage", "abilityGameID": 900, "targetID": 11, "amount": 500,
+              "timestamp": 3_000}]
+        ),
+        "Healing": events_payload(
+            [{"type": "heal", "abilityGameID": 774, "sourceID": 12, "targetID": 11,
+              "amount": 4200, "timestamp": 4_500}]
+        ),
+        "Resurrects": events_payload([]),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        name = operation_name(json.loads(request.content))
+        calls.append(name)
+        if name == "Fights":
+            return httpx.Response(200, json={"data": RAID_FIGHTS_PAYLOAD})
+        if name == "Abilities":
+            return httpx.Response(200, json={"data": abilities})
+        if name == "DamageDoneGraph":
+            return httpx.Response(200, json={"data": damage_done_graph})
+        if name == "Talents":
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {
+                            "report": {
+                                "fights": [{"id": 22, "a11": "C4DAAAAA", "a12": "C4DBBBBB"}]
+                            }
+                        }
+                    }
+                },
+            )
+        return httpx.Response(200, json={"data": event_payloads[name]})
+
+    cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
+    return a_repository(handler, cache_dir)
+
+
+def test_loading_a_raid_fight_fetches_the_same_streams_a_run_does() -> None:
+    """The event builders are already generic; this asserts they are reached.
+
+    A raid fight that came back with no casts and no deaths would look exactly
+    like a quiet fight, which is why this asserts on the queries sent rather
+    than only on the result.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls)
+
+    loaded = repository.load_encounter(RAID_REPORT_CODE, 22)
+
+    assert loaded.encounter.boss_name == "The Twin Fangs"
+    assert loaded.encounter.kill is True
+    assert loaded.casts, "casts must be fetched for a boss fight"
+    assert loaded.deaths, "deaths must be fetched for a boss fight"
+    assert "Casts" in calls
+    assert "Deaths" in calls
+
+
+def test_loading_a_wipe_is_not_refused() -> None:
+    repository = recording_raid_repository([])
+
+    loaded = repository.load_encounter(RAID_REPORT_CODE, 30)
+
+    assert loaded.encounter.kill is False
+    assert loaded.encounter.outcome == "wiped at 16.5%"
+
+
+def test_loading_an_encounter_skips_the_mythic_plus_only_streams() -> None:
+    """`load_encounter` must never fetch Actors or EnemyDeaths: `LoadedEncounter`
+    carries no `enemy_deaths` field to put them in, and the fixture's handler has
+    no branch for either -- an accidental fetch would KeyError rather than pass
+    silently.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls)
+
+    repository.load_encounter(RAID_REPORT_CODE, 22)
+
+    assert "Actors" not in calls
+    assert "EnemyDeaths" not in calls
+    assert "Affixes" not in calls

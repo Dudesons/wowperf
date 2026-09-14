@@ -9,6 +9,7 @@ import pytest
 
 from wowperf.adapters.wcl.ingest import (
     IngestError,
+    build_casts,
     build_encounter,
     build_run,
     select_keystone_fight,
@@ -420,3 +421,20 @@ def test_a_missing_difficulty_is_refused_rather_than_defaulted() -> None:
 def test_a_size_the_report_omits_falls_back_to_the_roster() -> None:
     encounter = build_encounter(a_raid_report(), a_raid_fight(size=None), partition=1)
     assert encounter.size == 2
+
+
+def test_a_boss_fights_casts_carry_no_pull_index() -> None:
+    """A boss fight has no pulls to be inside or outside of, unlike a keystone.
+
+    `build_casts` (and its four siblings) locate an event by pull through
+    `pull_index_at(pulls, timestamp)`. An `Encounter` carries no `pulls` tuple
+    at all -- that is its whole point -- so `load_encounter` passes `()`, and
+    every event it produces must read as "no pull" rather than one: an empty
+    sequence can never claim a timestamp falls inside it.
+    """
+    casts = build_casts(
+        [{"type": "cast", "sourceID": 11, "abilityGameID": 900, "timestamp": 2_000}],
+        (),
+        {900: "Venom Bolt"},
+    )
+    assert casts[0].pull_index is None

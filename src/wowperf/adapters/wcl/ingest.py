@@ -237,9 +237,16 @@ def build_encounter(
     )
 
 
-def pull_index_at(run: Run, timestamp_ms: int) -> int | None:
-    """Which pull was underway at this moment, or None if the group was between pulls."""
-    for pull in run.pulls:
+def pull_index_at(pulls: tuple[Pull, ...], timestamp_ms: int) -> int | None:
+    """Which pull was underway at this moment, or None if the group was between pulls.
+
+    Also None whenever `pulls` is empty, which is what every event of a boss
+    fight passes: a boss fight carries no pulls at all, so there is no pull to
+    be inside or outside of. That is a real answer, not a missing one -- the
+    same reason `analyse_deaths` reads a death against the fight (`fight_offset`)
+    rather than against a pull once there are none.
+    """
+    for pull in pulls:
         if pull.start_ms <= timestamp_ms <= pull.end_ms:
             return pull.index
     return None
@@ -258,7 +265,7 @@ def _target_of(event: dict[str, Any]) -> int | None:
 
 
 def build_casts(
-    events: list[dict[str, Any]], run: Run, ability_names: dict[int, str]
+    events: list[dict[str, Any]], pulls: tuple[Pull, ...], ability_names: dict[int, str]
 ) -> tuple[CastEvent, ...]:
     return tuple(
         CastEvent(
@@ -266,7 +273,7 @@ def build_casts(
             ability_id=event["abilityGameID"],
             ability_name=_ability_name(ability_names, event["abilityGameID"]),
             timestamp_ms=event["timestamp"],
-            pull_index=pull_index_at(run, event["timestamp"]),
+            pull_index=pull_index_at(pulls, event["timestamp"]),
             target_id=_target_of(event),
         )
         for event in events
@@ -276,8 +283,9 @@ def build_casts(
 
 def build_deaths(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     casts: tuple[CastEvent, ...],
+    player_names: dict[int, str],
     ability_names: dict[int, str],
 ) -> tuple[Death, ...]:
     """Build deaths, measuring the real cost as time until the player next acted on another actor.
@@ -285,7 +293,6 @@ def build_deaths(
     The timer penalty understates a death. The seconds a player spent unable to
     contribute is observable, so we measure that instead of estimating a run-back.
     """
-    names = {player.actor_id: player.name for player in run.players}
     # A cast aimed at another actor is the first moment the player affected the
     # fight again. A released player respawns alive at the entrance with no
     # event to say so, and presses self-only sprints and shields while running
@@ -307,14 +314,14 @@ def build_deaths(
 
         deaths.append(
             Death(
-                player_name=names.get(actor_id, f"Actor {actor_id}"),
+                player_name=player_names.get(actor_id, f"Actor {actor_id}"),
                 actor_id=actor_id,
                 timestamp_ms=timestamp,
                 killing_blow_id=event.get("killingAbilityGameID", 0),
                 killing_blow=_ability_name(
                     ability_names, event.get("killingAbilityGameID", 0)
                 ),
-                pull_index=pull_index_at(run, timestamp),
+                pull_index=pull_index_at(pulls, timestamp),
                 seconds_until_next_action=(min(later) - timestamp) / 1000 if later else None,
             )
         )
@@ -323,7 +330,7 @@ def build_deaths(
 
 def build_enemy_cast_rows(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     ability_names: dict[int, str],
 ) -> tuple[EnemyCastRow, ...]:
     """Translate raw enemy cast events; resolving their outcome is the analyser's job."""
@@ -341,7 +348,7 @@ def build_enemy_cast_rows(
                 ability_name=_ability_name(ability_names, ability_id),
                 timestamp_ms=event["timestamp"],
                 is_start=kind == "begincast",
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
             )
         )
     return tuple(rows)
@@ -349,7 +356,7 @@ def build_enemy_cast_rows(
 
 def build_interrupts(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     players: dict[int, str],
 ) -> tuple[InterruptEvent, ...]:
     """Keep only real interrupts; the stream also carries debuff applications."""
@@ -366,7 +373,7 @@ def build_interrupts(
                 target_id=event["targetID"],
                 target_instance=event.get("targetInstance") or 0,
                 timestamp_ms=event["timestamp"],
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
             )
         )
     return tuple(interrupts)
@@ -407,7 +414,7 @@ def build_enemy_deaths(
                 actor_id=actor_id,
                 timestamp_ms=event["timestamp"],
                 forces=npc_count_map.get(game_id, 0),
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(run.pulls, event["timestamp"]),
             )
         )
     return tuple(deaths)
@@ -429,7 +436,7 @@ def parse_buff_ids(raw: str | None) -> tuple[int, ...]:
 
 def build_damage_taken(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     ability_names: dict[int, str],
 ) -> tuple[DamageTakenEvent, ...]:
     """Record the unmitigated figure: `amount` alone reads zero on an absorbed hit."""
@@ -448,7 +455,7 @@ def build_damage_taken(
                 ability_name=_ability_name(ability_names, ability_id),
                 amount=int(amount),
                 timestamp_ms=event["timestamp"],
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
                 health_damage=int(event.get("amount") or 0),
                 absorbed=int(event.get("absorbed") or 0),
                 mitigated=int(event.get("mitigated") or 0),
