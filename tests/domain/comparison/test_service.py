@@ -721,7 +721,7 @@ def test_the_gear_stat_and_consumable_families_all_reach_the_comparison() -> Non
 
     assert "compare.gear.enchant.7" in ids
     assert "compare.gear.tier" in ids
-    assert "compare.stats.rating" in ids
+    assert "compare.stats.rating.mastery" in ids
     assert "compare.consumables.buff.flask" in ids
     assert "compare.consumables.potion" in ids
 

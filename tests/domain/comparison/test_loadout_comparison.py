@@ -313,8 +313,27 @@ def test_each_secondary_that_differs_gets_a_row() -> None:
     ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
     theirs = [a_stat_loadout(crit=900, haste=900, mastery=1400, versatility=0) for _ in range(5)]
     findings = compare_stats(ours, theirs, OUR_NAME)
-    assert [f.id for f in findings] == ["compare.stats.rating"]
+    assert [f.id for f in findings] == ["compare.stats.rating.mastery"]
     assert "mastery" in findings[0].title
+
+
+def test_two_secondaries_moving_at_once_produce_two_distinct_ids() -> None:
+    # A real gear difference routinely moves more than one secondary's share
+    # past STAT_GAP_SHARE at once. `_for_player` appends an identical player
+    # slug to every row this function returns, so two rows sharing one id here
+    # would collide into one page element id -- exactly the failure
+    # `compare_enchants` folds in the slot to avoid and `compare_consumable_buffs`
+    # folds in the category to avoid. Checking titles or evidence, as every
+    # other test in this section does, cannot see this: only the ids collide.
+    ours = a_stat_loadout(crit=500, haste=500, mastery=200, versatility=0)
+    theirs = [
+        a_stat_loadout(crit=1000, haste=200, mastery=1400, versatility=100) for _ in range(5)
+    ]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    ids = [f.id for f in findings]
+    assert len(ids) == 2
+    assert len(set(ids)) == len(ids)
+    assert set(ids) == {"compare.stats.rating.haste", "compare.stats.rating.mastery"}
 
 
 def test_the_row_states_our_rating_the_median_and_the_range() -> None:

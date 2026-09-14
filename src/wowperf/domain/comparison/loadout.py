@@ -207,7 +207,16 @@ def compare_stats(
         low, high = observed_range(ratings)
         findings.append(
             Finding(
-                id="compare.stats.rating",
+                # The stat name is folded in before `_for_player` appends the
+                # per-player suffix, the same way `compare_enchants` folds in
+                # the slot and `compare_consumable_buffs` folds in the
+                # category: a real gear difference routinely moves more than
+                # one secondary's share past the gap at once, and two rows
+                # minting the same id would collide into one page element id.
+                # Every name comes from `StatBlock.secondaries()`, a fixed,
+                # lowercase, space-free list, so it needs no `player_slug()`
+                # folding first.
+                id=f"compare.stats.rating.{name}",
                 title=(
                     f"{our_name} carried {ours} {name} rating; "
                     f"the sample's median is {their_median:g}"
