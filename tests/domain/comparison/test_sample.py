@@ -5,6 +5,7 @@ from wowperf.domain.comparison.alignment import Alignment, PullMatch
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
+    ParseMember,
     SpeedMember,
     SpeedSample,
 )
@@ -78,3 +79,31 @@ def test_at_the_floor_a_subset_can_be_aggregated() -> None:
     )
 
     assert sample.can_aggregate(sample.duration_eligible)
+
+
+def test_a_parse_member_carries_no_run() -> None:
+    """The narrowing design 8.2 prescribes, pinned by absence.
+
+    A raid reference has no `Run` to give. A member that still accepted one
+    would let a caller pass a degenerate single-pull run, which design 5.3
+    rejects because four analysers then compute quiet wrong answers.
+
+    The field set is asserted whole rather than only for the absence of `run`:
+    the cheapest way to satisfy an absence is to add back under another name
+    whatever the aggregate used to supply, and a closed set is what stops that.
+    `pulls` is here because three readers -- the boss-cast rule, the aura
+    windows and the trash alignment -- read the reference's route and nothing
+    else of its run; it is empty for a raid reference, which has no route.
+    """
+    assert "run" not in ParseMember.model_fields
+    assert set(ParseMember.model_fields) == {
+        "character_name",
+        "report_code",
+        "fight_id",
+        "boss_seconds",
+        "players",
+        "casts",
+        "auras",
+        "ability_icons",
+        "pulls",
+    }

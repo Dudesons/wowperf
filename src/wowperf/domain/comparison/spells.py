@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 
 from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
-from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
+from wowperf.domain.comparison.reference import REPORT_URL
 from wowperf.domain.comparison.sample import (
     ParseMember,
     ParseSample,
@@ -21,7 +21,7 @@ from wowperf.domain.findings import (
     quantity,
 )
 from wowperf.domain.loadout import Loadout
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import LoadedRun, Player, Pull
 
 MAX_SPELLS_REPORTED = 5
 MIN_CASTS_TO_COMPARE = 3
@@ -38,9 +38,18 @@ stray cast cannot make a member count towards this threshold either.
 """
 
 
-def boss_seconds(run: Run) -> float:
+def boss_pulls(pulls: Sequence[Pull]) -> tuple[Pull, ...]:
+    """The boss pulls of a route.
+
+    Takes the route rather than a `Run`, so that a parse reference — which
+    carries its pulls and no run — reaches the same rule our own side does.
+    """
+    return tuple(pull for pull in pulls if pull.is_boss)
+
+
+def boss_seconds(pulls: Sequence[Pull]) -> float:
     """Seconds spent on boss pulls — the only stretch where two runs fought the same thing."""
-    return sum(pull.duration_seconds for pull in run.boss_pulls)
+    return sum(pull.duration_seconds for pull in boss_pulls(pulls))
 
 
 def in_pulls(indices: frozenset[int]) -> Callable[[CastEvent], bool]:
@@ -83,10 +92,17 @@ def casts_in(
 
 
 def boss_casts(
-    run: Run, casts: tuple[CastEvent, ...], actor_id: int
+    pulls: Sequence[Pull], casts: tuple[CastEvent, ...], actor_id: int
 ) -> dict[int, tuple[str, int]]:
-    """One player's casts inside boss pulls, as ability id to (name, count)."""
-    return casts_in(casts, actor_id, in_pulls(frozenset(pull.index for pull in run.boss_pulls)))
+    """One player's casts inside boss pulls, as ability id to (name, count).
+
+    The casts are the whole stream and the route decides which of them count,
+    so nothing else that reads the same stream — the potion count, which is a
+    press wherever it happened — is narrowed by this one's rule.
+    """
+    return casts_in(
+        casts, actor_id, in_pulls(frozenset(pull.index for pull in boss_pulls(pulls)))
+    )
 
 
 def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[int]:
@@ -96,7 +112,7 @@ def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[in
 
 def their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
     folded = their_name.casefold()
-    for player in theirs.run.players:
+    for player in theirs.players:
         if player.name.casefold() == folded:
             return player.actor_id
     return None
@@ -201,8 +217,8 @@ def compare_spells(
     identical titles.
     """
     actor_id = their_actor_id(theirs, their_name)
-    their_boss_seconds = boss_seconds(theirs.run)
-    our_boss_seconds = boss_seconds(ours.run)
+    their_boss_seconds = theirs.boss_seconds
+    our_boss_seconds = boss_seconds(ours.run.pulls)
 
     if actor_id is None or their_boss_seconds <= 0 or our_boss_seconds <= 0:
         return [
@@ -225,8 +241,8 @@ def compare_spells(
             )
         ]
 
-    theirs_on_bosses = boss_casts(theirs.run, theirs.casts, actor_id)
-    ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
+    theirs_on_bosses = boss_casts(theirs.pulls, theirs.casts, actor_id)
+    ours_on_bosses = boss_casts(ours.run.pulls, ours.casts, our_player.actor_id)
     ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
 
     findings: list[Finding] = []
@@ -345,13 +361,13 @@ def compare_spells_sample(
     if not sample.can_aggregate(sample.members):
         first = sample.members[0]
         return too_few(
-            compare_spells(ours, our_player, our_name, first, first.row.character_name),
+            compare_spells(ours, our_player, our_name, first, first.character_name),
             len(sample.members),
         )
 
     total = len(sample.members)
-    our_boss_seconds = boss_seconds(ours.run)
-    ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
+    our_boss_seconds = boss_seconds(ours.run.pulls)
+    ours_on_bosses = boss_casts(ours.run.pulls, ours.casts, our_player.actor_id)
     ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
 
     # Ability id to name, gathered from whichever member cast it first, and one
@@ -364,12 +380,12 @@ def compare_spells_sample(
     names: dict[int, str] = {}
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in sample.members:
-        actor_id = their_actor_id(member, member.row.character_name)
-        their_boss_seconds = boss_seconds(member.run)
+        actor_id = their_actor_id(member, member.character_name)
+        their_boss_seconds = member.boss_seconds
         if actor_id is None or their_boss_seconds <= 0:
             per_member.append((0.0, {}))
             continue
-        casts_by_ability = boss_casts(member.run, member.casts, actor_id)
+        casts_by_ability = boss_casts(member.pulls, member.casts, actor_id)
         for ability_id, (name, _count) in casts_by_ability.items():
             names.setdefault(ability_id, name)
         qualifying = {
@@ -716,7 +732,7 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
 
 
 def compare_talents(
-    our_player: Player, our_name: str, their_player: Player | None, their_row: ParseRow
+    our_player: Player, our_name: str, their_player: Player | None, theirs: ParseMember
 ) -> list[Finding]:
     """Whether the two builds differ, and the string needed to import theirs.
 
@@ -731,11 +747,11 @@ def compare_talents(
     to tell them apart. `our_name` is the roster's disambiguated spelling, for
     the reason `compare_spells` above gives.
     """
-    ours = our_player.talent_import_string
-    theirs = their_player.talent_import_string if their_player else None
-    source = REPORT_URL.format(code=their_row.report_code, fight=their_row.fight_id)
+    our_build = our_player.talent_import_string
+    their_build = their_player.talent_import_string if their_player else None
+    source = REPORT_URL.format(code=theirs.report_code, fight=theirs.fight_id)
 
-    if ours is None or theirs is None:
+    if our_build is None or their_build is None:
         return [
             Finding(
                 id="compare.talents",
@@ -748,14 +764,14 @@ def compare_talents(
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
                 evidence=(
-                    f"ours {'present' if ours else 'absent'}",
-                    f"theirs {'present' if theirs else 'absent'}",
+                    f"ours {'present' if our_build else 'absent'}",
+                    f"theirs {'present' if their_build else 'absent'}",
                     f"top-ranked parse: {source}",
                 ),
             )
         ]
 
-    if ours == theirs:
+    if our_build == their_build:
         return [
             Finding(
                 id="compare.talents",
@@ -784,6 +800,10 @@ def compare_talents(
             ),
             confidence=Confidence.MEASURED,
             seconds_lost=None,
-            evidence=(f"theirs: {theirs}", f"ours: {ours}", f"top-ranked parse: {source}"),
+            evidence=(
+                f"theirs: {their_build}",
+                f"ours: {our_build}",
+                f"top-ranked parse: {source}",
+            ),
         )
     ]

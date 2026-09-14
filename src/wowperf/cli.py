@@ -64,6 +64,7 @@ from wowperf.domain.comparison.sample import (
     SpeedSample,
 )
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import rank_findings
@@ -623,10 +624,14 @@ def _samples(
             )
             parse_members.append(
                 ParseMember(
-                    row=parse_row,
-                    run=theirs.run,
+                    character_name=parse_row.character_name,
+                    report_code=parse_row.report_code,
+                    fight_id=parse_row.fight_id,
+                    boss_seconds=boss_seconds(theirs.run.pulls),
+                    players=theirs.run.players,
                     casts=theirs.casts,
                     ability_icons=theirs.ability_icons,
+                    pulls=theirs.run.pulls,
                 )
             )
         parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
@@ -783,7 +788,7 @@ def _fetch_parse_auras(
     """Every parse member's own aura data, and our own side's, fetched at most once.
 
     A member's counterpart is resolved from that member's own roster,
-    `find_player(member.run.players, member.row.character_name)`, before paying for
+    `find_player(member.players, member.character_name)`, before paying for
     its aura query: when the reference's own roster does not contain the
     player its leaderboard row names, `find_player` can never resolve them,
     and fetching first would pay for a query with no use. A member whose
@@ -801,7 +806,7 @@ def _fetch_parse_auras(
     our_auras_fetched = False
     updated_members: list[ParseMember] = []
     for member in sample.members:
-        their_player = find_player(member.run.players, member.row.character_name)
+        their_player = find_player(member.players, member.character_name)
         if their_player is None:
             updated_members.append(member)
             continue
@@ -813,8 +818,8 @@ def _fetch_parse_auras(
                 update={
                     "auras": _auras(
                         references,
-                        member.row.report_code,
-                        member.row.fight_id,
+                        member.report_code,
+                        member.fight_id,
                         their_player.actor_id,
                     )
                 }

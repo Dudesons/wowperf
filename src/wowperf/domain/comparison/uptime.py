@@ -17,10 +17,10 @@ from wowperf.domain.comparison.sample import (
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.spells import boss_seconds
+from wowperf.domain.comparison.spells import boss_pulls, boss_seconds
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
-from wowperf.domain.model import Run
+from wowperf.domain.model import Pull, Run
 
 MAX_AURAS_REPORTED = 5
 
@@ -31,9 +31,13 @@ UPTIME_GAP_FRACTION = 0.15
 """How much more of the boss fight they must have it up before it is worth reporting."""
 
 
-def boss_windows(run: Run) -> tuple[tuple[int, int], ...]:
-    """The millisecond spans of the boss pulls, for intersecting aura bands against."""
-    return tuple((pull.start_ms, pull.end_ms) for pull in run.boss_pulls)
+def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
+    """The millisecond spans of the boss pulls, for intersecting aura bands against.
+
+    Takes the route rather than a `Run`, so that a parse reference — which
+    carries its pulls and no run — reaches the same rule our own side does.
+    """
+    return tuple((pull.start_ms, pull.end_ms) for pull in boss_pulls(pulls))
 
 
 def aura_fractions(
@@ -166,8 +170,7 @@ def compare_uptime(
     ours: Run,
     our_auras: PlayerAuras | None,
     our_name: str,
-    theirs: Run,
-    their_auras: PlayerAuras | None,
+    theirs: ParseMember,
     their_name: str,
 ) -> list[Finding]:
     """Where an aura was up markedly more of the reference's boss fight than of ours.
@@ -175,9 +178,15 @@ def compare_uptime(
     `our_name` is the roster's disambiguated spelling of the player being
     compared — never `Player.name`, which two roster members can share, and
     which would then title two players' findings identically.
+
+    The reference side is the member itself rather than a run and a pair of
+    loose values: it already carries its own seconds, its own auras and its own
+    route, and passing those three separately is how one player's figure ends
+    up under another player's name.
     """
-    our_seconds = boss_seconds(ours)
-    their_seconds = boss_seconds(theirs)
+    their_auras = theirs.auras
+    our_seconds = boss_seconds(ours.pulls)
+    their_seconds = theirs.boss_seconds
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
         return [
@@ -190,8 +199,8 @@ def compare_uptime(
             )
         ]
 
-    our_windows = boss_windows(ours)
-    their_windows = boss_windows(theirs)
+    our_windows = boss_windows(ours.pulls)
+    their_windows = boss_windows(theirs.pulls)
 
     # Named at the call site: the four arguments below are two pairs of
     # same-typed values, and a swap inside either pair would put one player's
@@ -248,7 +257,7 @@ def compare_uptime_sample(
         # that was never issued.
         return [_no_reference_auras(our_name, len(sample.members))]
 
-    if our_auras is None or boss_seconds(ours) <= 0 or not aggregable:
+    if our_auras is None or boss_seconds(ours.pulls) <= 0 or not aggregable:
         # Below the floor, or our own side has nothing to compute a fraction from
         # either way: one reference is all that can honestly be reported, and
         # `compare_uptime`'s own availability check already decides whether that
@@ -257,13 +266,11 @@ def compare_uptime_sample(
         # around a failure caused by our own missing data would blame the sample
         # for a gap that was never the sample's fault.
         first = eligible[0] if eligible else sample.members[0]
-        fallback = compare_uptime(
-            ours, our_auras, our_name, first.run, first.auras, first.row.character_name
-        )
+        fallback = compare_uptime(ours, our_auras, our_name, first, first.character_name)
         return fallback if aggregable else too_few(fallback, len(eligible))
 
-    our_windows = boss_windows(ours)
-    our_seconds = boss_seconds(ours)
+    our_windows = boss_windows(ours.pulls)
+    our_seconds = boss_seconds(ours.pulls)
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
@@ -335,9 +342,9 @@ def _gap_findings_sample(
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = boss_seconds(member.run)
+        their_seconds = member.boss_seconds
         fractions = (
-            aura_fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            aura_fractions(member.auras.on_self, boss_windows(member.pulls), their_seconds)
             if their_seconds > 0
             else {}
         )

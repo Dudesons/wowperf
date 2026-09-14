@@ -2,8 +2,8 @@
 # ABOUTME: Only packs two routes shared are compared, and only their own seconds count.
 
 from wowperf.domain.comparison.measures import Stretch, Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.trash_spells import (
     MIN_ALIGNED_TRASH_SECONDS,
     AlignedTrash,
@@ -85,17 +85,13 @@ def a_trash_member(name: str, actor_id: int, blood_boils: int) -> ParseMember:
         cast(actor_id, BLOOD_BOIL, "Blood Boil", n * 1_000, 0) for n in range(blood_boils)
     )
     return ParseMember(
-        row=ParseRow(
-            report_code=f"REF{actor_id}",
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1_909_000,
-            character_name=name,
-            class_name="DeathKnight",
-            spec="Blood",
-        ),
-        run=run,
+        character_name=name,
+        report_code=f"REF{actor_id}",
+        fight_id=1,
+        boss_seconds=boss_seconds(run.pulls),
+        players=run.players,
         casts=casts,
+        pulls=run.pulls,
     )
 
 
@@ -124,7 +120,7 @@ def test_only_packs_both_routes_fought_are_counted() -> None:
     ours = a_run(OURS, a_pull(0, 60.0, 100, 101), a_pull(1, 40.0, 200))
     theirs = a_run(THEIRS, a_pull(0, 30.0, 100, 101))
 
-    aligned = aligned_trash(ours, theirs)
+    aligned = aligned_trash(ours, theirs.pulls)
 
     assert aligned.our_pulls == frozenset({0})
     assert aligned.our_seconds == 60.0
@@ -140,7 +136,7 @@ def test_one_chain_pull_of_ours_counts_its_seconds_once() -> None:
     ours = a_run(OURS, a_pull(0, 90.0, 100, 101, 200, 201))
     theirs = a_run(THEIRS, a_pull(0, 30.0, 100, 101), a_pull(1, 25.0, 200, 201))
 
-    aligned = aligned_trash(ours, theirs)
+    aligned = aligned_trash(ours, theirs.pulls)
 
     # Both of their packs matched our single stretch.
     assert aligned.their_pulls == frozenset({0, 1})
@@ -157,7 +153,7 @@ def test_boss_pulls_are_not_aligned_trash() -> None:
     ours = a_run(OURS, a_pull(0, 60.0, 100, encounter_id=2607), a_pull(1, 40.0, 200))
     theirs = a_run(THEIRS, a_pull(0, 55.0, 100, encounter_id=2607), a_pull(1, 35.0, 200))
 
-    aligned = aligned_trash(ours, theirs)
+    aligned = aligned_trash(ours, theirs.pulls)
 
     assert aligned.our_pulls == frozenset({1})
     assert aligned.our_seconds == 40.0
@@ -362,18 +358,15 @@ def a_member_pressing(name: str, actor_id: int, counts: dict[int, int]) -> Parse
         for ability_id, count in counts.items()
         for n in range(count)
     )
+    run = a_run(player, a_pull(0, 60.0, 100, 101))
     return ParseMember(
-        row=ParseRow(
-            report_code=f"REF{actor_id}",
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1_909_000,
-            character_name=name,
-            class_name="DeathKnight",
-            spec="Blood",
-        ),
-        run=a_run(player, a_pull(0, 60.0, 100, 101)),
+        character_name=name,
+        report_code=f"REF{actor_id}",
+        fight_id=1,
+        boss_seconds=boss_seconds(run.pulls),
+        players=run.players,
         casts=casts,
+        pulls=run.pulls,
     )
 
 

@@ -38,7 +38,6 @@ from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -2587,7 +2586,7 @@ def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
 
     _speed, parses, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
-    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
+    assert [member.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
 
     by_code = {record.report_code: record for record in records if record.axis == "parse"}
     # Every outcome names whose comparison weighed it, not only the clean one:
@@ -2754,8 +2753,8 @@ def test_each_player_gets_their_own_specialisations_sample(tmp_path: Path) -> No
     _speed, parses, _records = _samples(rankings, runs, OUR_RUN_WITH_TANK, TWO_SUBJECTS)
 
     assert set(parses) == {SUBJECT.actor_id, OUR_TANK.actor_id}
-    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["arcaneref"]
-    assert [member.row.report_code for member in parses[OUR_TANK.actor_id].members] == ["protref"]
+    assert [member.report_code for member in parses[SUBJECT.actor_id].members] == ["arcaneref"]
+    assert [member.report_code for member in parses[OUR_TANK.actor_id].members] == ["protref"]
 
 
 def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
@@ -2788,7 +2787,7 @@ def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
         # A clean candidate followed the tainted one, so an empty sample would
         # pass the exclusion below while proving nothing.
         assert sample.members
-        assert all(member.row.report_code != "ourown" for member in sample.members)
+        assert all(member.report_code != "ourown" for member in sample.members)
     dropped = [record for record in records if record.report_code == "ourown"]
     assert len(dropped) == 2
     assert all("one of our own characters" in record.reason for record in dropped)
@@ -2870,8 +2869,8 @@ def test_a_player_with_no_ingested_specialisation_is_never_queried_for(tmp_path:
 
 def _member_run(actor_id: int, name: str) -> Run:
     """A minimal reference run whose roster holds exactly one player, for
-    `find_player` to resolve (or fail to resolve) a `ParseRow`'s character
-    name against."""
+    `find_player` to resolve (or fail to resolve) a member's character name
+    against."""
     return Run(
         report_code="irrelevant",
         fight_id=1,
@@ -2896,16 +2895,11 @@ def _parse_member(code: str, actor_id: int, roster_name: str, row_name: str) -> 
     `roster_name` — the same name for a resolvable counterpart, different
     names to reproduce a leaderboard row `find_player` can never resolve."""
     return ParseMember(
-        row=ParseRow(
-            report_code=code,
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1000000,
-            character_name=row_name,
-            class_name="Mage",
-            spec="Arcane",
-        ),
-        run=_member_run(actor_id, roster_name),
+        character_name=row_name,
+        report_code=code,
+        fight_id=1,
+        boss_seconds=0.0,
+        players=_member_run(actor_id, roster_name).players,
     )
 
 
@@ -3046,7 +3040,7 @@ def test_a_member_whose_counterpart_cannot_be_resolved_keeps_auras_none(tmp_path
 
     updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
 
-    by_code = {member.row.report_code: member for member in updated.members}
+    by_code = {member.report_code: member for member in updated.members}
     assert by_code["ref0"].auras is not None
     assert by_code["ref1"].auras is None
     assert our_auras is not None
@@ -3121,16 +3115,17 @@ def a_minimal_run() -> Run:
     return _member_run(693, "Emberkin")
 
 
-def _parse_row_model() -> ParseRow:
-    """A parse leaderboard row barely enough to construct, unrelated to any roster."""
-    return ParseRow(
+def a_minimal_member(
+    ability_icons: tuple[tuple[int, str], ...] = (), auras: PlayerAuras | None = None
+) -> ParseMember:
+    """A parse reference barely enough to construct, unrelated to any roster."""
+    return ParseMember(
+        character_name="Stonewake",
         report_code="ref1",
         fight_id=1,
-        keystone_level=16,
-        duration_ms=1_000_000,
-        character_name="Stonewake",
-        class_name="Mage",
-        spec="Arcane",
+        boss_seconds=0.0,
+        ability_icons=ability_icons,
+        auras=auras,
     )
 
 
@@ -3138,11 +3133,7 @@ def test_the_resolver_knows_an_icon_named_only_by_a_reference_report() -> None:
     """A comparison finding names an ability our player never cast, so its file
     name is in the reference's dictionary and in no other."""
     ours = LoadedRun(run=a_minimal_run())
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((157997, "spell_ice_nova.jpg"),),
-    )
+    theirs = a_minimal_member(ability_icons=((157997, "spell_ice_nova.jpg"),))
 
     icons = build_icons(ours, (ParseSample(members=(theirs,)),))
 
@@ -3158,16 +3149,8 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample() -> None:
     at all.
     """
     ours = LoadedRun(run=a_minimal_run())
-    mine = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((157997, "spell_ice_nova.jpg"),),
-    )
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((6572, "ability_warrior_revenge.jpg"),),
-    )
+    mine = a_minimal_member(ability_icons=((157997, "spell_ice_nova.jpg"),))
+    theirs = a_minimal_member(ability_icons=((6572, "ability_warrior_revenge.jpg"),))
 
     icons = build_icons(
         ours, (ParseSample(members=(mine,)), ParseSample(members=(theirs,)))
@@ -3190,9 +3173,7 @@ def test_the_resolver_knows_an_icon_only_the_aura_table_names() -> None:
     drew no icon, and all eleven were passive auras of exactly this kind.
     """
     ours = LoadedRun(run=a_minimal_run())
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
+    theirs = a_minimal_member(
         ability_icons=(),
         auras=PlayerAuras(
             actor_id=11,
@@ -3233,9 +3214,7 @@ def test_an_aura_the_table_named_no_icon_for_is_left_unaddressed() -> None:
 
 def test_our_own_dictionary_wins_where_both_name_an_ability() -> None:
     ours = LoadedRun(run=a_minimal_run(), ability_icons=((1, "ours.jpg"),))
-    theirs = ParseMember(
-        row=_parse_row_model(), run=a_minimal_run(), ability_icons=((1, "theirs.jpg"),)
-    )
+    theirs = a_minimal_member(ability_icons=((1, "theirs.jpg"),))
 
     icons = build_icons(ours, (ParseSample(members=(theirs,)),))
 

@@ -13,7 +13,6 @@ from tests.domain.comparison.test_service import (
 )
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.measures import Stretch, Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.comparison.spells import MIN_CASTS_TO_COMPARE, boss_casts, boss_seconds
@@ -70,15 +69,26 @@ def casts_on(
     )
 
 
-def a_parse_row(code: str) -> ParseRow:
-    return ParseRow(
+def a_parse_member(
+    code: str, theirs: LoadedRun, auras: PlayerAuras | None = None
+) -> ParseMember:
+    """One reference, holding the values the comparison reads off it.
+
+    The fixtures below still write a whole `LoadedRun` to describe a reference,
+    because that is the shortest way to say "this route, this roster, these
+    casts". Only those go on to the member, and the run itself goes no further
+    — which is what lets a raid reference, with no run at all, be built the
+    same way.
+    """
+    return ParseMember(
+        character_name="Bríala",
         report_code=code,
         fight_id=16,
-        keystone_level=16,
-        duration_ms=1_399_143,
-        character_name="Bríala",
-        class_name="Mage",
-        spec="Arcane",
+        boss_seconds=boss_seconds(theirs.run.pulls),
+        players=theirs.run.players,
+        casts=theirs.casts,
+        auras=auras,
+        pulls=theirs.run.pulls,
     )
 
 
@@ -141,7 +151,7 @@ def a_boss_parse_member(
             + casts_on(THEIRS.actor_id, METEOR, "Meteor", 1, trash_casts)
         ),
     )
-    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+    return a_parse_member(code, theirs)
 
 
 def a_run_with_a_long_boss_pull() -> LoadedRun:
@@ -217,7 +227,7 @@ def a_trash_parse_member(
         (a_pull_of(0, game_ids, seconds), a_pull_of(1, (9,), 60.0, boss=True)),
         casts=casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 0, casts),
     )
-    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+    return a_parse_member(code, theirs)
 
 
 def a_run_with_three_packs() -> LoadedRun:
@@ -299,19 +309,17 @@ def an_aura_parse_member(
         else (a_pull_of(0, (7,), seconds),)
     )
     theirs = a_loaded((THEIRS,), pulls)
-    return ParseMember(
-        row=a_parse_row(code),
-        run=theirs.run,
-        auras=PlayerAuras(
-            actor_id=THEIRS.actor_id, on_self=(an_aura(band_ms, band_start_ms),)
-        ),
+    return a_parse_member(
+        code,
+        theirs,
+        auras=PlayerAuras(actor_id=THEIRS.actor_id, on_self=(an_aura(band_ms, band_start_ms),)),
     )
 
 
 def a_parse_member_without_auras(code: str) -> ParseMember:
     """A reference whose aura query never came back, which is a real state."""
     theirs = a_loaded((THEIRS,), (a_pull_of(0, (9,), 60.0, boss=True),))
-    return ParseMember(row=a_parse_row(code), run=theirs.run)
+    return a_parse_member(code, theirs)
 
 
 def a_run_with_a_two_minute_boss() -> LoadedRun:
@@ -419,16 +427,16 @@ def below_the_aligned_trash_floor(ours: LoadedRun, sample: ParseSample) -> tuple
     """
     codes = []
     for member in sample.members:
-        aligned = aligned_trash(ours.run, member.run)
+        aligned = aligned_trash(ours.run, member.pulls)
         if aligned.their_seconds > 0 and not is_comparable(aligned):
-            codes.append(member.row.report_code)
+            codes.append(member.report_code)
     return tuple(codes)
 
 
 def without_boss_seconds(sample: ParseSample) -> tuple[str, ...]:
     """Codes whose boss pulls add up to no time at all to measure a rate over."""
     return tuple(
-        member.row.report_code for member in sample.members if boss_seconds(member.run) <= 0
+        member.report_code for member in sample.members if member.boss_seconds <= 0
     )
 
 
@@ -438,9 +446,9 @@ def carried_only_outside_boss_pulls(sample: ParseSample) -> tuple[str, ...]:
     for member in sample.members:
         if member.auras is None or not member.auras.on_self:
             continue
-        windows = boss_windows(member.run)
+        windows = boss_windows(member.pulls)
         if all(uptime_seconds_in(aura, windows) <= 0 for aura in member.auras.on_self):
-            codes.append(member.row.report_code)
+            codes.append(member.report_code)
     return tuple(codes)
 
 
@@ -482,7 +490,7 @@ def a_boss_and_trash_member(
             + casts_on(THEIRS.actor_id, ARCANE_BLAST, "Arcane Blast", 1, boss_blasts)
         ),
     )
-    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+    return a_parse_member(code, theirs)
 
 
 def a_member_whose_boss_pull_has_no_duration(code: str) -> ParseMember:
@@ -500,7 +508,7 @@ def a_member_whose_boss_pull_has_no_duration(code: str) -> ParseMember:
         (a_pull_of(0, (9,), 0.0, boss=True),),
         casts=casts_on(THEIRS.actor_id, METEOR, "Meteor", 0, 5),
     )
-    return ParseMember(row=a_parse_row(code), run=theirs.run, casts=theirs.casts)
+    return a_parse_member(code, theirs)
 
 
 def a_run_with_a_boss_and_a_shared_pack() -> LoadedRun:
@@ -680,9 +688,9 @@ def test_the_awkward_members_stay_awkward() -> None:
     # pull can only decide anything for an ability that is also one of ours:
     # trim our own boss casts down and the guard stops being reached at all,
     # with every assertion above still green.
-    ref5 = next(member for member in rates.members if member.row.report_code == "REF5")
-    theirs = boss_casts(ref5.run, ref5.casts, THEIRS.actor_id)
-    assert theirs.keys() & boss_casts(ours.run, ours.casts, OURS.actor_id).keys()
+    ref5 = next(member for member in rates.members if member.report_code == "REF5")
+    theirs = boss_casts(ref5.pulls, ref5.casts, THEIRS.actor_id)
+    assert theirs.keys() & boss_casts(ours.run.pulls, ours.casts, OURS.actor_id).keys()
     assert all(count >= MIN_CASTS_TO_COMPARE for _name, count in theirs.values())
 
 

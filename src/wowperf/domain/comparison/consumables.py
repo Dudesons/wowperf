@@ -128,7 +128,7 @@ def compare_potions(
     ours_count = _potion_casts(ours.casts, our_player.actor_id, wanted)
     theirs: list[float] = []
     for member in sample.members:
-        actor_id = their_actor_id(member, member.row.character_name)
+        actor_id = their_actor_id(member, member.character_name)
         if actor_id is None:
             continue
         theirs.append(float(_potion_casts(member.casts, actor_id, wanted)))

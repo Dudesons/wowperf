@@ -31,7 +31,7 @@ def test_a_real_players_auras_come_back_with_usable_bands(tmp_path: Path) -> Non
     assert auras.on_self, "a real player carries at least one buff"
 
     # Bands must be on the same clock as pulls, or every uptime figure is nonsense.
-    windows = boss_windows(loaded.run)
+    windows = boss_windows(loaded.run.pulls)
     assert windows, "the reference report should contain boss pulls"
     earliest = min(band.start_ms for aura in auras.on_self for band in aura.bands)
     assert earliest >= 0

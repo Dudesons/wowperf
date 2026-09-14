@@ -4,7 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.base import Frozen
-from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.alignment import align_routes
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.comparison.spells import (
@@ -19,7 +19,7 @@ from wowperf.domain.comparison.spells import (
 )
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
 MIN_ALIGNED_TRASH_SECONDS = 60.0
 """Aligned trash seconds a side must reach before its rate is argued from.
@@ -55,22 +55,27 @@ class AlignedTrash(Frozen):
         return len(self.our_pulls)
 
 
-def aligned_trash(ours: Run, theirs: Run) -> AlignedTrash:
+def aligned_trash(ours: Run, theirs: Sequence[Pull]) -> AlignedTrash:
     """The packs both groups fought, as pull indices and seconds on each side.
 
     Indices are collected into sets before any duration is summed, and the
-    reason differs on the two sides. `align_pulls` runs a sweep after its main
+    reason differs on the two sides. `align_routes` runs a sweep after its main
     pass that pairs each of their unclaimed trash pulls back to the best
     counterpart among ours, with nothing marked taken, so one chain-pulled
     stretch of ours can appear in several matches — summing per match would
     inflate our own denominator and depress our own rate. Their indices cannot
     repeat, because the main pass claims each one and the sweep visits only
     what it left; the set on that side is defensive, not load-bearing.
+
+    The reference side is a route rather than a run, because a parse member
+    carries one and no run at all. A route with no pulls aligns nothing, which
+    is the honest answer for a raid reference: a boss fight has no trash packs
+    to have shared.
     """
-    alignment = align_pulls(ours, theirs)
+    alignment = align_routes(ours.pulls, theirs)
     packs = alignment.our_packs
     ours_by_index = {pull.index: pull for pull in ours.pulls}
-    theirs_by_index = {pull.index: pull for pull in theirs.pulls}
+    theirs_by_index = {pull.index: pull for pull in theirs}
 
     our_pulls = {match.ours_index for match in alignment.matched if match.ours_index in packs}
     their_pulls = {
@@ -113,8 +118,8 @@ def compare_trash_spells_sample(
     ours_aligned: list[AlignedTrash] = []
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in sample.members:
-        actor_id = their_actor_id(member, member.row.character_name)
-        aligned = aligned_trash(ours.run, member.run)
+        actor_id = their_actor_id(member, member.character_name)
+        aligned = aligned_trash(ours.run, member.pulls)
         if actor_id is None or not is_comparable(aligned):
             per_member.append((0.0, {}))
             continue

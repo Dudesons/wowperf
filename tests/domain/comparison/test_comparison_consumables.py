@@ -3,8 +3,8 @@
 
 from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.consumables import compare_consumable_buffs, compare_potions
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -75,19 +75,16 @@ def a_sample_with(*per_member: tuple[int, ...] | None) -> ParseSample:
             if ability_ids is not None
             else None
         )
+        run = _reference_run(player)
         members.append(
             ParseMember(
-                row=ParseRow(
-                    report_code=f"REF{actor_id}",
-                    fight_id=1,
-                    keystone_level=16,
-                    duration_ms=1_000_000,
-                    character_name=name,
-                    class_name="DeathKnight",
-                    spec="Blood",
-                ),
-                run=_reference_run(player),
+                character_name=name,
+                report_code=f"REF{actor_id}",
+                fight_id=1,
+                boss_seconds=boss_seconds(run.pulls),
+                players=run.players,
                 auras=auras,
+                pulls=run.pulls,
             )
         )
     return ParseSample(members=tuple(members))
@@ -301,18 +298,15 @@ def a_member_pressing(
         for ability_id, count in counts.items()
         for n in range(count)
     )
+    run = _reference_run(player)
     return ParseMember(
-        row=ParseRow(
-            report_code=f"REF{actor_id}",
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1_000_000,
-            character_name=row_name if row_name is not None else name,
-            class_name="DeathKnight",
-            spec="Blood",
-        ),
-        run=_reference_run(player),
+        character_name=row_name if row_name is not None else name,
+        report_code=f"REF{actor_id}",
+        fight_id=1,
+        boss_seconds=boss_seconds(run.pulls),
+        players=run.players,
         casts=casts,
+        pulls=run.pulls,
     )
 
 

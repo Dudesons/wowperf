@@ -2,7 +2,6 @@
 # ABOUTME: Everything here is restricted to boss pulls, where the encounter is the same fight.
 
 from wowperf.domain.comparison.measures import Stretch, Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import (
     MAX_SPELLS_REPORTED,
@@ -88,22 +87,17 @@ def a_member(
     casts: tuple[CastEvent, ...],
     *,
     report_code: str = "REF1",
-    level: int = 16,
 ) -> ParseMember:
     """A parse reference wrapping `a_loaded`, for the tests that need a `ParseMember`."""
     loaded = a_loaded(player, pulls, casts)
     return ParseMember(
-        row=ParseRow(
-            report_code=report_code,
-            fight_id=1,
-            keystone_level=level,
-            duration_ms=1_909_000,
-            character_name=player.name,
-            class_name=player.class_name,
-            spec=player.spec,
-        ),
-        run=loaded.run,
+        character_name=player.name,
+        report_code=report_code,
+        fight_id=1,
+        boss_seconds=boss_seconds(loaded.run.pulls),
+        players=loaded.run.players,
         casts=loaded.casts,
+        pulls=loaded.run.pulls,
     )
 
 
@@ -120,7 +114,7 @@ def cast(actor_id: int, ability_id: int, name: str, at_ms: int, pull: int | None
 def test_boss_seconds_counts_only_boss_pulls() -> None:
     run = a_loaded(OURS, (boss_pull(0, 120.0), trash_pull(1, 60.0), boss_pull(2, 60.0)), ()).run
 
-    assert boss_seconds(run) == 180.0
+    assert boss_seconds(run.pulls) == 180.0
 
 
 def test_boss_casts_ignore_trash_and_other_players() -> None:
@@ -134,7 +128,7 @@ def test_boss_casts_ignore_trash_and_other_players() -> None:
     )
     run = a_loaded(OURS, pulls, casts).run
 
-    counted = boss_casts(run, casts, actor_id=693)
+    counted = boss_casts(run.pulls, casts, actor_id=693)
 
     assert counted == {30451: ("Arcane Blast", 2)}
 
@@ -270,21 +264,19 @@ def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() ->
     assert any(f.id == "compare.spells.unavailable" for f in findings)
 
 
-TOP_PARSE_ROW = ParseRow(
+TOP_PARSE = ParseMember(
+    character_name=THEIRS.name,
     report_code="TOPREF",
     fight_id=7,
-    keystone_level=16,
-    duration_ms=1_909_000,
-    character_name=THEIRS.name,
-    class_name=THEIRS.class_name,
-    spec=THEIRS.spec,
+    boss_seconds=1_909.0,
+    players=(THEIRS,),
 )
 TOP_PARSE_URL = "https://www.warcraftlogs.com/reports/TOPREF?fight=7"
 
 
 def test_a_different_build_is_reported_with_their_string() -> None:
     finding = compare_talents(OURS.model_copy(update={"talent_import_string": "C4DAAAAA"}),
-                              OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
+                              OUR_NAME, THEIRS, TOP_PARSE)[0]
 
     assert finding.id == "compare.talents"
     assert finding.confidence is Confidence.MEASURED
@@ -294,13 +286,13 @@ def test_a_different_build_is_reported_with_their_string() -> None:
 def test_an_identical_build_reports_that_it_matches() -> None:
     same = OURS.model_copy(update={"talent_import_string": "CoPAAAAA"})
 
-    finding = compare_talents(same, OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
+    finding = compare_talents(same, OUR_NAME, THEIRS, TOP_PARSE)[0]
 
     assert "matches" in finding.title.lower()
 
 
 def test_a_missing_build_says_the_comparison_could_not_be_made() -> None:
-    finding = compare_talents(OURS, OUR_NAME, THEIRS, TOP_PARSE_ROW)[0]
+    finding = compare_talents(OURS, OUR_NAME, THEIRS, TOP_PARSE)[0]
 
     assert "not" in finding.detail.lower()
     assert finding.seconds_lost is None
@@ -319,7 +311,7 @@ def test_the_talent_row_links_the_top_parse_and_names_no_reference_player() -> N
     single-reference — a build has no median — so it must be traceable, and the
     trace is a link: a name written into a file is greppable and poolable."""
     for ours, theirs in TALENT_BUILDS:
-        finding = compare_talents(ours, OUR_NAME, theirs, TOP_PARSE_ROW)[0]
+        finding = compare_talents(ours, OUR_NAME, theirs, TOP_PARSE)[0]
 
         assert f"top-ranked parse: {TOP_PARSE_URL}" in finding.evidence
         assert THEIRS.name not in finding.title
@@ -334,7 +326,7 @@ def test_every_talent_outcome_names_the_player_whose_build_it_is() -> None:
     run — and in the findings file, which is what the narrative is written
     from, there would be no way to say whose build differed."""
     titles = [
-        compare_talents(ours, OUR_NAME, theirs, TOP_PARSE_ROW)[0].title
+        compare_talents(ours, OUR_NAME, theirs, TOP_PARSE)[0].title
         for ours, theirs in TALENT_BUILDS
     ]
 

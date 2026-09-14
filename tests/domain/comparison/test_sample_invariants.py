@@ -6,9 +6,10 @@ import re
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment, align_pulls
 from wowperf.domain.comparison.confounds import declare_confounds_sample
-from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
+from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
@@ -239,13 +240,14 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
         ),
     )
     return ParseMember(
-        row=ParseRow(
-            report_code=f"top{tag}", fight_id=2, keystone_level=16, duration_ms=1_300_000,
-            character_name=name, class_name="Mage", spec="Arcane",
-        ),
-        run=theirs,
+        character_name=name,
+        report_code=f"top{tag}",
+        fight_id=2,
+        boss_seconds=boss_seconds(theirs.pulls),
+        players=theirs.players,
         casts=rate_casts + missing_casts,
         auras=auras,
+        pulls=theirs.pulls,
     )
 
 
