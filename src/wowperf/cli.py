@@ -102,10 +102,10 @@ Every containment this names is one the report also relies on, in
 """
 
 RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
-    "findings are ranked by seconds_lost, not additive: deaths.single.*, "
-    "deaths.chain.* and deaths.repeat.* all nest inside deaths.total; findings are "
-    "ordered by severity first and by seconds_lost only within one family, so this "
-    "order must not be read as a ranking by time either"
+    "findings are ranked by severity, and their seconds are not additive: "
+    "deaths.single.*, deaths.chain.* and deaths.repeat.* all nest inside "
+    "deaths.total; severity decides the order and seconds_lost sorts only within "
+    "one family, so this order must not be read as a ranking by time"
 )
 """Why the seconds in a raid findings file must never be summed.
 
@@ -119,12 +119,13 @@ findings file does not hold. Only the deaths.* nesting applies to a raid
 fight; `test_cli.test_the_raid_warning_names_only_findings_the_encounter_analyser_emits`
 holds this in step with that.
 
-The severity clause is new: `analyse_encounter` ranks with `rank_raid_findings`,
-which sorts by finding family before it ever looks at `seconds_lost`, unlike
-`rank_findings`'s pure time ordering. A reader who skimmed `FINDINGS_ARE_RANKED_NOT_ADDITIVE`
-first and assumed the same rule here would read a mechanics finding outranking a
-longer death as a mistake in the seconds, when it is the severity table doing
-exactly what it is for.
+The ordering rule differs from the Mythic+ sibling's, so this one states its
+own rather than borrowing the wording: `analyse_encounter` ranks with
+`rank_raid_findings`, which sorts by finding family before it ever looks at
+`seconds_lost`, where `rank_findings` orders by time alone. A reader who read
+`FINDINGS_ARE_RANKED_NOT_ADDITIVE` first and carried its rule across would take
+a mechanics finding outranking a longer death for a mistake in the seconds,
+when it is the severity table doing exactly what it is for.
 """
 
 
@@ -1066,7 +1067,8 @@ def raid(
     all_players: bool = typer.Option(
         False,
         "--all-players",
-        help="Compare every player in the run, not only the subject",
+        help="Name every player in the run in the findings file, not only the subject. "
+        "The mechanics comparison is raid-wide either way.",
     ),
     no_compare: bool = typer.Option(
         False, "--no-compare", help="Skip the reference kills and analyse this fight in isolation"

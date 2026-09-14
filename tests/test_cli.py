@@ -438,6 +438,24 @@ def test_the_raid_flags_no_longer_announce_themselves_as_inert() -> None:
     assert "not yet implemented" not in help_text.lower()
 
 
+def test_raid_all_players_does_not_promise_a_comparison_it_cannot_narrow() -> None:
+    """The flag names players in the findings file; it narrows nothing.
+
+    The mechanics comparison is drawn once for the whole encounter --
+    `analyse_encounter` hands `compare_mechanics` one raid-wide ability-taken
+    table and one scope -- so "Compare every player in the run", which is true
+    of `analyze`, arrived here by copy as a promise this command cannot keep.
+
+    Asserted on single tokens: Rich wraps an option's help at the terminal
+    width, so a phrase spanning a wrap can never be found in the output at all,
+    and the `not in` half would pass without having looked at anything.
+    """
+    help_text = plain(CliRunner().invoke(app, ["raid", "--help"]).output)
+    assert "--all-players" in help_text, "the flag itself must be documented"
+    assert "raid-wide" in help_text
+    assert "Compare" not in help_text, "the raid help offers a per-player comparison"
+
+
 def test_no_compare_writes_a_findings_file_that_compared_nothing(tmp_path: Path) -> None:
     """The flag has to be observable in the artefact, not only in the absence of
     a network call a unit test cannot see. The fixture's default leaderboard
@@ -3296,9 +3314,10 @@ def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> 
     `analyse_encounter` also ranks with `rank_raid_findings`, which sorts by
     severity before it ever looks at `seconds_lost` -- unlike `rank_findings`'s
     pure time ordering, which is all `FINDINGS_ARE_RANKED_NOT_ADDITIVE` states
-    for Mythic+. The raid warning must say so too, or a reader who saw a
-    mechanics finding outrank a longer death would read the order itself as a
-    ranking by time.
+    for Mythic+. The raid warning must state that one rule and no other: it
+    once opened "findings are ranked by seconds_lost" and closed by saying
+    severity decides the order, so a reader could take either away, and the one
+    they took first was false.
     """
     named = {
         match.rstrip("*").rstrip(".")
@@ -3310,7 +3329,12 @@ def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> 
     }
     assert named & keystone_only == set(), named & keystone_only
     assert "deaths.total" in named
-    assert "severity" in RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    assert "ranked by severity" in RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    assert "ranked by seconds_lost" not in RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    # The sibling states the other rule, and truthfully: `analyze` ranks with
+    # `rank_findings`, which reads nothing but the clock. Pinned here so the
+    # two notices cannot be collapsed into one wording that fits neither.
+    assert "ranked by seconds_lost" in FINDINGS_ARE_RANKED_NOT_ADDITIVE
 
 
 def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None:
