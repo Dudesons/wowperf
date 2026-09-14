@@ -103,6 +103,52 @@ def test_a_category_the_whole_sample_had_and_we_did_not_is_a_finding() -> None:
     assert findings[0].confidence is Confidence.MEASURED
 
 
+LABELLED = ConsumableBuffs(
+    entries=(("flask", (1235057, 1235110)), ("food", (451920, 1219182))),
+    labels=(("flask", "a flask"), ("food", "food")),
+)
+
+
+def test_a_mass_noun_category_is_not_given_an_article() -> None:
+    """Found by forcing this family to fire on a real log: the title read
+    "3 of 5 top parses carried a food". "a flask" and "an augment rune" take an
+    article and "food" does not, and no rule derived from the spelling can tell
+    those apart, so the phrasing is data.
+    """
+    sample = a_sample_with(*[(451920,)] * 5)
+    findings = compare_consumable_buffs(auras_with(1235057), OUR_NAME, sample, LABELLED)
+    assert findings[0].title == f"5 of 5 top parses carried food; {OUR_NAME} did not"
+
+
+def test_a_countable_category_keeps_its_article() -> None:
+    # The other half of the pair: the fix must not strip the article from the
+    # categories that need one.
+    sample = a_sample_with(*[(1235057,)] * 5)
+    findings = compare_consumable_buffs(auras_with(451920), OUR_NAME, sample, LABELLED)
+    assert findings[0].title == f"5 of 5 top parses carried a flask; {OUR_NAME} did not"
+
+
+def test_a_category_with_no_label_falls_back_to_its_bare_name() -> None:
+    # Every caller that has not loaded the data file gets an unlabelled
+    # `ConsumableBuffs`, and a title without an article still reads.
+    sample = a_sample_with(*[(1235057,)] * 5)
+    findings = compare_consumable_buffs(auras_with(451920), OUR_NAME, sample, BUFFS)
+    assert findings[0].title == f"5 of 5 top parses carried flask; {OUR_NAME} did not"
+
+
+def test_the_detail_makes_no_claim_about_the_sample_the_title_could_contradict() -> None:
+    """The detail used to spell "every comparable reference carried one" in
+    prose while the count beside it was computed. That is true only while the
+    gate demands unanimity, and it is spelled under a `measured` badge -- so
+    loosening the gate would have made the page lie without touching the
+    sentence. The count belongs in one place, and the title already has it.
+    """
+    sample = a_sample_with(*[(1235057,)] * 5)
+    detail = compare_consumable_buffs(auras_with(451920), OUR_NAME, sample, LABELLED)[0].detail
+    assert "every comparable reference" not in detail
+    assert "5" not in detail
+
+
 def test_any_id_in_the_category_counts_as_having_it() -> None:
     # Well Fed spans six ids. Which one a player drank is not the question.
     sample = a_sample_with(*[(451920,)] * 5)

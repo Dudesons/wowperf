@@ -123,11 +123,15 @@ def load_consumable_buffs(
     """
     raw = _read(path)
     entries = []
+    labels = []
     for name, block in raw.items():
         if not isinstance(block, dict):
             continue
         entries.append((name, tuple(block.get("ability_ids", ()))))
-    return ConsumableBuffs(entries=tuple(entries))
+        label = block.get("label")
+        if isinstance(label, str) and label:
+            labels.append((name, label))
+    return ConsumableBuffs(entries=tuple(entries), labels=tuple(labels))
 
 
 def load_roles(path: Path = DEFAULT_ROLES_PATH) -> Roles:

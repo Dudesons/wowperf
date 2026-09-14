@@ -123,6 +123,14 @@ class ConsumableBuffs(Frozen):
     """
 
     entries: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    labels: tuple[tuple[str, str], ...] = ()
+    """How each category reads after "carried", where the bare name will not do.
+
+    "a flask" and "an augment rune" take an article; "food" is a mass noun and
+    takes none, so "carried a food" is what a rule derived from the spelling
+    produces and it is wrong. No rule can know that from the letters, so the
+    phrasing is data rather than a guess.
+    """
 
     def categories(self) -> tuple[str, ...]:
         return tuple(name for name, _ in self.entries)
@@ -133,6 +141,13 @@ class ConsumableBuffs(Frozen):
             if name == category:
                 return ability_ids
         return ()
+
+    def label_for(self, category: str) -> str:
+        """The category as a title spells it, falling back to the bare name."""
+        for name, label in self.labels:
+            if name == category:
+                return label
+        return category
 
 
 class SlotNames(Frozen):

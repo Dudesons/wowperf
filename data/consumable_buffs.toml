@@ -15,6 +15,7 @@
 verified = "2026-09-14"
 
 [flask]
+label = "a flask"
 ability_ids = [
   1235057,  # Flask of Thalassian Resistance
   1235110,  # Flask of the Blood Knights
@@ -24,6 +25,7 @@ ability_ids = [
 ]
 
 [food]
+label = "food"
 ability_ids = [
   451920,
   1219182,
@@ -36,6 +38,7 @@ ability_ids = [
 ]
 
 ["augment rune"]
+label = "an augment rune"
 ability_ids = [
   1287770,  # Rune of the Versatile Warrior
   1287771,  # Rune of Masterful Cunning

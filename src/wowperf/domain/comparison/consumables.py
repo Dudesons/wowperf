@@ -68,13 +68,20 @@ def compare_consumable_buffs(
                 # ("augment rune") that a raw id must not carry.
                 id=f"compare.consumables.buff.{player_slug(category)}",
                 title=(
-                    f"{count_phrase(matching, len(eligible))} top parses carried a "
-                    f"{category}; {our_name} did not"
+                    f"{count_phrase(matching, len(eligible))} top parses carried "
+                    f"{buffs.label_for(category)}; {our_name} did not"
                 ),
+                # The count belongs in one place and the title already holds
+                # it. This sentence used to add "every comparable reference
+                # carried one", which was prose asserting what the numbers
+                # beside it computed: true only while the gate demands
+                # unanimity, and spelled under a `measured` badge, so
+                # loosening the gate would have made the page lie without
+                # anyone touching the sentence.
                 detail=(
-                    f"No {category} buff appears on this player at any point in the run, and "
-                    "every comparable reference carried one. What it was worth in damage is "
-                    "not stated: nothing here can compute that."
+                    f"No {category} buff appears on this player at any point in the run. "
+                    "What it was worth in damage is not stated: nothing here can compute "
+                    "that."
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
