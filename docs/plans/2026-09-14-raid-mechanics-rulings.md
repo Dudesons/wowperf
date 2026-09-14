@@ -60,6 +60,33 @@ and any future caller needing a difficulty-per-row check would have to source it
 `bracketData`, whose contents nobody has verified, which is exactly why this repository declines
 to guess at it.
 
+**What the same live run showed, dated 2026-09-14, because no fixture can show it.** The kill's
+own leaderboard page held no size-20 row at all — sizes on that page ran 10 to 25 — so
+`select_reference_kills` matched nothing and the mechanics comparison withheld entirely on the
+kill. That is correct behaviour, not a bug: nothing on the page matched our own raid's size. But
+it corrects a planning-time assumption rather than merely recording an empty result — the plan
+reasoned that "a page holds fifty rows, so matching exactly usually leaves plenty," and the first
+live page this filter ever saw held none. The size filter refuses more often in practice than
+that assumption expected, on real leaderboard shapes that vary by boss and by day. The wipe fared
+better: its leaderboard held two size-20 references, and against them `compare_mechanics`
+produced four `mechanics.ability.*` findings, all `Confidence.MEASURED`, ranked after `deaths`
+and before `players` exactly as `SEVERITY_BY_FAMILY` specifies. That is the only proof anywhere
+in this plan that the mechanics comparison and the severity ranking work correctly together on a
+real fight, rather than only on a fixture built to exercise them.
+
+The point cost of running with mechanics engaged, on a fresh cache, was **16.22 points for the
+kill and 39.22 for the wipe**. Both figures are worth keeping, and worth keeping with the
+condition they were measured under, because a warm cache would report a different, lower number.
+This repository treats a measured point cost as a durable fact worth citing rather than a passing
+detail: point cost per query is undocumented, `.claude/skills/wcl-api/SKILL.md` records a whole
+series of such measurements precisely because nothing else will, and both `wowperf` commands
+close by printing where a run's points went for the same reason. `.env.example`'s own comment
+records the Mythic+ baseline this project budgets against — "a full run fetch spends roughly six"
+points of the hourly 3600. A mechanics comparison alone costs several times that baseline. A
+later plan deciding whether to run this comparison routinely, or to widen `MechanicsSample` to
+more reference kills, needs this number and the shape it was measured under to judge whether the
+feature is affordable to run repeatedly.
+
 ### 1.2 The plan contradicted itself about `scope`, and a type-correct call shipped a false sentence
 
 Task 5's brief calls `compare_mechanics(..., scope="the raid")` in all four of its own worked
