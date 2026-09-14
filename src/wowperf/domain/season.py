@@ -100,6 +100,26 @@ class Consumables(Frozen):
     categories: tuple[ConsumableCategory, ...] = ()
 
 
+class ConsumableBuffs(Frozen):
+    """Buff ability ids by consumable category, from the committed TOML file.
+
+    A tuple of pairs rather than a mapping, like every other curated list here:
+    the domain layer's values are frozen and hashable, and a dict is neither.
+    """
+
+    entries: tuple[tuple[str, tuple[int, ...]], ...] = ()
+
+    def categories(self) -> tuple[str, ...]:
+        return tuple(name for name, _ in self.entries)
+
+    def ids_for(self, category: str) -> tuple[int, ...]:
+        """The ability ids in this category, or `()` if the list has none."""
+        for name, ability_ids in self.entries:
+            if name == category:
+                return ability_ids
+        return ()
+
+
 class SelfResurrections(Frozen):
     """Spells a dead player casts to bring themselves back.
 

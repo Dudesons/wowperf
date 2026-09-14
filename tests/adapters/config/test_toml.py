@@ -126,7 +126,7 @@ def test_the_committed_consumables_file_parses() -> None:
 
     consumables = load_consumables(DEFAULT_CONSUMABLES_PATH)
     names = {category.name for category in consumables.categories}
-    assert names == {"health potion", "healthstone"}
+    assert names == {"health potion", "healthstone", "combat potion"}
 
 
 def test_a_category_carries_its_cooldown_and_every_id_that_shares_it() -> None:
@@ -270,3 +270,52 @@ def test_no_ability_lives_in_two_of_the_three_cooldown_files_for_one_spec() -> N
                 owners.setdefault((key, ability.ability_id), []).append(label)
     clashes = {k: v for k, v in owners.items() if len(v) > 1}
     assert clashes == {}, f"listed in more than one file: {clashes}"
+
+
+def test_the_consumable_buffs_file_loads_its_three_categories() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    buffs = load_consumable_buffs()
+    assert set(buffs.categories()) == {"flask", "food", "augment rune"}
+
+
+def test_well_fed_carries_every_id_it_was_measured_under() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    # Measured 2026-09-14: `Well Fed` spans six ability ids. One id per
+    # category would miss five of them and report a fed player as unfed.
+    assert len(load_consumable_buffs().ids_for("food")) >= 6
+
+
+def test_an_unknown_category_has_no_ids() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    assert load_consumable_buffs().ids_for("weapon oil") == ()
+
+
+def test_no_consumable_buff_category_carries_the_id_measured_for_another() -> None:
+    # A wholesale swap of two categories' id lists would still pass the exact-name
+    # check above, and would still pass food's >=6 count check above (augment
+    # rune also lists more than six ids). Anchoring one measured id per category
+    # to that category, and only that category, is what catches a swap.
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    buffs = load_consumable_buffs()
+    known_id_by_category = {
+        "flask": 1235057,  # Flask of Thalassian Resistance
+        "food": 451920,
+        "augment rune": 1287770,  # Rune of the Versatile Warrior
+    }
+    for category, ability_id in known_id_by_category.items():
+        for other_category in known_id_by_category:
+            if other_category == category:
+                assert ability_id in buffs.ids_for(category)
+            else:
+                assert ability_id not in buffs.ids_for(other_category)
+
+
+def test_the_combat_potion_category_is_loaded_from_consumables() -> None:
+    from wowperf.adapters.config.toml import load_consumables
+
+    names = {category.name for category in load_consumables().categories}
+    assert "combat potion" in names

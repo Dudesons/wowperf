@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from wowperf.domain.season import (
+    ConsumableBuffs,
     ConsumableCategory,
     Consumables,
     CooldownAbility,
@@ -22,6 +23,7 @@ DATA_DIR = Path(__file__).resolve().parents[3].parent / "data"
 DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
+DEFAULT_CONSUMABLE_BUFFS_PATH = DATA_DIR / "consumable_buffs.toml"
 DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
 DEFAULT_EXTERNALS_PATH = DATA_DIR / "externals.toml"
@@ -106,6 +108,23 @@ def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
             )
         )
     return Consumables(categories=tuple(categories))
+
+
+def load_consumable_buffs(
+    path: Path = DEFAULT_CONSUMABLE_BUFFS_PATH,
+) -> ConsumableBuffs:
+    """Consumable buff ids by category, from the committed TOML file.
+
+    `verified` is a date the file carries for a reader, not a field the domain
+    uses, so it is skipped like any other non-table key.
+    """
+    raw = _read(path)
+    entries = []
+    for name, block in raw.items():
+        if not isinstance(block, dict):
+            continue
+        entries.append((name, tuple(block.get("ability_ids", ()))))
+    return ConsumableBuffs(entries=tuple(entries))
 
 
 def load_roles(path: Path = DEFAULT_ROLES_PATH) -> Roles:
