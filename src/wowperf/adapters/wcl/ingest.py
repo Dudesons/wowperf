@@ -4,6 +4,7 @@
 from typing import Any
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -191,6 +192,48 @@ def build_run(
         npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
         players=_build_players(fight, actors, talents or {}),
         pulls=_build_pulls(fight),
+    )
+
+
+def build_encounter(
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    *,
+    partition: int,
+    talents: dict[int, str] | None = None,
+) -> Encounter:
+    """One boss fight as a domain object.
+
+    `partition` is passed rather than read off the fight: a ReportFight carries
+    no partition, and the report's own rankings row is where it comes from. The
+    caller that has it passes it; nothing here guesses.
+    """
+    actors = report.get("masterData", {}).get("actors") or []
+    players = _build_players(fight, actors, talents or {})
+
+    difficulty = fight.get("difficulty")
+    if difficulty is None:
+        raise IngestError(
+            f"Fight {fight.get('id')} is a boss fight but carries no difficulty"
+        )
+
+    return Encounter(
+        report_code=report["code"],
+        fight_id=fight["id"],
+        encounter_id=_required(fight, "encounterID"),
+        boss_name=fight["name"],
+        difficulty=int(difficulty),
+        partition=partition,
+        # `size` is the raid size the report recorded. Where it is absent the
+        # roster is the honest answer, and it is the number every per-player
+        # median is drawn over anyway.
+        size=int(fight["size"]) if fight.get("size") else len(players),
+        kill=bool(fight.get("kill")),
+        fight_percentage=fight.get("fightPercentage"),
+        start_ms=int(fight["startTime"]),
+        end_ms=int(fight["endTime"]),
+        owner_name=(report.get("owner") or {}).get("name"),
+        players=players,
     )
 
 

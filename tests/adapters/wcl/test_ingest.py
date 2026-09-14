@@ -9,6 +9,7 @@ import pytest
 
 from wowperf.adapters.wcl.ingest import (
     IngestError,
+    build_encounter,
     build_run,
     select_keystone_fight,
     select_raid_fight,
@@ -351,3 +352,71 @@ def test_the_talents_query_is_deterministic_regardless_of_input_order() -> None:
     # The cache key is derived from the query text, so a document whose field
     # order tracked the caller's order would miss the cache on every run.
     assert talents_query([693, 7, 42]) == talents_query([42, 693, 7]) == talents_query([7, 42, 693])
+
+
+def a_raid_report() -> dict[str, Any]:
+    return {
+        "code": "cW38jmwdnZfbHVL4",
+        "owner": {"name": "Emberkin"},
+        "masterData": {
+            "actors": [
+                {"id": 11, "name": "Emberkin", "subType": "Mage"},
+                {"id": 12, "name": "Stonewake", "subType": "Warrior"},
+            ]
+        },
+    }
+
+
+def a_raid_fight(**overrides: Any) -> dict[str, Any]:
+    fight: dict[str, Any] = {
+        "id": 22,
+        "name": "The Twin Fangs",
+        "encounterID": 3421,
+        "difficulty": 4,
+        "size": 20,
+        "kill": True,
+        "fightPercentage": 0.01,
+        "startTime": 1_000,
+        "endTime": 375_000,
+        "friendlyPlayers": [11, 12],
+        "friendlySpecs": ["Arcane", "Protection"],
+        "friendlyItemLevels": [700, 702],
+    }
+    fight.update(overrides)
+    return fight
+
+
+def test_an_encounter_carries_the_fight_and_the_roster() -> None:
+    encounter = build_encounter(a_raid_report(), a_raid_fight(), partition=1)
+
+    assert encounter.report_code == "cW38jmwdnZfbHVL4"
+    assert encounter.fight_id == 22
+    assert encounter.encounter_id == 3421
+    assert encounter.boss_name == "The Twin Fangs"
+    assert encounter.difficulty == 4
+    assert encounter.partition == 1
+    assert encounter.size == 20
+    assert encounter.kill is True
+    assert encounter.duration_seconds == 374.0
+    assert [player.name for player in encounter.players] == ["Emberkin", "Stonewake"]
+
+
+def test_a_wipe_keeps_the_percentage_it_ended_at() -> None:
+    encounter = build_encounter(
+        a_raid_report(), a_raid_fight(kill=False, fightPercentage=16.49), partition=1
+    )
+    assert encounter.kill is False
+    assert encounter.fight_percentage == pytest.approx(16.49)
+    assert encounter.outcome == "wiped at 16.5%"
+
+
+def test_a_missing_difficulty_is_refused_rather_than_defaulted() -> None:
+    # Difficulty selects the ranking sample. Defaulting it would compare a
+    # Heroic pull against Mythic parses and never say so.
+    with pytest.raises(IngestError, match="difficulty"):
+        build_encounter(a_raid_report(), a_raid_fight(difficulty=None), partition=1)
+
+
+def test_a_size_the_report_omits_falls_back_to_the_roster() -> None:
+    encounter = build_encounter(a_raid_report(), a_raid_fight(size=None), partition=1)
+    assert encounter.size == 2
