@@ -35,9 +35,12 @@ def test_an_item_is_found_by_id() -> None:
 
 
 def test_tier_pieces_counts_only_the_set_sitting_in_the_tier_slots() -> None:
-    # Measured 2026-09-14: the tier set occupies slots {0, 2, 4, 6, 9} and is
-    # class-specific, while set 2070 spans classes in slots 12 and 15. Counting
-    # equal set ids without the slot rule would call this seven pieces.
+    # Five items: three carry set 2062 in tier slots, two carry a different
+    # set, 2070, outside them. The tier count is 3 -- the non-tier pair sits
+    # outside {0, 2, 4, 6, 9} and adds nothing to it. This fixture alone does
+    # not prove the slot filter runs (2070 only has two items here, so an
+    # unfiltered count would still find 2062's three the largest); the case
+    # where the outside set has MORE pieces than the tier set follows below.
     loadout = Loadout(
         items=(
             an_item(slot=0, set_id=2062),
@@ -48,6 +51,25 @@ def test_tier_pieces_counts_only_the_set_sitting_in_the_tier_slots() -> None:
         )
     )
     assert loadout.tier_pieces() == 3
+
+
+def test_tier_pieces_ignores_a_larger_set_sitting_outside_the_tier_slots() -> None:
+    # The mirror of design Section 2.6: set 2070 spans four classes in slots
+    # 12 and 15 and is not tier. Here it out-numbers the true tier set 2062,
+    # so a count that skips the slot filter would pick 2070's four pieces
+    # instead of 2062's two, and return 4 rather than 2. Deleting the
+    # `item.slot in TIER_SLOTS` check in `tier_pieces()` makes this go red.
+    loadout = Loadout(
+        items=(
+            an_item(slot=0, set_id=2062),
+            an_item(slot=2, set_id=2062),
+            an_item(slot=12, set_id=2070),
+            an_item(slot=13, set_id=2070),
+            an_item(slot=15, set_id=2070),
+            an_item(slot=16, set_id=2070),
+        )
+    )
+    assert loadout.tier_pieces() == 2
 
 
 def test_tier_pieces_is_zero_when_no_item_carries_a_set() -> None:
