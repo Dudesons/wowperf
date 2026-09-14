@@ -155,11 +155,20 @@ def compare_mechanics(
     if not sample.members or our_seconds <= 0:
         return []
 
+    # A member with a zero or negative duration has nothing to divide by, and
+    # nothing upstream refuses it: `select_reference_kills` matches size and
+    # difficulty only. Dropped before `total` is computed, so the denominator
+    # and every "N of M" phrase in the evidence see the same set of members
+    # that the rates themselves were drawn from.
+    members = tuple(member for member in sample.members if member.row.duration_seconds > 0)
+    if not members:
+        return []
+
     their_rows = [
         {row.ability_id: row for row in hostile_rows(member.abilities)}
-        for member in sample.members
+        for member in members
     ]
-    total = len(sample.members)
+    total = len(members)
 
     candidates: list[tuple[float, Finding]] = []
     for our_row in hostile_rows(ours):
@@ -176,7 +185,7 @@ def compare_mechanics(
             _rate(rows[our_row.ability_id].landings, member.row.duration_seconds)
             if our_row.ability_id in rows
             else 0.0
-            for rows, member in zip(their_rows, sample.members, strict=True)
+            for rows, member in zip(their_rows, members, strict=True)
         ]
         carrying = sum(1 for rows in their_rows if our_row.ability_id in rows)
 
@@ -199,8 +208,8 @@ def compare_mechanics(
                     detail=(
                         f"{our_rate:.1f} landings a minute against a reference median of "
                         f"{their_median:.1f}. This states a difference, not a mistake: "
-                        "whether any single landing was avoidable is not something the "
-                        "log records."
+                        "whether any single landing could have been prevented is not "
+                        "something the log records."
                     ),
                     confidence=Confidence.MEASURED,
                     seconds_lost=None,

@@ -98,9 +98,15 @@ def test_an_ability_we_took_far_more_of_than_the_sample_is_a_finding() -> None:
     # both, so the rates are 0.5/1.0/1.5/2.0/2.5 and only the median is 1.5).
     assert any("6.0" in line for line in findings[0].evidence), "our own rate"
     assert any("1.5" in line for line in findings[0].evidence), "the sample median rate"
-    # The claim is a count, never an intent. Master design 5.5 refuses the latter.
-    assert "missed" not in findings[0].title.lower()
-    assert "missed" not in findings[0].detail.lower()
+    # The claim is a count, never an intent. Master design 5.5 refuses the
+    # latter, and names four words that would smuggle it back in. Checked
+    # over every finding the call produced, and both the title and the
+    # detail of each -- a single word slipping past one of the eight checks
+    # is exactly how "avoidable" shipped past a check that only tried "missed".
+    for finding in findings:
+        for word in ("missed", "avoidable", "should have", "failed"):
+            assert word not in finding.title.lower(), finding.title
+            assert word not in finding.detail.lower(), finding.detail
 
 
 def test_a_reference_tick_count_counts_toward_its_landings() -> None:
@@ -130,6 +136,35 @@ def test_a_reference_tick_count_counts_toward_its_landings() -> None:
     # minute; median 2.0. Reading hit_count alone instead gives 1, 2, 3, 4, 5
     # landings -> a median of 1.5, which is a different, wrong number.
     assert any("2.0" in line for line in findings[0].evidence), "ticks must count as landings"
+
+
+def test_a_reference_with_zero_duration_is_dropped_before_dividing() -> None:
+    # Nothing upstream refuses a zero-duration reference: select_reference_kills
+    # matches size and difficulty only, and ReferenceKillRow.duration_ms is a
+    # plain int with no lower bound. A member like this must be dropped before
+    # the loop divides by its duration, not after, and it must not still be
+    # counted in the reference total the evidence and quantifier read.
+    ours = (ability(400, "Ravenous Feast", 24, ("Boss",)),)
+    broken = member("broken", (ability(400, "Ravenous Feast", 50, ("Boss",)),), seconds=0.0)
+    sample = MechanicsSample(
+        members=(
+            broken,
+            member("a", (ability(400, "Ravenous Feast", 2, ("Boss",)),)),
+            member("b", (ability(400, "Ravenous Feast", 4, ("Boss",)),)),
+            member("c", (ability(400, "Ravenous Feast", 6, ("Boss",)),)),
+        )
+    )
+    findings = compare_mechanics(ours, 120.0, sample, scope="the raid")
+    assert findings, "the call must not raise, and the three valid references still compare"
+    # Surviving landings 2, 4, 6 in 120s -> 1.0, 2.0, 3.0 a minute; median 2.0.
+    # Had the broken member instead been kept with its rate specialcased to
+    # zero, the median over four values would read 1.5, not 2.0. Had it been
+    # kept out of the rates but left in the denominator, the total would read
+    # 4, not 3.
+    assert any("2.0" in line for line in findings[0].evidence), "median over survivors only"
+    assert any(
+        "3 of 3" in line for line in findings[0].evidence
+    ), "the broken member must not count toward the total"
 
 
 def test_an_ability_in_line_with_the_sample_states_nothing() -> None:
