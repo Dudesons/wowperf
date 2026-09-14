@@ -1,0 +1,57 @@
+# ABOUTME: Behaviour tests for the gear and stat comparison families.
+# ABOUTME: item_sourced is asymmetric on purpose: a match is evidence, a miss is not.
+
+from wowperf.domain.comparison.loadout import item_sourced
+from wowperf.domain.loadout import EquippedItem, Loadout
+
+
+def an_item(**changes: object) -> EquippedItem:
+    fields: dict[str, object] = {
+        "item_id": 250225,
+        "slot": 12,
+        "name": "Tablet of the Stonewake",
+        "item_level": 331,
+        "enchant_id": None,
+        "enchant_name": None,
+        "set_id": None,
+    }
+    fields.update(changes)
+    return EquippedItem(**fields)  # type: ignore[arg-type]
+
+
+def a_loadout(*items: EquippedItem) -> Loadout:
+    return Loadout(items=items or (an_item(),))
+
+
+def test_an_ability_named_after_an_equipped_item_resolves_to_it() -> None:
+    # Measured 2026-09-14: Warcraft Logs names an on-use trinket's spell after
+    # the item. Four of ten equipped trinkets matched the ability dictionary.
+    found = item_sourced("Tablet of the Stonewake", [a_loadout()])
+    assert found is not None
+    assert found.item_id == 250225
+
+
+def test_an_ability_matching_no_equipped_item_resolves_to_nothing() -> None:
+    # A miss means unknown, never "this is a class spell". The measurement
+    # shows a match indicates an item source; it does not show every
+    # item-sourced ability matches by name.
+    assert item_sourced("Arcane Blast", [a_loadout()]) is None
+
+
+def test_any_loadout_in_the_sample_can_supply_the_match() -> None:
+    others = [a_loadout(an_item(name="Bríala's Ember")), a_loadout(an_item(name="Ashen Coil"))]
+    found = item_sourced("Ashen Coil", others)
+    assert found is not None
+    assert found.name == "Ashen Coil"
+
+
+def test_no_loadouts_at_all_resolve_to_nothing() -> None:
+    assert item_sourced("Ashen Coil", []) is None
+
+
+def test_the_match_is_exact_rather_than_loose() -> None:
+    # A substring rule would fold "Rune of Sanguination" into a rune consumable
+    # and a "Tablet" into every tablet; the join is worth having only if it is
+    # precise.
+    assert item_sourced("Tablet", [a_loadout()]) is None
+    assert item_sourced("tablet of the stonewake", [a_loadout()]) is None
