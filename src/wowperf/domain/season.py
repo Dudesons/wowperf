@@ -135,6 +135,25 @@ class ConsumableBuffs(Frozen):
         return ()
 
 
+class SlotNames(Frozen):
+    """Equipment slot names by slot index, read off icon filenames and dated.
+
+    A tuple of pairs rather than a mapping, like every other curated list
+    here: the domain layer's values are frozen and hashable, and a dict is
+    neither. Two slots -- 3 and 17 -- were never identified and carry no
+    entry; `name_for` falls back to the raw index for those rather than
+    guessing at a name the source data does not support.
+    """
+
+    entries: tuple[tuple[int, str], ...] = ()
+
+    def name_for(self, slot: int) -> str:
+        for index, name in self.entries:
+            if index == slot:
+                return name
+        return f"slot {slot}"
+
+
 class SelfResurrections(Frozen):
     """Spells a dead player casts to bring themselves back.
 

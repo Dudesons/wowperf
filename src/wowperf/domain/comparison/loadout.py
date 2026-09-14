@@ -7,6 +7,14 @@ from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMemb
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.findings import Confidence, Finding, quantifier_for, quantity
 from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout
+from wowperf.domain.season import SlotNames
+
+NO_SLOT_NAMES = SlotNames()
+"""The default for every caller that has not loaded the slot-name data file.
+
+`name_for` falls back to the raw index for every slot with an empty table, so
+a caller without it still gets a usable, if unnamed, title.
+"""
 
 
 def loadouts_of(members: Sequence[ParseMember]) -> tuple[Loadout, ...]:
@@ -51,8 +59,24 @@ def item_sourced(ability_name: str, loadouts: Sequence[Loadout]) -> EquippedItem
     return None
 
 
+def _enchant_target(slot: int, slot_names: SlotNames) -> str:
+    """The slot's name, phrased for "enchanted ...".
+
+    A named slot reads naturally with an article in front of it --
+    "enchanted the feet". The "slot N" fallback that `SlotNames.name_for`
+    gives the two unidentified slots keeps its own phrasing instead:
+    "enchanted the slot 3" would read as a mistake, not as a slot with no
+    name.
+    """
+    name = slot_names.name_for(slot)
+    return name if name == f"slot {slot}" else f"the {name}"
+
+
 def compare_enchants(
-    our_loadout: Loadout | None, their_loadouts: Sequence[Loadout], our_name: str
+    our_loadout: Loadout | None,
+    their_loadouts: Sequence[Loadout],
+    our_name: str,
+    slot_names: SlotNames = NO_SLOT_NAMES,
 ) -> list[Finding]:
     """Slots every comparable reference enchanted and this player left bare.
 
@@ -65,6 +89,13 @@ def compare_enchants(
 
     A slot this player wears nothing in is not reported: an empty slot is a
     different claim from an unenchanted one.
+
+    `slot_names` names the slot in the title, for a reader who must know
+    where to act without knowing that slot 7 is feet. Two slots, 3 and 17,
+    were never identified; `SlotNames.name_for` falls back to the raw index
+    for those rather than guessing, and the default empty `SlotNames` falls
+    back for every slot, which is what every caller that has not loaded the
+    data file gets.
     """
     if our_loadout is None or len(their_loadouts) < MIN_SAMPLE_FOR_AGGREGATE:
         return []
@@ -87,7 +118,7 @@ def compare_enchants(
                 id=f"compare.gear.enchant.{slot}",
                 title=(
                     f"{count_phrase(len(their_loadouts), len(their_loadouts))} top parses "
-                    f"enchanted slot {slot}; {our_name} did not"
+                    f"enchanted {_enchant_target(slot, slot_names)}; {our_name} did not"
                 ),
                 detail=(
                     "Every reference in the sample carries an enchant in this slot and this "
@@ -145,7 +176,7 @@ def compare_tier(
             confidence=Confidence.DERIVED,
             seconds_lost=None,
             evidence=(
-                f"{ours} tier pieces in slots {sorted(TIER_SLOTS)}",
+                f"{ours} tier pieces, counted across slots {sorted(TIER_SLOTS)}",
                 f"sample median {their_median:g}, range {low:g} to {high:g} "
                 f"across {len(their_loadouts)} references",
             ),

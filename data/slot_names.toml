@@ -1,0 +1,25 @@
+# Equipment slot names, read off icon filenames rather than assumed: no API field
+# carries one, only the slot index the `gear` array reports.
+#
+# Slots 3 and 17 were not identified and are deliberately absent; a slot with no
+# entry here is named by its own raw index rather than guessed. Recorded in
+# `.claude/skills/wcl-api/SKILL.md` under "Slot indices, read off icon filenames".
+verified = "2026-09-14"
+
+[slots]
+0 = "head"
+1 = "neck"
+2 = "shoulder"
+4 = "chest"
+5 = "waist"
+6 = "legs"
+7 = "feet"
+8 = "wrist"
+9 = "hands"
+10 = "ring"
+11 = "ring"
+12 = "trinket"
+13 = "trinket"
+14 = "back"
+15 = "main hand"
+16 = "off hand"

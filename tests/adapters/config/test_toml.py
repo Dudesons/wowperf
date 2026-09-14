@@ -332,3 +332,43 @@ def test_the_combat_potion_category_is_loaded_from_consumables() -> None:
 
     names = {category.name for category in load_consumables().categories}
     assert "combat potion" in names
+
+
+def test_slot_names_are_read_from_a_toml_file(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    path = tmp_path / "slot_names.toml"
+    path.write_text(
+        'verified = "2026-09-14"\n'
+        "[slots]\n"
+        '7 = "feet"\n'
+        '12 = "trinket"\n',
+        encoding="utf-8",
+    )
+    slot_names = load_slot_names(path)
+    assert slot_names.name_for(7) == "feet"
+    assert slot_names.name_for(12) == "trinket"
+
+
+def test_an_unlisted_slot_falls_back_to_its_raw_index() -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    # Slots 3 and 17 were never identified and are absent from the committed
+    # file on purpose; the fallback must not invent a name for them.
+    slot_names = load_slot_names()
+    assert slot_names.name_for(3) == "slot 3"
+    assert slot_names.name_for(17) == "slot 17"
+
+
+def test_the_committed_slot_names_file_names_every_identified_slot() -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    slot_names = load_slot_names()
+    # Read off icon filenames, per `.claude/skills/wcl-api/SKILL.md`.
+    expected = {
+        0: "head", 1: "neck", 2: "shoulder", 4: "chest", 5: "waist", 6: "legs",
+        7: "feet", 8: "wrist", 9: "hands", 10: "ring", 11: "ring", 12: "trinket",
+        13: "trinket", 14: "back", 15: "main hand", 16: "off hand",
+    }
+    for slot, name in expected.items():
+        assert slot_names.name_for(slot) == name

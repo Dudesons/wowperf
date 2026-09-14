@@ -16,6 +16,7 @@ from wowperf.domain.season import (
     Roles,
     SeasonData,
     SelfResurrections,
+    SlotNames,
     ThroughputCooldowns,
 )
 
@@ -28,6 +29,7 @@ DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
 DEFAULT_EXTERNALS_PATH = DATA_DIR / "externals.toml"
 DEFAULT_RESURRECTIONS_PATH = DATA_DIR / "resurrections.toml"
+DEFAULT_SLOT_NAMES_PATH = DATA_DIR / "slot_names.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -151,3 +153,15 @@ def load_self_resurrections(path: Path = DEFAULT_RESURRECTIONS_PATH) -> SelfResu
 def load_throughput_cooldowns(path: Path = DEFAULT_THROUGHPUT_PATH) -> ThroughputCooldowns:
     """Throughput cooldowns per class and specialisation, from the committed TOML file."""
     return ThroughputCooldowns(entries=_load_cooldowns(path, CooldownAbility))
+
+
+def load_slot_names(path: Path = DEFAULT_SLOT_NAMES_PATH) -> SlotNames:
+    """Equipment slot names by slot index, from the committed TOML file.
+
+    `verified` is a date the file carries for a reader, not a field the domain
+    uses, so it is skipped like any other non-table key.
+    """
+    raw = _read(path)
+    slots = raw.get("slots")
+    assert isinstance(slots, dict)
+    return SlotNames(entries=tuple((int(slot), str(name)) for slot, name in slots.items()))

@@ -25,7 +25,7 @@ from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player
-from wowperf.domain.season import ConsumableBuffs
+from wowperf.domain.season import ConsumableBuffs, SlotNames
 
 
 def _unavailable(finding_id: str, title: str, detail: str) -> Finding:
@@ -69,6 +69,7 @@ class ComparisonSubject(Frozen):
     # every test in this module free to build a subject without either.
     consumable_buffs: ConsumableBuffs = ConsumableBuffs()
     potion_ids: tuple[int, ...] = ()
+    slot_names: SlotNames = SlotNames()
 
 
 def _for_player(findings: list[Finding], slug: str) -> list[Finding]:
@@ -132,7 +133,9 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
             top.row,
         ),
         *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),
-        *compare_enchants(subject.player.loadout, their_loadouts, subject.display_name),
+        *compare_enchants(
+            subject.player.loadout, their_loadouts, subject.display_name, subject.slot_names
+        ),
         *compare_tier(subject.player.loadout, their_loadouts, subject.display_name),
         *compare_stats(subject.player.loadout, their_loadouts, subject.display_name),
         *compare_consumable_buffs(

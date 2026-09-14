@@ -22,6 +22,7 @@ from wowperf.adapters.config.toml import (
     load_roles,
     load_season_data,
     load_self_resurrections,
+    load_slot_names,
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
@@ -753,6 +754,7 @@ def analyze(
         consumables = load_consumables()
         consumable_buffs = load_consumable_buffs()
         throughput = load_throughput_cooldowns()
+        slot_names = load_slot_names()
         # The comparison's combat-potion family reads this one category rather
         # than all of `consumables`: `for_survival()` excludes it (it shares no
         # cooldown with a health potion), but `categories` still carries it.
@@ -832,6 +834,7 @@ def analyze(
                         our_auras=our_auras,
                         consumable_buffs=consumable_buffs,
                         potion_ids=combat_potion_ids,
+                        slot_names=slot_names,
                     )
                 )
             compared_slugs = frozenset(one.slug for one in subjects)

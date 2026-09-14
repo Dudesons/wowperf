@@ -13,7 +13,7 @@ from typer.testing import CliRunner
 
 from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
-from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables
+from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables, load_slot_names
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -878,12 +878,13 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
 def test_the_subjects_carry_the_curated_consumable_data_cli_loads(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`ComparisonSubject.consumable_buffs` and `.potion_ids` are the two fields
-    Task 14 adds so the gear/consumable comparison families have something to
-    read; both default to empty, so a caller that built a subject without
-    filling them in would fail silently -- `compare_consumable_buffs` and
-    `compare_potions` would simply find nothing to compare, and no finding-level
-    test could tell "nothing to report" apart from "never wired up".
+    """`ComparisonSubject.consumable_buffs`, `.potion_ids` and `.slot_names` are
+    fields the gear/consumable comparison families need something to read; all
+    default to empty, so a caller that built a subject without filling them in
+    would fail silently -- `compare_consumable_buffs`, `compare_potions` and
+    `compare_enchants` would simply find nothing to compare or nothing to name,
+    and no finding-level test could tell "nothing to report" apart from "never
+    wired up".
 
     `compare` itself is stubbed, the same way `comparison_measures` is stubbed
     above, so this needs no fixture that also clears MIN_SAMPLE_FOR_AGGREGATE
@@ -914,6 +915,8 @@ def test_the_subjects_carry_the_curated_consumable_data_cli_loads(
     assert subject.potion_ids == expected_potion_ids
     assert subject.potion_ids  # not empty -- a caller passing () would pass this vacuously
     assert subject.consumable_buffs == load_consumable_buffs()
+    assert subject.slot_names == load_slot_names()
+    assert subject.slot_names.name_for(7) == "feet"  # not empty either
 
 
 def test_analyze_is_a_subcommand_of_its_own() -> None:

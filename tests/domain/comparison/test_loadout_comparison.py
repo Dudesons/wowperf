@@ -15,6 +15,7 @@ from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.findings import Confidence
 from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
 from wowperf.domain.model import Player, Run
+from wowperf.domain.season import SlotNames
 
 OUR_NAME = "Stonewake (actor 7)"
 
@@ -167,6 +168,38 @@ def test_a_slot_everyone_enchanted_and_we_did_not_is_a_finding() -> None:
     assert findings[0].id == "compare.gear.enchant.7"
     assert findings[0].confidence is Confidence.MEASURED
     assert "slot 7" in findings[0].evidence[0]
+
+
+def test_with_no_slot_names_loaded_the_title_falls_back_to_the_raw_index() -> None:
+    # `slot_names` defaults to an empty `SlotNames`, which every caller that
+    # has not loaded the data file gets -- the whole test module above this
+    # one, in particular.
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=7, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME)
+    assert findings[0].title == f"5 of 5 top parses enchanted slot 7; {OUR_NAME} did not"
+
+
+def test_a_known_slot_is_named_in_the_title() -> None:
+    # A reader must know that slot 7 is feet to act on this finding -- the one
+    # family whose whole job is "go do this specific thing".
+    slot_names = SlotNames(entries=((7, "feet"),))
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=7, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME, slot_names)
+    assert findings[0].title == f"5 of 5 top parses enchanted the feet; {OUR_NAME} did not"
+    # The slot index is kept in the evidence even once the title names it.
+    assert "slot 7" in findings[0].evidence[0]
+
+
+def test_an_unidentified_slot_falls_back_to_its_raw_index_rather_than_a_guess() -> None:
+    # Slots 3 and 17 were never identified. A `SlotNames` naming every other
+    # slot must still fall back for these two rather than inventing a name.
+    slot_names = SlotNames(entries=((7, "feet"), (12, "trinket")))
+    theirs = [a_loadout(an_item(slot=3, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=3, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME, slot_names)
+    assert findings[0].title == f"5 of 5 top parses enchanted slot 3; {OUR_NAME} did not"
 
 
 def test_two_missing_enchant_slots_produce_distinct_finding_ids() -> None:
@@ -447,6 +480,13 @@ def test_nothing_is_compared_below_the_sample_floor_for_stats() -> None:
     # Named "..._for_stats": test_nothing_is_compared_below_the_sample_floor
     # already exists above for compare_enchants. Pasted verbatim, Python would
     # silently rebind that name and pytest would run only the last definition.
-    ours = a_stat_loadout(mastery=400)
-    theirs = [a_stat_loadout(mastery=1400) for _ in range(2)]
+    #
+    # Both sides carry an equal crit baseline, the same way
+    # test_the_row_states_our_rating_the_median_and_the_range does above: a
+    # loadout with mastery as its only nonzero stat makes total_secondary()
+    # equal to that one rating, collapsing every share to 100% regardless of
+    # the floor guard -- STAT_GAP_SHARE would suppress the row on its own, and
+    # the floor below the sample size would never get a chance to.
+    ours = a_stat_loadout(crit=1000, mastery=400)
+    theirs = [a_stat_loadout(crit=1000, mastery=1400) for _ in range(2)]
     assert compare_stats(ours, theirs, OUR_NAME) == []
