@@ -55,8 +55,8 @@ covers it otherwise.
 | `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
-| `playerDetails` | `Report` | 2026-09-14 | no |
-| `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | no |
+| `playerDetails` | `Report` | 2026-09-14 | yes |
+| `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
