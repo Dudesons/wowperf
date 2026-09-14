@@ -163,3 +163,47 @@ def test_no_damage_comparison_is_printed_for_an_attempt_that_did_not_kill() -> N
     assert len(findings) == 1
     assert findings[0].id == "compare.damage.total.unavailable"
     assert "did not kill" in findings[0].detail
+
+
+def test_an_empty_all_damage_board_leaves_the_comparison_unavailable() -> None:
+    """A kill can still leave the all-damage leaderboard empty -- a thin sample
+    for an uncommon spec, or a fetch that came back with nothing. That is a
+    different reason than a wipe, and the wording must say so: not "did not
+    kill", because this attempt did."""
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), (), board(50.0, 100.0, 150.0), "Emberkin"
+    )
+    assert len(findings) == 1
+    assert findings[0].id == "compare.damage.total.unavailable"
+    assert "did not kill" not in findings[0].detail
+    assert "all damage" in findings[0].detail.lower()
+
+
+def test_an_empty_boss_damage_board_leaves_the_comparison_unavailable() -> None:
+    """The reverse of the above: the all-damage board is fine, the boss-only
+    board came back empty. Either alone must withhold the whole comparison."""
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), board(100.0, 200.0, 300.0), (), "Emberkin"
+    )
+    assert len(findings) == 1
+    assert findings[0].id == "compare.damage.total.unavailable"
+    assert "did not kill" not in findings[0].detail
+    assert "boss damage" in findings[0].detail.lower()
+
+
+def test_two_axes_below_floor_with_different_counts_are_each_labelled() -> None:
+    """1 eligible all-damage row and 2 eligible boss-damage rows must not
+    collapse into indistinguishable notes -- a reader needs to know which
+    count belongs to which metric."""
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), board(100.0), board(50.0, 100.0), "Emberkin"
+    )
+    evidence = " ".join(findings[0].evidence)
+    assert (
+        "all damage: a single reference, not an aggregate: 1 of the sample was comparable"
+        in evidence
+    )
+    assert (
+        "boss damage: a single reference, not an aggregate: 2 of the sample were comparable"
+        in evidence
+    )

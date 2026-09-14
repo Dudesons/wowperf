@@ -151,6 +151,29 @@ def _damage_unavailable(our_name: str) -> Finding:
     )
 
 
+def _damage_unavailable_no_sample(our_name: str, axis: str) -> Finding:
+    """The kill happened, but the axis named by `axis` has nothing to compare against.
+
+    Worded so it cannot be mistaken for `_damage_unavailable`'s wipe case: this
+    attempt killed the boss, and the log says so. What is missing is the
+    leaderboard's own reference sample -- a thin sample for an uncommon spec at
+    this difficulty, or a fetch that returned nothing -- not a rankings row for
+    us. A reader must be able to tell "there was no kill" from "there was a
+    kill and no reference sample to compare it against", because those call
+    for different things.
+    """
+    return Finding(
+        id=DAMAGE_UNAVAILABLE_ID,
+        title=f"No damage comparison is available for {our_name}",
+        detail=(
+            f"This attempt killed the boss, but the {axis} leaderboard returned no "
+            "reference rows to compare against, so no median can be stated for that metric."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+    )
+
+
 def _status(ours: float, middle: float) -> str:
     """Where our figure sits against the sample's middle, as the title's own word."""
     if ours > middle:
@@ -177,6 +200,23 @@ def _metric_state(board: tuple[RaidParseRow, ...]) -> tuple[float, float, float,
     return middle, low, high, len(used), len(eligible)
 
 
+def _labelled_too_few(finding: Finding, axis: str, eligible: int) -> Finding:
+    """`too_few`'s own note, prefixed with which axis it belongs to.
+
+    Two axes can each fall below `MIN_SAMPLE_FOR_AGGREGATE` with different
+    counts, and a finding stating two bare counts with no label leaves a
+    reader unable to pair either back to all damage or boss damage only.
+    `too_few` itself appends its note to a finding's evidence and returns a
+    new finding; this reuses that exact wording (so the pluralisation rule
+    is not duplicated) by running it against a throwaway finding with no
+    evidence of its own, then carries only the note it produced, labelled,
+    onto the finding this module is actually building.
+    """
+    placeholder = Finding(id="_", title="", detail="", confidence=Confidence.MEASURED)
+    note = too_few([placeholder], eligible)[0].evidence[-1]
+    return finding.model_copy(update={"evidence": (*finding.evidence, f"{axis}: {note}")})
+
+
 def compare_damage_total(
     ours: RankedPlayer | None,
     our_boss: RankedPlayer | None,
@@ -192,11 +232,21 @@ def compare_damage_total(
     rather than an empty list: silence would read as a clean result, and this says
     why there is nothing instead.
 
+    A kill can still leave `board` or `boss_board` empty -- the two leaderboards
+    are fetched independently of whether this report's own rankings produced a
+    row, and a thin sample for an uncommon spec at this difficulty, or a fetch
+    that returned nothing, is a real state rather than a failure to guard
+    against. Either board empty also returns `compare.damage.total.unavailable`,
+    worded so it cannot be mistaken for the wipe case: this attempt killed the
+    boss, and what is missing is the leaderboard's own reference sample, not a
+    rankings row for us.
+
     `board` and `boss_board` are two independent leaderboards, not the same
     references read twice -- a top parse by all damage need not be a top parse by
     boss damage alone -- so each is sliced to `SAMPLE_SIZE` and medianed on its own,
     and each falls back to `too_few`'s single-reference wording on its own below
-    `MIN_SAMPLE_FOR_AGGREGATE`.
+    `MIN_SAMPLE_FOR_AGGREGATE`, labelled by which axis it belongs to so two
+    different counts on the two axes never read as one ambiguous pair.
 
     Both `RankedPlayer.amount` and `RaidParseRow.amount` are per-second rates
     already, so nothing here divides by a duration or multiplies by one -- F9 is
@@ -208,6 +258,18 @@ def compare_damage_total(
     """
     if ours is None:
         return [_damage_unavailable(our_name)]
+
+    # A kill can still leave a leaderboard empty -- a thin sample for an
+    # uncommon spec at this difficulty, or a fetch that returned nothing.
+    # That is a real state, not a failure to guard against: `_metric_state`
+    # would otherwise hand an empty list to `median`, which raises. Checked
+    # before either axis is touched, so neither board is read past its own
+    # emptiness, and the two reasons -- no kill, no reference sample -- stay
+    # distinguishable in the finding's own words.
+    if not board:
+        return [_damage_unavailable_no_sample(our_name, "all damage")]
+    if our_boss is not None and not boss_board:
+        return [_damage_unavailable_no_sample(our_name, "boss damage")]
 
     all_middle, all_low, all_high, all_used, all_eligible = _metric_state(board)
     all_status = _status(ours.amount, all_middle)
@@ -221,7 +283,6 @@ def compare_damage_total(
         f"all damage range {all_low:.1f} to {all_high:.1f} over "
         f"{quantity(all_used, 'reference', 'references')}"
     ]
-    below_floor = {all_eligible} if all_eligible < MIN_SAMPLE_FOR_AGGREGATE else set()
 
     if our_boss is None:
         title = f"{our_name} sat {all_status} the sample median on all damage"
@@ -238,8 +299,6 @@ def compare_damage_total(
             f"boss damage range {boss_low:.1f} to {boss_high:.1f} over "
             f"{quantity(boss_used, 'reference', 'references')}"
         )
-        if boss_eligible < MIN_SAMPLE_FOR_AGGREGATE:
-            below_floor.add(boss_eligible)
 
         if boss_status == all_status:
             title = (
@@ -252,17 +311,23 @@ def compare_damage_total(
                 f"{all_status} it on all damage"
             )
 
-    findings = [
-        Finding(
-            id="compare.damage.total",
-            title=title,
-            detail=DAMAGE_DETAIL,
-            confidence=Confidence.MEASURED,
-            seconds_lost=None,
-            evidence=tuple(evidence),
-            facts=tuple(facts),
-        )
-    ]
-    for count in sorted(below_floor):
-        findings = too_few(findings, count)
-    return findings
+    finding = Finding(
+        id="compare.damage.total",
+        title=title,
+        detail=DAMAGE_DETAIL,
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=tuple(evidence),
+        facts=tuple(facts),
+    )
+
+    # Each axis is labelled on its own note rather than pooled into one set of
+    # counts: two axes can fall below the floor with different counts, and an
+    # unlabelled pair of numbers leaves a reader with no way to say which
+    # count belongs to which metric.
+    if all_eligible < MIN_SAMPLE_FOR_AGGREGATE:
+        finding = _labelled_too_few(finding, "all damage", all_eligible)
+    if our_boss is not None and boss_eligible < MIN_SAMPLE_FOR_AGGREGATE:
+        finding = _labelled_too_few(finding, "boss damage", boss_eligible)
+
+    return [finding]
