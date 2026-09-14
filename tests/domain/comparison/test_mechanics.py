@@ -32,6 +32,17 @@ def test_no_more_than_the_sample_size_is_drawn() -> None:
     assert len(drawn) == SAMPLE_SIZE
 
 
+def test_no_limit_returns_every_match_and_still_refuses_another_size() -> None:
+    # A caller that discards rows after this filter -- `_mechanics_sample`
+    # drops our own report and any row whose table failed to load -- has to see
+    # all of them and stop at its own count, or each discard costs it a member
+    # the leaderboard had offered. The size filter is unaffected.
+    rows = (*(kill(str(index), 20) for index in range(SAMPLE_SIZE + 3)), kill("wrong", 30))
+    drawn = select_reference_kills(rows, our_size=20, limit=None)
+    assert len(drawn) == SAMPLE_SIZE + 3
+    assert "wrong" not in [row.report_code for row in drawn]
+
+
 def ability(ability_id: int, name: str, hits: int, sources: tuple[str, ...]) -> AbilityTakenRow:
     return AbilityTakenRow(
         ability_id=ability_id, ability_name=name, hit_count=hits, source_types=sources

@@ -507,6 +507,54 @@ def test_a_reference_kill_matching_our_own_report_is_excluded(tmp_path: Path) ->
     assert reasons[RAID_REPORT_CODE] == "this is the run under analysis"
 
 
+def test_a_discarded_reference_kill_is_refilled_from_the_rows_behind_it(
+    tmp_path: Path,
+) -> None:
+    """A discard must cost the sample nothing while the leaderboard has more.
+
+    The page below holds eight rows at our own size -- three more than
+    SAMPLE_SIZE -- and two are discarded after the size filter has already run:
+    the first is this very report and fight, and one further down answers its
+    ability table with an error. Slicing to SAMPLE_SIZE before the loop hands
+    it five rows, two of which never become members, and the sample comes out
+    at three though the leaderboard offered enough. Every matching row reaches
+    the loop instead, and it stops once it holds SAMPLE_SIZE.
+
+    The cap still holds: the eighth row is never weighed at all, so the break
+    caps the fetches exactly as the old slice did.
+
+    Size-matching rows are scarce in practice (measured 2026-09-14: none on one
+    live kill's leaderboard page, two on a wipe's), so this is most of a sample
+    rather than a rounding error.
+    """
+    broken_code = "refbroken"
+    result = run_raid(
+        tmp_path,
+        kill_rankings=[
+            _reference_kill_row(RAID_REPORT_CODE, RAID_FIGHT_ID),
+            _reference_kill_row("refa", 1),
+            _reference_kill_row(broken_code, 2),
+            _reference_kill_row("refc", 3),
+            _reference_kill_row("refd", 4),
+            _reference_kill_row("refe", 5),
+            _reference_kill_row("reff", 6),
+            _reference_kill_row("refbeyond", 7),
+        ],
+        broken_ability_reports=frozenset({(broken_code, 2)}),
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"] == {"mechanics": SAMPLE_SIZE}
+    references = payload["comparison"]["references"]
+    loaded = [
+        record["report_code"] for record in references if record["loaded"] and not record["reason"]
+    ]
+    assert loaded == ["refa", "refc", "refd", "refe", "reff"]
+    weighed = {record["report_code"] for record in references}
+    assert "refbeyond" not in weighed, "a row past the cap was weighed and paid for"
+
+
 def test_a_reference_kills_broken_ability_table_is_skipped_not_fatal(tmp_path: Path) -> None:
     """A row that fails to load is recorded, never fatal -- the whole comparison
     does not abort over one unreachable table."""

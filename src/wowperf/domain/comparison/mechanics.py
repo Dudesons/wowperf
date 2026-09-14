@@ -72,7 +72,7 @@ def select_reference_kills(
     rows: tuple[ReferenceKillRow, ...],
     *,
     our_size: int,
-    limit: int = SAMPLE_SIZE,
+    limit: int | None = SAMPLE_SIZE,
 ) -> tuple[ReferenceKillRow, ...]:
     """References comparable to our own fight, in leaderboard order.
 
@@ -80,6 +80,11 @@ def select_reference_kills(
     2026-09-14, a single page spanned 14 to 30 against our 20, and a 30-player
     reference reports half again as many landings for headcount alone. A page
     holds fifty rows, so matching exactly usually leaves plenty.
+
+    `limit` of `None` returns every match rather than the first few. A caller
+    that discards rows *after* this filter has to ask for all of them and stop
+    at its own count, or each discard shrinks the sample below what the
+    leaderboard actually offered.
 
     There is no difficulty filter here, on purpose: `reference_kills` already
     passes our own difficulty as the query's own argument, so the API never
@@ -92,7 +97,7 @@ def select_reference_kills(
     filter that can never fire in production.
     """
     matching = [row for row in rows if row.size == our_size]
-    return tuple(matching[:limit])
+    return tuple(matching if limit is None else matching[:limit])
 
 
 class MechanicsMember(Frozen):

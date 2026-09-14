@@ -673,6 +673,14 @@ def _mechanics_sample(
     to load is skipped, never fatal, with the reason recorded rather than
     silently dropped.
 
+    Every size-matching row is offered to the loop, which breaks once it holds
+    `SAMPLE_SIZE` members -- `_samples`' own shape, and for its reason: slicing
+    to `SAMPLE_SIZE` first would let each discard shrink the sample instead of
+    being refilled from the rows behind it. Measured 2026-09-14, size-matching
+    rows are scarce (none on one live kill's page, two on a wipe's), so losing
+    one to a self-match is most of a sample. The break still caps the fetches:
+    at most `SAMPLE_SIZE` tables are loaded successfully, plus whatever failed.
+
     `select_reference_kills` has already refused a size that does not match
     ours, so what reaches this loop is comparable by construction; only
     reachability is judged here. Difficulty needs no matching filter here:
@@ -682,11 +690,13 @@ def _mechanics_sample(
     rows = rankings.reference_kills(
         encounter.encounter_id, encounter.difficulty, encounter.partition
     )
-    selected = select_reference_kills(rows, our_size=encounter.size)
+    selected = select_reference_kills(rows, our_size=encounter.size, limit=None)
 
     members: list[MechanicsMember] = []
     records: list[ReferenceRecord] = []
     for row in selected:
+        if len(members) >= SAMPLE_SIZE:
+            break
         if row.report_code == encounter.report_code and row.fight_id == encounter.fight_id:
             records.append(
                 _mechanics_record(row, loaded=False, reason="this is the run under analysis")
