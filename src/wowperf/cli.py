@@ -150,7 +150,24 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
-def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnIcons:
+def _aura_icons(auras: PlayerAuras | None) -> dict[int, str]:
+    """An aura table's own art, keyed by id, skipping any row it named none for.
+
+    The aura table is the only source for a passive talent's icon: a
+    permanently applied aura is never cast, so its id reaches no cast
+    dictionary. An empty name is not a file name and is left out rather than
+    addressed, which draws a clean gap instead of a broken image.
+    """
+    if auras is None:
+        return {}
+    return {aura.ability_id: aura.icon for aura in auras.on_self if aura.icon}
+
+
+def build_icons(
+    loaded: LoadedRun,
+    parse_samples: Sequence[ParseSample],
+    our_auras: Sequence[PlayerAuras | None] = (),
+) -> CdnIcons:
     """Icons for one run: its own ability dictionary and every parse sample's.
 
     Nothing here can fail and nothing here is fetched. An icon is an address the
@@ -170,6 +187,9 @@ def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnI
     for sample in parse_samples:
         for member in sample.members:
             names.update(member.ability_icons)
+            names.update(_aura_icons(member.auras))
+    for auras in our_auras:
+        names.update(_aura_icons(auras))
     names.update(loaded.ability_icon_map)
     return CdnIcons(names)
 
@@ -927,6 +947,7 @@ def analyze(
                 icons=build_icons(
                     loaded,
                     tuple(one.parse for one in subjects if one.parse is not None),
+                    tuple(one.our_auras for one in subjects),
                 ),
             ),
             encoding="utf-8",

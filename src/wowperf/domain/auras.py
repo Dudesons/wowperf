@@ -15,12 +15,19 @@ class AuraBand(Frozen):
 
 
 class Aura(Frozen):
-    """One buff or debuff, with every interval it was up for."""
+    """One buff or debuff, with every interval it was up for.
+
+    `icon` is the aura table's own `abilityIcon`, and it is the only source for
+    a passive aura's art. A talent that is permanently applied is never cast,
+    so its id reaches no cast dictionary and the report can address its icon
+    from nowhere else. Empty when the table did not name one.
+    """
 
     ability_id: int
     name: str
     total_uptime_ms: int
     uses: int
+    icon: str = ""
     bands: tuple[AuraBand, ...] = ()
 
 

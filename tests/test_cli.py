@@ -35,6 +35,7 @@ from wowperf.cli import (
     load_run_with_auras,
 )
 from wowperf.domain.analysis.players import display_names
+from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
@@ -2770,6 +2771,60 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample() -> None:
 
     assert icons.url(157997) == "https://wow.zamimg.com/images/wow/icons/medium/spell_ice_nova.jpg"
     assert icons.url(6572) == "https://wow.zamimg.com/images/wow/icons/medium/ability_warrior_revenge.jpg"
+
+
+def an_aura(ability_id: int, name: str, icon: str) -> Aura:
+    return Aura(
+        ability_id=ability_id, name=name, total_uptime_ms=1_000, uses=1, icon=icon
+    )
+
+
+def test_the_resolver_knows_an_icon_only_the_aura_table_names() -> None:
+    """A permanently applied talent is never cast, so its id reaches no cast
+    dictionary and the report can address its art from nowhere else. Measured on
+    report 43HaCNQwPrKqtYgn fight 2: eleven of one card's fifty-four uptime rows
+    drew no icon, and all eleven were passive auras of exactly this kind.
+    """
+    ours = LoadedRun(run=a_minimal_run())
+    theirs = ParseMember(
+        row=_parse_row_model(),
+        run=a_minimal_run(),
+        ability_icons=(),
+        auras=PlayerAuras(
+            actor_id=11,
+            on_self=(an_aura(391477, "Coagulopathy", "spell_deathknight_butcher2.jpg"),),
+        ),
+    )
+
+    icons = build_icons(ours, (ParseSample(members=(theirs,)),))
+
+    assert icons.url(391477) == (
+        "https://wow.zamimg.com/images/wow/icons/medium/spell_deathknight_butcher2.jpg"
+    )
+
+
+def test_the_resolver_knows_an_icon_only_our_own_aura_table_names() -> None:
+    # Our own passive auras reach the page through the same rows, and our own
+    # aura table is fetched separately from the sample's.
+    ours = LoadedRun(run=a_minimal_run())
+    mine = PlayerAuras(
+        actor_id=1, on_self=(an_aura(391395, "Iron Heart", "spell_shadow_lifedrain.jpg"),)
+    )
+
+    icons = build_icons(ours, (), (mine,))
+
+    assert icons.url(391395) == (
+        "https://wow.zamimg.com/images/wow/icons/medium/spell_shadow_lifedrain.jpg"
+    )
+
+
+def test_an_aura_the_table_named_no_icon_for_is_left_unaddressed() -> None:
+    # An empty name is not a file name. Addressing it would point the page at
+    # the icon host's root and draw a broken image in place of a clean gap.
+    ours = LoadedRun(run=a_minimal_run())
+    mine = PlayerAuras(actor_id=1, on_self=(an_aura(42, "Nameless", ""),))
+
+    assert build_icons(ours, (), (mine,)).url(42) is None
 
 
 def test_our_own_dictionary_wins_where_both_name_an_ability() -> None:

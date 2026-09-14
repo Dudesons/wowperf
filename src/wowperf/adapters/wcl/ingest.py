@@ -632,6 +632,7 @@ def _aura(row: dict[str, Any]) -> Aura:
         name=str(row["name"]),
         total_uptime_ms=int(row.get("totalUptime") or 0),
         uses=int(row.get("totalUses") or 0),
+        icon=str(row.get("abilityIcon") or ""),
         bands=tuple(
             AuraBand(start_ms=int(band["startTime"]), end_ms=int(band["endTime"]))
             for band in row.get("bands") or ()
