@@ -295,7 +295,7 @@ integers.
 the wipe returned none, with no field distinguishing the cases. Code tests for emptiness.
 
 **`id` on a character entry is a Warcraft Logs character id, not a report actor id.** One read
-2731377 on a report whose actor ids are small integers. Joining a rankings entry to a
+seven digits on a report whose actor ids are small integers. Joining a rankings entry to a
 `ReportFight` roster is done on the name, never on the id.
 
 ## A raid `characterRankings` row is not a Mythic+ one
@@ -711,7 +711,7 @@ def build_report_rankings(payload: dict[str, Any], fight_id: int) -> ReportRanki
 `rank_percent`, which is an integer.
 
 **The join to our roster is by name, not by id.** Measured: a character entry's `id` is a
-Warcraft Logs character id (one read 2731377), not the small report actor id our `Player`
+Warcraft Logs character id (one read seven digits), not the small report actor id our `Player`
 carries. `player_named` casefolds, exactly as `find_player` does.
 
 - [ ] **Step 1: Write the failing tests**

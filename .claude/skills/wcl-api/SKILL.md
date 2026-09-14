@@ -864,7 +864,7 @@ integers.
 the wipe returned none, with no field distinguishing the cases. Code tests for emptiness.
 
 **`id` on a character entry is a Warcraft Logs character id, not a report actor id.** One read
-2731377 on a report whose actor ids are small integers. Joining a rankings entry to a
+seven digits on a report whose actor ids are small integers. Joining a rankings entry to a
 `ReportFight` roster is done on the name, never on the id.
 
 ## A raid `characterRankings` row is not a Mythic+ one
