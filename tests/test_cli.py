@@ -2147,7 +2147,7 @@ def _candidate_parse_row(
 
     `character_name` must be on the roster the paired `_candidate_fights_payload`
     gives that report: `_fetch_parse_auras` resolves the parser with
-    `find_player(member.run, member.row.character_name)`, so a row naming
+    `find_player(member.run.players, member.row.character_name)`, so a row naming
     somebody the reference's own roster does not hold is a reference no
     comparison can ever use. The default pairs with the default roster.
     """

@@ -221,9 +221,9 @@ def a_comparable_pair_with_auras() -> tuple[LoadedRun, SpeedSample, ParseSample]
 
 
 def test_a_player_is_found_whatever_the_case() -> None:
-    assert find_player(our_run().run, "emberkin") is OURS
-    assert find_player(our_run().run, "EMBERKIN") is OURS
-    assert find_player(our_run().run, "Nobody") is None
+    assert find_player(our_run().run.players, "emberkin") is OURS
+    assert find_player(our_run().run.players, "EMBERKIN") is OURS
+    assert find_player(our_run().run.players, "Nobody") is None
 
 
 def test_every_comparison_contributes() -> None:

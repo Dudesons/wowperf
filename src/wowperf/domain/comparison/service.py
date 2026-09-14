@@ -16,18 +16,23 @@ from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import LoadedRun, Player
 
 
-def find_player(run: Run, name: str) -> Player | None:
+def find_player(players: Sequence[Player], name: str) -> Player | None:
     """Find a roster member by name, folding case.
 
     The report owner's name comes back from Warcraft Logs lowercased while the
     roster carries the character's own capitalisation, so an exact match would
     fail on the default path every time.
+
+    Takes the roster rather than a whole `Run`, so a Mythic+ roster and a raid
+    `Encounter`'s roster resolve the same way through one function: `Encounter`
+    is deliberately not a `Run` (see its own ABOUTME), and nothing here reads
+    either aggregate beyond the players it exposes.
     """
     folded = name.casefold()
-    return next((player for player in run.players if player.name.casefold() == folded), None)
+    return next((player for player in players if player.name.casefold() == folded), None)
 
 
 def _unavailable(finding_id: str, title: str, detail: str) -> Finding:
@@ -120,7 +125,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         *compare_talents(
             subject.player,
             subject.display_name,
-            find_player(top.run, top.row.character_name),
+            find_player(top.run.players, top.row.character_name),
             top.row,
         ),
         *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),

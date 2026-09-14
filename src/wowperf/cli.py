@@ -309,9 +309,9 @@ def _by_display_name(
     being named here: `Encounter` is deliberately not a `Run` (see its own
     ABOUTME), and this narrows to the value both expose in common.
 
-    Folds case the same way `_find_roster_player` does, for the same reason. An
-    empty request matches nobody rather than the first member with no spelling
-    of their own: equality against an empty string is as indiscriminate as
+    Folds case the same way `find_player` does, for the same reason. An empty
+    request matches nobody rather than the first member with no spelling of
+    their own: equality against an empty string is as indiscriminate as
     membership in one.
     """
     folded = requested.casefold()
@@ -321,19 +321,6 @@ def _by_display_name(
         (player for player in players if names.get(player.actor_id, "").casefold() == folded),
         None,
     )
-
-
-def _find_roster_player(players: Sequence[Player], name: str) -> Player | None:
-    """Find a roster member by name, folding case.
-
-    A narrower sibling of `domain.comparison.service.find_player`, which takes
-    a whole `Run`: a raid `Encounter` is not one, so this reads the roster
-    directly instead. The report owner's name comes back from Warcraft Logs
-    lowercased while the roster carries the character's own capitalisation, so
-    an exact match would fail on the default path every time.
-    """
-    folded = name.casefold()
-    return next((player for player in players if player.name.casefold() == folded), None)
 
 
 def _resolve_player(
@@ -356,7 +343,7 @@ def _resolve_player(
     """
     name = requested or owner_name
     if name is not None:
-        found = _find_roster_player(players, name) or _by_display_name(players, name, names)
+        found = find_player(players, name) or _by_display_name(players, name, names)
         if found is not None:
             return found
 
@@ -763,7 +750,7 @@ def _fetch_parse_auras(
     """Every parse member's own aura data, and our own side's, fetched at most once.
 
     A member's counterpart is resolved from that member's own roster,
-    `find_player(member.run, member.row.character_name)`, before paying for
+    `find_player(member.run.players, member.row.character_name)`, before paying for
     its aura query: when the reference's own roster does not contain the
     player its leaderboard row names, `find_player` can never resolve them,
     and fetching first would pay for a query with no use. A member whose
@@ -781,7 +768,7 @@ def _fetch_parse_auras(
     our_auras_fetched = False
     updated_members: list[ParseMember] = []
     for member in sample.members:
-        their_player = find_player(member.run, member.row.character_name)
+        their_player = find_player(member.run.players, member.row.character_name)
         if their_player is None:
             updated_members.append(member)
             continue

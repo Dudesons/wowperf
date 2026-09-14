@@ -40,7 +40,7 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
     loaded = runs.load(code, fight)
     rankings, references = build_reference_repositories(runs.client, tmp_path)
 
-    subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
+    subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
     # `load` fetches talent import codes, and nothing offline proves the live shape.
@@ -107,7 +107,7 @@ def test_a_real_run_compares_trash_packs_against_real_parses(tmp_path: Path) -> 
     loaded = runs.load(code, fight)
     rankings, references = build_reference_repositories(runs.client, tmp_path)
 
-    subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
+    subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
@@ -179,7 +179,7 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     loaded = runs.load(code, fight)
     rankings, references = build_reference_repositories(runs.client, tmp_path)
 
-    subject = find_player(loaded.run, loaded.run.owner_name or loaded.run.players[0].name)
+    subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
