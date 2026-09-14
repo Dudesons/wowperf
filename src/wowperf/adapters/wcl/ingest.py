@@ -4,6 +4,7 @@
 from typing import Any
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -50,6 +51,57 @@ def select_keystone_fight(fights: list[dict[str, Any]], fight_id: int | None) ->
         ids = ", ".join(str(fight["id"]) for fight in completed_fights)
         raise IngestError(f"This report holds several Mythic+ runs ({ids}); pass --fight")
     return completed_fights[0]
+
+
+def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dict[str, Any]:
+    """Find the boss fight to analyse.
+
+    A raid fight is one with a non-zero encounterID and no keystoneLevel. Trash
+    between bosses is logged as sibling fights carrying encounterID 0, and a
+    Mythic+ run carries the dungeon's own encounterID -- so the encounter id
+    alone does not separate a boss from a key, and selecting on it would let
+    this command analyse a keystone as a boss and never say so.
+
+    Unlike a keystone, a boss fight is not required to be a kill: a wipe is the
+    log a progression raid most wants read, and the analysers that need a kill
+    withhold themselves rather than being gated here.
+
+    With no `fight_id` and several boss fights on the report, this refuses
+    rather than choosing. A night holds eight attempts on one boss; picking the
+    last, or the only kill, would analyse a fight nobody asked for.
+    """
+    boss_fights = [
+        fight
+        for fight in fights
+        if fight.get("encounterID") and fight.get("keystoneLevel") is None
+    ]
+
+    if fight_id is not None:
+        chosen = next((fight for fight in fights if fight["id"] == fight_id), None)
+        if chosen is None:
+            raise IngestError(f"This report has no fight {fight_id}")
+        if chosen.get("keystoneLevel") is not None:
+            raise IngestError(f"Fight {fight_id} is a Mythic+ run; analyze it with `analyze`")
+        if not chosen.get("encounterID"):
+            raise IngestError(f"Fight {fight_id} is not a boss fight")
+        return chosen
+
+    if not boss_fights:
+        # The same mistake the explicit-fight_id branch above catches for one
+        # fight: a whole report that is a Mythic+ run and holds no boss fight at
+        # all. Naming `analyze` here is what turns this from a dead end into a
+        # signpost -- the fight the reader wanted to see is real, just not one
+        # this command reads.
+        if any(fight.get("keystoneLevel") is not None for fight in fights):
+            raise IngestError(
+                "This report contains no boss fight; it holds a Mythic+ run instead; "
+                "analyze it with `analyze`"
+            )
+        raise IngestError("This report contains no boss fight")
+    if len(boss_fights) > 1:
+        ids = ", ".join(str(fight["id"]) for fight in boss_fights)
+        raise IngestError(f"This report holds several boss fights ({ids}); pass --fight")
+    return boss_fights[0]
 
 
 def _build_players(
@@ -153,9 +205,58 @@ def build_run(
     )
 
 
-def pull_index_at(run: Run, timestamp_ms: int) -> int | None:
-    """Which pull was underway at this moment, or None if the group was between pulls."""
-    for pull in run.pulls:
+def build_encounter(
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    *,
+    partition: int,
+    talents: dict[int, str] | None = None,
+) -> Encounter:
+    """One boss fight as a domain object.
+
+    `partition` is passed rather than read off the fight: a ReportFight carries
+    no partition, and the report's own rankings row is where it comes from. The
+    caller that has it passes it; nothing here guesses.
+    """
+    actors = report.get("masterData", {}).get("actors") or []
+    players = _build_players(fight, actors, talents or {})
+
+    difficulty = fight.get("difficulty")
+    if difficulty is None:
+        raise IngestError(
+            f"Fight {fight.get('id')} is a boss fight but carries no difficulty"
+        )
+
+    return Encounter(
+        report_code=report["code"],
+        fight_id=fight["id"],
+        encounter_id=_required(fight, "encounterID"),
+        boss_name=fight["name"],
+        difficulty=int(difficulty),
+        partition=partition,
+        # `size` is the raid size the report recorded. Where it is absent the
+        # roster is the honest answer, and it is the number every per-player
+        # median is drawn over anyway.
+        size=int(fight["size"]) if fight.get("size") else len(players),
+        kill=bool(fight.get("kill")),
+        fight_percentage=fight.get("fightPercentage"),
+        start_ms=int(fight["startTime"]),
+        end_ms=int(fight["endTime"]),
+        owner_name=(report.get("owner") or {}).get("name"),
+        players=players,
+    )
+
+
+def pull_index_at(pulls: tuple[Pull, ...], timestamp_ms: int) -> int | None:
+    """Which pull was underway at this moment, or None if the group was between pulls.
+
+    Also None whenever `pulls` is empty, which is what every event of a boss
+    fight passes: a boss fight carries no pulls at all, so there is no pull to
+    be inside or outside of. That is a real answer, not a missing one -- the
+    same reason `analyse_deaths` reads a death against the fight (`fight_offset`)
+    rather than against a pull once there are none.
+    """
+    for pull in pulls:
         if pull.start_ms <= timestamp_ms <= pull.end_ms:
             return pull.index
     return None
@@ -174,7 +275,7 @@ def _target_of(event: dict[str, Any]) -> int | None:
 
 
 def build_casts(
-    events: list[dict[str, Any]], run: Run, ability_names: dict[int, str]
+    events: list[dict[str, Any]], pulls: tuple[Pull, ...], ability_names: dict[int, str]
 ) -> tuple[CastEvent, ...]:
     return tuple(
         CastEvent(
@@ -182,7 +283,7 @@ def build_casts(
             ability_id=event["abilityGameID"],
             ability_name=_ability_name(ability_names, event["abilityGameID"]),
             timestamp_ms=event["timestamp"],
-            pull_index=pull_index_at(run, event["timestamp"]),
+            pull_index=pull_index_at(pulls, event["timestamp"]),
             target_id=_target_of(event),
         )
         for event in events
@@ -192,8 +293,9 @@ def build_casts(
 
 def build_deaths(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     casts: tuple[CastEvent, ...],
+    player_names: dict[int, str],
     ability_names: dict[int, str],
 ) -> tuple[Death, ...]:
     """Build deaths, measuring the real cost as time until the player next acted on another actor.
@@ -201,7 +303,6 @@ def build_deaths(
     The timer penalty understates a death. The seconds a player spent unable to
     contribute is observable, so we measure that instead of estimating a run-back.
     """
-    names = {player.actor_id: player.name for player in run.players}
     # A cast aimed at another actor is the first moment the player affected the
     # fight again. A released player respawns alive at the entrance with no
     # event to say so, and presses self-only sprints and shields while running
@@ -223,14 +324,14 @@ def build_deaths(
 
         deaths.append(
             Death(
-                player_name=names.get(actor_id, f"Actor {actor_id}"),
+                player_name=player_names.get(actor_id, f"Actor {actor_id}"),
                 actor_id=actor_id,
                 timestamp_ms=timestamp,
                 killing_blow_id=event.get("killingAbilityGameID", 0),
                 killing_blow=_ability_name(
                     ability_names, event.get("killingAbilityGameID", 0)
                 ),
-                pull_index=pull_index_at(run, timestamp),
+                pull_index=pull_index_at(pulls, timestamp),
                 seconds_until_next_action=(min(later) - timestamp) / 1000 if later else None,
             )
         )
@@ -239,7 +340,7 @@ def build_deaths(
 
 def build_enemy_cast_rows(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     ability_names: dict[int, str],
 ) -> tuple[EnemyCastRow, ...]:
     """Translate raw enemy cast events; resolving their outcome is the analyser's job."""
@@ -257,7 +358,7 @@ def build_enemy_cast_rows(
                 ability_name=_ability_name(ability_names, ability_id),
                 timestamp_ms=event["timestamp"],
                 is_start=kind == "begincast",
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
             )
         )
     return tuple(rows)
@@ -265,7 +366,7 @@ def build_enemy_cast_rows(
 
 def build_interrupts(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     players: dict[int, str],
 ) -> tuple[InterruptEvent, ...]:
     """Keep only real interrupts; the stream also carries debuff applications."""
@@ -282,7 +383,7 @@ def build_interrupts(
                 target_id=event["targetID"],
                 target_instance=event.get("targetInstance") or 0,
                 timestamp_ms=event["timestamp"],
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
             )
         )
     return tuple(interrupts)
@@ -323,7 +424,7 @@ def build_enemy_deaths(
                 actor_id=actor_id,
                 timestamp_ms=event["timestamp"],
                 forces=npc_count_map.get(game_id, 0),
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(run.pulls, event["timestamp"]),
             )
         )
     return tuple(deaths)
@@ -345,7 +446,7 @@ def parse_buff_ids(raw: str | None) -> tuple[int, ...]:
 
 def build_damage_taken(
     events: list[dict[str, Any]],
-    run: Run,
+    pulls: tuple[Pull, ...],
     ability_names: dict[int, str],
 ) -> tuple[DamageTakenEvent, ...]:
     """Record the unmitigated figure: `amount` alone reads zero on an absorbed hit."""
@@ -364,7 +465,7 @@ def build_damage_taken(
                 ability_name=_ability_name(ability_names, ability_id),
                 amount=int(amount),
                 timestamp_ms=event["timestamp"],
-                pull_index=pull_index_at(run, event["timestamp"]),
+                pull_index=pull_index_at(pulls, event["timestamp"]),
                 health_damage=int(event.get("amount") or 0),
                 absorbed=int(event.get("absorbed") or 0),
                 mitigated=int(event.get("mitigated") or 0),

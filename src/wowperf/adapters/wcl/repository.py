@@ -13,6 +13,7 @@ from wowperf.adapters.wcl.ingest import (
     build_damage_done,
     build_damage_taken,
     build_deaths,
+    build_encounter,
     build_enemy_cast_rows,
     build_enemy_deaths,
     build_healing,
@@ -22,6 +23,7 @@ from wowperf.adapters.wcl.ingest import (
     build_resurrections,
     build_run,
     select_keystone_fight,
+    select_raid_fight,
 )
 from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
@@ -43,8 +45,9 @@ from wowperf.adapters.wcl.queries import (
 )
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death, HealingEvent
-from wowperf.domain.model import LoadedRun, Run
+from wowperf.domain.model import LoadedRun, Pull, Run
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
 # trimmed reference profiles, each fetching only the streams its own axis reads.
@@ -242,6 +245,105 @@ class WclRunRepository:
         loaded, _ = self._load(report_code, fight_id, profile="full")
         return loaded
 
+    def load_encounter(self, report_code: str, fight_id: int | None) -> LoadedEncounter:
+        """Every stream the raid analysers and the death cards read, for one boss fight.
+
+        Reuses the same query fan-out and cache as `load`'s full profile, with
+        `select_raid_fight` and `build_encounter` standing in for their keystone
+        counterparts. Two Mythic+-only steps are skipped rather than adapted:
+        `_affix_names`, because an `Encounter` carries no affix vocabulary to
+        resolve at all, and the enemy-deaths forces splice (`_actor_game_ids` and
+        `ENEMY_DEATHS_QUERY`), because `LoadedEncounter` deliberately carries no
+        `enemy_deaths` field -- that stream exists to price a keystone's
+        enemy-forces requirement, which a boss fight has none of.
+        """
+        hits: list[bool] = []
+        report = self._report(report_code, hits)
+        fight = select_raid_fight(report["fights"], fight_id)
+        talents = self._talents(report_code, fight, hits)
+        # ReportFight carries no partition field at all; it comes from the
+        # report's own rankings row, which no plan fetches yet. `1` is the
+        # current tier's default partition, a placeholder rather than a read
+        # value -- the plan that fetches rankings must replace this, not trust it.
+        encounter = build_encounter(report, fight, partition=1, talents=talents)
+
+        abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
+        try:
+            rows = abilities["reportData"]["report"]["masterData"]["abilities"]
+            ability_names = {ability["gameID"]: ability["name"] for ability in rows}
+            ability_icons = tuple(
+                (ability["gameID"], ability["icon"])
+                for ability in rows
+                if ability.get("icon")
+            )
+        except (KeyError, TypeError) as error:
+            raise WclError(
+                "The abilities response did not carry masterData.abilities as expected"
+            ) from error
+
+        event_variables = {
+            "code": report_code,
+            "fightId": encounter.fight_id,
+            "startTime": float(fight["startTime"]),
+            "endTime": float(fight["endTime"]),
+        }
+
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables, hits)
+
+        cast_events = fetch_all_events(query, CASTS_QUERY, event_variables)
+        death_events = fetch_all_events(query, DEATHS_QUERY, event_variables)
+        enemy_cast_events = fetch_all_events(query, ENEMY_CASTS_QUERY, event_variables)
+        interrupt_events = fetch_all_events(query, INTERRUPTS_QUERY, event_variables)
+        damage_taken_events = fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables)
+
+        # A boss fight carries no pulls at all, so every builder below gets an
+        # empty tuple where the Mythic+ path passes `run.pulls`: pull_index_at
+        # returns None unconditionally over an empty sequence, which is the
+        # correct answer for an event that is never "inside" or "outside" a pull.
+        no_pulls: tuple[Pull, ...] = ()
+        casts = build_casts(cast_events, no_pulls, ability_names)
+        player_names = {player.actor_id: player.name for player in encounter.players}
+        deaths = build_deaths(death_events, no_pulls, casts, player_names, ability_names)
+        enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, no_pulls, ability_names)
+        interrupts = build_interrupts(interrupt_events, no_pulls, player_names)
+        damage_taken = build_damage_taken(damage_taken_events, no_pulls, ability_names)
+        # Pre-aggregated by the API, so one call rather than a paginated stream,
+        # exactly as `load` fetches it.
+        damage_done = build_damage_done(query(DAMAGE_DONE_GRAPH_QUERY, event_variables))
+        resurrections = build_resurrections(
+            fetch_all_events(query, RESURRECTS_QUERY, event_variables), ability_names
+        )
+
+        # One healing window per stretch of run-ups, scoped to the dying player,
+        # exactly as `load` fetches it.
+        healing: list[HealingEvent] = []
+        for actor_id, start, end in healing_windows(deaths):
+            scoped = {
+                "code": report_code,
+                "fightId": encounter.fight_id,
+                "actorId": actor_id,
+                "startTime": float(start),
+                "endTime": float(end),
+            }
+            healing.extend(
+                build_healing(fetch_all_events(query, HEALING_QUERY, scoped), ability_names)
+            )
+
+        return LoadedEncounter(
+            encounter=encounter,
+            casts=casts,
+            deaths=deaths,
+            enemy_cast_rows=enemy_cast_rows,
+            interrupts=interrupts,
+            damage_taken=damage_taken,
+            damage_done=damage_done,
+            health_samples=build_health_samples(cast_events),
+            healing=tuple(healing),
+            resurrections=resurrections,
+            ability_icons=ability_icons,
+        )
+
     def load_speed_reference(
         self, report_code: str, fight_id: int | None
     ) -> tuple[LoadedRun, bool]:
@@ -332,7 +434,7 @@ class WclRunRepository:
             cast_events = fetch_all_events(query, CASTS_QUERY, event_variables)
             loaded = LoadedRun(
                 run=run,
-                casts=build_casts(cast_events, run, ability_names),
+                casts=build_casts(cast_events, run.pulls, ability_names),
                 ability_icons=ability_icons,
             )
             return loaded, all(hits)
@@ -348,11 +450,11 @@ class WclRunRepository:
         cast_events = (
             fetch_all_events(query, CASTS_QUERY, event_variables) if profile == "full" else []
         )
-        casts = build_casts(cast_events, run, ability_names)
-        deaths = build_deaths(death_events, run, casts, ability_names)
+        casts = build_casts(cast_events, run.pulls, ability_names)
         player_names = {player.actor_id: player.name for player in run.players}
-        enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run, ability_names)
-        interrupts = build_interrupts(interrupt_events, run, player_names)
+        deaths = build_deaths(death_events, run.pulls, casts, player_names, ability_names)
+        enemy_cast_rows = build_enemy_cast_rows(enemy_cast_events, run.pulls, ability_names)
+        interrupts = build_interrupts(interrupt_events, run.pulls, player_names)
 
         if profile == "speed":
             loaded = LoadedRun(
@@ -377,7 +479,7 @@ class WclRunRepository:
         enemy_deaths = build_enemy_deaths(
             enemy_death_events, run, actor_game_ids, dict(run.npc_count_map)
         )
-        damage_taken = build_damage_taken(damage_taken_events, run, ability_names)
+        damage_taken = build_damage_taken(damage_taken_events, run.pulls, ability_names)
 
         # One healing window per stretch of run-ups, scoped to the dying player.
         # Resurrections are fetched once above, fight-wide, because the All

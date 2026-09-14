@@ -1349,3 +1349,4 @@ Named here so the next plan starts from a record rather than a rediscovery.
 - **The report.** Design §10. `raid` writes findings JSON only; there is no HTML until then.
 - **`analyse_players`' damage-outlier half.** Design §6.9. It is generic, but its activity half is not, and splitting it belongs with the plan that needs the outliers.
 - **Widening the ranking port.** Design §8.2 and §14 item 3. Nothing in this plan calls a ranking.
+- **Severity ranking.** Design §7. `analyse_encounter` returns plain `rank_findings`, the same function Mythic+ uses; `Finding` carries no `severity` field yet, which a sibling ranking by severity then per-analyser magnitude needs before it can exist.

@@ -21,6 +21,7 @@ from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     RequestedPlayer,
     _cost_breakdown,
     _fetch_parse_auras,
@@ -160,6 +161,39 @@ def test_top_level_help_lists_fetch_as_a_subcommand() -> None:
     assert result.exit_code == 0
     assert "Commands" in result.output
     assert "fetch" in result.output
+
+
+def test_raid_is_a_subcommand_of_its_own() -> None:
+    result = runner.invoke(app, ["raid", "--help"])
+    assert result.exit_code == 0
+    assert "--fight" in plain(result.output)
+    assert "--out" in plain(result.output)
+    assert "Traceback" not in result.output
+
+
+def test_the_keystone_flags_are_not_offered_by_raid() -> None:
+    """`raid` is a sibling of `analyze`, not a copy of it.
+
+    --throughput-ceiling ranks pulls worth a cooldown, which a boss fight has
+    none of. Offering a flag that cannot work is worse than not offering it.
+    """
+    offered = plain(runner.invoke(app, ["raid", "--help"]).output)
+    assert "--fight" in offered, "the guard below proves nothing against empty output"
+    assert "--throughput-ceiling" not in offered
+
+
+@pytest.mark.usefixtures("wired_cli")
+def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it() -> None:
+    """`wired_cli`'s mock transport serves a Mythic+ report.
+
+    Pointing `raid` at one is the mistake a reader will actually make, and the
+    error has to be a signpost rather than a complaint.
+    """
+    result = runner.invoke(app, ["raid", "abc123"])
+
+    assert result.exit_code != 0
+    assert "analyze" in plain(result.output)
+    assert "Traceback" not in result.output
 
 
 def test_fetch_rejects_a_value_that_is_not_a_report_url() -> None:
@@ -3037,6 +3071,29 @@ def test_the_warning_names_exactly_the_nestings_the_report_draws() -> None:
     # The decomposition ids head the ledger rather than nesting, so the warning
     # may name them without NESTS_INSIDE carrying an entry for them.
     assert named - set(DECOMPOSITION_IDS) == drawn - set(DECOMPOSITION_IDS)
+
+
+def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> None:
+    """`raid`'s findings file must not claim accounting `analyse_encounter` cannot emit.
+
+    `analyse_encounter` deliberately omits `decompose_time` and `analyse_trash` -- a
+    boss fight carries no keystone timer and no enemy-forces requirement, and its own
+    docstring says so -- so none of compare.duration, time.gap.*, compare.downtime,
+    time.residual or compare.route.skipped.* may appear in the raid warning, and
+    neither may trash.overage. Only the deaths.* nesting the Mythic+ warning also
+    states applies to a raid fight; the reader-facing regression this guards
+    against is the JSON claiming an accounting the tool never runs.
+    """
+    named = {
+        match.rstrip("*").rstrip(".")
+        for match in FINDING_ID_IN_PROSE.findall(RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE)
+    }
+    keystone_only = {
+        "compare.duration", "time.gap", "compare.downtime", "time.residual",
+        "compare.route.skipped", "trash.overage",
+    }
+    assert named & keystone_only == set(), named & keystone_only
+    assert "deaths.total" in named
 
 
 def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None:
