@@ -32,12 +32,17 @@ UNAVAILABLE_ID = "compare.damage.targets.unavailable"
 DETAIL = (
     "Reported as a share of the total, never as a total on its own: a total confounds where "
     "the damage landed with how long the fight ran and how the raid was geared. This states a "
-    "difference in where the damage went, not a claim that it should have gone anywhere else."
+    "difference in where the damage went, and makes no claim that it belonged anywhere else."
 )
 """Design 6.2's own constraint, in the finding's own words: "totals confound target focus with
 fight length and gear." The second sentence names a claim only to refuse it, which master
 design 5.5 permits -- the same way `compare_mechanics` names and refuses "could have been
-prevented" rather than leaving the refusal unsaid."""
+prevented" rather than leaving the refusal unsaid.
+
+The refusal is written without the modal "should have".
+`test_no_finding_this_axis_emits_claims_a_player_should_have_done_anything` scans every
+sentence this axis emits for that phrase, and to a substring match a refusal and an
+assertion are the same four words."""
 
 
 def _unavailable(our_name: str, detail: str) -> Finding:

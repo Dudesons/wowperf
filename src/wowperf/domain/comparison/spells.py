@@ -1,5 +1,5 @@
-# ABOUTME: Compares one player's boss-pull casts and talent build against a top parse or sample.
-# ABOUTME: Boss pulls only: across trash an ability ratio measures the route, not the player.
+# ABOUTME: Compares one player's casts and talent build against a top parse or a sample.
+# ABOUTME: Which casts count is the caller's rule: a dungeon's boss pulls, or a whole raid fight.
 
 from collections.abc import Callable, Sequence
 
@@ -21,7 +21,7 @@ from wowperf.domain.findings import (
     quantity,
 )
 from wowperf.domain.loadout import Loadout
-from wowperf.domain.model import LoadedRun, Player, Pull
+from wowperf.domain.model import Player, Pull
 
 MAX_SPELLS_REPORTED = 5
 MIN_CASTS_TO_COMPARE = 3
@@ -72,6 +72,37 @@ def whole_fight(event: CastEvent) -> bool:
     return True
 
 
+CastRule = Callable[[Sequence[Pull]], Callable[[CastEvent], bool]]
+"""Which of a side's casts count, given that side's own route.
+
+One rule, applied to our route and to each reference's, is what keeps both
+sides of a rate counted the same way -- the property the whole comparison rests
+on. It cannot be a single bound predicate, because a pull index means one pull
+in our log and a different pull in theirs.
+"""
+
+
+def boss_pull_casts(pulls: Sequence[Pull]) -> Callable[[CastEvent], bool]:
+    """The Mythic+ rule bound to one route: casts inside that route's boss pulls.
+
+    Boss pulls only, because across trash an ability ratio measures the route
+    rather than the player.
+    """
+    return in_pulls(frozenset(pull.index for pull in boss_pulls(pulls)))
+
+
+def whole_fight_casts(pulls: Sequence[Pull]) -> Callable[[CastEvent], bool]:
+    """The raid rule, which has no route to bind to.
+
+    `pulls` is accepted and ignored: a raid fight carries none, and the stream
+    is already scoped to the fight by the query that fetched it. Handed the
+    Mythic+ rule instead, an empty route yields `in_pulls(frozenset())`, every
+    ability counts zero, and nothing raises -- which is the trap this rule
+    exists to close.
+    """
+    return whole_fight
+
+
 def casts_in(
     casts: tuple[CastEvent, ...], actor_id: int, include: Callable[[CastEvent], bool]
 ) -> dict[int, tuple[str, int]]:
@@ -100,9 +131,7 @@ def boss_casts(
     so nothing else that reads the same stream — the potion count, which is a
     press wherever it happened — is narrowed by this one's rule.
     """
-    return casts_in(
-        casts, actor_id, in_pulls(frozenset(pull.index for pull in boss_pulls(pulls)))
-    )
+    return casts_in(casts, actor_id, boss_pull_casts(pulls))
 
 
 def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[int]:
@@ -203,11 +232,15 @@ def _missing_cast_pairwise(
 
 
 def compare_spells(
-    ours: LoadedRun,
+    our_pulls: Sequence[Pull],
+    our_boss_seconds: float,
+    our_casts: tuple[CastEvent, ...],
     our_player: Player,
     our_name: str,
     theirs: ParseMember,
     their_name: str,
+    *,
+    counted: CastRule,
 ) -> list[Finding]:
     """What the reference player cast on bosses that we did not, and how often.
 
@@ -215,10 +248,16 @@ def compare_spells(
     is what every title below says. `our_player.name` is not: two roster
     members can share it, and a run comparing both would then emit two
     identical titles.
+
+    Our own side arrives as the three values this reads -- a route, the seconds
+    that route was worth, and a cast stream -- rather than as a run, so that a
+    raid fight, which has no run to give, reaches the same comparison. Its
+    route is empty and its seconds are the fight's own, which is why the two
+    are separate arguments and not one derived from the other: exactly the
+    reason `ParseMember` carries `boss_seconds` beside `pulls`.
     """
     actor_id = their_actor_id(theirs, their_name)
     their_boss_seconds = theirs.boss_seconds
-    our_boss_seconds = boss_seconds(ours.run.pulls)
 
     if actor_id is None or their_boss_seconds <= 0 or our_boss_seconds <= 0:
         return [
@@ -241,9 +280,9 @@ def compare_spells(
             )
         ]
 
-    theirs_on_bosses = boss_casts(theirs.pulls, theirs.casts, actor_id)
-    ours_on_bosses = boss_casts(ours.run.pulls, ours.casts, our_player.actor_id)
-    ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
+    theirs_on_bosses = casts_in(theirs.casts, actor_id, counted(theirs.pulls))
+    ours_on_bosses = casts_in(our_casts, our_player.actor_id, counted(our_pulls))
+    ours_anywhere = _all_cast_ability_ids(our_casts, our_player.actor_id)
 
     findings: list[Finding] = []
 
@@ -337,12 +376,21 @@ def compare_spells(
 
 
 def compare_spells_sample(
-    ours: LoadedRun, our_player: Player, our_name: str, sample: ParseSample
+    our_pulls: Sequence[Pull],
+    our_boss_seconds: float,
+    our_casts: tuple[CastEvent, ...],
+    our_player: Player,
+    our_name: str,
+    sample: ParseSample,
+    *,
+    counted: CastRule,
 ) -> list[Finding]:
     """What the sample's top parses cast that we did not, and how our own rate compares.
 
     `our_name` is the roster's disambiguated spelling of `our_player`, for the
-    reason `compare_spells` above gives.
+    reason `compare_spells` above gives. Our own side arrives as values rather
+    than a run, and `counted` decides which casts count on both sides, for the
+    reasons that function's docstring gives.
 
     No member is named: the claim is about the sample as a population — "N of M
     top parses cast this" or "the median rate is this" — and naming one member
@@ -353,22 +401,24 @@ def compare_spells_sample(
     """
     # A wholly empty sample means there was nothing to compare against at all;
     # `service.compare()` already says so once, as `compare.parse.unavailable`,
-    # so returning nothing here avoids repeating that finding for a comparison
-    # that never ran.
+    # and `compare_parse_axis` says it once on the raid axis, so returning
+    # nothing here avoids repeating that finding for a comparison that never ran.
     if not sample.members:
         return []
 
     if not sample.can_aggregate(sample.members):
         first = sample.members[0]
         return too_few(
-            compare_spells(ours, our_player, our_name, first, first.character_name),
+            compare_spells(
+                our_pulls, our_boss_seconds, our_casts, our_player, our_name,
+                first, first.character_name, counted=counted,
+            ),
             len(sample.members),
         )
 
     total = len(sample.members)
-    our_boss_seconds = boss_seconds(ours.run.pulls)
-    ours_on_bosses = boss_casts(ours.run.pulls, ours.casts, our_player.actor_id)
-    ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
+    ours_on_bosses = casts_in(our_casts, our_player.actor_id, counted(our_pulls))
+    ours_anywhere = _all_cast_ability_ids(our_casts, our_player.actor_id)
 
     # Ability id to name, gathered from whichever member cast it first, and one
     # (boss seconds, qualifying casts) pair per member. A member whose own actor
@@ -385,7 +435,7 @@ def compare_spells_sample(
         if actor_id is None or their_boss_seconds <= 0:
             per_member.append((0.0, {}))
             continue
-        casts_by_ability = boss_casts(member.pulls, member.casts, actor_id)
+        casts_by_ability = casts_in(member.casts, actor_id, counted(member.pulls))
         for ability_id, (name, _count) in casts_by_ability.items():
             names.setdefault(ability_id, name)
         qualifying = {

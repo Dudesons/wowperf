@@ -8,6 +8,7 @@ from wowperf.domain.comparison.spells import (
     MIN_CASTS_TO_COMPARE,
     MIN_MEMBERS_WITH_ABILITY,
     boss_casts,
+    boss_pull_casts,
     boss_seconds,
     casts_in,
     compare_spells,
@@ -111,6 +112,32 @@ def cast(actor_id: int, ability_id: int, name: str, at_ms: int, pull: int | None
     )
 
 
+def pairwise_spells(
+    ours: LoadedRun, our_player: Player, our_name: str, theirs: ParseMember, their_name: str
+) -> list[Finding]:
+    """`compare_spells` for a Mythic+ run, whose route decides which casts count.
+
+    Every run in this module is a dungeon, so every one of them binds
+    `boss_pull_casts` and our own side is the three values that route produces.
+    What a raid binds instead, and what happens when the two are swapped, is
+    `test_parse_axis`'s subject.
+    """
+    return compare_spells(
+        ours.run.pulls, boss_seconds(ours.run.pulls), ours.casts, our_player, our_name,
+        theirs, their_name, counted=boss_pull_casts,
+    )
+
+
+def sample_spells(
+    ours: LoadedRun, our_player: Player, our_name: str, sample: ParseSample
+) -> list[Finding]:
+    """`compare_spells_sample` for a Mythic+ run, bound the way `pairwise_spells` is."""
+    return compare_spells_sample(
+        ours.run.pulls, boss_seconds(ours.run.pulls), ours.casts, our_player, our_name,
+        sample, counted=boss_pull_casts,
+    )
+
+
 def test_boss_seconds_counts_only_boss_pulls() -> None:
     run = a_loaded(OURS, (boss_pull(0, 120.0), trash_pull(1, 60.0), boss_pull(2, 60.0)), ()).run
 
@@ -187,7 +214,7 @@ def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
         ),
     )
 
-    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
     missing = [f for f in findings if f.id.startswith("compare.spells.missing.")]
 
     assert len(missing) == 1
@@ -209,7 +236,7 @@ def test_an_ability_we_cast_only_on_trash_still_counts_as_cast() -> None:
     )
 
     missing = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing.")
     ]
 
@@ -227,7 +254,7 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -248,7 +275,7 @@ def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -259,7 +286,7 @@ def test_a_reference_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() ->
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
     theirs = a_member(THEIRS, (trash_pull(0, 60.0),), ())
 
-    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
 
     assert any(f.id == "compare.spells.unavailable" for f in findings)
 
@@ -343,7 +370,7 @@ def test_every_finding_id_is_unique() -> None:
         tuple(cast(11, 100 + n, f"Spell {n}", n * 1_000, 0) for n in range(8) for _ in range(4)),
     )
 
-    ids = [f.id for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")]
+    ids = [f.id for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")]
 
     assert len(ids) == len(set(ids))
 
@@ -391,7 +418,7 @@ OURS_LOADED = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor",
 
 
 def test_a_spell_most_top_parses_cast_and_we_never_did_is_counted() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     missing = next(f for f in findings if f.id == "compare.spells.missing.0")
     assert missing.title == (
@@ -402,7 +429,7 @@ def test_a_spell_most_top_parses_cast_and_we_never_did_is_counted() -> None:
 
 
 def test_no_reference_player_is_named_in_a_sampled_spell_finding() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     for name in ("Bríala", "Dawnseeker", "Emberfall", "Frostwhisper", "Glimmerose"):
         assert all(name not in finding.title for finding in findings)
@@ -413,7 +440,7 @@ def test_an_ability_seen_in_too_few_members_is_not_reported() -> None:
     # Rune of Power is cast by 2 of the 5 members, one short of the threshold.
     assert 2 < MIN_MEMBERS_WITH_ABILITY
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(str(RUNE_OF_POWER) in f.title for f in findings)
 
@@ -435,13 +462,13 @@ def test_a_rate_gap_seen_in_too_few_members_is_not_reported() -> None:
     # otherwise be reported (12 casts over 60s against our own 2).
     assert 2 < MIN_MEMBERS_WITH_ABILITY
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, two_of_five)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, two_of_five)
 
     assert not any(f.id.startswith("compare.spells.rate.") for f in findings)
 
 
 def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     rate = next(f for f in findings if f.id == "compare.spells.rate.0")
     assert "4 top parses cast" in rate.title and "a median" in rate.title
@@ -469,7 +496,7 @@ def test_an_ability_compared_and_found_inside_the_band_is_named() -> None:
     """Silence meant three different things — never compared, compared and level, or
     dropped below a threshold — and the page gave a reader no way to tell them apart.
     A player asking "am I fine on this button" needs the second said out loud."""
-    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+    findings = sample_spells(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
 
     level = next(f for f in findings if f.id == "compare.spells.level")
     assert "Meteor" in " ".join(level.evidence)
@@ -478,7 +505,7 @@ def test_an_ability_compared_and_found_inside_the_band_is_named() -> None:
 def test_a_single_level_ability_is_counted_in_the_singular() -> None:
     """A title states its count back to the reader, and "1 abilities" gets noticed
     before the finding does."""
-    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+    findings = sample_spells(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
 
     level = next(f for f in findings if f.id == "compare.spells.level")
     assert level.title.startswith("1 ability ")
@@ -488,7 +515,7 @@ def test_a_single_level_ability_is_counted_in_the_singular() -> None:
 def test_no_level_row_is_written_when_every_ability_showed_a_gap() -> None:
     """An empty row would say "nothing was level" in a voice indistinguishable from
     "nothing was compared", which is the confusion this family exists to end."""
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(f.id.startswith("compare.spells.level") for f in findings)
 
@@ -503,7 +530,7 @@ def test_an_ability_too_few_parses_cast_is_not_called_level() -> None:
         + (cast(693, RUNE_OF_POWER, "Rune of Power", 2_000, 0),) * 10,
     )
 
-    findings = compare_spells_sample(ours, OURS, OUR_NAME, LEVEL_SAMPLE)
+    findings = sample_spells(ours, OURS, OUR_NAME, LEVEL_SAMPLE)
 
     level = next(f for f in findings if f.id == "compare.spells.level")
     assert "Meteor" in " ".join(level.evidence)
@@ -513,7 +540,7 @@ def test_an_ability_too_few_parses_cast_is_not_called_level() -> None:
 def test_the_level_row_is_one_sentence_rather_than_a_ranked_family() -> None:
     """The gap rows compete with each other and are collapsed and numbered. This one
     states a set, so a rank suffix would promise rivals it does not have."""
-    findings = compare_spells_sample(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+    findings = sample_spells(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
 
     assert [f.id for f in findings if f.id.startswith("compare.spells.level")] == [
         "compare.spells.level"
@@ -521,7 +548,7 @@ def test_the_level_row_is_one_sentence_rather_than_a_ranked_family() -> None:
 
 
 def a_sampled_rate_finding() -> Finding:
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
     return next(f for f in findings if f.id == "compare.spells.rate.0")
 
 
@@ -565,7 +592,7 @@ def test_a_pairwise_rate_finding_names_one_reference_rather_than_a_median() -> N
         THEIRS, (boss_pull(0, 60.0),),
         tuple(cast(11, METEOR, "Meteor", n * 1_000, 0) for n in range(8)),
     )
-    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
     rate = next(f for f in findings if f.id.startswith("compare.spells.rate."))
     assert [fact.label for fact in rate.facts] == ["Ours", "Reference", "Sample"]
     assert {fact.value for fact in rate.facts} >= {"1 reference run"}
@@ -574,7 +601,7 @@ def test_a_pairwise_rate_finding_names_one_reference_rather_than_a_median() -> N
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.parse.unavailable`; this must not crash, and must not repeat it.
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, ParseSample())
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, ParseSample())
 
     assert findings == []
 
@@ -582,7 +609,7 @@ def test_a_wholly_empty_sample_produces_no_findings() -> None:
 def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
 
-    findings = compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, below_floor)
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, below_floor)
 
     missing = next(f for f in findings if f.id == "compare.spells.missing.0")
     assert "Bríala" in missing.title
@@ -590,7 +617,7 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
 
 
 def test_every_finding_id_is_unique_over_the_sample() -> None:
-    ids = [f.id for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)]
+    ids = [f.id for f in sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)]
 
     assert len(ids) == len(set(ids))
 
@@ -607,7 +634,7 @@ def test_a_missing_spell_finding_names_the_ability_against_one_reference() -> No
         ),
     )
     missing = next(
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == 153626
@@ -623,7 +650,7 @@ def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
         tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(6)),
     )
     rate = next(
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == 30451
@@ -633,7 +660,7 @@ def test_a_rate_spell_finding_names_the_ability_against_one_reference() -> None:
 
 def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
     missing = next(
-        f for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+        f for f in sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
         if f.id.startswith("compare.spells.missing.")
     )
     assert missing.ability_id == SHIFTING_POWER
@@ -645,7 +672,7 @@ def test_a_missing_spell_finding_names_the_ability_across_the_sample() -> None:
 
 def test_a_rate_spell_finding_names_the_ability_across_the_sample() -> None:
     rate = next(
-        f for f in compare_spells_sample(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+        f for f in sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
         if f.id.startswith("compare.spells.rate.")
     )
     assert rate.ability_id == METEOR
@@ -685,7 +712,7 @@ def test_one_sentence_is_printed_once_however_many_ids_produced_it() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -715,7 +742,7 @@ def test_two_ids_of_one_name_that_say_different_things_keep_both_rows() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -748,7 +775,7 @@ def test_collapsing_leaves_the_rank_numbering_without_a_hole_in_it() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -793,7 +820,7 @@ def test_the_widest_rate_gap_is_ranked_first() -> None:
     ours, theirs = three_rate_gaps()
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -826,7 +853,7 @@ def test_no_more_of_one_spell_family_is_reported_than_the_cap_allows() -> None:
     )
 
     rates = [
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.rate.")
     ]
 
@@ -852,7 +879,7 @@ def test_an_ability_we_cast_far_more_than_the_sample_is_reported() -> None:
     """The gap rows only ever ask whether a button was pressed less. On a class
     whose resources are shared, pressing one more is pressing another less, and
     nothing on the page said so."""
-    findings = compare_spells_sample(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     above = next(f for f in findings if f.id == "compare.spells.above.0")
     assert above.title == (
@@ -865,7 +892,7 @@ def test_an_ability_we_cast_far_more_than_the_sample_is_reported() -> None:
 
 def test_an_ability_reported_as_above_is_not_also_called_level() -> None:
     """Three outcomes per ability, never two: a gap row, an above row, or level."""
-    findings = compare_spells_sample(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(OURS_CASTING_MORE, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     level = next(f for f in findings if f.id == "compare.spells.level")
     assert "Shifting Power" in " ".join(level.evidence)
@@ -877,7 +904,7 @@ def test_casting_somewhat_more_than_the_sample_is_not_reported() -> None:
     against their seven is 1.43x and stays quiet."""
     ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),) * 10)
 
-    findings = compare_spells_sample(ours, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_spells(ours, OURS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(f.id.startswith("compare.spells.above") for f in findings)
 
@@ -1008,7 +1035,7 @@ def test_an_unresolved_missing_cast_names_all_three_possibilities() -> None:
     # for any item-sourced ability. This branch is reached with no loadout at
     # all, which is every cached run and the whole speed axis, so the fix must
     # not depend on the fetch.
-    findings = compare_spells_sample(ours_without(1234), OURS, OUR_NAME, a_sample_casting(1234))
+    findings = sample_spells(ours_without(1234), OURS, OUR_NAME, a_sample_casting(1234))
     missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
     assert missing
     assert "an item not owned" in missing[0].detail
@@ -1021,7 +1048,7 @@ def test_a_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> None:
     not contain it -- so the run has nothing actionable to say and says
     nothing."""
     sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
-    findings = compare_spells_sample(
+    findings = sample_spells(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
     assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
@@ -1051,7 +1078,7 @@ def test_an_item_the_whole_sample_wore_is_still_suppressed() -> None:
         members.append(a_member(player, (boss_pull(0, 60.0),), casts))
     sample = ParseSample(members=tuple(members))
 
-    findings = compare_spells_sample(
+    findings = sample_spells(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
 
@@ -1085,7 +1112,7 @@ def test_suppression_does_not_depend_on_how_much_reference_gear_was_readable() -
         members.append(a_member(player, (boss_pull(0, 60.0),), casts))
     sample = ParseSample(members=tuple(members))
 
-    findings = compare_spells_sample(
+    findings = sample_spells(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
 
@@ -1096,7 +1123,7 @@ def test_suppression_does_not_depend_on_how_much_reference_gear_was_readable() -
 
 def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
     sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
-    findings = compare_spells_sample(ours_without(1234), OURS_WEARING_THE_TABLET, OUR_NAME, sample)
+    findings = sample_spells(ours_without(1234), OURS_WEARING_THE_TABLET, OUR_NAME, sample)
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
     missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
     assert len(missing) == 1
@@ -1129,7 +1156,7 @@ def test_suppressing_an_item_leaves_every_other_missing_cast_alone() -> None:
         members.append(a_member(player, (boss_pull(0, 60.0),), casts))
     sample = ParseSample(members=tuple(members))
 
-    findings = compare_spells_sample(
+    findings = sample_spells(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
 
@@ -1146,7 +1173,7 @@ def test_an_item_the_sample_wore_stays_widened_when_our_own_loadout_was_never_fe
     speak to ownership when both sides of it are known."""
     sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
 
-    findings = compare_spells_sample(ours_without(1234), OURS, OUR_NAME, sample)
+    findings = sample_spells(ours_without(1234), OURS, OUR_NAME, sample)
 
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
     missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
@@ -1176,7 +1203,7 @@ def test_a_pairwise_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> 
         (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
     )
 
-    findings = compare_spells(ours, OURS_WITHOUT_THE_TABLET, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS_WITHOUT_THE_TABLET, OUR_NAME, theirs, "Bríala")
 
     assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
@@ -1194,7 +1221,7 @@ def test_a_pairwise_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so
         (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
     )
 
-    findings = compare_spells(ours, OURS_WEARING_THE_TABLET, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS_WEARING_THE_TABLET, OUR_NAME, theirs, "Bríala")
 
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
     missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
@@ -1211,7 +1238,7 @@ def test_a_pairwise_missing_cast_widens_the_wording_to_three_possibilities() -> 
     )
 
     missing = next(
-        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
         if f.id.startswith("compare.spells.missing")
     )
 
@@ -1226,7 +1253,7 @@ def test_a_pairwise_cast_is_not_a_gear_finding_when_our_loadout_was_never_fetche
         (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
     )
 
-    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
 
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
     missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
