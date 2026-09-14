@@ -455,6 +455,36 @@ def test_every_compared_cell_lands_under_the_heading_it_claims() -> None:
             assert MARKUP.sub("", under["Verdict"]) == escape(row.verdict_label)
 
 
+# The whitespace is required: `<th([^>]*)>` matches `<thead>` as well, which
+# shifts every column index by one and makes the comparison below meaningless.
+COMPARED_HEADING_TAG = re.compile(r"<th(\s[^>]*)?>")
+COMPARED_CELL_TAG = re.compile(r"<td(\s[^>]*)?>")
+
+
+def _numeric_columns(tags: list[str]) -> set[int]:
+    """Which column indices were marked as carrying a figure."""
+    return {index for index, attributes in enumerate(tags) if 'class="num"' in attributes}
+
+
+def test_a_right_aligned_column_is_headed_by_a_right_aligned_heading() -> None:
+    """`.num` is what right-aligns a figure, and a heading left where its
+    column is right reads as belonging to the column beside it. Reported by
+    RwlRwlRwlRwl from a rendered page: the numbers under Ours, Median and Range
+    did not line up with the words over them.
+
+    Checked per column index rather than by name, so a column added later is
+    covered without this test being touched.
+    """
+    html = render(rich_report())
+    bodies = COMPARED_TABLE.findall(html)
+    assert bodies, "the fixture drew no comparison table, so this guard checks nothing"
+
+    for body in bodies:
+        headed = _numeric_columns(COMPARED_HEADING_TAG.findall(body))
+        for _, cells in COMPARED_ROW.findall(body):
+            assert _numeric_columns(COMPARED_CELL_TAG.findall(cells)) == headed
+
+
 def test_the_two_compared_rows_differ_in_every_column() -> None:
     """The guard under the test above. Two rows agreeing on a figure would let a
     column print the other row's value, or the neighbouring column's, and still
