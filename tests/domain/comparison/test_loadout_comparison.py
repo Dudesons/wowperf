@@ -1,8 +1,11 @@
 # ABOUTME: Behaviour tests for the gear and stat comparison families.
 # ABOUTME: item_sourced is asymmetric on purpose: a match is evidence, a miss is not.
 
+import re
+
 from wowperf.domain.comparison.loadout import (
     compare_enchants,
+    compare_stats,
     compare_tier,
     item_sourced,
     loadouts_of,
@@ -10,7 +13,7 @@ from wowperf.domain.comparison.loadout import (
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.findings import Confidence
-from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout
+from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
 from wowperf.domain.model import Player, Run
 
 OUR_NAME = "Stonewake (actor 7)"
@@ -278,3 +281,135 @@ def test_the_median_is_not_a_mean() -> None:
     # list in evidence[0], so it would not prove the median (rather than the
     # mean, 2.4) is what got reported.
     assert "sample median 4" in findings[0].evidence[1]
+
+
+# --- compare_stats -------------------------------------------------------------
+
+
+def a_stat_loadout(**ratings: int) -> Loadout:
+    return Loadout(items=(an_item(),), stats=StatBlock(**ratings))
+
+
+def test_each_secondary_that_differs_gets_a_row() -> None:
+    ours = a_stat_loadout(crit=900, haste=900, mastery=400, versatility=0)
+    theirs = [a_stat_loadout(crit=900, haste=900, mastery=1400, versatility=0) for _ in range(5)]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    assert [f.id for f in findings] == ["compare.stats.rating"]
+    assert "mastery" in findings[0].title
+
+
+def test_the_row_states_our_rating_the_median_and_the_range() -> None:
+    # crit is carried equal on both sides so only mastery's rating differs. A
+    # StatBlock with mastery as its only nonzero stat would make every share
+    # 100% regardless of the rating -- STAT_GAP_SHARE could never clear and
+    # the row would never print. Measured by running this fixture against the
+    # brief's own reference implementation: it raises IndexError, not the
+    # "29 passed" the brief predicted (see task-10-report.md for the trace).
+    ours = a_stat_loadout(crit=1000, mastery=400)
+    theirs = [a_stat_loadout(crit=1000, mastery=r) for r in (1290, 1400, 1480, 1500, 1602)]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    joined = " ".join(findings[0].evidence)
+    assert "400" in joined
+    assert "1480" in joined
+    assert "1290" in joined and "1602" in joined
+
+
+def test_the_row_also_states_the_share_of_the_secondary_budget() -> None:
+    # The raw gap between a top parse and this player largely restates item
+    # level. The share is the part a decision can change.
+    ours = a_stat_loadout(crit=800, mastery=200)
+    theirs = [a_stat_loadout(crit=200, mastery=800) for _ in range(5)]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    joined = " ".join(f.detail for f in findings)
+    assert "%" in joined
+
+
+def test_the_share_values_are_correct_not_swapped() -> None:
+    # The test above only checks that some percentage sign appears somewhere
+    # -- a detail with the two shares reversed, or entirely made up, would
+    # still contain a "%". crit is held equal on both sides so exactly one row
+    # (mastery) exists, and its exact, directional phrasing is asserted: ours
+    # first, then the sample's.
+    ours = a_stat_loadout(crit=1000, mastery=200)
+    theirs = [a_stat_loadout(crit=1000, mastery=800) for _ in range(5)]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    assert len(findings) == 1
+    assert (
+        "17% of this player's secondary rating against 44% of the sample's"
+        in findings[0].detail
+    )
+
+
+def test_a_stat_nobody_has_produces_no_row() -> None:
+    ours = a_stat_loadout(crit=900)
+    theirs = [a_stat_loadout(crit=900) for _ in range(5)]
+    assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+def test_a_small_share_difference_produces_no_row_despite_a_rating_gap() -> None:
+    # The raw mastery rating differs (400 vs 430) but both loadouts spend
+    # nearly the same share of their own budget on it -- under STAT_GAP_SHARE,
+    # so nothing is worth printing. This is the case a flipped comparison
+    # (printing when the gap is small rather than skipping it) would get
+    # backwards, and that test_each_secondary_that_differs_gets_a_row's large
+    # gap cannot rule out on its own.
+    ours = a_stat_loadout(crit=900, mastery=400)
+    theirs = [a_stat_loadout(crit=900, mastery=430) for _ in range(5)]
+    assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+def test_rows_are_badged_derived() -> None:
+    ours = a_stat_loadout(crit=1000, mastery=400)
+    theirs = [a_stat_loadout(crit=1000, mastery=1400) for _ in range(5)]
+    assert compare_stats(ours, theirs, OUR_NAME)[0].confidence is Confidence.DERIVED
+
+
+def test_no_row_states_a_percentage_of_the_rating_itself() -> None:
+    # Converting a rating to a percentage needs a per-level coefficient with no
+    # source in this API. The only percentage permitted is the share of budget.
+    #
+    # Asserted as an allowlist over every "%" token in the whole finding
+    # (title, detail and evidence), not a blocklist of specific strings like
+    # "400%": a blocklist only catches a percentage spelled out in that exact
+    # form. Checking this against an earlier fixture (crit=1000, mastery=400
+    # vs crit=1000, mastery=1400) missed a real mutation, because that
+    # fixture's numbers made the illegitimate percentage (ours / their_median
+    # = 400/1400) round to the same "29%" as the legitimate share -- the
+    # fixture below is chosen so the two cannot collide.
+    ours = a_stat_loadout(crit=1000, mastery=400)
+    theirs = [a_stat_loadout(crit=1000, mastery=1500) for _ in range(5)]
+    finding = compare_stats(ours, theirs, OUR_NAME)[0]
+    rendered = finding.title + " " + finding.detail + " " + " ".join(finding.evidence)
+    our_share_pct = f"{400 / 1400:.0%}"
+    their_share_pct = f"{1500 / 2500:.0%}"
+    assert {our_share_pct, their_share_pct} == {"29%", "60%"}  # sanity-check the fixture math
+    assert set(re.findall(r"\d+%", rendered)) == {our_share_pct, their_share_pct}
+
+
+def test_nothing_is_compared_without_our_loadout_for_stats() -> None:
+    theirs = [a_stat_loadout(mastery=1400) for _ in range(5)]
+    assert compare_stats(None, theirs, OUR_NAME) == []
+
+
+def test_nothing_is_compared_when_our_stats_were_withheld() -> None:
+    ours = Loadout(items=(an_item(),), stats=None)
+    theirs = [a_stat_loadout(mastery=1400) for _ in range(5)]
+    assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+def test_a_reference_whose_stats_were_withheld_is_not_counted() -> None:
+    ours = a_stat_loadout(crit=1000, mastery=400)
+    theirs = [a_stat_loadout(crit=1000, mastery=1400) for _ in range(3)] + [
+        Loadout(items=(an_item(),), stats=None) for _ in range(2)
+    ]
+    findings = compare_stats(ours, theirs, OUR_NAME)
+    assert "3 references" in " ".join(findings[0].evidence)
+
+
+def test_nothing_is_compared_below_the_sample_floor_for_stats() -> None:
+    # Named "..._for_stats": test_nothing_is_compared_below_the_sample_floor
+    # already exists above for compare_enchants. Pasted verbatim, Python would
+    # silently rebind that name and pytest would run only the last definition.
+    ours = a_stat_loadout(mastery=400)
+    theirs = [a_stat_loadout(mastery=1400) for _ in range(2)]
+    assert compare_stats(ours, theirs, OUR_NAME) == []

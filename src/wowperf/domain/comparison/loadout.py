@@ -146,3 +146,81 @@ def compare_tier(
             ),
         )
     ]
+
+
+STAT_GAP_SHARE = 0.15
+"""How far a stat's share of the budget must move before the row is worth printing.
+
+Two players of the same specialisation gemming the same way land within a few
+points of each other, and a row for every stat every time would bury the one
+that moved.
+"""
+
+
+def compare_stats(
+    our_loadout: Loadout | None, their_loadouts: Sequence[Loadout], our_name: str
+) -> list[Finding]:
+    """Each secondary's rating against the sample's, and its share of the budget.
+
+    Two readings, because one of them is misleading alone. The rating and its
+    gap is the fact, and it is what a reader asked for; but a top parse
+    out-gears this player, so it holds more of every stat and the raw gap
+    largely restates the item-level confound `confounds.py` already reports.
+    The share of the player's own secondary budget is item-level independent,
+    and it is the part a decision — a gem, an enchant, which piece was kept —
+    actually moves.
+
+    Ratings only. Converting one to a percentage needs a per-level coefficient
+    with no source in this API, so the only percentage here is a share.
+    """
+    if our_loadout is None or our_loadout.stats is None:
+        return []
+    theirs = [
+        loadout.stats for loadout in their_loadouts if loadout.stats is not None
+    ]
+    if len(theirs) < MIN_SAMPLE_FOR_AGGREGATE:
+        return []
+
+    our_stats = our_loadout.stats
+    our_budget = our_stats.total_secondary()
+    findings = []
+    for name, ours in our_stats.secondaries():
+        ratings = [float(dict(stats.secondaries())[name]) for stats in theirs]
+        their_median = median(ratings)
+        if ours == their_median:
+            continue
+        our_share = ours / our_budget if our_budget else 0.0
+        their_shares = [
+            dict(stats.secondaries())[name] / stats.total_secondary()
+            if stats.total_secondary()
+            else 0.0
+            for stats in theirs
+        ]
+        their_share = median(their_shares)
+        if abs(our_share - their_share) < STAT_GAP_SHARE:
+            continue
+        low, high = observed_range(ratings)
+        findings.append(
+            Finding(
+                id="compare.stats.rating",
+                title=(
+                    f"{our_name} carried {ours} {name} rating; "
+                    f"the sample's median is {their_median:g}"
+                ),
+                detail=(
+                    f"That is {our_share:.0%} of this player's secondary rating against "
+                    f"{their_share:.0%} of the sample's. The share is the reading item level "
+                    "cannot explain: a top parse holds more of every stat simply by "
+                    "out-gearing this run."
+                ),
+                confidence=Confidence.DERIVED,
+                seconds_lost=None,
+                evidence=(
+                    f"{name} rating {ours}",
+                    f"sample median {their_median:g}, range {low:g} to {high:g} "
+                    f"across {len(theirs)} references",
+                    f"share of budget {our_share:.0%} against {their_share:.0%}",
+                ),
+            )
+        )
+    return findings
