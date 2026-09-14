@@ -85,7 +85,8 @@ def analyse_consumables_at_death(
     in the log only when it is drunk, so an empty category means "nothing was on
     cooldown", never "one was in the bag".
     """
-    if not consumables.categories:
+    survival_categories = consumables.for_survival()
+    if not survival_categories:
         return []
 
     # Casts are fetched from the fight's start, so nothing before the first pull
@@ -107,7 +108,7 @@ def analyse_consumables_at_death(
         ):
             up = consumables_up_at(
                 casts,
-                consumables.categories,
+                survival_categories,
                 player.actor_id,
                 death.timestamp_ms,
                 visible_from_ms=visible_from_ms,
@@ -171,7 +172,8 @@ def analyse_consumables_never_used(
     But unlike the per-death claim it is said once, and a reader can act on it
     without knowing what was in anyone's bags.
     """
-    if not consumables.categories:
+    survival_categories = consumables.for_survival()
+    if not survival_categories:
         return []
 
     name_counts: dict[str, int] = defaultdict(int)
@@ -186,7 +188,7 @@ def analyse_consumables_never_used(
         drank = {cast.ability_id for cast in casts if cast.actor_id == player.actor_id}
         untouched = [
             category.name
-            for category in consumables.categories
+            for category in survival_categories
             if not any(ability_id in drank for ability_id in category.ability_ids)
         ]
         if not untouched:

@@ -129,6 +129,19 @@ def test_the_committed_consumables_file_parses() -> None:
     assert names == {"health potion", "healthstone", "combat potion"}
 
 
+def test_the_combat_potion_category_is_excluded_from_survival_categories() -> None:
+    # A damage potion shares no cooldown with a health potion in the sense the
+    # death-gated survival analysis cares about, so `survival = false` in the
+    # data file must keep it out of `for_survival()` while `categories` (read
+    # above) still carries it for the comparison half.
+    from wowperf.adapters.config.toml import load_consumables
+
+    consumables = load_consumables()
+    survival_names = {category.name for category in consumables.for_survival()}
+    assert "combat potion" not in survival_names
+    assert {"health potion", "healthstone"} <= survival_names
+
+
 def test_a_category_carries_its_cooldown_and_every_id_that_shares_it() -> None:
     from wowperf.adapters.config.toml import load_consumables
 

@@ -47,6 +47,10 @@ ability_ids = [
 
 ["combat potion"]
 cooldown_seconds = 300.0
+# Excluded from the death-gated survival analysis: see "Amended 2026-09-14"
+# above. It shares no cooldown with a health potion in the sense that
+# analysis cares about.
+survival = false
 ability_ids = [
   1236994,  # Potion of Recklessness
 ]

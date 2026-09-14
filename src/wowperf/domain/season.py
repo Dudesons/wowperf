@@ -92,12 +92,27 @@ class ConsumableCategory(Frozen):
     # unknown cannot say whether anything was available.
     cooldown_seconds: float
     ability_ids: tuple[int, ...] = ()
+    # Whether the death-gated survival analysis should consider this category.
+    # True for every healing category; a category the game excludes from that
+    # question on its own terms (a damage potion sharing no cooldown with a
+    # health potion) sets this false in the data file, so a future addition
+    # gets the same treatment without a name check in code.
+    survival: bool = True
 
 
 class Consumables(Frozen):
     """Healing consumables by cooldown category."""
 
     categories: tuple[ConsumableCategory, ...] = ()
+
+    def for_survival(self) -> tuple[ConsumableCategory, ...]:
+        """Categories the death-gated survival analysis should consider.
+
+        `categories` itself keeps returning everything -- the combat potion
+        included -- because the comparison family reads every category
+        regardless of whether it heals.
+        """
+        return tuple(category for category in self.categories if category.survival)
 
 
 class ConsumableBuffs(Frozen):

@@ -105,6 +105,7 @@ def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
                 name=name,
                 cooldown_seconds=float(block["cooldown_seconds"]),
                 ability_ids=tuple(block.get("ability_ids", ())),
+                survival=bool(block.get("survival", True)),
             )
         )
     return Consumables(categories=tuple(categories))
