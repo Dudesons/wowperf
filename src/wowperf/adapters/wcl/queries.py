@@ -509,6 +509,28 @@ query AbilityTakenTableByVictim($code: String!, $fightId: Int!, $actorId: Int!) 
 """
 
 
+# `sourceID` scopes a damage-done table to one subject, and `viewBy: Target` breaks it into one
+# row per target rather than one row per source or per ability. Measured 2026-09-13: this
+# sourceID-scoped table cost 0.94 points -- see `.claude/skills/wcl-api/SKILL.md`, "A damage-done
+# table split by target names the boss itself". One query per subject, not one unscoped call for
+# the whole roster: a Target-viewed table's nested arrays cap at five rows (design's raid-analysis
+# amendment, §14 item 6), which is why a twenty-player roster cannot be served by one unscoped call.
+DAMAGE_DONE_TARGETS_QUERY = """
+query DamageDoneTargets($code: String!, $fightId: Int!, $sourceId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      targets: table(
+        fightIDs: [$fightId]
+        dataType: DamageDone
+        viewBy: Target
+        sourceID: $sourceId
+      )
+    }
+  }
+}
+"""
+
+
 def talents_query(actor_ids: Sequence[int]) -> str:
     """One aliased `talentImportCode` per player.
 
