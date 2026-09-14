@@ -5,7 +5,7 @@ from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
 )
-from wowperf.domain.analysis.deaths import analyse_deaths
+from wowperf.domain.analysis.deaths import analyse_deaths, pull_offset
 from wowperf.domain.analysis.defensives import (
     analyse_defensives,
     analyse_defensives_at_death,
@@ -66,10 +66,15 @@ def analyse(
         loaded.run.players, loaded.run.pulls, loaded.casts, defensives, loaded.deaths
     )
     findings += analyse_consumables_at_death(
-        loaded.run, loaded.casts, consumables, loaded.deaths
+        loaded.run.players,
+        min((pull.start_ms for pull in loaded.run.pulls), default=0),
+        loaded.casts,
+        consumables,
+        loaded.deaths,
+        locate=lambda death: pull_offset(loaded.run.pulls, death),
     )
     findings += analyse_consumables_never_used(
-        loaded.run, loaded.casts, consumables, loaded.deaths
+        loaded.run.players, loaded.casts, consumables, loaded.deaths
     )
     findings += analyse_cooldown_alignment(
         loaded.run, loaded.casts, throughput, loaded.enemy_deaths, loaded.deaths
