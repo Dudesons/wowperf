@@ -52,6 +52,47 @@ def select_keystone_fight(fights: list[dict[str, Any]], fight_id: int | None) ->
     return completed_fights[0]
 
 
+def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dict[str, Any]:
+    """Find the boss fight to analyse.
+
+    A raid fight is one with a non-zero encounterID and no keystoneLevel. Trash
+    between bosses is logged as sibling fights carrying encounterID 0, and a
+    Mythic+ run carries the dungeon's own encounterID -- so the encounter id
+    alone does not separate a boss from a key, and selecting on it would let
+    this command analyse a keystone as a boss and never say so.
+
+    Unlike a keystone, a boss fight is not required to be a kill: a wipe is the
+    log a progression raid most wants read, and the analysers that need a kill
+    withhold themselves rather than being gated here.
+
+    With no `fight_id` and several boss fights on the report, this refuses
+    rather than choosing. A night holds eight attempts on one boss; picking the
+    last, or the only kill, would analyse a fight nobody asked for.
+    """
+    boss_fights = [
+        fight
+        for fight in fights
+        if fight.get("encounterID") and fight.get("keystoneLevel") is None
+    ]
+
+    if fight_id is not None:
+        chosen = next((fight for fight in fights if fight["id"] == fight_id), None)
+        if chosen is None:
+            raise IngestError(f"This report has no fight {fight_id}")
+        if chosen.get("keystoneLevel") is not None:
+            raise IngestError(f"Fight {fight_id} is a Mythic+ run; analyze it with `analyze`")
+        if not chosen.get("encounterID"):
+            raise IngestError(f"Fight {fight_id} is not a boss fight")
+        return chosen
+
+    if not boss_fights:
+        raise IngestError("This report contains no boss fight")
+    if len(boss_fights) > 1:
+        ids = ", ".join(str(fight["id"]) for fight in boss_fights)
+        raise IngestError(f"This report holds several boss fights ({ids}); pass --fight")
+    return boss_fights[0]
+
+
 def _build_players(
     fight: dict[str, Any], actors: list[dict[str, Any]], talents: dict[int, str]
 ) -> tuple[Player, ...]:

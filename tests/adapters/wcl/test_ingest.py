@@ -7,7 +7,12 @@ from typing import Any, cast
 
 import pytest
 
-from wowperf.adapters.wcl.ingest import IngestError, build_run, select_keystone_fight
+from wowperf.adapters.wcl.ingest import (
+    IngestError,
+    build_run,
+    select_keystone_fight,
+    select_raid_fight,
+)
 from wowperf.adapters.wcl.queries import talents_query
 
 FIXTURE = Path(__file__).parent / "fixtures" / "report_fights.json"
@@ -97,6 +102,81 @@ def test_pulls_keep_their_order_and_classify_bosses() -> None:
 def test_pull_enemies_carry_their_game_ids() -> None:
     run = build_run(report(), select_keystone_fight(report()["fights"], None))
     assert run.pulls[0].signature == (5001, 5002)
+
+
+def raid_fights() -> list[dict[str, Any]]:
+    """Shaped after a real raid report: trash carries encounterID 0."""
+    return [
+        {"id": 1, "name": "Venomfang Juggernaut", "encounterID": 0, "kill": None,
+         "keystoneLevel": None},
+        {"id": 22, "name": "The Twin Fangs", "encounterID": 3421, "kill": True,
+         "keystoneLevel": None},
+        {"id": 28, "name": "Ula'tek", "encounterID": 3492, "kill": False,
+         "keystoneLevel": None},
+        {"id": 30, "name": "Ula'tek", "encounterID": 3492, "kill": False,
+         "keystoneLevel": None},
+    ]
+
+
+def test_an_explicit_fight_id_selects_that_boss_fight() -> None:
+    assert select_raid_fight(raid_fights(), 22)["id"] == 22
+
+
+def test_a_wipe_is_selected_rather_than_refused() -> None:
+    # The whole reason slice 2 does not reuse select_keystone_fight: a
+    # progression attempt is exactly the log worth reading.
+    assert select_raid_fight(raid_fights(), 30)["id"] == 30
+
+
+def test_trash_is_not_a_boss_fight() -> None:
+    with pytest.raises(IngestError, match="not a boss fight"):
+        select_raid_fight(raid_fights(), 1)
+
+
+def test_a_fight_id_absent_from_the_report_is_refused() -> None:
+    with pytest.raises(IngestError, match="no fight 99"):
+        select_raid_fight(raid_fights(), 99)
+
+
+def test_several_boss_fights_and_no_choice_is_refused_rather_than_guessed() -> None:
+    # Picking "the last one" or "the only kill" would silently analyse a fight
+    # the reader did not ask for, on a report that holds a whole night.
+    with pytest.raises(IngestError, match="--fight"):
+        select_raid_fight(raid_fights(), None)
+
+
+def test_one_boss_fight_needs_no_choice() -> None:
+    only = [
+        {"id": 1, "name": "Trash", "encounterID": 0, "kill": None},
+        {"id": 22, "name": "The Twin Fangs", "encounterID": 3421, "kill": True},
+    ]
+    assert select_raid_fight(only, None)["id"] == 22
+
+
+def test_a_report_with_no_boss_fight_says_so() -> None:
+    with pytest.raises(IngestError, match="no boss fight"):
+        select_raid_fight(
+            [{"id": 1, "name": "Trash", "encounterID": 0, "kill": None,
+              "keystoneLevel": None}],
+            None,
+        )
+
+
+def test_a_keystone_is_not_a_raid_boss_fight() -> None:
+    """A Mythic+ fight carries an encounterID too -- the dungeon's.
+
+    Selecting on encounterID alone would let `raid` analyse a key as if it were
+    a boss, producing a report with no route and no timer and never saying why.
+    The discriminator is the absence of a keystoneLevel, not the presence of an
+    encounter id.
+    """
+    keys = [{"id": 36, "name": "Den of Nalorakk", "encounterID": 12825, "kill": True,
+             "keystoneLevel": 16}]
+
+    with pytest.raises(IngestError, match="analyze"):
+        select_raid_fight(keys, 36)
+    with pytest.raises(IngestError, match="no boss fight"):
+        select_raid_fight(keys, None)
 
 
 @pytest.mark.parametrize("field", ["keystoneTime", "countReached", "countRequired"])
