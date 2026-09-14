@@ -28,6 +28,34 @@ class RankedPlayer(Frozen):
     total_parses: int
 
 
+class RaidParseRow(Frozen):
+    """One row of a raid specialisation's parse leaderboard.
+
+    Not `ParseRow`: measured 2026-09-14 against a raid `characterRankings` board,
+    a row carries no `score`, no `medal` and no `affixes` -- fields a Mythic+ row
+    always has and this one never sends. And the field whose name suggests it
+    carries over does not: `bracketData`, which `build_parse_rows` writes into
+    `keystone_level` for the Mythic+ axis, reads 319 to 325 here. That is not a
+    keystone level, and what it does mean is unverified, so this row does not
+    carry it under any name. `amount` is a per-second rate, not a total --
+    dividing it by `duration_ms` would be the count-against-rate mistake the
+    field table warns against.
+    """
+
+    report_code: str
+    fight_id: int
+    duration_ms: int
+    character_name: str
+    class_name: str
+    spec: str
+    amount: float
+    size: int
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.duration_ms / 1000
+
+
 class ReportRankings(Frozen):
     """The report's own rankings for one fight, and the roster's standings in it.
 

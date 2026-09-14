@@ -389,6 +389,32 @@ query EncounterKillRankings(
 }
 """
 
+# `metric` is a variable because this plan draws both `dps` and `bossdps`. The
+# boards are not a reordering of each other -- measured 2026-09-14, their top
+# rows are different reports entirely -- so both are drawn and the reference
+# reports are fetched from the `dps` board alone. 100 rows, 0.0 points.
+RAID_CHARACTER_RANKINGS_QUERY = """
+query RaidCharacterRankings(
+  $encounterId: Int!, $difficulty: Int!, $partition: Int!, $page: Int!,
+  $className: String!, $specName: String!, $metric: CharacterRankingMetricType!
+) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      characterRankings(
+        metric: $metric
+        difficulty: $difficulty
+        partition: $partition
+        page: $page
+        className: $className
+        specName: $specName
+      )
+    }
+  }
+}
+"""
+
 # `playerMetric` is a variable rather than a literal because this plan reports
 # `dps` and `bossdps` side by side: measured 2026-09-14, the same tank read
 # 59991.46 under one and 44818.48 under the other, and a reader given one figure
