@@ -26,15 +26,20 @@ A median of two is a mean of two, and "1 of 2" is noise dressed as a statistic.
 """
 
 
-def find_player(run: Run, name: str) -> Player | None:
+def find_player(players: Sequence[Player], name: str) -> Player | None:
     """Find a roster member by name, folding case.
 
     The report owner's name comes back from Warcraft Logs lowercased while the
     roster carries the character's own capitalisation, so an exact match would
     fail on the default path every time.
+
+    Takes the roster rather than a whole `Run`, so a Mythic+ roster and a raid
+    `Encounter`'s roster resolve the same way through one function: `Encounter`
+    is deliberately not a `Run` (see its own ABOUTME), and nothing here reads
+    either aggregate beyond the players it exposes.
     """
     folded = name.casefold()
-    return next((player for player in run.players if player.name.casefold() == folded), None)
+    return next((player for player in players if player.name.casefold() == folded), None)
 
 
 class SpeedMember(Frozen):

@@ -2,11 +2,17 @@
 # ABOUTME: What is absent here matters as much as what is present.
 
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.comparison.mechanics import (
+    AbilityTakenRow,
+    MechanicsMember,
+    MechanicsSample,
+    ReferenceKillRow,
+)
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.events import CastEvent, Death
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
-from wowperf.domain.season import Consumables, DefensiveAbility, Defensives
+from wowperf.domain.season import Consumables, DefensiveAbility, Defensives, Roles
 
 DEFENSIVES = Defensives(
     entries=(
@@ -114,3 +120,85 @@ def test_no_keystone_shaped_finding_reaches_a_raid_report() -> None:
     forbidden = ("time.residual", "time.gap", "trash.", "compare.route")
     leaked = [f.id for f in findings if f.id.startswith(forbidden)]
     assert leaked == [], f"Mythic+ findings reached a raid report: {leaked}"
+
+
+ROLES = Roles(tanks=("Warrior/Protection",))
+
+RAID = (
+    Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane", item_level=700),
+    Player(actor_id=12, name="Stonewake", class_name="Mage", spec="Arcane", item_level=700),
+    Player(actor_id=13, name="Bríala", class_name="Mage", spec="Arcane", item_level=700),
+)
+
+
+def a_raid_encounter() -> Encounter:
+    """Three players and a 120-second fight, so a median has three takers."""
+    return Encounter(
+        report_code="abc123", fight_id=22, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=True, fight_percentage=0.01, start_ms=1_000, end_ms=121_000,
+        players=RAID,
+    )
+
+
+def took(actor_id: int, amount: int) -> DamageTakenEvent:
+    return DamageTakenEvent(
+        actor_id=actor_id, ability_id=400, ability_name="Ravenous Feast",
+        amount=amount, timestamp_ms=2_000,
+    )
+
+
+def test_the_outlier_finding_now_reaches_a_raid_report() -> None:
+    # `roles` stopped being inert with this plan: the outlier half of
+    # `analyse_players` is the one piece of it a boss fight supports.
+    loaded = a_loaded_encounter(
+        encounter=a_raid_encounter(),
+        damage_taken=(took(11, 400), took(12, 100), took(13, 100)),
+    )
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables(), roles=ROLES)
+    assert any(finding.id.startswith("players.damage.") for finding in findings)
+
+
+def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
+    """Severity, and only severity, can produce this order.
+
+    Both families carry `seconds_lost=None`, and `analyse_encounter` appends
+    defensives long before mechanics, so under `rank_findings` the sort is
+    stable and defensives come first. Deaths would have been the wrong pair to
+    test with: a raid death does carry seconds, so `rank_findings` already
+    sorts it above a mechanic and the assertion could not have failed.
+    """
+    sample = MechanicsSample(
+        members=(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="ref", fight_id=1, size=20,
+                    duration_ms=120_000, deaths=0,
+                ),
+                abilities=(),
+            ),
+        )
+    )
+    ours = (
+        AbilityTakenRow(
+            ability_id=400, ability_name="Ravenous Feast", hit_count=12,
+            source_types=("Boss",),
+        ),
+    )
+    findings = analyse_encounter(
+        a_loaded_encounter(encounter=a_raid_encounter()),
+        DEFENSIVES, Consumables(), roles=ROLES,
+        mechanics=sample, our_abilities=ours,
+    )
+    families = [finding.id.split(".", 1)[0] for finding in findings]
+    assert "mechanics" in families, "the fixture must produce a mechanics finding"
+    assert "defensives" in families, "the fixture must produce a defensives finding"
+    assert families.index("mechanics") < families.index("defensives")
+
+    # `scope` names who took the landings, not the encounter: "the raid", never
+    # the boss. `compare_mechanics`'s title opens "{scope} took {ability} ...",
+    # so a `scope` of the boss name would have this read as the boss taking its
+    # own damage -- exactly the slip this pins against returning silently.
+    [mechanics_finding] = [finding for finding in findings if finding.id.startswith("mechanics")]
+    assert mechanics_finding.title.startswith("the raid")
+    assert "Twin Fangs" not in mechanics_finding.title

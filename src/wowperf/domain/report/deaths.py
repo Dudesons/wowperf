@@ -1,7 +1,6 @@
 # ABOUTME: One recap card per death: what killed the player, what was up, how they came back.
 # ABOUTME: States what was pressed and what was ready, never what should have been pressed.
 
-from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.recap import (
     ABSENT,
     ABSORB,
@@ -23,6 +22,7 @@ from wowperf.domain.analysis.recap import (
     return_of,
     window_start,
 )
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
@@ -309,7 +309,7 @@ def build_deaths(
     availability, so the card shows the damage and the answers side by side.
     """
     players_by_id = {player.actor_id: player for player in loaded.run.players}
-    names = display_names(loaded.run)
+    names = display_names(loaded.run.players)
     cards = []
     for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)

@@ -12,7 +12,7 @@ from typing import NamedTuple
 import httpx
 import typer
 
-from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
     load_consumable_buffs,
@@ -27,19 +27,29 @@ from wowperf.adapters.config.toml import (
 )
 from wowperf.adapters.render.html import render
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
+from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
+from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.measures import PlayerMeasures
+from wowperf.domain.comparison.mechanics import (
+    AbilityTakenRow,
+    MechanicsMember,
+    MechanicsSample,
+    ReferenceKillRow,
+    select_reference_kills,
+)
 from wowperf.domain.comparison.reference import (
     REPORT_URL,
     Comparability,
@@ -55,6 +65,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.comparison.tables import comparison_measures
+from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
@@ -93,8 +104,10 @@ Every containment this names is one the report also relies on, in
 """
 
 RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
-    "findings are ranked by seconds_lost, not additive: deaths.single.*, "
-    "deaths.chain.* and deaths.repeat.* all nest inside deaths.total"
+    "findings are ranked by severity, and their seconds are not additive: "
+    "deaths.single.*, deaths.chain.* and deaths.repeat.* all nest inside "
+    "deaths.total; severity decides the order and seconds_lost sorts only within "
+    "one family, so this order must not be read as a ranking by time"
 )
 """Why the seconds in a raid findings file must never be summed.
 
@@ -107,15 +120,14 @@ compare.route.skipped.* or trash.overage here would claim an accounting the
 findings file does not hold. Only the deaths.* nesting applies to a raid
 fight; `test_cli.test_the_raid_warning_names_only_findings_the_encounter_analyser_emits`
 holds this in step with that.
-"""
 
-RAID_COMPARISON_NOT_YET_AVAILABLE = (
-    "Comparison against reference runs is not implemented for raid encounters yet: "
-    "--player, --all-players and --no-compare are accepted but have no effect."
-)
-"""`raid`'s inert flags say so, out loud, every run -- rather than looking like a
-comparison silently ran and found nothing. The axis they would drive belongs to
-the next plan, not this one.
+The ordering rule differs from the Mythic+ sibling's, so this one states its
+own rather than borrowing the wording: `analyse_encounter` ranks with
+`rank_raid_findings`, which sorts by finding family before it ever looks at
+`seconds_lost`, where `rank_findings` orders by time alone. A reader who read
+`FINDINGS_ARE_RANKED_NOT_ADDITIVE` first and carried its rule across would take
+a mechanics finding outranking a longer death for a mistake in the seconds,
+when it is the severity table doing exactly what it is for.
 """
 
 
@@ -310,8 +322,15 @@ def _roster_hint(names: Mapping[int, str]) -> str:
     return f"Pass --player with one of: {roster}"
 
 
-def _by_display_name(run: Run, requested: str, names: Mapping[int, str]) -> Player | None:
+def _by_display_name(
+    players: Sequence[Player], requested: str, names: Mapping[int, str]
+) -> Player | None:
     """The roster member a disambiguated spelling names, or None.
+
+    Takes the roster directly rather than a `Run`, so a Mythic+ roster and a
+    raid `Encounter`'s roster resolve the same way without either aggregate
+    being named here: `Encounter` is deliberately not a `Run` (see its own
+    ABOUTME), and this narrows to the value both expose in common.
 
     Folds case the same way `find_player` does, for the same reason. An empty
     request matches nobody rather than the first member with no spelling of
@@ -322,12 +341,17 @@ def _by_display_name(run: Run, requested: str, names: Mapping[int, str]) -> Play
     if not folded:
         return None
     return next(
-        (player for player in run.players if names.get(player.actor_id, "").casefold() == folded),
+        (player for player in players if names.get(player.actor_id, "").casefold() == folded),
         None,
     )
 
 
-def _resolve_player(run: Run, requested: str | None, names: Mapping[int, str]) -> Player:
+def _resolve_player(
+    players: Sequence[Player],
+    owner_name: str | None,
+    requested: str | None,
+    names: Mapping[int, str],
+) -> Player:
     """Whose run this is, for the individual comparison.
 
     The report owner is the default because it is the only name the log itself
@@ -340,9 +364,9 @@ def _resolve_player(run: Run, requested: str | None, names: Mapping[int, str]) -
     what makes the other one reachable at all, and what keeps `_roster_hint`
     from offering a name this would refuse.
     """
-    name = requested or run.owner_name
+    name = requested or owner_name
     if name is not None:
-        found = find_player(run, name) or _by_display_name(run, name, names)
+        found = find_player(players, name) or _by_display_name(players, name, names)
         if found is not None:
             return found
 
@@ -350,7 +374,11 @@ def _resolve_player(run: Run, requested: str | None, names: Mapping[int, str]) -
 
 
 def _resolve_requested(
-    run: Run, requested: Sequence[str], everyone: bool, names: Mapping[int, str]
+    players: Sequence[Player],
+    owner_name: str | None,
+    requested: Sequence[str],
+    everyone: bool,
+    names: Mapping[int, str],
 ) -> tuple[Player, tuple[Player, ...]]:
     """The subject, and every player to compare.
 
@@ -370,16 +398,23 @@ def _resolve_requested(
     swept up by `--all-players` — is compared once. Two comparisons of one
     player would mint every one of their findings twice under a single id, and
     the page would draw the pair under duplicate element ids.
+
+    Takes the roster and the owner's name directly, rather than a `Run`, so
+    `analyze` and `raid` share this one resolver instead of each keeping their
+    own copy -- a `Run` and an `Encounter` each expose a roster and an owner
+    name, and nothing here reads either aggregate beyond that.
     """
     for name in requested:
         if not name:
             raise ValueError(f"{name!r} is not a name. {_roster_hint(names)}")
 
-    subject = _resolve_player(run, requested[0] if requested else None, names)
-    named = [subject] + [_resolve_player(run, name, names) for name in requested[1:]]
+    subject = _resolve_player(players, owner_name, requested[0] if requested else None, names)
+    named = [subject] + [
+        _resolve_player(players, owner_name, name, names) for name in requested[1:]
+    ]
     by_actor = {player.actor_id: player for player in named}
     if everyone:
-        for player in run.players:
+        for player in players:
             by_actor.setdefault(player.actor_id, player)
     return subject, tuple(by_actor.values())
 
@@ -599,6 +634,107 @@ def _samples(
     return SpeedSample(members=tuple(speed_members)), parse_samples, tuple(records)
 
 
+def _mechanics_record(
+    row: ReferenceKillRow, *, loaded: bool, reason: str = "", from_cache: bool = False
+) -> ReferenceRecord:
+    """One execution-leaderboard kill's outcome, in the shape `_record` keeps for Mythic+.
+
+    A `ReferenceKillRow` carries no keystone level at all -- a boss kill has
+    none -- so `keystone_level` is written as 0 here, a value no real keystone
+    level ever is, rather than reusing `size` under a field named for a
+    different game mode's number.
+
+    `player_slug` and `player_name` stay at their empty default: the mechanics
+    axis is drawn once for the whole encounter, exactly as the speed axis is
+    drawn once for the whole run rather than per player, so no candidate here
+    was weighed for one particular player.
+    """
+    return ReferenceRecord(
+        report_code=row.report_code,
+        fight_id=row.fight_id,
+        keystone_level=0,
+        url=REPORT_URL.format(code=row.report_code, fight=row.fight_id),
+        axis="mechanics",
+        loaded=loaded,
+        reason=reason,
+        from_cache=from_cache,
+    )
+
+
+def _ability_taken(
+    client: WclClient, cache: DiskCache, code: str, fight_id: int
+) -> tuple[tuple[AbilityTakenRow, ...], bool]:
+    """One report's raid-wide damage-taken-by-ability table, cached, and whether it hit.
+
+    Shared by our own report and every reference kill weighed: both read
+    `ABILITY_TAKEN_TABLE_QUERY`, aliased `taken`, and neither is scoped by
+    `sourceID` -- `compare_mechanics`'s own evidence labels the figure "This
+    raid", a statement about the whole encounter on both sides of the
+    comparison, not about one player.
+    """
+    variables = {"code": code, "fightId": fight_id}
+    payload, from_cache = cache.get_or_fetch(
+        cache_key(ABILITY_TAKEN_TABLE_QUERY, variables),
+        lambda: client.execute(ABILITY_TAKEN_TABLE_QUERY, variables),
+    )
+    return build_ability_taken_rows(payload, "taken"), from_cache
+
+
+def _mechanics_sample(
+    rankings: WclEncounterRankingRepository,
+    client: WclClient,
+    cache: DiskCache,
+    encounter: Encounter,
+) -> tuple[MechanicsSample, tuple[ReferenceRecord, ...]]:
+    """Up to `SAMPLE_SIZE` execution-leaderboard kills of this boss, and a record of
+    every one weighed.
+
+    Mirrors `_samples`: a row naming our own report and fight is never a
+    reference for it (comparing a kill against itself would report a perfect
+    match and teach the reader nothing), and a row whose ability table failed
+    to load is skipped, never fatal, with the reason recorded rather than
+    silently dropped.
+
+    Every size-matching row is offered to the loop, which breaks once it holds
+    `SAMPLE_SIZE` members -- `_samples`' own shape, and for its reason: slicing
+    to `SAMPLE_SIZE` first would let each discard shrink the sample instead of
+    being refilled from the rows behind it. Measured 2026-09-14, size-matching
+    rows are scarce (none on one live kill's page, two on a wipe's), so losing
+    one to a self-match is most of a sample. The break still caps the fetches:
+    at most `SAMPLE_SIZE` tables are loaded successfully, plus whatever failed.
+
+    `select_reference_kills` has already refused a size that does not match
+    ours, so what reaches this loop is comparable by construction; only
+    reachability is judged here. Difficulty needs no matching filter here:
+    `reference_kills` already passes `encounter.difficulty` as the query's own
+    argument, so every row it returns is at that difficulty already.
+    """
+    rows = rankings.reference_kills(
+        encounter.encounter_id, encounter.difficulty, encounter.partition
+    )
+    selected = select_reference_kills(rows, our_size=encounter.size, limit=None)
+
+    members: list[MechanicsMember] = []
+    records: list[ReferenceRecord] = []
+    for row in selected:
+        if len(members) >= SAMPLE_SIZE:
+            break
+        if row.report_code == encounter.report_code and row.fight_id == encounter.fight_id:
+            records.append(
+                _mechanics_record(row, loaded=False, reason="this is the run under analysis")
+            )
+            continue
+        try:
+            abilities, from_cache = _ability_taken(client, cache, row.report_code, row.fight_id)
+        except (IngestError, WclError) as error:
+            records.append(_mechanics_record(row, loaded=False, reason=str(error)))
+            continue
+        records.append(_mechanics_record(row, loaded=True, from_cache=from_cache))
+        members.append(MechanicsMember(row=row, abilities=abilities))
+
+    return MechanicsSample(members=tuple(members)), tuple(records)
+
+
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
     """One player's auras, or None if they cannot be had.
 
@@ -647,7 +783,7 @@ def _fetch_parse_auras(
     """Every parse member's own aura data, and our own side's, fetched at most once.
 
     A member's counterpart is resolved from that member's own roster,
-    `find_player(member.run, member.row.character_name)`, before paying for
+    `find_player(member.run.players, member.row.character_name)`, before paying for
     its aura query: when the reference's own roster does not contain the
     player its leaderboard row names, `find_player` can never resolve them,
     and fetching first would pay for a query with no use. A member whose
@@ -665,7 +801,7 @@ def _fetch_parse_auras(
     our_auras_fetched = False
     updated_members: list[ParseMember] = []
     for member in sample.members:
-        their_player = find_player(member.run, member.row.character_name)
+        their_player = find_player(member.run.players, member.row.character_name)
         if their_player is None:
             updated_members.append(member)
             continue
@@ -798,8 +934,10 @@ def analyze(
         # three calls, so a finding's title, a card heading, a provenance row
         # and the argument that asked for them cannot spell a player
         # differently.
-        names = display_names(loaded.run)
-        subject, to_compare = _resolve_requested(loaded.run, player, all_players, names)
+        names = display_names(loaded.run.players)
+        subject, to_compare = _resolve_requested(
+            loaded.run.players, loaded.run.owner_name, player, all_players, names
+        )
         speed_sample: SpeedSample | None = None
         # Everyone the comparison was asked for: the subject, then the order
         # the reader named the rest, then whoever `--all-players` swept up.
@@ -968,20 +1106,18 @@ def raid(
     player: list[str] = typer.Option(
         [],
         "--player",
-        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
-        "encounters is a later plan.",
+        help="Analyse this player as the report's subject. Repeatable; the first "
+        "one given is the subject and the rest are named alongside it. "
+        "Defaults to the report owner.",
     ),
     all_players: bool = typer.Option(
         False,
         "--all-players",
-        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
-        "encounters is a later plan.",
+        help="Name every player in the run in the findings file, not only the subject. "
+        "The mechanics comparison is raid-wide either way.",
     ),
     no_compare: bool = typer.Option(
-        False,
-        "--no-compare",
-        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
-        "encounters is a later plan.",
+        False, "--no-compare", help="Skip the reference kills and analyse this fight in isolation"
     ),
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
     out: Path = typer.Option(Path("out"), help="Where to write the findings JSON"),
@@ -992,10 +1128,16 @@ def raid(
     timer, no enemy-forces requirement and no pulls worth ranking a throughput
     cooldown against, so the two flags that need one are not offered here at
     all -- not disabled, simply absent. `--player`, `--all-players` and
-    `--no-compare` are accepted for the same shape as `analyze`, but have no
-    effect yet: comparing a boss fight against reference runs is a later
-    plan, and this command says so on every run rather than silently doing
-    nothing.
+    `--no-compare` behave as they do for `analyze`: they choose the report's
+    subject and who else is named alongside it, and `--no-compare` skips the
+    execution-leaderboard sample the mechanics comparison draws on.
+
+    The mechanics comparison itself is drawn once for the whole encounter, not
+    per player -- `compare_mechanics` states its own figure "This raid", the
+    same way `analyze`'s speed axis is compared once for the whole run rather
+    than per subject. `--player` and `--all-players` decide who the report's
+    subject is and who is named in the findings file's `comparison.players`;
+    they do not narrow which ability-taken table feeds the comparison.
     """
     # See the matching comment on `fetch`: Windows gives the process a
     # locale-dependent stdout encoding that cannot hold non-ASCII names.
@@ -1007,22 +1149,52 @@ def raid(
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
         loaded = repository.load_encounter(code, fight if fight is not None else fight_from_url)
-        # Printed only now: a report this tool cannot load must fail with just
-        # its own error, not this notice first and the error after it.
-        typer.secho(RAID_COMPARISON_NOT_YET_AVAILABLE, err=True, fg="yellow")
         # Loaded once and shared, exactly as `analyze` shares them between its
         # analysers and its report builder -- there is no report builder here
-        # yet, but the next plan that adds one must still read the same data
+        # yet, but a later plan that adds one must still read the same data
         # this command already paid for.
         defensives = load_defensives()
         consumables = load_consumables()
-        findings = analyse_encounter(loaded, defensives, consumables, roles=load_roles())
+
+        encounter = loaded.encounter
+        # The roster's own spelling, computed once and read by everything that
+        # names a player below -- see the matching comment in `analyze`.
+        names = display_names(encounter.players)
+        subject, to_compare = _resolve_requested(
+            encounter.players, encounter.owner_name, player, all_players, names
+        )
+
+        mechanics_sample = MechanicsSample()
+        our_abilities: tuple[AbilityTakenRow, ...] = ()
+        reference_records: tuple[ReferenceRecord, ...] = ()
+        if not no_compare:
+            transient = DiskCache(
+                cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+            )
+            encounter_rankings = WclEncounterRankingRepository(repository.client, transient)
+            mechanics_sample, reference_records = _mechanics_sample(
+                encounter_rankings, repository.client, transient, encounter
+            )
+            # Our own report's responses never expire, so this is cached
+            # beside every other query `load_encounter` already issued for it,
+            # not in the transient store the reference kills' tables share.
+            our_abilities, _ = _ability_taken(
+                repository.client, repository.cache, encounter.report_code, encounter.fight_id
+            )
+
+        findings = analyse_encounter(
+            loaded,
+            defensives,
+            consumables,
+            roles=load_roles(),
+            mechanics=mechanics_sample,
+            our_abilities=our_abilities,
+        )
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
 
-    encounter = loaded.encounter
     payload = {
         "report_code": encounter.report_code,
         "fight_id": encounter.fight_id,
@@ -1033,16 +1205,30 @@ def raid(
         "kill": encounter.kill,
         "fight_percentage": encounter.fight_percentage,
         "duration_seconds": encounter.duration_seconds,
-        "player": encounter.owner_name,
-        # Same shape `analyze` writes, standing in for a comparison this plan
-        # does not run: `--player`, `--all-players` and `--no-compare` are
-        # inert, so this is always what "nobody was compared" looks like,
-        # never a comparison that quietly found nothing.
+        "player": subject.name,
         "comparison": {
-            "compared": False,
-            "players": [],
-            "sample_size": {"speed": 0, "parse": {}},
-            "references": [],
+            "compared": bool(mechanics_sample.members),
+            # Who `--player`/`--all-players` named, subject first -- the same
+            # promise `analyze`'s own "players" list keeps. Empty only when
+            # nobody could be named at all, which never happens here: the
+            # subject always resolves to at least the report owner.
+            "players": [names[one.actor_id] for one in to_compare],
+            "sample_size": {"mechanics": len(mechanics_sample.members)},
+            "references": [
+                {
+                    "axis": record.axis,
+                    "report_code": record.report_code,
+                    "fight_id": record.fight_id,
+                    "keystone_level": record.keystone_level,
+                    "url": record.url,
+                    "loaded": record.loaded,
+                    "reason": record.reason,
+                    "from_cache": record.from_cache,
+                    "player_slug": record.player_slug,
+                    "player_name": record.player_name,
+                }
+                for record in reference_records
+            ],
         },
         "findings_are_ranked_not_additive": RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
         "findings": [finding.model_dump(mode="json") for finding in findings],

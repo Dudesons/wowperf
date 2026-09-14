@@ -129,7 +129,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         *compare_talents(
             subject.player,
             subject.display_name,
-            find_player(top.run, top.row.character_name),
+            find_player(top.run.players, top.row.character_name),
             top.row,
         ),
         *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),

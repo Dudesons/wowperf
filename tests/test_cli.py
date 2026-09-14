@@ -34,7 +34,7 @@ from wowperf.cli import (
     build_icons,
     load_run_with_auras,
 )
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
@@ -196,6 +196,408 @@ def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it() -> No
     assert result.exit_code != 0
     assert "analyze" in plain(result.output)
     assert "Traceback" not in result.output
+
+
+RAID_REPORT_CODE = "abc123"
+RAID_FIGHT_ID = 22
+RAID_ENCOUNTER_ID = 3421
+RAID_DIFFICULTY = 5
+RAID_SIZE = 20
+RAID_REFERENCE_CODE = "refcode1"
+RAID_REFERENCE_FIGHT = 5
+
+RAID_ROSTER: tuple[dict[str, Any], ...] = (
+    {"actor_id": 11, "name": "Emberkin", "class_name": "Mage", "spec": "Arcane", "item_level": 700},
+    {
+        "actor_id": 12, "name": "Stonewake", "class_name": "Warrior",
+        "spec": "Protection", "item_level": 702,
+    },
+    {"actor_id": 13, "name": "Bríala", "class_name": "Priest", "spec": "Holy", "item_level": 705},
+)
+"""The report owner and two teammates, so a run has more than one subject to
+choose between and `--all-players` differs visibly from the default."""
+
+
+def _raid_fights_payload() -> dict[str, Any]:
+    return {
+        "reportData": {
+            "report": {
+                "code": RAID_REPORT_CODE,
+                "title": "Raid Night",
+                "startTime": 0,
+                "endTime": 700_000,
+                "owner": {"name": RAID_ROSTER[0]["name"].lower()},
+                "fights": [
+                    {
+                        "id": RAID_FIGHT_ID,
+                        "name": "The Twin Fangs",
+                        "encounterID": RAID_ENCOUNTER_ID,
+                        "keystoneLevel": None,
+                        "difficulty": RAID_DIFFICULTY,
+                        "size": RAID_SIZE,
+                        "kill": True,
+                        "fightPercentage": 0.01,
+                        "startTime": 1_000,
+                        "endTime": 375_000,
+                        "friendlyPlayers": [p["actor_id"] for p in RAID_ROSTER],
+                        "friendlySpecs": [p["spec"] for p in RAID_ROSTER],
+                        "friendlyItemLevels": [p["item_level"] for p in RAID_ROSTER],
+                    },
+                ],
+                "masterData": {
+                    "actors": [
+                        {
+                            "id": p["actor_id"], "name": p["name"],
+                            "subType": p["class_name"], "server": "Hyjal",
+                        }
+                        for p in RAID_ROSTER
+                    ]
+                },
+            }
+        }
+    }
+
+
+def _reference_kill_row(
+    report_code: str = RAID_REFERENCE_CODE,
+    fight_id: int = RAID_REFERENCE_FIGHT,
+    *,
+    size: int = RAID_SIZE,
+    duration_ms: int = 380_000,
+    deaths: int = 1,
+) -> dict[str, Any]:
+    # No `difficulty` key: a live `fightRankings(metric: execution)` row never
+    # carries one -- see `.claude/skills/wcl-api/SKILL.md`, "`fightRankings`
+    # echoes no `difficulty` per row" -- so a fixture inventing one would be
+    # exactly the defect that let this comparison ship broken against real
+    # data.
+    return {
+        "report": {"code": report_code, "fightID": fight_id, "startTime": 1},
+        "size": size,
+        "duration": duration_ms,
+        "deaths": deaths,
+    }
+
+
+def build_raid_transport(
+    *,
+    kill_rankings: list[dict[str, Any]] | None = None,
+    ability_entries: list[dict[str, Any]] | None = None,
+    broken_ability_reports: frozenset[tuple[str, int]] = frozenset(),
+    calls: list[str] | None = None,
+) -> httpx.MockTransport:
+    """Answer every query `raid` issues for report abc123, fight 22.
+
+    `kill_rankings` answers `EncounterKillRankings` with the rows given, in
+    place of one matching reference kill -- a working comparison by default,
+    the same convention `build_analyze_transport` uses for its own two
+    leaderboards. Pass `[]` for a leaderboard with nothing to offer.
+
+    `ability_entries` answers every `AbilityTakenTable` request identically,
+    in place of one entry: this transport does not distinguish whose report is
+    asking, which is enough to prove a count and a provenance link, not to
+    measure a real difference between two reports' landings.
+
+    `broken_ability_reports` names `(code, fight id)` pairs whose
+    `AbilityTakenTable` request answers a GraphQL error instead of a table, so
+    a caller can simulate a reference row whose ability table fails to load
+    without the row itself failing to load.
+    """
+    if kill_rankings is None:
+        kill_rankings = [_reference_kill_row()]
+    if ability_entries is None:
+        ability_entries = [
+            {"guid": 900, "name": "Venom Bolt", "hitCount": 5, "sources": [{"type": "Boss"}]}
+        ]
+
+    fights_payload = _raid_fights_payload()
+    abilities_payload: dict[str, Any] = {
+        "reportData": {"report": {"masterData": {"abilities": []}}}
+    }
+    empty_events: dict[str, Any] = {
+        "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+    damage_done_graph: dict[str, Any] = {
+        "reportData": {
+            "report": {"graph": {"data": {"series": [], "startTime": 1_000, "endTime": 375_000}}}
+        }
+    }
+    ability_taken_payload: dict[str, Any] = {
+        "reportData": {"report": {"taken": {"data": {"entries": ability_entries}}}}
+    }
+    broken_ability_response: dict[str, Any] = {
+        "errors": [{"message": "no damage-taken table for this report"}]
+    }
+    rankings_payload: dict[str, Any] = {
+        "worldData": {
+            "encounter": {
+                "id": RAID_ENCOUNTER_ID,
+                "name": "The Twin Fangs",
+                "fightRankings": {"page": 1, "hasMorePages": False, "rankings": kill_rankings},
+            }
+        }
+    }
+    talents_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "fights": [
+                    {
+                        "id": RAID_FIGHT_ID,
+                        **{f"a{p['actor_id']}": "C4DAAAAA" for p in RAID_ROSTER},
+                    }
+                ]
+            }
+        }
+    }
+
+    running = 100.0
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        body = json.loads(request.content)
+        name = operation_name(body["query"])
+        if calls is not None:
+            calls.append(name)
+        variables = body.get("variables") or {}
+        if name == "RateLimit":
+            return httpx.Response(200, json={"data": {}})
+        if name == "Fights":
+            payload = (
+                fights_payload
+                if variables.get("code") == RAID_REPORT_CODE
+                else {"reportData": {"report": None}}
+            )
+            return httpx.Response(200, json={"data": payload})
+        if name == "Abilities":
+            return httpx.Response(200, json={"data": abilities_payload})
+        if name == "Talents":
+            return httpx.Response(200, json={"data": talents_payload})
+        if name == "DamageDoneGraph":
+            return httpx.Response(200, json={"data": damage_done_graph})
+        if name == "EncounterKillRankings":
+            return httpx.Response(200, json={"data": rankings_payload})
+        if name == "AbilityTakenTable":
+            key = (variables.get("code"), variables.get("fightId"))
+            if key in broken_ability_reports:
+                return httpx.Response(200, json=broken_ability_response)
+            return httpx.Response(200, json={"data": ability_taken_payload})
+        return httpx.Response(200, json={"data": empty_events})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        """Every answer leaves carrying a quota block, as the live API's do."""
+        nonlocal running
+        response = answer(request)
+        payload = response.json()
+        data = payload.get("data")
+        if not isinstance(data, dict) or "rateLimitData" in data:
+            return response
+        running += 1.0
+        data["rateLimitData"] = {
+            "limitPerHour": 3600,
+            "pointsSpentThisHour": running,
+            "pointsResetIn": 900,
+        }
+        return httpx.Response(200, json=payload)
+
+    return httpx.MockTransport(handler)
+
+
+def run_raid(tmp_path: Path, *extra_args: str, **transport_kwargs: Any) -> Any:
+    """Invoke `raid abc123 --fight 22` against the mock transport."""
+    transport = build_raid_transport(**transport_kwargs)
+    real_client = httpx.Client
+
+    def fake_client(*args: Any, **kwargs: Any) -> httpx.Client:
+        return real_client(transport=transport)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(httpx, "Client", fake_client)
+        mp.setenv("WCL_CLIENT_ID", "id")
+        mp.setenv("WCL_CLIENT_SECRET", "secret")
+        return runner.invoke(
+            app,
+            [
+                "raid", RAID_REPORT_CODE, "--fight", str(RAID_FIGHT_ID),
+                "--cache-dir", str(tmp_path / "cache"),
+                "--out", str(tmp_path / "out"),
+                *extra_args,
+            ],
+        )
+
+
+def written_raid_findings(tmp_path: Path) -> dict[str, Any]:
+    """Read back the single findings file `raid` wrote under `tmp_path/out`."""
+    [written] = (tmp_path / "out").glob("*.findings.json")
+    return cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
+
+
+def test_the_raid_flags_no_longer_announce_themselves_as_inert() -> None:
+    # Read from the command's own help rather than from cli.py's source: typer
+    # infers `--player` from the parameter name, so the string is not in the
+    # source at all. `plain` strips the box-drawing Rich wraps help text in.
+    help_text = plain(CliRunner().invoke(app, ["raid", "--help"]).output)
+    assert "not yet implemented" not in help_text.lower()
+
+
+def test_raid_all_players_does_not_promise_a_comparison_it_cannot_narrow() -> None:
+    """The flag names players in the findings file; it narrows nothing.
+
+    The mechanics comparison is drawn once for the whole encounter --
+    `analyse_encounter` hands `compare_mechanics` one raid-wide ability-taken
+    table and one scope -- so "Compare every player in the run", which is true
+    of `analyze`, arrived here by copy as a promise this command cannot keep.
+
+    Asserted on single tokens: Rich wraps an option's help at the terminal
+    width, so a phrase spanning a wrap can never be found in the output at all,
+    and the `not in` half would pass without having looked at anything.
+    """
+    help_text = plain(CliRunner().invoke(app, ["raid", "--help"]).output)
+    assert "--all-players" in help_text, "the flag itself must be documented"
+    assert "raid-wide" in help_text
+    assert "Compare" not in help_text, "the raid help offers a per-player comparison"
+
+
+def test_no_compare_writes_a_findings_file_that_compared_nothing(tmp_path: Path) -> None:
+    """The flag has to be observable in the artefact, not only in the absence of
+    a network call a unit test cannot see. The fixture's default leaderboard
+    carries a real, matching reference kill, so a `--no-compare` that quietly
+    fetched it anyway would still show up here.
+    """
+    result = run_raid(tmp_path, "--no-compare")
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["compared"] is False
+    assert payload["comparison"]["references"] == []
+
+
+def test_raid_compares_against_the_execution_leaderboard_sample(tmp_path: Path) -> None:
+    """Without `--no-compare`, the one matching reference kill the fixture
+    offers is fetched, weighed and recorded."""
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["compared"] is True
+    assert payload["comparison"]["sample_size"] == {"mechanics": 1}
+    [record] = payload["comparison"]["references"]
+    assert record["axis"] == "mechanics"
+    assert record["report_code"] == RAID_REFERENCE_CODE
+    assert record["fight_id"] == RAID_REFERENCE_FIGHT
+    assert record["loaded"] is True
+
+
+def test_a_reference_kill_matching_our_own_report_is_excluded(tmp_path: Path) -> None:
+    """Comparing a kill against itself would report a perfect match and teach
+    the reader nothing, so the leaderboard's own row for this report and fight
+    is recorded but never counted toward the sample."""
+    result = run_raid(
+        tmp_path,
+        kill_rankings=[
+            _reference_kill_row(RAID_REPORT_CODE, RAID_FIGHT_ID),
+            _reference_kill_row(),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"] == {"mechanics": 1}
+    references = payload["comparison"]["references"]
+    assert len(references) == 2
+    reasons = {record["report_code"]: record["reason"] for record in references}
+    assert reasons[RAID_REPORT_CODE] == "this is the run under analysis"
+
+
+def test_a_discarded_reference_kill_is_refilled_from_the_rows_behind_it(
+    tmp_path: Path,
+) -> None:
+    """A discard must cost the sample nothing while the leaderboard has more.
+
+    The page below holds eight rows at our own size -- three more than
+    SAMPLE_SIZE -- and two are discarded after the size filter has already run:
+    the first is this very report and fight, and one further down answers its
+    ability table with an error. Slicing to SAMPLE_SIZE before the loop hands
+    it five rows, two of which never become members, and the sample comes out
+    at three though the leaderboard offered enough. Every matching row reaches
+    the loop instead, and it stops once it holds SAMPLE_SIZE.
+
+    The cap still holds: the eighth row is never weighed at all, so the break
+    caps the fetches exactly as the old slice did.
+
+    Size-matching rows are scarce in practice (measured 2026-09-14: none on one
+    live kill's leaderboard page, two on a wipe's), so this is most of a sample
+    rather than a rounding error.
+    """
+    broken_code = "refbroken"
+    result = run_raid(
+        tmp_path,
+        kill_rankings=[
+            _reference_kill_row(RAID_REPORT_CODE, RAID_FIGHT_ID),
+            _reference_kill_row("refa", 1),
+            _reference_kill_row(broken_code, 2),
+            _reference_kill_row("refc", 3),
+            _reference_kill_row("refd", 4),
+            _reference_kill_row("refe", 5),
+            _reference_kill_row("reff", 6),
+            _reference_kill_row("refbeyond", 7),
+        ],
+        broken_ability_reports=frozenset({(broken_code, 2)}),
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"] == {"mechanics": SAMPLE_SIZE}
+    references = payload["comparison"]["references"]
+    loaded = [
+        record["report_code"] for record in references if record["loaded"] and not record["reason"]
+    ]
+    assert loaded == ["refa", "refc", "refd", "refe", "reff"]
+    weighed = {record["report_code"] for record in references}
+    assert "refbeyond" not in weighed, "a row past the cap was weighed and paid for"
+
+
+def test_a_reference_kills_broken_ability_table_is_skipped_not_fatal(tmp_path: Path) -> None:
+    """A row that fails to load is recorded, never fatal -- the whole comparison
+    does not abort over one unreachable table."""
+    result = run_raid(
+        tmp_path,
+        broken_ability_reports=frozenset({(RAID_REFERENCE_CODE, RAID_REFERENCE_FIGHT)}),
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"] == {"mechanics": 0}
+    [record] = payload["comparison"]["references"]
+    assert record["loaded"] is False
+    assert record["reason"]
+
+
+def test_raid_player_selects_the_subject_and_names_it_in_the_comparison(
+    tmp_path: Path,
+) -> None:
+    result = run_raid(tmp_path, "--player", "Stonewake")
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["player"] == "Stonewake"
+    assert payload["comparison"]["players"] == ["Stonewake"]
+
+
+def test_raid_all_players_lists_the_whole_roster_subject_first(tmp_path: Path) -> None:
+    result = run_raid(tmp_path, "--all-players")
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["player"] == "Emberkin"
+    assert payload["comparison"]["players"] == ["Emberkin", "Stonewake", "Bríala"]
+
+
+def test_an_unknown_player_name_is_refused_for_raid_too(tmp_path: Path) -> None:
+    result = run_raid(tmp_path, "--player", "Nobodyhere")
+
+    assert result.exit_code == 1
+    assert "Pass --player with one of:" in result.output
 
 
 def test_fetch_rejects_a_value_that_is_not_a_report_url() -> None:
@@ -1332,10 +1734,10 @@ def test_a_disambiguated_spelling_resolves_to_the_member_it_names() -> None:
     first, so without this the second player could be listed and never asked for.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"))
-    names = display_names(run)
+    names = display_names(run.players)
 
-    assert _resolve_player(run, names[700], names).actor_id == 700
-    assert _resolve_player(run, names[693], names).actor_id == 693
+    assert _resolve_player(run.players, run.owner_name, names[700], names).actor_id == 700
+    assert _resolve_player(run.players, run.owner_name, names[693], names).actor_id == 693
 
 
 def test_every_spelling_the_roster_hint_offers_resolves_to_a_member_of_its_own() -> None:
@@ -1345,12 +1747,14 @@ def test_every_spelling_the_roster_hint_offers_resolves_to_a_member_of_its_own()
     hand-written literals here would let the two drift apart again.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
-    names = display_names(run)
+    names = display_names(run.players)
 
     offered = _roster_offered(_roster_hint(names))
 
     assert len(offered) == len(run.players)
-    assert {_resolve_player(run, one, names).actor_id for one in offered} == {693, 700, 701}
+    assert {
+        _resolve_player(run.players, run.owner_name, one, names).actor_id for one in offered
+    } == {693, 700, 701}
 
 
 def test_a_raw_name_resolves_as_it_always_did_and_an_ambiguous_one_takes_the_first() -> None:
@@ -1361,11 +1765,11 @@ def test_a_raw_name_resolves_as_it_always_did_and_an_ambiguous_one_takes_the_fir
     lowercases the report owner's name.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
-    names = display_names(run)
+    names = display_names(run.players)
 
-    assert _resolve_player(run, "Stonewake", names).actor_id == 701
-    assert _resolve_player(run, "stonewake", names).actor_id == 701
-    assert _resolve_player(run, "Emberkin", names).actor_id == 693
+    assert _resolve_player(run.players, run.owner_name, "Stonewake", names).actor_id == 701
+    assert _resolve_player(run.players, run.owner_name, "stonewake", names).actor_id == 701
+    assert _resolve_player(run.players, run.owner_name, "Emberkin", names).actor_id == 693
 
 
 def test_an_empty_owner_name_matches_nobody_rather_than_the_first_member() -> None:
@@ -1377,10 +1781,10 @@ def test_an_empty_owner_name_matches_nobody_rather_than_the_first_member() -> No
     player's name.
     """
     run = _roster_run((693, "Emberkin")).model_copy(update={"owner_name": ""})
-    names = display_names(run)
+    names = display_names(run.players)
 
     with pytest.raises(ValueError, match="is not in this run's roster"):
-        _resolve_player(run, None, names)
+        _resolve_player(run.players, run.owner_name, None, names)
 
 
 def test_the_second_of_two_same_named_players_is_addressable_from_the_command_line(
@@ -1855,7 +2259,7 @@ def _candidate_parse_row(
 
     `character_name` must be on the roster the paired `_candidate_fights_payload`
     gives that report: `_fetch_parse_auras` resolves the parser with
-    `find_player(member.run, member.row.character_name)`, so a row naming
+    `find_player(member.run.players, member.row.character_name)`, so a row naming
     somebody the reference's own roster does not hold is a reference no
     comparison can ever use. The default pairs with the default roster.
     """
@@ -3054,6 +3458,14 @@ def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> 
     neither may trash.overage. Only the deaths.* nesting the Mythic+ warning also
     states applies to a raid fight; the reader-facing regression this guards
     against is the JSON claiming an accounting the tool never runs.
+
+    `analyse_encounter` also ranks with `rank_raid_findings`, which sorts by
+    severity before it ever looks at `seconds_lost` -- unlike `rank_findings`'s
+    pure time ordering, which is all `FINDINGS_ARE_RANKED_NOT_ADDITIVE` states
+    for Mythic+. The raid warning must state that one rule and no other: it
+    once opened "findings are ranked by seconds_lost" and closed by saying
+    severity decides the order, so a reader could take either away, and the one
+    they took first was false.
     """
     named = {
         match.rstrip("*").rstrip(".")
@@ -3065,6 +3477,12 @@ def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> 
     }
     assert named & keystone_only == set(), named & keystone_only
     assert "deaths.total" in named
+    assert "ranked by severity" in RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    assert "ranked by seconds_lost" not in RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    # The sibling states the other rule, and truthfully: `analyze` ranks with
+    # `rank_findings`, which reads nothing but the clock. Pinned here so the
+    # two notices cannot be collapsed into one wording that fits neither.
+    assert "ranked by seconds_lost" in FINDINGS_ARE_RANKED_NOT_ADDITIVE
 
 
 def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None:

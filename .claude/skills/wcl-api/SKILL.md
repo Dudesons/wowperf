@@ -50,13 +50,13 @@ covers it otherwise.
 | `fightRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightIDs` | `table` argument | 2026-09-05 | yes |
 | `hostilityType` | `table` argument | 2026-09-05 | yes |
-| `sourceID` | `table` argument | 2026-09-05 | no |
+| `sourceID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `events` argument | 2026-09-07 | yes |
 | `includeResources` | `events` argument | 2026-09-07 | yes |
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
 | `graph` | `Report` | 2026-09-12 | yes |
-| `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
+| `viewBy` | `graph` and `table` argument | 2026-09-12 | yes |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
 | `playerDetails` | `Report` | 2026-09-14 | yes |
 | `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
@@ -627,6 +627,48 @@ selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_au
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
 
+## A damage-taken table's row counts landings, not just hits
+
+Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
+Each entry carries `hitCount`, `tickCount`, `missCount`, `tickMissCount` and `sources` — these are
+response keys inside the table's opaque JSON, the same class of field as the aura table's
+`totalUptime`/`totalUses`/`bands` above, so they are documented here rather than as rows of the
+machine-checked table: nothing in `queries.py` selects them by name, because `table(...)` returns
+a `JSON` scalar with no sub-selection to check against.
+
+Landings are `hitCount + tickCount`: summed together with `missCount` and `tickMissCount` over
+the kill's 26 rows, all four totalled 11,456 — the event count for the same fight, exactly,
+difference zero. `missCount` and `tickMissCount` count attempts that did not land and must never
+be added to the other two. `mechanics.AbilityTakenRow.landings` reads exactly
+`hit_count + tick_count`.
+
+## `hostilityType` does not exclude friendly sources
+
+Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
+
+`HostilityType` has two values, `Friendlies` and `Enemies`. Omitting `hostilityType` and passing
+`Friendlies` explicitly return byte-identical JSON — `Friendlies` is this table's default.
+`Enemies` is not a filtered view of the same table: it returns the other side of the fight, 223
+rows against this table's 26.
+
+The argument selects whose damage-taken is tabulated, not which sources may appear in it.
+**Friendly-sourced rows survive**: 8 of this kill's 26 rows were sourced entirely by players —
+1.97% of the fight's damage-taken, Blessing of Sacrifice among them. Each entry's `sources` is a
+list of `{name, type}`, one per source, and a row's `sources[].type` reads `"Boss"`, `"NPC"` or
+`"Pet"` for a hostile source and a class name for a player; every row measured had homogeneous
+sources. It is `sources[].type` — not `hostilityType` — that separates a mechanic from a
+self-inflicted or ally-sourced hit, and `AbilityTakenRow.source_types` carries it for the domain
+to judge, in `src/wowperf/domain/comparison/mechanics.py`.
+
+## A damage-taken table's damage is mitigated
+
+Measured 2026-09-14, same table and kill. Each entry's `total` equals the event stream's health
+damage plus absorbs, and `totalReduced` equals health damage alone — both are **mitigated**
+figures. The unmitigated figure that a per-player damage ranking is built on is not exposed by
+this table and is not reconstructible from what is: the gap between the two reached 4.61x on one
+fight. `AbilityTakenRow` stores neither `total` nor `totalReduced` for this reason — see its
+docstring in `src/wowperf/domain/comparison/mechanics.py`.
+
 ## Gear and the secondary stat block
 
 Measured 2026-09-14 against report `VCGkLQtPwNRA8HhD` fight 1 and report `6Kx1P9GbNXrcLdHa`
@@ -730,6 +772,48 @@ boss `ReportDungeonPull` on that same run is 3209 and returns `encounter: null` 
 project surfaces as `WclError: The rankings response carried no encounter`. Both numbers are
 called an encounter id and only one addresses a leaderboard. A query with the wrong one still
 costs its point.
+
+## `fightRankings` takes `difficulty` and `partition`, and `execution` is a deathless-kill board
+
+Verified 2026-09-04 against the live schema (recorded in
+`docs/plans/2026-09-04-mplus-comparison-plan.md`'s "Verified schema" table) and again 2026-09-13
+against a real raid encounter (`docs/plans/2026-09-13-raid-analysis-design.md` §2.1):
+`Encounter.fightRankings` and `Encounter.characterRankings` each accept `difficulty: Int` and
+`partition: Int` alongside `bracket`. Mythic+ passes `bracket`; a raid boss has no keystone level
+and passes `difficulty` and `partition` instead. `FightRankingMetricType` offers `default`,
+`execution`, `feats`, `score`, `speed` and `progress`.
+
+Measured 2026-09-14: querying one boss's `fightRankings` under three metrics, `default` and
+`speed` return byte-identical row sets with deaths ranging 0 to 20, while `execution` is a
+separate board overlapping them on 7 of 50 rows with deaths ranging 0 to 1 — the near-deathless
+kills a mechanics comparison wants as its reference. `progress` carried a null `report.code` on 39
+of its 50 rows; `execution` carried none, but the shape exists and `build_reference_kill_rows`
+drops any row it finds.
+
+A `fightRankings(metric: execution)` row carries `report { code, fightID }`, `size`, `duration`
+and `deaths` — response keys nested inside the endpoint's opaque JSON, the same class of field
+as the aura table's `totalUptime`/`totalUses`/`bands` above, so they are documented here rather
+than as rows of the machine-checked table: nothing in `queries.py` selects them by name, because
+`fightRankings(...)` returns a `JSON` scalar with no sub-selection to check against.
+`ReferenceKillRow.duration_seconds` divides `duration` by 1000, exactly as `SpeedRow` does.
+
+**Corrected 2026-09-14: `fightRankings` echoes no `difficulty` per row.** The paragraph above
+used to list `difficulty` alongside `size`, `duration` and `deaths` as a field the row itself
+carries, on the strength of an entry "verified... 2026-09-13 against a real raid encounter."
+That entry was wrong. Measured live against report `cW38jmwdnZfbHVL4`, both fight 2 (encounter
+3470) and fight 30 (encounter 3492), 50 rows apiece: every row's keys are exactly `server`,
+`duration`, `startTime`, `report`, `damageTaken`, `deaths`, `tanks`, `healers`, `melee`, `ranged`,
+`guild`, `bracketData`, `size` -- `difficulty` is absent from all 100 rows checked, on two
+different encounters, both requested with `difficulty: 4`. `difficulty` is a request argument to
+`fightRankings` only (see the paragraph above this one); the API never echoes it back on a row,
+and no field in the response substitutes for it -- `bracketData` was observed but its meaning is
+not verified, and this project does not guess at what an unverified field holds. The offline
+fixture exercising `build_reference_kill_rows` had hardcoded `"difficulty": 4` into its rows,
+which is why this went unnoticed until a live run: the row shape under test did not occur.
+`select_reference_kills` filtered on `row.difficulty == our_difficulty` for the same reason and
+has had that filter removed rather than back-filled, since `reference_kills` already passes our
+own difficulty as the query argument -- every row the API returns is at that difficulty already,
+so the per-row check could never have failed in production.
 
 ## Terms of service
 

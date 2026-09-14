@@ -17,17 +17,45 @@ cold raid load's cost therefore scales with how many players died in the fight, 
 fixed per-fight overhead -- so "under 20" is not a safe claim for a chaotic wipe, only for a
 clean kill. Both numbers came from `uv run wowperf raid <code> --fight <id> --cache-dir
 <fresh>`, read from the command's own "Rate limit: ... points spent" line.
+
+Mechanics engaged (the default, no `--no-compare`), measured the same way: 16.22 points for the
+kill, 39.22 for the wipe. Both add one `EncounterKillRankings` call (1.01 points) plus one
+`AbilityTakenTable` call per report actually weighed -- our own report always, plus one per
+reference kill whose size matched. The kill's own leaderboard page carried no row at our size 20
+(its 50 rows ran 10 to 25, none of them 20), so only our own report's table was fetched: 14.21 +
+1.01 + 1.00 = 16.22, exactly. The wipe's page offered two rows at size 20, so three tables were
+fetched (39.22, against a naive 34.21 + 1.01 + 3.00 = 38.22; the two 34.21-shaped runs were
+measured minutes apart against a cost the API does not document per query, so a one-point gap
+between them is not chased further here).
+
+Below the aggregate floor of three comparable members, a two-reference sample like the wipe's
+still produces a finding -- stated as one reference, not an aggregate, per `too_few` in
+`src/wowperf/domain/comparison/mechanics.py` -- while the kill's zero-reference sample produces
+none. Both are real, current outcomes of `select_reference_kills`' size filter meeting this
+report's own leaderboard, not a defect: see `.claude/skills/wcl-api/SKILL.md`, "`fightRankings`
+echoes no `difficulty` per row" (2026-09-14), for why the filter matches size alone.
 """
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 
+from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_consumables, load_defensives
-from wowperf.cli import build_repository
+from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
+from wowperf.cli import (
+    REFERENCE_CACHE_SECONDS,
+    REFERENCE_CACHE_SUBDIR,
+    _ability_taken,
+    _mechanics_sample,
+    build_repository,
+)
 from wowperf.domain.analysis.encounter_service import analyse_encounter
-from wowperf.domain.findings import Confidence
+from wowperf.domain.analysis.severity import SEVERITY_BY_FAMILY, UNKNOWN_SEVERITY, family_of
+from wowperf.domain.comparison.mechanics import AbilityTakenRow, MechanicsSample
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.urls import parse_report_url
 
 KILL = os.environ.get("WOWPERF_E2E_RAID_KILL", "")
@@ -39,6 +67,39 @@ WIPE = os.environ.get("WOWPERF_E2E_RAID_WIPE", "")
 KEYSTONE_SHAPED = ("time.", "trash.", "compare.route", "compare.downtime")
 
 
+def assert_mechanics_output_is_well_formed(
+    findings: Sequence[Finding],
+    mechanics_sample: MechanicsSample,
+    our_abilities: Sequence[AbilityTakenRow],
+) -> None:
+    """What the mechanics comparison must be true of, whatever it found.
+
+    A raid in line with its references legitimately produces no finding at
+    all -- `test_an_ability_in_line_with_the_sample_states_nothing` pins that
+    offline -- so a loaded sample cannot be asked to yield one. What it can be
+    asked for is that both sides of the comparison actually arrived and that
+    everything it did emit is well formed.
+
+    The other direction is still absolute: with no reference loaded there is
+    nothing to compare against, so a `mechanics.ability.*` finding would be the
+    comparison inventing a reference side.
+    """
+    mechanics = [f for f in findings if f.id.startswith("mechanics.ability")]
+    if not mechanics_sample.members:
+        assert not mechanics, "no reference sample loaded, but a mechanics finding exists"
+        return
+
+    assert our_abilities, "a reference sample loaded but our own ability table did not"
+    assert len({f.id for f in mechanics}) == len(mechanics), "duplicate mechanics ids"
+    for finding in mechanics:
+        assert finding.confidence is Confidence.DERIVED, finding.id
+        assert finding.ability_id is not None, finding.id
+        assert finding.ability_name, finding.id
+        assert finding.ability_name in finding.title, finding.title
+        assert finding.evidence, finding.id
+        assert finding.seconds_lost is None, "a landing rate is not priced in seconds"
+
+
 @pytest.mark.e2e
 def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
     if not KILL:
@@ -48,8 +109,31 @@ def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
         )
 
     code, fight = parse_report_url(KILL)
-    loaded = build_repository(tmp_path).load_encounter(code, fight)
-    findings = analyse_encounter(loaded, load_defensives(), load_consumables())
+    repository = build_repository(tmp_path)
+    loaded = repository.load_encounter(code, fight)
+
+    # Rebuilds what `raid` passes to `analyse_encounter`: the reference sample
+    # and our own report's ability-taken table, fetched the same way the
+    # command does, so this test actually exercises the mechanics comparison
+    # instead of defaulting it away.
+    transient = DiskCache(
+        tmp_path / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    rankings = WclEncounterRankingRepository(repository.client, transient)
+    mechanics_sample, _reference_records = _mechanics_sample(
+        rankings, repository.client, transient, loaded.encounter
+    )
+    our_abilities, _ = _ability_taken(
+        repository.client, repository.cache, loaded.encounter.report_code, loaded.encounter.fight_id
+    )
+
+    findings = analyse_encounter(
+        loaded,
+        load_defensives(),
+        load_consumables(),
+        mechanics=mechanics_sample,
+        our_abilities=our_abilities,
+    )
 
     assert loaded.encounter.kill is True
     assert loaded.encounter.duration_seconds > 0
@@ -59,6 +143,11 @@ def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
 
     leaked = [f.id for f in findings if f.id.startswith(KEYSTONE_SHAPED)]
     assert leaked == [], f"Mythic+ findings reached a raid report: {leaked}"
+
+    severities = [SEVERITY_BY_FAMILY.get(family_of(f.id), UNKNOWN_SEVERITY) for f in findings]
+    assert severities == sorted(severities), "findings are not ranked by severity first"
+
+    assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
 
     # The streams the analysers depend on must have actually arrived, or every
     # assertion above holds over an empty list and proves nothing.
@@ -75,11 +164,40 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
         )
 
     code, fight = parse_report_url(WIPE)
-    loaded = build_repository(tmp_path).load_encounter(code, fight)
-    findings = analyse_encounter(loaded, load_defensives(), load_consumables())
+    repository = build_repository(tmp_path)
+    loaded = repository.load_encounter(code, fight)
+
+    # See the matching comment in the kill test above: this rebuilds what
+    # `raid` passes to `analyse_encounter` for the mechanics comparison.
+    transient = DiskCache(
+        tmp_path / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    rankings = WclEncounterRankingRepository(repository.client, transient)
+    mechanics_sample, _reference_records = _mechanics_sample(
+        rankings, repository.client, transient, loaded.encounter
+    )
+    our_abilities, _ = _ability_taken(
+        repository.client, repository.cache, loaded.encounter.report_code, loaded.encounter.fight_id
+    )
+
+    findings = analyse_encounter(
+        loaded,
+        load_defensives(),
+        load_consumables(),
+        mechanics=mechanics_sample,
+        our_abilities=our_abilities,
+    )
 
     assert loaded.encounter.kill is False
     assert loaded.encounter.outcome.startswith("wiped")
     assert findings, "an empty list is exactly the silent failure this slice guards against"
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
     assert loaded.casts, "no casts fetched for the wipe"
+
+    leaked = [f.id for f in findings if f.id.startswith(KEYSTONE_SHAPED)]
+    assert leaked == [], f"Mythic+ findings reached a raid report: {leaked}"
+
+    severities = [SEVERITY_BY_FAMILY.get(family_of(f.id), UNKNOWN_SEVERITY) for f in findings]
+    assert severities == sorted(severities), "findings are not ranked by severity first"
+
+    assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)

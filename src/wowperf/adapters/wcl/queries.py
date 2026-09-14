@@ -364,6 +364,31 @@ query CharacterRankings(
 }
 """
 
+# `execution` rather than `speed`. Measured 2026-09-14: `default` and `speed`
+# return byte-identical row sets with deaths ranging 0 to 20, while `execution`
+# is a separate board overlapping them on 7 of 50 rows with deaths ranging 0 to
+# 1. A near-deathless kill is the better reference for what a raid handling the
+# boss cleanly actually took. Its durations run 60 to 100 seconds longer, which
+# a per-minute rate normalises away.
+ENCOUNTER_KILL_RANKINGS_QUERY = """
+query EncounterKillRankings(
+  $encounterId: Int!, $difficulty: Int!, $partition: Int!, $page: Int!
+) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      fightRankings(
+        metric: execution
+        difficulty: $difficulty
+        partition: $partition
+        page: $page
+      )
+    }
+  }
+}
+"""
+
 
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
@@ -391,6 +416,53 @@ query PlayerDetails($code: String!, $fightId: Int!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)
+    }
+  }
+}
+"""
+
+
+# `viewBy: Ability` breaks this table down one row per ability rather than one
+# row per player. A row's landings are hitCount + tickCount; its damage
+# figures are mitigated and are read nowhere -- see `mechanics.AbilityTakenRow`
+# and its docstring for why.
+#
+# `hostilityType` is omitted deliberately. Measured 2026-09-14: omitting it and
+# passing `Friendlies` return byte-identical JSON, and `Enemies` returns the
+# other side of the fight rather than a filtered version of this one. There is
+# no value of it that excludes friendly-sourced abilities; `sources[].type`
+# does that, client-side, in `domain/comparison/mechanics.py`.
+ABILITY_TAKEN_TABLE_QUERY = """
+query AbilityTakenTable($code: String!, $fightId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      taken: table(fightIDs: [$fightId], dataType: DamageTaken, viewBy: Ability)
+    }
+  }
+}
+"""
+
+# `sourceID` scopes a damage-taken table to the victim. Measured 2026-09-14:
+# `targetID` selects who dealt the damage instead and returned no rows for a
+# player who had taken 26 million. The two are inverted from the reading in
+# design 2.5, which its amendment records.
+#
+# Defined and not yet wired into any adapter or caller: a per-player mechanics
+# comparison needs a per-player reference side too, and the sample plan 2
+# builds (`MechanicsSample`, from `execution` leaderboard kills) carries each
+# reference kill's raid-wide table only, not one per reference player. Scoping
+# only our own side would compare one player's landings against a whole
+# reference raid's, which is not the same comparison.
+ABILITY_TAKEN_TABLE_BY_VICTIM_QUERY = """
+query AbilityTakenTableByVictim($code: String!, $fightId: Int!, $actorId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      taken: table(
+        fightIDs: [$fightId]
+        dataType: DamageTaken
+        viewBy: Ability
+        sourceID: $actorId
+      )
     }
   }
 }

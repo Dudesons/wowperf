@@ -4,7 +4,8 @@
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
-from wowperf.domain.analysis.players import display_names, summarise_players
+from wowperf.domain.analysis.players import summarise_players
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
@@ -104,7 +105,7 @@ def slugs_by_actor(run: Run) -> dict[int, str]:
     The slugging itself is `wowperf.domain.slug`, which analysis shares:
     `defensives.*` mints its own ids and needs the same alphabet.
     """
-    names = display_names(run)
+    names = display_names(run.players)
     return {
         player.actor_id: f"{player_slug(names[player.actor_id])}-{index}"
         for index, player in enumerate(run.players)
@@ -168,7 +169,7 @@ def build_players(
     `compared_slugs` is who the comparison was asked for, and `None` means it
     was not asked for anybody.
     """
-    names_by_actor = display_names(loaded.run)
+    names_by_actor = display_names(loaded.run.players)
     slugs = slugs_by_actor(loaded.run)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
