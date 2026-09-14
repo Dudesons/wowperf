@@ -70,13 +70,13 @@ def seconds_up_over_the_fight(aura: Aura) -> float:
     and one aura measured two ways is how a fraction and its own evidence come
     to disagree.
 
-    Nothing bounds this against the denominator it will be divided by, and
-    nothing needs to: the aura table clips its own bands to the fight it was
-    queried for. Measured 2026-09-14 over every cached response that joins to
-    its fight -- 22 tables, 49,514 bands, none outside -- and recorded in
-    `.claude/skills/wcl-api/SKILL.md` under "A band never falls outside the
-    fight it was queried for", which also records what that measurement does
-    not cover.
+    Nothing bounds this against the denominator it will be divided by. What
+    stands in for a bound is that the aura table returns bands already clipped
+    to the fight it was queried for: measured 2026-09-14 over every cached
+    response that joins to its own fight -- 22 tables, 49,514 bands, none
+    outside -- every one of them a Mythic+ fight, and none a raid. Recorded in
+    `.claude/skills/wcl-api/SKILL.md` under "In every Mythic+ table measured",
+    which states what that measurement does not cover.
     """
     if not aura.bands:
         return 0.0
@@ -498,7 +498,7 @@ def _gap_findings_sample(
 
 
 def _unjudged_finding(our_name: str, names: Sequence[str], words: Wording) -> Finding:
-    """Auras the sample carried that our own boss pulls show none of.
+    """Auras the sample carried that our own side of the comparison shows none of.
 
     Deliberately not a gap row. `onSelf` has no source filter, so it returns
     teammate-cast buffs, consumables and gear procs alongside the player's own,

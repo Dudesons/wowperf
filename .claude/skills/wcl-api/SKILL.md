@@ -475,19 +475,30 @@ carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls
 intersection rather than a second query. Confirmed by recomputing one aura's uptime over
 fight 36's three boss pulls and matching the boss window the analyzers already derive.
 
-**A band never falls outside the fight it was queried for.** Measured 2026-09-14 against every
-cached `AuraTable` response, offline and at no quota cost. Method: a response's `totalTime`
-equals its fight's wall-clock `endTime - startTime` exactly, so the pair `(endTime - totalTime,
-endTime)` identifies the fight even where two reports share an `endTime`; 22 of the 49 cached
-tables join that way, and over their 49,514 bands **none starts before its fight's `startTime`
-and none ends after its `endTime`**. So a buff carried into the pull is reported clipped, and
-uptime summed over a whole fight cannot exceed the fight — which is what lets
+**In every Mythic+ table measured, no band falls outside the fight it was queried for. Not
+measured on a raid fight.** Measured 2026-09-14 against every cached `AuraTable` response,
+offline and at no quota cost. Method: a response's `totalTime` equals its fight's wall-clock
+`endTime - startTime` exactly, so the pair `(endTime - totalTime, endTime)` identifies the
+fight even where two reports share an `endTime`; 22 of the 49 cached tables join that way, and
+over their 49,514 bands **none starts before its fight's `startTime` and none ends after its
+`endTime`**. So a buff carried into the pull is reported clipped, and uptime summed over a
+whole fight cannot exceed the fight — which is what lets
 `comparison/uptime.seconds_up_over_the_fight` clip to nothing and still bound its own fraction.
+
 Note what the response's own `startTime`/`endTime` are **not**: they read 0 and the fight end,
-the query window rather than the fight, so they are no use as a bound. All 22 joined tables are
-Mythic+ fights, because no raid `AuraTable` response is cached; the query is the same
-`table(fightIDs:, dataType: Buffs, targetID:)` either way, so this is a property of the endpoint
-rather than of the content, but it has not been measured against a raid fight directly.
+the query window rather than the fight, so they are no use as a bound.
+
+Why the other 27 tables did not join, so the gap reads as an identification problem and not as
+a counterexample: 12 carry an `endTime` no cached `fights` payload holds at all — a reference
+run whose report query was never cached — and 15 match a cached fight's `endTime` while that
+fight's span is **shorter** than the table's own `totalTime`, which is impossible for the same
+fight and so an `endTime` collision between two reports. Not one of the 27 is a table joined to
+its own fight and found to overhang it.
+
+All 22 joined tables are Mythic+ fights, because no raid `AuraTable` response is cached, so
+**the raid case is unverified.** The query is the same `table(fightIDs:, dataType: Buffs,
+targetID:)` either way, which is a reason to expect the same clipping rather than evidence that
+it happens. Treat it as unmeasured until a raid table is in the cache to check.
 
 **A buff band's `startTime` coincides with the cast that applied it, closely enough to trust
 `start <= press <= end`.** Measured 2026-09-11 against the cached responses for report
