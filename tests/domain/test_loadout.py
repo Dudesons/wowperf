@@ -2,6 +2,7 @@
 # ABOUTME: The tier-slot rule is the one inference here, so it carries the most cases.
 
 from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
+from wowperf.domain.model import Player
 
 
 def an_item(**changes: object) -> EquippedItem:
@@ -129,3 +130,25 @@ def test_a_loadout_has_no_stats_until_it_is_given_some() -> None:
     # Stats are None rather than a zeroed block: a player whose stats could not
     # be read must not compare as a player with none of every stat.
     assert Loadout().stats is None
+
+
+def test_a_player_has_no_loadout_until_one_is_fetched() -> None:
+    # Optional on purpose: the speed axis fetches none, and every run already
+    # in the cache predates the query, so every consumer must handle None.
+    player = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=318)
+    assert player.loadout is None
+
+
+def test_a_player_carries_the_loadout_it_is_given() -> None:
+    loadout = Loadout(items=(an_item(),), stats=StatBlock(crit=904))
+    player = Player(
+        actor_id=1,
+        name="Emberkin",
+        class_name="Mage",
+        spec="Arcane",
+        item_level=318,
+        loadout=loadout,
+    )
+    assert player.loadout is not None
+    assert player.loadout.stats is not None
+    assert player.loadout.stats.crit == 904
