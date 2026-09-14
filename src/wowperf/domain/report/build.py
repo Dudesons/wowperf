@@ -1,6 +1,7 @@
 # ABOUTME: Turns a loaded run and its findings into the value the template renders.
 # ABOUTME: Assembles what the modules beside it build; each judgement lives in one of those.
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.measures import PlayerMeasures
@@ -34,6 +35,22 @@ from wowperf.domain.season import (
     SelfResurrections,
     ThroughputCooldowns,
 )
+
+
+def _check_unique_finding_ids(findings: Sequence[Finding]) -> None:
+    """Raise before two findings' ids collapse into one DOM element id.
+
+    This branch shipped the same defect three times: a finding id reused
+    across rows, each fixed by hand once somebody noticed. Nothing short of a
+    fixture ever caught it, because the next line's `titles_by_id` is a plain
+    dict keyed by `finding.id` -- a duplicate silently loses a title, and
+    `nests_inside` then points whatever pointed at it to the wrong row. A
+    `Counter` finds every culprit in one pass rather than comparing each pair.
+    """
+    counts = Counter(finding.id for finding in findings)
+    duplicates = sorted(finding_id for finding_id, count in counts.items() if count > 1)
+    if duplicates:
+        raise ValueError(f"duplicate finding ids reached the report builder: {duplicates}")
 
 
 def build_report(
@@ -81,6 +98,7 @@ def build_report(
     timeline_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
     route_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
 
+    _check_unique_finding_ids(findings)
     titles_by_id = {finding.id: finding.title for finding in findings}
     # Built once, here, because this is where `loaded`, the per-actor aura
     # tables and the defensives data file are all already in hand. Every row
