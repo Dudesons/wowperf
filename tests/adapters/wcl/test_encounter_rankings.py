@@ -27,10 +27,16 @@ def test_a_row_with_no_report_code_is_dropped() -> None:
     # Measured 2026-09-14: 39 of 50 `progress` rows carried a null report code.
     # `execution` carried none, but the shape exists and a row that cannot be
     # loaded is no use as a reference.
+    #
+    # A second row carries an empty-string code rather than a null one: type-valid
+    # (so it would survive a guard that only checked for `None`) but still falsy,
+    # so it must be dropped by the same truthiness check as the null-code row.
     rows = build_reference_kill_rows(
         [
             {"report": {"code": None, "fightID": None}, "difficulty": 4, "size": 20,
              "duration": 480000, "deaths": 0},
+            {"report": {"code": "", "fightID": 13}, "difficulty": 4, "size": 20,
+             "duration": 490000, "deaths": 0},
             {"report": {"code": "abc123", "fightID": 12}, "difficulty": 4, "size": 20,
              "duration": 500000, "deaths": 1},
         ]

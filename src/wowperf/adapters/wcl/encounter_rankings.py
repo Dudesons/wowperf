@@ -6,19 +6,14 @@ from typing import Any
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.queries import ENCOUNTER_KILL_RANKINGS_QUERY
-from wowperf.adapters.wcl.rankings import rankings_block
+from wowperf.adapters.wcl.rankings import rankings_block, report_of
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
-
-
-def _report_of(row: dict[str, Any]) -> dict[str, Any] | None:
-    report = row.get("report")
-    return report if isinstance(report, dict) and report.get("code") else None
 
 
 def build_reference_kill_rows(rows: list[dict[str, Any]]) -> tuple[ReferenceKillRow, ...]:
     built = []
     for row in rows:
-        report = _report_of(row)
+        report = report_of(row)
         if report is None:
             # A row with no report cannot be fetched, so it is no use as a reference.
             continue

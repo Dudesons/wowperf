@@ -54,7 +54,7 @@ def assert_bracket(rows: list[dict[str, Any]], keystone_level: int) -> None:
         )
 
 
-def _report_of(row: dict[str, Any]) -> dict[str, Any] | None:
+def report_of(row: dict[str, Any]) -> dict[str, Any] | None:
     report = row.get("report")
     return report if isinstance(report, dict) and report.get("code") else None
 
@@ -62,7 +62,7 @@ def _report_of(row: dict[str, Any]) -> dict[str, Any] | None:
 def build_speed_rows(rows: list[dict[str, Any]]) -> tuple[SpeedRow, ...]:
     built = []
     for row in rows:
-        report = _report_of(row)
+        report = report_of(row)
         if report is None:
             # A row with no report cannot be fetched, so it is no use as a reference.
             continue
@@ -88,7 +88,7 @@ def build_speed_rows(rows: list[dict[str, Any]]) -> tuple[SpeedRow, ...]:
 def build_parse_rows(rows: list[dict[str, Any]]) -> tuple[ParseRow, ...]:
     built = []
     for row in rows:
-        report = _report_of(row)
+        report = report_of(row)
         if report is None:
             continue
         built.append(
