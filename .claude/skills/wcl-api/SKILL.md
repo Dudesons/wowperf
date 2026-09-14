@@ -815,6 +815,99 @@ has had that filter removed rather than back-filled, since `reference_kills` alr
 own difficulty as the query argument -- every row the API returns is at that difficulty already,
 so the per-row check could never have failed in production.
 
+## A report carries its own players' ranks, and their amounts
+
+Measured 2026-09-14 against report `cW38jmwdnZfbHVL4` fight 2 (encounter 3470, Heroic, 20
+players), by schema introspection and by running the queries. The whole probe -- three
+introspections and three queries -- cost 12.2 points of 3600 on a cold cache.
+
+**`Report.rankings` takes six arguments**: `compare: RankingCompareType`, `difficulty: Int`,
+`encounterID: Int`, `fightIDs: [Int]`, `playerMetric: ReportRankingMetricType`,
+`timeframe: RankingTimeframeType`. **There is no `partition` argument** -- partition comes back
+on the row and is never sent.
+
+**`ReportRankingMetricType`**, the enum `playerMetric` accepts, holds `bosscdps`, `bossdps`,
+`bossndps`, `bossrdps`, `default`, `dps`, `hps`, `krsi`, `playerscore`, `playerspeed`, `cdps`,
+`ndps`, `rdps`, `tankhps` and `wdps`. **`CharacterRankingMetricType`** holds all of those plus
+sixteen `healercombined*` and `tankcombined*` variants.
+
+This **amends, rather than contradicts, the 2026-09-03 line under "Corrections to widespread
+errors"** below, which reads "WoW has `dps`, `wdps`, `playerscore`, `hps`, `tankhps`, and
+`playerspeed`". That list was taken before this project sent a raid query and is incomplete:
+`bossdps` is a real World of Warcraft metric and returns 100 fully populated rows. What that
+correction got right and this does not disturb is that `rdps`, `ndps` and `cdps` describe
+themselves in the schema as unique to FFXIV, and `rdps` fails at the server.
+
+**The payload is a `JSON` scalar whose top level is exactly one key, `data`**, holding a list of
+rows -- one row per requested fight. A row's keys, all seventeen: `bracket`, `bracketData`,
+`damageTakenExcludingTanks`, `deaths`, `difficulty`, `duration`, `encounter`, `execution`,
+`fightID`, `guild`, `kill`, `partition`, `reportsBlacklistForCharacters`, `roles`, `size`,
+`speed`, `zone`.
+
+**`roles` has exactly three keys** -- `tanks`, `healers`, `dps` -- each an object holding
+`characters`, a list. A character entry's keys, all thirteen: `amount`, `best`, `bracket`,
+`bracketData`, `bracketPercent`, `class`, `id`, `name`, `rank`, `rankPercent`, `server`, `spec`,
+`totalParses`.
+
+**The entry carries the player's own throughput as `amount`, and the two metrics differ.** One
+tank read 59991.462335693 under `playerMetric: dps` and 44818.47826087 under
+`playerMetric: bossdps` -- a ratio of 0.747. `rankPercent` moved 80 to 87 and `bracketPercent`
+73 to 81 for the same player. So one query returns every player's own figure and their
+percentile together, for 2.00 points, whatever the roster's size.
+
+**`rank` and `best` are strings, not integers.** They read `"~5764"` and `"~3746"` -- with a
+leading tilde, which `int()` rejects. `rankPercent`, `bracketPercent` and `totalParses` are
+integers.
+
+**A wipe returns an empty list.** Recorded 2026-09-14 in
+`docs/plans/2026-09-13-raid-analysis-design.md` section 14 item 7: a kill returned one row and
+the wipe returned none, with no field distinguishing the cases. Code tests for emptiness.
+
+**`id` on a character entry is a Warcraft Logs character id, not a report actor id.** One read
+2731377 on a report whose actor ids are small integers. Joining a rankings entry to a
+`ReportFight` roster is done on the name, never on the id.
+
+## A raid `characterRankings` row is not a Mythic+ one
+
+Measured 2026-09-14 against encounter 3470 at `difficulty: 4, partition: 1`, one specialisation,
+under both `dps` and `bossdps`. 100 rows each, **0.0 points each**.
+
+A row's keys, all thirteen: `amount`, `bracketData`, `class`, `duration`, `faction`, `guild`,
+`hardModeLevel`, `name`, `report`, `server`, `size`, `spec`, `startTime`.
+
+**`score`, `medal` and `affixes` are absent**, and `build_parse_rows` in
+`src/wowperf/adapters/wcl/rankings.py` reads all three. It also writes `row["bracketData"]` into
+a field named `keystone_level`; on a raid board `bracketData` read **319 to 325**, which is not a
+keystone level. **What it does mean is not verified**, and nothing in this project reads it on
+this axis rather than guessing.
+
+**`amount` is a rate, not a total.** The first four `dps` rows read 247358.16, 240273.40,
+237153.76 and 236147.44 against durations of 407086, 375044, 276534 and 321355 ms: the board
+descends by `amount` while `amount x duration` swings from 65.6M to 100.7M, so the ordering is by
+a per-second figure. `Report.rankings`' own `amount` is the same unit. Neither side of a
+throughput comparison needs dividing by a duration, and dividing one of them would be the
+count-against-rate mistake that reached a user-visible sentence on 2026-09-14.
+
+**The two metrics' boards hold different reports.** The `bossdps` board's first four durations
+were 173050, 212911, 231133 and 263277 ms against the `dps` board's 407086, 375044, 276534 and
+321355 -- different rows, not a reordering. Drawing reference reports from both boards doubles
+the fetch.
+
+**Raid size varies widely on a parse board.** The `dps` board's first four rows read `size` 29,
+30, 29, 30 and the `bossdps` board's 29, 24, 23, 25, against an analysed raid of 20.
+
+## A damage-done table split by target names the boss itself
+
+Measured 2026-09-14, same report and fight. `table(dataType: DamageDone, fightIDs: [N],
+viewBy: Target)` returned three entries whose `type` read `'NPC'`, `'Boss'` and `'NPC'`, with
+`total` 144629000, 498963668 and 111365043. Entry keys: `abilities`, `activeTime`,
+`activeTimeReduced`, `damageAbilities`, `given`, `guid`, `icon`, `id`, `name`, `sources`,
+`taken`, `total`, `totalRDPSGiven`, `totalRDPSTaken`, `totalReduced`, `type`.
+
+So separating a boss from its adds needs no per-encounter rule and no boss table: the row's own
+`type` does it. This call was unscoped; the `sourceID`-scoped version was measured at 0.94 points
+on 2026-09-13.
+
 ## Terms of service
 
 Read 2026-09-03 from the RPGLogs API Terms of Service. §5d prohibits scraping, building
