@@ -2,12 +2,12 @@
 # ABOUTME: Inferred, like every availability claim: the log records only what was drunk.
 
 from collections import defaultdict
+from collections.abc import Callable
 
-from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Run
+from wowperf.domain.model import Player
 from wowperf.domain.season import ConsumableCategory, Consumables
 
 
@@ -71,10 +71,13 @@ def consumables_up_at(
 
 
 def analyse_consumables_at_death(
-    run: Run,
+    players: tuple[Player, ...],
+    visible_from_ms: int,
     casts: tuple[CastEvent, ...],
     consumables: Consumables,
     deaths: tuple[Death, ...],
+    *,
+    locate: Callable[[Death], str],
 ) -> list[Finding]:
     """Players who died with a healing consumable off cooldown.
 
@@ -84,22 +87,27 @@ def analyse_consumables_at_death(
     `inferred`, and for a reason worth stating on the page: a consumable appears
     in the log only when it is drunk, so an empty category means "nothing was on
     cooldown", never "one was in the bag".
+
+    `visible_from_ms` is the caller's to supply: a keystone's first pull start,
+    a raid fight's own start. Casts are fetched from that same point, so nothing
+    earlier is visible, and `consumables_up_at` needs the boundary to refuse a
+    claim it cannot support. Computing it from pulls in here meant a fight
+    without pulls anchored at zero and the refusal never fired.
+
+    `locate` renders where a death happened for the evidence line — a pull
+    offset for a keystone, something else for a fight with no pulls to offset
+    against.
     """
     survival_categories = consumables.for_survival()
     if not survival_categories:
         return []
 
-    # Casts are fetched from the fight's start, so nothing before the first pull
-    # is visible. `consumables_up_at` needs that boundary to refuse a claim it
-    # cannot support.
-    visible_from_ms = min((pull.start_ms for pull in run.pulls), default=0)
-
     name_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
+    for player in players:
         name_counts[player.name] += 1
 
     findings = []
-    for player in run.players:
+    for player in players:
         lines = []
         first_pull: int | None = None
         for death in sorted(
@@ -118,7 +126,7 @@ def analyse_consumables_at_death(
             if first_pull is None:
                 first_pull = death.pull_index
             lines.append(
-                f"{pull_offset(run, death)} to {death.killing_blow} — "
+                f"{locate(death)} to {death.killing_blow} — "
                 f"{', '.join(up)} not on cooldown"
             )
 
@@ -155,7 +163,7 @@ def analyse_consumables_at_death(
 
 
 def analyse_consumables_never_used(
-    run: Run,
+    players: tuple[Player, ...],
     casts: tuple[CastEvent, ...],
     consumables: Consumables,
     deaths: tuple[Death, ...],
@@ -177,11 +185,11 @@ def analyse_consumables_never_used(
         return []
 
     name_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
+    for player in players:
         name_counts[player.name] += 1
 
     findings = []
-    for player in run.players:
+    for player in players:
         theirs = [death for death in deaths if death.actor_id == player.actor_id]
         if not theirs:
             continue

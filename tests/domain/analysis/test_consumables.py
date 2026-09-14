@@ -2,6 +2,7 @@
 # ABOUTME: The category, not the item, is what a cooldown belongs to.
 
 from wowperf.domain.analysis.consumables import analyse_consumables_at_death, consumables_up_at
+from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -136,8 +137,21 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS) -> Death:
     )
 
 
+def locate_in_a_run(death: Death) -> str:
+    """The real `locate` a caller would build for `a_run()`'s single pull."""
+    return pull_offset(a_run().pulls, death)
+
+
+VISIBLE_FROM_A_RUN_START = 0
+"""`a_run()`'s one pull starts at 0, matching what the old default-of-zero
+computed for it — so narrowing this call site changes no assertion below."""
+
+
 def test_a_death_with_a_consumable_available_is_a_finding() -> None:
-    findings = analyse_consumables_at_death(a_run(), drank_both(), CONSUMABLES, (a_death(),))
+    findings = analyse_consumables_at_death(
+        a_run().players, VISIBLE_FROM_A_RUN_START, drank_both(), CONSUMABLES, (a_death(),),
+        locate=locate_in_a_run,
+    )
     assert len(findings) == 1
     assert findings[0].id == "consumables.unused.Emberkin"
     assert findings[0].confidence is Confidence.INFERRED
@@ -146,7 +160,10 @@ def test_a_death_with_a_consumable_available_is_a_finding() -> None:
 
 def test_a_death_with_everything_on_cooldown_says_nothing() -> None:
     casts = drank_both() + (a_cast(1234768, 395_000), a_cast(6262, 395_000))
-    assert analyse_consumables_at_death(a_run(), casts, CONSUMABLES, (a_death(),)) == []
+    assert analyse_consumables_at_death(
+        a_run().players, VISIBLE_FROM_A_RUN_START, casts, CONSUMABLES, (a_death(),),
+        locate=locate_in_a_run,
+    ) == []
 
 
 def test_the_detail_admits_it_cannot_see_an_empty_bag() -> None:
@@ -154,13 +171,17 @@ def test_the_detail_admits_it_cannot_see_an_empty_bag() -> None:
     # "not on cooldown" and nothing more. Saying otherwise would accuse someone
     # of not pressing a button they never had.
     detail = analyse_consumables_at_death(
-        a_run(), drank_both(), CONSUMABLES, (a_death(),)
+        a_run().players, VISIBLE_FROM_A_RUN_START, drank_both(), CONSUMABLES, (a_death(),),
+        locate=locate_in_a_run,
     )[0].detail
     assert "not that one was carried" in detail
 
 
 def test_no_deaths_says_nothing() -> None:
-    assert analyse_consumables_at_death(a_run(), drank_both(), CONSUMABLES, ()) == []
+    assert analyse_consumables_at_death(
+        a_run().players, VISIBLE_FROM_A_RUN_START, drank_both(), CONSUMABLES, (),
+        locate=locate_in_a_run,
+    ) == []
 
 
 def test_a_category_the_player_never_touched_is_not_reported_at_a_death() -> None:
@@ -181,7 +202,7 @@ def test_a_player_who_died_having_used_nothing_is_told_so_once() -> None:
     from wowperf.domain.analysis.consumables import analyse_consumables_never_used
 
     findings = analyse_consumables_never_used(
-        a_run(), (), CONSUMABLES, (a_death(at_ms=300_000), a_death(at_ms=380_000))
+        a_run().players, (), CONSUMABLES, (a_death(at_ms=300_000), a_death(at_ms=380_000))
     )
     assert len(findings) == 1
     assert findings[0].id == "consumables.never.Emberkin"
@@ -194,7 +215,7 @@ def test_a_category_the_player_used_is_not_in_the_never_claim() -> None:
 
     used_a_potion = (a_cast(1234768, 1_000),)
     findings = analyse_consumables_never_used(
-        a_run(), used_a_potion, CONSUMABLES, (a_death(),)
+        a_run().players, used_a_potion, CONSUMABLES, (a_death(),)
     )
     assert "healthstone" in findings[0].title
     assert "health potion" not in findings[0].title
@@ -203,7 +224,7 @@ def test_a_category_the_player_used_is_not_in_the_never_claim() -> None:
 def test_a_player_who_did_not_die_is_not_asked_what_they_carried() -> None:
     from wowperf.domain.analysis.consumables import analyse_consumables_never_used
 
-    assert analyse_consumables_never_used(a_run(), (), CONSUMABLES, ()) == []
+    assert analyse_consumables_never_used(a_run().players, (), CONSUMABLES, ()) == []
 
 
 def test_the_real_consumables_file_never_lists_combat_potion_as_available_at_death() -> None:
@@ -222,7 +243,10 @@ def test_the_real_consumables_file_never_lists_combat_potion_as_available_at_dea
     # enough before the death for its 300s cooldown to have come back --
     # exactly the shape of "off cooldown at death" the finding reports.
     casts = (a_cast(1236994, 1_000),)
-    findings = analyse_consumables_at_death(a_run(), casts, load_consumables(), (a_death(),))
+    findings = analyse_consumables_at_death(
+        a_run().players, VISIBLE_FROM_A_RUN_START, casts, load_consumables(), (a_death(),),
+        locate=locate_in_a_run,
+    )
     assert findings == []
 
 
@@ -236,8 +260,41 @@ def test_the_real_consumables_file_never_names_combat_potion_as_never_used() -> 
     from wowperf.adapters.config.toml import load_consumables
     from wowperf.domain.analysis.consumables import analyse_consumables_never_used
 
-    findings = analyse_consumables_never_used(a_run(), (), load_consumables(), (a_death(),))
+    findings = analyse_consumables_never_used(
+        a_run().players, (), load_consumables(), (a_death(),)
+    )
     assert len(findings) == 1
     assert "combat potion" not in findings[0].title
     assert "health potion" in findings[0].title
     assert "healthstone" in findings[0].title
+
+
+def test_the_visibility_anchor_is_the_callers_and_not_a_default_of_zero() -> None:
+    """The defect this narrowing removes.
+
+    With `min(pull.start_ms, default=0)` a raid fight (no pulls) anchors at 0,
+    so a window that opens well before the fight's own start — but well after
+    report time zero — reads as "off cooldown" instead of "cannot be judged".
+
+    A cast establishes ownership of the healthstone long before its window
+    opens, so the only thing standing between this death and a finding is the
+    visibility guard. The healthstone window (60s cooldown + 10s run-up) opens
+    435s before the death, which is before this fight's own start at 500_000 —
+    a caller-supplied anchor of 500_000 must refuse to judge it. The old
+    default of 0 would not: 435_000 >= 0, so it would wrongly let the claim
+    through.
+    """
+    fight_start = 500_000
+    death = Death(
+        player_name="Emberkin", actor_id=11, timestamp_ms=fight_start + 5_000,
+        killing_blow="Melee", seconds_until_next_action=5.0, pull_index=None,
+    )
+    owns_a_healthstone = (a_cast(6262, 1_000),)
+    findings = analyse_consumables_at_death(
+        a_run().players, fight_start, owns_a_healthstone, CONSUMABLES, (death,),
+        locate=lambda death: "5s in",
+    )
+    assert findings == [], (
+        "the healthstone window opens before this fight's own start, which a "
+        "caller-supplied anchor must refuse to judge"
+    )

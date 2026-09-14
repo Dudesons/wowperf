@@ -26,7 +26,7 @@ from wowperf.adapters.config.toml import (
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
-from wowperf.adapters.render.icons import BlizzardIcons, IconStore
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -34,6 +34,7 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
@@ -91,6 +92,32 @@ Every containment this names is one the report also relies on, in
 `test_cli.test_the_warning_names_exactly_the_nestings_the_report_draws`.
 """
 
+RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
+    "findings are ranked by seconds_lost, not additive: deaths.single.*, "
+    "deaths.chain.* and deaths.repeat.* all nest inside deaths.total"
+)
+"""Why the seconds in a raid findings file must never be summed.
+
+A sibling of `FINDINGS_ARE_RANKED_NOT_ADDITIVE`, not a reuse of it: this one is
+read by `raid`, and `analyse_encounter` runs none of `decompose_time` or
+`analyse_trash` -- a boss fight carries no keystone timer and no
+enemy-forces requirement (see `analyse_encounter`'s own docstring) -- so
+naming compare.duration, time.gap.*, compare.downtime, time.residual,
+compare.route.skipped.* or trash.overage here would claim an accounting the
+findings file does not hold. Only the deaths.* nesting applies to a raid
+fight; `test_cli.test_the_raid_warning_names_only_findings_the_encounter_analyser_emits`
+holds this in step with that.
+"""
+
+RAID_COMPARISON_NOT_YET_AVAILABLE = (
+    "Comparison against reference runs is not implemented for raid encounters yet: "
+    "--player, --all-players and --no-compare are accepted but have no effect."
+)
+"""`raid`'s inert flags say so, out loud, every run -- rather than looking like a
+comparison silently ran and found nothing. The axis they would drive belongs to
+the next plan, not this one.
+"""
+
 
 @app.callback()
 def main() -> None:
@@ -123,24 +150,13 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
-ICON_CACHE_SUBDIR = "icons"
+def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnIcons:
+    """Icons for one run: its own ability dictionary and every parse sample's.
 
-
-def build_icons(
-    loaded: LoadedRun, parse_samples: Sequence[ParseSample], cache_dir: Path
-) -> BlizzardIcons | None:
-    """Icons for one run: its own ability dictionary, every parse sample's, and a
-    store that keeps them for good.
-
-    None when the store cannot be created, which `render` already understands as
-    a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s
-    own try/except and after the findings have been written, so a cache directory
-    this machine will not give us must not end a run holding a finished analysis
-    -- icons are decorative, and the page names every ability with or without one.
-
-    Unlike a single icon the CDN does not serve, which is silent by design, this
-    costs every icon on the page for a local reason the reader can act on, so it
-    is said out loud rather than leaving them a report that merely looks plain.
+    Nothing here can fail and nothing here is fetched. An icon is an address the
+    reader's browser resolves when the page is opened, so building them is string
+    work over dictionaries the run already carries -- no request, no cache, and
+    no way for a report to be written without its art.
 
     A comparison names an ability our player never cast, so that ability's file
     name is in the reference's own dictionary and in no other. Every compared
@@ -150,30 +166,12 @@ def build_icons(
     overlaid last: where both name an id they name the same file, so the order
     settles determinism rather than correctness.
     """
-    try:
-        store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
-    except OSError as error:
-        typer.secho(f"writing the report without icons: {error}", err=True, fg="yellow")
-        return None
-
-    def fetch(url: str) -> tuple[int, str, bytes]:
-        # Status 0 tells `BlizzardIcons` that no HTTP response arrived at all --
-        # a DNS failure, a reset connection, a timeout. This call sits outside
-        # `analyze`'s own try/except (which closes well before `render` runs),
-        # and one flaky request among the dozens a real report makes must not
-        # abort a run that has already written its findings.
-        try:
-            response = httpx.get(url, timeout=30.0, follow_redirects=True)
-        except httpx.HTTPError:
-            return 0, "", b""
-        return response.status_code, response.headers.get("content-type", ""), response.content
-
     names: dict[int, str] = {}
     for sample in parse_samples:
         for member in sample.members:
             names.update(member.ability_icons)
     names.update(loaded.ability_icon_map)
-    return BlizzardIcons(names, store, fetch)
+    return CdnIcons(names)
 
 
 def build_reference_repositories(
@@ -929,7 +927,6 @@ def analyze(
                 icons=build_icons(
                     loaded,
                     tuple(one.parse for one in subjects if one.parse is not None),
-                    cache_dir,
                 ),
             ),
             encoding="utf-8",
@@ -939,6 +936,113 @@ def analyze(
         raise typer.Exit(1) from error
 
     typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository.client.costs)
+
+
+@app.command()
+def raid(
+    report: str = typer.Argument(..., help="Report URL or code"),
+    fight: int | None = typer.Option(None, help="Fight ID; defaults to the only boss fight"),
+    player: list[str] = typer.Option(
+        [],
+        "--player",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    all_players: bool = typer.Option(
+        False,
+        "--all-players",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    no_compare: bool = typer.Option(
+        False,
+        "--no-compare",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings JSON"),
+) -> None:
+    """Analyse a raid boss fight and write its findings as JSON.
+
+    A sibling of `analyze`, not a mode of it. A boss fight carries no keystone
+    timer, no enemy-forces requirement and no pulls worth ranking a throughput
+    cooldown against, so the two flags that need one are not offered here at
+    all -- not disabled, simply absent. `--player`, `--all-players` and
+    `--no-compare` are accepted for the same shape as `analyze`, but have no
+    effect yet: comparing a boss fight against reference runs is a later
+    plan, and this command says so on every run rather than silently doing
+    nothing.
+    """
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    try:
+        code, fight_from_url = parse_report_url(report)
+        repository = build_repository(cache_dir)
+        before = repository.rate_limit()
+        loaded = repository.load_encounter(code, fight if fight is not None else fight_from_url)
+        # Printed only now: a report this tool cannot load must fail with just
+        # its own error, not this notice first and the error after it.
+        typer.secho(RAID_COMPARISON_NOT_YET_AVAILABLE, err=True, fg="yellow")
+        # Loaded once and shared, exactly as `analyze` shares them between its
+        # analysers and its report builder -- there is no report builder here
+        # yet, but the next plan that adds one must still read the same data
+        # this command already paid for.
+        defensives = load_defensives()
+        consumables = load_consumables()
+        findings = analyse_encounter(loaded, defensives, consumables, roles=load_roles())
+        after = repository.rate_limit()
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    encounter = loaded.encounter
+    payload = {
+        "report_code": encounter.report_code,
+        "fight_id": encounter.fight_id,
+        "boss_name": encounter.boss_name,
+        "difficulty": encounter.difficulty,
+        "partition": encounter.partition,
+        "size": encounter.size,
+        "kill": encounter.kill,
+        "fight_percentage": encounter.fight_percentage,
+        "duration_seconds": encounter.duration_seconds,
+        "player": encounter.owner_name,
+        # Same shape `analyze` writes, standing in for a comparison this plan
+        # does not run: `--player`, `--all-players` and `--no-compare` are
+        # inert, so this is always what "nobody was compared" looks like,
+        # never a comparison that quietly found nothing.
+        "comparison": {
+            "compared": False,
+            "players": [],
+            "sample_size": {"speed": 0, "parse": {}},
+            "references": [],
+        },
+        "findings_are_ranked_not_additive": RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        "comparison_tables": {},
+    }
+
+    written = out / f"{encounter.report_code}-{encounter.fight_id}.findings.json"
+    # A guard of its own, because this phase fails differently from the one
+    # above: nothing here can be degraded or retried, and a failure can arrive
+    # after the findings have been computed. `OSError` alone -- the API
+    # errors the first block names cannot reach a filesystem write.
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        # Real rosters contain non-ASCII names; write_text's default encoding is
+        # locale-dependent (commonly cp1252 on Windows) and would raise on them.
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"{len(findings)} findings written to {written}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 

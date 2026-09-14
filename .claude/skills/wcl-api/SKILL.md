@@ -27,6 +27,9 @@ covers it otherwise.
 | `countRequired` | `ReportFight` | 2026-09-03 | yes |
 | `npcCountMap` | `ReportFight` | 2026-09-03 | yes |
 | `rating` | `ReportFight` | 2026-09-03 | no |
+| `difficulty` | `ReportFight` | 2026-09-14 | yes |
+| `size` | `ReportFight` | 2026-09-14 | yes |
+| `fightPercentage` | `ReportFight` | 2026-09-14 | yes |
 | `friendlyPlayers` | `ReportFight` | 2026-09-04 | yes |
 | `friendlySpecs` | `ReportFight` | 2026-09-04 | yes |
 | `friendlyItemLevels` | `ReportFight` | 2026-09-04 | yes |

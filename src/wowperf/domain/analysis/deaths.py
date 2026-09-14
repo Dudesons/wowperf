@@ -2,10 +2,11 @@
 # ABOUTME: The timer penalty understates a death; this measures the real thing instead.
 
 from collections import defaultdict
+from collections.abc import Callable
 
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Run
+from wowperf.domain.model import Pull
 
 CHAIN_WINDOW_MS = 10_000
 """Deaths closer together than this are one event, not two independent ones."""
@@ -38,7 +39,7 @@ def _unmeasured_evidence(unmeasured_count: int) -> str:
     )
 
 
-def pull_offset(run: Run, death: Death) -> str:
+def pull_offset(pulls: tuple[Pull, ...], death: Death) -> str:
     """Where a death happened, in terms a reader can act on.
 
     A raw report-wide millisecond offset is useless: it is milliseconds since
@@ -48,11 +49,21 @@ def pull_offset(run: Run, death: Death) -> str:
     inventing a pull for it.
     """
     if death.pull_index is not None:
-        pull = next((p for p in run.pulls if p.index == death.pull_index), None)
+        pull = next((p for p in pulls if p.index == death.pull_index), None)
         if pull is not None:
             seconds_in = (death.timestamp_ms - pull.start_ms) / 1000
             return f"pull {death.pull_index}, {seconds_in:.0f}s in"
     return "outside any pull"
+
+
+def fight_offset(start_ms: int, death: Death) -> str:
+    """Where a death happened, in seconds since the fight began.
+
+    The raid counterpart of `pull_offset`. A boss fight is its own window, so
+    there is no pull to be inside or outside of, and the reader can act on
+    "60s in" against a timeline they remember.
+    """
+    return f"{(death.timestamp_ms - start_ms) / 1000:.0f}s in"
 
 
 def _chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
@@ -67,13 +78,33 @@ def _chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
     return [tuple(group) for group in groups]
 
 
-def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
-    """Report what dying cost, grouped so a wipe reads as one event."""
+def analyse_deaths(
+    deaths: tuple[Death, ...],
+    locate: Callable[[Death], str],
+    scope: str,
+    *,
+    cost_detail_suffix: str = (
+        " The timer penalty is counted separately, in the time decomposition."
+    ),
+) -> list[Finding]:
+    """Report what dying cost, grouped so a wipe reads as one event.
+
+    `locate` turns one death into the words that say where it happened, and
+    `scope` says what the count is measured across. Both are passed because a
+    keystone and a boss fight answer them differently, and reading them off a
+    `Run` meant a raid report evidenced "across 0 pulls".
+
+    `cost_detail_suffix` is appended to the measured `deaths.total` detail, and
+    is a caller's problem for the same reason: `decompose_time` and its timer
+    penalty are a Mythic+ concept a boss fight does not have, so a raid caller
+    passes the empty string rather than this module branching on what kind of
+    aggregate it was given.
+    """
     if not deaths:
         return []
 
     total_cost, unmeasured_count = _measured_cost(deaths)
-    evidence = [f"{len(deaths)} deaths across {len(run.pulls)} pulls"]
+    evidence = [f"{len(deaths)} deaths {scope}"]
     if unmeasured_count:
         evidence.append(_unmeasured_evidence(unmeasured_count))
 
@@ -90,8 +121,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
         )
         detail = (
             "Measured from each death to that player's first cast at another actor: the "
-            "time the group played without them. The timer penalty is counted separately, "
-            "in the time decomposition."
+            "time the group played without them." + cost_detail_suffix
         )
 
     findings = [
@@ -116,7 +146,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                 f"{names}. In a chain the first death usually causes the rest."
             )
             group_evidence = tuple(
-                f"{death.player_name} at {pull_offset(run, death)} to "
+                f"{death.player_name} at {locate(death)} to "
                 f"{death.killing_blow}"
                 for death in group
             )
@@ -154,7 +184,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                     detail=detail,
                     confidence=Confidence.MEASURED,
                     seconds_lost=seconds_lost,
-                    evidence=(pull_offset(run, first),),
+                    evidence=(locate(first),),
                     pull_index=first.pull_index,
                     ability_id=first.killing_blow_id or None,
                     ability_name=first.killing_blow,
@@ -164,14 +194,21 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
 
     # Two players can share a display name; group by actor id so their deaths are
     # never mixed into one finding, and disambiguate the id with the actor id only
-    # when that happens, so the common case stays readable.
-    name_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
-        name_counts[player.name] += 1
-
+    # when that happens, so the common case stays readable. Counted from the
+    # deaths themselves rather than a roster: a name collision only matters here
+    # between actors who both appear in this death list. A namesake who never
+    # dies therefore never disambiguates anyone: they hold no entry in `by_actor`
+    # and so are never counted, even though `analyse_consumables_never_used` and
+    # `analyse_defensives`, which still count off the full roster, do count them.
+    # A player can end up in this run's findings under two id shapes -- pinned in
+    # `test_service.test_a_never_dying_namesake_leaves_the_death_id_unsuffixed`.
     by_actor: dict[int, list[Death]] = defaultdict(list)
     for death in deaths:
         by_actor[death.actor_id].append(death)
+
+    name_counts: dict[str, int] = defaultdict(int)
+    for theirs_list in by_actor.values():
+        name_counts[theirs_list[0].player_name] += 1
 
     for actor_id, theirs_list in by_actor.items():
         theirs = tuple(theirs_list)
@@ -182,7 +219,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
         seconds_lost, unmeasured_count = _measured_cost(theirs)
         detail = f"{count} of the run's {len(deaths)} deaths were {name}."
         player_evidence = tuple(
-            f"{death.killing_blow} at {pull_offset(run, death)}" for death in theirs
+            f"{death.killing_blow} at {locate(death)}" for death in theirs
         )
         if seconds_lost is None:
             detail += (

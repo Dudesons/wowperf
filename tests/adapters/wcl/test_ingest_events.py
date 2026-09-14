@@ -7,6 +7,7 @@ from wowperf.adapters.wcl.ingest import build_casts, build_deaths, pull_index_at
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 ABILITY_NAMES = {700: "Frostbolt", 900: "Void Bolt"}
+PLAYER_NAMES = {11: "Frostie"}
 
 
 def a_run() -> Run:
@@ -28,19 +29,19 @@ def a_run() -> Run:
 
 
 def test_a_timestamp_inside_a_pull_resolves_to_its_index() -> None:
-    assert pull_index_at(a_run(), 3000) == 0
-    assert pull_index_at(a_run(), 12000) == 1
+    assert pull_index_at(a_run().pulls, 3000) == 0
+    assert pull_index_at(a_run().pulls, 12000) == 1
 
 
 def test_a_timestamp_between_pulls_belongs_to_no_pull() -> None:
-    assert pull_index_at(a_run(), 7000) is None
+    assert pull_index_at(a_run().pulls, 7000) is None
 
 
 def test_casts_are_named_and_attributed_to_a_pull() -> None:
     events: list[dict[str, Any]] = [
         {"type": "cast", "sourceID": 11, "abilityGameID": 700, "timestamp": 3000}
     ]
-    casts = build_casts(events, a_run(), ABILITY_NAMES)
+    casts = build_casts(events, a_run().pulls, ABILITY_NAMES)
     assert (casts[0].ability_name, casts[0].pull_index) == ("Frostbolt", 0)
 
 
@@ -48,7 +49,10 @@ def test_an_unknown_ability_id_falls_back_to_its_number() -> None:
     events: list[dict[str, Any]] = [
         {"type": "cast", "sourceID": 11, "abilityGameID": 12345, "timestamp": 3000}
     ]
-    assert build_casts(events, a_run(), ABILITY_NAMES)[0].ability_name == "Unknown ability 12345"
+    assert (
+        build_casts(events, a_run().pulls, ABILITY_NAMES)[0].ability_name
+        == "Unknown ability 12345"
+    )
 
 
 def test_a_death_records_its_killing_blow_and_pull() -> None:
@@ -67,7 +71,7 @@ def test_a_death_records_its_killing_blow_and_pull() -> None:
             "type": "death",
         }
     ]
-    death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
+    death = build_deaths(events, a_run().pulls, (), PLAYER_NAMES, ABILITY_NAMES)[0]
     assert (death.player_name, death.killing_blow, death.pull_index) == (
         "Frostie",
         "Void Bolt",
@@ -79,7 +83,7 @@ def test_a_death_keeps_the_id_of_the_ability_that_killed_it() -> None:
     events: list[dict[str, Any]] = [
         {"type": "death", "targetID": 11, "timestamp": 12000, "killingAbilityGameID": 900}
     ]
-    death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
+    death = build_deaths(events, a_run().pulls, (), PLAYER_NAMES, ABILITY_NAMES)[0]
     assert death.killing_blow_id == 900
 
 
@@ -96,7 +100,7 @@ def test_a_death_with_no_killing_ability_falls_back_to_unknown() -> None:
             "type": "death",
         }
     ]
-    death = build_deaths(events, a_run(), (), ABILITY_NAMES)[0]
+    death = build_deaths(events, a_run().pulls, (), PLAYER_NAMES, ABILITY_NAMES)[0]
     assert death.killing_blow == "Unknown ability 54321"
 
 
@@ -109,7 +113,7 @@ def test_a_cast_carries_its_target_and_none_for_an_untargeted_one() -> None:
              "timestamp": 12000},
             {"type": "cast", "sourceID": 11, "abilityGameID": 702, "timestamp": 13000},
         ],
-        a_run(),
+        a_run().pulls,
         ABILITY_NAMES,
     )
     assert [cast.target_id for cast in casts] == [501, None, None]
@@ -128,14 +132,14 @@ def test_the_cost_of_a_death_runs_until_the_player_cast_at_another_actor() -> No
             {"type": "cast", "sourceID": 11, "targetID": 12, "abilityGameID": 702,
              "timestamp": 45000},
         ],
-        a_run(),
+        a_run().pulls,
         ABILITY_NAMES,
     )
     events: list[dict[str, Any]] = [
         {"abilityGameID": 0, "fight": 2, "killerID": 999, "killingAbilityGameID": 900,
          "sourceID": -1, "targetID": 11, "timestamp": 12000, "type": "death"},
     ]
-    death = build_deaths(events, a_run(), casts, ABILITY_NAMES)[0]
+    death = build_deaths(events, a_run().pulls, casts, PLAYER_NAMES, ABILITY_NAMES)[0]
     assert death.seconds_until_next_action == 33.0
 
 
@@ -143,14 +147,15 @@ def test_a_death_followed_only_by_self_casts_has_no_measured_cost() -> None:
     casts = build_casts(
         [{"type": "cast", "sourceID": 11, "targetID": -1, "abilityGameID": 700,
           "timestamp": 15000}],
-        a_run(),
+        a_run().pulls,
         ABILITY_NAMES,
     )
     events: list[dict[str, Any]] = [
         {"abilityGameID": 0, "fight": 2, "killerID": 999, "killingAbilityGameID": 900,
          "sourceID": -1, "targetID": 11, "timestamp": 12000, "type": "death"},
     ]
-    assert build_deaths(events, a_run(), casts, ABILITY_NAMES)[0].seconds_until_next_action is None
+    death = build_deaths(events, a_run().pulls, casts, PLAYER_NAMES, ABILITY_NAMES)[0]
+    assert death.seconds_until_next_action is None
 
 
 def test_a_death_with_no_later_cast_has_no_measured_cost() -> None:
@@ -166,4 +171,5 @@ def test_a_death_with_no_later_cast_has_no_measured_cost() -> None:
             "type": "death",
         }
     ]
-    assert build_deaths(events, a_run(), (), ABILITY_NAMES)[0].seconds_until_next_action is None
+    death = build_deaths(events, a_run().pulls, (), PLAYER_NAMES, ABILITY_NAMES)[0]
+    assert death.seconds_until_next_action is None

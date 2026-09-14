@@ -554,6 +554,55 @@ One optional line in the `ability` macro, and a build-time fetch on the rail
 `src/wowperf/adapters/render/icons.py` already runs — the icon half proves the shape works.
 Reopening this means answering the licensing question first, not writing the code.
 
+
+### Question 1 answered, recorded 2026-09-14
+
+RwlRwlRwlRwl answered question 1: **the reports are shared** — sent to a handful of guildmates
+after a run. That is the factual premise the rest of this section was waiting on, and it moves
+the icon decision rather than the tooltip one.
+
+**It moves it toward hotlinking, not away.** This section already named base64-embedding as
+"the step that moves this from personal use toward distribution", written before anyone knew
+whether the page travelled. Now that it does, the copy travels with it, on every send.
+Addressing the art instead — the reader's browser fetching it from the CDN when the page is
+opened — never makes that copy. Under both sets of terms that is the better position, and the
+durability argument that justified embedding was protecting a property a report read within
+days of the run does not need.
+
+**Wowhead, not Blizzard, and on his call rather than this section's reading.** The three ZAM
+clauses stand as recorded: hotlinking defeats the first (a browser is not a spider) but not
+the third, which is about where content is displayed and which scope does not reach. He
+weighed that against a free tool shared with four people and chose Wowhead. The measurements
+below say the same thing on the merits, and they are what settled the size and the host.
+
+| Probe, 2026-09-14 | Result |
+| --- | --- |
+| Blizzard `HEAD` on a served icon | 200, `image/jpeg`, zero bytes transferred |
+| Blizzard `HEAD` on a refused icon | 403, `application/xml` — the same signal a `GET` gives |
+| Both CDNs with no `Referer`, a foreign host, and `null` | 200 in all six combinations |
+| **The 8 icons Blizzard refuses, on zamimg** | **8 of 8 served** |
+| Numeric file-id names (`8026697.jpg`) | served by both |
+
+Those 8 are the complete miss list accumulated in `cache/icons` across every report analysed
+to date: 259 hits against 8 misses, so Blizzard sits at 97% and zamimg covers the whole of the
+remaining gap. A small sample, and the adversarial one — precisely the names that fail
+elsewhere. The `Referer` probe mattered because a report opened from disk sends none; neither
+CDN cares. The numeric names were found by rendering a real report, not by reasoning: Warcraft
+Logs names a few icons by file id rather than by spell name, and both CDNs serve those too.
+
+**What this cost the codebase, and what it removed.** `IconStore`, `BlizzardIcons`, the
+downloader, the `IconSource` port and its injection all went: with no I/O left there was
+nothing for a port to abstract, and `render` now takes the concrete resolver. Nineteen tests
+went with them, every one guarding a fetch or a store that no longer exists; five replaced
+them, and the render tests that used to inject a fake returning canned bytes now build the
+real resolver and assert the address it produces. The build makes **no request for art at
+all**, so there is no cache to keep and no way for a report to be written without its icons.
+
+**What it costs the reader.** The report is online. Opened without a connection it names every
+ability and draws none of them, and there is no pure-HTML fallback to soften that: `srcset`
+does not fall back on a 404, and `onerror` is script, which the one-script invariant forbids.
+Every report already sent keeps working, because its bytes are baked in; only new ones change.
+
 ---
 
 ## 10. What I could not determine

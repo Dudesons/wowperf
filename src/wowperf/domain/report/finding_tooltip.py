@@ -74,7 +74,9 @@ def tooltips_by_finding_id(
         for player in loaded.run.players
         for ability in defensives.for_spec(player.class_name, player.spec)
     }
-    for (actor_id, ability_id), base_id in defensive_base_ids(loaded.run, defensives).items():
+    for (actor_id, ability_id), base_id in defensive_base_ids(
+        loaded.run.players, defensives
+    ).items():
         wanted = [f"{family}{base_id}" for family in DEFENSIVE_FAMILIES if
                   f"{family}{base_id}" in by_id]
         if not wanted:

@@ -18,6 +18,7 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_observations import SUBJECT, a_finding, a_loaded
 from tests.domain.report.test_build_timeline import a_member, a_sample
 from wowperf.adapters.render.html import render
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report import player_timeline as player_timeline_module
 from wowperf.domain.report import timeline as timeline_module
@@ -50,6 +51,8 @@ from wowperf.domain.report.model import (
     TooltipLine,
 )
 from wowperf.domain.report.timeline import build_timeline
+
+ICON_HOST = "https://wow.zamimg.com/images/wow/icons/medium/"
 
 PRESENT = Section(state=SectionState.PRESENT)
 
@@ -420,9 +423,9 @@ def test_group_rows_render_inside_the_players_section() -> None:
 
 
 def test_each_player_gets_a_sub_tab_button_pointing_at_their_own_panel() -> None:
-    # A local import: test_html_invariants imports FakeIcons from this module,
-    # so a module-level import back would make the two modules circular and
-    # fail to collect every test in this file.
+    # A local import: test_html_invariants imports this module's fixture
+    # builders, so a module-level import back would make the two modules
+    # circular and fail to collect every test in this file.
     from tests.adapters.render.test_html_invariants import rich_html
 
     html = rich_html()
@@ -617,23 +620,13 @@ def test_the_recap_table_sits_behind_a_summary_naming_its_size() -> None:
     assert "<details" in deaths and "<summary>2 events</summary>" in deaths
 
 
-class FakeIcons:
-    """Answers for the ids it was given and for no others."""
-
-    def __init__(self, uris: dict[int, str]) -> None:
-        self.uris = uris
-        self.asked: list[int] = []
-
-    def data_uri(self, ability_id: int) -> str | None:
-        self.asked.append(ability_id)
-        return self.uris.get(ability_id)
-
-
 def test_an_icon_is_drawn_beside_the_ability_it_names() -> None:
     card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
                                      ability_id=42),))
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({42: "data:image/jpeg;base64,AAA"}))
-    assert ".i-42 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({42: "spell_a.jpg"}))
+    assert (
+        f".i-42 {{ background-image: url({ICON_HOST}spell_a.jpg); }}"
+    ) in html
     assert '<span class="icon i-42" aria-hidden="true"></span>' in html
     assert "Snowdrift" in html
 
@@ -641,7 +634,7 @@ def test_an_icon_is_drawn_beside_the_ability_it_names() -> None:
 def test_an_ability_with_no_icon_still_shows_its_name_and_emits_no_span() -> None:
     card = a_card(timeline=(RecapRow(seconds_before="5.8 s", kind="hit", ability="Snowdrift",
                                      ability_id=42),))
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({}))
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({}))
     assert "Snowdrift" in html
     assert 'class="icon' not in html
 
@@ -652,7 +645,7 @@ def test_an_ability_drawn_many_times_is_embedded_once() -> None:
         for n in range(9)
     )
     html = render(a_report(deaths=(a_card(timeline=rows),)),
-                  icons=FakeIcons({42: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({42: "spell_a.jpg"}))
     assert html.count("background-image") == 1
     assert html.count('class="icon i-42"') == 9
 
@@ -690,7 +683,7 @@ def test_an_icon_is_drawn_beside_the_killing_blow_in_the_heading() -> None:
     # A distinct id from the recap-row test above: a guard copy-pasted from the
     # wrong site would still read the right id there and pass by accident.
     card = a_card(killing_blow_id=77)
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({77: "data:image/jpeg;base64,BBB"}))
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({77: "spell_b.jpg"}))
     assert '<span class="icon i-77" aria-hidden="true"></span>' in html
     assert "Frigid Roar" in html
 
@@ -701,7 +694,7 @@ def test_an_icon_is_drawn_beside_an_availability_rows_ability() -> None:
             AvailabilityRow(ability="Icebound Fortitude", state="ready", ability_id=99),
         )),
     ))
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({99: "data:image/jpeg;base64,CCC"}))
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({99: "spell_c.jpg"}))
     assert '<span class="icon i-99" aria-hidden="true"></span>' in html
     assert "Icebound Fortitude" in html
 
@@ -1060,7 +1053,7 @@ def test_a_row_panels_heading_carries_the_abilitys_icon() -> None:
     # its own comment gives: the art and the word are one object to a reader.
     body = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
-        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+        icons=CdnIcons({45438: "spell_a.jpg"}),
     ).split("</style>")[1]
     assert ('<span class="tip-head"><span class="icon i-45438" aria-hidden="true"></span>'
             "Ice Block</span>") in body
@@ -1106,9 +1099,11 @@ def test_the_press_marks_width_comes_from_the_domain_not_the_template() -> None:
 def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() -> None:
     html = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
-        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+        icons=CdnIcons({45438: "spell_a.jpg"}),
     )
-    assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    assert (
+        f".i-45438 {{ background-image: url({ICON_HOST}spell_a.jpg); }}"
+    ) in html
     # The rule alone proves the resolver ran, not that anything was drawn: split the
     # stylesheet off and require both the embedded payload and the element that
     # draws it from there, in the body. The coordinate is pinned too -- matching
@@ -1116,7 +1111,7 @@ def test_a_pressed_abilitys_icon_is_both_embedded_and_drawn_on_the_timeline() ->
     # printed the press's own x rather than the row's gutter column.
     body = html.split("</style>")[1]
     assert ('<symbol id="icon-45438" viewBox="0 0 1 1">'
-            '<image href="data:image/jpeg;base64,AAA"') in body
+            '<image href="https://wow.zamimg.com/images/wow/icons/medium/spell_a.jpg"') in body
     assert '<use href="#icon-45438" x="130.0"' in body
 
 
@@ -1130,7 +1125,7 @@ def test_an_icon_that_resolves_is_drawn_clear_of_the_marks_on_the_track() -> Non
     # resolved, never replaced by one.
     html = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
-        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+        icons=CdnIcons({45438: "spell_a.jpg"}),
     )
     body = html.split("</style>")[1]
     assert '<rect class="press" x="200.0"' in body
@@ -1142,7 +1137,7 @@ def test_an_icon_that_resolves_is_drawn_clear_of_the_marks_on_the_track() -> Non
 def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
     html = render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
-        icons=FakeIcons({}),
+        icons=CdnIcons({}),
     )
     assert "background-image" not in html
     body = html.split("</style>")[1]
@@ -1150,19 +1145,6 @@ def test_a_press_whose_icon_never_resolves_still_draws_its_mark() -> None:
     # Stronger than the line above: nothing resolved, so no icon element of
     # any kind -- embedded or drawn -- may appear either.
     assert "<use" not in body
-
-
-def test_a_cooldowns_ability_is_asked_about_once_no_matter_how_many_presses_it_has() -> None:
-    # The id lives on the row, not the press: two presses of the same ability
-    # must cost one call, not two, the same guarantee the death-card walk
-    # already gives the ids it meets more than once.
-    row = CooldownRow(label="Ice Block", ability_id=45438, baseline_y=96.0,
-                      presses=(Press(x=200.0), Press(x=210.0)))
-    timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
-                              height=140.0, cooldowns=(row,))
-    icons = FakeIcons({})
-    render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
-    assert icons.asked == [45438]
 
 
 def test_a_row_draws_one_icon_however_many_presses_it_has() -> None:
@@ -1179,14 +1161,14 @@ def test_a_row_draws_one_icon_however_many_presses_it_has() -> None:
                               height=140.0, cooldowns=(row,), row_icon_x=126.0,
                               row_icon_size=16.0)
     html = render(a_report(players=(a_player_card(timeline=timeline),)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     body = html.split("</style>")[1]
-    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count("https://wow.zamimg.com/images/wow/icons/medium/spell_a.jpg") == 1
     assert body.count('<use href="#icon-45438"') == 1
     assert body.count('<rect class="press"') == 2
 
 
-def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> None:
+def test_a_press_on_a_row_with_no_ability_id_draws_plain() -> None:
     # `CooldownRow.ability_id` is `int | None`. `None in {}` and `None in
     # {45438: ...}` are both `False`, but only the second dict can tell the
     # template's real guard apart from one that would happen to pass no matter
@@ -1199,12 +1181,14 @@ def test_a_press_on_a_row_with_no_ability_id_asks_nothing_and_draws_plain() -> N
                              presses=(Press(x=210.0),))
     timeline = PlayerTimeline(section=Section(state=SectionState.PRESENT), width=680.0,
                               height=140.0, cooldowns=(unidentified, identified))
-    icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
+    icons = CdnIcons({45438: "spell_a.jpg"})
     html = render(a_report(players=(a_player_card(timeline=timeline),)), icons=icons)
-    assert icons.asked == [45438]
     body = html.split("</style>")[1]
     assert body.count('<rect class="press"') == 2
     assert '<use href="#icon-45438"' in body
+    # The identified row draws the only icon on the timeline: the unidentified
+    # one beside it draws none rather than borrowing its neighbour's.
+    assert body.count('<use href="#icon-') == 1
 
 
 def test_two_players_pressing_the_same_ability_share_one_copy_of_the_icon() -> None:
@@ -1226,10 +1210,10 @@ def test_two_players_pressing_the_same_ability_share_one_copy_of_the_icon() -> N
             a_player_card(name="Bríala", slug="briala-1", timeline=timeline),
             a_player_card(name="Stonewake", slug="stonewake-2", timeline=timeline),
         )),
-        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+        icons=CdnIcons({45438: "spell_a.jpg"}),
     )
     body = html.split("</style>")[1]
-    assert body.count("data:image/jpeg;base64,AAA") == 1
+    assert body.count("https://wow.zamimg.com/images/wow/icons/medium/spell_a.jpg") == 1
     assert body.count('id="icon-45438"') == 1
     assert body.count('<use href="#icon-45438"') == 2
 
@@ -1425,7 +1409,7 @@ def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,), deaths=(a_card(killing_blow_id=45438),)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="icon i-45438" aria-hidden="true"></span>'
@@ -1441,7 +1425,7 @@ def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None
         title_ability="Ice Block",
         ability_id=45438,
     )
-    html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
+    html = render(a_report(interrupts=(row,)), icons=CdnIcons({}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="ability-name">Ice Block</span></span>'
@@ -1464,31 +1448,33 @@ def test_a_summary_pointer_names_the_finding_without_an_icon() -> None:
         ability_id=45438,
     )
     html = render(a_report(summary_pointers=(row,), deaths=(a_card(killing_blow_id=45438),)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     assert "pointer-title" in html
     assert 'class="icon i-45438"' not in html.split('class="pointer-title"')[1][:200]
 
 
-def test_an_id_that_never_resolves_is_still_asked_about_only_once() -> None:
-    # `resolved` only gains an entry once `data_uri` returns a URI, so a naive
-    # dedup keyed on that dict would ask again about an id that resolves to
-    # None every time it recurs -- on a card with 181 rows, every later one.
-    # Two cards naming the same never-resolving ability prove the guard
-    # remembers the id itself, not just the ones that produced a URI.
+def test_an_id_that_never_resolves_draws_no_art_however_often_it_recurs() -> None:
+    # An id the dictionary cannot name resolves to None, and None must reach
+    # the page as a bare ability name rather than as a rule pointing at a file
+    # that does not exist. Two cards naming the same unresolvable ability prove
+    # a later recurrence cannot draw what the first one was refused.
     card_a = a_card(killing_blow_id=5)
     card_b = a_card(killing_blow_id=5)
-    icons = FakeIcons({})
-    render(a_report(deaths=(card_a, card_b)), icons=icons)
-    assert icons.asked == [5]
+    html = render(a_report(deaths=(card_a, card_b)), icons=CdnIcons({}))
+    assert ".i-5 {" not in html
+    assert 'class="icon i-5"' not in html
+    assert "wow.zamimg.com" not in html
 
 
 def test_an_ability_named_only_by_a_finding_is_embedded() -> None:
     row = a_ledger_row(title="Emberkin never cast Ice Block",
                        title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
-    icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
+    icons = CdnIcons({45438: "spell_a.jpg"})
     html = render(a_report(interrupts=(row,)), icons=icons)
-    assert ".i-45438 { background-image: url(data:image/jpeg;base64,AAA); }" in html
+    assert (
+        f".i-45438 {{ background-image: url({ICON_HOST}spell_a.jpg); }}"
+    ) in html
 
 
 def test_an_ability_named_only_inside_a_player_card_is_embedded() -> None:
@@ -1499,8 +1485,10 @@ def test_an_ability_named_only_inside_a_player_card_is_embedded() -> None:
                        title_ability="Ice Nova", ability_id=157997)
     card = a_player_card().model_copy(update={"spell_and_talent_rows": (row,)})
     html = render(a_report(players=(card,)),
-                  icons=FakeIcons({157997: "data:image/jpeg;base64,BBB"}))
-    assert ".i-157997 { background-image: url(data:image/jpeg;base64,BBB); }" in html
+                  icons=CdnIcons({157997: "spell_b.jpg"}))
+    assert (
+        f".i-157997 {{ background-image: url({ICON_HOST}spell_b.jpg); }}"
+    ) in html
 
 
 # `ledger_row` is imported `with context` in five templates, because it reads
@@ -1519,7 +1507,7 @@ def test_an_icon_is_drawn_at_the_ability_a_death_row_names() -> None:
                        title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     html = render(a_report(death_rows=(row,)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="icon i-45438" aria-hidden="true"></span>'
@@ -1533,7 +1521,7 @@ def test_an_icon_is_drawn_at_the_ability_a_group_row_names() -> None:
                        title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     html = render(a_report(group_rows=(row,)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="icon i-45438" aria-hidden="true"></span>'
@@ -1547,7 +1535,7 @@ def test_an_icon_is_drawn_at_the_ability_a_route_row_names() -> None:
                        title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     html = render(a_report(route_rows=(row,)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="icon i-45438" aria-hidden="true"></span>'
@@ -1561,7 +1549,7 @@ def test_an_icon_is_drawn_at_the_ability_a_summary_ledger_row_names() -> None:
                        title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     html = render(a_report(ledger_decomposition=(row,)),
-                  icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+                  icons=CdnIcons({45438: "spell_a.jpg"}))
     expected = (
         'Emberkin never cast <span class="ability">'
         '<span class="icon i-45438" aria-hidden="true"></span>'
@@ -1583,7 +1571,7 @@ def test_a_findings_ability_icon_survives_finding_through_build_report_to_render
     report = build_report(a_loaded(), (finding,), None, None, SUBJECT, None, FETCHED,
                            NO_DEFENSIVES, NO_CONSUMABLES)
 
-    html = render(report, icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
+    html = render(report, icons=CdnIcons({45438: "spell_a.jpg"}))
 
     assert '<span class="icon i-45438" aria-hidden="true"></span>' in html
 
@@ -1609,7 +1597,7 @@ def test_an_icon_and_its_ability_name_render_as_one_element() -> None:
     # target, which is also what a tooltip later attaches to.
     card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar", killing_blow_id=7)
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({7: "data:image/jpeg;base64,AAA"}))
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({7: "spell_a.jpg"}))
     assert '<span class="ability">' in html
     assert '<span class="ability-name">Frigid Roar</span>' in html
 
@@ -1617,7 +1605,7 @@ def test_an_icon_and_its_ability_name_render_as_one_element() -> None:
 def test_an_unresolved_icon_still_renders_the_ability_as_one_element() -> None:
     card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar", killing_blow_id=7)
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({}))
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({}))
     assert '<span class="ability">' in html
     assert '<span class="ability-name">Frigid Roar</span>' in html
     assert 'class="icon i-7"' not in html

@@ -10,7 +10,7 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
-from tests.adapters.render.test_html_sections import FakeIcons, a_drawn_timeline, a_player_card
+from tests.adapters.render.test_html_sections import a_drawn_timeline, a_player_card
 from tests.domain.comparison.test_service import a_parse_sample
 from tests.domain.report.test_build_frame import (
     FETCHED,
@@ -22,6 +22,7 @@ from tests.domain.report.test_build_frame import (
 from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
@@ -61,6 +62,11 @@ from wowperf.domain.season import (
     DefensiveAbility,
     Defensives,
 )
+
+ICON_HOST = "https://wow.zamimg.com/images/wow/icons/medium/"
+"""Written out rather than imported from the adapter: this is the one host the
+report is allowed to load from, so a silent change of host is exactly the break
+these tests exist to catch."""
 
 GOLDEN = Path(__file__).parent / "golden" / "minimal.html"
 
@@ -328,7 +334,7 @@ def rich_html_with_icon() -> str:
     # a drawn timeline on the page without fetching a real run through it.
     return render(
         a_report(players=(a_player_card(timeline=a_drawn_timeline()),)),
-        icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}),
+        icons=CdnIcons({45438: "spell_holy_divineshield.jpg"}),
     )
 
 
@@ -350,10 +356,10 @@ def test_the_richer_fixture_actually_exercises_what_it_claims_to() -> None:
     assert '<details class="compared"' in html
 
     # Same guard, for the fixture above: proves it actually resolves an icon
-    # rather than passing the scoping test below by never exercising a
-    # `data:image/` href at all.
+    # rather than passing the scoping test below by never drawing an icon
+    # address at all.
     icon_hrefs = re.findall(r'href="([^"]*)"', rich_html_with_icon())
-    assert any(href.startswith("data:image/") for href in icon_hrefs)
+    assert any(href.startswith(ICON_HOST) for href in icon_hrefs)
 
 
 def test_a_comparison_table_renders_collapsed_and_adds_no_script() -> None:
@@ -567,11 +573,11 @@ def test_every_href_stays_scoped_even_when_a_press_icon_resolves() -> None:
     # the same rule to a page that actually resolves one.
     html = rich_html_with_icon()
     hrefs = re.findall(r'href="([^"]*)"', html)
-    assert any(href.startswith("data:image/") for href in hrefs)
+    assert any(href.startswith(ICON_HOST) for href in hrefs)
     for href in hrefs:
         assert href.startswith("#") or href.startswith(
             "https://www.warcraftlogs.com/reports/"
-        ) or href.startswith("data:image/"), href
+        ) or href.startswith(ICON_HOST), href
 
 
 FORBIDDEN_IN_SCRIPT = (
@@ -632,26 +638,28 @@ def test_the_script_resolves_a_marker_by_id_suffix_and_computes_no_position() ->
     assert "getComputedStyle" not in body
 
 
-def test_the_page_loads_no_image_over_the_network() -> None:
-    # The existing script test checks `src` attributes; an icon reaches the page
-    # through a CSS url() instead, which that check never sees. A hotlinked icon
-    # would leave the report blank the day Blizzard moved the file.
-    html = render(a_report())
-    assert "url(http" not in html
-    assert "url(//" not in html
+def test_every_image_address_the_page_draws_points_at_the_icon_host() -> None:
+    # The script test checks `src` attributes; an icon reaches the page through a
+    # CSS url() and an SVG <image href> instead, neither of which that check
+    # sees. Icons are the only thing the report may load, and one host is the
+    # only place it may load them from.
+    html = rich_html_with_icon()
+    drawn = re.findall(r"url\(([^)]*)\)", html)
+    assert drawn, "the fixture resolved no icon, so this rule was never exercised"
+    for address in drawn:
+        assert address.startswith(ICON_HOST), address
 
 
-def test_a_resolved_icon_reaches_the_page_as_a_data_uri_never_a_hotlink() -> None:
-    # The test above renders no icon at all, so a hotlinked `url(http...)` would
-    # leave it passing exactly as it does today -- it never exercises the path a
-    # real icon travels. This renders a page that actually resolves one and
-    # checks what kind of url() it wrote.
+def test_a_resolved_icon_reaches_the_page_as_an_address_never_as_embedded_bytes() -> None:
+    # The page carries no image bytes of its own. Embedding is what turned a
+    # report into a self-contained copy of Blizzard's art, and it is what this
+    # asserts has not come back -- a regression no other test here would see,
+    # because embedded bytes satisfy every scoping rule above perfectly well.
     card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar", killing_blow_id=7)
-    html = render(a_report(deaths=(card,)), icons=FakeIcons({7: "data:image/jpeg;base64,AAA"}))
-    assert "url(data:" in html
-    assert "url(http" not in html
-    assert "url(//" not in html
+    html = render(a_report(deaths=(card,)), icons=CdnIcons({7: "spell_holy_divineshield.jpg"}))
+    assert f"url({ICON_HOST}spell_holy_divineshield.jpg)" in html
+    assert "data:image" not in html
 
 
 PANEL_ORDER = [
@@ -702,11 +710,11 @@ def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
     assert 'class="js' not in html
 
 
-def test_every_href_is_a_fragment_a_report_link_or_an_embedded_icon() -> None:
-    # A press-mark icon is drawn as an SVG <image href="data:…">, not a CSS
-    # background: this is the one other shape an href is allowed to take,
-    # because a data URI is bytes already in the file, not a fetch -- the
-    # same reason icons are embedded rather than hotlinked everywhere else.
+def test_every_href_is_a_fragment_a_report_link_or_an_icon_address() -> None:
+    # A press-mark icon is drawn as an SVG <image href>, not a CSS background:
+    # this is the one other shape an href is allowed to take. `rich_html()`
+    # resolves no icon, so the icon arm of the rule is proved by the fixture
+    # that does -- see the scoping test above.
     html = rich_html()
     hrefs = re.findall(r'href="([^"]*)"', html)
     assert any(href.startswith("#") for href in hrefs)
@@ -714,7 +722,7 @@ def test_every_href_is_a_fragment_a_report_link_or_an_embedded_icon() -> None:
     for href in hrefs:
         assert href.startswith("#") or href.startswith(
             "https://www.warcraftlogs.com/reports/"
-        ) or href.startswith("data:image/"), href
+        ) or href.startswith(ICON_HOST), href
 
 
 def test_every_section_appears_in_the_order_the_design_fixes() -> None:
