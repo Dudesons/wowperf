@@ -1,5 +1,5 @@
 # ABOUTME: Raid findings rank by severity, then by what each analyser measured.
-# ABOUTME: The enumerating test is what stops a new analyser ranking on a default.
+# ABOUTME: A family absent from the table ranks last rather than first: visible, not silent.
 
 import pytest
 
@@ -42,8 +42,10 @@ def test_an_unknown_family_sorts_last_rather_than_first() -> None:
     ["deaths", "mechanics", "players", "defensives", "consumables", "interrupts", "compare"],
 )
 def test_every_family_the_raid_path_emits_has_a_severity(family: str) -> None:
-    # The whole guarantee of the table-not-a-field design rests on this test.
-    # If an analyser is added to `analyse_encounter`, its family belongs here.
+    # This catches a family dropped from the table. It cannot catch one added
+    # to `analyse_encounter`: the list above is hand-written, not derived from
+    # the analysers, so a new analyser's family would rank on UNKNOWN_SEVERITY
+    # with this green. If you add an analyser, add its family in both places.
     assert family in SEVERITY_BY_FAMILY
 
 

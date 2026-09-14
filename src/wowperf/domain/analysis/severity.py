@@ -1,5 +1,5 @@
 # ABOUTME: Raid findings rank by severity, then by what each analyser measured.
-# ABOUTME: The enumerating test is what stops a new analyser ranking on a default.
+# ABOUTME: A family absent from the table ranks last rather than first: visible, not silent.
 
 from collections.abc import Iterable
 
@@ -19,8 +19,14 @@ SEVERITY_BY_FAMILY = {
 A table rather than a field on `Finding`: a required field would touch every
 slice-1 analyser, which design 7 says not to disturb, and an optional one would
 let a new analyser rank on a default nobody chose. The weakness of a table is
-that same silent default, which
-`test_every_family_the_raid_path_emits_has_a_severity` closes by enumeration.
+that same silent default, and it is still open.
+`test_every_family_the_raid_path_emits_has_a_severity` enumerates a
+hand-written list of families and asserts each is a key here, so it catches a
+family *dropped* from this table. It cannot catch a family *added* to
+`analyse_encounter`: nothing derives that list from the analysers, so a new
+analyser emitting a new family ranks on `UNKNOWN_SEVERITY` with the whole suite
+green. Closing that direction needs a fixture that fires every analyser, which
+nothing here has.
 
 Deaths first because a death ends a player's contribution outright. Mechanics
 next because it is the one finding that says what to do differently. `compare`
