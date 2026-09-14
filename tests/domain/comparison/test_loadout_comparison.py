@@ -162,9 +162,28 @@ def test_a_slot_everyone_enchanted_and_we_did_not_is_a_finding() -> None:
     ours = a_loadout(an_item(slot=7, enchant_id=None))
     findings = compare_enchants(ours, theirs, OUR_NAME)
     assert len(findings) == 1
-    assert findings[0].id == "compare.gear.enchant"
+    # The slot is folded in: two missing slots must not mint the same id and
+    # collide into one page element id once `_for_player` appends the player.
+    assert findings[0].id == "compare.gear.enchant.7"
     assert findings[0].confidence is Confidence.MEASURED
     assert "slot 7" in findings[0].evidence[0]
+
+
+def test_two_missing_enchant_slots_produce_distinct_finding_ids() -> None:
+    # `_for_player` appends `.{slug}` uniformly with no dedup, so two rows
+    # sharing one id before that suffix would mint the identical element id
+    # twice -- invalid HTML, and `report.js` resolves `location.hash` through
+    # `getElementById`, so the collision is live, not cosmetic.
+    theirs = [
+        a_loadout(an_item(slot=7, enchant_id=8017), an_item(slot=8, enchant_id=8020))
+        for _ in range(5)
+    ]
+    ours = a_loadout(an_item(slot=7, enchant_id=None), an_item(slot=8, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME)
+    ids = [f.id for f in findings]
+    assert len(ids) == 2
+    assert len(set(ids)) == len(ids)
+    assert set(ids) == {"compare.gear.enchant.7", "compare.gear.enchant.8"}
 
 
 def test_a_slot_the_sample_left_bare_is_not_a_finding() -> None:

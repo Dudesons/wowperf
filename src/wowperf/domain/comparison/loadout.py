@@ -79,7 +79,12 @@ def compare_enchants(
     for slot in sorted(unanimous & ours_occupied - ours_enchanted):
         findings.append(
             Finding(
-                id="compare.gear.enchant",
+                # The slot is folded in before `_for_player` appends the
+                # per-player suffix: two bare slots missing an enchant would
+                # otherwise mint the identical id and collide into one page
+                # element id, the same collision `compare.uptime.self.<rank>`
+                # avoids by folding in a rank per aura.
+                id=f"compare.gear.enchant.{slot}",
                 title=(
                     f"{count_phrase(len(their_loadouts), len(their_loadouts))} top parses "
                     f"enchanted slot {slot}; {our_name} did not"

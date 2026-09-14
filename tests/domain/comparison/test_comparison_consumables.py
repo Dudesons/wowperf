@@ -95,7 +95,9 @@ def a_sample_with(*per_member: tuple[int, ...] | None) -> ParseSample:
 def test_a_category_the_whole_sample_had_and_we_did_not_is_a_finding() -> None:
     sample = a_sample_with((1235057,), (1235110,), (1235057,), (1235057,), (1235110,))
     findings = compare_consumable_buffs(auras_with(451920), OUR_NAME, sample, BUFFS)
-    assert [f.id for f in findings] == ["compare.consumables.buff"]
+    # The category is folded into the id: two categories missing at once must
+    # not mint the same id and collide into one page element id.
+    assert [f.id for f in findings] == ["compare.consumables.buff.flask"]
     assert "flask" in findings[0].title
     assert findings[0].confidence is Confidence.MEASURED
 
@@ -163,6 +165,26 @@ def test_two_missing_categories_are_each_reported_with_their_own_name() -> None:
     assert "category food" in by_category["food"].evidence[0]
     assert "food" not in by_category["flask"].title
     assert "flask" not in by_category["food"].title
+
+
+def test_two_missing_categories_produce_distinct_finding_ids() -> None:
+    # `_for_player` appends `.{slug}` uniformly with no dedup, so two rows
+    # sharing one id before that suffix would mint the identical element id
+    # twice -- invalid HTML, and `report.js` resolves `location.hash` through
+    # `getElementById`, so the collision is live, not cosmetic. Asserted on
+    # `finding.id` directly: the title/evidence check above cannot see this.
+    sample = a_sample_with(
+        (1235057, 451920),
+        (1235057, 451920),
+        (1235057, 451920),
+        (1235057, 451920),
+        (1235057, 451920),
+    )
+    findings = compare_consumable_buffs(auras_with(), OUR_NAME, sample, BUFFS)
+    ids = [f.id for f in findings]
+    assert len(ids) == 2
+    assert len(set(ids)) == len(ids)
+    assert set(ids) == {"compare.consumables.buff.flask", "compare.consumables.buff.food"}
 
 
 def test_the_finding_carries_a_quantifier_for_the_narrative() -> None:

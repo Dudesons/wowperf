@@ -8,6 +8,7 @@ from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseSamp
 from wowperf.domain.comparison.statistics import count_phrase
 from wowperf.domain.findings import Confidence, Finding, quantifier_for
 from wowperf.domain.season import ConsumableBuffs
+from wowperf.domain.slug import player_slug
 
 
 def _carries(auras: PlayerAuras, ability_ids: Sequence[int]) -> bool:
@@ -54,7 +55,15 @@ def compare_consumable_buffs(
             continue
         findings.append(
             Finding(
-                id="compare.consumables.buff",
+                # The category is folded in before `_for_player` appends the
+                # per-player suffix, the same way `compare.uptime.self.<rank>`
+                # keeps two auras from minting the same id: two categories a
+                # player missed must not collide into one page element id.
+                # `player_slug` is this codebase's one slugger for anything
+                # that becomes an HTML id, not only a player name -- see its
+                # own docstring -- and a category can hold a space
+                # ("augment rune") that a raw id must not carry.
+                id=f"compare.consumables.buff.{player_slug(category)}",
                 title=(
                     f"{count_phrase(matching, len(eligible))} top parses carried a "
                     f"{category}; {our_name} did not"
