@@ -6,6 +6,7 @@ from types import MappingProxyType
 
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.raid_reference import ReportRankings
 from wowperf.domain.events import (
     CastEvent,
     DamageTakenEvent,
@@ -71,6 +72,15 @@ class LoadedEncounter(Frozen):
     resurrections: tuple[Resurrection, ...] = ()
     ability_icons: tuple[tuple[int, str], ...] = ()
     auras: tuple[PlayerAuras, ...] = ()
+    # The report's own rankings row, read once and kept here rather than
+    # re-fetched: `standing` is `playerMetric: dps`, `boss_standing` is
+    # `playerMetric: bossdps`, and both are `None` for a wipe, which returns no
+    # row for either metric.
+    standing: ReportRankings | None = None
+    boss_standing: ReportRankings | None = None
+    # "report rankings" when either row above supplied the partition,
+    # "data/season.toml" when neither did.
+    partition_source: str = ""
 
     @property
     def ability_icon_map(self) -> Mapping[int, str]:

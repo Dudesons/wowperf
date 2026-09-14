@@ -43,11 +43,14 @@ from wowperf.adapters.wcl.queries import (
     HEALING_QUERY,
     INTERRUPTS_QUERY,
     PLAYER_DETAILS_QUERY,
+    REPORT_RANKINGS_QUERY,
     RESURRECTS_QUERY,
     talents_query,
 )
+from wowperf.adapters.wcl.report_rankings import build_report_rankings
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.comparison.raid_reference import ReportRankings
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death, HealingEvent
 from wowperf.domain.loadout import Loadout
@@ -262,6 +265,28 @@ class WclRunRepository:
         loaded, _ = self._load(report_code, fight_id, profile="full")
         return loaded
 
+    def _report_rankings(
+        self,
+        report_code: str,
+        fight_id: int,
+        metric: str,
+        hits: list[bool] | None = None,
+    ) -> ReportRankings | None:
+        """One `Report.rankings` row for one `playerMetric`, or `None` off a wipe.
+
+        Called once for `dps` and once for `bossdps`: Tasks 7 and 8 each read
+        one of the two rows, and fetching either again later would pay its
+        2.00 points twice. A wipe's row list is empty for both metrics alike,
+        with no field distinguishing it from a kill -- design section 14 item
+        7, measured 2026-09-14.
+        """
+        payload = self._query(
+            REPORT_RANKINGS_QUERY,
+            {"code": report_code, "fightId": fight_id, "metric": metric},
+            hits,
+        )
+        return build_report_rankings(payload, fight_id)
+
     def load_encounter(self, report_code: str, fight_id: int | None) -> LoadedEncounter:
         """Every stream the raid analysers and the death cards read, for one boss fight.
 
@@ -278,14 +303,19 @@ class WclRunRepository:
         report = self._report(report_code, hits)
         fight = select_raid_fight(report["fights"], fight_id)
         talents = self._talents(report_code, fight, hits)
+        standing = self._report_rankings(report_code, fight["id"], "dps", hits)
+        boss_standing = self._report_rankings(report_code, fight["id"], "bossdps", hits)
         # ReportFight carries no partition field at all. Design 2.2 prescribes
-        # reading it from the report's own `Report.rankings` row, and no plan
-        # has built that fetch yet -- so it comes from `data/season.toml`,
-        # where every constant with no API source lives with the date it was
-        # verified, rather than from a literal buried here.
-        encounter = build_encounter(
-            report, fight, partition=load_raid_partition(), talents=talents
-        )
+        # reading it from the report's own `Report.rankings` row, and this is
+        # that read -- preferring the `dps` row, then the `bossdps` row, since
+        # either carries the same `partition`. A wipe returns no row for
+        # either metric -- measured, design section 14 item 7 -- so
+        # `data/season.toml` stays as the fallback for exactly that case
+        # rather than as the source for every case.
+        partition_row = standing or boss_standing
+        partition = partition_row.partition if partition_row else load_raid_partition()
+        partition_source = "report rankings" if partition_row else "data/season.toml"
+        encounter = build_encounter(report, fight, partition=partition, talents=talents)
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
         try:
@@ -362,6 +392,9 @@ class WclRunRepository:
             healing=tuple(healing),
             resurrections=resurrections,
             ability_icons=ability_icons,
+            standing=standing,
+            boss_standing=boss_standing,
+            partition_source=partition_source,
         )
 
     def load_speed_reference(
