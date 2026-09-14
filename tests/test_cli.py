@@ -749,7 +749,15 @@ ANALYZE_FIGHTS_PAYLOAD: dict[str, Any] = {
 SPEED_REFERENCE_CODE = "71cv4MRdNCp8ZFjG"
 SPEED_REFERENCE_FIGHT = 28
 PARSE_REFERENCE_CODE = "37FzMg9pVPH6fnJT"
-PARSE_REFERENCE_FIGHT = 16
+PARSE_REFERENCE_FIGHT = 41
+"""Deliberately unlike every other integer this fixture could confuse it with.
+
+Not the analysed run's own fight (36), not the speed reference's (28), and
+above all not the keystone level (16), which it used to equal. `cli._samples`
+copies six separate values off a leaderboard row onto a `ParseMember`, and a
+fight id that coincided with any of them would let the wrong one be copied and
+still satisfy every assertion made about it.
+"""
 # The character name the default `_parse_row()` puts on the top-parse leaderboard row.
 # The parse reference's own roster fixture must carry an actor under this same name —
 # see `build_analyze_transport`'s `fights_by_code` — or `find_player` can never resolve
@@ -2004,10 +2012,10 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
 
     parse_reference = references["parse"]
     assert parse_reference["report_code"] == "37FzMg9pVPH6fnJT"
-    assert parse_reference["fight_id"] == 16
+    assert parse_reference["fight_id"] == 41
     assert parse_reference["keystone_level"] == 16
     assert (
-        parse_reference["url"] == "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=16"
+        parse_reference["url"] == "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41"
     )
     assert parse_reference["loaded"] is True
     assert parse_reference["reason"] == ""
@@ -2088,6 +2096,41 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
     assert result.exit_code == 0, result.output
     assert calls.count("AuraTable") == 2
     assert "compare.uptime.self.0.emberkin-0" in ids
+
+
+def test_the_talent_row_links_the_reference_fight_the_member_was_built_from(
+    tmp_path: Path,
+) -> None:
+    """The sixth value `_samples` copies onto a member, and the only one nothing else pins.
+
+    A `ParseMember` is built from six values read off one leaderboard row, and
+    five are already held to the row by other tests here: the report code twice
+    over in the provenance records, and the character name, roster, route and
+    boss seconds by the uptime test above, which cannot report a gap unless all
+    four are the reference's own.
+
+    `fight_id` had nothing. The aura fake keys on report code alone, so a wrong
+    fight id still returns the reference's auras; and the provenance record's
+    url is built straight from the row rather than from the member, so it
+    cannot notice either. The one thing built from `theirs.fight_id` is the
+    link `compare_talents` hands a reader who is being asked to copy a
+    stranger's build -- so that link is what this pins, and a mistyped field
+    sends the reader to the wrong fight of the right report.
+
+    The url is spelled out rather than composed from `PARSE_REFERENCE_FIGHT`:
+    an expected value read off the same constant the code read would agree with
+    itself however the wiring was crossed.
+    """
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0, result.output
+    findings = {f["id"]: f for f in written_findings(tmp_path)["findings"]}
+    talents = findings["compare.talents.emberkin-0"]
+
+    assert (
+        "top-ranked parse: https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41"
+        in talents["evidence"]
+    )
 
 
 def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_extra_auras(
@@ -2258,9 +2301,10 @@ def _candidate_parse_row(
 
     `character_name` must be on the roster the paired `_candidate_fights_payload`
     gives that report: `_fetch_parse_auras` resolves the parser with
-    `find_player(member.run.players, member.row.character_name)`, so a row naming
-    somebody the reference's own roster does not hold is a reference no
-    comparison can ever use. The default pairs with the default roster.
+    `find_player(member.players, member.character_name)`, both carried onto the
+    member from this row's report, so a row naming somebody the reference's own
+    roster does not hold is a reference no comparison can ever use. The default
+    pairs with the default roster.
     """
     return {
         "name": character_name,

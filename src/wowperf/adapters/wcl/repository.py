@@ -396,10 +396,11 @@ class WclRunRepository:
 
         Talents are fetched even though neither `LoadedRun` nor `ParseMember`
         names a field for them: they ride inside `run.players[].talent_import_string`,
-        which `compare_talents` reads off the top parse member's run to name the
-        build a reader should copy. Skipping the query would not remove a field
-        nothing reads — it would make the one thing that does read it silently
-        report every build as absent.
+        and that roster is carried onto the member as `players`, where
+        `compare_talents` finds the top parse's own player and names the build a
+        reader should copy. Skipping the query would not remove a field nothing
+        reads — it would make the one thing that does read it silently report
+        every build as absent.
 
         Deaths, enemy casts and interrupts are not fetched. The fields left
         behind are empty tuples, which read the same as "this run had none".
