@@ -51,7 +51,11 @@ def analyse(
 
     findings: list[Finding] = []
     findings += decompose_time(loaded.run, loaded.deaths, season)
-    findings += analyse_deaths(loaded.run, loaded.deaths)
+    findings += analyse_deaths(
+        loaded.deaths,
+        lambda death: pull_offset(loaded.run.pulls, death),
+        f"across {len(loaded.run.pulls)} pulls",
+    )
     findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
     findings += analyse_trash(loaded.run, loaded.enemy_deaths)
     findings += analyse_players(
@@ -63,7 +67,11 @@ def analyse(
         loaded.deaths,
     )
     findings += analyse_defensives_at_death(
-        loaded.run.players, loaded.run.pulls, loaded.casts, defensives, loaded.deaths
+        loaded.run.players,
+        loaded.casts,
+        defensives,
+        loaded.deaths,
+        locate=lambda death: pull_offset(loaded.run.pulls, death),
     )
     findings += analyse_consumables_at_death(
         loaded.run.players,

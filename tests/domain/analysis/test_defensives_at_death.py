@@ -1,6 +1,7 @@
 # ABOUTME: The rule deciding which defensives a player had off cooldown when they died.
 # ABOUTME: Every uncertainty in it is resolved toward silence, and these pin that direction.
 
+from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.analysis.defensives import (
     analyse_defensives_at_death,
     defensives_up_at,
@@ -124,10 +125,15 @@ def a_death(actor_id: int = 11, at_ms: int = DEATH_MS, name: str = "Emberkin") -
     )
 
 
+def locate_in_a_run(death: Death) -> str:
+    """The real `locate` a caller would build for `a_run()`'s single pull."""
+    return pull_offset(a_run().pulls, death)
+
+
 def test_a_death_with_a_defensive_available_is_a_finding() -> None:
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, run.pulls, owns_both(), DEFENSIVES, (a_death(),)
+        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run
     )
     assert len(findings) == 1
     assert findings[0].id == "defensives.unused.emberkin"
@@ -140,7 +146,7 @@ def test_a_death_with_nothing_available_says_nothing() -> None:
     casts = owns_both() + (a_cast(ICE_BLOCK, 290_000), a_cast(BARRIER, 290_000))
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, run.pulls, casts, DEFENSIVES, (a_death(),)
+        run.players, casts, DEFENSIVES, (a_death(),), locate=locate_in_a_run
     ) == []
 
 
@@ -148,20 +154,24 @@ def test_a_player_who_cast_none_of_their_defensives_says_nothing_here() -> None:
     # The never-cast case belongs to the other analyser, which discloses that a
     # missing talent explains it just as well as a missing button press.
     run = a_run()
-    assert analyse_defensives_at_death(run.players, run.pulls, (), DEFENSIVES, (a_death(),)) == []
+    assert analyse_defensives_at_death(
+        run.players, (), DEFENSIVES, (a_death(),), locate=locate_in_a_run
+    ) == []
 
 
 def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
     empty = Defensives(entries=())
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, run.pulls, owns_both(), empty, (a_death(),)
+        run.players, owns_both(), empty, (a_death(),), locate=locate_in_a_run
     ) == []
 
 
 def test_a_player_who_did_not_die_says_nothing() -> None:
     run = a_run()
-    assert analyse_defensives_at_death(run.players, run.pulls, owns_both(), DEFENSIVES, ()) == []
+    assert analyse_defensives_at_death(
+        run.players, owns_both(), DEFENSIVES, (), locate=locate_in_a_run
+    ) == []
 
 
 def test_the_title_counts_only_the_deaths_that_qualified() -> None:
@@ -170,7 +180,9 @@ def test_the_title_counts_only_the_deaths_that_qualified() -> None:
     casts = owns_both() + (a_cast(BARRIER, 280_000), a_cast(ICE_BLOCK, 305_000))
     deaths = (a_death(at_ms=300_000), a_death(at_ms=310_000))
     run = a_run()
-    findings = analyse_defensives_at_death(run.players, run.pulls, casts, DEFENSIVES, deaths)
+    findings = analyse_defensives_at_death(
+        run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
+    )
     assert "once" in findings[0].title
 
 
@@ -181,7 +193,7 @@ def test_the_pull_index_comes_from_the_first_qualifying_death() -> None:
     late = a_death(at_ms=380_000).model_copy(update={"pull_index": 9})
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, run.pulls, casts, DEFENSIVES, (early, late)
+        run.players, casts, DEFENSIVES, (early, late), locate=locate_in_a_run
     )
     assert findings[0].pull_index == 9
 
@@ -189,7 +201,7 @@ def test_the_pull_index_comes_from_the_first_qualifying_death() -> None:
 def test_the_evidence_names_the_killing_blow_and_what_was_up() -> None:
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, run.pulls, owns_both(), DEFENSIVES, (a_death(),)
+        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run
     )
     # The class and spec lead, as they do in this module's other findings, so a
     # reader can discount the claim on sight. The death lines follow.
@@ -213,7 +225,7 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
     ids = {
         finding.id
         for finding in analyse_defensives_at_death(
-            run.players, run.pulls, casts, DEFENSIVES, deaths
+            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
         )
     }
     assert ids == {"defensives.unused.emberkin.11", "defensives.unused.emberkin.12"}
@@ -240,7 +252,7 @@ def test_players_whose_names_slug_alike_get_ids_that_tell_them_apart() -> None:
     ids = {
         finding.id
         for finding in analyse_defensives_at_death(
-            run.players, run.pulls, casts, DEFENSIVES, deaths
+            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
         )
     }
 
