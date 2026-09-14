@@ -1,11 +1,16 @@
 # ABOUTME: Behaviour tests for the gear and stat comparison families.
 # ABOUTME: item_sourced is asymmetric on purpose: a match is evidence, a miss is not.
 
-from wowperf.domain.comparison.loadout import compare_enchants, item_sourced, loadouts_of
+from wowperf.domain.comparison.loadout import (
+    compare_enchants,
+    compare_tier,
+    item_sourced,
+    loadouts_of,
+)
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.findings import Confidence
-from wowperf.domain.loadout import EquippedItem, Loadout
+from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout
 from wowperf.domain.model import Player, Run
 
 OUR_NAME = "Stonewake (actor 7)"
@@ -205,3 +210,63 @@ def test_nothing_is_compared_without_our_loadout() -> None:
 def test_nothing_is_compared_below_the_sample_floor() -> None:
     theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(2)]
     assert compare_enchants(a_loadout(an_item(slot=7, enchant_id=None)), theirs, OUR_NAME) == []
+
+
+# --- compare_tier -------------------------------------------------------------
+
+
+def a_tier_loadout(pieces: int) -> Loadout:
+    slots = sorted(TIER_SLOTS)[:pieces]
+    return Loadout(items=tuple(an_item(slot=slot, set_id=2062) for slot in slots))
+
+
+def test_fewer_tier_pieces_than_the_sample_median_is_a_finding() -> None:
+    findings = compare_tier(a_tier_loadout(2), [a_tier_loadout(4) for _ in range(5)], OUR_NAME)
+    assert len(findings) == 1
+    assert findings[0].id == "compare.gear.tier"
+    assert findings[0].confidence is Confidence.DERIVED
+
+
+def test_the_tier_finding_is_derived_because_the_slot_rule_is_inferred() -> None:
+    # The API states no tier flag. The rule is read off seven observed sets,
+    # so the badge must not claim the log said it.
+    findings = compare_tier(a_tier_loadout(2), [a_tier_loadout(4) for _ in range(5)], OUR_NAME)
+    assert findings[0].confidence is Confidence.DERIVED
+
+
+def test_matching_the_sample_median_is_not_a_finding() -> None:
+    assert compare_tier(a_tier_loadout(4), [a_tier_loadout(4) for _ in range(5)], OUR_NAME) == []
+
+
+def test_more_tier_pieces_than_the_sample_is_not_a_finding() -> None:
+    assert compare_tier(a_tier_loadout(5), [a_tier_loadout(4) for _ in range(5)], OUR_NAME) == []
+
+
+def test_the_finding_states_the_median_and_the_range() -> None:
+    theirs = [a_tier_loadout(2), a_tier_loadout(4), a_tier_loadout(4), a_tier_loadout(5),
+              a_tier_loadout(5)]
+    findings = compare_tier(a_tier_loadout(0), theirs, OUR_NAME)
+    joined = " ".join(findings[0].evidence)
+    assert "4" in joined
+    assert "2" in joined and "5" in joined
+
+
+def test_nothing_is_compared_below_the_sample_floor_for_tier() -> None:
+    assert compare_tier(a_tier_loadout(0), [a_tier_loadout(4) for _ in range(2)], OUR_NAME) == []
+
+
+def test_nothing_is_compared_without_our_loadout_for_tier() -> None:
+    assert compare_tier(None, [a_tier_loadout(4) for _ in range(5)], OUR_NAME) == []
+
+
+def test_the_median_is_not_a_mean() -> None:
+    # [0, 0, 4, 4, 4] has median 4 but mean 2.4. Wearing 3 pieces sits below the
+    # median and above the mean: a mean-based comparison would let this pass,
+    # and only a median-based one reports it. This is the case
+    # test_the_finding_states_the_median_and_the_range cannot rule out, because
+    # its sample's mean and median both land on 4.
+    theirs = [a_tier_loadout(0), a_tier_loadout(0), a_tier_loadout(4), a_tier_loadout(4),
+              a_tier_loadout(4)]
+    findings = compare_tier(a_tier_loadout(3), theirs, OUR_NAME)
+    assert len(findings) == 1
+    assert "4" in " ".join(findings[0].evidence)

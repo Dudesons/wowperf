@@ -4,9 +4,9 @@
 from collections.abc import Sequence
 
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, find_player
-from wowperf.domain.comparison.statistics import count_phrase
-from wowperf.domain.findings import Confidence, Finding, quantifier_for
-from wowperf.domain.loadout import EquippedItem, Loadout
+from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.findings import Confidence, Finding, quantifier_for, quantity
+from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout
 
 
 def loadouts_of(members: Sequence[ParseMember]) -> tuple[Loadout, ...]:
@@ -99,3 +99,50 @@ def compare_enchants(
             )
         )
     return findings
+
+
+def compare_tier(
+    our_loadout: Loadout | None, their_loadouts: Sequence[Loadout], our_name: str
+) -> list[Finding]:
+    """How many tier pieces this player wore, against the sample's median.
+
+    `derived`, not `measured`: the API states no tier flag, and the rule that
+    picks the tier set out of the gear — the set id occupying slots
+    {0, 2, 4, 6, 9} — is inferred from seven sets observed on 2026-09-14, not
+    something the log said.
+
+    Reported only when below the sample. A player carrying more tier than the
+    references has nothing to act on, and the report is a list of things to do
+    differently rather than a scoreboard.
+    """
+    if our_loadout is None or len(their_loadouts) < MIN_SAMPLE_FOR_AGGREGATE:
+        return []
+
+    ours = our_loadout.tier_pieces()
+    theirs = [float(loadout.tier_pieces()) for loadout in their_loadouts]
+    their_median = median(theirs)
+    if ours >= their_median:
+        return []
+
+    low, high = observed_range(theirs)
+    return [
+        Finding(
+            id="compare.gear.tier",
+            title=(
+                f"{our_name} wore {quantity(ours, 'tier piece', 'tier pieces')}; "
+                f"the sample's median is {their_median:g}"
+            ),
+            detail=(
+                "A tier set bonus is throughput this player did not have and the references "
+                "did. Read the cast and damage comparisons against this before reading them "
+                "as things that went unpressed."
+            ),
+            confidence=Confidence.DERIVED,
+            seconds_lost=None,
+            evidence=(
+                f"{ours} tier pieces in slots {sorted(TIER_SLOTS)}",
+                f"sample median {their_median:g}, range {low:g} to {high:g} "
+                f"across {len(their_loadouts)} references",
+            ),
+        )
+    ]
