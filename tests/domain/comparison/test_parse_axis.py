@@ -263,6 +263,12 @@ def one_of(findings: list[Finding], prefix: str) -> Finding:
     return matching[0]
 
 
+def evidence_of(findings: list[Finding], finding_id: str) -> list[str]:
+    """One finding's evidence, as a list, so an assertion can state the whole tuple."""
+    [finding] = [one for one in findings if one.id == finding_id]
+    return list(finding.evidence)
+
+
 def test_a_wipe_withholds_the_whole_external_frame_in_one_sentence() -> None:
     """Design 14 item 4: `fightRankings` is a kill leaderboard under every metric
     and `Report.rankings` returns nothing for a wipe, so there is no external
@@ -436,10 +442,126 @@ def test_no_raid_title_says_a_cast_or_a_share_was_counted_on_bosses() -> None:
         "Arcane Surge was up a median 49% of fight time across 5 top parses; 10% for Emberkin"
     )
 
+    assert_no_dungeon_vocabulary(findings)
+
+
+DUNGEON_ONLY = ("on bosses", "boss time", "boss pull", "keystone", "this run", "reference run")
+"""Phrases a raid sentence may not carry, in any of the four places one is written.
+
+A backstop and never the assertion: each of these entered the codebase as a
+phrase that was true when only a dungeon reached it, and the list can only ever
+name the ones somebody has already thought of. What catches the next one is the
+whole-string assertions above and below, which fail on the sentence itself.
+"""
+
+
+def assert_no_dungeon_vocabulary(findings: list[Finding]) -> None:
+    """Sweep every string a reader meets, not the subset the last bug happened to use.
+
+    `detail` and a fact's `label` are swept as well as titles, evidence and
+    fact values. Leaving either out is the shape of the defect this whole group
+    exists for: the details were right and the titles were wrong, the sweep was
+    written over titles, and a wrong phrase in the half nobody swept would pass
+    exactly as the first one did.
+    """
     for finding in findings:
-        for line in (finding.title, *finding.evidence, *(f.value for f in finding.facts)):
-            assert "on bosses" not in line, f"{finding.id}: {line}"
-            assert "boss time" not in line, f"{finding.id}: {line}"
+        lines = (
+            finding.title,
+            finding.detail,
+            *finding.evidence,
+            *(fact.label for fact in finding.facts),
+            *(fact.value for fact in finding.facts),
+        )
+        for line in lines:
+            for phrase in DUNGEON_ONLY:
+                assert phrase not in line, f"{finding.id}: {phrase!r} in {line!r}"
+
+
+def test_every_raid_fact_a_reader_meets_is_worded_for_a_fight() -> None:
+    """The half the first sweep did not cover, pinned whole.
+
+    Facts are what a panel lays out beside a title, and they carried the second
+    half of the live defect: a finding whose detail said "the share of fight
+    time" put "46% of boss time" in the fact below it. Every raid fact of the
+    sample shape is stated here as the label-and-value pair a reader sees.
+    """
+    findings = compare_parse_axis(**KILL_ARGS)  # type: ignore[arg-type]
+    facts = {
+        one.id: [(fact.label, fact.value) for fact in one.facts] for one in findings
+    }
+
+    assert facts["compare.damage.total"] == [
+        ("All damage", "1450000.0 against a median of 1600000.0"),
+        ("Boss damage only", "1180000.0 against a median of 1310000.0"),
+    ]
+    assert facts["compare.damage.targets"] == [
+        ("This raid", "88.0% into The Twin Fangs"),
+        ("Sample", "94.0%"),
+    ]
+    assert facts["compare.spells.rate.0"] == [
+        ("Ours", "2.0 casts a minute"),
+        ("Reference median", "3.5 casts a minute"),
+        ("Observed range", "3.4 to 3.6"),
+        ("Sample", "5 top parses"),
+    ]
+    assert facts["compare.spells.above.0"] == [
+        ("Ours", "8.0 casts a minute"),
+        ("Reference median", "1.0 casts a minute"),
+        ("Observed range", "0.9 to 1.1"),
+        ("Sample", "5 top parses"),
+    ]
+    assert facts["compare.uptime.self.0"] == [
+        ("Ours", "10% of fight time"),
+        ("Reference median", "49% of fight time"),
+        ("Observed range", "48% to 50%"),
+        ("Sample", "5 top parses"),
+    ]
+    assert facts["compare.rank"] == [
+        ("All damage", "62nd percentile of 4100 parses"),
+        ("Boss damage only", "48th percentile of 3900 parses"),
+    ]
+
+
+def test_every_raid_evidence_line_a_reader_meets_is_worded_for_a_fight() -> None:
+    """Every evidence tuple of the sample shape, whole.
+
+    Evidence is where the counting rule shows: "at least 3 times on this
+    encounter" is the sentence that says what `whole_fight_casts` counted, and
+    it was one of the lines the live run caught reading "on bosses".
+    """
+    findings = compare_parse_axis(**KILL_ARGS)  # type: ignore[arg-type]
+    evidence = {one.id: list(one.evidence) for one in findings}
+
+    assert evidence["compare.spells.missing.0"] == [
+        f"ability {METEOR}",
+        "5 of 5 top parses cast it at least 3 times on this encounter",
+        "zero casts in the whole of this fight",
+    ]
+    assert evidence["compare.spells.rate.0"] == [
+        f"ability {ARCANE_BLAST}",
+        "ours over 300s of the fight",
+        "range 3.4 to 3.6 casts a minute across 5 top parses",
+    ]
+    assert evidence["compare.spells.above.0"] == [
+        f"ability {ARCANE_MISSILES}",
+        "ours over 300s of the fight",
+        "range 0.9 to 1.1 casts a minute across 5 top parses",
+    ]
+    assert evidence["compare.spells.level"] == [
+        "Arcane Barrage",
+        "compared against at least 3 top parses each",
+    ]
+    assert evidence["compare.uptime.self.0"] == [
+        f"ability {ARCANE_SURGE}",
+        "ours over 300s of the fight",
+        "range 48% to 50% across 5 top parses",
+        "0 of 5 references had no aura data",
+    ]
+    assert evidence["compare.uptime.unjudged"] == [
+        "Siphon Storm",
+        "carried by at least 3 top parses each",
+        "absent from our own fight",
+    ]
 
 
 def test_no_raid_title_says_on_bosses_in_the_pairwise_shape_either() -> None:
@@ -458,23 +580,75 @@ def test_no_raid_title_says_on_bosses_in_the_pairwise_shape_either() -> None:
         "Arcane Surge was up for 50% of Stonewake's fight time, 10% of Emberkin's"
     )
 
-    for finding in findings:
-        for line in (finding.title, *finding.evidence, *(f.value for f in finding.facts)):
-            assert "on bosses" not in line, f"{finding.id}: {line}"
-            assert "boss time" not in line, f"{finding.id}: {line}"
+    assert_no_dungeon_vocabulary(findings)
+
+
+def test_the_pairwise_raid_shape_calls_one_reference_a_reference_and_not_a_run() -> None:
+    """A raid kill is not a run, and the fact that counts the sample said it was.
+
+    `Wording` draws exactly this distinction for every sentence it reaches --
+    `DUNGEON.run` is "this run" and `RAID.run` is "this fight" -- but this slot
+    wanted a bare noun, which no field of it is, so the noun is dropped instead
+    of a field being added for one word. Both members of the pair are pinned
+    here, because they are written in two modules and only one of them would
+    move if somebody put the noun back.
+    """
+    findings = compare_parse_axis(**BELOW_FLOOR_ARGS)  # type: ignore[arg-type]
+    facts = {
+        one.id: [(fact.label, fact.value) for fact in one.facts] for one in findings
+    }
+
+    assert facts["compare.spells.rate.0"] == [
+        ("Ours", "2.0 casts a minute"),
+        ("Reference", "3.5 casts a minute"),
+        ("Sample", "1 reference"),
+    ]
+    assert facts["compare.uptime.self.0"] == [
+        ("Ours", "10% of fight time"),
+        ("Reference", "50% of fight time"),
+        ("Sample", "1 reference"),
+    ]
+    assert evidence_of(findings, "compare.spells.missing.0") == [
+        f"ability {METEOR}",
+        "4 casts across 240s of their fight",
+        "zero casts in the whole of this fight",
+        "a single reference, not an aggregate: 1 of the sample was comparable, "
+        "below the floor of 3",
+    ]
+    assert evidence_of(findings, "compare.uptime.self.0") == [
+        f"ability {ARCANE_SURGE}",
+        "ours over 300s of the fight",
+        "theirs over 240s of the fight",
+        "a single reference, not an aggregate: 1 of the sample was comparable, "
+        "below the floor of 3",
+    ]
 
 
 def test_a_raid_availability_line_counts_fight_time_and_not_boss_time() -> None:
-    """Both unavailable rows state the seconds each side had, and name them."""
+    """Both unavailable rows state the seconds each side had, and name them.
+
+    Asserted whole: these two evidence tuples are the only place the seconds of
+    a failed comparison are written, and a substring check on "fight time"
+    would pass for "our boss time 300s, of our fight time".
+    """
     findings = compare_parse_axis(**NO_SECONDS_ARGS)  # type: ignore[arg-type]
 
-    spells = one_of(findings, "compare.spells.unavailable")
-    assert "our fight time 300s" in spells.evidence
-    assert "their fight time 0s" in spells.evidence
-
-    uptime = one_of(findings, "compare.uptime.unavailable")
-    assert "our fight time 300s" in uptime.evidence
-    assert "their fight time 0s" in uptime.evidence
+    assert evidence_of(findings, "compare.spells.unavailable") == [
+        "our fight time 300s",
+        "their fight time 0s",
+        "reference player 'Stonewake' found",
+        "a single reference, not an aggregate: 1 of the sample was comparable, "
+        "below the floor of 3",
+    ]
+    assert evidence_of(findings, "compare.uptime.unavailable") == [
+        "our fight time 300s",
+        "their fight time 0s",
+        "our aura data present",
+        "their aura data present",
+        "a single reference, not an aggregate: 1 of the sample was comparable, "
+        "below the floor of 3",
+    ]
+    assert_no_dungeon_vocabulary(findings)
 
 
 def test_the_raid_uptime_sentence_measures_fight_time_and_names_no_keystone_level() -> None:

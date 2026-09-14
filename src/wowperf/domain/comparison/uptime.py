@@ -196,7 +196,9 @@ def _gap_findings(
                 # keeps up, and this family cannot tell a proc from a button:
                 # the aura table reports that a buff was present, not who or
                 # what put it there. So the aura is the subject and the two
-                # players are only whose boss time it is measured over.
+                # players are only whose stretch it is measured over -- boss
+                # pulls in a dungeon, the fight itself in a raid, which is what
+                # `words.stretch_time` spells out below.
                 title=(
                     f"{name} was up for {their_fraction:.0%} of {their_name}'s "
                     f"{words.stretch_time}, {our_fraction:.0%} of {our_name}'s"
@@ -222,9 +224,11 @@ def _gap_findings(
                     FindingFact(label="Reference",
                                 value=f"{their_fraction:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
-                    # No median and no range in this shape: one reference run,
-                    # and a label claiming otherwise would claim a sample.
-                    FindingFact(label="Sample", value="1 reference run"),
+                    # No median and no range in this shape: one reference, and
+                    # a label claiming otherwise would claim a sample. The noun
+                    # is left off for the reason its twin in `spells.py` gives
+                    # -- a raid kill is not a run, and this pair serves both.
+                    FindingFact(label="Sample", value="1 reference"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,

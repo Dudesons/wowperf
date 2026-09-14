@@ -274,8 +274,15 @@ def test_a_missing_reference_says_so_rather_than_reporting_nothing() -> None:
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
-    assert "our aura data present" in findings[0].evidence
-    assert "their aura data absent" in findings[0].evidence
+    # Whole, because the two seconds lines name what those seconds are seconds
+    # of, and that noun comes from `Wording` now that a raid reads this row too.
+    # A substring check on the aura halves never looked at it.
+    assert list(findings[0].evidence) == [
+        "our boss time 100s",
+        "their boss time 100s",
+        "our aura data present",
+        "their aura data absent",
+    ]
 
 
 def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:

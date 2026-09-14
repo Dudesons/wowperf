@@ -219,7 +219,12 @@ def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:
     missing = [f for f in findings if f.id.startswith("compare.spells.missing.")]
 
     assert len(missing) == 1
-    assert "Arcane Orb" in missing[0].title
+    # Whole, not "Arcane Orb in the title": this sentence is built from
+    # `Wording` now, and a dungeon value that stopped matching what it replaced
+    # would still leave the ability's name in it.
+    assert missing[0].title == (
+        f"Bríala cast Arcane Orb 2 times on bosses; {OUR_NAME} never cast it"
+    )
     assert missing[0].confidence is Confidence.MEASURED
     assert missing[0].seconds_lost is None
 
@@ -320,6 +325,13 @@ def test_the_dungeon_unavailable_sentence_names_boss_pulls() -> None:
         "present in their own report. One of those is missing, so no ability numbers are "
         "reported rather than numbers from an unlike sample."
     )
+    # The evidence names the seconds each side had, and what those seconds are
+    # seconds of. That noun comes from `Wording` too, so it is stated whole.
+    assert list(unavailable.evidence) == [
+        "our boss time 60s",
+        "their boss time 0s",
+        "reference player 'Bríala' found",
+    ]
 
 
 def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
@@ -607,6 +619,23 @@ def test_the_rate_finding_uses_the_median_of_per_run_rates() -> None:
     assert any("range" in line for line in rate.evidence)
 
 
+def test_the_dungeon_rate_title_still_says_on_bosses_whole() -> None:
+    """The Mythic+ half of a sentence both game modes now share.
+
+    This title is built from `Wording`, and a `DUNGEON` value that stopped
+    matching the string it replaced would move it. Every substring assertion in
+    this module passes for a moved sentence that still holds the number, which
+    is how the raid half shipped wrong, so the dungeon half is stated whole.
+    """
+    findings = sample_spells(OURS_LOADED, OURS, OUR_NAME, SAMPLE_OF_FIVE)
+
+    rate = next(f for f in findings if f.id == "compare.spells.rate.0")
+    assert rate.title == (
+        f"4 top parses cast Meteor a median 7.0 times a minute on bosses; "
+        f"{OUR_NAME} casts it 2.0"
+    )
+
+
 LEVEL_SAMPLE = ParseSample(
     members=(
         a_parse_member("Bríala", 11, {METEOR: 10}),
@@ -641,6 +670,19 @@ def test_a_single_level_ability_is_counted_in_the_singular() -> None:
     level = next(f for f in findings if f.id == "compare.spells.level")
     assert level.title.startswith("1 ability ")
     assert "was compared" in level.title
+
+
+def test_the_dungeon_level_title_still_says_on_bosses_whole() -> None:
+    """The one title of this module no assertion stated whole.
+
+    Its two halves were checked from either end -- it starts "1 ability " and
+    contains "was compared" -- and the phrase between them, which `Wording` now
+    supplies, was checked by nothing at all.
+    """
+    findings = sample_spells(LEVEL_LOADED, OURS, OUR_NAME, LEVEL_SAMPLE)
+
+    level = next(f for f in findings if f.id == "compare.spells.level")
+    assert level.title == f"1 ability {OUR_NAME} cast on bosses was compared and showed no gap"
 
 
 def test_no_level_row_is_written_when_every_ability_showed_a_gap() -> None:
@@ -725,8 +767,14 @@ def test_a_pairwise_rate_finding_names_one_reference_rather_than_a_median() -> N
     )
     findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
     rate = next(f for f in findings if f.id.startswith("compare.spells.rate."))
-    assert [fact.label for fact in rate.facts] == ["Ours", "Reference", "Sample"]
-    assert {fact.value for fact in rate.facts} >= {"1 reference run"}
+    # "1 reference" and not "1 reference run": this pair serves a raid fight
+    # too, and a raid kill is not a run. The whole pair is stated rather than a
+    # containment, so the noun cannot come back unnoticed on either axis.
+    assert [(fact.label, fact.value) for fact in rate.facts] == [
+        ("Ours", "1.0 casts a minute"),
+        ("Reference", "8.0 casts a minute"),
+        ("Sample", "1 reference"),
+    ]
 
 
 def test_a_wholly_empty_sample_produces_no_findings() -> None:

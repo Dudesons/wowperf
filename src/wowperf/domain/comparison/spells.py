@@ -370,7 +370,16 @@ def compare_spells(
                     # Named rather than left implicit: this shape has no median
                     # and no range, and a panel that printed either label here
                     # would claim a sample the comparison never drew.
-                    FindingFact(label="Sample", value="1 reference run"),
+                    #
+                    # "1 reference" and not "1 reference run": this pair serves
+                    # a raid fight as well as a dungeon, and a raid kill is not
+                    # a run -- `Wording` keeps that distinction everywhere else
+                    # (`DUNGEON.run` is "this run", `RAID.run` is "this fight")
+                    # and no field of it is the bare noun this slot wanted. The
+                    # noun is dropped rather than a fifteenth field added for
+                    # one word, and "reference" is what every evidence line of
+                    # this family already calls the other side.
+                    FindingFact(label="Sample", value="1 reference"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,
