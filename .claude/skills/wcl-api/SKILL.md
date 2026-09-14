@@ -445,6 +445,15 @@ net of the `rateLimitData` query used to read it, which costs 1.00 point of its 
 
 ## Aura tables
 
+**The buff table already carries consumable buffs.** Measured 2026-09-14 offline over the 2217
+aura-table rows in this project's response cache; no query was issued. 32 match a
+consumable-shaped name: five distinct flasks, `Well Fed` under **six** ability ids
+(451920, 1219182, 1219185, 1232490, 1232585, 1294727) plus `Hearty Well Fed` under two more,
+several `Rune of …` augment runes, `Vantus Rune: …` per-boss runes, and `Potion of Recklessness`.
+
+**A name rule cannot identify them.** `Rune Mastery` (374585) and `Rune of Sanguination` (326808)
+are Death Knight abilities. Any consumable list must be curated by id, with a verified date.
+
 **Aura uptime comes from the table endpoint, not the event stream.** Verified 2026-09-05 against
 report `6Kx1P9GbNXrcLdHa` fight 36:
 

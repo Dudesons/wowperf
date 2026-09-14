@@ -170,6 +170,29 @@ without a special case.
 This keeps the project's no-hardcoded-season-data invariant intact, and it survives an
 expansion changing which slots take an enchant, without an edit.
 
+### 2.8 The aura table already carries consumable buffs, and one naming trap
+
+Measured 2026-09-14 offline, over the 2217 aura-table rows already in this project's response
+cache. No query was issued. Consumable buffs are **already being fetched and already being
+discarded**, so §6.5's aura half needs no new query on either axis.
+
+Of those rows, 32 match a consumable-shaped name, including five distinct flasks, six ability ids
+all named `Well Fed`, several `Rune of …` augment runes, `Vantus Rune: …` per-boss runes, and
+`Potion of Recklessness`.
+
+Two consequences for the curated list:
+
+- **A name rule cannot be used.** `Rune Mastery` (374585) and `Rune of Sanguination` (326808) are
+  Death Knight abilities, not consumables. Any prefix match on `Rune` mislabels them.
+- **One id per category is not enough.** `Well Fed` alone spans six ids
+  (451920, 1219182, 1219185, 1232490, 1232585, 1294727), and `Hearty Well Fed` is a further
+  variant under two more. The file lists ids, seeded from this measurement, with its `verified`
+  date — exactly as `data/consumables.toml` already does for its three healthstone ids.
+
+`Potion of Recklessness` appearing as an aura means a damage potion is observable both ways. The
+cast remains the source for a count, because a count of presses is what the comparison states;
+the aura is noted here and not used.
+
 ---
 
 ## 3. Scope
