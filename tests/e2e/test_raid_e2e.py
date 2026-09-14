@@ -80,5 +80,6 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
 
     assert loaded.encounter.kill is False
     assert loaded.encounter.outcome.startswith("wiped")
+    assert findings, "an empty list is exactly the silent failure this slice guards against"
     assert all(isinstance(finding.confidence, Confidence) for finding in findings)
     assert loaded.casts, "no casts fetched for the wipe"
