@@ -45,6 +45,16 @@ class Wording(Frozen):
     stretch_time: str
     """The denominator of a share, as a title or a fact names it: "46% of ...."."""
 
+    reference_noun: str
+    """What one reference is counted in, as a bare noun: "1 reference ....".
+
+    The only bare noun here, and it has to be one: the slot counts a thing,
+    where every field above names a stretch or hedges a claim. `run` next to it
+    is the demonstrative -- "this run", "this fight" -- and reads "1 reference
+    this fight" in this slot, which is why the two are separate fields rather
+    than one doing both jobs.
+    """
+
     run: str
     """The whole of our own side, as a detail sentence names it."""
 
@@ -83,6 +93,7 @@ DUNGEON = Wording(
     rate_basis="boss-pull time",
     on_stretch="on bosses",
     stretch_time="boss time",
+    reference_noun="run",
     run="this run",
     our_stretch="our run",
     nowhere_else=" — not on bosses and not on trash",
@@ -120,6 +131,7 @@ RAID = Wording(
     # boss as the target would claim a scoping the measurement did not do.
     on_stretch="on this encounter",
     stretch_time="fight time",
+    reference_noun="fight",
     run="this fight",
     our_stretch="this fight",
     nowhere_else="",

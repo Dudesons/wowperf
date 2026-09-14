@@ -740,6 +740,17 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     assert gap.title == (
         f"Icebound Fortitude was up for 90% of Bríala's boss time, 10% of {OUR_NAME}'s"
     )
+    # The facts whole, and the sample's noun stated as a literal: it is
+    # `Wording`'s now, because a raid kill is not a run and this row serves
+    # both axes -- and the dungeon rendering must not have moved a byte for
+    # that. The twin of this assertion lives in `test_spells.py`, on the
+    # pairwise rate row, because the two facts are written in two modules and
+    # only one of them would move if the field were threaded at one site.
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "10% of boss time"),
+        ("Reference", "90% of boss time"),
+        ("Sample", "1 reference run"),
+    ]
     assert any("below the floor of" in line for line in gap.evidence)
 
 

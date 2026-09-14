@@ -226,9 +226,10 @@ def _gap_findings(
                                 confidence=Confidence.DERIVED),
                     # No median and no range in this shape: one reference, and
                     # a label claiming otherwise would claim a sample. The noun
-                    # is left off for the reason its twin in `spells.py` gives
-                    # -- a raid kill is not a run, and this pair serves both.
-                    FindingFact(label="Sample", value="1 reference"),
+                    # comes from `Wording` for the reason its twin in
+                    # `spells.py` gives -- a raid kill is not a run, and this
+                    # pair serves both.
+                    FindingFact(label="Sample", value=f"1 reference {words.reference_noun}"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,

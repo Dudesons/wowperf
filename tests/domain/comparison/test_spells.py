@@ -767,13 +767,14 @@ def test_a_pairwise_rate_finding_names_one_reference_rather_than_a_median() -> N
     )
     findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
     rate = next(f for f in findings if f.id.startswith("compare.spells.rate."))
-    # "1 reference" and not "1 reference run": this pair serves a raid fight
-    # too, and a raid kill is not a run. The whole pair is stated rather than a
-    # containment, so the noun cannot come back unnoticed on either axis.
+    # Stated whole, and "1 reference run" stated as a literal: the noun is
+    # `Wording`'s now, because a raid kill is not a run and this pair serves
+    # both axes -- and the dungeon rendering must not have moved a byte for
+    # that. Nothing in this plan changes what `analyze` prints.
     assert [(fact.label, fact.value) for fact in rate.facts] == [
         ("Ours", "1.0 casts a minute"),
         ("Reference", "8.0 casts a minute"),
-        ("Sample", "1 reference"),
+        ("Sample", "1 reference run"),
     ]
 
 

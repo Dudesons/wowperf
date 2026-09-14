@@ -583,15 +583,19 @@ def test_no_raid_title_says_on_bosses_in_the_pairwise_shape_either() -> None:
     assert_no_dungeon_vocabulary(findings)
 
 
-def test_the_pairwise_raid_shape_calls_one_reference_a_reference_and_not_a_run() -> None:
+def test_the_pairwise_raid_shape_counts_one_reference_fight_and_not_one_reference_run() -> None:
     """A raid kill is not a run, and the fact that counts the sample said it was.
 
-    `Wording` draws exactly this distinction for every sentence it reaches --
-    `DUNGEON.run` is "this run" and `RAID.run` is "this fight" -- but this slot
-    wanted a bare noun, which no field of it is, so the noun is dropped instead
-    of a field being added for one word. Both members of the pair are pinned
-    here, because they are written in two modules and only one of them would
-    move if somebody put the noun back.
+    `Wording.reference_noun` is the bare noun this slot wanted -- "run" for a
+    dungeon, "fight" for a raid. It is a field of its own rather than `run`,
+    which is the demonstrative ("this run", "this fight") and renders
+    "1 reference this fight" here.
+
+    Both members of the pair are pinned, because the fact is written in two
+    modules and only one of them would move if the field were threaded at one
+    site. The dungeon renderings of the same two facts are pinned in
+    `test_spells.py` and `test_uptime.py`, so a swap of the two values fails in
+    both directions rather than silently trading one axis for the other.
     """
     findings = compare_parse_axis(**BELOW_FLOOR_ARGS)  # type: ignore[arg-type]
     facts = {
@@ -601,12 +605,12 @@ def test_the_pairwise_raid_shape_calls_one_reference_a_reference_and_not_a_run()
     assert facts["compare.spells.rate.0"] == [
         ("Ours", "2.0 casts a minute"),
         ("Reference", "3.5 casts a minute"),
-        ("Sample", "1 reference"),
+        ("Sample", "1 reference fight"),
     ]
     assert facts["compare.uptime.self.0"] == [
         ("Ours", "10% of fight time"),
         ("Reference", "50% of fight time"),
-        ("Sample", "1 reference"),
+        ("Sample", "1 reference fight"),
     ]
     assert evidence_of(findings, "compare.spells.missing.0") == [
         f"ability {METEOR}",
