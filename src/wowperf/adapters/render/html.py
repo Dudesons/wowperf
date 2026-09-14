@@ -1,11 +1,11 @@
-# ABOUTME: Turns a Report into one self-contained HTML string. The only module importing jinja2.
+# ABOUTME: Turns a Report into one HTML string that loads only its icons; the only jinja2 import.
 # ABOUTME: The template loops and escapes; every decision was already made in report/build.py.
 
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from wowperf.domain.ports import IconSource
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.report.model import Report, all_ledger_rows
 
 TEMPLATE_DIR = Path(__file__).parent
@@ -30,18 +30,17 @@ def _environment() -> Environment:
     )
 
 
-def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
+def _icon_addresses(report: Report, icons: CdnIcons) -> dict[int, str]:
     """Every ability the page can draw, resolved once each, in the order it is met.
 
-    Only the adapter can build this: which ids resolve is a question about a CDN
-    and a cache, and the builder that made the report is forbidden from asking it.
+    Only the adapter can build this: which ids resolve is a question about a CDN,
+    and the builder that made the report is forbidden from asking it.
 
-    A player card's comparison tables are deliberately not walked. Those rows run
-    to dozens per player and each icon is embedded in full, so a table draws art
-    only for an ability the page already carries for another reason -- a death
-    card, a ledger row or a player timeline. That is the fallback the comparison
-    table design names in its §12, and the `ability` macro already renders a bare
-    name for an id absent here, so the rest cost the page nothing.
+    A player card's comparison tables are deliberately not walked, so a table
+    draws art only for an ability the page already carries for another reason --
+    a death card, a ledger row or a player timeline. That is the fallback the
+    comparison table design names in its §12, and the `ability` macro already
+    renders a bare name for an id absent here.
     """
     resolved: dict[int, str] = {}
     asked: set[int] = set()
@@ -54,16 +53,16 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
             if ability_id is None or ability_id in asked:
                 continue
             asked.add(ability_id)
-            uri = icons.data_uri(ability_id)
-            if uri is not None:
-                resolved[ability_id] = uri
+            address = icons.url(ability_id)
+            if address is not None:
+                resolved[ability_id] = address
     for row in all_ledger_rows(report):
         if row.ability_id is None or row.ability_id in asked:
             continue
         asked.add(row.ability_id)
-        uri = icons.data_uri(row.ability_id)
-        if uri is not None:
-            resolved[row.ability_id] = uri
+        address = icons.url(row.ability_id)
+        if address is not None:
+            resolved[row.ability_id] = address
     for player in report.players:
         if player.timeline is None:
             continue
@@ -71,18 +70,20 @@ def _icon_uris(report: Report, icons: IconSource) -> dict[int, str]:
             if cooldown.ability_id is None or cooldown.ability_id in asked:
                 continue
             asked.add(cooldown.ability_id)
-            uri = icons.data_uri(cooldown.ability_id)
-            if uri is not None:
-                resolved[cooldown.ability_id] = uri
+            address = icons.url(cooldown.ability_id)
+            if address is not None:
+                resolved[cooldown.ability_id] = address
     return resolved
 
 
-def render(report: Report, icons: IconSource | None = None) -> str:
-    """One self-contained HTML document: one inline script that only shows and hides,
-    no network, no external font.
+def render(report: Report, icons: CdnIcons | None = None) -> str:
+    """One HTML document: one inline script that only shows and hides, no external
+    font, and no request of its own but the icons.
 
     Without an `icons` source the page is drawn exactly as it is without icons:
-    the ids on the view model are inert until something can turn them into bytes.
+    the ids on the view model are inert until something can address them.
     """
-    uris = {} if icons is None else _icon_uris(report, icons)
-    return _environment().get_template(TEMPLATE_NAME).render(report=report, icons_by_id=uris)
+    addresses = {} if icons is None else _icon_addresses(report, icons)
+    return _environment().get_template(TEMPLATE_NAME).render(
+        report=report, icons_by_id=addresses
+    )

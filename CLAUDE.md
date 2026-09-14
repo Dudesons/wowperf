@@ -368,7 +368,8 @@ Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. Each death is a
 health curve reconstructed between the player's own readings, a timeline of what hit them,
 how they came back, and every defensive, consumable and teammate external placed in one of
 four states at the moment of death — pressed, ready, on cooldown, or never seen all run.
-Ability icons come from Blizzard's render CDN, cached on disk and embedded as data URIs.
+Ability icons are addressed on Wowhead's CDN and fetched by the reader's browser, so the
+build makes no request for art and the page carries no image bytes of its own.
 
 The inference layer of design §8 is the three skills under `.claude/skills/` and a guardrail
 with tested Python behind it: `analyze --narrative` refuses a narrative file containing any
@@ -403,11 +404,14 @@ lines are unreliable, so the code is the record.
 - **Never invent an API field name.** The verified schema reference lives in
   `.claude/skills/wcl-api/SKILL.md`, where every claim carries the date it was checked. If a
   field is not there, verify against the live schema before using it, then add a dated row.
-- **The report loads nothing.** One HTML file, opened from disk, with no stylesheet link, no
+- **The report loads its icons and nothing else.** One HTML file with no stylesheet link, no
   `@import`, no remote `src`, and exactly one inline script. That script may show, hide and
-  highlight what is already on the page; it may not fetch, write text, or read storage, and
-  `tests/adapters/render/test_html_invariants.py` enforces the list. Icons are embedded as
-  data URIs for this reason.
+  highlight what is already on the page; it may not fetch, write text, or read storage. The
+  single exception is the icon art, addressed at `wow.zamimg.com` and fetched by the reader's
+  browser — one host, and no other.
+  `tests/adapters/render/test_html_invariants.py` enforces both halves: the script's limits,
+  and that every address the page draws points at that host. The report is therefore online:
+  it renders its art when opened with a connection and names every ability without one.
 
 ## Commands
 
