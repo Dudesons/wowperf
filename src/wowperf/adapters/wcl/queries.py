@@ -389,6 +389,20 @@ query EncounterKillRankings(
 }
 """
 
+# `playerMetric` is a variable rather than a literal because this plan reports
+# `dps` and `bossdps` side by side: measured 2026-09-14, the same tank read
+# 59991.46 under one and 44818.48 under the other, and a reader given one figure
+# cannot tell which. Costs 2.00 points, whatever the roster's size.
+REPORT_RANKINGS_QUERY = """
+query ReportRankings($code: String!, $fightId: Int!, $metric: ReportRankingMetricType!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      rankings(fightIDs: [$fightId], playerMetric: $metric)
+    }
+  }
+}
+"""
+
 
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
