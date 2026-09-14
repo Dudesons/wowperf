@@ -196,7 +196,7 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
     assert families.index("mechanics") < families.index("defensives")
 
     # `scope` names who took the landings, not the encounter: "the raid", never
-    # the boss. `compare_mechanics`'s title reads "{scope} took N of {ability}",
+    # the boss. `compare_mechanics`'s title opens "{scope} took {ability} ...",
     # so a `scope` of the boss name would have this read as the boss taking its
     # own damage -- exactly the slip this pins against returning silently.
     [mechanics_finding] = [finding for finding in findings if finding.id.startswith("mechanics")]

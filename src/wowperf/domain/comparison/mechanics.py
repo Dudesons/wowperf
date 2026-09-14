@@ -1,10 +1,18 @@
 # ABOUTME: The per-ability landing profile of one fight, and how two of them compare.
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
 
+from collections.abc import Sequence
+
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
-from wowperf.domain.findings import Confidence, Finding, FindingFact, quantifier_for
+from wowperf.domain.findings import (
+    Confidence,
+    Finding,
+    FindingFact,
+    quantifier_for,
+    quantity,
+)
 
 
 class AbilityTakenRow(Frozen):
@@ -140,6 +148,33 @@ def _rate(landings: int, seconds: float) -> float:
     return landings / seconds * 60
 
 
+def _landings_by_ability(member: MechanicsMember) -> dict[int, AbilityTakenRow]:
+    """One reference kill's hostile rows, addressable by ability id."""
+    return {row.ability_id: row for row in hostile_rows(member.abilities)}
+
+
+def _worth_reporting(our_rate: float, their_rate: float) -> bool:
+    """Whether the gap between two landing rates clears the bar for a finding.
+
+    A ratio against zero is not computed. Where the reference side took none
+    and we took some, the gap is the whole finding and the evidence says so.
+    """
+    return their_rate <= 0 or our_rate / their_rate >= MECHANIC_MULTIPLE
+
+
+def _ranked(candidates: list[tuple[float, Finding]]) -> list[Finding]:
+    """The widest gaps first, capped, each numbered by where it landed.
+
+    The rank is assigned after the sort and the cap, so a finding's id says
+    where it sits on the page rather than where it was built.
+    """
+    candidates.sort(key=lambda pair: -pair[0])
+    return [
+        finding.model_copy(update={"id": f"mechanics.ability.{rank}"})
+        for rank, (_, finding) in enumerate(candidates[:MAX_MECHANICS_REPORTED])
+    ]
+
+
 def compare_mechanics(
     ours: tuple[AbilityTakenRow, ...],
     our_seconds: float,
@@ -149,10 +184,16 @@ def compare_mechanics(
 ) -> list[Finding]:
     """Abilities this raid took far more often than kills of the same boss did.
 
-    States landings per minute and nothing else. It never says a mechanic was
-    missed: that is a claim about intent no table supports, and master design
-    5.5 refuses it. The reader is handed two counts and draws their own
-    conclusion.
+    States landings per minute on both sides and nothing else. It never says a
+    mechanic was missed: that is a claim about intent no table supports, and
+    master design 5.5 refuses it. The reader is handed two rates and draws
+    their own conclusion.
+
+    Below `MIN_SAMPLE_FOR_AGGREGATE` comparable references the comparison is
+    made against a single reference kill, exactly as the route and tempo axes
+    do below the same floor. A median of two is a mean of two, and `too_few`'s
+    note -- "a single reference, not an aggregate" -- is only true of a finding
+    that states one.
     """
     # An empty sample means no comparison ran at all, which the caller states
     # once. Repeating it per ability would bury the findings that did run.
@@ -161,17 +202,111 @@ def compare_mechanics(
 
     # A member with a zero or negative duration has nothing to divide by, and
     # nothing upstream refuses it: `select_reference_kills` matches size
-    # only. Dropped before `total` is computed, so the denominator
-    # and every "N of M" phrase in the evidence see the same set of members
-    # that the rates themselves were drawn from.
+    # only. Dropped before anything is counted, so the denominator, every
+    # "N of M" phrase in the evidence and the floor below all see the same set
+    # of members that the rates themselves were drawn from.
     members = tuple(member for member in sample.members if member.row.duration_seconds > 0)
     if not members:
         return []
 
-    their_rows = [
-        {row.ability_id: row for row in hostile_rows(member.abilities)}
-        for member in members
-    ]
+    if len(members) < MIN_SAMPLE_FOR_AGGREGATE:
+        # Reuses the sample module's own wording rather than inventing a second
+        # way to say the same thing.
+        return too_few(_against_one(ours, our_seconds, members[0], scope), len(members))
+    return _against_sample(ours, our_seconds, members, scope)
+
+
+def _against_one(
+    ours: tuple[AbilityTakenRow, ...],
+    our_seconds: float,
+    member: MechanicsMember,
+    scope: str,
+) -> list[Finding]:
+    """Our landing rates against one reference kill's own, that kill named.
+
+    The below-floor fallback `compare_mechanics` delegates to, and the sibling
+    of `compare_route` and `compare_tempo`'s own pairwise forms. No median, no
+    range and no count across a sample appear here, because there is one
+    reference: stating any of them would describe a population this comparison
+    never drew. Naming the reference is honest for the same reason it is in
+    `compare_route`'s pairwise rows -- this is one kill's comparison, not a
+    claim about a sample that happens to rest on one kill.
+    """
+    theirs = _landings_by_ability(member)
+    their_seconds = member.row.duration_seconds
+
+    candidates: list[tuple[float, Finding]] = []
+    for our_row in hostile_rows(ours):
+        our_rate = _rate(our_row.landings, our_seconds)
+        if our_rate <= 0:
+            continue
+
+        # A reference that never took this ability took it at a rate of zero,
+        # not at no rate at all: the encounter is fixed, so both sides draw
+        # from the same ability set, and an ability we took and it did not is
+        # precisely the finding.
+        their_row = theirs.get(our_row.ability_id)
+        their_rate = _rate(their_row.landings, their_seconds) if their_row else 0.0
+        if not _worth_reporting(our_rate, their_rate):
+            continue
+
+        candidates.append(
+            (
+                our_rate - their_rate,
+                Finding(
+                    id="mechanics.ability",
+                    title=(
+                        f"{scope} took {our_row.ability_name} {our_rate:.1f} times a minute "
+                        f"where the reference took {their_rate:.1f} a minute"
+                    ),
+                    detail=(
+                        f"{our_rate:.1f} landings a minute against one reference kill's "
+                        f"{their_rate:.1f}. This states a difference, not a mistake: "
+                        "whether any single landing could have been prevented is not "
+                        "something the log records."
+                    ),
+                    confidence=Confidence.DERIVED,
+                    seconds_lost=None,
+                    evidence=(
+                        f"ours {our_rate:.1f} a minute over {our_seconds:.0f}s",
+                        f"the reference {their_rate:.1f} a minute over {their_seconds:.0f}s",
+                        f"reference kill {member.row.report_code} fight {member.row.fight_id}",
+                    ),
+                    facts=(
+                        FindingFact(
+                            label="This raid",
+                            value=f"{our_rate:.1f} a minute",
+                            confidence=Confidence.DERIVED,
+                        ),
+                        FindingFact(
+                            label="Reference",
+                            value=f"{their_rate:.1f} a minute",
+                            confidence=Confidence.DERIVED,
+                        ),
+                        # Named rather than left implicit, as
+                        # `compare.spells.rate`'s own single-reference row does:
+                        # this shape has no median and no range, and a panel
+                        # printing either label would claim a sample nobody drew.
+                        FindingFact(label="Sample", value="1 reference kill"),
+                        FindingFact(label="Landings", value=f"{our_row.landings}"),
+                    ),
+                    ability_id=our_row.ability_id,
+                    ability_name=our_row.ability_name,
+                ),
+            )
+        )
+
+    return _ranked(candidates)
+
+
+def _against_sample(
+    ours: tuple[AbilityTakenRow, ...],
+    our_seconds: float,
+    members: Sequence[MechanicsMember],
+    scope: str,
+) -> list[Finding]:
+    """Our landing rates against the median of the sample's own, with its spread."""
+    their_rows = [_landings_by_ability(member) for member in members]
     total = len(members)
 
     candidates: list[tuple[float, Finding]] = []
@@ -195,9 +330,7 @@ def compare_mechanics(
 
         their_median = median(their_rates)
         low, high = observed_range(their_rates)
-        # A ratio against zero is not computed. Where the sample took none and
-        # we took some, the gap is the whole finding and the evidence says so.
-        if their_median > 0 and our_rate / their_median < MECHANIC_MULTIPLE:
+        if not _worth_reporting(our_rate, their_median):
             continue
 
         candidates.append(
@@ -206,7 +339,7 @@ def compare_mechanics(
                 Finding(
                     id="mechanics.ability",
                     title=(
-                        f"{scope} took {our_row.landings} of {our_row.ability_name} "
+                        f"{scope} took {our_row.ability_name} {our_rate:.1f} times a minute "
                         f"where the references took a median of {their_median:.1f} a minute"
                     ),
                     detail=(
@@ -215,12 +348,13 @@ def compare_mechanics(
                         "whether any single landing could have been prevented is not "
                         "something the log records."
                     ),
-                    confidence=Confidence.MEASURED,
+                    confidence=Confidence.DERIVED,
                     seconds_lost=None,
                     evidence=(
                         f"ours {our_rate:.1f} a minute over {our_seconds:.0f}s",
                         f"reference median {their_median:.1f} a minute",
-                        f"range {low:.1f} to {high:.1f} across {total} reference kills",
+                        f"range {low:.1f} to {high:.1f} across "
+                        f"{quantity(total, 'reference kill', 'reference kills')}",
                         f"{count_phrase(carrying, total)} references took it at all",
                     ),
                     facts=(
@@ -244,13 +378,4 @@ def compare_mechanics(
             )
         )
 
-    candidates.sort(key=lambda pair: -pair[0])
-    findings = [
-        finding.model_copy(update={"id": f"mechanics.ability.{rank}"})
-        for rank, (_, finding) in enumerate(candidates[:MAX_MECHANICS_REPORTED])
-    ]
-    # Reuses the sample module's own wording rather than inventing a second way
-    # to say the same thing.
-    if total < MIN_SAMPLE_FOR_AGGREGATE:
-        return too_few(findings, total)
-    return findings
+    return _ranked(candidates)

@@ -81,7 +81,10 @@ def test_an_ability_we_took_far_more_of_than_the_sample_is_a_finding() -> None:
     findings = compare_mechanics(ours, 120.0, sample, scope="the raid")
     assert findings, "a 4x gap against five references should state something"
     assert findings[0].id.startswith("mechanics.ability.")
-    assert findings[0].confidence.value == "measured"
+    # Both sides of this finding are rates this function divided out, and
+    # `FindingFact`'s own rule is that a rate the report computed is derived.
+    # Its own facts already badge the identical figures that way.
+    assert findings[0].confidence.value == "derived"
     # Both absolute rates are pinned, not only their ratio. A ratio is
     # scale-free, so an assertion resting on it alone survives deleting the
     # per-minute conversion from both sides -- mutation shape 2. The sample
@@ -169,14 +172,91 @@ def test_an_ability_in_line_with_the_sample_states_nothing() -> None:
     assert compare_mechanics(ours, 120.0, sample, scope="the raid") == []
 
 
+def test_the_title_states_our_own_side_as_a_rate_and_not_as_a_count() -> None:
+    # The title's two halves have to be the same kind of number. 24 landings
+    # over 240s is 6.0 a minute, so a count and a rate are visibly different
+    # here -- a fixture over 60s would make them equal and could not tell a
+    # correct title from a broken one. The references took 3, 4 and 5 over
+    # their own 240s: 0.75, 1.0 and 1.25 a minute, a median of 1.0 that is
+    # neither the lowest nor the highest of them.
+    ours = (ability(400, "Ravenous Feast", 24, ("Boss",)),)
+    sample = MechanicsSample(
+        members=tuple(
+            member(code, (ability(400, "Ravenous Feast", landings, ("Boss",)),), seconds=240.0)
+            for code, landings in (("first", 3), ("second", 4), ("third", 5))
+        )
+    )
+    findings = compare_mechanics(ours, 240.0, sample, scope="the raid")
+    assert findings, "a 6x gap against three references should state something"
+    title = findings[0].title
+    assert "6.0 times a minute" in title, title
+    assert "a median of 1.0 a minute" in title, title
+    assert "24" not in title, f"the title states a count beside a per-minute figure: {title}"
+    # The count is not lost by stating a rate; it moves to where it reads as one.
+    assert any(
+        fact.label == "Landings" and fact.value == "24" for fact in findings[0].facts
+    ), "the absolute count must survive as a fact"
+
+
 def test_below_the_aggregate_floor_the_finding_says_it_is_one_reference() -> None:
     ours = (ability(400, "Ravenous Feast", 12, ("Boss",)),)
     sample = MechanicsSample(
-        members=(member("a", (ability(400, "Ravenous Feast", 1, ("Boss",)),)),)
+        members=(member("only", (ability(400, "Ravenous Feast", 1, ("Boss",)),)),)
     )
     findings = compare_mechanics(ours, 120.0, sample, scope="the raid")
     assert findings, "one reference is still a comparison, stated as one"
     assert any("single reference" in line for line in findings[0].evidence)
+    assert any("reference kill only fight 1" in line for line in findings[0].evidence)
+
+
+def test_two_references_are_stated_as_one_reference_rather_than_as_a_median() -> None:
+    """Below the floor, `too_few`'s note has to be true of the finding it joins.
+
+    The note reads "a single reference, not an aggregate", so the finding it is
+    appended to must state a single reference. The two members here differ on
+    purpose: 2 landings in 120s is 1.0 a minute and 6 is 3.0, so a median over
+    the pair would read 2.0 and a range 1.0 to 3.0 -- numbers that appear
+    nowhere below, and whose appearance is exactly the contradiction this pins.
+    """
+    ours = (ability(400, "Ravenous Feast", 12, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(
+            member("first", (ability(400, "Ravenous Feast", 2, ("Boss",)),)),
+            member("second", (ability(400, "Ravenous Feast", 6, ("Boss",)),)),
+        )
+    )
+    [one] = compare_mechanics(ours, 120.0, sample, scope="the raid")
+
+    assert "the reference took 1.0 a minute" in one.title, one.title
+    assert "median" not in one.title.lower(), one.title
+    assert any("single reference" in line for line in one.evidence)
+    assert any("reference kill first fight 1" in line for line in one.evidence)
+
+    stated = " ".join(one.evidence)
+    assert "2.0" not in stated, f"a median over the two references reached the evidence: {stated}"
+    assert "range" not in stated, stated
+    assert "2 of 2" not in stated, stated
+    assert one.quantifier == "", "a single reference is not an aggregate over a sample"
+
+
+def test_at_the_aggregate_floor_the_finding_states_a_median_and_carries_no_note() -> None:
+    # Three comparable references is the floor. 2, 4 and 6 landings in 120s
+    # are 1.0, 2.0 and 3.0 a minute: the median is 2.0 and equals neither end
+    # of the range the evidence states beside it.
+    ours = (ability(400, "Ravenous Feast", 12, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(
+            member("first", (ability(400, "Ravenous Feast", 2, ("Boss",)),)),
+            member("second", (ability(400, "Ravenous Feast", 4, ("Boss",)),)),
+            member("third", (ability(400, "Ravenous Feast", 6, ("Boss",)),)),
+        )
+    )
+    [one] = compare_mechanics(ours, 120.0, sample, scope="the raid")
+
+    assert "a median of 2.0 a minute" in one.title, one.title
+    assert not any("single reference" in line for line in one.evidence), one.evidence
+    assert any("range 1.0 to 3.0" in line for line in one.evidence), one.evidence
+    assert any("3 of 3 references took it at all" in line for line in one.evidence), one.evidence
 
 
 def test_an_empty_sample_states_nothing_rather_than_everything() -> None:
