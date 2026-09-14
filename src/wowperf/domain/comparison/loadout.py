@@ -3,7 +3,9 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.comparison.sample import ParseMember, find_player
+from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, find_player
+from wowperf.domain.comparison.statistics import count_phrase
+from wowperf.domain.findings import Confidence, Finding, quantifier_for
 from wowperf.domain.loadout import EquippedItem, Loadout
 
 
@@ -47,3 +49,53 @@ def item_sourced(ability_name: str, loadouts: Sequence[Loadout]) -> EquippedItem
         if found is not None:
             return found
     return None
+
+
+def compare_enchants(
+    our_loadout: Loadout | None, their_loadouts: Sequence[Loadout], our_name: str
+) -> list[Finding]:
+    """Slots every comparable reference enchanted and this player left bare.
+
+    **The sample defines which slots take an enchant.** Measured 2026-09-14
+    across ten players in two reports: eight slots were enchanted 10/10, nine
+    were 0/10, and the off hand was 1/10 — enchantable for some specialisations
+    and not others. A hardcoded list would have to be revised every expansion
+    and would misjudge the off hand today; unanimity in the sample needs no
+    revision and gets the off hand right by abstaining.
+
+    A slot this player wears nothing in is not reported: an empty slot is a
+    different claim from an unenchanted one.
+    """
+    if our_loadout is None or len(their_loadouts) < MIN_SAMPLE_FOR_AGGREGATE:
+        return []
+
+    ours_enchanted = our_loadout.enchanted_slots()
+    ours_occupied = our_loadout.occupied_slots()
+    unanimous = frozenset.intersection(
+        *(loadout.enchanted_slots() for loadout in their_loadouts)
+    )
+
+    findings = []
+    for slot in sorted(unanimous & ours_occupied - ours_enchanted):
+        findings.append(
+            Finding(
+                id="compare.gear.enchant",
+                title=(
+                    f"{count_phrase(len(their_loadouts), len(their_loadouts))} top parses "
+                    f"enchanted slot {slot}; {our_name} did not"
+                ),
+                detail=(
+                    "Every reference in the sample carries an enchant in this slot and this "
+                    "one does not. Which enchant is not stated: the sample may disagree among "
+                    "themselves, and this tool does not rank enchants."
+                ),
+                confidence=Confidence.MEASURED,
+                seconds_lost=None,
+                evidence=(
+                    f"slot {slot}",
+                    f"{len(their_loadouts)} of {len(their_loadouts)} references enchanted it",
+                ),
+                quantifier=quantifier_for(len(their_loadouts), len(their_loadouts)),
+            )
+        )
+    return findings

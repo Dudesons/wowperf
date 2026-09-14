@@ -1,11 +1,14 @@
 # ABOUTME: Behaviour tests for the gear and stat comparison families.
 # ABOUTME: item_sourced is asymmetric on purpose: a match is evidence, a miss is not.
 
-from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
+from wowperf.domain.comparison.loadout import compare_enchants, item_sourced, loadouts_of
 from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember
+from wowperf.domain.findings import Confidence
 from wowperf.domain.loadout import EquippedItem, Loadout
 from wowperf.domain.model import Player, Run
+
+OUR_NAME = "Stonewake (actor 7)"
 
 
 def an_item(**changes: object) -> EquippedItem:
@@ -141,3 +144,64 @@ def test_loadouts_of_skips_a_member_whose_player_cannot_be_found() -> None:
     found = loadouts_of([ghost])
 
     assert found == ()
+
+
+# --- compare_enchants --------------------------------------------------------
+
+
+def test_a_slot_everyone_enchanted_and_we_did_not_is_a_finding() -> None:
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=7, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME)
+    assert len(findings) == 1
+    assert findings[0].id == "compare.gear.enchant"
+    assert findings[0].confidence is Confidence.MEASURED
+    assert "slot 7" in findings[0].evidence[0]
+
+
+def test_a_slot_the_sample_left_bare_is_not_a_finding() -> None:
+    # Measured 2026-09-14: the off hand was enchanted by 1 of 10 players. A
+    # hardcoded enchantable-slot list would flag nine of them; letting the
+    # sample define the rule flags none.
+    theirs = [a_loadout(an_item(slot=16, enchant_id=None)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=16, enchant_id=None))
+    assert compare_enchants(ours, theirs, OUR_NAME) == []
+
+
+def test_a_slot_only_some_of_the_sample_enchanted_is_not_a_finding() -> None:
+    theirs = [a_loadout(an_item(slot=16, enchant_id=8017))] + [
+        a_loadout(an_item(slot=16, enchant_id=None)) for _ in range(4)
+    ]
+    assert compare_enchants(a_loadout(an_item(slot=16, enchant_id=None)), theirs, OUR_NAME) == []
+
+
+def test_a_slot_most_but_not_all_of_the_sample_enchanted_is_not_a_finding() -> None:
+    # Four of five is a majority, not unanimity. Relaxing the rule to "most of
+    # the sample enchanted it" would report this slot; unanimity must not.
+    theirs = [a_loadout(an_item(slot=16, enchant_id=8017)) for _ in range(4)] + [
+        a_loadout(an_item(slot=16, enchant_id=None))
+    ]
+    assert compare_enchants(a_loadout(an_item(slot=16, enchant_id=None)), theirs, OUR_NAME) == []
+
+
+def test_a_slot_we_enchanted_too_is_not_a_finding() -> None:
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=7, enchant_id=9000))
+    assert compare_enchants(ours, theirs, OUR_NAME) == []
+
+
+def test_a_slot_we_have_no_item_in_is_not_a_finding() -> None:
+    # An empty slot is a different claim from an unenchanted one, and the tool
+    # has no opinion about a player choosing to wear nothing there.
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    assert compare_enchants(a_loadout(an_item(slot=0)), theirs, OUR_NAME) == []
+
+
+def test_nothing_is_compared_without_our_loadout() -> None:
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    assert compare_enchants(None, theirs, OUR_NAME) == []
+
+
+def test_nothing_is_compared_below_the_sample_floor() -> None:
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(2)]
+    assert compare_enchants(a_loadout(an_item(slot=7, enchant_id=None)), theirs, OUR_NAME) == []
