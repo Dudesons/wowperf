@@ -50,14 +50,19 @@ covers it otherwise.
 | `fightRankings` | `worldData.encounter` | 2026-09-03 | yes |
 | `fightIDs` | `table` argument | 2026-09-05 | yes |
 | `hostilityType` | `table` argument | 2026-09-05 | yes |
-| `sourceID` | `table` argument | 2026-09-05 | no |
+| `sourceID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `table` argument | 2026-09-05 | yes |
 | `targetID` | `events` argument | 2026-09-07 | yes |
 | `includeResources` | `events` argument | 2026-09-07 | yes |
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
 | `graph` | `Report` | 2026-09-12 | yes |
-| `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
+| `viewBy` | `graph` and `table` argument | 2026-09-12 | yes |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
+| `hitCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
+| `tickCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
+| `missCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
+| `tickMissCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
+| `sources` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -615,6 +620,32 @@ one is. Anything built on the per-player reading returns nothing, silently.
 selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_auras.py` holds it
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
+
+## `hostilityType` does not exclude friendly sources
+
+Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
+
+`HostilityType` has two values, `Friendlies` and `Enemies`. Omitting `hostilityType` and passing
+`Friendlies` explicitly return byte-identical JSON — `Friendlies` is this table's default.
+`Enemies` is not a filtered view of the same table: it returns the other side of the fight, 223
+rows against this table's 26.
+
+The argument selects whose damage-taken is tabulated, not which sources may appear in it.
+**Friendly-sourced rows survive**: 8 of this kill's 26 rows were sourced entirely by players —
+1.97% of the fight's damage-taken, Blessing of Sacrifice among them. A row's `sources[].type`
+reads `"Boss"`, `"NPC"` or `"Pet"` for a hostile source and a class name for a player; every row
+measured had homogeneous sources. It is `sources[].type` — not `hostilityType` — that separates a
+mechanic from a self-inflicted or ally-sourced hit, and `AbilityTakenRow.source_types` carries it
+for the domain to judge, in `src/wowperf/domain/comparison/mechanics.py`.
+
+## A damage-taken table's damage is mitigated
+
+Measured 2026-09-14, same table and kill. Each entry's `total` equals the event stream's health
+damage plus absorbs, and `totalReduced` equals health damage alone — both are **mitigated**
+figures. The unmitigated figure that a per-player damage ranking is built on is not exposed by
+this table and is not reconstructible from what is: the gap between the two reached 4.61x on one
+fight. `AbilityTakenRow` stores neither `total` nor `totalReduced` for this reason — see its
+docstring in `src/wowperf/domain/comparison/mechanics.py`.
 
 ## Leaderboards return report codes
 

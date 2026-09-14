@@ -382,6 +382,47 @@ query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
 """
 
 
+# A row carries `hitCount`, `tickCount`, `missCount` and `tickMissCount`.
+# Measured 2026-09-14: landings are hitCount + tickCount, and all four summed
+# over one fight's 26 rows equalled the event count exactly, 11,456,
+# difference zero. `ability_tables.build_ability_taken_rows` reads exactly
+# those four plus `sources`, never the row's damage.
+#
+# `hostilityType` is omitted deliberately. Measured 2026-09-14: omitting it and
+# passing `Friendlies` return byte-identical JSON, and `Enemies` returns the
+# other side of the fight rather than a filtered version of this one. There is
+# no value of it that excludes friendly-sourced abilities; `sources[].type`
+# does that, client-side, in `domain/comparison/mechanics.py`.
+ABILITY_TAKEN_TABLE_QUERY = """
+query AbilityTakenTable($code: String!, $fightId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      taken: table(fightIDs: [$fightId], dataType: DamageTaken, viewBy: Ability)
+    }
+  }
+}
+"""
+
+# `sourceID` scopes a damage-taken table to the victim. Measured 2026-09-14:
+# `targetID` selects who dealt the damage instead and returned no rows for a
+# player who had taken 26 million. The two are inverted from the reading in
+# design 2.5, which its amendment records.
+ABILITY_TAKEN_TABLE_BY_VICTIM_QUERY = """
+query AbilityTakenTableByVictim($code: String!, $fightId: Int!, $actorId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      taken: table(
+        fightIDs: [$fightId]
+        dataType: DamageTaken
+        viewBy: Ability
+        sourceID: $actorId
+      )
+    }
+  }
+}
+"""
+
+
 def talents_query(actor_ids: Sequence[int]) -> str:
     """One aliased `talentImportCode` per player.
 
