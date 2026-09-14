@@ -19,6 +19,7 @@ from wowperf.domain.comparison.sample import (
 )
 from wowperf.domain.comparison.spells import boss_pulls
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.comparison.wording import Wording
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
 from wowperf.domain.model import Pull
 
@@ -68,6 +69,14 @@ def seconds_up_over_the_fight(aura: Aura) -> float:
     than off `total_uptime_ms` because the bands are what the other rule reads,
     and one aura measured two ways is how a fraction and its own evidence come
     to disagree.
+
+    Nothing bounds this against the denominator it will be divided by, and
+    nothing needs to: the aura table clips its own bands to the fight it was
+    queried for. Measured 2026-09-14 over every cached response that joins to
+    its fight -- 22 tables, 49,514 bands, none outside -- and recorded in
+    `.claude/skills/wcl-api/SKILL.md` under "A band never falls outside the
+    fight it was queried for", which also records what that measurement does
+    not cover.
     """
     if not aura.bands:
         return 0.0
@@ -109,13 +118,14 @@ def _unavailable(
     their_seconds: float,
     our_has_auras: bool,
     their_has_auras: bool,
+    words: Wording,
 ) -> Finding:
     return Finding(
         id="compare.uptime.unavailable",
         title=f"Buff uptime could not be compared for {our_name}",
         detail=(
-            "An uptime comparison needs boss pulls on both sides and aura data for both "
-            "players. One of those is missing, so no uptime numbers are reported rather "
+            f"An uptime comparison needs {words.both_sides} on both sides and aura data for "
+            "both players. One of those is missing, so no uptime numbers are reported rather "
             "than numbers from an unlike sample."
         ),
         confidence=Confidence.MEASURED,
@@ -152,6 +162,7 @@ def _gap_findings(
     their_name: str,
     our_seconds: float,
     their_seconds: float,
+    words: Wording,
 ) -> list[Finding]:
     gaps = []
     for ability_id, (name, their_fraction) in theirs.items():
@@ -189,19 +200,18 @@ def _gap_findings(
                     f"{our_fraction:.0%} of {our_name}'s"
                 ),
                 detail=(
-                    "Both figures are the share of boss-pull time the aura was present, which "
-                    "is comparable even though the two fights ran for different lengths. A "
-                    "shorter fight at a different keystone level still changes what fits, so "
-                    "read a narrow gap as noise. This compares by exact ability, though, so a "
-                    "gap can also mean a different item of the same kind, or gear this player "
-                    "does not own — not that nothing was used at all."
+                    f"Both figures are the share of {words.rate_basis} the aura was present, "
+                    "which is comparable even though the two fights ran for different "
+                    f"lengths. {words.uptime_hedge} This compares by exact ability, though, "
+                    "so a gap can also mean a different item of the same kind, or gear this "
+                    "player does not own — not that nothing was used at all."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
                     f"ability {ability_id}",
-                    f"ours over {our_seconds:.0f}s of boss pulls",
-                    f"theirs over {their_seconds:.0f}s of boss pulls",
+                    f"ours over {our_seconds:.0f}s of {words.over}",
+                    f"theirs over {their_seconds:.0f}s of {words.over}",
                 ),
                 facts=(
                     FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
@@ -228,6 +238,7 @@ def compare_uptime(
     their_name: str,
     *,
     measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Where an aura was up markedly more of the reference's boss fight than of ours.
 
@@ -255,6 +266,7 @@ def compare_uptime(
                 their_seconds,
                 our_auras is not None,
                 their_auras is not None,
+                words,
             )
         ]
 
@@ -268,6 +280,7 @@ def compare_uptime(
         their_name=their_name,
         our_seconds=our_seconds,
         their_seconds=their_seconds,
+        words=words,
     )
 
 
@@ -279,6 +292,7 @@ def compare_uptime_sample(
     sample: ParseSample,
     *,
     measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Where an aura was up over markedly more of the sample's boss fights than of ours.
 
@@ -329,7 +343,7 @@ def compare_uptime_sample(
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
             our_pulls, our_seconds, our_auras, our_name, first, first.character_name,
-            measured=measured,
+            measured=measured, words=words,
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
 
@@ -339,7 +353,7 @@ def compare_uptime_sample(
     our_fractions = fractions_of(our_auras.on_self, measured(our_pulls), our_seconds)
     return _gap_findings_sample(
         our_fractions, eligible, our_name, our_seconds, missing_aura_data, total,
-        measured=measured,
+        measured=measured, words=words,
     )
 
 
@@ -396,6 +410,7 @@ def _gap_findings_sample(
     total: int,
     *,
     measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Auras up over markedly more of the sample's boss fights than of ours, by median.
 
@@ -444,10 +459,9 @@ def _gap_findings_sample(
                     f"{len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
                 ),
                 detail=(
-                    "Both figures are the share of boss-pull time the aura was present, which "
-                    "is comparable even though the fights ran for different lengths. A shorter "
-                    "fight at a different keystone level still changes what fits, so read a "
-                    "narrow gap as noise. This compares by exact ability, so a gap can still "
+                    f"Both figures are the share of {words.rate_basis} the aura was present, "
+                    "which is comparable even though the fights ran for different lengths. "
+                    f"{words.uptime_hedge} This compares by exact ability, so a gap can still "
                     "mean a different item of the same kind — but the gap is stated over "
                     "several top parses, not one player's build, so a single trinket this "
                     "player happens not to own no longer explains it away."
@@ -456,7 +470,7 @@ def _gap_findings_sample(
                 seconds_lost=None,
                 evidence=(
                     f"ability {m.ability_id}",
-                    f"ours over {our_seconds:.0f}s of boss pulls",
+                    f"ours over {our_seconds:.0f}s of {words.over}",
                     f"range {low:.0%} to {high:.0%} across {len(m.their_fractions)} top parses",
                     f"{count_phrase(missing_aura_data, total)} references had no aura data",
                 ),
@@ -479,11 +493,11 @@ def _gap_findings_sample(
             )
         )
     if unjudged:
-        findings.append(_unjudged_finding(our_name, unjudged))
+        findings.append(_unjudged_finding(our_name, unjudged, words))
     return findings
 
 
-def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
+def _unjudged_finding(our_name: str, names: Sequence[str], words: Wording) -> Finding:
     """Auras the sample carried that our own boss pulls show none of.
 
     Deliberately not a gap row. `onSelf` has no source filter, so it returns
@@ -512,6 +526,6 @@ def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
         evidence=(
             ", ".join(ordered),
             f"carried by at least {MIN_SAMPLE_FOR_AGGREGATE} top parses each",
-            "absent from our own boss pulls",
+            f"absent from {words.absent_from}",
         ),
     )

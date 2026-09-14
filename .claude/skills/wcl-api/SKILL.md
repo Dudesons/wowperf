@@ -475,6 +475,20 @@ carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls
 intersection rather than a second query. Confirmed by recomputing one aura's uptime over
 fight 36's three boss pulls and matching the boss window the analyzers already derive.
 
+**A band never falls outside the fight it was queried for.** Measured 2026-09-14 against every
+cached `AuraTable` response, offline and at no quota cost. Method: a response's `totalTime`
+equals its fight's wall-clock `endTime - startTime` exactly, so the pair `(endTime - totalTime,
+endTime)` identifies the fight even where two reports share an `endTime`; 22 of the 49 cached
+tables join that way, and over their 49,514 bands **none starts before its fight's `startTime`
+and none ends after its `endTime`**. So a buff carried into the pull is reported clipped, and
+uptime summed over a whole fight cannot exceed the fight — which is what lets
+`comparison/uptime.seconds_up_over_the_fight` clip to nothing and still bound its own fraction.
+Note what the response's own `startTime`/`endTime` are **not**: they read 0 and the fight end,
+the query window rather than the fight, so they are no use as a bound. All 22 joined tables are
+Mythic+ fights, because no raid `AuraTable` response is cached; the query is the same
+`table(fightIDs:, dataType: Buffs, targetID:)` either way, so this is a property of the endpoint
+rather than of the content, but it has not been measured against a raid fight directly.
+
 **A buff band's `startTime` coincides with the cast that applied it, closely enough to trust
 `start <= press <= end`.** Measured 2026-09-11 against the cached responses for report
 `6Kx1P9GbNXrcLdHa`: of 1241 band-starts paired to a cast of the same ability within five

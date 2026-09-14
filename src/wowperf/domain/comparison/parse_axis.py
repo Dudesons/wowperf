@@ -14,6 +14,7 @@ from wowperf.domain.comparison.spells import (
 from wowperf.domain.comparison.targets import TargetRow, compare_targets
 from wowperf.domain.comparison.throughput import compare_damage_total, compare_rank
 from wowperf.domain.comparison.uptime import compare_uptime_sample, whole_fight_uptime
+from wowperf.domain.comparison.wording import RAID
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
@@ -69,8 +70,8 @@ def _no_sample(our_name: str) -> Finding:
         detail=(
             "The parse leaderboard returned no reference kills for this specialisation at "
             "this difficulty, so casts a minute, talents and buff uptime are not compared. "
-            "The percentile and the damage comparisons above read this report's own "
-            "rankings rather than a sample, and are unaffected."
+            "The percentile and the damage comparisons beside this one read this report's "
+            "own rankings rather than a sample, and are unaffected."
         ),
         confidence=Confidence.MEASURED,
         seconds_lost=None,
@@ -113,7 +114,13 @@ def compare_parse_axis(
 
     Six calls covering the seven families design section 6 lists for this axis:
     `compare_spells_sample` answers both 6.3, the cast rates, and 6.4, the casts
-    a reference made that we never did.
+    a reference made that we never did. They are called in section 6's order but
+    for the percentile, which is emitted last for the reason given at the call.
+
+    `words=RAID` is bound beside each raid rule and never apart from it: a
+    sentence naming boss pulls, trash or a keystone level is false of a raid
+    fight, and the two arguments are what keep the rule and the sentence about
+    it saying the same thing.
     """
     if standing is None:
         return [_withheld(our_name)]
@@ -127,22 +134,28 @@ def compare_parse_axis(
             our_name,
         ),
         *compare_targets(our_targets, their_targets, our_name),
-        *compare_rank(standing, boss_standing, our_name),
     ]
 
     top = sample.top
     if top is None:
         findings.append(_no_sample(our_name))
-        return findings
+    else:
+        findings += compare_spells_sample(
+            NO_ROUTE, our_seconds, our_casts, our_player, our_name, sample,
+            counted=whole_fight_casts, words=RAID,
+        )
+        findings += compare_talents(
+            our_player, our_name, find_player(top.players, top.character_name), top
+        )
+        findings += compare_uptime_sample(
+            NO_ROUTE, our_seconds, our_auras, our_name, sample,
+            measured=whole_fight_uptime, words=RAID,
+        )
 
-    findings += compare_spells_sample(
-        NO_ROUTE, our_seconds, our_casts, our_player, our_name, sample,
-        counted=whole_fight_casts,
-    )
-    findings += compare_talents(
-        our_player, our_name, find_player(top.players, top.character_name), top
-    )
-    findings += compare_uptime_sample(
-        NO_ROUTE, our_seconds, our_auras, our_name, sample, measured=whole_fight_uptime,
-    )
+    # Last, and not third. Every `compare` finding carries `seconds_lost=None`,
+    # so `rank_raid_findings` ties across the whole family and leaves the order
+    # this list was built in -- which makes the seam's own order the page's
+    # order. Section 6.7 says a percentile is triage and never a headline, so
+    # it goes below everything that says what the triage was about.
+    findings += compare_rank(standing, boss_standing, our_name)
     return findings

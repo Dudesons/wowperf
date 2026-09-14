@@ -28,6 +28,7 @@ from wowperf.domain.comparison.spells import (
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import boss_pull_uptime, compare_uptime_sample
+from wowperf.domain.comparison.wording import DUNGEON
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.season import ConsumableBuffs, SlotNames
@@ -136,7 +137,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
     return [
         *compare_spells_sample(
             our_pulls, our_boss_seconds, ours.casts, subject.player, subject.display_name,
-            parse, counted=boss_pull_casts,
+            parse, counted=boss_pull_casts, words=DUNGEON,
         ),
         *compare_trash_spells_sample(ours, subject.player, subject.display_name, parse),
         *compare_talents(
@@ -147,7 +148,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         ),
         *compare_uptime_sample(
             our_pulls, our_boss_seconds, subject.our_auras, subject.display_name,
-            parse, measured=boss_pull_uptime,
+            parse, measured=boss_pull_uptime, words=DUNGEON,
         ),
         *compare_enchants(
             subject.player.loadout, their_loadouts, subject.display_name, subject.slot_names

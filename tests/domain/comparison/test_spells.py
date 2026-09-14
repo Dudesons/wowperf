@@ -18,6 +18,7 @@ from wowperf.domain.comparison.spells import (
     rate_measures,
     whole_fight,
 )
+from wowperf.domain.comparison.wording import DUNGEON
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.loadout import EquippedItem, Loadout
@@ -124,7 +125,7 @@ def pairwise_spells(
     """
     return compare_spells(
         ours.run.pulls, boss_seconds(ours.run.pulls), ours.casts, our_player, our_name,
-        theirs, their_name, counted=boss_pull_casts,
+        theirs, their_name, counted=boss_pull_casts, words=DUNGEON,
     )
 
 
@@ -134,7 +135,7 @@ def sample_spells(
     """`compare_spells_sample` for a Mythic+ run, bound the way `pairwise_spells` is."""
     return compare_spells_sample(
         ours.run.pulls, boss_seconds(ours.run.pulls), ours.casts, our_player, our_name,
-        sample, counted=boss_pull_casts,
+        sample, counted=boss_pull_casts, words=DUNGEON,
     )
 
 
@@ -261,6 +262,64 @@ def test_a_rate_gap_on_a_shared_ability_is_derived() -> None:
     assert len(rates) == 1
     assert rates[0].confidence is Confidence.DERIVED
     assert "Arcane Blast" in rates[0].title
+
+
+def test_the_dungeon_rate_sentence_measures_boss_pull_time_at_a_key() -> None:
+    """The Mythic+ rendering of the sentences `Wording` varies, whole and with numbers.
+
+    The raid rendering of the same three is asserted in `test_parse_axis.py`, and
+    the golden report file holds these byte for byte. Asserted here rather than
+    by reading the `Wording` back: a test that checked which object arrived would
+    pass for a sentence built out of the wrong half of it.
+
+    Both sides' seconds differ from each other and from sixty, so no figure below
+    is reproducible without the denominator that produced it.
+    """
+    ours = a_loaded(OURS, (boss_pull(0, 120.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 90.0),),
+        tuple(cast(11, 30451, "Arcane Blast", n * 1_000, 0) for n in range(6))
+        + tuple(cast(11, 153626, "Arcane Orb", 20_000 + n * 1_000, 0) for n in range(3)),
+    )
+
+    findings = pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+    rate = next(f for f in findings if f.id.startswith("compare.spells.rate."))
+    missing = next(f for f in findings if f.id.startswith("compare.spells.missing."))
+
+    assert rate.detail == (
+        "Both rates are casts per minute of boss-pull time, which is the one stretch of a "
+        "dungeon where two runs fought the same encounter. A longer fight at a higher key "
+        "changes how many cooldowns fit, so treat a small gap as noise."
+    )
+    # 6 casts over their 90s against our 1 over 120s: 4.0 a minute against 0.5.
+    assert "4.0" in rate.title and "0.5" in rate.title
+    assert "ours over 120s of boss pulls" in rate.evidence
+    assert "theirs over 90s of boss pulls" in rate.evidence
+
+    assert missing.detail == (
+        "Arcane Orb does not appear anywhere in this run for "
+        f"{OUR_NAME} — not on bosses and not on trash. That is a talent not taken, a "
+        "button not pressed, or an item not owned; the log cannot tell which."
+    )
+    assert "3 casts across 90s of their boss pulls" in missing.evidence
+    assert "zero casts in the whole of our run" in missing.evidence
+
+
+def test_the_dungeon_unavailable_sentence_names_boss_pulls() -> None:
+    ours = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(THEIRS, (trash_pull(0, 60.0),), ())
+
+    unavailable = next(
+        f for f in pairwise_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id == "compare.spells.unavailable"
+    )
+
+    assert unavailable.detail == (
+        "A spell comparison needs boss pulls on both sides and the reference player "
+        "present in their own report. One of those is missing, so no ability numbers are "
+        "reported rather than numbers from an unlike sample."
+    )
 
 
 def test_a_reference_cast_too_few_times_is_not_a_rate_finding() -> None:
@@ -415,6 +474,78 @@ SAMPLE_OF_FIVE = ParseSample(
 )
 
 OURS_LOADED = a_loaded(OURS, (boss_pull(0, 60.0),), (cast(693, METEOR, "Meteor", 1_000, 0),) * 2)
+
+
+ARCANE_ORB = 153626
+
+WORDED_SAMPLE = ParseSample(
+    members=(
+        a_parse_member("Stonewake", 21, {METEOR: 9, SHIFTING_POWER: 3, ARCANE_ORB: 3},
+                       boss_seconds_=90.0),
+        a_parse_member("Stonewake", 22, {METEOR: 10, SHIFTING_POWER: 3, ARCANE_ORB: 3},
+                       boss_seconds_=100.0),
+        a_parse_member("Stonewake", 23, {METEOR: 4, SHIFTING_POWER: 3, ARCANE_ORB: 3},
+                       boss_seconds_=80.0),
+        a_parse_member("Stonewake", 24, {METEOR: 10}, boss_seconds_=120.0),
+        a_parse_member("Stonewake", 25, {METEOR: 7}, boss_seconds_=70.0),
+    )
+)
+"""Five parses, no two of which fought a boss for the same length of time.
+
+Deliberately not the sixty seconds the fixtures above share: at a denominator of
+sixty `count / seconds * 60` is the identity, and every rate the test below reads
+back would be reproducible without any denominator having been used."""
+
+WORDED_OURS = a_loaded(
+    OURS,
+    (boss_pull(0, 120.0),),
+    (cast(693, METEOR, "Meteor", 1_000, 0),) * 2
+    + (cast(693, SHIFTING_POWER, "Shifting Power", 2_000, 0),) * 12,
+)
+
+
+def test_the_dungeon_sampled_sentences_measure_boss_pull_time_at_a_key() -> None:
+    """The Mythic+ rendering of the three sampled sentences `Wording` varies.
+
+    The golden report file does not hold these: its fixture carries no reference
+    run, so no comparison family reaches the page it renders. These assertions
+    are what pins them.
+    """
+    findings = sample_spells(WORDED_OURS, OURS, OUR_NAME, WORDED_SAMPLE)
+    rate = next(f for f in findings if f.id == "compare.spells.rate.0")
+    above = next(f for f in findings if f.id == "compare.spells.above.0")
+    missing = next(f for f in findings if f.id == "compare.spells.missing.0")
+
+    assert rate.detail == (
+        "Both rates are casts per minute of boss-pull time, which is the one stretch of a "
+        "dungeon where every run fought the same encounter. The reference side is the "
+        "median across the sample, not one parse, so a single busy or quiet run cannot "
+        "carry the comparison alone."
+    )
+    # A median of 6.0 a minute across the five against our 2 casts over 120s.
+    assert "a median 6.0 times a minute" in rate.title
+    assert "casts it 1.0" in rate.title
+    assert "ours over 120s of boss pulls" in rate.evidence
+
+    assert above.detail == (
+        "Both rates are casts per minute of boss-pull time. This row states a difference "
+        "and no verdict: casting something more often than the sample is not a fault, and "
+        "on a class whose resources are shared it means those resources did not go "
+        "somewhere else, which is the thing worth checking. A defensive, a taunt or a "
+        "movement button pressed more often may simply be what the run demanded, and a "
+        "longer or harder key asks for more of them."
+    )
+    assert "6.0" in above.title and "2.0" in above.title
+    assert "ours over 120s of boss pulls" in above.evidence
+
+    assert missing.detail == (
+        f"Ability {ARCANE_ORB} does not appear anywhere in this run for {OUR_NAME} — not "
+        "on bosses and not on trash. That is a talent not taken, a button not pressed, or "
+        "an item not owned; the log cannot tell which. The count is over the sample, not "
+        "one parse, so no single reference needs naming to make the point."
+    )
+    assert "zero casts in the whole of our run" in missing.evidence
+
 
 
 def test_a_spell_most_top_parses_cast_and_we_never_did_is_counted() -> None:

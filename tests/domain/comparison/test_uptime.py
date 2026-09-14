@@ -11,8 +11,11 @@ from wowperf.domain.comparison.uptime import (
     boss_windows,
     compare_uptime,
     compare_uptime_sample,
+    seconds_up_over_the_fight,
     uptime_measures,
+    whole_fight_uptime,
 )
+from wowperf.domain.comparison.wording import DUNGEON
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
 
@@ -119,7 +122,7 @@ def pairwise_uptime(
     """
     return compare_uptime(
         ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, theirs, their_name,
-        measured=boss_pull_uptime,
+        measured=boss_pull_uptime, words=DUNGEON,
     )
 
 
@@ -129,12 +132,75 @@ def sample_uptime(
     """`compare_uptime_sample` for a Mythic+ run, bound the way `pairwise_uptime` is."""
     return compare_uptime_sample(
         ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, sample,
-        measured=boss_pull_uptime,
+        measured=boss_pull_uptime, words=DUNGEON,
     )
 
 
 def test_boss_windows_covers_boss_pulls_only() -> None:
     assert boss_windows(a_run(BOSS, TRASH).pulls) == ((0, 100_000),)
+
+
+def test_overlapping_bands_over_a_whole_fight_are_counted_once() -> None:
+    """The raid rule's one distinguishing behaviour: it merges before it sums.
+
+    Nothing in the aura table's own response promises the bands it returns are
+    disjoint. A rule that added band lengths, or that read `total_uptime_ms`,
+    would report 25s here for 20s of real uptime -- and every other fixture in
+    this suite carries one band per aura, where all three readings agree.
+    """
+    aura = an_aura(391477, "Coagulopathy", (0, 10_000), (5_000, 20_000))
+
+    assert aura.total_uptime_ms == 25_000  # the sum of the parts, which is not the union
+    assert seconds_up_over_the_fight(aura) == 20.0
+    assert whole_fight_uptime(()) is seconds_up_over_the_fight
+
+
+def test_an_aura_with_no_bands_is_up_for_no_seconds_over_a_whole_fight() -> None:
+    assert seconds_up_over_the_fight(an_aura(391477, "Coagulopathy")) == 0.0
+
+
+def test_the_dungeon_uptime_sentence_measures_boss_pull_time_at_a_keystone_level() -> None:
+    """The Mythic+ rendering of the sentences `Wording` varies, whole and with numbers.
+
+    The raid rendering of the same ones is asserted in `test_parse_axis.py`, and
+    the golden report file holds these byte for byte. The two sides' boss time
+    differs, so neither figure below is reproducible from the other's denominator.
+    """
+    ours = a_run(BOSS)
+    theirs = a_run(a_pull(0, 0, 80_000, encounter_id=12825), player=a_player("Bríala", 3))
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 60_000)),))
+
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras), "Bríala"
+    )
+
+    assert findings[0].detail == (
+        "Both figures are the share of boss-pull time the aura was present, which is "
+        "comparable even though the two fights ran for different lengths. A shorter fight "
+        "at a different keystone level still changes what fits, so read a narrow gap as "
+        "noise. This compares by exact ability, though, so a gap can also mean a different "
+        "item of the same kind, or gear this player does not own — not that nothing was "
+        "used at all."
+    )
+    # 60s of their 80s against 20s of our 100s: 75% against 20%.
+    assert "75%" in findings[0].title and "20%" in findings[0].title
+    assert "ours over 100s of boss pulls" in findings[0].evidence
+    assert "theirs over 80s of boss pulls" in findings[0].evidence
+
+
+def test_the_dungeon_unavailable_sentence_names_boss_pulls() -> None:
+    ours = a_run(BOSS)
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    theirs = a_reference(a_run(TRASH), our_auras)
+
+    findings = pairwise_uptime(ours, our_auras, OUR_NAME, theirs, "Bríala")
+
+    assert findings[0].detail == (
+        "An uptime comparison needs boss pulls on both sides and aura data for both "
+        "players. One of those is missing, so no uptime numbers are reported rather than "
+        "numbers from an unlike sample."
+    )
 
 
 def test_an_uptime_gap_on_self_is_reported() -> None:
@@ -384,6 +450,74 @@ SAMPLE_OF_FIVE = ParseSample(
 SAMPLE_WITHOUT_AURAS = ParseSample(
     members=tuple(member.model_copy(update={"auras": None}) for member in SAMPLE_OF_FIVE.members)
 )
+
+
+SIPHON_STORM = 384267
+
+
+def a_worded_member(actor_id: int, boss_ms: int, coagulopathy_ms: int, siphon_ms: int
+                    ) -> ParseMember:
+    """A reference on a boss pull of its own length, carrying two auras.
+
+    The lengths differ from each other and from `OUR_RUN`'s, so no fraction the
+    test below reads back could have come from the wrong denominator and still
+    matched.
+    """
+    player = a_player("Stonewake", actor_id)
+    run = a_run(a_pull(0, 0, boss_ms, encounter_id=12825), player=player)
+    return a_reference(
+        run,
+        PlayerAuras(
+            actor_id=actor_id,
+            on_self=(
+                an_aura(391477, "Coagulopathy", (0, coagulopathy_ms)),
+                an_aura(SIPHON_STORM, "Siphon Storm", (0, siphon_ms)),
+            ),
+        ),
+        name="Stonewake",
+        report_code=f"REF{actor_id}",
+    )
+
+
+WORDED_SAMPLE = ParseSample(
+    members=(
+        a_worded_member(21, 90_000, 72_000, 27_000),
+        a_worded_member(22, 80_000, 56_000, 24_000),
+        a_worded_member(23, 120_000, 90_000, 36_000),
+    )
+)
+"""Three references at 80%, 70% and 75% of their own boss time on Coagulopathy, and
+30% each on a Siphon Storm our own side never carries."""
+
+
+def test_the_dungeon_sampled_uptime_sentences_name_boss_pulls_and_a_keystone_level() -> None:
+    """The Mythic+ rendering of the two sampled sentences `Wording` varies.
+
+    The golden report file does not hold these: its fixture carries no reference
+    run, so no comparison family reaches the page it renders. These assertions
+    are what pins them.
+    """
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, WORDED_SAMPLE)
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    unjudged = next(f for f in findings if f.id == "compare.uptime.unjudged")
+
+    assert gap.detail == (
+        "Both figures are the share of boss-pull time the aura was present, which is "
+        "comparable even though the fights ran for different lengths. A shorter fight at a "
+        "different keystone level still changes what fits, so read a narrow gap as noise. "
+        "This compares by exact ability, so a gap can still mean a different item of the "
+        "same kind — but the gap is stated over several top parses, not one player's "
+        "build, so a single trinket this player happens not to own no longer explains it "
+        "away."
+    )
+    assert gap.title == (
+        f"Coagulopathy was up a median 75% of boss time across 3 top parses; 20% for "
+        f"{OUR_NAME}"
+    )
+    assert "ours over 100s of boss pulls" in gap.evidence
+
+    assert "Siphon Storm" in unjudged.evidence[0]
+    assert "absent from our own boss pulls" in unjudged.evidence
 
 
 def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
