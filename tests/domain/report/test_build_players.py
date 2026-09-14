@@ -714,17 +714,23 @@ def test_an_uncompared_player_gets_no_tables() -> None:
     assert card.comparison_tables == ()
 
 
-def test_an_uptime_tables_rows_are_also_sorted_by_gap() -> None:
-    """The boss-table sort test above only reaches `_rate_rows`; `_aura_rows` sorts
-    with the same rule on its own line, so a second table needs its own two rows
-    to prove that copy sorts too rather than happening to inherit the first's order."""
+def test_an_uptime_table_is_sorted_by_our_own_uptime_not_by_the_gap() -> None:
+    """The cast tables lead with the widest gap. This one leads with what the
+    player actually held, highest first, because it is read as a list of "how
+    much of the fight did I have this up for" and a reader scans it top to
+    bottom.
+
+    The fixture is built so the two rules disagree: the row with the widest gap
+    is the one with the lowest uptime, so a table still sorting by gap would
+    come out exactly reversed.
+    """
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
-                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
                 AuraUptime(ability_id=2, name="Big gap", ours=0.40, their_median=1.0,
                            their_fractions=(1.0,), verdict=Verdict.BELOW),
+                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
+                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
             ),
             boss_seconds=600.0,
         )
@@ -735,7 +741,7 @@ def test_an_uptime_tables_rows_are_also_sorted_by_gap() -> None:
     )[0]
 
     auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
-    assert [row.name for row in auras.rows] == ["Big gap", "Small gap"]
+    assert [row.name for row in auras.rows] == ["Small gap", "Big gap"]
 
 
 def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
@@ -941,10 +947,12 @@ def a_card_with_a_stat_table() -> PlayerCard:
             stats=(
                 StatShare(name="crit", ours=0.42, their_median=0.31,
                           their_shares=(0.29, 0.31, 0.33), our_rating=1183,
-                          their_median_rating=1402.0, verdict=Verdict.ABOVE),
+                          their_median_rating=1402.0,
+                          their_ratings=(1310.0, 1402.0, 1490.0), verdict=Verdict.ABOVE),
                 StatShare(name="mastery", ours=0.11, their_median=0.24,
                           their_shares=(0.22, 0.24, 0.27), our_rating=310,
-                          their_median_rating=1090.0, verdict=Verdict.BELOW),
+                          their_median_rating=1090.0,
+                          their_ratings=(990.0, 1090.0, 1220.0), verdict=Verdict.BELOW),
             ),
         )
     }

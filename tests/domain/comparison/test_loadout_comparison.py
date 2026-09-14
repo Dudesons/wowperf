@@ -392,30 +392,34 @@ def test_each_secondary_that_differs_gets_a_row() -> None:
     assert "mastery" in findings[0].title
 
 
-def test_two_secondaries_moving_at_once_produce_two_distinct_ids() -> None:
-    # A real gear difference routinely moves more than one secondary's share
-    # past STAT_GAP_SHARE at once. `_for_player` appends an identical player
-    # slug to every row this function returns, so two rows sharing one id here
-    # would collide into one page element id -- exactly the failure
-    # `compare_enchants` folds in the slot to avoid and `compare_consumable_buffs`
-    # folds in the category to avoid. Checking titles or evidence, as every
-    # other test in this section does, cannot see this: only the ids collide.
+def test_several_secondaries_moving_at_once_produce_distinct_ids() -> None:
+    # A real gear difference moves more than one secondary's share at once, and
+    # necessarily so: they are shares of one budget, so a stat that grows takes
+    # its room from the rest. `_for_player` appends an identical player slug to
+    # every row this function returns, so two rows sharing one id here would
+    # collide into one page element id -- exactly the failure `compare_enchants`
+    # folds in the slot to avoid and `compare_consumable_buffs` folds in the
+    # category to avoid. Checking titles or evidence, as every other test in
+    # this section does, cannot see this: only the ids collide.
     ours = a_stat_loadout(crit=500, haste=500, mastery=200, versatility=0)
     theirs = [
         a_stat_loadout(crit=1000, haste=200, mastery=1400, versatility=100) for _ in range(5)
     ]
     findings = compare_stats(ours, theirs, OUR_NAME)
     ids = [f.id for f in findings]
-    assert len(ids) == 2
+    assert len(ids) > 1, "the fixture moved one stat only, so no id could collide"
     assert len(set(ids)) == len(ids)
-    assert set(ids) == {"compare.stats.rating.haste", "compare.stats.rating.mastery"}
+    assert {"compare.stats.rating.haste", "compare.stats.rating.mastery"} <= set(ids)
+    # Every id names a stat a player chooses between; leech, avoidance and
+    # speed reach the table but never a finding.
+    assert all(i.rsplit(".", 1)[-1] in StatBlock.CHOSEN for i in ids)
 
 
 def test_the_row_states_our_rating_the_median_and_the_range() -> None:
     # crit is held equal on both sides so only mastery's rating differs. A
     # StatBlock with mastery as its only nonzero stat would make
     # total_secondary() equal to that one rating, collapsing every share to
-    # 100% regardless of its size -- STAT_GAP_SHARE could never clear and the
+    # 100% regardless of its size -- both sides would sit at the same share, and the
     # row would never print.
     ours = a_stat_loadout(crit=1000, mastery=400)
     theirs = [a_stat_loadout(crit=1000, mastery=r) for r in (1290, 1400, 1480, 1500, 1602)]
@@ -460,7 +464,7 @@ def test_a_stat_nobody_has_produces_no_row() -> None:
 
 def test_a_small_share_difference_produces_no_row_despite_a_rating_gap() -> None:
     # The raw mastery rating differs (400 vs 430) but both loadouts spend
-    # nearly the same share of their own budget on it -- under STAT_GAP_SHARE,
+    # nearly the same share of their own budget on it -- inside STAT_GAP_BEYOND_RANGE,
     # so nothing is worth printing. This is the case a flipped comparison
     # (printing when the gap is small rather than skipping it) would get
     # backwards, and that test_each_secondary_that_differs_gets_a_row's large
@@ -468,6 +472,71 @@ def test_a_small_share_difference_produces_no_row_despite_a_rating_gap() -> None
     ours = a_stat_loadout(crit=900, mastery=400)
     theirs = [a_stat_loadout(crit=900, mastery=430) for _ in range(5)]
     assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+def test_a_share_just_outside_a_collapsed_range_is_under_the_floor() -> None:
+    """Where every reference lands on the same share the range is a point, and
+    a player one point away is "outside" it. That is what the floor exists for,
+    and without it this fires."""
+    ours = a_stat_loadout(crit=1000, haste=1000, mastery=195, versatility=1000)
+    theirs = [a_stat_loadout(crit=1000, haste=1000, mastery=230, versatility=1000)
+              for _ in range(5)]
+    # ~6.1% against ~7.1%: outside the collapsed range, but by about a point.
+    assert compare_stats(ours, theirs, OUR_NAME) == []
+
+
+def test_a_share_far_outside_the_range_clears_the_floor() -> None:
+    # The same shape as the test above with the gap widened past the floor, so
+    # the pair together prove the floor is a threshold and not an off switch.
+    ours = a_stat_loadout(crit=1000, haste=1000, mastery=100, versatility=1000)
+    theirs = [a_stat_loadout(crit=1000, haste=1000, mastery=900, versatility=1000)
+              for _ in range(5)]
+    assert [f.id for f in compare_stats(ours, theirs, OUR_NAME)] == [
+        "compare.stats.rating.mastery"
+    ]
+
+
+def test_a_wide_sample_swallows_a_gap_a_narrow_one_reports() -> None:
+    """The point of reading against the sample's own range rather than a fixed
+    gap from the median. The same player against two samples with the same
+    median: one whose references agree, one whose references do not."""
+    ours = a_stat_loadout(crit=1000, haste=1000, mastery=100, versatility=1000)
+    agreeing = [a_stat_loadout(crit=1000, haste=1000, mastery=900, versatility=1000)
+                for _ in range(5)]
+    disagreeing = [
+        a_stat_loadout(crit=1000, haste=1000, mastery=m, versatility=1000)
+        for m in (60, 300, 900, 1500, 2400)
+    ]
+
+    assert compare_stats(ours, agreeing, OUR_NAME) != []
+    assert compare_stats(ours, disagreeing, OUR_NAME) == []
+
+
+def test_a_tertiary_stat_reaches_the_table_but_never_a_finding() -> None:
+    # Leech arrives on a piece or it does not; nobody itemises towards it, so
+    # it is not something a reader can be told to act on.
+    ours = a_stat_loadout(crit=1000, haste=1000, mastery=1000, leech=0)
+    theirs = [a_stat_loadout(crit=1000, haste=1000, mastery=1000, leech=900)
+              for _ in range(5)]
+
+    assert [f.id for f in compare_stats(ours, theirs, OUR_NAME)] == []
+    assert "leech" in [m.name for m in stat_measures(ours, theirs)]
+
+
+def test_no_finding_contradicts_the_tables_own_verdict() -> None:
+    """The finding and the stat table are two readings of one question on one
+    page, so a row the table calls level must never also be a finding. Both
+    read `stat_measures`, and this is what pins that they still agree."""
+    ours = a_stat_loadout(crit=1000, haste=400, mastery=100, versatility=700)
+    theirs = [
+        a_stat_loadout(crit=c, haste=400, mastery=900, versatility=700)
+        for c in (900, 1000, 1100, 1200, 1300)
+    ]
+
+    level = {m.name for m in stat_measures(ours, theirs) if m.verdict is Verdict.LEVEL}
+    fired = {f.id.rsplit(".", 1)[-1] for f in compare_stats(ours, theirs, OUR_NAME)}
+    assert fired, "the fixture produced no finding, so this guard checks nothing"
+    assert not (fired & level)
 
 
 def test_rows_are_badged_derived() -> None:
@@ -527,7 +596,7 @@ def test_nothing_is_compared_below_the_sample_floor_for_stats() -> None:
     # test_the_row_states_our_rating_the_median_and_the_range does above: a
     # loadout with mastery as its only nonzero stat makes total_secondary()
     # equal to that one rating, collapsing every share to 100% regardless of
-    # the floor guard -- STAT_GAP_SHARE would suppress the row on its own, and
+    # the floor guard -- the share rule would suppress the row on its own, and
     # the floor below the sample size would never get a chance to.
     ours = a_stat_loadout(crit=1000, mastery=400)
     theirs = [a_stat_loadout(crit=1000, mastery=1400) for _ in range(2)]

@@ -336,8 +336,15 @@ def _stat_rows(measures: Sequence[StatShare]) -> tuple[ComparisonRow, ...]:
 
 
 def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
-    """Aura uptimes, widest difference first, as shares of boss time not seconds."""
-    ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
+    """Aura uptimes, our own highest first, as shares of boss time not seconds.
+
+    The two cast tables lead with the widest gap. This one does not, because it
+    is read differently: dozens of rows long, it answers "how much of the fight
+    did I hold each of these for", and that is a list a reader scans from the
+    top. Sorting by the gap scattered the figures a reader came for and led
+    with whatever the player held *least*.
+    """
+    ordered = sorted(measures, key=lambda m: m.ours, reverse=True)
     rows = []
     for m in ordered:
         low, high = observed_range(m.their_fractions)

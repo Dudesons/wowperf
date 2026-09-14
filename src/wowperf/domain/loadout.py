@@ -1,6 +1,8 @@
 # ABOUTME: What a player brought: the items they equipped and the stat ratings those gave them.
 # ABOUTME: Pure data with derived readings; imports nothing that performs I/O.
 
+from typing import ClassVar
+
 from wowperf.domain.base import Frozen
 
 TIER_SLOTS = frozenset({0, 2, 4, 6, 9})
@@ -41,6 +43,17 @@ class StatBlock(Frozen):
     leech: int = 0
     avoidance: int = 0
     speed: int = 0
+
+    CHOSEN: ClassVar[frozenset[str]] = frozenset({"crit", "haste", "mastery", "versatility"})
+    """The four a player itemises between, as opposed to the three that arrive by chance.
+
+    Leech, avoidance and speed appear on a piece or they do not; nobody builds
+    towards them, and measured on report 43HaCNQwPrKqtYgn fight 2 they hold
+    between 0% and 10% of a budget while the four below hold the rest. A table
+    reports all seven, because a table is a reference and hiding a row a reader
+    can see in game would only puzzle them. A finding is a call to act, so it
+    is confined to the four a reader can act on.
+    """
 
     def secondaries(self) -> tuple[tuple[str, int], ...]:
         """Every stat as (name, rating), in a fixed order so two blocks line up."""

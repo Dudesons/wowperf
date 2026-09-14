@@ -198,12 +198,27 @@ def compare_tier(
     ]
 
 
-STAT_GAP_SHARE = 0.15
-"""How far a stat's share of the budget must move before the row is worth printing.
+STAT_GAP_BEYOND_RANGE = 0.02
+"""How far past the sample's own range a share must sit before it is worth a finding.
 
-Two players of the same specialisation gemming the same way land within a few
-points of each other, and a row for every stat every time would bury the one
-that moved.
+Replaces a flat fifteen-point gap from the median, which never fired on real
+data and could not have. Measured 2026-09-14 across five players on report
+43HaCNQwPrKqtYgn fight 2: within one specialisation the references' own shares
+already span between 3.3 and 33.9 points, median 13.5. The old constant was
+about the width of a typical range, so clearing it meant sitting outside where
+every top parse of the specialisation had ever sat, twice over.
+
+So the bar is the sample's range, not a constant: outside it, no reference
+chose what this player chose, which is a claim the sample supports on its own
+terms and the same one the card's table draws. The two agree by construction,
+because both read `stat_measures`.
+
+The two points are a floor on top of that, and they are what the range alone
+cannot supply. Where every reference happens to land on the same share the
+range collapses to a point, and a player a single point away is then "outside"
+it. On the same five players the gaps beyond the range were 0.6, 0.7, 2.0,
+2.2, 4.0 and 4.6 points; a floor here drops the first two, which are a player
+sitting on the edge, and keeps the rest, which are a different choice.
 """
 
 
@@ -222,34 +237,37 @@ def compare_stats(
 
     Ratings only. Converting one to a percentage needs a per-level coefficient
     with no source in this API, so the only percentage here is a share.
-    """
-    if our_loadout is None or our_loadout.stats is None:
-        return []
-    theirs = [
-        loadout.stats for loadout in their_loadouts if loadout.stats is not None
-    ]
-    if len(theirs) < MIN_SAMPLE_FOR_AGGREGATE:
-        return []
 
-    our_stats = our_loadout.stats
-    our_budget = our_stats.total_secondary()
+    Built from `stat_measures`, the same measurements the card's stat table
+    draws, so a row the table calls level can never also be a finding: the two
+    would then be two answers to one question on one page.
+    """
     findings = []
-    for name, ours in our_stats.secondaries():
-        ratings = [float(dict(stats.secondaries())[name]) for stats in theirs]
-        their_median = median(ratings)
-        if ours == their_median:
+    for measure in stat_measures(our_loadout, their_loadouts):
+        # A table is a reference and reports all seven stats. A finding is a
+        # call to act, and leech, avoidance and speed are not chosen.
+        if measure.name not in StatBlock.CHOSEN:
             continue
-        our_share = ours / our_budget if our_budget else 0.0
-        their_shares = [
-            dict(stats.secondaries())[name] / stats.total_secondary()
-            if stats.total_secondary()
-            else 0.0
-            for stats in theirs
-        ]
-        their_share = median(their_shares)
-        if abs(our_share - their_share) < STAT_GAP_SHARE:
+        # The title says "carried N rating; the sample's median is M". Where
+        # those two numbers are the same it contradicts itself, whatever the
+        # shares have done -- and they can diverge sharply while the ratings
+        # coincide, because the share's denominator is the whole budget. The
+        # table still carries the row and still calls the share what it is;
+        # a finding that cannot state its own claim in its title does not.
+        if measure.our_rating == measure.their_median_rating:
             continue
-        low, high = observed_range(ratings)
+        share_low, share_high = observed_range(measure.their_shares)
+        beyond = max(share_low - measure.ours, measure.ours - share_high, 0.0)
+        if beyond < STAT_GAP_BEYOND_RANGE:
+            continue
+
+        name = measure.name
+        ours = measure.our_rating
+        their_median = measure.their_median_rating
+        our_share = measure.ours
+        their_share = measure.their_median
+        theirs = measure.their_ratings
+        low, high = observed_range(measure.their_ratings)
         findings.append(
             Finding(
                 # The stat name is folded in before `_for_player` appends the
@@ -377,6 +395,7 @@ def stat_measures(
                 their_shares=tuple(shares),
                 our_rating=our_rating,
                 their_median_rating=median(ratings),
+                their_ratings=tuple(ratings),
                 verdict=verdict,
             )
         )

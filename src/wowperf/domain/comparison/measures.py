@@ -79,6 +79,7 @@ class StatShare(Frozen):
     their_shares: tuple[float, ...]
     our_rating: int
     their_median_rating: float
+    their_ratings: tuple[float, ...]
     verdict: Verdict
 
 
