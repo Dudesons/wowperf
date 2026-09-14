@@ -58,6 +58,8 @@ covers it otherwise.
 | `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | no |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
+| `playerDetails` | `Report` | 2026-09-14 | yes |
+| `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -446,6 +448,15 @@ net of the `rateLimitData` query used to read it, which costs 1.00 point of its 
 
 ## Aura tables
 
+**The buff table already carries consumable buffs.** Measured 2026-09-14 offline over the 2217
+aura-table rows in this project's response cache; no query was issued. 32 match a
+consumable-shaped name: five distinct flasks, `Well Fed` under **six** ability ids
+(451920, 1219182, 1219185, 1232490, 1232585, 1294727) plus `Hearty Well Fed` under two more,
+several `Rune of …` augment runes, `Vantus Rune: …` per-boss runes, and `Potion of Recklessness`.
+
+**A name rule cannot identify them.** `Rune Mastery` (374585) and `Rune of Sanguination` (326808)
+are Death Knight abilities. Any consumable list must be curated by id, with a verified date.
+
 **Aura uptime comes from the table endpoint, not the event stream.** Verified 2026-09-05 against
 report `6Kx1P9GbNXrcLdHa` fight 36:
 
@@ -615,6 +626,81 @@ one is. Anything built on the per-player reading returns nothing, silently.
 selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_auras.py` holds it
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
+
+## Gear and the secondary stat block
+
+Measured 2026-09-14 against report `VCGkLQtPwNRA8HhD` fight 1 and report `6Kx1P9GbNXrcLdHa`
+fight 36, five players each. The whole probe cost roughly 15 points of the 3600-point hour.
+
+**`Report.playerDetails` returns a `JSON` scalar** and accepts `difficulty`, `encounterID`,
+`endTime`, `fightIDs`, `killType`, `startTime`, `translate` and `includeCombatantInfo`.
+
+**The envelope wraps the roster in a `data` key.** The probe behind every number in this
+section traversed exactly `response["reportData"]["report"]["playerDetails"]["data"]["playerDetails"]`
+against the live API, measured 2026-09-14. `playerDetails` returns a `JSON` scalar, and like
+`graph` and `table` elsewhere in this codebase, its payload sits one level down from the field
+itself, under a `data` key.
+
+**`combatantInfo` is `[]` unless `includeCombatantInfo: true` is passed** — an empty list, not an
+object, which makes the field look empty on a first read. With the flag it is an object carrying
+`artifact`, `factionID`, `gear`, `heartOfAzeroth`, `specIDs`, `stats`, `talentTree` and `talents`.
+
+Each player entry carries `combatantInfo`, `guid`, `healthstoneUse`, `icon`, `id`,
+`maxItemLevel`, `minItemLevel`, `name`, `potionUse`, `region`, `server`, `specs` and `type`,
+grouped under `tanks`, `healers` and `dps`.
+
+**`stats` holds ratings, not percentages**, each as `{min, max}`: `Crit`, `Haste`, `Mastery`,
+`Versatility`, `Leech`, `Avoidance`, `Speed`, `Strength`, `Stamina`, `Item Level`. One player read
+`Crit 904`, `Haste 865`, `Mastery 1196`, `Versatility 0`. Converting a rating to a percentage
+needs a per-level coefficient that has no API source here. `min` equalled `max` for every stat of
+every player observed.
+
+**Cost: `playerDetails` with `includeCombatantInfo: true` priced at 2.00 points** from its own
+`rateLimitData`.
+
+**A full-roster analysis multiplies that call, not just its cost.** Measured 2026-09-14 on an
+`analyze --all-players` run against a five-player roster: 19 `PlayerDetails` calls for 38.00
+points, inside a 219.47-point total against the 3600-point hourly budget. The driver is that
+each analysed player draws its own specialisation's parse sample, and each reference report
+needs its own fetch. `Talents` and `Fights` issued exactly the same 19 calls on that run, so
+this scaling predates the gear work rather than being introduced by it.
+
+**`talents` is empty on both routes.** `combatantInfo.talents` and the `talents` field on a
+`DamageDone` table entry both returned `[]` for all ten players. Talents come from
+`talentImportCode` and nowhere else.
+
+**`table(dataType: DamageDone, hostilityType: Friendlies, fightIDs: [N])` priced at 0.00
+points** and carries the same `gear` array, so it is the cheaper route when gear is wanted
+without stats. Its entries carried `abilities`, `activeTime`, `activeTimeReduced`,
+`damageAbilities`, `gear`, `guid`, `icon`, `id`, `itemLevel`, `name`, `talents`, `targets`,
+`total` and `type` — **not `pets`**, which the 2026-09-12 note above records on the same entry.
+The discrepancy is unexplained and nothing depends on it. Called without `fightIDs` the query
+fails: *"You must either provide fightIDs, or provide startTime and endTime."*
+
+**Each `gear` element** carries `id`, `slot`, `quality`, `icon`, `name`, `itemLevel`,
+`permanentEnchant`, `permanentEnchantName`, `bonusIDs` and `setID`, plus `gems` where the item has
+any. All eighteen slots, 0 to 17, appear for every player.
+
+**Slot indices, read off icon filenames** rather than assumed: 0 head, 1 neck, 2 shoulder,
+4 chest, 5 waist, 6 legs, 7 feet, 8 wrist, 9 hands, 10 and 11 rings, **12 and 13 trinkets**,
+14 back, 15 main hand, 16 off hand. Slots 3 and 17 were not identified.
+
+**An item-sourced cast joins to its item by name.** Warcraft Logs names an on-use trinket's spell
+after the item. Against the 81 items equipped by the five players of `VCGkLQtPwNRA8HhD`, joined to
+the 2834 distinct ability names in this project's cache: 5 item names are also ability names, 4 of
+them trinkets, out of 10 trinkets equipped. The other six are passive and fire no named spell.
+**This shows a name match indicates an item source; it does not show every item-sourced ability
+matches by name.** A non-match means unknown, never "this is a class spell".
+
+**`setID` needs a slot rule.** The tier set is class-specific and sits in slots `{0, 2, 4, 6, 9}` —
+observed 2055 Death Knight, 2060 Mage, 2062 Paladin, 2063 Priest, 2064 Rogue, 2065 Shaman, 2067
+Warrior, at 4 or 5 pieces. **Set 2070 spans classes**, appearing for four different ones in slots
+12 and 15, and is not tier. Counting equal `setID`s without the slot rule over-counts.
+
+**Enchantable slots do not need hardcoding.** Across ten players, slots 0, 2, 4, 6, 7, 10, 11 and
+15 were enchanted 10/10; slots 1, 3, 5, 8, 9, 12, 13, 14 and 17 were 0/10; slot 16, the off hand,
+was 1/10. The sample defines the rule: a slot is enchantable when every comparable member
+enchanted it.
 
 ## Leaderboards return report codes
 

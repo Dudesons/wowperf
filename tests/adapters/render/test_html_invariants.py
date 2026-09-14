@@ -55,6 +55,7 @@ from wowperf.domain.report.model import (
     Timeline,
     TimelineBlock,
     TimelineTrack,
+    all_ledger_rows,
 )
 from wowperf.domain.season import (
     ConsumableCategory,
@@ -461,6 +462,36 @@ def test_every_compared_cell_lands_under_the_heading_it_claims() -> None:
             assert MARKUP.sub("", under["Verdict"]) == escape(row.verdict_label)
 
 
+# The whitespace is required: `<th([^>]*)>` matches `<thead>` as well, which
+# shifts every column index by one and makes the comparison below meaningless.
+COMPARED_HEADING_TAG = re.compile(r"<th(\s[^>]*)?>")
+COMPARED_CELL_TAG = re.compile(r"<td(\s[^>]*)?>")
+
+
+def _numeric_columns(tags: list[str]) -> set[int]:
+    """Which column indices were marked as carrying a figure."""
+    return {index for index, attributes in enumerate(tags) if 'class="num"' in attributes}
+
+
+def test_a_right_aligned_column_is_headed_by_a_right_aligned_heading() -> None:
+    """`.num` is what right-aligns a figure, and a heading left where its
+    column is right reads as belonging to the column beside it. Reported by
+    RwlRwlRwlRwl from a rendered page: the numbers under Ours, Median and Range
+    did not line up with the words over them.
+
+    Checked per column index rather than by name, so a column added later is
+    covered without this test being touched.
+    """
+    html = render(rich_report())
+    bodies = COMPARED_TABLE.findall(html)
+    assert bodies, "the fixture drew no comparison table, so this guard checks nothing"
+
+    for body in bodies:
+        headed = _numeric_columns(COMPARED_HEADING_TAG.findall(body))
+        for _, cells in COMPARED_ROW.findall(body):
+            assert _numeric_columns(COMPARED_CELL_TAG.findall(cells)) == headed
+
+
 def test_the_two_compared_rows_differ_in_every_column() -> None:
     """The guard under the test above. Two rows agreeing on a figure would let a
     column print the other row's value, or the neighbouring column's, and still
@@ -630,6 +661,45 @@ def test_a_resolved_icon_reaches_the_page_as_an_address_never_as_embedded_bytes(
     html = render(a_report(deaths=(card,)), icons=CdnIcons({7: "spell_holy_divineshield.jpg"}))
     assert f"url({ICON_HOST}spell_holy_divineshield.jpg)" in html
     assert "data:image" not in html
+
+
+def test_an_ability_only_a_comparison_table_names_still_draws_its_icon() -> None:
+    """Comparison tables used to be left out of the icon walk on purpose: every
+    icon was embedded as base64, and these tables run to dozens of rows per
+    player. Icons are addresses now, so a row costs the page its URL and
+    nothing else, and the reason for the exclusion went with the bytes.
+
+    The precondition is the test: an id that also reached a death card, a
+    ledger row or a timeline would resolve under the old walk too, and this
+    would pass without proving anything.
+    """
+    report = rich_report()
+    in_a_table = {
+        row.ability_id
+        for card in report.players
+        for table in card.comparison_tables
+        for row in table.rows
+        if row.ability_id is not None
+    }
+    drawn_anyway = {row.ability_id for row in all_ledger_rows(report)}
+    for card in report.deaths:
+        drawn_anyway.add(card.killing_blow_id)
+        drawn_anyway.update(row.ability_id for row in card.timeline)
+        for group in card.availability:
+            drawn_anyway.update(row.ability_id for row in group.rows)
+    for player in report.players:
+        if player.timeline is not None:
+            drawn_anyway.update(cooldown.ability_id for cooldown in player.timeline.cooldowns)
+
+    only_in_a_table = sorted(in_a_table - drawn_anyway)
+    assert only_in_a_table, (
+        "fixture precondition: every comparison-table ability is already drawn "
+        "for another reason, so this guard could not fail"
+    )
+
+    ability_id = only_in_a_table[0]
+    html = render(report, icons=CdnIcons({ability_id: "spell_holy_divineshield.jpg"}))
+    assert f".i-{ability_id}" in html
 
 
 PANEL_ORDER = [

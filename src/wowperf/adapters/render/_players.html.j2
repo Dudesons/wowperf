@@ -44,7 +44,7 @@
   <summary>{{ table.heading }}</summary>
   <p class="sub">{{ table.caption }}</p>
   <table class="compared-rows">
-    <thead><tr><th scope="col">Ability</th><th scope="col">Ours</th><th scope="col">Median</th><th scope="col">Range</th><th scope="col">Sample</th><th scope="col">Verdict</th></tr></thead>
+    <thead><tr><th scope="col">Ability</th><th scope="col" class="num">Ours</th><th scope="col" class="num">Median</th><th scope="col" class="num">Range</th><th scope="col">Sample</th><th scope="col">Verdict</th></tr></thead>
     <tbody>
     {% for row in table.rows %}
     <tr class="v-{{ row.verdict }}">

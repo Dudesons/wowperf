@@ -2,6 +2,7 @@
 # ABOUTME: with an upper bound, or never seen. Each doubt resolves toward saying less.
 
 from tests.domain.analysis.test_recap_timeline import DUDE, a_death, loaded
+from wowperf.adapters.config.toml import load_consumables
 from wowperf.domain.analysis.recap import (
     COOLDOWN,
     PRESSED,
@@ -232,6 +233,25 @@ def test_a_consumable_whose_window_reaches_before_the_fight_is_not_judged() -> N
     # The stone's window is 60 + 10 s; a death 40 s in cannot see far enough back.
     at = availability_at(loaded(), a_death(at_ms=40_000), Defensives(),
                          Consumables(categories=(STONE,)), Externals(), visible_from_ms=0)
+    assert at.consumables == ()
+
+
+def test_availability_from_the_real_consumables_file_excludes_combat_potion() -> None:
+    """Regression: the death card's own availability column must never gain a
+
+    combat potion row. Built through `load_consumables()` on the committed
+    file rather than a hand-built `Consumables`, because a fixture the test
+    wrote itself cannot expose a call site that reads `.categories` instead
+    of the survival accessor -- that is exactly how this leaked past the
+    offline suite the first time.
+    """
+    # Potion of Recklessness, drunk once well outside the run-up and outside
+    # its own 300s cooldown window, so it reads as READY -- the state a
+    # pressed-then-recovered combat potion would show on the card.
+    at = availability_at(
+        loaded(casts=(press(1236994, 50_000),)), a_death(at_ms=400_000), Defensives(),
+        load_consumables(), Externals(), visible_from_ms=0,
+    )
     assert at.consumables == ()
 
 

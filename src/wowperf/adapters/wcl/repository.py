@@ -25,6 +25,7 @@ from wowperf.adapters.wcl.ingest import (
     select_keystone_fight,
     select_raid_fight,
 )
+from wowperf.adapters.wcl.loadouts import build_loadouts
 from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
@@ -40,6 +41,7 @@ from wowperf.adapters.wcl.queries import (
     FIGHTS_QUERY,
     HEALING_QUERY,
     INTERRUPTS_QUERY,
+    PLAYER_DETAILS_QUERY,
     RESURRECTS_QUERY,
     talents_query,
 )
@@ -47,6 +49,7 @@ from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death, HealingEvent
+from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Pull, Run
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
@@ -240,6 +243,19 @@ class WclRunRepository:
             if codes.get(f"a{actor_id}")
         }
 
+    def _loadouts(
+        self, report_code: str, fight: dict[str, Any], hits: list[bool] | None = None
+    ) -> dict[int, Loadout]:
+        """Gear and stat ratings per player, keyed by actor id.
+
+        Costs 2.00 points, measured 2026-09-14. A report that returns nothing
+        usable yields an empty map, and every consumer reads that as unknown.
+        """
+        payload = self._query(
+            PLAYER_DETAILS_QUERY, {"code": report_code, "fightId": fight["id"]}, hits
+        )
+        return build_loadouts(payload)
+
     def load(self, report_code: str, fight_id: int | None) -> LoadedRun:
         """Every stream the analysers and the death cards read."""
         loaded, _ = self._load(report_code, fight_id, profile="full")
@@ -403,7 +419,8 @@ class WclRunRepository:
         # speed reference leaves the aliased per-player talentImportCode query
         # unfetched; build_run accepts no talents just as readily as some.
         talents = {} if profile == "speed" else self._talents(report_code, fight, hits)
-        run = build_run(report, fight, talents)
+        loadouts = {} if profile == "speed" else self._loadouts(report_code, fight, hits)
+        run = build_run(report, fight, talents, loadouts)
         run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids, hits)})
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)

@@ -126,7 +126,20 @@ def test_the_committed_consumables_file_parses() -> None:
 
     consumables = load_consumables(DEFAULT_CONSUMABLES_PATH)
     names = {category.name for category in consumables.categories}
-    assert names == {"health potion", "healthstone"}
+    assert names == {"health potion", "healthstone", "combat potion"}
+
+
+def test_the_combat_potion_category_is_excluded_from_survival_categories() -> None:
+    # A damage potion shares no cooldown with a health potion in the sense the
+    # death-gated survival analysis cares about, so `survival = false` in the
+    # data file must keep it out of `for_survival()` while `categories` (read
+    # above) still carries it for the comparison half.
+    from wowperf.adapters.config.toml import load_consumables
+
+    consumables = load_consumables()
+    survival_names = {category.name for category in consumables.for_survival()}
+    assert "combat potion" not in survival_names
+    assert {"health potion", "healthstone"} <= survival_names
 
 
 def test_a_category_carries_its_cooldown_and_every_id_that_shares_it() -> None:
@@ -270,3 +283,92 @@ def test_no_ability_lives_in_two_of_the_three_cooldown_files_for_one_spec() -> N
                 owners.setdefault((key, ability.ability_id), []).append(label)
     clashes = {k: v for k, v in owners.items() if len(v) > 1}
     assert clashes == {}, f"listed in more than one file: {clashes}"
+
+
+def test_the_consumable_buffs_file_loads_its_three_categories() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    buffs = load_consumable_buffs()
+    assert set(buffs.categories()) == {"flask", "food", "augment rune"}
+
+
+def test_well_fed_carries_every_id_it_was_measured_under() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    # Measured 2026-09-14: `Well Fed` spans six ability ids. One id per
+    # category would miss five of them and report a fed player as unfed.
+    assert len(load_consumable_buffs().ids_for("food")) >= 6
+
+
+def test_an_unknown_category_has_no_ids() -> None:
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    assert load_consumable_buffs().ids_for("weapon oil") == ()
+
+
+def test_no_consumable_buff_category_carries_the_id_measured_for_another() -> None:
+    # A wholesale swap of two categories' id lists would still pass the exact-name
+    # check above, and would still pass food's >=6 count check above (augment
+    # rune also lists more than six ids). Anchoring one measured id per category
+    # to that category, and only that category, is what catches a swap.
+    from wowperf.adapters.config.toml import load_consumable_buffs
+
+    buffs = load_consumable_buffs()
+    known_id_by_category = {
+        "flask": 1235057,  # Flask of Thalassian Resistance
+        "food": 451920,
+        "augment rune": 1287770,  # Rune of the Versatile Warrior
+    }
+    for category, ability_id in known_id_by_category.items():
+        for other_category in known_id_by_category:
+            if other_category == category:
+                assert ability_id in buffs.ids_for(category)
+            else:
+                assert ability_id not in buffs.ids_for(other_category)
+
+
+def test_the_combat_potion_category_is_loaded_from_consumables() -> None:
+    from wowperf.adapters.config.toml import load_consumables
+
+    names = {category.name for category in load_consumables().categories}
+    assert "combat potion" in names
+
+
+def test_slot_names_are_read_from_a_toml_file(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    path = tmp_path / "slot_names.toml"
+    path.write_text(
+        'verified = "2026-09-14"\n'
+        "[slots]\n"
+        '7 = "feet"\n'
+        '12 = "trinket"\n',
+        encoding="utf-8",
+    )
+    slot_names = load_slot_names(path)
+    assert slot_names.name_for(7) == "feet"
+    assert slot_names.name_for(12) == "trinket"
+
+
+def test_an_unlisted_slot_falls_back_to_its_raw_index() -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    # Slots 3 and 17 were never identified and are absent from the committed
+    # file on purpose; the fallback must not invent a name for them.
+    slot_names = load_slot_names()
+    assert slot_names.name_for(3) == "slot 3"
+    assert slot_names.name_for(17) == "slot 17"
+
+
+def test_the_committed_slot_names_file_names_every_identified_slot() -> None:
+    from wowperf.adapters.config.toml import load_slot_names
+
+    slot_names = load_slot_names()
+    # Read off icon filenames, per `.claude/skills/wcl-api/SKILL.md`.
+    expected = {
+        0: "head", 1: "neck", 2: "shoulder", 4: "chest", 5: "waist", 6: "legs",
+        7: "feet", 8: "wrist", 9: "hands", 10: "ring", 11: "ring", 12: "trinket",
+        13: "trinket", 14: "back", 15: "main hand", 16: "off hand",
+    }
+    for slot, name in expected.items():
+        assert slot_names.name_for(slot) == name

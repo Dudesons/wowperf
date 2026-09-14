@@ -356,10 +356,11 @@ def availability_at(
             )
 
     drinks = None
-    if player is not None and consumables.categories:
+    survival_categories = consumables.for_survival()
+    if player is not None and survival_categories:
         drinks = tuple(
             state
-            for category in consumables.categories
+            for category in survival_categories
             if consumable_window_start(category, death_ms) >= visible_from_ms
             and (state := consumable_state(
                 presses_of(death.actor_id, category.ability_ids), category, death_ms

@@ -18,6 +18,7 @@ from wowperf.domain.comparison.spells import (
 )
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.loadout import EquippedItem, Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
 OURS = Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane", item_level=318)
@@ -917,3 +918,298 @@ def test_rate_measures_skips_an_ability_too_few_of_the_sample_cast() -> None:
     measures = rate_measures({METEOR: ("Meteor", 2)}, 60.0, per_member)
 
     assert measures == ()
+
+
+# --- three branches instead of two ------------------------------------------
+#
+# Warcraft Logs names an on-use trinket's spell after the item, so a cast the
+# sample made and we never made can resolve to an item rather than staying a
+# bare ability. The old wording offered a talent not taken or a button not
+# pressed and called that the whole of what the log supports; for an item the
+# player does not own, neither is true. These fixtures build every combination
+# that decides which of the three branches a candidate takes.
+
+TABLET_ITEM_ID = 250225
+TABLET_NAME = "Tablet of the Stonewake"
+TABLET_ABILITY_ID = 999001
+"""The cast id standing in for the tablet's on-use spell, named after the item."""
+
+
+def ours_without(ability_id: int) -> LoadedRun:
+    """A run in which OURS fought a boss but never cast `ability_id`, anywhere."""
+    filler_id = ability_id + 1
+    return a_loaded(
+        OURS, (boss_pull(0, 60.0),), (cast(693, filler_id, "Filler Spell", 1_000, 0),)
+    )
+
+
+def a_sample_casting(
+    ability_id: int, *, name: str | None = None, wearing_it: bool = False
+) -> ParseSample:
+    """A sample of MIN_SAMPLE_FOR_AGGREGATE members, each casting `ability_id` on a
+    boss pull at least MIN_CASTS_TO_COMPARE times, and — when `wearing_it` — each
+    carrying a `Loadout` holding an `EquippedItem` of that name."""
+    ability_name = name or f"Ability {ability_id}"
+    loadout = None
+    if wearing_it:
+        assert name is not None  # wearing an item means the item has a name
+        loadout = Loadout(items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=name,
+                                               item_level=331),))
+
+    members = []
+    for i, member_name in enumerate(("Stonewake", "Bríala", "Кириллица")):
+        actor_id = 200 + i
+        player = Player(actor_id=actor_id, name=member_name, class_name="Mage",
+                         spec="Arcane", item_level=320, loadout=loadout)
+        casts = tuple(
+            cast(actor_id, ability_id, ability_name, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        )
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    assert len(members) == MIN_SAMPLE_FOR_AGGREGATE  # exactly at the floor, not below it
+    return ParseSample(members=tuple(members))
+
+
+OURS_WITHOUT_THE_TABLET = OURS.model_copy(
+    update={
+        "loadout": Loadout(items=(EquippedItem(item_id=555555, slot=12, name="Ashen Coil",
+                                                item_level=330),))
+    }
+)
+OURS_WEARING_THE_TABLET = OURS.model_copy(
+    update={
+        "loadout": Loadout(items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                                                item_level=331),))
+    }
+)
+
+
+def test_an_unresolved_missing_cast_names_all_three_possibilities() -> None:
+    # The old wording offered a talent or a button and stated a false dichotomy
+    # for any item-sourced ability. This branch is reached with no loadout at
+    # all, which is every cached run and the whole speed axis, so the fix must
+    # not depend on the fetch.
+    findings = compare_spells_sample(ours_without(1234), OURS, OUR_NAME, a_sample_casting(1234))
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert missing
+    assert "an item not owned" in missing[0].detail
+
+
+def test_a_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> None:
+    """An item we provably do not have is not ours to press, and naming it at
+    all is the complaint this family began from. Both sides of the join are
+    known here -- the sample wears the item, our own loadout was read and does
+    not contain it -- so the run has nothing actionable to say and says
+    nothing."""
+    sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+
+
+def test_an_item_the_whole_sample_wore_is_still_suppressed() -> None:
+    """Five references, all five wearing the item, only three casting it enough
+    to argue from. Unanimous equipment across the sample is the strongest case
+    the old family could make, and it is exactly the case that most tempts a
+    "you should get this" suggestion. Ownership is the only question that
+    matters: we do not have it, so nothing is said."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i in range(5):
+        actor_id = 400 + i
+        player = Player(actor_id=actor_id, name="Bríala", class_name="Mage",
+                         spec="Arcane", item_level=320, loadout=loadout)
+        casts = tuple(
+            cast(actor_id, 1234, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) if i < 3 else ()
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+
+
+def test_suppression_does_not_depend_on_how_much_reference_gear_was_readable() -> None:
+    """Five references, three casting the ability enough to argue from, but
+    only one reference's gear was ever fetched. `build_loadouts` skips any
+    player whose `combatantInfo` came back empty, so a sample with one
+    readable loadout is a real shape, not a hypothetical. How many references
+    were readable bears on what could be *claimed about them*; it says nothing
+    about whether we own the item. Our own loadout answers that on its own, so
+    a thin sample must not leak the suggestion back through the cast wording."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i in range(5):
+        actor_id = 600 + i
+        player = Player(actor_id=actor_id, name="Bríala", class_name="Mage",
+                         spec="Arcane", item_level=320,
+                         loadout=loadout if i == 0 else None)
+        casts = tuple(
+            cast(actor_id, 1234, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) if i < 3 else ()
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+
+
+def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
+    sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
+    findings = compare_spells_sample(ours_without(1234), OURS_WEARING_THE_TABLET, OUR_NAME, sample)
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "had it equipped" in missing[0].detail
+    assert "a talent not taken" not in missing[0].detail
+
+
+def test_suppressing_an_item_leaves_every_other_missing_cast_alone() -> None:
+    """Suppression drops one candidate, not the loop. The sample casts two
+    abilities we never cast: one resolves to an item we do not own, the other
+    is a plain spell. Only the first disappears -- a `continue` in the wrong
+    place, or a `return` where a skip belonged, would take the second with
+    it and quietly gut the family this comparison exists for."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i, member_name in enumerate(("Stonewake", "Bríala", "Кириллица")):
+        actor_id = 800 + i
+        player = Player(actor_id=actor_id, name=member_name, class_name="Mage",
+                         spec="Arcane", item_level=320, loadout=loadout)
+        casts = tuple(
+            cast(actor_id, TABLET_ABILITY_ID, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) + tuple(
+            cast(actor_id, 4321, "Arcane Orb", 50_000 + n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        )
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "Arcane Orb" in missing[0].title
+
+
+def test_an_item_the_sample_wore_stays_widened_when_our_own_loadout_was_never_fetched() -> None:
+    """`our_loadout` is None whenever the fetch never ran for our own player --
+    every already-cached run and the whole speed axis -- and that must read as
+    "the log cannot tell", never as "must be equipped": the join can only
+    speak to ownership when both sides of it are known."""
+    sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
+
+    findings = compare_spells_sample(ours_without(1234), OURS, OUR_NAME, sample)
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "an item not owned" in missing[0].detail
+    assert "had it equipped" not in missing[0].detail
+
+
+# --- the pairwise twin --------------------------------------------------
+
+THEIRS_WEARING_THE_TABLET = THEIRS.model_copy(
+    update={
+        "loadout": Loadout(items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                                                item_level=331),))
+    }
+)
+
+
+def test_a_pairwise_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> None:
+    ours = a_loaded(
+        OURS_WITHOUT_THE_TABLET, (boss_pull(0, 120.0),),
+        (cast(693, 30451, "Arcane Blast", 1_000, 0),),
+    )
+    theirs = a_member(
+        THEIRS_WEARING_THE_TABLET,
+        (boss_pull(0, 120.0),),
+        (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
+    )
+
+    findings = compare_spells(ours, OURS_WITHOUT_THE_TABLET, OUR_NAME, theirs, "Bríala")
+
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+
+
+def test_a_pairwise_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
+    ours = a_loaded(
+        OURS_WEARING_THE_TABLET, (boss_pull(0, 120.0),),
+        (cast(693, 30451, "Arcane Blast", 1_000, 0),),
+    )
+    theirs = a_member(
+        THEIRS_WEARING_THE_TABLET,
+        (boss_pull(0, 120.0),),
+        (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
+    )
+
+    findings = compare_spells(ours, OURS_WEARING_THE_TABLET, OUR_NAME, theirs, "Bríala")
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "had it equipped" in missing[0].detail
+
+
+def test_a_pairwise_missing_cast_widens_the_wording_to_three_possibilities() -> None:
+    ours = a_loaded(OURS, (boss_pull(0, 120.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(
+        THEIRS,
+        (boss_pull(0, 120.0),),
+        (cast(11, 153626, "Arcane Orb", 2_000, 0),),
+    )
+
+    missing = next(
+        f for f in compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+        if f.id.startswith("compare.spells.missing")
+    )
+
+    assert "an item not owned" in missing.detail
+
+
+def test_a_pairwise_cast_is_not_a_gear_finding_when_our_loadout_was_never_fetched() -> None:
+    ours = a_loaded(OURS, (boss_pull(0, 120.0),), (cast(693, 30451, "Arcane Blast", 1_000, 0),))
+    theirs = a_member(
+        THEIRS_WEARING_THE_TABLET,
+        (boss_pull(0, 120.0),),
+        (cast(11, TABLET_ABILITY_ID, TABLET_NAME, 1_000, 0),),
+    )
+
+    findings = compare_spells(ours, OURS, OUR_NAME, theirs, "Bríala")
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "an item not owned" in missing[0].detail

@@ -92,12 +92,94 @@ class ConsumableCategory(Frozen):
     # unknown cannot say whether anything was available.
     cooldown_seconds: float
     ability_ids: tuple[int, ...] = ()
+    # Whether the death-gated survival analysis should consider this category.
+    # True for every healing category; a category the game excludes from that
+    # question on its own terms (a damage potion sharing no cooldown with a
+    # health potion) sets this false in the data file, so a future addition
+    # gets the same treatment without a name check in code.
+    survival: bool = True
 
 
 class Consumables(Frozen):
     """Healing consumables by cooldown category."""
 
     categories: tuple[ConsumableCategory, ...] = ()
+
+    def for_survival(self) -> tuple[ConsumableCategory, ...]:
+        """Categories the death-gated survival analysis should consider.
+
+        `categories` itself keeps returning everything -- the combat potion
+        included -- because the comparison family reads every category
+        regardless of whether it heals.
+        """
+        return tuple(category for category in self.categories if category.survival)
+
+
+class ConsumableBuffs(Frozen):
+    """Buff ability ids by consumable category, from the committed TOML file.
+
+    A tuple of pairs rather than a mapping, like every other curated list here:
+    the domain layer's values are frozen and hashable, and a dict is neither.
+    """
+
+    entries: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    labels: tuple[tuple[str, str], ...] = ()
+    """How each category reads after "carried", where the bare name will not do.
+
+    "a flask" and "an augment rune" take an article; "food" is a mass noun and
+    takes none, so "carried a food" is what a rule derived from the spelling
+    produces and it is wrong. No rule can know that from the letters, so the
+    phrasing is data rather than a guess.
+    """
+
+    def categories(self) -> tuple[str, ...]:
+        return tuple(name for name, _ in self.entries)
+
+    def ids_for(self, category: str) -> tuple[int, ...]:
+        """The ability ids in this category, or `()` if the list has none."""
+        for name, ability_ids in self.entries:
+            if name == category:
+                return ability_ids
+        return ()
+
+    def label_for(self, category: str) -> str:
+        """The category as a title spells it, falling back to the bare name."""
+        for name, label in self.labels:
+            if name == category:
+                return label
+        return category
+
+
+class SlotNames(Frozen):
+    """Equipment slot names by slot index, read off icon filenames and dated.
+
+    A tuple of pairs rather than a mapping, like every other curated list
+    here: the domain layer's values are frozen and hashable, and a dict is
+    neither. Two slots -- 3 and 17 -- were never identified and carry no
+    entry; `name_for` falls back to the raw index for those rather than
+    guessing at a name the source data does not support.
+    """
+
+    entries: tuple[tuple[int, str], ...] = ()
+
+    def name_for(self, slot: int) -> str:
+        for index, name in self.entries:
+            if index == slot:
+                return name
+        return f"slot {slot}"
+
+    def is_ambiguous(self, slot: int) -> bool:
+        """Whether another slot in this table carries the same name.
+
+        The two ring slots share "ring" and the two trinket slots share
+        "trinket": a title built from the name alone would then read
+        byte-identical for two different slots. A caller that finds this true
+        needs to disambiguate its own text; this makes no attempt to, since
+        which ring is "left" and which is "right" is not something the
+        measurement this table comes from can answer.
+        """
+        name = self.name_for(slot)
+        return sum(1 for _, other_name in self.entries if other_name == name) > 1
 
 
 class SelfResurrections(Frozen):

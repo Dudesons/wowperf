@@ -16,6 +16,7 @@ from wowperf.domain.events import (
     InterruptEvent,
     Resurrection,
 )
+from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import DamageDoneSeries, EnemyNpc, Player, Pull, Run
 
 
@@ -105,7 +106,10 @@ def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dic
 
 
 def _build_players(
-    fight: dict[str, Any], actors: list[dict[str, Any]], talents: dict[int, str]
+    fight: dict[str, Any],
+    actors: list[dict[str, Any]],
+    talents: dict[int, str],
+    loadouts: dict[int, Loadout],
 ) -> tuple[Player, ...]:
     by_id = {actor["id"]: actor for actor in actors}
     ids = fight.get("friendlyPlayers") or []
@@ -137,6 +141,7 @@ def _build_players(
                 spec=spec if spec is not None else "",
                 item_level=item_level if item_level is not None else 0,
                 talent_import_string=talents.get(actor_id),
+                loadout=loadouts.get(actor_id),
             )
         )
     return tuple(players)
@@ -181,7 +186,10 @@ def _required(fight: dict[str, Any], field: str) -> int:
 
 
 def build_run(
-    report: dict[str, Any], fight: dict[str, Any], talents: dict[int, str] | None = None
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    talents: dict[int, str] | None = None,
+    loadouts: dict[int, Loadout] | None = None,
 ) -> Run:
     actors = report.get("masterData", {}).get("actors") or []
     raw_counts = fight.get("npcCountMap") or {}
@@ -200,7 +208,7 @@ def build_run(
         owner_name=(report.get("owner") or {}).get("name"),
         # npcCountMap arrives as a JSON object, so its keys are strings.
         npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
-        players=_build_players(fight, actors, talents or {}),
+        players=_build_players(fight, actors, talents or {}, loadouts or {}),
         pulls=_build_pulls(fight),
     )
 
@@ -219,7 +227,11 @@ def build_encounter(
     caller that has it passes it; nothing here guesses.
     """
     actors = report.get("masterData", {}).get("actors") or []
-    players = _build_players(fight, actors, talents or {})
+    # No loadouts: the raid path does not fetch `playerDetails`, and an empty
+    # map is what leaves every player's `loadout` None. Withholding the gear
+    # comparison is the honest reading of "never fetched" -- inventing a
+    # zeroed `Loadout` here would have the gear analysers argue from nothing.
+    players = _build_players(fight, actors, talents or {}, {})
 
     difficulty = fight.get("difficulty")
     if difficulty is None:
@@ -620,6 +632,7 @@ def _aura(row: dict[str, Any]) -> Aura:
         name=str(row["name"]),
         total_uptime_ms=int(row.get("totalUptime") or 0),
         uses=int(row.get("totalUses") or 0),
+        icon=str(row.get("abilityIcon") or ""),
         bands=tuple(
             AuraBand(start_ms=int(band["startTime"]), end_ms=int(band["endTime"]))
             for band in row.get("bands") or ()

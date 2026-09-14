@@ -9,6 +9,7 @@ from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
     PlayerMeasures,
+    StatShare,
     Verdict,
 )
 from wowperf.domain.comparison.statistics import observed_range
@@ -51,7 +52,14 @@ because several class colours are hard to tell apart and reports get
 screenshotted and recompressed.
 """
 
-COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
+COMPARISON_PREFIXES = (
+    "compare.spells.",
+    "compare.talents",
+    "compare.uptime.",
+    "compare.gear.",
+    "compare.stats.",
+    "compare.consumables.",
+)
 """Finding families that belong on a player's card rather than in the ledger.
 
 Which card is decided by the slug the finding carries, never by who the
@@ -262,6 +270,20 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                 rows=_aura_rows(measures.auras),
             )
         )
+    if measures.stats:
+        built.append(
+            ComparisonTable(
+                heading="Secondary stat balance",
+                caption=(
+                    "Each secondary as a share of this player's own rating budget, against "
+                    "the median of the sample's, with the rating itself in brackets. Level "
+                    "means the share sits inside the range every reference sat in. The "
+                    "ratings are not compared directly: a top parse out-gears this run and "
+                    "so holds more of every stat at once. Derived."
+                ),
+                rows=_stat_rows(measures.stats),
+            )
+        )
     return tuple(built)
 
 
@@ -286,9 +308,43 @@ def _rate_rows(measures: Sequence[AbilityRate]) -> tuple[ComparisonRow, ...]:
     return tuple(rows)
 
 
+def _stat_rows(measures: Sequence[StatShare]) -> tuple[ComparisonRow, ...]:
+    """Secondary shares in the order they are held, each with its rating beside it.
+
+    Not sorted by the widest gap the way the three tables above are. A balance
+    is read down a column, and a reader comparing two player cards wants crit
+    in the same place on both.
+    """
+    rows = []
+    for m in measures:
+        low, high = observed_range(m.their_shares)
+        rows.append(
+            ComparisonRow(
+                # Not an ability. A stat has no spell behind it and no icon to
+                # draw, and saying so is what keeps the column honest.
+                ability_id=None,
+                name=m.name.capitalize(),
+                ours=f"{m.ours:.0%} ({m.our_rating})",
+                theirs=f"{m.their_median:.0%} ({m.their_median_rating:g})",
+                spread=f"{low:.0%} to {high:.0%}",
+                sample=f"{len(m.their_shares)} top parses",
+                verdict=m.verdict.value,
+                verdict_label=VERDICT_LABELS[m.verdict],
+            )
+        )
+    return tuple(rows)
+
+
 def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
-    """Aura uptimes, widest difference first, as shares of boss time not seconds."""
-    ordered = sorted(measures, key=lambda m: abs(m.ours - m.their_median), reverse=True)
+    """Aura uptimes, our own highest first, as shares of boss time not seconds.
+
+    The two cast tables lead with the widest gap. This one does not, because it
+    is read differently: dozens of rows long, it answers "how much of the fight
+    did I hold each of these for", and that is a list a reader scans from the
+    top. Sorting by the gap scattered the figures a reader came for and led
+    with whatever the player held *least*.
+    """
+    ordered = sorted(measures, key=lambda m: m.ours, reverse=True)
     rows = []
     for m in ordered:
         low, high = observed_range(m.their_fractions)

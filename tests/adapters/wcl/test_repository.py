@@ -152,6 +152,34 @@ def recording_repository(
             }
         }
     }
+    player_details: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "playerDetails": {
+                    "data": {
+                        "playerDetails": {
+                            "dps": [
+                                {
+                                    "id": 693,
+                                    "combatantInfo": {
+                                        "gear": [
+                                            {
+                                                "id": 212454,
+                                                "slot": 2,
+                                                "name": "Fixture Mantle",
+                                                "itemLevel": 636,
+                                            }
+                                        ],
+                                        "stats": {"Crit": {"min": 904, "max": 904}},
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     def events_payload(rows: list[dict[str, Any]]) -> dict[str, Any]:
         return {"reportData": {"report": {"events": {"data": rows, "nextPageTimestamp": None}}}}
@@ -244,6 +272,8 @@ def recording_repository(
                     }
                 },
             )
+        if name == "PlayerDetails":
+            return httpx.Response(200, json={"data": player_details})
         return httpx.Response(200, json={"data": event_payloads[name]})
 
     cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
@@ -277,7 +307,7 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert set(load_calls) == {
         "Fights", "Affixes", "Abilities", "Casts", "Deaths",
         "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "DamageDoneGraph",
-        "Actors", "Talents", "Healing", "Resurrects",
+        "Actors", "Talents", "PlayerDetails", "Healing", "Resurrects",
     }
 
 
@@ -290,7 +320,7 @@ def test_a_get_after_a_load_costs_nothing() -> None:
     assert sorted(set(calls)) == [
         "Abilities", "Actors", "Affixes", "Casts", "DamageDoneGraph", "DamageTaken",
         "Deaths", "EnemyCasts", "EnemyDeaths", "Fights", "Healing", "Interrupts",
-        "Resurrects", "Talents",
+        "PlayerDetails", "Resurrects", "Talents",
     ]
 
     calls.clear()
@@ -422,7 +452,9 @@ def test_a_parse_reference_fetches_only_the_streams_the_parse_comparisons_read(
 
     repository.load_parse_reference("abc123", None)
 
-    assert sorted(set(calls)) == ["Abilities", "Affixes", "Casts", "Fights", "Talents"]
+    assert sorted(set(calls)) == [
+        "Abilities", "Affixes", "Casts", "Fights", "PlayerDetails", "Talents",
+    ]
 
 
 def test_a_parse_reference_carries_its_streams_and_leaves_the_rest_empty(tmp_path: Path) -> None:
@@ -457,6 +489,27 @@ def test_a_parse_reference_reports_whether_it_was_served_entirely_from_cache(
 
     _, second = repository.load_parse_reference("abc123", None)
     assert second is True
+
+
+def test_a_speed_reference_fetches_no_loadouts(tmp_path: Path) -> None:
+    # The speed axis compares a group, not a player. One player's crit rating
+    # against five players in five specialisations is a number with no meaning,
+    # so the 2.00 points are not spent.
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load_speed_reference("abc123", None)
+
+    assert "PlayerDetails" not in calls
+
+
+def test_a_parse_reference_fetches_loadouts(tmp_path: Path) -> None:
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load_parse_reference("abc123", None)
+
+    assert "PlayerDetails" in calls
 
 
 def test_from_cache_reflects_a_partial_hit_before_becoming_a_full_one(tmp_path: Path) -> None:

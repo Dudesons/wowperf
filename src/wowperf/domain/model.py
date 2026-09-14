@@ -17,6 +17,7 @@ from wowperf.domain.events import (
     InterruptEvent,
     Resurrection,
 )
+from wowperf.domain.loadout import Loadout
 
 
 class Player(Frozen):
@@ -27,6 +28,9 @@ class Player(Frozen):
     item_level: int
     # Absent until a talent query runs; `get` never pays for one.
     talent_import_string: str | None = None
+    # Absent on the speed axis, which never fetches one, and on every run
+    # cached before this query existed. None means unknown, never "wore nothing".
+    loadout: Loadout | None = None
 
 
 MIN_PACK_SECONDS = 1.0
