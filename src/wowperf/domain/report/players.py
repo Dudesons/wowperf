@@ -51,7 +51,14 @@ because several class colours are hard to tell apart and reports get
 screenshotted and recompressed.
 """
 
-COMPARISON_PREFIXES = ("compare.spells.", "compare.talents", "compare.uptime.")
+COMPARISON_PREFIXES = (
+    "compare.spells.",
+    "compare.talents",
+    "compare.uptime.",
+    "compare.gear.",
+    "compare.stats.",
+    "compare.consumables.",
+)
 """Finding families that belong on a player's card rather than in the ledger.
 
 Which card is decided by the slug the finding carries, never by who the

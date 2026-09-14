@@ -15,6 +15,7 @@ import typer
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
+    load_consumable_buffs,
     load_consumables,
     load_defensives,
     load_externals,
@@ -750,7 +751,16 @@ def analyze(
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
         consumables = load_consumables()
+        consumable_buffs = load_consumable_buffs()
         throughput = load_throughput_cooldowns()
+        # The comparison's combat-potion family reads this one category rather
+        # than all of `consumables`: `for_survival()` excludes it (it shares no
+        # cooldown with a health potion), but `categories` still carries it.
+        combat_potion_ids = next(
+            (category.ability_ids for category in consumables.categories
+             if category.name == "combat potion"),
+            (),
+        )
         findings = analyse(
             loaded,
             load_season_data(),
@@ -820,6 +830,8 @@ def analyze(
                         display_name=name,
                         parse=sample,
                         our_auras=our_auras,
+                        consumable_buffs=consumable_buffs,
+                        potion_ids=combat_potion_ids,
                     )
                 )
             compared_slugs = frozenset(one.slug for one in subjects)

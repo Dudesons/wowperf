@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -872,6 +873,47 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",
             "pull_index", "ability_id", "ability_name", "quantifier", "player_slug",
         }
+
+
+def test_the_subjects_carry_the_curated_consumable_data_cli_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ComparisonSubject.consumable_buffs` and `.potion_ids` are the two fields
+    Task 14 adds so the gear/consumable comparison families have something to
+    read; both default to empty, so a caller that built a subject without
+    filling them in would fail silently -- `compare_consumable_buffs` and
+    `compare_potions` would simply find nothing to compare, and no finding-level
+    test could tell "nothing to report" apart from "never wired up".
+
+    `compare` itself is stubbed, the same way `comparison_measures` is stubbed
+    above, so this needs no fixture that also clears MIN_SAMPLE_FOR_AGGREGATE
+    through the mock transport -- it only proves `cli.py` calls `compare` with
+    subjects already carrying the real data `load_consumable_buffs()` and the
+    `["combat potion"]` category of `load_consumables()` hold.
+    """
+    captured: dict[str, Any] = {}
+
+    def fake_compare(**kwargs: Any) -> list[Any]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("wowperf.cli.compare", fake_compare)
+
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    subjects = captured["subjects"]
+    assert len(subjects) == 1
+    subject = subjects[0]
+
+    expected_potion_ids = next(
+        category.ability_ids
+        for category in load_consumables().categories
+        if category.name == "combat potion"
+    )
+    assert subject.potion_ids == expected_potion_ids
+    assert subject.potion_ids  # not empty -- a caller passing () would pass this vacuously
+    assert subject.consumable_buffs == load_consumable_buffs()
 
 
 def test_analyze_is_a_subcommand_of_its_own() -> None:

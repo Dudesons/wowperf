@@ -11,7 +11,9 @@ from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMemb
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
+from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
+from wowperf.domain.season import ConsumableBuffs
 
 OURS = Player(
     actor_id=693,
@@ -604,3 +606,141 @@ def test_an_above_row_carries_the_players_slug_like_every_parse_finding() -> Non
     assert above.id == f"compare.spells.trash.above.0.{OUR_SLUG}"
     assert above.player_slug == OUR_SLUG
     assert above.seconds_lost is None
+
+
+# --- The gear, stat and consumable families reaching the comparison ---------
+#
+# `compare_enchants`, `compare_tier` and `compare_stats` (loadout.py) and
+# `compare_consumable_buffs` and `compare_potions` (consumables.py) are
+# already tested against their own arithmetic in test_loadout_comparison.py
+# and test_comparison_consumables.py. What belongs here is only that
+# `_compare_player` actually calls all five, with the sample this test builds
+# large enough (three references) to clear MIN_SAMPLE_FOR_AGGREGATE and make
+# every one of them produce a row rather than abstain.
+
+GEAR_SLOT = 7
+"""An arbitrary occupied slot. `compare_enchants` reads whichever slot every
+reference enchanted rather than a hardcoded one, so any slot works here."""
+
+FLASK_BUFF_ID = 1235057
+POTION_ID = 1236994
+"""Real ids from data/consumable_buffs.toml and data/consumables.toml's
+["combat potion"] category, reused here for readability -- this test reads
+neither file."""
+
+
+def a_reference_loadout(mastery: int, tier_pieces: int, *, enchanted: bool) -> Loadout:
+    """A reference's gear: `GEAR_SLOT` enchanted or not, `tier_pieces` pieces of
+    one tier set, and a mastery rating -- the three readings `compare_enchants`,
+    `compare_tier` and `compare_stats` each need a sample of three to compare."""
+    items = [
+        EquippedItem(
+            item_id=1, slot=GEAR_SLOT, name="Reference Trinket", item_level=330,
+            enchant_id=8017 if enchanted else None,
+        )
+    ]
+    items += [
+        EquippedItem(
+            item_id=2000 + slot, slot=slot, name=f"Tier piece {slot}", item_level=330,
+            set_id=2062,
+        )
+        for slot in sorted(TIER_SLOTS)[:tier_pieces]
+    ]
+    return Loadout(items=tuple(items), stats=StatBlock(crit=1000, mastery=mastery))
+
+
+def a_geared_parse_member(report_code: str, name: str) -> ParseMember:
+    """One top parse: geared, flasked and having drunk two combat potions -- what
+    `a_subject_with_a_loadout` below carries less of, in every one of the five
+    new families."""
+    player = Player(
+        actor_id=800, name=name, class_name="Mage", spec="Arcane", item_level=330,
+        loadout=a_reference_loadout(mastery=1400, tier_pieces=2, enchanted=True),
+    )
+    theirs = a_loaded(
+        (player,),
+        (a_pull(0, (9,), boss=True),),
+        casts=tuple(
+            CastEvent(
+                actor_id=800, ability_id=POTION_ID, ability_name="Potion of Recklessness",
+                timestamp_ms=1_000 * n, pull_index=0,
+            )
+            for n in range(2)
+        ),
+    )
+    return ParseMember(
+        row=ParseRow(
+            report_code=report_code, fight_id=16, keystone_level=16, duration_ms=1_399_143,
+            character_name=name, class_name="Mage", spec="Arcane",
+        ),
+        run=theirs.run,
+        casts=theirs.casts,
+        auras=PlayerAuras(
+            actor_id=800,
+            on_self=(
+                Aura(ability_id=FLASK_BUFF_ID, name="Flask", total_uptime_ms=600_000, uses=1),
+            ),
+        ),
+    )
+
+
+def a_subject_with_a_loadout() -> ComparisonSubject:
+    """OURS, worse geared and less prepared than three references in every one
+    of the five new families: `GEAR_SLOT` bare where they all enchanted it, no
+    tier where they wore two pieces, a smaller mastery share, no flask, and no
+    combat potion where each of them drank two."""
+    ours = OURS.model_copy(
+        update={"loadout": a_reference_loadout(mastery=200, tier_pieces=0, enchanted=False)}
+    )
+    parse = ParseSample(
+        members=tuple(
+            a_geared_parse_member(f"REF{n}", name)
+            for n, name in enumerate(("Stonewake", "Bríala", "Кириллица"))
+        )
+    )
+    return ComparisonSubject(
+        player=ours,
+        slug=OUR_SLUG,
+        display_name=OURS.name,
+        parse=parse,
+        our_auras=PlayerAuras(actor_id=OURS.actor_id, on_self=()),
+        consumable_buffs=ConsumableBuffs(entries=(("flask", (FLASK_BUFF_ID,)),)),
+        potion_ids=(POTION_ID,),
+    )
+
+
+NEW_FAMILY_PREFIXES = ("compare.gear.", "compare.stats.", "compare.consumables.")
+
+
+def test_the_gear_stat_and_consumable_families_all_reach_the_comparison() -> None:
+    """Each of the five families Task 14 wires in produces its own finding, not
+    only one of them: a bare `any(...)` across the whole group would stay green
+    even if a fan-in dropped or misplaced every family but one."""
+    findings = compare(our_run(), a_speed_sample(), (a_subject_with_a_loadout(),))
+    ids = {finding.id.rsplit(".", 1)[0] for finding in findings}
+
+    assert "compare.gear.enchant.7" in ids
+    assert "compare.gear.tier" in ids
+    assert "compare.stats.rating" in ids
+    assert "compare.consumables.buff.flask" in ids
+    assert "compare.consumables.potion" in ids
+
+
+def test_every_new_family_carries_the_player_it_is_about() -> None:
+    findings = compare(our_run(), a_speed_sample(), (a_subject_with_a_loadout(),))
+    new = [f for f in findings if f.id.startswith(NEW_FAMILY_PREFIXES)]
+
+    assert new
+    assert all(f.player_slug == OUR_SLUG for f in new)
+    assert all(f.id.endswith(f".{OUR_SLUG}") for f in new)
+
+
+def test_no_parse_sample_produces_none_of_the_new_families() -> None:
+    """The gear, stat and consumable families all read the parse sample, so they
+    must sit behind the same guard `compare.spells.` already sits behind. A
+    fan-in placed above that guard would call `loadouts_of(None.members)` and
+    crash outright; this pins the safer behaviour -- nothing from the new
+    families -- as the one that must hold instead."""
+    findings = compare(our_run(), a_speed_sample(), only_ours(None))
+
+    assert not any(f.id.startswith(NEW_FAMILY_PREFIXES) for f in findings)

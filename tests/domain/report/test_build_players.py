@@ -582,6 +582,29 @@ def test_a_trash_spell_row_lands_under_the_players_card() -> None:
     assert ids(card.spell_and_talent_rows) == ["compare.spells.trash.rate.0.stonewake-0"]
 
 
+def test_the_gear_stat_and_consumable_families_land_on_a_player_card() -> None:
+    """COMPARISON_PREFIXES routes compare.gear., compare.stats. and
+    compare.consumables. the same way it already routes compare.spells. --
+    checked against `build_players` itself rather than against the prefix
+    tuple alone, so a routing rule elsewhere that intercepted one of these ids
+    before it reached `comparison` -- landing it in the ledger instead of the
+    player's card -- would still be caught."""
+    findings = (
+        a_finding("compare.gear.enchant.7.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.gear.tier.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.stats.rating.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.consumables.buff.flask.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.consumables.potion.stonewake-0", slug="stonewake-0"),
+    )
+    card = build_players(
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )[0]
+
+    assert card.spell_and_talent.state is SectionState.PRESENT
+    assert set(ids(card.spell_and_talent_rows)) == {finding.id for finding in findings}
+
+
 def test_an_above_row_lands_under_the_players_card() -> None:
     """The reverse direction routes by the same "compare.spells." prefix. Pinned
     separately because a family that fell through would land in the Summary
