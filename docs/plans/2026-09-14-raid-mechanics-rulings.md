@@ -430,20 +430,31 @@ instead of rediscovering the gap:
   the Mythic+ path too, which makes it its own change rather than this plan's. The obvious
   implementation is wrong in a way worth naming here: the server-side filter
   `target.id in (...)` returns zero rows for one point, silently, rather than failing loudly.
-- **`CLAUDE.md`'s list of reports holding real people still owes `cW38jmwdnZfbHVL4`**, which this
-  plan's e2e run touched and which holds twenty real people. Design §12 records the obligation;
-  nobody has yet added the row.
+- **`CLAUDE.md`'s list of reports holding real people owed `cW38jmwdnZfbHVL4`**, which this
+  plan's e2e run touched and which holds twenty real people. Design §12 records the obligation.
+  Two plans left it; the whole-branch review's fix wave added the row.
 
 ---
 
 ## 5. Where the process itself failed, and was caught
 
-Two commit trailers had to be amended after the fact: Task 4's implementer wrote its own model
-name instead of the plan's fixed literal (Ruling 9), and Task 7's implementer wrote the correct
-text but with no blank line before it, so git did not read it as a trailer at all (Ruling 12).
-Both were one-line, tip-of-branch, unpushed fixes with no code surface, and both are the exact
-mistake a prior plan's own handoff had already flagged as likely to recur — it recurred twice in
-this one.
+Three commit trailers came out wrong, and only two were caught in time to amend: Task 4's
+implementer wrote its own model name instead of the plan's fixed literal (Ruling 9), and Task 7's
+implementer wrote the correct text but with no blank line before it, so git did not read it as a
+trailer at all (Ruling 12). Both were one-line, tip-of-branch, unpushed fixes with no code
+surface.
+
+The third survives. `1c003f1` ("Rank a raid's findings by severity before seconds") carries the
+same no-blank-line defect as Task 7's, and `git log --format='%(trailers:key=Co-Authored-By)'`
+returns nothing for it. It is deliberately left as it is: an interactive rebase is unavailable in
+this environment, and rewriting ten commits to move one line of metadata is not proportionate to
+what it buys. A reader looking for that commit's co-author will find the line in the message body
+and not in the trailers.
+
+All three are the exact mistake a prior plan's own handoff had already flagged as likely to
+recur — it recurred three times in this one, and the whole-branch review is what caught the third.
+A defect that a per-task review misses because it is metadata, not code, recurs until something
+reads the branch rather than the diff.
 
 One ruling was self-contradictory and had to be reissued: Ruling 7 asked for a fixture and a
 mutation result that could not both exist in the same test, and the re-reviewer who refused it

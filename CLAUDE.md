@@ -167,6 +167,9 @@ Before implementing new functionality:
   files and rendered reports, and the fixtures are the one place they can be kept out for good.
 - The five players on report `6Kx1P9GbNXrcLdHa` are real people. Refer to them by class, spec,
   role or index — in code, in tests, in commit messages and in documents.
+- The twenty players on report `cW38jmwdnZfbHVL4` are real people. The raid end-to-end tests
+  run against it. Refer to them by class, spec, role or index — in code, in tests, in commit
+  messages and in documents.
 
 ## Test Coverage Requirements
 
