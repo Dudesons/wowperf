@@ -50,9 +50,11 @@ def test_the_tank_is_excluded_even_when_it_took_the_most() -> None:
     findings = analyse_damage_outliers(
         ROSTER, (hit(4, 4000), hit(1, 100), hit(2, 100), hit(3, 100)), ROLES
     )
-    assert all(
-        "Кириллица" not in finding.title for finding in findings
-    ), "the tank reached a finding despite the role exclusion"
+    # With the tank left out, the three survivors all took the same amount, so
+    # nothing clears the median and the list is empty. Saying that is stronger
+    # than an `all(...)` over it, which holds however the exclusion behaves.
+    # Without the exclusion the tank is 40x the median of four and a finding.
+    assert findings == [], "the tank reached a finding despite the role exclusion"
 
 
 def test_two_takers_are_below_the_median_floor_and_produce_nothing() -> None:

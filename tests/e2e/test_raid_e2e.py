@@ -37,6 +37,7 @@ echoes no `difficulty` per row" (2026-09-14), for why the filter matches size al
 """
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,8 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.severity import SEVERITY_BY_FAMILY, UNKNOWN_SEVERITY, family_of
-from wowperf.domain.findings import Confidence
+from wowperf.domain.comparison.mechanics import AbilityTakenRow, MechanicsSample
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.urls import parse_report_url
 
 KILL = os.environ.get("WOWPERF_E2E_RAID_KILL", "")
@@ -63,6 +65,39 @@ WIPE = os.environ.get("WOWPERF_E2E_RAID_WIPE", "")
 # raid report, an analyser is reading an aggregate that has no such thing and
 # answering zero rather than abstaining.
 KEYSTONE_SHAPED = ("time.", "trash.", "compare.route", "compare.downtime")
+
+
+def assert_mechanics_output_is_well_formed(
+    findings: Sequence[Finding],
+    mechanics_sample: MechanicsSample,
+    our_abilities: Sequence[AbilityTakenRow],
+) -> None:
+    """What the mechanics comparison must be true of, whatever it found.
+
+    A raid in line with its references legitimately produces no finding at
+    all -- `test_an_ability_in_line_with_the_sample_states_nothing` pins that
+    offline -- so a loaded sample cannot be asked to yield one. What it can be
+    asked for is that both sides of the comparison actually arrived and that
+    everything it did emit is well formed.
+
+    The other direction is still absolute: with no reference loaded there is
+    nothing to compare against, so a `mechanics.ability.*` finding would be the
+    comparison inventing a reference side.
+    """
+    mechanics = [f for f in findings if f.id.startswith("mechanics.ability")]
+    if not mechanics_sample.members:
+        assert not mechanics, "no reference sample loaded, but a mechanics finding exists"
+        return
+
+    assert our_abilities, "a reference sample loaded but our own ability table did not"
+    assert len({f.id for f in mechanics}) == len(mechanics), "duplicate mechanics ids"
+    for finding in mechanics:
+        assert finding.confidence is Confidence.DERIVED, finding.id
+        assert finding.ability_id is not None, finding.id
+        assert finding.ability_name, finding.id
+        assert finding.ability_name in finding.title, finding.title
+        assert finding.evidence, finding.id
+        assert finding.seconds_lost is None, "a landing rate is not priced in seconds"
 
 
 @pytest.mark.e2e
@@ -112,14 +147,7 @@ def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
     severities = [SEVERITY_BY_FAMILY.get(family_of(f.id), UNKNOWN_SEVERITY) for f in findings]
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
-    # A comparable reference sample must actually have produced a finding, or
-    # a real one that came back empty must be why there is none -- silence for
-    # any other reason is exactly the gap this test guards against.
-    mechanics_ids = [f.id for f in findings if f.id.startswith("mechanics.ability")]
-    if mechanics_sample.members:
-        assert mechanics_ids, "a loaded reference sample produced no mechanics finding"
-    else:
-        assert not mechanics_ids, "no reference sample loaded, but a mechanics finding exists"
+    assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
 
     # The streams the analysers depend on must have actually arrived, or every
     # assertion above holds over an empty list and proves nothing.
@@ -172,10 +200,4 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
     severities = [SEVERITY_BY_FAMILY.get(family_of(f.id), UNKNOWN_SEVERITY) for f in findings]
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
-    # A wipe with no comparable reference kill is a real outcome, not a
-    # failure -- assert the withholding, not a finding.
-    mechanics_ids = [f.id for f in findings if f.id.startswith("mechanics.ability")]
-    if mechanics_sample.members:
-        assert mechanics_ids, "a loaded reference sample produced no mechanics finding"
-    else:
-        assert not mechanics_ids, "no reference sample loaded, but a mechanics finding exists"
+    assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
