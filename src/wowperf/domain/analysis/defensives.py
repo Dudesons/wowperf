@@ -6,7 +6,7 @@ from collections import defaultdict
 from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Player, Run
+from wowperf.domain.model import Player, Pull
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
 from wowperf.domain.slug import player_slug
 
@@ -86,7 +86,8 @@ def defensives_up_at(
 
 
 def analyse_defensives_at_death(
-    run: Run,
+    players: tuple[Player, ...],
+    pulls: tuple[Pull, ...],
     casts: tuple[CastEvent, ...],
     defensives: Defensives,
     deaths: tuple[Death, ...],
@@ -108,16 +109,20 @@ def analyse_defensives_at_death(
 
     A spec absent from the data file produces nothing, which is not the same
     claim as a spec that had nothing available. The caller must keep those apart.
+
+    `pulls` is only ever read by `pull_offset`, to say where each death fell;
+    passing an empty tuple degrades every death to "outside any pull" rather
+    than failing, which is the honest answer for a fight that has none.
     """
     # Counted on the slug rather than the name, because the slug is what the id
     # carries: `Bríala` and `Briala` are two players and one slug, and only the
     # actor id then tells their findings apart.
     slug_counts: dict[str, int] = defaultdict(int)
-    for player in run.players:
+    for player in players:
         slug_counts[player_slug(player.name)] += 1
 
     findings = []
-    for player in run.players:
+    for player in players:
         abilities = defensives.for_spec(player.class_name, player.spec)
         if not abilities:
             continue
@@ -134,7 +139,7 @@ def analyse_defensives_at_death(
             if first_pull is None:
                 first_pull = death.pull_index
             lines.append(
-                f"{pull_offset(run, death)} to {death.killing_blow}, with "
+                f"{pull_offset(pulls, death)} to {death.killing_blow}, with "
                 f"{', '.join(up)} off cooldown"
             )
 

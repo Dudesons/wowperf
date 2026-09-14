@@ -117,7 +117,7 @@ def analyse_consumables_at_death(
             if first_pull is None:
                 first_pull = death.pull_index
             lines.append(
-                f"{pull_offset(run, death)} to {death.killing_blow} — "
+                f"{pull_offset(run.pulls, death)} to {death.killing_blow} — "
                 f"{', '.join(up)} not on cooldown"
             )
 

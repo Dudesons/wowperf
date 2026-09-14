@@ -63,7 +63,7 @@ def analyse(
         loaded.deaths,
     )
     findings += analyse_defensives_at_death(
-        loaded.run, loaded.casts, defensives, loaded.deaths
+        loaded.run.players, loaded.run.pulls, loaded.casts, defensives, loaded.deaths
     )
     findings += analyse_consumables_at_death(
         loaded.run, loaded.casts, consumables, loaded.deaths

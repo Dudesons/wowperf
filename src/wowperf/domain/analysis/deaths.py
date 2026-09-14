@@ -5,7 +5,7 @@ from collections import defaultdict
 
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.model import Run
+from wowperf.domain.model import Pull, Run
 
 CHAIN_WINDOW_MS = 10_000
 """Deaths closer together than this are one event, not two independent ones."""
@@ -38,7 +38,7 @@ def _unmeasured_evidence(unmeasured_count: int) -> str:
     )
 
 
-def pull_offset(run: Run, death: Death) -> str:
+def pull_offset(pulls: tuple[Pull, ...], death: Death) -> str:
     """Where a death happened, in terms a reader can act on.
 
     A raw report-wide millisecond offset is useless: it is milliseconds since
@@ -48,7 +48,7 @@ def pull_offset(run: Run, death: Death) -> str:
     inventing a pull for it.
     """
     if death.pull_index is not None:
-        pull = next((p for p in run.pulls if p.index == death.pull_index), None)
+        pull = next((p for p in pulls if p.index == death.pull_index), None)
         if pull is not None:
             seconds_in = (death.timestamp_ms - pull.start_ms) / 1000
             return f"pull {death.pull_index}, {seconds_in:.0f}s in"
@@ -116,7 +116,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                 f"{names}. In a chain the first death usually causes the rest."
             )
             group_evidence = tuple(
-                f"{death.player_name} at {pull_offset(run, death)} to "
+                f"{death.player_name} at {pull_offset(run.pulls, death)} to "
                 f"{death.killing_blow}"
                 for death in group
             )
@@ -154,7 +154,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
                     detail=detail,
                     confidence=Confidence.MEASURED,
                     seconds_lost=seconds_lost,
-                    evidence=(pull_offset(run, first),),
+                    evidence=(pull_offset(run.pulls, first),),
                     pull_index=first.pull_index,
                     ability_id=first.killing_blow_id or None,
                     ability_name=first.killing_blow,
@@ -182,7 +182,7 @@ def analyse_deaths(run: Run, deaths: tuple[Death, ...]) -> list[Finding]:
         seconds_lost, unmeasured_count = _measured_cost(theirs)
         detail = f"{count} of the run's {len(deaths)} deaths were {name}."
         player_evidence = tuple(
-            f"{death.killing_blow} at {pull_offset(run, death)}" for death in theirs
+            f"{death.killing_blow} at {pull_offset(run.pulls, death)}" for death in theirs
         )
         if seconds_lost is None:
             detail += (
