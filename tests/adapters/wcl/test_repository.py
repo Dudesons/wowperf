@@ -1222,7 +1222,12 @@ def test_a_kill_loads_both_the_dps_and_bossdps_rankings_rows() -> None:
     The fixture gives the same player a different `amount` per metric
     (`RAID_RANKINGS_DPS_PAYLOAD` versus `RAID_RANKINGS_BOSSDPS_PAYLOAD`), so a
     `load_encounter` that queried "dps" for both fetches could not pass this
-    by coincidence."""
+    by coincidence. Each side is pinned to its own literal rather than only
+    asserted unequal: an inequality alone would still pass if `standing` and
+    `boss_standing` were swapped at construction, since the two amounts would
+    still differ -- it would just be checking the wrong row against the wrong
+    field, which is exactly the provenance mix-up this task exists to
+    prevent."""
     repository = recording_raid_repository([])
 
     loaded = repository.load_encounter(RAID_REPORT_CODE, 22)
@@ -1233,4 +1238,6 @@ def test_a_kill_loads_both_the_dps_and_bossdps_rankings_rows() -> None:
     boss_player = loaded.boss_standing.player_named("Emberkin")
     assert dps_player is not None
     assert boss_player is not None
+    assert dps_player.amount == 59991.462335693
+    assert boss_player.amount == 44818.47826087
     assert dps_player.amount != boss_player.amount

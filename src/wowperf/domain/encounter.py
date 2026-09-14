@@ -74,12 +74,13 @@ class LoadedEncounter(Frozen):
     auras: tuple[PlayerAuras, ...] = ()
     # The report's own rankings row, read once and kept here rather than
     # re-fetched: `standing` is `playerMetric: dps`, `boss_standing` is
-    # `playerMetric: bossdps`, and both are `None` for a wipe, which returns no
-    # row for either metric.
+    # `playerMetric: bossdps`. Each is `None` where its own query returned no
+    # row, which is what a wipe does -- design section 14 item 7, measured
+    # 2026-09-14.
     standing: ReportRankings | None = None
     boss_standing: ReportRankings | None = None
-    # "report rankings" when either row above supplied the partition,
-    # "data/season.toml" when neither did.
+    # "report rankings" when `standing` supplied the partition,
+    # "data/season.toml" when it did not.
     partition_source: str = ""
 
     @property

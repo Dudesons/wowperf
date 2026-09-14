@@ -276,9 +276,9 @@ class WclRunRepository:
 
         Called once for `dps` and once for `bossdps`: Tasks 7 and 8 each read
         one of the two rows, and fetching either again later would pay its
-        2.00 points twice. A wipe's row list is empty for both metrics alike,
-        with no field distinguishing it from a kill -- design section 14 item
-        7, measured 2026-09-14.
+        2.00 points twice. A wipe's row list is empty, with no field
+        distinguishing it from a kill -- design section 14 item 7, measured
+        2026-09-14.
         """
         payload = self._query(
             REPORT_RANKINGS_QUERY,
@@ -307,14 +307,14 @@ class WclRunRepository:
         boss_standing = self._report_rankings(report_code, fight["id"], "bossdps", hits)
         # ReportFight carries no partition field at all. Design 2.2 prescribes
         # reading it from the report's own `Report.rankings` row, and this is
-        # that read -- preferring the `dps` row, then the `bossdps` row, since
-        # either carries the same `partition`. A wipe returns no row for
-        # either metric -- measured, design section 14 item 7 -- so
-        # `data/season.toml` stays as the fallback for exactly that case
+        # that read. `boss_standing` is fetched and kept for Tasks 7 and 8 but
+        # takes no part here: only the `dps` row (`standing`) has been
+        # measured against a wipe, so it is the only one this fallback trusts.
+        # A wipe returns no row at all -- measured, design section 14 item 7
+        # -- so `data/season.toml` stays as the fallback for exactly that case
         # rather than as the source for every case.
-        partition_row = standing or boss_standing
-        partition = partition_row.partition if partition_row else load_raid_partition()
-        partition_source = "report rankings" if partition_row else "data/season.toml"
+        partition = standing.partition if standing else load_raid_partition()
+        partition_source = "report rankings" if standing else "data/season.toml"
         encounter = build_encounter(report, fight, partition=partition, talents=talents)
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
