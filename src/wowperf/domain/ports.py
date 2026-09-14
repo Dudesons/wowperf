@@ -23,9 +23,3 @@ class RankingRepository(Protocol):
 class ReportRenderer(Protocol):
     def render(self, html_path: Path, context: dict[str, object]) -> None: ...
 
-
-class IconSource(Protocol):
-    # None means no icon for that ability, whatever the reason -- an id the report's
-    # dictionary does not name, a file the CDN does not serve, a store that could not
-    # be read. The page does the same thing for all three, so it is told no more.
-    def data_uri(self, ability_id: int) -> str | None: ...

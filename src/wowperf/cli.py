@@ -24,7 +24,7 @@ from wowperf.adapters.config.toml import (
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
-from wowperf.adapters.render.icons import BlizzardIcons, IconStore
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -121,24 +121,13 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
-ICON_CACHE_SUBDIR = "icons"
+def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnIcons:
+    """Icons for one run: its own ability dictionary and every parse sample's.
 
-
-def build_icons(
-    loaded: LoadedRun, parse_samples: Sequence[ParseSample], cache_dir: Path
-) -> BlizzardIcons | None:
-    """Icons for one run: its own ability dictionary, every parse sample's, and a
-    store that keeps them for good.
-
-    None when the store cannot be created, which `render` already understands as
-    a page with no icons at all. Like `fetch` below, this runs outside `analyze`'s
-    own try/except and after the findings have been written, so a cache directory
-    this machine will not give us must not end a run holding a finished analysis
-    -- icons are decorative, and the page names every ability with or without one.
-
-    Unlike a single icon the CDN does not serve, which is silent by design, this
-    costs every icon on the page for a local reason the reader can act on, so it
-    is said out loud rather than leaving them a report that merely looks plain.
+    Nothing here can fail and nothing here is fetched. An icon is an address the
+    reader's browser resolves when the page is opened, so building them is string
+    work over dictionaries the run already carries -- no request, no cache, and
+    no way for a report to be written without its art.
 
     A comparison names an ability our player never cast, so that ability's file
     name is in the reference's own dictionary and in no other. Every compared
@@ -148,30 +137,12 @@ def build_icons(
     overlaid last: where both name an id they name the same file, so the order
     settles determinism rather than correctness.
     """
-    try:
-        store = IconStore(cache_dir / ICON_CACHE_SUBDIR)
-    except OSError as error:
-        typer.secho(f"writing the report without icons: {error}", err=True, fg="yellow")
-        return None
-
-    def fetch(url: str) -> tuple[int, str, bytes]:
-        # Status 0 tells `BlizzardIcons` that no HTTP response arrived at all --
-        # a DNS failure, a reset connection, a timeout. This call sits outside
-        # `analyze`'s own try/except (which closes well before `render` runs),
-        # and one flaky request among the dozens a real report makes must not
-        # abort a run that has already written its findings.
-        try:
-            response = httpx.get(url, timeout=30.0, follow_redirects=True)
-        except httpx.HTTPError:
-            return 0, "", b""
-        return response.status_code, response.headers.get("content-type", ""), response.content
-
     names: dict[int, str] = {}
     for sample in parse_samples:
         for member in sample.members:
             names.update(member.ability_icons)
     names.update(loaded.ability_icon_map)
-    return BlizzardIcons(names, store, fetch)
+    return CdnIcons(names)
 
 
 def build_reference_repositories(
@@ -914,7 +885,6 @@ def analyze(
                 icons=build_icons(
                     loaded,
                     tuple(one.parse for one in subjects if one.parse is not None),
-                    cache_dir,
                 ),
             ),
             encoding="utf-8",

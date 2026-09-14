@@ -2599,21 +2599,12 @@ KILLING_BLOW_ABILITY_ID = 1234
 KILLING_BLOW_ICON = "spell_frost_frostbolt02.jpg"
 
 
-def test_analyze_writes_a_report_whose_icons_are_embedded(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The CLI wires a real `BlizzardIcons` into `render`, built from the run's own
-    ability dictionary: a death card's killing blow draws its icon embedded as a
-    data URI, never linked to the CDN it came from. `httpx.Client` is not what
-    `build_icons`' fetcher calls, so `httpx.get` is stubbed here directly — the
-    stubbed CDN answers every request with the same fake image; the point is
-    that the CLI wires an icon source in at all, not what image it returns."""
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-
+def test_analyze_writes_a_report_whose_icons_address_the_cdn(tmp_path: Path) -> None:
+    """The CLI wires a real `CdnIcons` into `render`, built from the run's own
+    ability dictionary: a death card's killing blow draws its icon as an address
+    the reader's browser resolves, never as bytes baked into the file. Nothing is
+    stubbed, because nothing is fetched -- the whole report is written without a
+    single request for an image."""
     result = run_analyze(
         tmp_path,
         abilities=[
@@ -2631,104 +2622,14 @@ def test_analyze_writes_a_report_whose_icons_are_embedded(
     assert result.exit_code == 0, result.output
 
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert "url(data:image/jpeg;base64," in html
-    assert "url(http" not in html
+    assert (
+        "url(https://wow.zamimg.com/images/wow/icons/medium/spell_frost_frostbolt02.jpg)"
+    ) in html
+    assert "data:image" not in html
 
 
-def test_a_failed_icon_fetch_does_not_abort_the_run(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """`build_icons`' fetcher sits inside the `render(...)` call, which runs after
-    `analyze`'s own try/except around the API calls has already closed. A
-    transport failure fetching one icon among the dozens a real report fetches
-    must not escape uncaught and abort the run after the findings file has
-    already been written but before the report has."""
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        raise httpx.ConnectError("connection reset")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-
-    result = run_analyze(
-        tmp_path,
-        abilities=[
-            {"gameID": KILLING_BLOW_ABILITY_ID, "name": "Frostbolt", "icon": KILLING_BLOW_ICON}
-        ],
-        death_events=[
-            {
-                "type": "death",
-                "targetID": 693,
-                "timestamp": 4000,
-                "killingAbilityGameID": KILLING_BLOW_ABILITY_ID,
-            }
-        ],
-    )
-    assert result.exit_code == 0, result.output
-
-    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert "url(data:image" not in html
 
 
-def _analyze_with_an_unusable_icon_store(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Any:
-    """Run `analyze` with a file sitting where the icon cache directory belongs.
-
-    `IconStore` creates its directory when it is constructed, and a file of the
-    same name makes that `mkdir` raise however permissive its flags are -- the
-    same shape of failure as a directory the process may not write to, without
-    needing a permission this suite cannot portably arrange. The stubbed CDN
-    answers every request with a real image, so an icon missing from the page
-    can only be the store's doing.
-    """
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    (cache / "icons").write_text("a file, where a directory belongs", encoding="utf-8")
-
-    return run_analyze(
-        tmp_path,
-        abilities=[
-            {"gameID": KILLING_BLOW_ABILITY_ID, "name": "Frostbolt", "icon": KILLING_BLOW_ICON}
-        ],
-        death_events=[
-            {
-                "type": "death",
-                "targetID": 693,
-                "timestamp": 4000,
-                "killingAbilityGameID": KILLING_BLOW_ABILITY_ID,
-            }
-        ],
-    )
-
-
-def test_an_icon_store_that_cannot_be_created_does_not_abort_the_run(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The store is built as an argument to `render`, which runs after `analyze`'s own
-    try/except has closed and after the findings file has been written. Icons are
-    decorative, so a cache directory that cannot be created costs the page its art and
-    nothing else: the report is still written, and it still names the ability."""
-    result = _analyze_with_an_unusable_icon_store(monkeypatch, tmp_path)
-    assert result.exit_code == 0, result.output
-
-    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert "url(data:image" not in html
-    assert "Frostbolt" in html
-
-
-def test_an_icon_store_that_cannot_be_created_says_so_on_stderr(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """One icon Blizzard does not serve is silent by design: the page draws the name and
-    the reader loses nothing they could act on. A store that cannot be created costs
-    every icon on the page at once, for a reason on this machine that the reader can
-    fix, so that one is said out loud rather than left to look like a plain report."""
-    result = _analyze_with_an_unusable_icon_store(monkeypatch, tmp_path)
-    assert result.exit_code == 0, result.output
-    assert "writing the report without icons" in result.stderr
 
 
 def a_minimal_run() -> Run:
@@ -2749,35 +2650,22 @@ def _parse_row_model() -> ParseRow:
     )
 
 
-def test_the_resolver_knows_an_icon_named_only_by_a_reference_report(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_the_resolver_knows_an_icon_named_only_by_a_reference_report() -> None:
     """A comparison finding names an ability our player never cast, so its file
     name is in the reference's dictionary and in no other."""
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        assert url.endswith("/spell_ice_nova.jpg")
-        return httpx.Response(
-            200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake"
-        )
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-
     ours = LoadedRun(run=a_minimal_run())
     theirs = ParseMember(
         row=_parse_row_model(),
         run=a_minimal_run(),
         ability_icons=((157997, "spell_ice_nova.jpg"),),
     )
-    icons = build_icons(ours, (ParseSample(members=(theirs,)),), tmp_path)
 
-    assert icons is not None  # build_icons returns None only when the store fails
-    assert icons.data_uri(157997) is not None
+    icons = build_icons(ours, (ParseSample(members=(theirs,)),))
+
+    assert icons.url(157997) == "https://wow.zamimg.com/images/wow/icons/medium/spell_ice_nova.jpg"
 
 
-def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample() -> None:
     """Every compared player's sample feeds the resolver, not the subject's alone.
 
     A teammate's comparison names abilities out of their own specialisation's
@@ -2785,12 +2673,6 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample(
     built from the subject's sample would draw that card's rows with no icons
     at all.
     """
-
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        return httpx.Response(200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake")
-
-    monkeypatch.setattr(httpx, "get", fake_get)
-
     ours = LoadedRun(run=a_minimal_run())
     mine = ParseMember(
         row=_parse_row_model(),
@@ -2802,35 +2684,24 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample(
         run=a_minimal_run(),
         ability_icons=((6572, "ability_warrior_revenge.jpg"),),
     )
+
     icons = build_icons(
-        ours, (ParseSample(members=(mine,)), ParseSample(members=(theirs,))), tmp_path
+        ours, (ParseSample(members=(mine,)), ParseSample(members=(theirs,)))
     )
 
-    assert icons is not None
-    assert icons.data_uri(157997) is not None
-    assert icons.data_uri(6572) is not None
+    assert icons.url(157997) == "https://wow.zamimg.com/images/wow/icons/medium/spell_ice_nova.jpg"
+    assert icons.url(6572) == "https://wow.zamimg.com/images/wow/icons/medium/ability_warrior_revenge.jpg"
 
 
-def test_our_own_dictionary_wins_where_both_name_an_ability(tmp_path: Path) -> None:
+def test_our_own_dictionary_wins_where_both_name_an_ability() -> None:
     ours = LoadedRun(run=a_minimal_run(), ability_icons=((1, "ours.jpg"),))
     theirs = ParseMember(
         row=_parse_row_model(), run=a_minimal_run(), ability_icons=((1, "theirs.jpg"),)
     )
-    asked: list[str] = []
 
-    def fake_get(url: str, **kwargs: Any) -> httpx.Response:
-        asked.append(url)
-        return httpx.Response(
-            200, headers={"content-type": "image/jpeg"}, content=b"\xff\xd8fake"
-        )
+    icons = build_icons(ours, (ParseSample(members=(theirs,)),))
 
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(httpx, "get", fake_get)
-        resolver = build_icons(ours, (ParseSample(members=(theirs,)),), tmp_path)
-        assert resolver is not None
-        resolver.data_uri(1)
-
-    assert asked == ["https://render.worldofwarcraft.com/eu/icons/36/ours.jpg"]
+    assert icons.url(1) == "https://wow.zamimg.com/images/wow/icons/medium/ours.jpg"
 
 
 def test_an_out_directory_that_cannot_be_created_fails_without_a_traceback(
