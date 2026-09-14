@@ -96,3 +96,11 @@ def test_the_player_details_query_is_named_for_its_operation() -> None:
 
 def test_the_player_details_query_allows_an_unlisted_report() -> None:
     assert "allowUnlisted: true" in PLAYER_DETAILS_QUERY
+
+
+def test_the_player_details_query_structure_is_correct() -> None:
+    # Catches field-name typos like playerDetials, and variable-name mismatches
+    # like $fightID instead of $fightId. Task 5 will call this with the exact
+    # variable names declared here, so both are runtime failures against a
+    # quota-limited API if they slip past tests.
+    assert "playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)" in PLAYER_DETAILS_QUERY
