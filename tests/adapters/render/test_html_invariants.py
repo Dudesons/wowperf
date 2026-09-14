@@ -55,6 +55,7 @@ from wowperf.domain.report.model import (
     Timeline,
     TimelineBlock,
     TimelineTrack,
+    all_ledger_rows,
 )
 from wowperf.domain.season import (
     ConsumableCategory,
@@ -660,6 +661,45 @@ def test_a_resolved_icon_reaches_the_page_as_an_address_never_as_embedded_bytes(
     html = render(a_report(deaths=(card,)), icons=CdnIcons({7: "spell_holy_divineshield.jpg"}))
     assert f"url({ICON_HOST}spell_holy_divineshield.jpg)" in html
     assert "data:image" not in html
+
+
+def test_an_ability_only_a_comparison_table_names_still_draws_its_icon() -> None:
+    """Comparison tables used to be left out of the icon walk on purpose: every
+    icon was embedded as base64, and these tables run to dozens of rows per
+    player. Icons are addresses now, so a row costs the page its URL and
+    nothing else, and the reason for the exclusion went with the bytes.
+
+    The precondition is the test: an id that also reached a death card, a
+    ledger row or a timeline would resolve under the old walk too, and this
+    would pass without proving anything.
+    """
+    report = rich_report()
+    in_a_table = {
+        row.ability_id
+        for card in report.players
+        for table in card.comparison_tables
+        for row in table.rows
+        if row.ability_id is not None
+    }
+    drawn_anyway = {row.ability_id for row in all_ledger_rows(report)}
+    for card in report.deaths:
+        drawn_anyway.add(card.killing_blow_id)
+        drawn_anyway.update(row.ability_id for row in card.timeline)
+        for group in card.availability:
+            drawn_anyway.update(row.ability_id for row in group.rows)
+    for player in report.players:
+        if player.timeline is not None:
+            drawn_anyway.update(cooldown.ability_id for cooldown in player.timeline.cooldowns)
+
+    only_in_a_table = sorted(in_a_table - drawn_anyway)
+    assert only_in_a_table, (
+        "fixture precondition: every comparison-table ability is already drawn "
+        "for another reason, so this guard could not fail"
+    )
+
+    ability_id = only_in_a_table[0]
+    html = render(report, icons=CdnIcons({ability_id: "spell_holy_divineshield.jpg"}))
+    assert f".i-{ability_id}" in html
 
 
 PANEL_ORDER = [
