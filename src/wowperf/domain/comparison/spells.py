@@ -1,7 +1,7 @@
 # ABOUTME: Compares one player's boss-pull casts and talent build against a top parse or sample.
 # ABOUTME: Boss pulls only: across trash an ability ratio measures the route, not the player.
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
@@ -43,10 +43,30 @@ def boss_seconds(run: Run) -> float:
     return sum(pull.duration_seconds for pull in run.boss_pulls)
 
 
+def in_pulls(indices: frozenset[int]) -> Callable[[CastEvent], bool]:
+    """Count a cast only inside these pulls -- the Mythic+ rule.
+
+    A `Run` has pulls and a raid `Encounter` does not, so which casts count is
+    the caller's to decide rather than this module's to assume.
+    """
+    return lambda event: event.pull_index in indices
+
+
+def whole_fight(event: CastEvent) -> bool:
+    """Count every cast the stream carries -- the raid rule.
+
+    A raid cast's `pull_index` is always `None`, so no index rule can match one.
+    The stream is already scoped to one fight by the query that fetched it,
+    which is what makes "everything" the right denominator here and not a
+    widening.
+    """
+    return True
+
+
 def casts_in(
-    casts: tuple[CastEvent, ...], actor_id: int, indices: frozenset[int]
+    casts: tuple[CastEvent, ...], actor_id: int, include: Callable[[CastEvent], bool]
 ) -> dict[int, tuple[str, int]]:
-    """One player's casts inside `indices`, as ability id to (name, count).
+    """Each ability this actor cast, and how often, over the casts `include` admits.
 
     The one counting rule in this package. `boss_casts` is this scoped to the
     boss pulls; the trash comparison is this scoped to the packs two routes
@@ -55,7 +75,7 @@ def casts_in(
     """
     counted: dict[int, tuple[str, int]] = {}
     for event in casts:
-        if event.actor_id != actor_id or event.pull_index not in indices:
+        if event.actor_id != actor_id or not include(event):
             continue
         name, count = counted.get(event.ability_id, (event.ability_name, 0))
         counted[event.ability_id] = (name, count + 1)
@@ -66,7 +86,7 @@ def boss_casts(
     run: Run, casts: tuple[CastEvent, ...], actor_id: int
 ) -> dict[int, tuple[str, int]]:
     """One player's casts inside boss pulls, as ability id to (name, count)."""
-    return casts_in(casts, actor_id, frozenset(pull.index for pull in run.boss_pulls))
+    return casts_in(casts, actor_id, in_pulls(frozenset(pull.index for pull in run.boss_pulls)))
 
 
 def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[int]:

@@ -13,6 +13,7 @@ from wowperf.domain.comparison.spells import (
     MIN_MEMBERS_WITH_ABILITY,
     RATE_GAP_MULTIPLE,
     casts_in,
+    in_pulls,
     their_actor_id,
     verdict_for,
 )
@@ -118,7 +119,7 @@ def compare_trash_spells_sample(
             per_member.append((0.0, {}))
             continue
         ours_aligned.append(aligned)
-        their_casts = casts_in(member.casts, actor_id, aligned.their_pulls)
+        their_casts = casts_in(member.casts, actor_id, in_pulls(aligned.their_pulls))
         per_member.append(
             (
                 aligned.their_seconds,
@@ -141,7 +142,7 @@ def compare_trash_spells_sample(
     )
     if our_seconds <= 0:
         return [_unavailable_row(our_name, len(sample.members))]
-    ours_on_trash = casts_in(ours.casts, our_player.actor_id, our_pulls)
+    ours_on_trash = casts_in(ours.casts, our_player.actor_id, in_pulls(our_pulls))
     return _rate_rows(our_name, ours_on_trash, our_seconds, len(our_pulls), per_member)
 
 

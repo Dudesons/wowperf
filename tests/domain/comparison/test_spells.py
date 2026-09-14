@@ -14,7 +14,9 @@ from wowperf.domain.comparison.spells import (
     compare_spells,
     compare_spells_sample,
     compare_talents,
+    in_pulls,
     rate_measures,
+    whole_fight,
 )
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence, Finding
@@ -149,9 +151,34 @@ def test_casts_in_counts_only_the_given_pulls_for_the_given_actor() -> None:
         cast(693, 300, "No pull", 6_000, None),
     )
 
-    counted = casts_in(casts, 693, frozenset({0, 5}))
+    counted = casts_in(casts, 693, in_pulls(frozenset({0, 5})))
 
     assert counted == {100: ("Kept", 3)}
+
+
+def test_a_raid_cast_counts_for_nobody_when_the_rule_is_a_pull_index() -> None:
+    """The defect this predicate exists to close, pinned so a revert is loud.
+
+    A raid cast carries `pull_index=None`, which is in no frozenset. Before the
+    predicate, this returned an empty dict for a real cast and raised nothing --
+    the quiet wrong answer this repository's failure mode is made of.
+    """
+    casts = (
+        CastEvent(actor_id=7, ability_id=100, ability_name="Fire Breath", timestamp_ms=1000),
+        CastEvent(actor_id=7, ability_id=100, ability_name="Fire Breath", timestamp_ms=2000),
+    )
+    assert all(event.pull_index is None for event in casts)
+    assert casts_in(casts, 7, in_pulls(frozenset({0, 1}))) == {}
+
+
+def test_a_raid_cast_counts_when_the_rule_is_the_whole_fight() -> None:
+    casts = (
+        CastEvent(actor_id=7, ability_id=100, ability_name="Fire Breath", timestamp_ms=1000),
+        CastEvent(actor_id=7, ability_id=100, ability_name="Fire Breath", timestamp_ms=2000),
+        CastEvent(actor_id=7, ability_id=200, ability_name="Eternity Surge", timestamp_ms=3000),
+        CastEvent(actor_id=8, ability_id=100, ability_name="Fire Breath", timestamp_ms=4000),
+    )
+    assert casts_in(casts, 7, whole_fight) == {100: ("Fire Breath", 2), 200: ("Eternity Surge", 1)}
 
 
 def test_an_ability_they_cast_and_we_never_did_is_reported() -> None:

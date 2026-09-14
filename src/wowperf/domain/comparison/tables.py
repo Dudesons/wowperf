@@ -13,6 +13,7 @@ from wowperf.domain.comparison.spells import (
     boss_casts,
     boss_seconds,
     casts_in,
+    in_pulls,
     rate_measures,
     their_actor_id,
 )
@@ -157,7 +158,7 @@ def _trash(
             per_member.append((0.0, {}))
             continue
         ours_aligned.append(aligned)
-        their_casts = casts_in(member.casts, actor_id, aligned.their_pulls)
+        their_casts = casts_in(member.casts, actor_id, in_pulls(aligned.their_pulls))
         per_member.append(
             (
                 aligned.their_seconds,
@@ -180,7 +181,7 @@ def _trash(
     )
     if our_seconds <= 0:
         return (), 0.0, 0
-    ours_on_trash = casts_in(ours.casts, our_player.actor_id, our_pulls)
+    ours_on_trash = casts_in(ours.casts, our_player.actor_id, in_pulls(our_pulls))
     return (
         trash_rate_measures(ours_on_trash, our_seconds, per_member),
         our_seconds,
