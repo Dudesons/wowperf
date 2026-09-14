@@ -29,7 +29,7 @@ from wowperf.cli import (
     build_reference_repositories,
     build_repository,
 )
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.findings import rank_findings
@@ -60,7 +60,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # `--compare`'s default path -- both reference runs, spell/talent/uptime
     # comparison, and the routing of their findings onto one player's card --
     # is exercised against real data instead of only offline fixtures.
-    names = display_names(loaded.run)
+    names = display_names(loaded.run.players)
     subject = _resolve_player(loaded.run, None, names)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
@@ -180,7 +180,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
         assert comparison_ids, "No compare.* findings were produced to test the routing"
         # A player card's `name` is the roster's disambiguated display name, which
         # only differs from the raw `subject.name` when another player shares it.
-        subject_display_name = display_names(loaded.run)[subject.actor_id]
+        subject_display_name = display_names(loaded.run.players)[subject.actor_id]
         subject_card = next(card for card in report.players if card.name == subject_display_name)
         assert subject_card.spell_and_talent.state.value == "present"
         assert {row.finding_id for row in subject_card.spell_and_talent_rows} == comparison_ids

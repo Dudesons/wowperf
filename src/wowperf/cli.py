@@ -33,7 +33,7 @@ from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
@@ -766,7 +766,7 @@ def analyze(
         # three calls, so a finding's title, a card heading, a provenance row
         # and the argument that asked for them cannot spell a player
         # differently.
-        names = display_names(loaded.run)
+        names = display_names(loaded.run.players)
         subject, to_compare = _resolve_requested(loaded.run, player, all_players, names)
         speed_sample: SpeedSample | None = None
         # Everyone the comparison was asked for: the subject, then the order

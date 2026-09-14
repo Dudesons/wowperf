@@ -33,7 +33,7 @@ from wowperf.cli import (
     build_icons,
     load_run_with_auras,
 )
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
@@ -1286,7 +1286,7 @@ def test_a_disambiguated_spelling_resolves_to_the_member_it_names() -> None:
     first, so without this the second player could be listed and never asked for.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"))
-    names = display_names(run)
+    names = display_names(run.players)
 
     assert _resolve_player(run, names[700], names).actor_id == 700
     assert _resolve_player(run, names[693], names).actor_id == 693
@@ -1299,7 +1299,7 @@ def test_every_spelling_the_roster_hint_offers_resolves_to_a_member_of_its_own()
     hand-written literals here would let the two drift apart again.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
-    names = display_names(run)
+    names = display_names(run.players)
 
     offered = _roster_offered(_roster_hint(names))
 
@@ -1315,7 +1315,7 @@ def test_a_raw_name_resolves_as_it_always_did_and_an_ambiguous_one_takes_the_fir
     lowercases the report owner's name.
     """
     run = _roster_run((693, "Emberkin"), (700, "Emberkin"), (701, "Stonewake"))
-    names = display_names(run)
+    names = display_names(run.players)
 
     assert _resolve_player(run, "Stonewake", names).actor_id == 701
     assert _resolve_player(run, "stonewake", names).actor_id == 701
@@ -1331,7 +1331,7 @@ def test_an_empty_owner_name_matches_nobody_rather_than_the_first_member() -> No
     player's name.
     """
     run = _roster_run((693, "Emberkin")).model_copy(update={"owner_name": ""})
-    names = display_names(run)
+    names = display_names(run.players)
 
     with pytest.raises(ValueError, match="is not in this run's roster"):
         _resolve_player(run, None, names)

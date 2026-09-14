@@ -12,7 +12,7 @@ from wowperf.cli import (
     build_reference_repositories,
     build_repository,
 )
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
 from wowperf.domain.report.model import Provenance
@@ -38,7 +38,7 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
     assert subject is not None, "the report owner should be in the roster"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-    subject_name = display_names(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, records = _samples(
         rankings,
         references,

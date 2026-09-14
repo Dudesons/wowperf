@@ -14,7 +14,7 @@ from wowperf.cli import (
     build_reference_repositories,
     build_repository,
 )
-from wowperf.domain.analysis.players import display_names
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.measures import Verdict
 from wowperf.domain.comparison.reference import MAX_LEVEL_GAP
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
@@ -49,7 +49,7 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
     ), "at least one player should carry a talent import string"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-    subject_name = display_names(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, records = _samples(
         rankings,
         references,
@@ -111,7 +111,7 @@ def test_a_real_run_compares_trash_packs_against_real_parses(tmp_path: Path) -> 
     assert subject is not None, "the report owner should be in the roster"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-    subject_name = display_names(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, _records = _samples(
         rankings,
         references,
@@ -183,7 +183,7 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     assert subject is not None, "the report owner should be in the roster"
 
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
-    subject_name = display_names(loaded.run)[subject.actor_id]
+    subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, _records = _samples(
         rankings,
         references,
