@@ -21,6 +21,7 @@ from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     RequestedPlayer,
     _cost_breakdown,
     _fetch_parse_auras,
@@ -3070,6 +3071,29 @@ def test_the_warning_names_exactly_the_nestings_the_report_draws() -> None:
     # The decomposition ids head the ledger rather than nesting, so the warning
     # may name them without NESTS_INSIDE carrying an entry for them.
     assert named - set(DECOMPOSITION_IDS) == drawn - set(DECOMPOSITION_IDS)
+
+
+def test_the_raid_warning_names_only_findings_the_encounter_analyser_emits() -> None:
+    """`raid`'s findings file must not claim accounting `analyse_encounter` cannot emit.
+
+    `analyse_encounter` deliberately omits `decompose_time` and `analyse_trash` -- a
+    boss fight carries no keystone timer and no enemy-forces requirement, and its own
+    docstring says so -- so none of compare.duration, time.gap.*, compare.downtime,
+    time.residual or compare.route.skipped.* may appear in the raid warning, and
+    neither may trash.overage. Only the deaths.* nesting the Mythic+ warning also
+    states applies to a raid fight; the reader-facing regression this guards
+    against is the JSON claiming an accounting the tool never runs.
+    """
+    named = {
+        match.rstrip("*").rstrip(".")
+        for match in FINDING_ID_IN_PROSE.findall(RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE)
+    }
+    keystone_only = {
+        "compare.duration", "time.gap", "compare.downtime", "time.residual",
+        "compare.route.skipped", "trash.overage",
+    }
+    assert named & keystone_only == set(), named & keystone_only
+    assert "deaths.total" in named
 
 
 def test_the_throughput_ceiling_is_offered_by_analyze_and_not_by_fetch() -> None:

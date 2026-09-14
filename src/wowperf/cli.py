@@ -90,6 +90,23 @@ Every containment this names is one the report also relies on, in
 `test_cli.test_the_warning_names_exactly_the_nestings_the_report_draws`.
 """
 
+RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
+    "findings are ranked by seconds_lost, not additive: deaths.single.*, "
+    "deaths.chain.* and deaths.repeat.* all nest inside deaths.total"
+)
+"""Why the seconds in a raid findings file must never be summed.
+
+A sibling of `FINDINGS_ARE_RANKED_NOT_ADDITIVE`, not a reuse of it: this one is
+read by `raid`, and `analyse_encounter` runs none of `decompose_time` or
+`analyse_trash` -- a boss fight carries no keystone timer and no
+enemy-forces requirement (see `analyse_encounter`'s own docstring) -- so
+naming compare.duration, time.gap.*, compare.downtime, time.residual,
+compare.route.skipped.* or trash.overage here would claim an accounting the
+findings file does not hold. Only the deaths.* nesting applies to a raid
+fight; `test_cli.test_the_raid_warning_names_only_findings_the_encounter_analyser_emits`
+holds this in step with that.
+"""
+
 RAID_COMPARISON_NOT_YET_AVAILABLE = (
     "Comparison against reference runs is not implemented for raid encounters yet: "
     "--player, --all-players and --no-compare are accepted but have no effect."
@@ -979,13 +996,14 @@ def raid(
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
-    typer.secho(RAID_COMPARISON_NOT_YET_AVAILABLE, err=True, fg="yellow")
-
     try:
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
         loaded = repository.load_encounter(code, fight if fight is not None else fight_from_url)
+        # Printed only now: a report this tool cannot load must fail with just
+        # its own error, not this notice first and the error after it.
+        typer.secho(RAID_COMPARISON_NOT_YET_AVAILABLE, err=True, fg="yellow")
         # Loaded once and shared, exactly as `analyze` shares them between its
         # analysers and its report builder -- there is no report builder here
         # yet, but the next plan that adds one must still read the same data
@@ -1020,7 +1038,7 @@ def raid(
             "sample_size": {"speed": 0, "parse": {}},
             "references": [],
         },
-        "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings_are_ranked_not_additive": RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
         "findings": [finding.model_dump(mode="json") for finding in findings],
         "comparison_tables": {},
     }

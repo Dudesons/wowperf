@@ -184,6 +184,65 @@ def test_a_death_with_a_consumable_available_reaches_the_ranked_list() -> None:
     assert "consumables.unused.Emberkin" in {finding.id for finding in findings}
 
 
+def a_loaded_run_with_a_never_dying_namesake() -> LoadedRun:
+    """Two players named Emberkin: actor 11 dies twice, actor 12 never dies at all.
+
+    Pins the id-shape split `analyse_deaths` no longer reading the roster
+    introduced (see `deaths.py:191-197`, and this branch's own commit "Let a
+    death say where it happened without a pull"). `analyse_deaths` counts
+    names off the death list alone, where actor 12 never appears, so actor
+    11's repeat-death id carries no suffix. `analyse_consumables_never_used`
+    still counts off the full roster, sees both Emberkins, and does suffix --
+    for the same actor. Two id shapes for one player, on Mythic+, unchanged by
+    this fix wave: it pins the behaviour rather than altering it.
+    """
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0, end_ms=400_000,
+             killed=True, x=10, y=20, enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+    )
+    run = Run(
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
+        keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
+        count_reached=120, count_required=100, npc_counts=((100, 60),),
+        players=(
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
+                   item_level=318),
+            Player(actor_id=12, name="Emberkin", class_name="Shaman", spec="Elemental",
+                   item_level=311),
+        ),
+        pulls=pulls,
+    )
+    return LoadedRun(
+        run=run,
+        deaths=(
+            Death(player_name="Emberkin", actor_id=11, timestamp_ms=100_000,
+                  killing_blow="Molten Scar", pull_index=0,
+                  seconds_until_next_action=10.0),
+            Death(player_name="Emberkin", actor_id=11, timestamp_ms=200_000,
+                  killing_blow="Molten Scar", pull_index=0,
+                  seconds_until_next_action=8.0),
+        ),
+    )
+
+
+def test_a_never_dying_namesake_leaves_the_death_id_unsuffixed() -> None:
+    """Actor 11's healthstone goes untouched all run, and only actor 11 dies.
+
+    `deaths.repeat.Emberkin` (unsuffixed) and `consumables.never.Emberkin.11`
+    (suffixed) both name actor 11 -- two id shapes for one player. That split
+    is a known, currently-unfixed consequence of `analyse_deaths` counting
+    names off the death list while its siblings still count off the roster;
+    this test only pins today's behaviour, it does not endorse it.
+    """
+    findings = analyse(
+        a_loaded_run_with_a_never_dying_namesake(),
+        SEASON, DEFENSIVES, CONSUMABLES, ThroughputCooldowns(),
+    )
+    ids = {finding.id for finding in findings}
+    assert "deaths.repeat.Emberkin" in ids
+    assert "consumables.never.Emberkin.11" in ids
+
+
 def test_the_alignment_analyser_reaches_the_ranked_list() -> None:
     # The boss pull is judgeable and Arcane Surge is owned but never pressed on
     # it, so the default half of the throughput pair must contribute.

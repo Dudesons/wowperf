@@ -267,6 +267,45 @@ def test_the_total_does_not_claim_to_exceed_the_timer_penalty() -> None:
     assert "cast at another actor" in total.detail
 
 
+def test_the_default_cost_detail_names_the_time_decomposition() -> None:
+    """A caller that says nothing gets the Mythic+ sentence, byte-identical.
+
+    `analyse` (the Mythic+ service) calls `analyse_deaths` without
+    `cost_detail_suffix` at all, so this default is what every keystone report
+    has always read; it must not drift when a raid caller starts passing its
+    own.
+    """
+    findings = analyse_deaths(
+        (a_death("Emberkin", 11, 1_000, 3.0),), locate_in_a_run, SCOPE_A_RUN
+    )
+    total = next(f for f in findings if f.id == "deaths.total")
+    assert total.detail == (
+        "Measured from each death to that player's first cast at another actor: the "
+        "time the group played without them. The timer penalty is counted separately, "
+        "in the time decomposition."
+    )
+
+
+def test_a_caller_can_omit_the_timer_penalty_sentence() -> None:
+    """A raid fight has no timer penalty and no time decomposition to point at.
+
+    `analyse_encounter` passes `cost_detail_suffix=""` for exactly this reason;
+    this is the same behaviour exercised directly, at the unit this branch
+    settled on: a caller-supplied piece of text, not a branch on aggregate type.
+    """
+    findings = analyse_deaths(
+        (a_death("Emberkin", 11, 1_000, 3.0),), locate_in_a_run, SCOPE_A_RUN,
+        cost_detail_suffix="",
+    )
+    total = next(f for f in findings if f.id == "deaths.total")
+    assert total.detail == (
+        "Measured from each death to that player's first cast at another actor: the "
+        "time the group played without them."
+    )
+    assert "timer penalty" not in total.detail
+    assert "time decomposition" not in total.detail
+
+
 def test_a_death_outside_every_pull_is_reported_without_inventing_one() -> None:
     """A death whose `pull_index` is None fell outside every pull window.
 

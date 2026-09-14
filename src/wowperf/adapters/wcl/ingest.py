@@ -94,7 +94,7 @@ def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dic
         # this command reads.
         if any(fight.get("keystoneLevel") is not None for fight in fights):
             raise IngestError(
-                "This report contains no boss fight; it holds a Mythic+ run instead. "
+                "This report contains no boss fight; it holds a Mythic+ run instead; "
                 "analyze it with `analyze`"
             )
         raise IngestError("This report contains no boss fight")

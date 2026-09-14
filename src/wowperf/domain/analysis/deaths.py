@@ -82,6 +82,10 @@ def analyse_deaths(
     deaths: tuple[Death, ...],
     locate: Callable[[Death], str],
     scope: str,
+    *,
+    cost_detail_suffix: str = (
+        " The timer penalty is counted separately, in the time decomposition."
+    ),
 ) -> list[Finding]:
     """Report what dying cost, grouped so a wipe reads as one event.
 
@@ -89,6 +93,12 @@ def analyse_deaths(
     `scope` says what the count is measured across. Both are passed because a
     keystone and a boss fight answer them differently, and reading them off a
     `Run` meant a raid report evidenced "across 0 pulls".
+
+    `cost_detail_suffix` is appended to the measured `deaths.total` detail, and
+    is a caller's problem for the same reason: `decompose_time` and its timer
+    penalty are a Mythic+ concept a boss fight does not have, so a raid caller
+    passes the empty string rather than this module branching on what kind of
+    aggregate it was given.
     """
     if not deaths:
         return []
@@ -111,8 +121,7 @@ def analyse_deaths(
         )
         detail = (
             "Measured from each death to that player's first cast at another actor: the "
-            "time the group played without them. The timer penalty is counted separately, "
-            "in the time decomposition."
+            "time the group played without them." + cost_detail_suffix
         )
 
     findings = [
@@ -187,7 +196,12 @@ def analyse_deaths(
     # never mixed into one finding, and disambiguate the id with the actor id only
     # when that happens, so the common case stays readable. Counted from the
     # deaths themselves rather than a roster: a name collision only matters here
-    # between actors who both appear in this death list.
+    # between actors who both appear in this death list. A namesake who never
+    # dies therefore never disambiguates anyone: they hold no entry in `by_actor`
+    # and so are never counted, even though `analyse_consumables_never_used` and
+    # `analyse_defensives`, which still count off the full roster, do count them.
+    # A player can end up in this run's findings under two id shapes -- pinned in
+    # `test_service.test_a_never_dying_namesake_leaves_the_death_id_unsuffixed`.
     by_actor: dict[int, list[Death]] = defaultdict(list)
     for death in deaths:
         by_actor[death.actor_id].append(death)

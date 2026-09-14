@@ -12,6 +12,7 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.season import Consumables, Defensives, Roles
 
@@ -32,15 +33,24 @@ def analyse_encounter(
     throughput pair ranks pulls worth a cooldown. Their raid counterparts are
     comparisons against a reference sample and belong to the next plan, not
     here.
+
+    `roles` is accepted and unused: it exists only for `analyse_players`, which
+    is absent above for the reason already given. It stays part of the
+    signature because the plan mandates it, and will be read once this
+    function's raid counterpart to `analyse_players` lands.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
 
+    def locate(death: Death) -> str:
+        return fight_offset(encounter.start_ms, death)
+
     findings: list[Finding] = []
     findings += analyse_deaths(
         loaded.deaths,
-        lambda death: fight_offset(encounter.start_ms, death),
+        locate,
         f"in {encounter.duration_seconds:.0f}s of {encounter.boss_name}",
+        cost_detail_suffix="",
     )
     findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
     findings += analyse_defensives(
@@ -49,11 +59,11 @@ def analyse_encounter(
     )
     findings += analyse_defensives_at_death(
         encounter.players, loaded.casts, defensives, loaded.deaths,
-        locate=lambda death: fight_offset(encounter.start_ms, death),
+        locate=locate,
     )
     findings += analyse_consumables_at_death(
         encounter.players, encounter.start_ms, loaded.casts, consumables, loaded.deaths,
-        locate=lambda death: fight_offset(encounter.start_ms, death),
+        locate=locate,
     )
     findings += analyse_consumables_never_used(
         encounter.players, loaded.casts, consumables, loaded.deaths
