@@ -258,6 +258,14 @@ entirely and becomes `compare.gear.missing_item`, badged `measured`: every top p
 this item; the player did not, and here is what they ran in that slot instead. Nothing is
 suppressed — the observation was always true, and it was only ever filed under the wrong heading.
 
+> **Amended 2026-09-14, at RwlRwlRwlRwl's direction, after review of the first report built on
+> this design.** This branch now emits **nothing at all**. Reframing the row as a gear difference
+> still put an item the player cannot equip in front of them, which is the complaint the design
+> was written to answer; naming it under a different heading did not stop it being unactionable.
+> The join described above still runs and is still what decides the branch — its only effect is
+> now to suppress. The other two branches are unchanged, and the correctness fix still does not
+> depend on the fetch. The cost of this choice is stated in §6.1.
+
 **The ability resolves to an item the player does have.** The finding stays in the spell family
 and gets stronger, not weaker: the player had the item equipped and never used it. The false
 dichotomy is replaced by a fact, and the `measured` badge is now earned.
@@ -280,12 +288,23 @@ convention already set by `route.py`, `tempo.py`, `spells.py` and `uptime.py`. E
 the existing sampling rules: withheld below three comparable members, falling back to a single
 named reference, and saying so when it does.
 
-### 6.1 `compare.gear.missing_item` — `measured`
+### 6.1 `compare.gear.missing_item` — withdrawn 2026-09-14
 
-From §5. An item every member of the sample equipped that the analysed player did not, reached
-only through a cast the sample made and the player did not. It is not a general gear audit: the
-tool has no opinion on what the player *should* wear, only on the specific case where a piece of
-advice would otherwise have been unfollowable.
+**This family was removed before it ever shipped past first review.** It was to have been an item
+every member of the sample equipped that the analysed player did not, reached only through a cast
+the sample made and the player did not — see §5 and its amendment note.
+
+What replaced it is silence. Where the join resolves a missing cast to an item the player
+provably does not own, no finding of any family is emitted.
+
+**What this costs, stated plainly:** the report can no longer tell a player that the references
+all carried a trinket they lack. That is real information, and it is now withheld. The judgement
+behind withholding it is that this tool exists to name things the player can change about how
+they *played* the run, and an item they do not own is not one of them — an unactionable row
+spends the reader's attention and, worse, teaches them to distrust the actionable rows beside it.
+A reader who wants a gear audit is better served by a gear site than by a log analyser. The
+remaining gear families are kept precisely because they name things a player can act on before
+the next key: enchant a bare slot, wear the tier piece already in the bag.
 
 ### 6.2 `compare.gear.enchant` — `measured`
 

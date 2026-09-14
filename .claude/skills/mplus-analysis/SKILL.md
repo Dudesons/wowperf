@@ -225,9 +225,13 @@ instead of adjusting for them, because adjusting would invent a number:
   a route can absorb all change with the roster.
 - **Item level.** A gap here is still declared rather than corrected, and so is the aggregate
   throughput effect of better gear — but item level is no longer the only gear difference the
-  tool can see. `compare.gear.missing_item`, `compare.gear.enchant.<slot>`, `compare.gear.tier`
-  and `compare.stats.rating.<stat>` each draw their own finding now. Embellishments are the one
-  gear signal still uncompared.
+  tool can see. `compare.gear.enchant.<slot>`, `compare.gear.tier` and
+  `compare.stats.rating.<stat>` each draw their own finding now. An item the references wore
+  and the analysed player does not own draws **no finding at all**: the join that detects it
+  still runs, and its only effect is to suppress the `compare.spells.missing` row that would
+  otherwise tell the player to press a button they do not have. Do not read the absence of such
+  a row as evidence the player's gear matched. Embellishments are the one gear signal still
+  uncompared.
 - **Keystone level.** Enemy health scales about 10% a level and compounds, so anything shaped like
   a duration means something different on each side of a gap. `compare.duration` is what this
   gates: with fewer than three references at our own keystone level it becomes "Completion times

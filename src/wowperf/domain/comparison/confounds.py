@@ -108,9 +108,11 @@ def declare_confounds(ours: LoadedRun, theirs: SpeedMember, rule: Comparability)
                 ),
                 detail=(
                     "Item level is no longer the only gear difference this tool can see: a "
-                    "missing item, a bare enchant slot and tier count each raise their own "
-                    "finding, and the secondary-stat comparison reports each rating directly, "
-                    "catching what the Matrix Catalyst hides behind an unchanged item level. "
+                    "bare enchant slot and tier count each raise their own finding, and the "
+                    "secondary-stat comparison reports each rating directly, catching what the "
+                    "Matrix Catalyst hides behind an unchanged item level. An item the "
+                    "references wore and this player does not own is deliberately not "
+                    "reported, because it is not a difference the player can act on. "
                     "Embellishments are not compared, and the aggregate throughput effect of "
                     "better gear remains uncorrected outside those findings."
                 ),
@@ -294,12 +296,13 @@ def _confound_item_level(ours: LoadedRun, members: Sequence[SpeedMember]) -> Fin
             f"is {their_median:.0f}"
         ),
         detail=(
-            "Item level is no longer the only gear difference this tool can see: a missing "
-            "item, a bare enchant slot and tier count each raise their own finding, and the "
-            "secondary-stat comparison reports each rating directly, catching what the Matrix "
-            "Catalyst hides behind an unchanged item level. Embellishments are not compared, "
-            "and the aggregate throughput effect of better gear remains uncorrected outside "
-            "those findings."
+            "Item level is no longer the only gear difference this tool can see: a bare "
+            "enchant slot and tier count each raise their own finding, and the secondary-stat "
+            "comparison reports each rating directly, catching what the Matrix Catalyst hides "
+            "behind an unchanged item level. An item the references wore and this player does "
+            "not own is deliberately not reported, because it is not a difference the player "
+            "can act on. Embellishments are not compared, and the aggregate throughput effect "
+            "of better gear remains uncorrected outside those findings."
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,

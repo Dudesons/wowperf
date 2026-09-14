@@ -7,7 +7,6 @@ from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
 from wowperf.domain.comparison.sample import (
-    MIN_SAMPLE_FOR_AGGREGATE,
     ParseMember,
     ParseSample,
     too_few,
@@ -21,7 +20,7 @@ from wowperf.domain.findings import (
     quantifier_for,
     quantity,
 )
-from wowperf.domain.loadout import EquippedItem, Loadout
+from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Run
 
 MAX_SPELLS_REPORTED = 5
@@ -167,35 +166,6 @@ def _missing_cast_pairwise(
     )
 
 
-def _missing_item_pairwise(
-    their_name: str,
-    our_name: str,
-    ability_id: int,
-    count: int,
-    their_boss_seconds: float,
-    source: EquippedItem,
-) -> Finding:
-    """An item the reference equipped and we did not, reached through a cast we lacked."""
-    return Finding(
-        id="compare.gear.missing_item",
-        title=f"{their_name} equipped {source.name}; {our_name} did not",
-        detail=(
-            f"{source.name} fires the ability {their_name} cast and this run never did. "
-            f"{our_name} does not have it equipped, so this is a difference in gear rather "
-            "than a button that went unpressed."
-        ),
-        confidence=Confidence.MEASURED,
-        seconds_lost=None,
-        evidence=(
-            f"item {source.item_id} in slot {source.slot}",
-            f"ability {ability_id}",
-            f"{count} casts across {their_boss_seconds:.0f}s of their boss pulls",
-        ),
-        ability_id=ability_id,
-        ability_name=source.name,
-    )
-
-
 def compare_spells(
     ours: LoadedRun,
     our_player: Player,
@@ -270,12 +240,8 @@ def compare_spells(
                         their_boss_seconds, owned=True,
                     )
                 )
-            else:
-                findings.append(
-                    _missing_item_pairwise(
-                        their_name, our_name, ability_id, count, their_boss_seconds, source,
-                    )
-                )
+            # Otherwise it is an item we provably lack, and suppressed for the
+            # reason the sample branch gives at length.
             continue
         findings.append(
             _missing_cast_pairwise(
@@ -441,38 +407,13 @@ def _missing_sample(
             if our_loadout.has_item(source.item_id):
                 findings.append(_missing_cast(our_name, matching, total, ability_id, name,
                                                owned=True))
-            elif len(their_loadouts) < MIN_SAMPLE_FOR_AGGREGATE:
-                # The claim is who *equipped* the item, and that needs enough
-                # readable gear to argue from -- the same floor
-                # `compare_enchants` and `compare_tier` already hold their own
-                # equip-count claims to. `build_loadouts` skips any player
-                # whose `combatantInfo` came back empty, so a sample with only
-                # one or two readable loadouts is a real shape, not a
-                # hypothetical. Below the floor, fall through to the widened
-                # cast wording rather than dropping the observation: the log
-                # still supports "a talent, a button or an item", just not "N
-                # of M equipped it" from a sample this small.
-                findings.append(
-                    _missing_cast(our_name, matching, total, ability_id, name, owned=False)
-                )
-            else:
-                # The claim is who *equipped* the item, and a cast count cannot
-                # answer that: a reference can own a trinket and never press
-                # it. Counted directly off `their_loadouts` rather than off
-                # `matching`, and against `len(their_loadouts)` rather than
-                # `total` -- a member whose loadout was never fetched is absent
-                # from that list, and counting it as "did not equip" would
-                # repeat, in miniature, the missing-data-as-finding error this
-                # whole family exists to remove.
-                equipped = sum(
-                    1 for loadout in their_loadouts if loadout.has_item(source.item_id)
-                )
-                findings.append(
-                    _missing_item(
-                        our_name, equipped, len(their_loadouts), matching, total,
-                        source, ability_id,
-                    )
-                )
+            # Otherwise the join has answered, and the answer is that the item
+            # is not ours to press. Naming it at all -- as a cast we skipped or
+            # as a gear gap -- puts an act the player cannot perform in front
+            # of them, which is the complaint this whole path began from. Say
+            # nothing. How much of the sample's gear was readable does not
+            # enter it: our own loadout settles ownership by itself, and a
+            # thin sample is no reason to hand back the suggestion.
             continue
         findings.append(_missing_cast(our_name, matching, total, ability_id, name, owned=False))
     return _one_row_per_sentence(findings)
@@ -515,48 +456,6 @@ def _missing_cast(
     )
 
 
-def _missing_item(
-    our_name: str,
-    equipped: int,
-    loadout_total: int,
-    matching: int,
-    cast_total: int,
-    source: EquippedItem,
-    ability_id: int,
-) -> Finding:
-    """An item the sample equipped and we did not, reached through a cast we lacked.
-
-    `equipped` of `loadout_total` is who *wore* it, counted directly off the
-    sample's loadouts. `matching` of `cast_total` is who *cast* it enough to
-    argue from, which is a different count: a reference can equip a trinket
-    and never press it. The title and the quantifier must state the former,
-    because that is the claim they make -- the cast figure is kept only as
-    supporting evidence for how the item was found in the first place.
-    """
-    return Finding(
-        id="compare.gear.missing_item",
-        title=(
-            f"{count_phrase(equipped, loadout_total)} top parses equipped {source.name}; "
-            f"{our_name} did not"
-        ),
-        detail=(
-            f"{source.name} fires an ability {matching} of {cast_total} top parses cast on "
-            f"bosses and this run never did. {our_name} does not have it equipped, so this "
-            "is a difference in gear rather than a button that went unpressed."
-        ),
-        confidence=Confidence.MEASURED,
-        seconds_lost=None,
-        evidence=(
-            f"item {source.item_id} in slot {source.slot}",
-            f"ability {ability_id}",
-            f"{equipped} of {loadout_total} top parses equipped it",
-            f"{matching} of {cast_total} top parses cast it at least "
-            f"{MIN_CASTS_TO_COMPARE} times on bosses",
-        ),
-        quantifier=quantifier_for(equipped, loadout_total),
-        ability_id=ability_id,
-        ability_name=source.name,
-    )
 
 
 def verdict_for(ours: float, their_median: float) -> Verdict:

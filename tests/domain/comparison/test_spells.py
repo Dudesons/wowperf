@@ -995,26 +995,27 @@ def test_an_unresolved_missing_cast_names_all_three_possibilities() -> None:
     assert "an item not owned" in missing[0].detail
 
 
-def test_a_cast_from_an_item_we_do_not_own_becomes_a_gear_finding() -> None:
+def test_a_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> None:
+    """An item we provably do not have is not ours to press, and naming it at
+    all is the complaint this family began from. Both sides of the join are
+    known here -- the sample wears the item, our own loadout was read and does
+    not contain it -- so the run has nothing actionable to say and says
+    nothing."""
     sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
     findings = compare_spells_sample(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
     assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
-    gear = [f for f in findings if f.id.startswith("compare.gear.missing_item")]
-    assert len(gear) == 1
-    assert gear[0].confidence is Confidence.MEASURED
-    assert TABLET_NAME in gear[0].title
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
 
 
-def test_missing_item_states_the_equip_count_not_the_cast_count() -> None:
-    """Reproduced from the code reviewer's fixture: five references, all five
-    wearing the item, only three casting it at least MIN_CASTS_TO_COMPARE
-    times. `matching` counts the casts; the old code reported that number as
-    how many *equipped* the item, understating unanimous equipment as partial
-    -- the same false-dichotomy-under-`measured` failure this whole family
-    exists to remove, reproduced inside its own replacement. Equipment is
-    counted directly off `their_loadouts`, never off the cast count."""
+def test_an_item_the_whole_sample_wore_is_still_suppressed() -> None:
+    """Five references, all five wearing the item, only three casting it enough
+    to argue from. Unanimous equipment across the sample is the strongest case
+    the old family could make, and it is exactly the case that most tempts a
+    "you should get this" suggestion. Ownership is the only question that
+    matters: we do not have it, so nothing is said."""
     loadout = Loadout(
         items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
                              item_level=331),)
@@ -1035,27 +1036,19 @@ def test_missing_item_states_the_equip_count_not_the_cast_count() -> None:
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
 
-    gear = [f for f in findings if f.id.startswith("compare.gear.missing_item")]
-    assert len(gear) == 1
-    assert gear[0].title == f"5 of 5 top parses equipped {TABLET_NAME}; {OUR_NAME} did not"
-    assert "5 of 5 top parses equipped it" in gear[0].evidence
-    assert (
-        f"3 of 5 top parses cast it at least {MIN_CASTS_TO_COMPARE} times on bosses"
-        in gear[0].evidence
-    )
-    assert gear[0].quantifier == "every"
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
 
 
-def test_missing_item_falls_back_below_the_equip_floor() -> None:
+def test_suppression_does_not_depend_on_how_much_reference_gear_was_readable() -> None:
     """Five references, three casting the ability enough to argue from, but
     only one reference's gear was ever fetched. `build_loadouts` skips any
     player whose `combatantInfo` came back empty, so a sample with one
-    readable loadout is a real shape, not a hypothetical -- and "1 of 1 top
-    parses equipped it", `measured`, is the branch's own central failure at
-    low amplitude. `compare_enchants` and `compare_tier` already refuse an
-    equip-count claim below MIN_SAMPLE_FOR_AGGREGATE readable loadouts; this
-    proves `_missing_item` now holds itself to the same floor, falling
-    through to the widened cast wording rather than dropping the observation."""
+    readable loadout is a real shape, not a hypothetical. How many references
+    were readable bears on what could be *claimed about them*; it says nothing
+    about whether we own the item. Our own loadout answers that on its own, so
+    a thin sample must not leak the suggestion back through the cast wording."""
     loadout = Loadout(
         items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
                              item_level=331),)
@@ -1078,9 +1071,8 @@ def test_missing_item_falls_back_below_the_equip_floor() -> None:
     )
 
     assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
-    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
-    assert len(missing) == 1
-    assert "an item not owned" in missing[0].detail
+    assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
 
 
 def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
@@ -1093,13 +1085,39 @@ def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> Non
     assert "a talent not taken" not in missing[0].detail
 
 
-def test_a_gear_finding_costs_no_time_and_so_ranks_with_the_rest() -> None:
-    sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
+def test_suppressing_an_item_leaves_every_other_missing_cast_alone() -> None:
+    """Suppression drops one candidate, not the loop. The sample casts two
+    abilities we never cast: one resolves to an item we do not own, the other
+    is a plain spell. Only the first disappears -- a `continue` in the wrong
+    place, or a `return` where a skip belonged, would take the second with
+    it and quietly gut the family this comparison exists for."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i, member_name in enumerate(("Stonewake", "Bríala", "Кириллица")):
+        actor_id = 800 + i
+        player = Player(actor_id=actor_id, name=member_name, class_name="Mage",
+                         spec="Arcane", item_level=320, loadout=loadout)
+        casts = tuple(
+            cast(actor_id, TABLET_ABILITY_ID, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) + tuple(
+            cast(actor_id, 4321, "Arcane Orb", 50_000 + n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        )
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
     findings = compare_spells_sample(
         ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
     )
-    gear = [f for f in findings if f.id.startswith("compare.gear.missing_item")]
-    assert gear[0].seconds_lost is None
+
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "Arcane Orb" in missing[0].title
 
 
 def test_an_item_the_sample_wore_stays_widened_when_our_own_loadout_was_never_fetched() -> None:
@@ -1128,7 +1146,7 @@ THEIRS_WEARING_THE_TABLET = THEIRS.model_copy(
 )
 
 
-def test_a_pairwise_cast_from_an_item_we_do_not_own_becomes_a_gear_finding() -> None:
+def test_a_pairwise_cast_from_an_item_we_do_not_own_is_suppressed_entirely() -> None:
     ours = a_loaded(
         OURS_WITHOUT_THE_TABLET, (boss_pull(0, 120.0),),
         (cast(693, 30451, "Arcane Blast", 1_000, 0),),
@@ -1142,10 +1160,8 @@ def test_a_pairwise_cast_from_an_item_we_do_not_own_becomes_a_gear_finding() -> 
     findings = compare_spells(ours, OURS_WITHOUT_THE_TABLET, OUR_NAME, theirs, "Bríala")
 
     assert not [f for f in findings if f.id.startswith("compare.spells.missing")]
-    gear = [f for f in findings if f.id.startswith("compare.gear.missing_item")]
-    assert len(gear) == 1
-    assert gear[0].confidence is Confidence.MEASURED
-    assert TABLET_NAME in gear[0].title
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert not [f for f in findings if TABLET_NAME in f.title or TABLET_NAME in f.detail]
 
 
 def test_a_pairwise_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
