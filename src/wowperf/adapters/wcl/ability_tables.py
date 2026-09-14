@@ -10,14 +10,17 @@ from wowperf.domain.comparison.mechanics import AbilityTakenRow
 def build_ability_taken_rows(payload: dict[str, Any], alias: str) -> tuple[AbilityTakenRow, ...]:
     """The aliased `viewBy: Ability` damage-taken table, as domain rows.
 
-    A missing selection raises, naming the alias, rather than returning an
-    empty tuple that would read as "this fight had no damage taken" -- the
-    same distinction `ingest._aura_rows` draws for the buff table.
+    A missing selection and a `null` one both raise, naming the alias, rather
+    than returning an empty tuple that would read as "this fight had no
+    damage taken" -- the same distinction `ingest._aura_rows` draws for the
+    buff table: a selection that failed server-side comes back as a `null`
+    value, not as an absent key, so both must be rejected the same way.
     """
     report = (payload.get("reportData") or {}).get("report") or {}
-    if alias not in report:
+    table = report.get(alias)
+    if not isinstance(table, dict):
         raise WclError(f"The damage-taken table response carried no `{alias}` selection")
-    entries = ((report[alias] or {}).get("data") or {}).get("entries") or []
+    entries = (table.get("data") or {}).get("entries") or []
     return tuple(
         AbilityTakenRow(
             ability_id=entry["guid"],

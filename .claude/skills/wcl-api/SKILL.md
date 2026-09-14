@@ -58,11 +58,6 @@ covers it otherwise.
 | `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | yes |
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
-| `hitCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
-| `tickCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
-| `missCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
-| `tickMissCount` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
-| `sources` | `table` entry, `DamageTaken` `viewBy: Ability` | 2026-09-14 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -621,6 +616,21 @@ selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_au
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
 
+## A damage-taken table's row counts landings, not just hits
+
+Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
+Each entry carries `hitCount`, `tickCount`, `missCount`, `tickMissCount` and `sources` — these are
+response keys inside the table's opaque JSON, the same class of field as the aura table's
+`totalUptime`/`totalUses`/`bands` above, so they are documented here rather than as rows of the
+machine-checked table: nothing in `queries.py` selects them by name, because `table(...)` returns
+a `JSON` scalar with no sub-selection to check against.
+
+Landings are `hitCount + tickCount`: summed together with `missCount` and `tickMissCount` over
+the kill's 26 rows, all four totalled 11,456 — the event count for the same fight, exactly,
+difference zero. `missCount` and `tickMissCount` count attempts that did not land and must never
+be added to the other two. `mechanics.AbilityTakenRow.landings` reads exactly
+`hit_count + tick_count`.
+
 ## `hostilityType` does not exclude friendly sources
 
 Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
@@ -632,11 +642,12 @@ rows against this table's 26.
 
 The argument selects whose damage-taken is tabulated, not which sources may appear in it.
 **Friendly-sourced rows survive**: 8 of this kill's 26 rows were sourced entirely by players —
-1.97% of the fight's damage-taken, Blessing of Sacrifice among them. A row's `sources[].type`
-reads `"Boss"`, `"NPC"` or `"Pet"` for a hostile source and a class name for a player; every row
-measured had homogeneous sources. It is `sources[].type` — not `hostilityType` — that separates a
-mechanic from a self-inflicted or ally-sourced hit, and `AbilityTakenRow.source_types` carries it
-for the domain to judge, in `src/wowperf/domain/comparison/mechanics.py`.
+1.97% of the fight's damage-taken, Blessing of Sacrifice among them. Each entry's `sources` is a
+list of `{name, type}`, one per source, and a row's `sources[].type` reads `"Boss"`, `"NPC"` or
+`"Pet"` for a hostile source and a class name for a player; every row measured had homogeneous
+sources. It is `sources[].type` — not `hostilityType` — that separates a mechanic from a
+self-inflicted or ally-sourced hit, and `AbilityTakenRow.source_types` carries it for the domain
+to judge, in `src/wowperf/domain/comparison/mechanics.py`.
 
 ## A damage-taken table's damage is mitigated
 

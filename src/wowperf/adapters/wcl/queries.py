@@ -382,11 +382,10 @@ query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
 """
 
 
-# A row carries `hitCount`, `tickCount`, `missCount` and `tickMissCount`.
-# Measured 2026-09-14: landings are hitCount + tickCount, and all four summed
-# over one fight's 26 rows equalled the event count exactly, 11,456,
-# difference zero. `ability_tables.build_ability_taken_rows` reads exactly
-# those four plus `sources`, never the row's damage.
+# `viewBy: Ability` breaks this table down one row per ability rather than one
+# row per player. A row's landings are hitCount + tickCount; its damage
+# figures are mitigated and are read nowhere -- see `mechanics.AbilityTakenRow`
+# and its docstring for why.
 #
 # `hostilityType` is omitted deliberately. Measured 2026-09-14: omitting it and
 # passing `Friendlies` return byte-identical JSON, and `Enemies` returns the
