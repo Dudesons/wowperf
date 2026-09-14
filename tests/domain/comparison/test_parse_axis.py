@@ -488,3 +488,39 @@ def test_a_kill_with_no_parse_sample_says_which_three_families_are_missing() -> 
         assert family in note.detail
     assert not [one for one in ids if one.startswith("compare.spells")]
     assert not [one for one in ids if one.startswith("compare.uptime")]
+
+
+def test_a_player_with_no_specialisation_is_never_said_to_have_an_empty_leaderboard() -> None:
+    """No board was asked for, so no sentence may say one answered with nothing.
+
+    A specialisation is what a parse leaderboard is queried for, so a player the
+    log records none for has no board, no sample and no reference target table
+    -- and `_no_sample`'s "the parse leaderboard returned no reference kills for
+    this specialisation" would be false of a query never issued, as would
+    `compare_targets`' claim about a table never fetched.
+
+    The percentile is the one family that survives: it reads this report's own
+    rankings row, which names a player by name.
+    """
+    findings = compare_parse_axis(
+        **{
+            **KILL_ARGS,
+            "our_player": PLAYER.model_copy(update={"spec": ""}),
+            "sample": ParseSample(),
+            "board": (),
+            "boss_board": (),
+            "our_targets": (),
+            "their_targets": [],
+        }  # type: ignore[arg-type]
+    )
+    ids = [one.id for one in findings]
+
+    assert ids == ["compare.parse.unavailable", "compare.rank"]
+    note = findings[0]
+    assert note.title == "No comparison against other kills is available for Emberkin (Mage)"
+    assert "records no specialisation" in note.detail
+    assert "did not kill" not in note.detail
+    assert "returned no reference kills" not in note.detail
+    assert note.confidence is Confidence.MEASURED
+    # The percentile the rankings row does support is stated, not withheld.
+    assert "62nd percentile" in findings[1].title

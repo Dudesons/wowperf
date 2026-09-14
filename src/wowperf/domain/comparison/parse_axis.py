@@ -3,7 +3,10 @@
 
 from collections.abc import Sequence
 
+from pydantic import Field
+
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.raid_reference import RaidParseRow, ReportRankings
 from wowperf.domain.comparison.sample import ParseSample, find_player
 from wowperf.domain.comparison.spells import (
@@ -54,6 +57,61 @@ def _withheld(our_name: str) -> Finding:
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=("this report carries no rankings row for this fight",),
+    )
+
+
+class ParseSubject(Frozen):
+    """One player to measure against the world, and everything that measurement reads.
+
+    A sibling of `service.ComparisonSubject`, not a reuse of it: that one
+    carries a slug, because a Mythic+ comparison re-mints every finding id with
+    the player it is about so a report card can be matched by it. A raid finding
+    keeps its plain id and names the player in its title instead, so there is no
+    slug here to be minted, stamped or left empty by mistake.
+
+    Every field but the player is what an adapter fetched, arriving as a value:
+    the domain performs no I/O, and each of these is one query somebody paid for.
+    An empty default is the honest reading of "not fetched" for all of them --
+    `compare_parse_axis` says so in the tool's own words rather than treating an
+    empty sample as a clean result.
+    """
+
+    player: Player
+    display_name: str = Field(min_length=1)
+    our_auras: PlayerAuras | None = None
+    sample: ParseSample = ParseSample()
+    board: tuple[RaidParseRow, ...] = ()
+    boss_board: tuple[RaidParseRow, ...] = ()
+    our_targets: tuple[TargetRow, ...] = ()
+    their_targets: tuple[tuple[TargetRow, ...], ...] = ()
+
+
+def _no_specialisation(our_name: str, class_name: str) -> Finding:
+    """The log records no specialisation, so no leaderboard could be asked for one.
+
+    A separate absence from `_no_sample`, and it must not be reported as one:
+    there, a board was queried and answered with nothing; here, no board was
+    queried at all, because a specialisation is what one is queried for. Saying
+    "the leaderboard returned no reference kills" of a query never issued would
+    be a sentence that is false of the thing it names.
+
+    The percentile is not withheld with the rest: `compare_rank` reads this
+    report's own rankings row, which names a player by name and needs no
+    specialisation, so it still runs and this sentence says so.
+    """
+    return Finding(
+        id=UNAVAILABLE_ID,
+        title=f"No comparison against other kills is available for {our_name} ({class_name})",
+        detail=(
+            "This log records no specialisation for this player, so no parse leaderboard "
+            "could be asked for one: damage against the board, damage by target, casts a "
+            "minute, talents and buff uptime are not compared. The percentile beside this "
+            "one reads this report's own rankings rather than a leaderboard, and is "
+            "unaffected."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=("this log records no specialisation for this player",),
     )
 
 
@@ -121,9 +179,23 @@ def compare_parse_axis(
     sentence naming boss pulls, trash or a keystone level is false of a raid
     fight, and the two arguments are what keep the rule and the sentence about
     it saying the same thing.
+
+    Three shapes short-circuit, and each says something different: a wipe has no
+    external frame at all, a player with no recorded specialisation has no
+    leaderboard to be asked for, and a kill whose leaderboard answered with
+    nobody still keeps the three families that read this report's own rankings.
     """
     if standing is None:
         return [_withheld(our_name)]
+
+    # After the wipe, because a wipe withholds the percentile too and is the
+    # larger truth about the attempt; before everything that reads a board or a
+    # sample, because a specialisation is what either is drawn for.
+    if not our_player.spec:
+        return [
+            _no_specialisation(our_name, our_player.class_name),
+            *compare_rank(standing, boss_standing, our_name),
+        ]
 
     findings: list[Finding] = [
         *compare_damage_total(

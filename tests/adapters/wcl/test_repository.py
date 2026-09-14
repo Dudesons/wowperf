@@ -1241,3 +1241,69 @@ def test_a_kill_loads_both_the_dps_and_bossdps_rankings_rows() -> None:
     assert dps_player.amount == 59991.462335693
     assert boss_player.amount == 44818.47826087
     assert dps_player.amount != boss_player.amount
+
+
+def test_a_raid_parse_reference_fetches_the_roster_the_build_and_the_casts(
+    tmp_path: Path,
+) -> None:
+    """The three values a `ParseMember` is built from, and no fourth.
+
+    Asserted on the queries sent as well as on the result: a reference that came
+    back with no casts reads exactly like a player who pressed nothing, and the
+    talent string is the one thing `compare_talents` invites a reader to copy.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    reference, from_cache = repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    assert [player.name for player in reference.players] == ["Emberkin", "Stonewake"]
+    assert reference.players[0].talent_import_string == "C4DAAAAA"
+    assert reference.players[1].talent_import_string == "C4DBBBBB"
+    assert reference.casts, "the cast stream every rate comparison reads never arrived"
+    assert reference.ability_icons == ((900, "spell_x.jpg"),)
+    assert from_cache is False
+    assert "Casts" in calls
+
+
+def test_a_raid_parse_reference_pays_for_nothing_the_parse_axis_never_reads(
+    tmp_path: Path,
+) -> None:
+    """Every stream left unfetched is one a reference would be charged for.
+
+    Each name below is a query `load_encounter` does issue for our own report,
+    so this is a live distinction rather than a list of things nothing fetches.
+    A reference's own rankings row is in the list too: it would say how that
+    reference ranked, which is a fact about a stranger this tool has no use for.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    for skipped in (
+        "Deaths", "EnemyCasts", "Interrupts", "DamageTaken", "DamageDoneGraph",
+        "Healing", "Resurrects", "ReportRankings", "Actors", "PlayerDetails",
+    ):
+        assert skipped not in calls, f"a raid parse reference paid for {skipped}"
+
+
+def test_a_reused_raid_parse_reference_reports_itself_as_cached(tmp_path: Path) -> None:
+    """A caller's provenance row distinguishes a reused reference from a fetched one."""
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+    _second, from_cache = repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    assert from_cache is True
+
+
+def test_a_raid_parse_reference_refuses_a_keystone_fight(tmp_path: Path) -> None:
+    """The fight selector is the raid one, which is the whole reason this is not
+    a profile of `load_parse_reference`: fight 1 of this fixture is trash, and a
+    keystone selector would have taken it or raised about Mythic+."""
+    repository = recording_raid_repository([], tmp_path)
+
+    with pytest.raises(IngestError, match="not a boss fight"):
+        repository.load_raid_parse_reference(RAID_REPORT_CODE, 1)

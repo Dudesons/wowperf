@@ -8,6 +8,14 @@ from wowperf.domain.comparison.mechanics import (
     MechanicsSample,
     ReferenceKillRow,
 )
+from wowperf.domain.comparison.parse_axis import ParseSubject
+from wowperf.domain.comparison.raid_reference import (
+    RaidParseRow,
+    RankedPlayer,
+    ReportRankings,
+)
+from wowperf.domain.comparison.sample import ParseMember, ParseSample
+from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
@@ -202,3 +210,167 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
     [mechanics_finding] = [finding for finding in findings if finding.id.startswith("mechanics")]
     assert mechanics_finding.title.startswith("the raid")
     assert "Twin Fangs" not in mechanics_finding.title
+
+
+ARCANE_BLAST = 30451
+
+OUR_CASTS = tuple(
+    CastEvent(actor_id=11, ability_id=ARCANE_BLAST, ability_name="Arcane Blast",
+              timestamp_ms=2_000 + one * 1_000)
+    for one in range(10)
+)
+"""Ten casts for the subject, and none for anybody else on the roster.
+
+Over the fixture encounter's own 374 seconds that is 1.6 a minute. Over any
+other denominator a wiring mistake could reach for -- 300, 120, a pull's length,
+zero -- it is a different figure or no finding at all, which is what makes the
+rate row below an assertion about what `analyse_encounter` passed."""
+
+
+def a_ranked_player(amount: float, rank_percent: int) -> RankedPlayer:
+    return RankedPlayer(
+        character_name="Emberkin", class_name="Mage", spec="Arcane", role="dps",
+        amount=amount, rank="~1200", best="~900", rank_percent=rank_percent,
+        bracket_percent=rank_percent, total_parses=4_100,
+    )
+
+
+def a_standing(amount: float, rank_percent: int) -> ReportRankings:
+    return ReportRankings(
+        fight_id=22, difficulty=4, partition=1, size=20, kill=True,
+        players=(a_ranked_player(amount, rank_percent),),
+    )
+
+
+def a_board(amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
+    return tuple(
+        RaidParseRow(
+            report_code=f"BOARD{one}", fight_id=one + 1, duration_ms=240_000,
+            character_name="Stonewake", class_name="Mage", spec="Arcane",
+            amount=amount, size=20,
+        )
+        for one, amount in enumerate(amounts)
+    )
+
+
+def a_parse_member(report_code: str, blasts: int) -> ParseMember:
+    return ParseMember(
+        character_name="Stonewake",
+        report_code=report_code,
+        fight_id=1,
+        boss_seconds=240.0,
+        players=(
+            Player(actor_id=90, name="Stonewake", class_name="Mage", spec="Arcane",
+                   item_level=710),
+        ),
+        casts=tuple(
+            CastEvent(actor_id=90, ability_id=ARCANE_BLAST, ability_name="Arcane Blast",
+                      timestamp_ms=one * 1_000)
+            for one in range(blasts)
+        ),
+    )
+
+
+def a_parse_subject(**overrides: object) -> ParseSubject:
+    """The subject as the adapter layer hands it over, with a full sample by default."""
+    fields: dict[str, object] = {
+        "player": RAID[0],
+        "display_name": "Emberkin",
+        "sample": ParseSample(
+            members=tuple(a_parse_member(f"REF{one}", 14) for one in range(5))
+        ),
+        "board": a_board((1_600_000.0, 1_720_000.0, 1_540_000.0, 1_880_000.0, 1_490_000.0)),
+        "boss_board": a_board((1_310_000.0, 1_402_000.0, 1_255_000.0, 1_520_000.0, 1_190_000.0)),
+        "our_targets": (
+            TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=880_000_000),
+            TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=120_000_000),
+        ),
+        "their_targets": tuple(
+            (
+                TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=470_000_000),
+                TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=30_000_000),
+            )
+            for _ in range(5)
+        ),
+    }
+    fields.update(overrides)
+    return ParseSubject(**fields)  # type: ignore[arg-type]
+
+
+def test_the_external_frame_joins_the_internal_one_over_this_fights_own_seconds() -> None:
+    """The wiring this task exists for, asserted through a figure only it produces.
+
+    The rate row is stated over the fight's own duration and the subject's own
+    cast stream, both of which reach `compare_parse_axis` from `analyse_encounter`
+    and from nowhere else -- so a call handing it an empty stream, a zero
+    denominator or another player's casts changes this number or removes the row.
+    """
+    loaded = a_loaded_encounter(casts=OUR_CASTS, standing=a_standing(1_450_000.0, 62),
+                                boss_standing=a_standing(1_180_000.0, 48))
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), parse_subjects=(a_parse_subject(),)
+    )
+    ids = [finding.id for finding in findings]
+
+    assert "compare.damage.total" in ids
+    assert "compare.damage.targets" in ids
+    assert "compare.rank" in ids
+    [rate] = [one for one in findings if one.id.startswith("compare.spells.rate")]
+    # 10 casts over the encounter's own 374 seconds, against the sample's 3.5.
+    assert "1.6" in rate.title, rate.title
+    assert "ours over 374s of the fight" in rate.evidence
+
+
+def test_the_frame_is_withheld_on_a_wipe_without_the_internal_frame_going_with_it() -> None:
+    """Design 15's reason for building the internal frame first."""
+    deaths = (
+        Death(actor_id=11, player_name="Emberkin", timestamp_ms=61_000,
+              killing_blow="Ravenous Feast", seconds_until_next_action=3.0,
+              pull_index=None),
+    )
+    loaded = a_loaded_encounter(casts=OUR_CASTS, deaths=deaths, standing=None,
+                                boss_standing=None)
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), parse_subjects=(a_parse_subject(),)
+    )
+    ids = [finding.id for finding in findings]
+
+    assert "deaths.total" in ids, "the internal frame went with the external one"
+    assert "compare.parse.unavailable" in ids
+    assert [one for one in ids if one.startswith("compare.")] == ["compare.parse.unavailable"]
+
+
+def test_a_fight_with_no_subjects_named_emits_no_comparison_at_all() -> None:
+    """`--no-compare` reaches here as an empty sequence, and must stay silent.
+
+    Not an absence to fill in: a subject nobody asked to compare has no sample,
+    no board and no target table, and every sentence this axis writes would be
+    about a query that was never issued.
+    """
+    loaded = a_loaded_encounter(casts=OUR_CASTS, standing=a_standing(1_450_000.0, 62))
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
+
+    assert not [one for one in findings if one.id.startswith("compare.")]
+
+
+def test_every_named_subject_gets_their_own_row_of_each_family() -> None:
+    """`--all-players` reaches here as several subjects, and each is measured.
+
+    A loop that compared only the first would pass every assertion above.
+    """
+    loaded = a_loaded_encounter(casts=OUR_CASTS, standing=a_standing(1_450_000.0, 62))
+    subjects = (
+        a_parse_subject(),
+        a_parse_subject(player=RAID[1], display_name="Stonewake"),
+    )
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), parse_subjects=subjects
+    )
+
+    ranks = [one for one in findings if one.id == "compare.rank"]
+    assert len(ranks) == 1, "only one roster member is in this fixture's rankings row"
+    unavailable = [
+        one for one in findings
+        if one.id == "compare.rank.unavailable" and "Stonewake" in one.title
+    ]
+    assert unavailable, "the second subject was never compared at all"

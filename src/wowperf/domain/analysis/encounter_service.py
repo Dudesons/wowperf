@@ -1,6 +1,8 @@
 # ABOUTME: Runs the analysers a single boss fight can support, and ranks the findings.
 # ABOUTME: Deliberately dull: all the judgement lives in the analysers, none of it here.
 
+from collections.abc import Sequence
+
 from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
@@ -14,6 +16,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.comparison.mechanics import AbilityTakenRow, MechanicsSample, compare_mechanics
+from wowperf.domain.comparison.parse_axis import ParseSubject, compare_parse_axis
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
@@ -28,6 +31,7 @@ def analyse_encounter(
     roles: Roles = Roles(),
     mechanics: MechanicsSample = MechanicsSample(),
     our_abilities: tuple[AbilityTakenRow, ...] = (),
+    parse_subjects: Sequence[ParseSubject] = (),
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
 
@@ -45,6 +49,18 @@ def analyse_encounter(
     `compare_mechanics`, the raid counterpart to a route comparison: both
     default to empty, so an encounter with no comparison sample simply runs
     the analysers a bare fight always supported.
+
+    `parse_subjects` is the external frame, one entry per player asked for, each
+    carrying what an adapter fetched on their behalf. It is a sequence and not
+    one subject because `--all-players` compares a whole roster, and it is empty
+    by default because `--no-compare` and a fight nobody named still analyse.
+    Unlike `mechanics`, which is drawn once for the whole raid, this axis is
+    drawn per player: a leaderboard exists per specialisation, and a percentile
+    is a statement about one player.
+
+    This axis is compared last, and `rank_raid_findings` decides where its rows
+    land -- the order here is the order the analysers ran in, never an order a
+    reader meets.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
@@ -79,4 +95,22 @@ def analyse_encounter(
     findings += compare_mechanics(
         our_abilities, encounter.duration_seconds, mechanics, scope="the raid"
     )
+    for subject in parse_subjects:
+        findings += compare_parse_axis(
+            subject.player,
+            subject.display_name,
+            # The whole fight on our side, matching `whole_fight_casts` and
+            # `whole_fight_uptime` inside: a raid fight has no shorter stretch
+            # that both sides fought, the way a dungeon's boss pulls do.
+            encounter.duration_seconds,
+            loaded.casts,
+            subject.our_auras,
+            subject.sample,
+            loaded.standing,
+            loaded.boss_standing,
+            subject.board,
+            subject.boss_board,
+            subject.our_targets,
+            subject.their_targets,
+        )
     return rank_raid_findings(findings)
