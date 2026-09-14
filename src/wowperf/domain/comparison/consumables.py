@@ -5,8 +5,11 @@ from collections.abc import Sequence
 
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseSample
-from wowperf.domain.comparison.statistics import count_phrase
-from wowperf.domain.findings import Confidence, Finding, quantifier_for
+from wowperf.domain.comparison.spells import their_actor_id
+from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.events import CastEvent
+from wowperf.domain.findings import Confidence, Finding, quantifier_for, quantity
+from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.season import ConsumableBuffs
 from wowperf.domain.slug import player_slug
 
@@ -83,3 +86,70 @@ def compare_consumable_buffs(
             )
         )
     return findings
+
+
+def _potion_casts(
+    casts: Sequence[CastEvent], actor_id: int, potion_ids: frozenset[int]
+) -> int:
+    return sum(
+        1
+        for event in casts
+        if event.actor_id == actor_id and event.ability_id in potion_ids
+    )
+
+
+def compare_potions(
+    ours: LoadedRun,
+    our_player: Player,
+    our_name: str,
+    sample: ParseSample,
+    potion_ids: Sequence[int],
+) -> list[Finding]:
+    """How many combat potions this player drank, against the sample's median.
+
+    Counted from casts rather than from auras. A damage potion is observable
+    both ways, and the aura would give uptime, but the claim this finding makes
+    is about presses and a press is what a cast is.
+
+    Reported only when below the sample: a player who drank more has nothing to
+    act on.
+    """
+    wanted = frozenset(potion_ids)
+    if not wanted or not sample.can_aggregate(sample.members):
+        return []
+
+    ours_count = _potion_casts(ours.casts, our_player.actor_id, wanted)
+    theirs: list[float] = []
+    for member in sample.members:
+        actor_id = their_actor_id(member, member.row.character_name)
+        if actor_id is None:
+            continue
+        theirs.append(float(_potion_casts(member.casts, actor_id, wanted)))
+    if len(theirs) < MIN_SAMPLE_FOR_AGGREGATE:
+        return []
+
+    their_median = median(theirs)
+    if ours_count >= their_median:
+        return []
+
+    low, high = observed_range(theirs)
+    return [
+        Finding(
+            id="compare.consumables.potion",
+            title=(
+                f"{our_name} drank {quantity(ours_count, 'combat potion', 'combat potions')}; "
+                f"the sample's median is {their_median:g}"
+            ),
+            detail=(
+                "Counted as presses across the whole run. What the difference was worth in "
+                "damage is not stated: nothing here can compute that."
+            ),
+            confidence=Confidence.MEASURED,
+            seconds_lost=None,
+            evidence=(
+                f"{ours_count} combat potion casts in this run",
+                f"sample median {their_median:g}, range {low:g} to {high:g} "
+                f"across {len(theirs)} references",
+            ),
+        )
+    ]
