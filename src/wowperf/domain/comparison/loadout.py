@@ -3,7 +3,26 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.sample import ParseMember, find_player
 from wowperf.domain.loadout import EquippedItem, Loadout
+
+
+def loadouts_of(members: Sequence[ParseMember]) -> tuple[Loadout, ...]:
+    """Each member's own player's loadout, skipping a member whose loadout was never fetched.
+
+    `find_player` lives in `sample.py` rather than `service.py` for this: this
+    module already has no reason to import `service.py`, and `service.py`
+    already imports `sample.py`, so reading it from there is the one place that
+    adds no cycle. A member whose player cannot be found in their own report,
+    or whose loadout was never fetched, contributes nothing rather than a gap
+    the caller would have to notice on its own.
+    """
+    loadouts = []
+    for member in members:
+        player = find_player(member.run, member.row.character_name)
+        if player is not None and player.loadout is not None:
+            loadouts.append(player.loadout)
+    return tuple(loadouts)
 
 
 def item_sourced(ability_name: str, loadouts: Sequence[Loadout]) -> EquippedItem | None:

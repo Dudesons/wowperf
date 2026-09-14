@@ -11,23 +11,13 @@ from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
+from wowperf.domain.comparison.sample import find_player as find_player
 from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
-from wowperf.domain.model import LoadedRun, Player, Run
-
-
-def find_player(run: Run, name: str) -> Player | None:
-    """Find a roster member by name, folding case.
-
-    The report owner's name comes back from Warcraft Logs lowercased while the
-    roster carries the character's own capitalisation, so an exact match would
-    fail on the default path every time.
-    """
-    folded = name.casefold()
-    return next((player for player in run.players if player.name.casefold() == folded), None)
+from wowperf.domain.model import LoadedRun, Player
 
 
 def _unavailable(finding_id: str, title: str, detail: str) -> Finding:
