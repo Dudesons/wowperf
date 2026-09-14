@@ -133,6 +133,16 @@ the fast runs skipped a pack you spent time on".
 > Treat the missing-talent finding as a prompt rather than a verdict — the spell comparison runs on
 > boss pulls only, and the parses it counts belong to other characters on other keys.
 
+## The `raid` command
+
+A raid boss fight is `wowperf raid <url>`, a sibling of `analyze` and not a mode of it. It takes
+`--fight`, `--player`, `--all-players`, `--no-compare`, `--cache-dir` and `--out` — the same shapes
+`analyze` offers, minus `--throughput-ceiling` and `--narrative`, which a boss fight has no pulls
+or ceiling to support. `--player`, `--all-players` and `--no-compare` are accepted but inert:
+comparing a boss fight against reference runs is not implemented yet, and the command says so on
+every run rather than silently doing nothing. It writes `<code>-<fight>.findings.json` only — no
+HTML report yet.
+
 ## When it goes wrong
 
 - **No credentials.** The tool needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` in the environment,

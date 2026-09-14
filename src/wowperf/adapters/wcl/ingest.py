@@ -87,6 +87,16 @@ def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dic
         return chosen
 
     if not boss_fights:
+        # The same mistake the explicit-fight_id branch above catches for one
+        # fight: a whole report that is a Mythic+ run and holds no boss fight at
+        # all. Naming `analyze` here is what turns this from a dead end into a
+        # signpost -- the fight the reader wanted to see is real, just not one
+        # this command reads.
+        if any(fight.get("keystoneLevel") is not None for fight in fights):
+            raise IngestError(
+                "This report contains no boss fight; it holds a Mythic+ run instead. "
+                "analyze it with `analyze`"
+            )
         raise IngestError("This report contains no boss fight")
     if len(boss_fights) > 1:
         ids = ", ".join(str(fight["id"]) for fight in boss_fights)

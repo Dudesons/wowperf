@@ -162,6 +162,39 @@ def test_top_level_help_lists_fetch_as_a_subcommand() -> None:
     assert "fetch" in result.output
 
 
+def test_raid_is_a_subcommand_of_its_own() -> None:
+    result = runner.invoke(app, ["raid", "--help"])
+    assert result.exit_code == 0
+    assert "--fight" in plain(result.output)
+    assert "--out" in plain(result.output)
+    assert "Traceback" not in result.output
+
+
+def test_the_keystone_flags_are_not_offered_by_raid() -> None:
+    """`raid` is a sibling of `analyze`, not a copy of it.
+
+    --throughput-ceiling ranks pulls worth a cooldown, which a boss fight has
+    none of. Offering a flag that cannot work is worse than not offering it.
+    """
+    offered = plain(runner.invoke(app, ["raid", "--help"]).output)
+    assert "--fight" in offered, "the guard below proves nothing against empty output"
+    assert "--throughput-ceiling" not in offered
+
+
+@pytest.mark.usefixtures("wired_cli")
+def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it() -> None:
+    """`wired_cli`'s mock transport serves a Mythic+ report.
+
+    Pointing `raid` at one is the mistake a reader will actually make, and the
+    error has to be a signpost rather than a complaint.
+    """
+    result = runner.invoke(app, ["raid", "abc123"])
+
+    assert result.exit_code != 0
+    assert "analyze" in plain(result.output)
+    assert "Traceback" not in result.output
+
+
 def test_fetch_rejects_a_value_that_is_not_a_report_url() -> None:
     result = runner.invoke(app, ["fetch", "https://example.com/nope"])
 

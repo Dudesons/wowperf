@@ -177,8 +177,13 @@ def test_a_keystone_is_not_a_raid_boss_fight() -> None:
 
     with pytest.raises(IngestError, match="analyze"):
         select_raid_fight(keys, 36)
-    with pytest.raises(IngestError, match="no boss fight"):
+    # With no --fight given at all, the report as a whole is still a Mythic+
+    # run, and the message has to say so just as plainly as the explicit-id
+    # case above -- a reader who omitted --fight is not asking a harder
+    # question than one who guessed wrong.
+    with pytest.raises(IngestError, match="no boss fight") as excinfo:
         select_raid_fight(keys, None)
+    assert "analyze" in str(excinfo.value)
 
 
 @pytest.mark.parametrize("field", ["keystoneTime", "countReached", "countRequired"])

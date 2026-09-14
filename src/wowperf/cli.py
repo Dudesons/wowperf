@@ -32,6 +32,7 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.players import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.auras import PlayerAuras
@@ -87,6 +88,15 @@ FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
 Every containment this names is one the report also relies on, in
 `report.build.NESTS_INSIDE`; the two are held in step by
 `test_cli.test_the_warning_names_exactly_the_nestings_the_report_draws`.
+"""
+
+RAID_COMPARISON_NOT_YET_AVAILABLE = (
+    "Comparison against reference runs is not implemented for raid encounters yet: "
+    "--player, --all-players and --no-compare are accepted but have no effect."
+)
+"""`raid`'s inert flags say so, out loud, every run -- rather than looking like a
+comparison silently ran and found nothing. The axis they would drive belongs to
+the next plan, not this one.
 """
 
 
@@ -924,6 +934,112 @@ def analyze(
         raise typer.Exit(1) from error
 
     typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository.client.costs)
+
+
+@app.command()
+def raid(
+    report: str = typer.Argument(..., help="Report URL or code"),
+    fight: int | None = typer.Option(None, help="Fight ID; defaults to the only boss fight"),
+    player: list[str] = typer.Option(
+        [],
+        "--player",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    all_players: bool = typer.Option(
+        False,
+        "--all-players",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    no_compare: bool = typer.Option(
+        False,
+        "--no-compare",
+        help="Not yet implemented -- accepted and ignored. The comparison axis for raid "
+        "encounters is a later plan.",
+    ),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings JSON"),
+) -> None:
+    """Analyse a raid boss fight and write its findings as JSON.
+
+    A sibling of `analyze`, not a mode of it. A boss fight carries no keystone
+    timer, no enemy-forces requirement and no pulls worth ranking a throughput
+    cooldown against, so the two flags that need one are not offered here at
+    all -- not disabled, simply absent. `--player`, `--all-players` and
+    `--no-compare` are accepted for the same shape as `analyze`, but have no
+    effect yet: comparing a boss fight against reference runs is a later
+    plan, and this command says so on every run rather than silently doing
+    nothing.
+    """
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    typer.secho(RAID_COMPARISON_NOT_YET_AVAILABLE, err=True, fg="yellow")
+
+    try:
+        code, fight_from_url = parse_report_url(report)
+        repository = build_repository(cache_dir)
+        before = repository.rate_limit()
+        loaded = repository.load_encounter(code, fight if fight is not None else fight_from_url)
+        # Loaded once and shared, exactly as `analyze` shares them between its
+        # analysers and its report builder -- there is no report builder here
+        # yet, but the next plan that adds one must still read the same data
+        # this command already paid for.
+        defensives = load_defensives()
+        consumables = load_consumables()
+        findings = analyse_encounter(loaded, defensives, consumables, roles=load_roles())
+        after = repository.rate_limit()
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    encounter = loaded.encounter
+    payload = {
+        "report_code": encounter.report_code,
+        "fight_id": encounter.fight_id,
+        "boss_name": encounter.boss_name,
+        "difficulty": encounter.difficulty,
+        "partition": encounter.partition,
+        "size": encounter.size,
+        "kill": encounter.kill,
+        "fight_percentage": encounter.fight_percentage,
+        "duration_seconds": encounter.duration_seconds,
+        "player": encounter.owner_name,
+        # Same shape `analyze` writes, standing in for a comparison this plan
+        # does not run: `--player`, `--all-players` and `--no-compare` are
+        # inert, so this is always what "nobody was compared" looks like,
+        # never a comparison that quietly found nothing.
+        "comparison": {
+            "compared": False,
+            "players": [],
+            "sample_size": {"speed": 0, "parse": {}},
+            "references": [],
+        },
+        "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        "comparison_tables": {},
+    }
+
+    written = out / f"{encounter.report_code}-{encounter.fight_id}.findings.json"
+    # A guard of its own, because this phase fails differently from the one
+    # above: nothing here can be degraded or retried, and a failure can arrive
+    # after the findings have been computed. `OSError` alone -- the API
+    # errors the first block names cannot reach a filesystem write.
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        # Real rosters contain non-ASCII names; write_text's default encoding is
+        # locale-dependent (commonly cp1252 on Windows) and would raise on them.
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"{len(findings)} findings written to {written}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 
