@@ -133,9 +133,28 @@ do not write that they had one.
 
 Two silences mean nothing at all rather than something good. A death early enough that the
 category's window reaches back before the log begins is not judged, because casts are fetched per
-fight and a potion drunk before the pull is invisible. And combat and mana potions are not tracked
-at all — they stopped sharing a cooldown with health potions in patch 9.0, so their absence from
-the data is deliberate and carries no meaning.
+fight and a potion drunk before the pull is invisible. Mana potions are not tracked at all — they
+stopped sharing a cooldown with health potions in patch 9.0, so their absence from the data is
+deliberate and carries no meaning. Combat potions share that same history but are no longer
+untracked: `compare.consumables.potion`, below, counts them against the sample. They still take no
+part in `consumables.never.*` or `consumables.unused.*` above, which is what this section is
+about — a damage potion cannot make a health potion unavailable, so it is excluded from the
+death-gated survival analysis on purpose (`data/consumables.toml` records why).
+
+## The consumable comparison, against the sample rather than a death
+
+`compare.consumables.buff.<category>` and `compare.consumables.potion` ask a different question
+from the two claims above: not "did this player ever use one", but "did the sample". Both are
+`measured`, and neither is gated on a death.
+
+`compare.consumables.buff.<category>` fires only when every comparable reference in the sample
+carried the category's buff at some point and this player carried none of it all run — the same
+unanimity rule `compare.gear.enchant.<slot>` uses, and for the same reason: a category the sample
+splits on is not something this tool has an opinion about.
+
+`compare.consumables.potion` counts combat potion casts across the whole run and fires when this
+player drank fewer than the sample's median. It is counted from casts, not from the aura the
+potion applies: the claim is about a press, and a cast is what a press is.
 
 ## What a death recap can honestly say
 
@@ -302,8 +321,9 @@ Otherwise `compare.speed.unavailable`, and a `compare.parse.unavailable.<slug>` 
 player, are there to say so, and `references` may still list candidates that were tried and
 failed to load. Both differ again from a comparison that ran and was withheld, which leaves its
 findings in place with `seconds_lost: null` and the reason in the `detail`. The route, tempo,
-duration and confound findings hang off the speed sample; spells, talents and uptime hang off the
-parse sample. One axis can be absent while the other is not, and the two are named differently:
+duration and confound findings hang off the speed sample; spells, talents, uptime, gear, secondary
+stats and consumables all hang off the parse sample. One axis can be absent while the other is
+not, and the two are named differently:
 every id in the parse family ends `.<slug>`, because each is a statement about one player, while
 the speed family — `compare.speed.unavailable` included — carries no suffix at all.
 
@@ -317,6 +337,7 @@ where to look. Summary holds the three decomposition rows, up to five pointers a
 losses, the aligned timeline and anything no tab claimed. Route & tempo holds the gaps, the
 downtime, the skipped and extra packs, the trash rates and the confounds. Deaths holds each death
 card and the death costs, defensives and consumables beneath them. Interrupts holds the kicks.
-Players holds the cards and, beneath them, the per-player defensive and throughput rates.
-Provenance holds the sources, everything withheld, and the badge legend. Without scripting, the
-same sections stack in that order.
+Players holds the cards — spells, talents, uptime, gear, stats and consumables sit together
+beneath each one, alongside the per-player defensive and throughput rates. Provenance holds the
+sources, everything withheld, and the badge legend. Without scripting, the same sections stack in
+that order.
