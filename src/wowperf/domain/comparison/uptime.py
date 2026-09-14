@@ -74,9 +74,11 @@ def seconds_up_over_the_fight(aura: Aura) -> float:
     stands in for a bound is that the aura table returns bands already clipped
     to the fight it was queried for: measured 2026-09-14 over every cached
     response that joins to its own fight -- 22 tables, 49,514 bands, none
-    outside -- every one of them a Mythic+ fight, and none a raid. Recorded in
-    `.claude/skills/wcl-api/SKILL.md` under "In every Mythic+ table measured",
-    which states what that measurement does not cover.
+    outside -- every one of them a Mythic+ fight; and again 2026-09-15 over
+    five raid tables, 2326 bands, where each table's earliest band start and
+    latest band end equal its fight's own start and end exactly. Recorded in
+    `.claude/skills/wcl-api/SKILL.md` under "In every table measured", and
+    re-checked on every live run by `tests/e2e/test_raid_e2e.py`.
     """
     if not aura.bands:
         return 0.0
@@ -108,7 +110,7 @@ def fractions_of(
 def aura_fractions(
     auras: tuple[Aura, ...], windows: tuple[tuple[int, int], ...], seconds: float
 ) -> dict[int, tuple[str, float]]:
-    """Ability id to (name, fraction of boss time this aura was up)."""
+    """Ability id to (name, fraction of the measured stretch this aura was up)."""
     return fractions_of(auras, seconds_up_in(windows), seconds)
 
 
@@ -131,8 +133,8 @@ def _unavailable(
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=(
-            f"our boss time {our_seconds:.0f}s",
-            f"their boss time {their_seconds:.0f}s",
+            f"our {words.stretch_time} {our_seconds:.0f}s",
+            f"their {words.stretch_time} {their_seconds:.0f}s",
             f"our aura data {'present' if our_has_auras else 'absent'}",
             f"their aura data {'present' if their_has_auras else 'absent'}",
         ),
@@ -196,8 +198,8 @@ def _gap_findings(
                 # what put it there. So the aura is the subject and the two
                 # players are only whose boss time it is measured over.
                 title=(
-                    f"{name} was up for {their_fraction:.0%} of {their_name}'s boss time, "
-                    f"{our_fraction:.0%} of {our_name}'s"
+                    f"{name} was up for {their_fraction:.0%} of {their_name}'s "
+                    f"{words.stretch_time}, {our_fraction:.0%} of {our_name}'s"
                 ),
                 detail=(
                     f"Both figures are the share of {words.rate_basis} the aura was present, "
@@ -214,9 +216,11 @@ def _gap_findings(
                     f"theirs over {their_seconds:.0f}s of {words.over}",
                 ),
                 facts=(
-                    FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
+                    FindingFact(label="Ours",
+                                value=f"{our_fraction:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
-                    FindingFact(label="Reference", value=f"{their_fraction:.0%} of boss time",
+                    FindingFact(label="Reference",
+                                value=f"{their_fraction:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
                     # No median and no range in this shape: one reference run,
                     # and a label claiming otherwise would claim a sample.
@@ -455,8 +459,8 @@ def _gap_findings_sample(
                 id=f"compare.uptime.self.{rank}",
                 # Presence, never agency — see the pairwise branch above.
                 title=(
-                    f"{m.name} was up a median {m.their_median:.0%} of boss time across "
-                    f"{len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
+                    f"{m.name} was up a median {m.their_median:.0%} of {words.stretch_time} "
+                    f"across {len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
                 ),
                 detail=(
                     f"Both figures are the share of {words.rate_basis} the aura was present, "
@@ -479,10 +483,10 @@ def _gap_findings_sample(
                 # derived: an unset tier is what a panel draws measured with.
                 # The parse count is a count, and is not.
                 facts=(
-                    FindingFact(label="Ours", value=f"{m.ours:.0%} of boss time",
+                    FindingFact(label="Ours", value=f"{m.ours:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Reference median",
-                                value=f"{m.their_median:.0%} of boss time",
+                                value=f"{m.their_median:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Observed range", value=f"{low:.0%} to {high:.0%}",
                                 confidence=Confidence.DERIVED),
@@ -515,8 +519,9 @@ def _unjudged_finding(our_name: str, names: Sequence[str], words: Wording) -> Fi
             f"{'is' if len(ordered) == 1 else 'are'} not judged for {our_name}"
         ),
         detail=(
-            "Each of these was present over enough of the sample's boss time to compare, and "
-            "absent from ours. It is named rather than measured: the aura table cannot say "
+            f"Each of these was present over enough of the sample's {words.stretch_time} to "
+            "compare, and absent from ours. It is named rather than measured: the aura table "
+            "cannot say "
             "whose buff a row was, so a zero here may be a button this player never pressed "
             "or one a teammate never gave them, and the log does not separate the two. Check "
             "whether the build produces it before reading anything into it."

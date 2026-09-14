@@ -146,6 +146,32 @@ One approximation and three measurements:
   `EnemyCasts`, `EnemyDeaths`, `Resurrects` or `Actors` call, all served from our own run's
   permanent cache. The cold figure for this shape is the 190.90 above, and that reading predates
   `ee23732`, so it over-prices every `AuraTable` in it by roughly half.
+- **`wowperf raid` with the parse axis, one subject, cold cache: 62.69 points of 3600**
+  (2026-09-15, report `cW38jmwdnZfbHVL4` fight 2, a 20-player Heroic kill, one specialisation
+  compared). Composed as the command printed it: `Talents` 6 calls for 13.62, `Fights` 5 for
+  10.04, `Casts` 7 for 7.00, `Abilities` 6 for 6.00, `AuraTable` 5 for 5.00,
+  `DamageDoneTargets` 5 for 5.00, `ReportRankings` 2 for 4.00, `RaidCharacterRankings` 2 for
+  2.02, and the internal frame's own streams for the rest. **Both leaderboard pages together
+  cost 2.02**, which is the free-board reading below holding at a second boss.
+- **The same fight with `--all-players`, cold cache: 877.74 points of 3600** (2026-09-15, same
+  report and fight). Twenty players held **nineteen distinct class-and-specialisation pairs**,
+  so 38 `RaidCharacterRankings` calls for 38.38 and 95 reference kills drawn, over 92 distinct
+  reference reports — three reports served two specialisations each and cost nothing the second
+  time. Composed as the command printed it: `Talents` 94 calls for 212.77, `Fights` 93 for
+  186.86, `Casts` 116 for 116.00, `DamageDoneTargets` 107 for 109.72, `AuraTable` 107 for
+  107.00, `Abilities` 93 for 93.00, `RaidCharacterRankings` 38 for 38.38.
+  `docs/plans/2026-09-13-raid-analysis-design.md` §14 item 6 **projected** roughly 730 for this
+  shape from a 7.29-point-per-reference reading; the measurement is about 20% above that
+  projection, and the difference is `Talents` and `Fights` at about 2 points each rather than
+  one. One reading, of one report, against one day's leaderboards.
+- **`wowperf raid` on an attempt that did not kill costs nothing for this axis at all**
+  (2026-09-15, same report, fight 30, 45.25 points in total). No `RaidCharacterRankings`, no
+  `AuraTable` and no `DamageDoneTargets` call appears in the breakdown: `Report.rankings`
+  returns no row for a wipe, every family of the parse axis reads that row or a sample drawn to
+  stand beside it, and `cli._parse_samples` therefore draws nothing. The 45.25 is the internal
+  frame, of which 21.00 is one `Healing` query per death.
+- **The one-subject raid shape re-run against a warm cache spent 1.00 point** — the two
+  `RateLimit` reads and nothing else, within the reference cache's 24 hours.
 
 ## Every query reports its own cost
 
@@ -475,8 +501,8 @@ carry the exact intervals, so uptime over an arbitrary sub-window — boss pulls
 intersection rather than a second query. Confirmed by recomputing one aura's uptime over
 fight 36's three boss pulls and matching the boss window the analyzers already derive.
 
-**In every Mythic+ table measured, no band falls outside the fight it was queried for. Not
-measured on a raid fight.** Measured 2026-09-14 against every cached `AuraTable` response,
+**In every table measured, Mythic+ and raid alike, no band falls outside the fight it was
+queried for.** The Mythic+ half was measured 2026-09-14 against every cached `AuraTable` response,
 offline and at no quota cost. Method: a response's `totalTime` equals its fight's wall-clock
 `endTime - startTime` exactly, so the pair `(endTime - totalTime, endTime)` identifies the
 fight even where two reports share an `endTime`; 22 of the 49 cached tables join that way, and
@@ -495,10 +521,19 @@ fight's span is **shorter** than the table's own `totalTime`, which is impossibl
 fight and so an `endTime` collision between two reports. Not one of the 27 is a table joined to
 its own fight and found to overhang it.
 
-All 22 joined tables are Mythic+ fights, because no raid `AuraTable` response is cached, so
-**the raid case is unverified.** The query is the same `table(fightIDs:, dataType: Buffs,
-targetID:)` either way, which is a reason to expect the same clipping rather than evidence that
-it happens. Treat it as unmeasured until a raid table is in the cache to check.
+**The raid half, measured 2026-09-15: the same, and tighter.** Report `cW38jmwdnZfbHVL4`
+fight 2 and the five reference kills its parse sample drew produced 5 raid `AuraTable`
+responses, 2326 bands over 309 auras. Every one of the five joins a cached fight's own
+`startTime`/`endTime` pair, and in each the earliest band start **equals** that fight's
+`startTime` and the latest band end **equals** its `endTime` — clipped exactly to the fight, not
+merely inside it. All five joins are exact to the millisecond, across five fights in five
+different reports of five different lengths (316.48s, 375.04s, 212.91s, 407.09s, 276.53s), so
+this is the endpoint clipping rather than five raids that happened to start and end on a buff.
+`comparison/uptime.seconds_up_over_the_fight` divides band seconds by the fight's own
+duration and clips neither side; this is what bounds its fraction at 100% on a raid as well as
+on a key. `tests/e2e/test_raid_e2e.py::test_a_real_boss_kill_is_measured_against_the_world`
+re-checks it on every live run, so a change at the endpoint fails a test rather than rendering
+an uptime above 100%.
 
 **A buff band's `startTime` coincides with the cast that applied it, closely enough to trust
 `start <= press <= end`.** Measured 2026-09-11 against the cached responses for report
@@ -931,7 +966,16 @@ viewBy: Target)` returned three entries whose `type` read `'NPC'`, `'Boss'` and 
 
 So separating a boss from its adds needs no per-encounter rule and no boss table: the row's own
 `type` does it. This call was unscoped; the `sourceID`-scoped version was measured at 0.94 points
-on 2026-09-13.
+on 2026-09-13, and 1.03 over 107 calls on 2026-09-15.
+
+**No table measured has carried more than one `Boss` row.** Measured 2026-09-15 over the five
+`sourceID`-scoped tables a live parse sample fetched for report `cW38jmwdnZfbHVL4` fight 2 —
+our own subject's and four references' — each of which returned three entries with exactly one
+`type: 'Boss'` among them. The boss row's position varies (first, second and third all
+occurred), so nothing may assume an index. `comparison/targets._boss_share` reads the first
+`Boss` row and folds any others into "everything else"; on seven tables across two encounters
+there has never been another, so the behaviour is unobserved rather than known to be safe. A
+two-boss encounter — a council fight — is the shape that would test it, and none has been read.
 
 ## Terms of service
 

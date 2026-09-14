@@ -217,7 +217,7 @@ def _missing_cast_pairwise(
     return Finding(
         id="compare.spells.missing",
         title=(
-            f"{their_name} cast {name} {count} times on bosses; "
+            f"{their_name} cast {name} {count} times {words.on_stretch}; "
             f"{our_name} never cast it"
         ),
         detail=detail,
@@ -245,7 +245,7 @@ def compare_spells(
     counted: CastRule,
     words: Wording,
 ) -> list[Finding]:
-    """What the reference player cast on bosses that we did not, and how often.
+    """What the reference player cast that we did not, over the counted stretch, and how often.
 
     `our_name` is the roster's disambiguated spelling of `our_player`, and it
     is what every title below says. `our_player.name` is not: two roster
@@ -276,8 +276,8 @@ def compare_spells(
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
                 evidence=(
-                    f"our boss time {our_boss_seconds:.0f}s",
-                    f"their boss time {their_boss_seconds:.0f}s",
+                    f"our {words.stretch_time} {our_boss_seconds:.0f}s",
+                    f"their {words.stretch_time} {their_boss_seconds:.0f}s",
                     f"reference player {their_name!r} "
                     f"{'found' if actor_id is not None else 'not found'}",
                 ),
@@ -329,7 +329,8 @@ def compare_spells(
             )
         )
 
-    # 2. Abilities both cast, where their rate on bosses is materially higher.
+    # 2. Abilities both cast, where their rate over the counted stretch is
+    #    materially higher.
     gaps = []
     for ability_id, (name, their_count) in theirs_on_bosses.items():
         if their_count < MIN_CASTS_TO_COMPARE or ability_id not in ours_on_bosses:
@@ -347,8 +348,8 @@ def compare_spells(
             Finding(
                 id="compare.spells.rate",
                 title=(
-                    f"{their_name} cast {name} {their_rate:.1f} times a minute on bosses, "
-                    f"{our_name} {our_rate:.1f}"
+                    f"{their_name} cast {name} {their_rate:.1f} times a minute "
+                    f"{words.on_stretch}, {our_name} {our_rate:.1f}"
                 ),
                 detail=(
                     f"Both rates are casts per minute of {words.rate_basis}, "
@@ -469,7 +470,7 @@ def _missing_sample(
     their_loadouts: Sequence[Loadout],
     words: Wording,
 ) -> list[Finding]:
-    """Abilities enough of the sample cast on bosses that we never cast anywhere.
+    """Abilities enough of the sample cast, over the counted stretch, that we never cast anywhere.
 
     Three branches, because the log supports three explanations and the two the
     detail used to offer made a false dichotomy of it. An ability that resolves
@@ -539,7 +540,7 @@ def _missing_cast(
     return Finding(
         id="compare.spells.missing",
         title=(
-            f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
+            f"{count_phrase(matching, total)} top parses cast {name} {words.on_stretch}; "
             f"{our_name} never did"
         ),
         detail=detail,
@@ -548,7 +549,7 @@ def _missing_cast(
         evidence=(
             f"ability {ability_id}",
             f"{matching} of {total} top parses cast it at least "
-            f"{MIN_CASTS_TO_COMPARE} times on bosses",
+            f"{MIN_CASTS_TO_COMPARE} times {words.on_stretch}",
             f"zero casts in the whole of {words.our_stretch}",
         ),
         quantifier=quantifier_for(matching, total),
@@ -658,7 +659,7 @@ def _rate_sample(
     ]
     rows = _one_row_per_sentence(findings)
     if level:
-        rows.append(_level_finding(our_name, level))
+        rows.append(_level_finding(our_name, level, words))
     return rows
 
 
@@ -671,7 +672,7 @@ def _gap_finding(
         id="compare.spells.rate",
         title=(
             f"{len(measure.their_rates)} top parses cast {measure.name} a median "
-            f"{measure.their_median:.1f} times a minute on bosses; "
+            f"{measure.their_median:.1f} times a minute {words.on_stretch}; "
             f"{our_name} casts it {measure.ours:.1f}"
         ),
         detail=(
@@ -731,7 +732,7 @@ def _above_finding(
     return Finding(
         id="compare.spells.above",
         title=(
-            f"{our_name} casts {name} {our_rate:.1f} times a minute on bosses; "
+            f"{our_name} casts {name} {our_rate:.1f} times a minute {words.on_stretch}; "
             f"{len(rates)} top parses cast it a median {their_median:.1f}"
         ),
         detail=(
@@ -767,8 +768,8 @@ def _above_finding(
     )
 
 
-def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
-    """The abilities compared on bosses that produced no gap row.
+def _level_finding(our_name: str, names: Sequence[str], words: Wording) -> Finding:
+    """The abilities compared over the stretch both sides fought that produced no gap row.
 
     Kept out of `_one_row_per_sentence`: that collapses and ranks a family of
     competing rows, and this is one sentence about a set, not a row that could
@@ -778,7 +779,8 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
     return Finding(
         id="compare.spells.level",
         title=(
-            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast on bosses "
+            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast "
+            f"{words.on_stretch} "
             f"{'was' if len(ordered) == 1 else 'were'} compared and showed no gap"
         ),
         detail=(

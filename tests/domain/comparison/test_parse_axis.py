@@ -16,6 +16,7 @@ from wowperf.domain.model import Player
 
 ARCANE_BLAST = 30451
 ARCANE_MISSILES = 5143
+ARCANE_BARRAGE = 44425
 METEOR = 153561
 ARCANE_SURGE = 365350
 SIPHON_STORM = 384267
@@ -66,12 +67,20 @@ def casts_of(actor_id: int, ability_id: int, name: str, count: int, at_ms: int =
     )
 
 
-OUR_CASTS = casts_of(PLAYER.actor_id, ARCANE_BLAST, "Arcane Blast", 10) + casts_of(
-    PLAYER.actor_id, ARCANE_MISSILES, "Arcane Missiles", 40, at_ms=100_000
+OUR_CASTS = (
+    casts_of(PLAYER.actor_id, ARCANE_BLAST, "Arcane Blast", 10)
+    + casts_of(PLAYER.actor_id, ARCANE_MISSILES, "Arcane Missiles", 40, at_ms=100_000)
+    + casts_of(PLAYER.actor_id, ARCANE_BARRAGE, "Arcane Barrage", 10, at_ms=200_000)
 )
 """Ten Arcane Blasts over three hundred seconds -- two a minute -- and forty Arcane
 Missiles, eight a minute, which is far above what the sample casts and draws the
-`compare.spells.above` row."""
+`compare.spells.above` row.
+
+Ten Arcane Barrages are two a minute as well, which is the sample's own median for
+it: inside the band in both directions, so it draws the `compare.spells.level` row
+instead. That row exists in this fixture because it is the one row of this family
+whose sentence nothing else here renders, and its wording was wrong on a raid until
+a live run read it."""
 
 OUR_AURAS = PlayerAuras(
     actor_id=PLAYER.actor_id,
@@ -115,6 +124,10 @@ def a_member(
             + casts_of(THEIR_PLAYER.actor_id, METEOR, "Meteor", 4, at_ms=500_000)
             + casts_of(THEIR_PLAYER.actor_id, ARCANE_MISSILES, "Arcane Missiles", 4,
                        at_ms=700_000)
+            # Eight over this member's own fight length, which is about two a
+            # minute for every member and for us -- the level row's whole point.
+            + casts_of(THEIR_PLAYER.actor_id, ARCANE_BARRAGE, "Arcane Barrage", 8,
+                       at_ms=900_000)
         ),
         auras=PlayerAuras(
             actor_id=THEIR_PLAYER.actor_id,
@@ -385,6 +398,83 @@ def test_the_raid_missing_cast_sentence_offers_no_trash_to_have_looked_at() -> N
         "make the point."
     )
     assert "zero casts in the whole of this fight" in row.evidence
+
+
+def test_no_raid_title_says_a_cast_or_a_share_was_counted_on_bosses() -> None:
+    """Every title of this axis, whole, in the words a reader actually meets.
+
+    The gap this closes was found by a live run and not by this suite: the
+    detail sentences were wired to `Wording` and the titles were not, so a raid
+    finding read "cast Fire Breath on bosses" and a fact beside it read "46% of
+    boss time" while its own detail said fight time. A raid fight has one boss
+    and no boss pulls, and the raid counting rule counts every cast of the
+    fight rather than the casts aimed at the boss -- so both phrases claimed
+    something the measurement had not done.
+
+    Asserted whole rather than by substring, because the assertions that let
+    this through were substring checks on the figures: "3.5 in the title"
+    passes for any sentence containing the number.
+    """
+    findings = compare_parse_axis(**KILL_ARGS)  # type: ignore[arg-type]
+    titles = {one.id: one.title for one in findings}
+
+    assert titles["compare.spells.missing.0"] == (
+        "5 of 5 top parses cast Meteor on this encounter; Emberkin never did"
+    )
+    assert titles["compare.spells.rate.0"] == (
+        "5 top parses cast Arcane Blast a median 3.5 times a minute on this encounter; "
+        "Emberkin casts it 2.0"
+    )
+    assert titles["compare.spells.above.0"] == (
+        "Emberkin casts Arcane Missiles 8.0 times a minute on this encounter; "
+        "5 top parses cast it a median 1.0"
+    )
+    assert titles["compare.spells.level"] == (
+        "1 ability Emberkin cast on this encounter was compared and showed no gap"
+    )
+    assert titles["compare.uptime.self.0"] == (
+        "Arcane Surge was up a median 49% of fight time across 5 top parses; 10% for Emberkin"
+    )
+
+    for finding in findings:
+        for line in (finding.title, *finding.evidence, *(f.value for f in finding.facts)):
+            assert "on bosses" not in line, f"{finding.id}: {line}"
+            assert "boss time" not in line, f"{finding.id}: {line}"
+
+
+def test_no_raid_title_says_on_bosses_in_the_pairwise_shape_either() -> None:
+    """The below-floor delegation writes its own sentences, and a raid
+    leaderboard produces that shape readily."""
+    findings = compare_parse_axis(**BELOW_FLOOR_ARGS)  # type: ignore[arg-type]
+    titles = {one.id: one.title for one in findings}
+
+    assert titles["compare.spells.missing.0"] == (
+        "Stonewake cast Meteor 4 times on this encounter; Emberkin never cast it"
+    )
+    assert titles["compare.spells.rate.0"] == (
+        "Stonewake cast Arcane Blast 3.5 times a minute on this encounter, Emberkin 2.0"
+    )
+    assert titles["compare.uptime.self.0"] == (
+        "Arcane Surge was up for 50% of Stonewake's fight time, 10% of Emberkin's"
+    )
+
+    for finding in findings:
+        for line in (finding.title, *finding.evidence, *(f.value for f in finding.facts)):
+            assert "on bosses" not in line, f"{finding.id}: {line}"
+            assert "boss time" not in line, f"{finding.id}: {line}"
+
+
+def test_a_raid_availability_line_counts_fight_time_and_not_boss_time() -> None:
+    """Both unavailable rows state the seconds each side had, and name them."""
+    findings = compare_parse_axis(**NO_SECONDS_ARGS)  # type: ignore[arg-type]
+
+    spells = one_of(findings, "compare.spells.unavailable")
+    assert "our fight time 300s" in spells.evidence
+    assert "their fight time 0s" in spells.evidence
+
+    uptime = one_of(findings, "compare.uptime.unavailable")
+    assert "our fight time 300s" in uptime.evidence
+    assert "their fight time 0s" in uptime.evidence
 
 
 def test_the_raid_uptime_sentence_measures_fight_time_and_names_no_keystone_level() -> None:

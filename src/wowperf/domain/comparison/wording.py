@@ -39,6 +39,12 @@ class Wording(Frozen):
     rate_basis: str
     """What a per-minute rate, or a share of time, is measured against."""
 
+    on_stretch: str
+    """Where a title says a count or a rate was counted: "cast it 12 times ...."."""
+
+    stretch_time: str
+    """The denominator of a share, as a title or a fact names it: "46% of ...."."""
+
     run: str
     """The whole of our own side, as a detail sentence names it."""
 
@@ -75,6 +81,8 @@ DUNGEON = Wording(
     theirs_across="their boss pulls",
     absent_from="our own boss pulls",
     rate_basis="boss-pull time",
+    on_stretch="on bosses",
+    stretch_time="boss time",
     run="this run",
     our_stretch="our run",
     nowhere_else=" — not on bosses and not on trash",
@@ -105,6 +113,13 @@ RAID = Wording(
     theirs_across="their fight",
     absent_from="our own fight",
     rate_basis="fight time",
+    # "on this encounter" and not "in this fight": the same phrase has to be
+    # true of our side and of every reference's, and a reference fought its own
+    # fight, not this one. Not "on this boss" either -- the raid counting rule
+    # counts every cast of the fight, adds included, so a phrase naming the
+    # boss as the target would claim a scoping the measurement did not do.
+    on_stretch="on this encounter",
+    stretch_time="fight time",
     run="this fight",
     our_stretch="this fight",
     nowhere_else="",
