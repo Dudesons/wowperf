@@ -243,12 +243,17 @@ def test_more_tier_pieces_than_the_sample_is_not_a_finding() -> None:
 
 
 def test_the_finding_states_the_median_and_the_range() -> None:
+    # Asserted as the literal rendered phrases, not bare digits: "2", "4" and
+    # "5" each also appear in evidence[0]'s slot list or in the reference
+    # count, so a bare-digit check passes even if the median and range are
+    # wrong (swapped, or replaced outright) -- only the exact phrase ties the
+    # assertion to the values this test claims to verify.
     theirs = [a_tier_loadout(2), a_tier_loadout(4), a_tier_loadout(4), a_tier_loadout(5),
               a_tier_loadout(5)]
     findings = compare_tier(a_tier_loadout(0), theirs, OUR_NAME)
-    joined = " ".join(findings[0].evidence)
-    assert "4" in joined
-    assert "2" in joined and "5" in joined
+    stats = findings[0].evidence[1]
+    assert "sample median 4" in stats
+    assert "range 2 to 5" in stats
 
 
 def test_nothing_is_compared_below_the_sample_floor_for_tier() -> None:
@@ -269,4 +274,7 @@ def test_the_median_is_not_a_mean() -> None:
               a_tier_loadout(4)]
     findings = compare_tier(a_tier_loadout(3), theirs, OUR_NAME)
     assert len(findings) == 1
-    assert "4" in " ".join(findings[0].evidence)
+    # The literal phrase, not a bare "4": a bare digit also matches the slot
+    # list in evidence[0], so it would not prove the median (rather than the
+    # mean, 2.4) is what got reported.
+    assert "sample median 4" in findings[0].evidence[1]
