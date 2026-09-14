@@ -2,6 +2,7 @@
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
 
 from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.sample import SAMPLE_SIZE
 
 
 class AbilityTakenRow(Frozen):
@@ -56,3 +57,25 @@ class ReferenceKillRow(Frozen):
     @property
     def duration_seconds(self) -> float:
         return self.duration_ms / 1000
+
+
+def select_reference_kills(
+    rows: tuple[ReferenceKillRow, ...],
+    *,
+    our_size: int,
+    our_difficulty: int,
+    limit: int = SAMPLE_SIZE,
+) -> tuple[ReferenceKillRow, ...]:
+    """References comparable to our own fight, in leaderboard order.
+
+    Both filters refuse rather than annotate. Difficulty because the master
+    design already refuses a cross-difficulty comparison outright. Size because
+    this comparison is a landing rate over a whole raid: measured 2026-09-14, a
+    single page spanned 14 to 30 against our 20, and a 30-player reference
+    reports half again as many landings for headcount alone. A page holds
+    fifty rows, so matching exactly usually leaves plenty.
+    """
+    matching = [
+        row for row in rows if row.size == our_size and row.difficulty == our_difficulty
+    ]
+    return tuple(matching[:limit])
