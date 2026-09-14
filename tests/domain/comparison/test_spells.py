@@ -957,7 +957,7 @@ def a_sample_casting(
                                                item_level=331),))
 
     members = []
-    for i, member_name in enumerate(("Duskrunner", "Ashfall", "Moonveil")):
+    for i, member_name in enumerate(("Stonewake", "Bríala", "Кириллица")):
         actor_id = 200 + i
         player = Player(actor_id=actor_id, name=member_name, class_name="Mage",
                          spec="Arcane", item_level=320, loadout=loadout)
@@ -1005,6 +1005,45 @@ def test_a_cast_from_an_item_we_do_not_own_becomes_a_gear_finding() -> None:
     assert len(gear) == 1
     assert gear[0].confidence is Confidence.MEASURED
     assert TABLET_NAME in gear[0].title
+
+
+def test_missing_item_states_the_equip_count_not_the_cast_count() -> None:
+    """Reproduced from the code reviewer's fixture: five references, all five
+    wearing the item, only three casting it at least MIN_CASTS_TO_COMPARE
+    times. `matching` counts the casts; the old code reported that number as
+    how many *equipped* the item, understating unanimous equipment as partial
+    -- the same false-dichotomy-under-`measured` failure this whole family
+    exists to remove, reproduced inside its own replacement. Equipment is
+    counted directly off `their_loadouts`, never off the cast count."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i in range(5):
+        actor_id = 400 + i
+        player = Player(actor_id=actor_id, name="Bríala", class_name="Mage",
+                         spec="Arcane", item_level=320, loadout=loadout)
+        casts = tuple(
+            cast(actor_id, 1234, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) if i < 3 else ()
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+
+    gear = [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    assert len(gear) == 1
+    assert gear[0].title == f"5 of 5 top parses equipped {TABLET_NAME}; {OUR_NAME} did not"
+    assert "5 of 5 top parses equipped it" in gear[0].evidence
+    assert (
+        f"3 of 5 top parses cast it at least {MIN_CASTS_TO_COMPARE} times on bosses"
+        in gear[0].evidence
+    )
+    assert gear[0].quantifier == "every"
 
 
 def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
