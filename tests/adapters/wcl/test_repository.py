@@ -6,7 +6,7 @@ import json
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -84,12 +84,105 @@ FIGHTS_PAYLOAD: dict[str, Any] = {
 
 
 def a_repository(
-    handler: Callable[[httpx.Request], httpx.Response], tmp_path: Path
+    handler: Callable[[httpx.Request], httpx.Response] | None = None,
+    tmp_path: Path | None = None,
 ) -> WclRunRepository:
-    """Wire a mock transport into one repository, cached under `tmp_path`."""
+    """Wire a mock transport into one repository, cached under `tmp_path`.
+
+    With no handler, wires a self-contained fixture instead: one completed
+    keystone fight (code "71cv4MRdNCp8ZFjG", fight 28) with an empty roster,
+    recording every operation it issues so `issued_operations` can read them
+    back. Built for a test that only cares whether one particular query was
+    fetched, not what a run built from the full `FIGHTS_PAYLOAD` fixture looks
+    like -- an empty roster also leaves `_talents` unqueried (it returns `{}`
+    for zero actor ids without fetching), so the fixture only has to answer
+    Fights, Abilities, PlayerDetails and whichever event streams the profile
+    under test reads.
+    """
+    if handler is None:
+        return _loadout_probe_repository()
     http = httpx.Client(transport=httpx.MockTransport(handler))
     client = WclClient(TokenProvider("id", "secret", http), http)
-    return WclRunRepository(client, DiskCache(tmp_path))
+    return WclRunRepository(client, DiskCache(tmp_path or Path(tempfile.mkdtemp())))
+
+
+class _RecordingRepository(WclRunRepository):
+    """A repository whose issued operation names are recorded, so `issued_operations`
+    can read them back without a `calls` list threaded through by hand."""
+
+    def __init__(self, client: WclClient, cache: DiskCache, calls: list[str]) -> None:
+        super().__init__(client, cache)
+        self.calls = calls
+
+
+def issued_operations(repository: WclRunRepository) -> list[str]:
+    """The operation names `a_repository()`'s fake client recorded."""
+    return cast(_RecordingRepository, repository).calls
+
+
+def _loadout_probe_repository() -> _RecordingRepository:
+    """One completed keystone fight with an empty roster and no affixes, code
+    "71cv4MRdNCp8ZFjG" fight 28 -- minimal enough that only Fights, Abilities,
+    PlayerDetails and the profile's own event streams need an answer.
+    """
+    fight: dict[str, Any] = {
+        "id": 28,
+        "name": "Fixture Dungeon",
+        "encounterID": 1,
+        "startTime": 0,
+        "endTime": 1000,
+        "kill": True,
+        "keystoneLevel": 10,
+        "keystoneAffixes": [],
+        "keystoneTime": 900_000,
+        "keystoneBonus": 1,
+        "countReached": 100,
+        "countRequired": 100,
+        "npcCountMap": {},
+        "friendlyPlayers": [],
+        "friendlySpecs": [],
+        "friendlyItemLevels": [],
+        "dungeonPulls": [],
+    }
+    fights_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "code": "71cv4MRdNCp8ZFjG",
+                "startTime": 0,
+                "endTime": 1000,
+                "fights": [fight],
+                "masterData": {"actors": []},
+            }
+        }
+    }
+    abilities_payload: dict[str, Any] = {
+        "reportData": {"report": {"masterData": {"abilities": []}}}
+    }
+    player_details_payload: dict[str, Any] = {
+        "reportData": {"report": {"playerDetails": {"data": {"playerDetails": {}}}}}
+    }
+    empty_events_payload: dict[str, Any] = {
+        "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        name = operation_name(json.loads(request.content))
+        calls.append(name)
+        if name == "Fights":
+            return httpx.Response(200, json={"data": fights_payload})
+        if name == "Abilities":
+            return httpx.Response(200, json={"data": abilities_payload})
+        if name == "PlayerDetails":
+            return httpx.Response(200, json={"data": player_details_payload})
+        return httpx.Response(200, json={"data": empty_events_payload})
+
+    http = httpx.Client(transport=httpx.MockTransport(handler))
+    client = WclClient(TokenProvider("id", "secret", http), http)
+    return _RecordingRepository(client, DiskCache(Path(tempfile.mkdtemp())), calls)
 
 
 def operation_name(body: dict[str, Any]) -> str:
@@ -148,6 +241,34 @@ def recording_repository(
                         {"id": 699, "gameID": 241874},
                         {"id": 702, "gameID": 244889},
                     ]
+                }
+            }
+        }
+    }
+    player_details: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "playerDetails": {
+                    "data": {
+                        "playerDetails": {
+                            "dps": [
+                                {
+                                    "id": 693,
+                                    "combatantInfo": {
+                                        "gear": [
+                                            {
+                                                "id": 212454,
+                                                "slot": 2,
+                                                "name": "Fixture Mantle",
+                                                "itemLevel": 636,
+                                            }
+                                        ],
+                                        "stats": {"Crit": {"min": 904, "max": 904}},
+                                    },
+                                }
+                            ]
+                        }
+                    }
                 }
             }
         }
@@ -244,6 +365,8 @@ def recording_repository(
                     }
                 },
             )
+        if name == "PlayerDetails":
+            return httpx.Response(200, json={"data": player_details})
         return httpx.Response(200, json={"data": event_payloads[name]})
 
     cache_dir = tmp_path if tmp_path is not None else Path(tempfile.mkdtemp())
@@ -277,7 +400,7 @@ def test_get_fetches_only_the_fights_query_while_load_fetches_the_events(tmp_pat
     assert set(load_calls) == {
         "Fights", "Affixes", "Abilities", "Casts", "Deaths",
         "EnemyCasts", "Interrupts", "EnemyDeaths", "DamageTaken", "DamageDoneGraph",
-        "Actors", "Talents", "Healing", "Resurrects",
+        "Actors", "Talents", "PlayerDetails", "Healing", "Resurrects",
     }
 
 
@@ -290,7 +413,7 @@ def test_a_get_after_a_load_costs_nothing() -> None:
     assert sorted(set(calls)) == [
         "Abilities", "Actors", "Affixes", "Casts", "DamageDoneGraph", "DamageTaken",
         "Deaths", "EnemyCasts", "EnemyDeaths", "Fights", "Healing", "Interrupts",
-        "Resurrects", "Talents",
+        "PlayerDetails", "Resurrects", "Talents",
     ]
 
     calls.clear()
@@ -422,7 +545,9 @@ def test_a_parse_reference_fetches_only_the_streams_the_parse_comparisons_read(
 
     repository.load_parse_reference("abc123", None)
 
-    assert sorted(set(calls)) == ["Abilities", "Affixes", "Casts", "Fights", "Talents"]
+    assert sorted(set(calls)) == [
+        "Abilities", "Affixes", "Casts", "Fights", "PlayerDetails", "Talents",
+    ]
 
 
 def test_a_parse_reference_carries_its_streams_and_leaves_the_rest_empty(tmp_path: Path) -> None:
@@ -457,6 +582,21 @@ def test_a_parse_reference_reports_whether_it_was_served_entirely_from_cache(
 
     _, second = repository.load_parse_reference("abc123", None)
     assert second is True
+
+
+def test_a_speed_reference_fetches_no_loadouts() -> None:
+    # The speed axis compares a group, not a player. One player's crit rating
+    # against five players in five specialisations is a number with no meaning,
+    # so the 2.00 points are not spent.
+    repository = a_repository()
+    repository.load_speed_reference("71cv4MRdNCp8ZFjG", 28)
+    assert "PlayerDetails" not in issued_operations(repository)
+
+
+def test_a_parse_reference_fetches_loadouts() -> None:
+    repository = a_repository()
+    repository.load_parse_reference("71cv4MRdNCp8ZFjG", 28)
+    assert "PlayerDetails" in issued_operations(repository)
 
 
 def test_from_cache_reflects_a_partial_hit_before_becoming_a_full_one(tmp_path: Path) -> None:

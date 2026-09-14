@@ -632,6 +632,12 @@ fight 36, five players each. The whole probe cost roughly 15 points of the 3600-
 **`Report.playerDetails` returns a `JSON` scalar** and accepts `difficulty`, `encounterID`,
 `endTime`, `fightIDs`, `killType`, `startTime`, `translate` and `includeCombatantInfo`.
 
+**The envelope wraps the roster in a `data` key.** The probe behind every number in this
+section traversed exactly `response["reportData"]["report"]["playerDetails"]["data"]["playerDetails"]`
+against the live API, measured 2026-09-14. `playerDetails` returns a `JSON` scalar, and like
+`graph` and `table` elsewhere in this codebase, its payload sits one level down from the field
+itself, under a `data` key.
+
 **`combatantInfo` is `[]` unless `includeCombatantInfo: true` is passed** — an empty list, not an
 object, which makes the field look empty on a first read. With the flag it is an object carrying
 `artifact`, `factionID`, `gear`, `heartOfAzeroth`, `specIDs`, `stats`, `talentTree` and `talents`.
