@@ -36,11 +36,18 @@ def _icon_addresses(report: Report, icons: CdnIcons) -> dict[int, str]:
     Only the adapter can build this: which ids resolve is a question about a CDN,
     and the builder that made the report is forbidden from asking it.
 
-    A player card's comparison tables are deliberately not walked, so a table
-    draws art only for an ability the page already carries for another reason --
-    a death card, a ledger row or a player timeline. That is the fallback the
-    comparison table design names in its §12, and the `ability` macro already
-    renders a bare name for an id absent here.
+    Comparison tables are walked last. They were once left out, because every
+    icon was embedded as base64 and these tables run to dozens of rows per
+    player; walking them then meant carrying the art of every aura the sample
+    kept up. An icon is an address now, so a row costs its URL and nothing
+    else, and the reason for the exclusion went with the bytes. The `ability`
+    macro still renders a bare name for an id that does not resolve, so the
+    fallback the comparison table design names in its §12 is unchanged.
+
+    Last, rather than first, because `asked` makes this first-one-wins and the
+    page's own order is the one worth keeping: a death card's art is the same
+    art either way, but resolving it there keeps the walk reading in the order
+    a reader meets it.
     """
     resolved: dict[int, str] = {}
     asked: set[int] = set()
@@ -73,6 +80,15 @@ def _icon_addresses(report: Report, icons: CdnIcons) -> dict[int, str]:
             address = icons.url(cooldown.ability_id)
             if address is not None:
                 resolved[cooldown.ability_id] = address
+    for player in report.players:
+        for table in player.comparison_tables:
+            for compared in table.rows:
+                if compared.ability_id is None or compared.ability_id in asked:
+                    continue
+                asked.add(compared.ability_id)
+                address = icons.url(compared.ability_id)
+                if address is not None:
+                    resolved[compared.ability_id] = address
     return resolved
 
 

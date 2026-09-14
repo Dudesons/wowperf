@@ -5,7 +5,9 @@ from wowperf.adapters.wcl import queries
 from wowperf.adapters.wcl.queries import (
     AFFIXES_QUERY,
     FIGHTS_QUERY,
+    PLAYER_DETAILS_QUERY,
     RATE_LIMIT_QUERY,
+    operation_name,
     with_rate_limit,
 )
 
@@ -79,3 +81,26 @@ def test_a_comment_that_looks_like_a_header_is_not_mistaken_for_the_operation() 
 
 def test_an_operation_with_no_recognisable_header_has_no_name() -> None:
     assert queries.operation_name("query { hello }") is None
+
+
+def test_the_player_details_query_asks_for_combatant_info() -> None:
+    # The flag defaults off, and without it combatantInfo comes back as an
+    # empty list rather than an error, so a query missing it fails silently.
+    # Measured 2026-09-14; see the wcl-api skill.
+    assert "includeCombatantInfo: true" in PLAYER_DETAILS_QUERY
+
+
+def test_the_player_details_query_is_named_for_its_operation() -> None:
+    assert operation_name(PLAYER_DETAILS_QUERY) == "PlayerDetails"
+
+
+def test_the_player_details_query_allows_an_unlisted_report() -> None:
+    assert "allowUnlisted: true" in PLAYER_DETAILS_QUERY
+
+
+def test_the_player_details_query_structure_is_correct() -> None:
+    # Catches field-name typos like playerDetials, and variable-name mismatches
+    # like $fightID instead of $fightId. Task 5 will call this with the exact
+    # variable names declared here, so both are runtime failures against a
+    # quota-limited API if they slip past tests.
+    assert "playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)" in PLAYER_DETAILS_QUERY

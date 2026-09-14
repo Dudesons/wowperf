@@ -3,9 +3,14 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
-from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
+from wowperf.domain.comparison.sample import (
+    ParseMember,
+    ParseSample,
+    too_few,
+)
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import (
@@ -15,6 +20,7 @@ from wowperf.domain.findings import (
     quantifier_for,
     quantity,
 )
+from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Run
 
 MAX_SPELLS_REPORTED = 5
@@ -122,6 +128,44 @@ def _one_row_per_sentence(findings: list[Finding]) -> list[Finding]:
     ]
 
 
+def _missing_cast_pairwise(
+    their_name: str,
+    our_name: str,
+    ability_id: int,
+    name: str,
+    count: int,
+    their_boss_seconds: float,
+    *,
+    owned: bool,
+) -> Finding:
+    """A cast the reference made and we did not, in whichever of two wordings is true."""
+    if owned:
+        detail = f"{our_name} had it equipped and never used it."
+    else:
+        detail = (
+            f"{name} does not appear anywhere in this run for {our_name} — not "
+            "on bosses and not on trash. That is a talent not taken, a button "
+            "not pressed, or an item not owned; the log cannot tell which."
+        )
+    return Finding(
+        id="compare.spells.missing",
+        title=(
+            f"{their_name} cast {name} {count} times on bosses; "
+            f"{our_name} never cast it"
+        ),
+        detail=detail,
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=(
+            f"ability {ability_id}",
+            f"{count} casts across {their_boss_seconds:.0f}s of their boss pulls",
+            "zero casts in the whole of our run",
+        ),
+        ability_id=ability_id,
+        ability_name=name,
+    )
+
+
 def compare_spells(
     ours: LoadedRun,
     our_player: Player,
@@ -178,28 +222,30 @@ def compare_spells(
         key=lambda row: row[2],
         reverse=True,
     )
+    # Each of these abilities may resolve to an item the reference wore.
+    # `their_loadouts` is a one-element sequence, because the pairwise
+    # comparison has exactly one reference to ask. Whether the resolved item is
+    # ours to equip is a separate question the loop below answers per
+    # candidate: an id resolving to no item name, or our own loadout never
+    # having been fetched, both mean the join cannot answer, and neither is
+    # evidence of ownership either way.
+    their_loadouts = loadouts_of([theirs])
     for ability_id, name, count in never:
+        source = item_sourced(name, their_loadouts)
+        if source is not None and our_player.loadout is not None:
+            if our_player.loadout.has_item(source.item_id):
+                findings.append(
+                    _missing_cast_pairwise(
+                        their_name, our_name, ability_id, name, count,
+                        their_boss_seconds, owned=True,
+                    )
+                )
+            # Otherwise it is an item we provably lack, and suppressed for the
+            # reason the sample branch gives at length.
+            continue
         findings.append(
-            Finding(
-                id="compare.spells.missing",
-                title=(
-                    f"{their_name} cast {name} {count} times on bosses; "
-                    f"{our_name} never cast it"
-                ),
-                detail=(
-                    f"{name} does not appear anywhere in this run for {our_name} — not "
-                    "on bosses and not on trash. That is either a talent not taken or a button "
-                    "not pressed; the log cannot tell which."
-                ),
-                confidence=Confidence.MEASURED,
-                seconds_lost=None,
-                evidence=(
-                    f"ability {ability_id}",
-                    f"{count} casts across {their_boss_seconds:.0f}s of their boss pulls",
-                    "zero casts in the whole of our run",
-                ),
-                ability_id=ability_id,
-                ability_name=name,
+            _missing_cast_pairwise(
+                their_name, our_name, ability_id, name, count, their_boss_seconds, owned=False,
             )
         )
 
@@ -313,7 +359,10 @@ def compare_spells_sample(
         }
         per_member.append((their_boss_seconds, qualifying))
 
-    findings = _missing_sample(our_name, ours_anywhere, names, per_member, total)
+    findings = _missing_sample(
+        our_name, ours_anywhere, names, per_member, total,
+        our_player.loadout, loadouts_of(sample.members),
+    )
     if our_boss_seconds > 0:
         findings += _rate_sample(our_name, ours_on_bosses, our_boss_seconds, per_member)
     return findings
@@ -325,8 +374,22 @@ def _missing_sample(
     names: dict[int, str],
     per_member: Sequence[tuple[float, dict[int, int]]],
     total: int,
+    our_loadout: Loadout | None,
+    their_loadouts: Sequence[Loadout],
 ) -> list[Finding]:
-    """Abilities enough of the sample cast on bosses that we never cast anywhere."""
+    """Abilities enough of the sample cast on bosses that we never cast anywhere.
+
+    Three branches, because the log supports three explanations and the two the
+    detail used to offer made a false dichotomy of it. An ability that resolves
+    to an item the player does not own is a gear finding, not a cast finding:
+    telling somebody to press a button they do not have is advice they cannot
+    take, and it carried a `measured` badge while doing so.
+
+    The third branch is reached whenever the join cannot answer — an ability
+    matching no item name, or a player whose loadout was never fetched — and it
+    widens the wording rather than claiming anything. That is what keeps the
+    speed axis and every already-cached run honest without the new query.
+    """
     candidates = []
     for ability_id, name in names.items():
         if ability_id in ours_anywhere:
@@ -339,33 +402,60 @@ def _missing_sample(
 
     findings = []
     for matching, ability_id, name in candidates:
-        findings.append(
-            Finding(
-                id="compare.spells.missing",
-                title=(
-                    f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
-                    f"{our_name} never did"
-                ),
-                detail=(
-                    f"{name} does not appear anywhere in this run for {our_name} — not "
-                    "on bosses and not on trash. That is either a talent not taken or a button "
-                    "not pressed; the log cannot tell which. The count is over the sample, not "
-                    "one parse, so no single reference needs naming to make the point."
-                ),
-                confidence=Confidence.MEASURED,
-                seconds_lost=None,
-                evidence=(
-                    f"ability {ability_id}",
-                    f"{matching} of {total} top parses cast it at least "
-                    f"{MIN_CASTS_TO_COMPARE} times on bosses",
-                    "zero casts in the whole of our run",
-                ),
-                quantifier=quantifier_for(matching, total),
-                ability_id=ability_id,
-                ability_name=name,
-            )
-        )
+        source = item_sourced(name, their_loadouts)
+        if source is not None and our_loadout is not None:
+            if our_loadout.has_item(source.item_id):
+                findings.append(_missing_cast(our_name, matching, total, ability_id, name,
+                                               owned=True))
+            # Otherwise the join has answered, and the answer is that the item
+            # is not ours to press. Naming it at all -- as a cast we skipped or
+            # as a gear gap -- puts an act the player cannot perform in front
+            # of them, which is the complaint this whole path began from. Say
+            # nothing. How much of the sample's gear was readable does not
+            # enter it: our own loadout settles ownership by itself, and a
+            # thin sample is no reason to hand back the suggestion.
+            continue
+        findings.append(_missing_cast(our_name, matching, total, ability_id, name, owned=False))
     return _one_row_per_sentence(findings)
+
+
+def _missing_cast(
+    our_name: str, matching: int, total: int, ability_id: int, name: str, *, owned: bool
+) -> Finding:
+    """A cast the sample made and we did not, in whichever of two wordings is true."""
+    if owned:
+        detail = (
+            f"{our_name} had it equipped and never used it. The count is over the "
+            "sample, not one parse, so no single reference needs naming to make the point."
+        )
+    else:
+        detail = (
+            f"{name} does not appear anywhere in this run for {our_name} — not on bosses "
+            "and not on trash. That is a talent not taken, a button not pressed, or an "
+            "item not owned; the log cannot tell which. The count is over the sample, not "
+            "one parse, so no single reference needs naming to make the point."
+        )
+    return Finding(
+        id="compare.spells.missing",
+        title=(
+            f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
+            f"{our_name} never did"
+        ),
+        detail=detail,
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=(
+            f"ability {ability_id}",
+            f"{matching} of {total} top parses cast it at least "
+            f"{MIN_CASTS_TO_COMPARE} times on bosses",
+            "zero casts in the whole of our run",
+        ),
+        quantifier=quantifier_for(matching, total),
+        ability_id=ability_id,
+        ability_name=name,
+    )
+
+
 
 
 def verdict_for(ours: float, their_median: float) -> Verdict:

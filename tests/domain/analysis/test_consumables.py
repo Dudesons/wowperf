@@ -227,6 +227,48 @@ def test_a_player_who_did_not_die_is_not_asked_what_they_carried() -> None:
     assert analyse_consumables_never_used(a_run().players, (), CONSUMABLES, ()) == []
 
 
+def test_the_real_consumables_file_never_lists_combat_potion_as_available_at_death() -> None:
+    """Regression: `data/consumables.toml`'s combat potion group must never reach
+
+    this finding. A hand-built `Consumables` fixture (like `CONSUMABLES` above)
+    cannot catch a call site that reads `.categories` instead of the survival
+    accessor, because a fixture the test wrote itself only ever contains
+    categories the test intended to be there. Driving this through
+    `load_consumables()` on the committed file is what would have caught the
+    combat potion leaking into a death-gated finding.
+    """
+    from wowperf.adapters.config.toml import load_consumables
+
+    # Potion of Recklessness, drunk early to establish ownership and long
+    # enough before the death for its 300s cooldown to have come back --
+    # exactly the shape of "off cooldown at death" the finding reports.
+    casts = (a_cast(1236994, 1_000),)
+    findings = analyse_consumables_at_death(
+        a_run().players, VISIBLE_FROM_A_RUN_START, casts, load_consumables(), (a_death(),),
+        locate=locate_in_a_run,
+    )
+    assert findings == []
+
+
+def test_the_real_consumables_file_never_names_combat_potion_as_never_used() -> None:
+    """Regression, paired with the test above but for the sibling finding.
+
+    Nobody in this fixture drinks anything, so every survival category is
+    "never used" -- and before the fix, so was combat potion, which is not a
+    healing consumable and has no business in this claim at all.
+    """
+    from wowperf.adapters.config.toml import load_consumables
+    from wowperf.domain.analysis.consumables import analyse_consumables_never_used
+
+    findings = analyse_consumables_never_used(
+        a_run().players, (), load_consumables(), (a_death(),)
+    )
+    assert len(findings) == 1
+    assert "combat potion" not in findings[0].title
+    assert "health potion" in findings[0].title
+    assert "healthstone" in findings[0].title
+
+
 def test_the_visibility_anchor_is_the_callers_and_not_a_default_of_zero() -> None:
     """The defect this narrowing removes.
 

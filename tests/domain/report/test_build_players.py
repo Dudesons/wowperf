@@ -6,6 +6,7 @@ from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
     PlayerMeasures,
+    StatShare,
     Stretch,
     Verdict,
 )
@@ -582,6 +583,29 @@ def test_a_trash_spell_row_lands_under_the_players_card() -> None:
     assert ids(card.spell_and_talent_rows) == ["compare.spells.trash.rate.0.stonewake-0"]
 
 
+def test_the_gear_stat_and_consumable_families_land_on_a_player_card() -> None:
+    """COMPARISON_PREFIXES routes compare.gear., compare.stats. and
+    compare.consumables. the same way it already routes compare.spells. --
+    checked against `build_players` itself rather than against the prefix
+    tuple alone, so a routing rule elsewhere that intercepted one of these ids
+    before it reached `comparison` -- landing it in the ledger instead of the
+    player's card -- would still be caught."""
+    findings = (
+        a_finding("compare.gear.enchant.7.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.gear.tier.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.stats.rating.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.consumables.buff.flask.stonewake-0", slug="stonewake-0"),
+        a_finding("compare.consumables.potion.stonewake-0", slug="stonewake-0"),
+    )
+    card = build_players(
+        a_loaded(), findings, frozenset({"stonewake-0"}), a_player(), titles(findings),
+        Defensives(), ThroughputCooldowns(),
+    )[0]
+
+    assert card.spell_and_talent.state is SectionState.PRESENT
+    assert set(ids(card.spell_and_talent_rows)) == {finding.id for finding in findings}
+
+
 def test_an_above_row_lands_under_the_players_card() -> None:
     """The reverse direction routes by the same "compare.spells." prefix. Pinned
     separately because a family that fell through would land in the Summary
@@ -690,17 +714,23 @@ def test_an_uncompared_player_gets_no_tables() -> None:
     assert card.comparison_tables == ()
 
 
-def test_an_uptime_tables_rows_are_also_sorted_by_gap() -> None:
-    """The boss-table sort test above only reaches `_rate_rows`; `_aura_rows` sorts
-    with the same rule on its own line, so a second table needs its own two rows
-    to prove that copy sorts too rather than happening to inherit the first's order."""
+def test_an_uptime_table_is_sorted_by_our_own_uptime_not_by_the_gap() -> None:
+    """The cast tables lead with the widest gap. This one leads with what the
+    player actually held, highest first, because it is read as a list of "how
+    much of the fight did I have this up for" and a reader scans it top to
+    bottom.
+
+    The fixture is built so the two rules disagree: the row with the widest gap
+    is the one with the lowest uptime, so a table still sorting by gap would
+    come out exactly reversed.
+    """
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
-                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
                 AuraUptime(ability_id=2, name="Big gap", ours=0.40, their_median=1.0,
                            their_fractions=(1.0,), verdict=Verdict.BELOW),
+                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
+                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
             ),
             boss_seconds=600.0,
         )
@@ -711,7 +741,7 @@ def test_an_uptime_tables_rows_are_also_sorted_by_gap() -> None:
     )[0]
 
     auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
-    assert [row.name for row in auras.rows] == ["Big gap", "Small gap"]
+    assert [row.name for row in auras.rows] == ["Small gap", "Big gap"]
 
 
 def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
@@ -909,3 +939,71 @@ def test_each_verdict_reaches_a_row_as_its_own_word() -> None:
     # A branch added with no word would reach `VERDICT_LABELS` as a KeyError at
     # render time, on a page nobody is running a test against.
     assert set(VERDICT_LABELS) == set(Verdict)
+
+
+def a_card_with_a_stat_table() -> PlayerCard:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            stats=(
+                StatShare(name="crit", ours=0.42, their_median=0.31,
+                          their_shares=(0.29, 0.31, 0.33), our_rating=1183,
+                          their_median_rating=1402.0,
+                          their_ratings=(1310.0, 1402.0, 1490.0), verdict=Verdict.ABOVE),
+                StatShare(name="mastery", ours=0.11, their_median=0.24,
+                          their_shares=(0.22, 0.24, 0.27), our_rating=310,
+                          their_median_rating=1090.0,
+                          their_ratings=(990.0, 1090.0, 1220.0), verdict=Verdict.BELOW),
+            ),
+        )
+    }
+    return build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+
+def test_a_stat_row_carries_the_share_the_rating_and_no_ability() -> None:
+    """Both figures in one cell, because the share is the judgement and the
+    rating is the fact a reader recognises. The share is what "balance" means
+    and what item level cannot explain; the rating alone would put every row
+    below the sample on gear difference alone.
+
+    `ability_id` is None rather than a stand-in id: a stat has no spell behind
+    it, and a stand-in would draw whatever art that id happened to address.
+    """
+    table = next(t for t in a_card_with_a_stat_table().comparison_tables
+                 if "stat" in t.heading.lower())
+    crit, mastery = table.rows
+
+    assert crit.name == "Crit"
+    assert crit.ours == "42% (1183)"
+    assert crit.theirs == "31% (1402)"
+    assert crit.spread == "29% to 33%"
+    assert crit.sample == "3 top parses"
+    assert crit.verdict == "above"
+    assert crit.ability_id is None
+
+    # The second row differs in every column, so a cell printing its
+    # neighbour's value cannot pass the block above by coincidence.
+    assert mastery.name == "Mastery"
+    assert mastery.ours == "11% (310)"
+    assert mastery.verdict == "below"
+
+
+def test_the_stat_table_keeps_the_order_the_stats_were_held_in() -> None:
+    # The three tables above sort by widest gap. This one must not: a balance is
+    # read down a column, and mastery's gap here is wider than crit's, so a sort
+    # would swap them and this test would see it.
+    table = next(t for t in a_card_with_a_stat_table().comparison_tables
+                 if "stat" in t.heading.lower())
+    assert [row.name for row in table.rows] == ["Crit", "Mastery"]
+
+
+def test_a_player_with_no_readable_stats_gets_no_stat_table() -> None:
+    # An empty table and a missing one are different claims. Withholding it is
+    # what the report does everywhere else the data was never fetched.
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures={"stonewake-0": PlayerMeasures()},
+    )[0]
+    assert not [t for t in card.comparison_tables if "stat" in t.heading.lower()]

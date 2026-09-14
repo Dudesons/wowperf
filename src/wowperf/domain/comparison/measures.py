@@ -59,6 +59,30 @@ class AuraUptime(Frozen):
     verdict: Verdict
 
 
+class StatShare(Frozen):
+    """One secondary's share of a player's own rating budget, against the sample's.
+
+    A share rather than a rating, because a top parse out-gears the run and so
+    carries more of every secondary at once: the raw gap would restate the item
+    level confound the report already prints, and would read as "behind on
+    everything" whatever the player had chosen. The share is the part a gem, an
+    enchant or a kept piece actually moves, and it is what balance means.
+
+    `our_rating` and `their_median_rating` ride along because a reader
+    recognises a rating and has to be able to see the figure the share came
+    from. The judgement is the share; the rating is the fact beside it.
+    """
+
+    name: str
+    ours: float
+    their_median: float
+    their_shares: tuple[float, ...]
+    our_rating: int
+    their_median_rating: float
+    their_ratings: tuple[float, ...]
+    verdict: Verdict
+
+
 class PlayerMeasures(Frozen):
     """Everything one player's comparison measured, and the denominators behind it.
 
@@ -70,6 +94,7 @@ class PlayerMeasures(Frozen):
     boss: tuple[AbilityRate, ...] = ()
     trash: tuple[AbilityRate, ...] = ()
     auras: tuple[AuraUptime, ...] = ()
+    stats: tuple[StatShare, ...] = ()
     boss_seconds: float = 0.0
     trash_seconds: float = 0.0
     pack_count: int = 0

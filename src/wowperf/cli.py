@@ -15,12 +15,14 @@ import typer
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
+    load_consumable_buffs,
     load_consumables,
     load_defensives,
     load_externals,
     load_roles,
     load_season_data,
     load_self_resurrections,
+    load_slot_names,
     load_throughput_cooldowns,
 )
 from wowperf.adapters.render.html import render
@@ -160,7 +162,24 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
     )
 
 
-def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnIcons:
+def _aura_icons(auras: PlayerAuras | None) -> dict[int, str]:
+    """An aura table's own art, keyed by id, skipping any row it named none for.
+
+    The aura table is the only source for a passive talent's icon: a
+    permanently applied aura is never cast, so its id reaches no cast
+    dictionary. An empty name is not a file name and is left out rather than
+    addressed, which draws a clean gap instead of a broken image.
+    """
+    if auras is None:
+        return {}
+    return {aura.ability_id: aura.icon for aura in auras.on_self if aura.icon}
+
+
+def build_icons(
+    loaded: LoadedRun,
+    parse_samples: Sequence[ParseSample],
+    our_auras: Sequence[PlayerAuras | None] = (),
+) -> CdnIcons:
     """Icons for one run: its own ability dictionary and every parse sample's.
 
     Nothing here can fail and nothing here is fetched. An icon is an address the
@@ -180,6 +199,9 @@ def build_icons(loaded: LoadedRun, parse_samples: Sequence[ParseSample]) -> CdnI
     for sample in parse_samples:
         for member in sample.members:
             names.update(member.ability_icons)
+            names.update(_aura_icons(member.auras))
+    for auras in our_auras:
+        names.update(_aura_icons(auras))
     names.update(loaded.ability_icon_map)
     return CdnIcons(names)
 
@@ -884,7 +906,17 @@ def analyze(
         # the same cooldowns, or the page and the findings disagree.
         defensives = load_defensives()
         consumables = load_consumables()
+        consumable_buffs = load_consumable_buffs()
         throughput = load_throughput_cooldowns()
+        slot_names = load_slot_names()
+        # The comparison's combat-potion family reads this one category rather
+        # than all of `consumables`: `for_survival()` excludes it (it shares no
+        # cooldown with a health potion), but `categories` still carries it.
+        combat_potion_ids = next(
+            (category.ability_ids for category in consumables.categories
+             if category.name == "combat potion"),
+            (),
+        )
         findings = analyse(
             loaded,
             load_season_data(),
@@ -956,6 +988,9 @@ def analyze(
                         display_name=name,
                         parse=sample,
                         our_auras=our_auras,
+                        consumable_buffs=consumable_buffs,
+                        potion_ids=combat_potion_ids,
+                        slot_names=slot_names,
                     )
                 )
             compared_slugs = frozenset(one.slug for one in subjects)
@@ -1050,6 +1085,7 @@ def analyze(
                 icons=build_icons(
                     loaded,
                     tuple(one.parse for one in subjects if one.parse is not None),
+                    tuple(one.our_auras for one in subjects),
                 ),
             ),
             encoding="utf-8",

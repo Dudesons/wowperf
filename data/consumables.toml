@@ -17,6 +17,11 @@
 # fetched `dataType: Casts` stream, which is what this analyser reads; the rest
 # were seen only in a report's ability dictionary, so their appearance in that
 # stream is expected but unconfirmed.
+#
+# Amended 2026-09-14: the combat potion group below is read for comparison
+# against a sample. It stays out of the death-gated survival analysis, which is
+# what the exclusion above was about: a damage potion shares no cooldown with a
+# health potion in the sense that matters there.
 verified = "2026-09-05"
 
 ["health potion"]
@@ -38,4 +43,14 @@ ability_ids = [
   # safe: treating the buff as the start of the category's cooldown can only
   # understate what was available, never overstate it.
   387636,   # Soulburn: Healthstone
+]
+
+["combat potion"]
+cooldown_seconds = 300.0
+# Excluded from the death-gated survival analysis: see "Amended 2026-09-14"
+# above. It shares no cooldown with a health potion in the sense that
+# analysis cares about.
+survival = false
+ability_ids = [
+  1236994,  # Potion of Recklessness
 ]

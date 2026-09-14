@@ -16,6 +16,7 @@ from wowperf.adapters.wcl.ingest import (
     select_raid_fight,
 )
 from wowperf.adapters.wcl.queries import talents_query
+from wowperf.domain.loadout import Loadout, StatBlock
 
 FIXTURE = Path(__file__).parent / "fixtures" / "report_fights.json"
 
@@ -358,6 +359,37 @@ def test_the_talents_query_is_deterministic_regardless_of_input_order() -> None:
     # The cache key is derived from the query text, so a document whose field
     # order tracked the caller's order would miss the cache on every run.
     assert talents_query([693, 7, 42]) == talents_query([42, 693, 7]) == talents_query([7, 42, 693])
+
+
+def test_a_player_is_given_the_loadout_matching_their_actor_id() -> None:
+    report = {
+        "code": "abc123",
+        "masterData": {"actors": [{"id": 693, "name": "Emberkin", "subType": "Mage"}]},
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693]
+    fight["friendlySpecs"] = ["Arcane"]
+    fight["friendlyItemLevels"] = [318]
+
+    run = build_run(report, fight, None, {693: Loadout(stats=StatBlock(crit=904))})
+
+    by_id = {player.actor_id: player for player in run.players}
+    assert by_id[693].loadout is not None
+
+
+def test_a_player_with_no_loadout_in_the_map_keeps_none() -> None:
+    report = {
+        "code": "abc123",
+        "masterData": {"actors": [{"id": 693, "name": "Emberkin", "subType": "Mage"}]},
+    }
+    fight = a_minimal_fight()
+    fight["friendlyPlayers"] = [693]
+    fight["friendlySpecs"] = ["Arcane"]
+    fight["friendlyItemLevels"] = [318]
+
+    run = build_run(report, fight, None, {})
+
+    assert all(player.loadout is None for player in run.players)
 
 
 def a_raid_report() -> dict[str, Any]:

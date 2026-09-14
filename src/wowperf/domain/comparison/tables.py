@@ -4,6 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.comparison.loadout import loadouts_of, stat_measures
 from wowperf.domain.comparison.measures import AbilityRate, AuraUptime, PlayerMeasures
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject
@@ -62,6 +63,10 @@ def _for_one(
         boss=boss,
         trash=trash,
         auras=_auras(ours, our_auras, parse),
+        # Read straight off the loadouts, with no run in it: a stat share is a
+        # fact about gear, not about a stretch of the dungeon, so unlike the
+        # three above it needs no denominator and no pull alignment.
+        stats=stat_measures(our_player.loadout, loadouts_of(parse.members)),
         boss_seconds=boss_time,
         trash_seconds=trash_time,
         pack_count=pack_count,

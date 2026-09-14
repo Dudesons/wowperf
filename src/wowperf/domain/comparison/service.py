@@ -9,30 +9,23 @@ from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.confounds import declare_confounds_sample
+from wowperf.domain.comparison.consumables import compare_consumable_buffs, compare_potions
+from wowperf.domain.comparison.loadout import (
+    compare_enchants,
+    compare_stats,
+    compare_tier,
+    loadouts_of,
+)
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
+from wowperf.domain.comparison.sample import find_player as find_player
 from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
 from wowperf.domain.comparison.uptime import compare_uptime_sample
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player
-
-
-def find_player(players: Sequence[Player], name: str) -> Player | None:
-    """Find a roster member by name, folding case.
-
-    The report owner's name comes back from Warcraft Logs lowercased while the
-    roster carries the character's own capitalisation, so an exact match would
-    fail on the default path every time.
-
-    Takes the roster rather than a whole `Run`, so a Mythic+ roster and a raid
-    `Encounter`'s roster resolve the same way through one function: `Encounter`
-    is deliberately not a `Run` (see its own ABOUTME), and nothing here reads
-    either aggregate beyond the players it exposes.
-    """
-    folded = name.casefold()
-    return next((player for player in players if player.name.casefold() == folded), None)
+from wowperf.domain.season import ConsumableBuffs, SlotNames
 
 
 def _unavailable(finding_id: str, title: str, detail: str) -> Finding:
@@ -71,6 +64,12 @@ class ComparisonSubject(Frozen):
     display_name: str = Field(min_length=1)
     parse: ParseSample | None
     our_auras: PlayerAuras | None = None
+    # Curated data the comparison itself performs no I/O to load: `cli.py` reads
+    # both from the committed TOML files and passes them in. Empty defaults keep
+    # every test in this module free to build a subject without either.
+    consumable_buffs: ConsumableBuffs = ConsumableBuffs()
+    potion_ids: tuple[int, ...] = ()
+    slot_names: SlotNames = SlotNames()
 
 
 def _for_player(findings: list[Finding], slug: str) -> list[Finding]:
@@ -119,6 +118,11 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         ]
     top = parse.top
     assert top is not None  # parse.members is non-empty here, so a top member exists
+    # The gear, stat and consumable families all read `parse` too, so they sit
+    # here, behind the same two guards above, rather than being fanned in
+    # separately: a player with no spec or no sample gets one unavailable
+    # finding, never a crash from a family that assumed one existed.
+    their_loadouts = loadouts_of(parse.members)
     return [
         *compare_spells_sample(ours, subject.player, subject.display_name, parse),
         *compare_trash_spells_sample(ours, subject.player, subject.display_name, parse),
@@ -129,6 +133,17 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
             top.row,
         ),
         *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),
+        *compare_enchants(
+            subject.player.loadout, their_loadouts, subject.display_name, subject.slot_names
+        ),
+        *compare_tier(subject.player.loadout, their_loadouts, subject.display_name),
+        *compare_stats(subject.player.loadout, their_loadouts, subject.display_name),
+        *compare_consumable_buffs(
+            subject.our_auras, subject.display_name, parse, subject.consumable_buffs
+        ),
+        *compare_potions(
+            ours, subject.player, subject.display_name, parse, subject.potion_ids
+        ),
     ]
 
 

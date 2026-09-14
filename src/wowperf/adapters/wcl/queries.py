@@ -406,6 +406,21 @@ query AuraTable($code: String!, $fightId: Int!, $actorId: Int!) {
 }
 """
 
+# Gear and the secondary stat block for every player in one fight.
+#
+# `includeCombatantInfo` defaults to false, and a query without it returns
+# `combatantInfo: []` — an empty list, not an error — so omitting the flag fails
+# silently. Measured 2026-09-14 at 2.00 points; see `.claude/skills/wcl-api/SKILL.md`.
+PLAYER_DETAILS_QUERY = """
+query PlayerDetails($code: String!, $fightId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)
+    }
+  }
+}
+"""
+
 
 # `viewBy: Ability` breaks this table down one row per ability rather than one
 # row per player. A row's landings are hitCount + tickCount; its damage

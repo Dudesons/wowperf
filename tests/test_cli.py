@@ -13,6 +13,7 @@ from typer.testing import CliRunner
 
 from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
+from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables, load_slot_names
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -34,6 +35,7 @@ from wowperf.cli import (
     load_run_with_auras,
 )
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.reference import ParseRow
@@ -1308,6 +1310,50 @@ def test_the_findings_file_carries_the_tables_outside_the_ranked_list(
             "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",
             "pull_index", "ability_id", "ability_name", "quantifier", "player_slug",
         }
+
+
+def test_the_subjects_carry_the_curated_consumable_data_cli_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ComparisonSubject.consumable_buffs`, `.potion_ids` and `.slot_names` are
+    fields the gear/consumable comparison families need something to read; all
+    default to empty, so a caller that built a subject without filling them in
+    would fail silently -- `compare_consumable_buffs`, `compare_potions` and
+    `compare_enchants` would simply find nothing to compare or nothing to name,
+    and no finding-level test could tell "nothing to report" apart from "never
+    wired up".
+
+    `compare` itself is stubbed, the same way `comparison_measures` is stubbed
+    above, so this needs no fixture that also clears MIN_SAMPLE_FOR_AGGREGATE
+    through the mock transport -- it only proves `cli.py` calls `compare` with
+    subjects already carrying the real data `load_consumable_buffs()` and the
+    `["combat potion"]` category of `load_consumables()` hold.
+    """
+    captured: dict[str, Any] = {}
+
+    def fake_compare(**kwargs: Any) -> list[Any]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("wowperf.cli.compare", fake_compare)
+
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    subjects = captured["subjects"]
+    assert len(subjects) == 1
+    subject = subjects[0]
+
+    expected_potion_ids = next(
+        category.ability_ids
+        for category in load_consumables().categories
+        if category.name == "combat potion"
+    )
+    assert subject.potion_ids == expected_potion_ids
+    assert subject.potion_ids  # not empty -- a caller passing () would pass this vacuously
+    assert subject.consumable_buffs == load_consumable_buffs()
+    assert subject.slot_names == load_slot_names()
+    assert subject.slot_names.name_for(7) == "feet"  # not empty either
 
 
 def test_analyze_is_a_subcommand_of_its_own() -> None:
@@ -3129,6 +3175,60 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample() -> None:
 
     assert icons.url(157997) == "https://wow.zamimg.com/images/wow/icons/medium/spell_ice_nova.jpg"
     assert icons.url(6572) == "https://wow.zamimg.com/images/wow/icons/medium/ability_warrior_revenge.jpg"
+
+
+def an_aura(ability_id: int, name: str, icon: str) -> Aura:
+    return Aura(
+        ability_id=ability_id, name=name, total_uptime_ms=1_000, uses=1, icon=icon
+    )
+
+
+def test_the_resolver_knows_an_icon_only_the_aura_table_names() -> None:
+    """A permanently applied talent is never cast, so its id reaches no cast
+    dictionary and the report can address its art from nowhere else. Measured on
+    report 43HaCNQwPrKqtYgn fight 2: eleven of one card's fifty-four uptime rows
+    drew no icon, and all eleven were passive auras of exactly this kind.
+    """
+    ours = LoadedRun(run=a_minimal_run())
+    theirs = ParseMember(
+        row=_parse_row_model(),
+        run=a_minimal_run(),
+        ability_icons=(),
+        auras=PlayerAuras(
+            actor_id=11,
+            on_self=(an_aura(391477, "Coagulopathy", "spell_deathknight_butcher2.jpg"),),
+        ),
+    )
+
+    icons = build_icons(ours, (ParseSample(members=(theirs,)),))
+
+    assert icons.url(391477) == (
+        "https://wow.zamimg.com/images/wow/icons/medium/spell_deathknight_butcher2.jpg"
+    )
+
+
+def test_the_resolver_knows_an_icon_only_our_own_aura_table_names() -> None:
+    # Our own passive auras reach the page through the same rows, and our own
+    # aura table is fetched separately from the sample's.
+    ours = LoadedRun(run=a_minimal_run())
+    mine = PlayerAuras(
+        actor_id=1, on_self=(an_aura(391395, "Iron Heart", "spell_shadow_lifedrain.jpg"),)
+    )
+
+    icons = build_icons(ours, (), (mine,))
+
+    assert icons.url(391395) == (
+        "https://wow.zamimg.com/images/wow/icons/medium/spell_shadow_lifedrain.jpg"
+    )
+
+
+def test_an_aura_the_table_named_no_icon_for_is_left_unaddressed() -> None:
+    # An empty name is not a file name. Addressing it would point the page at
+    # the icon host's root and draw a broken image in place of a clean gap.
+    ours = LoadedRun(run=a_minimal_run())
+    mine = PlayerAuras(actor_id=1, on_self=(an_aura(42, "Nameless", ""),))
+
+    assert build_icons(ours, (), (mine,)).url(42) is None
 
 
 def test_our_own_dictionary_wins_where_both_name_an_ability() -> None:

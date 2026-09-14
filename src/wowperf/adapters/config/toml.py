@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from wowperf.domain.season import (
+    ConsumableBuffs,
     ConsumableCategory,
     Consumables,
     CooldownAbility,
@@ -15,6 +16,7 @@ from wowperf.domain.season import (
     Roles,
     SeasonData,
     SelfResurrections,
+    SlotNames,
     ThroughputCooldowns,
 )
 
@@ -22,10 +24,12 @@ DATA_DIR = Path(__file__).resolve().parents[3].parent / "data"
 DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
+DEFAULT_CONSUMABLE_BUFFS_PATH = DATA_DIR / "consumable_buffs.toml"
 DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
 DEFAULT_EXTERNALS_PATH = DATA_DIR / "externals.toml"
 DEFAULT_RESURRECTIONS_PATH = DATA_DIR / "resurrections.toml"
+DEFAULT_SLOT_NAMES_PATH = DATA_DIR / "slot_names.toml"
 
 
 def _read(path: Path) -> dict[str, object]:
@@ -116,9 +120,31 @@ def load_consumables(path: Path = DEFAULT_CONSUMABLES_PATH) -> Consumables:
                 name=name,
                 cooldown_seconds=float(block["cooldown_seconds"]),
                 ability_ids=tuple(block.get("ability_ids", ())),
+                survival=bool(block.get("survival", True)),
             )
         )
     return Consumables(categories=tuple(categories))
+
+
+def load_consumable_buffs(
+    path: Path = DEFAULT_CONSUMABLE_BUFFS_PATH,
+) -> ConsumableBuffs:
+    """Consumable buff ids by category, from the committed TOML file.
+
+    `verified` is a date the file carries for a reader, not a field the domain
+    uses, so it is skipped like any other non-table key.
+    """
+    raw = _read(path)
+    entries = []
+    labels = []
+    for name, block in raw.items():
+        if not isinstance(block, dict):
+            continue
+        entries.append((name, tuple(block.get("ability_ids", ()))))
+        label = block.get("label")
+        if isinstance(label, str) and label:
+            labels.append((name, label))
+    return ConsumableBuffs(entries=tuple(entries), labels=tuple(labels))
 
 
 def load_roles(path: Path = DEFAULT_ROLES_PATH) -> Roles:
@@ -144,3 +170,15 @@ def load_self_resurrections(path: Path = DEFAULT_RESURRECTIONS_PATH) -> SelfResu
 def load_throughput_cooldowns(path: Path = DEFAULT_THROUGHPUT_PATH) -> ThroughputCooldowns:
     """Throughput cooldowns per class and specialisation, from the committed TOML file."""
     return ThroughputCooldowns(entries=_load_cooldowns(path, CooldownAbility))
+
+
+def load_slot_names(path: Path = DEFAULT_SLOT_NAMES_PATH) -> SlotNames:
+    """Equipment slot names by slot index, from the committed TOML file.
+
+    `verified` is a date the file carries for a reader, not a field the domain
+    uses, so it is skipped like any other non-table key.
+    """
+    raw = _read(path)
+    slots = raw.get("slots")
+    assert isinstance(slots, dict)
+    return SlotNames(entries=tuple((int(slot), str(name)) for slot, name in slots.items()))

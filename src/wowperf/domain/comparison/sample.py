@@ -9,7 +9,7 @@ from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
 from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
 from wowperf.domain.events import CastEvent, Death, EnemyCastRow, InterruptEvent
 from wowperf.domain.findings import Finding
-from wowperf.domain.model import Run
+from wowperf.domain.model import Player, Run
 
 SAMPLE_SIZE = 5
 """How many references to draw per axis.
@@ -24,6 +24,22 @@ MIN_SAMPLE_FOR_AGGREGATE = 3
 
 A median of two is a mean of two, and "1 of 2" is noise dressed as a statistic.
 """
+
+
+def find_player(players: Sequence[Player], name: str) -> Player | None:
+    """Find a roster member by name, folding case.
+
+    The report owner's name comes back from Warcraft Logs lowercased while the
+    roster carries the character's own capitalisation, so an exact match would
+    fail on the default path every time.
+
+    Takes the roster rather than a whole `Run`, so a Mythic+ roster and a raid
+    `Encounter`'s roster resolve the same way through one function: `Encounter`
+    is deliberately not a `Run` (see its own ABOUTME), and nothing here reads
+    either aggregate beyond the players it exposes.
+    """
+    folded = name.casefold()
+    return next((player for player in players if player.name.casefold() == folded), None)
 
 
 class SpeedMember(Frozen):

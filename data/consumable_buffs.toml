@@ -1,0 +1,50 @@
+# Consumable buffs a player applies before a pull, grouped by what they are.
+# No API exposes this list, so it is maintained by hand and dated.
+#
+# Ids, never names. Measured 2026-09-14 over the aura tables already in this
+# project's response cache: `Rune Mastery` (374585) and `Rune of Sanguination`
+# (326808) are Death Knight abilities, so any prefix match on "Rune" mislabels
+# them as consumables.
+#
+# One id per category is not enough either. `Well Fed` alone spans six ability
+# ids, and `Hearty Well Fed` is a further variant, so a list carrying one would
+# report a fed player as unfed whenever the food changed.
+#
+# `Vantus Rune: ...` is deliberately absent: it is a per-boss buff, not the
+# augment rune this category is about.
+verified = "2026-09-14"
+
+[flask]
+label = "a flask"
+ability_ids = [
+  1235057,  # Flask of Thalassian Resistance
+  1235110,  # Flask of the Blood Knights
+  1235108,  # Flask of the Magisters
+  1235111,  # Flask of the Shattered Sun
+  1250533,  # Freightrunner's Flask
+]
+
+[food]
+label = "food"
+ability_ids = [
+  451920,
+  1219182,
+  1219185,
+  1232490,
+  1232585,
+  1294727,   # the six ids all reported as `Well Fed`
+  1233724,
+  1284644,   # the two reported as `Hearty Well Fed`
+]
+
+["augment rune"]
+label = "an augment rune"
+ability_ids = [
+  1287770,  # Rune of the Versatile Warrior
+  1287771,  # Rune of Masterful Cunning
+  1287772,  # Rune of Critical Power
+  1287774,  # Rune of Burning Haste
+  1287665,  # Rune of Lingering
+  1287955,  # Rune of Void-Tainted Shell
+  1287978,  # Rune of Lynxlike Reflexes
+]

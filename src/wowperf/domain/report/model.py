@@ -541,7 +541,7 @@ class DeathCard(Frozen):
 
 
 class ComparisonRow(Frozen):
-    """One ability or aura the comparison measured, formatted for a table cell.
+    """One thing the comparison measured, formatted for a table cell.
 
     Strings, not floats: the template decides nothing, including how a number
     is spelled. `verdict` is the branch the comparison took -- below, above,
@@ -549,9 +549,15 @@ class ComparisonRow(Frozen):
     the same branch spelled for a reader, and is what the row's own column
     holds. A tint carries no meaning alone: a reader who cannot separate the
     two colours, or who printed the page, reads the word instead.
+
+    `ability_id` is None for a row that is not about an ability at all -- a
+    secondary stat's share of the budget is the case -- and nullable rather
+    than defaulted so that every caller says which it is building. A None
+    draws no icon, which is what the `ability` macro already does for any id
+    the CDN could not address.
     """
 
-    ability_id: int
+    ability_id: int | None
     name: str
     ours: str
     theirs: str

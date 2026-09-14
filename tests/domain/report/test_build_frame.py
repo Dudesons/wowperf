@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for the report's frame: header, narrative, provenance, withholding.
 # ABOUTME: The withheld reason must come from the finding, never from a string in the template.
 
+import pytest
+
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
@@ -74,6 +76,23 @@ def unavailable(finding_id: str, detail: str) -> Finding:
         confidence=Confidence.MEASURED,
         seconds_lost=None,
     )
+
+
+def test_two_findings_sharing_an_id_are_refused_rather_than_silently_collapsed() -> None:
+    # This branch shipped the same defect three times: a finding id reused
+    # across two rows, colliding into one DOM element id once the page
+    # rendered. Each was only caught by hand, because `titles_by_id` right
+    # below this guard is a plain dict keyed by `finding.id` and would
+    # otherwise just drop one title with nothing to show for it. No fixture is
+    # needed to keep this test alive: two findings sharing an id is enough.
+    findings = (
+        unavailable("compare.gear.tier", "first"),
+        unavailable("compare.gear.tier", "second"),
+    )
+    with pytest.raises(ValueError) as excinfo:
+        build_report(a_loaded(), findings, None, None, a_player(), None, FETCHED,
+                      NO_DEFENSIVES, NO_CONSUMABLES)
+    assert "compare.gear.tier" in str(excinfo.value)
 
 
 def test_the_header_states_the_dungeon_and_the_key() -> None:
