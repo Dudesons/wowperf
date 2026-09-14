@@ -299,12 +299,11 @@ def test_each_secondary_that_differs_gets_a_row() -> None:
 
 
 def test_the_row_states_our_rating_the_median_and_the_range() -> None:
-    # crit is carried equal on both sides so only mastery's rating differs. A
-    # StatBlock with mastery as its only nonzero stat would make every share
-    # 100% regardless of the rating -- STAT_GAP_SHARE could never clear and
-    # the row would never print. Measured by running this fixture against the
-    # brief's own reference implementation: it raises IndexError, not the
-    # "29 passed" the brief predicted (see task-10-report.md for the trace).
+    # crit is held equal on both sides so only mastery's rating differs. A
+    # StatBlock with mastery as its only nonzero stat would make
+    # total_secondary() equal to that one rating, collapsing every share to
+    # 100% regardless of its size -- STAT_GAP_SHARE could never clear and the
+    # row would never print.
     ours = a_stat_loadout(crit=1000, mastery=400)
     theirs = [a_stat_loadout(crit=1000, mastery=r) for r in (1290, 1400, 1480, 1500, 1602)]
     findings = compare_stats(ours, theirs, OUR_NAME)
@@ -371,11 +370,11 @@ def test_no_row_states_a_percentage_of_the_rating_itself() -> None:
     # Asserted as an allowlist over every "%" token in the whole finding
     # (title, detail and evidence), not a blocklist of specific strings like
     # "400%": a blocklist only catches a percentage spelled out in that exact
-    # form. Checking this against an earlier fixture (crit=1000, mastery=400
-    # vs crit=1000, mastery=1400) missed a real mutation, because that
-    # fixture's numbers made the illegitimate percentage (ours / their_median
-    # = 400/1400) round to the same "29%" as the legitimate share -- the
-    # fixture below is chosen so the two cannot collide.
+    # form. The fixture's numbers keep every rating-derived ratio distinct
+    # from the two legitimate shares: this player's own rating over the
+    # sample's median rating (400 / 1500 = 27%) matches neither share (29%,
+    # 60%), so a stray percentage computed from a rating rather than a share
+    # cannot slip past this check unnoticed.
     ours = a_stat_loadout(crit=1000, mastery=400)
     theirs = [a_stat_loadout(crit=1000, mastery=1500) for _ in range(5)]
     finding = compare_stats(ours, theirs, OUR_NAME)[0]
