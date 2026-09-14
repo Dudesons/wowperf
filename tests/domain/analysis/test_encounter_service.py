@@ -194,3 +194,11 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
     assert "mechanics" in families, "the fixture must produce a mechanics finding"
     assert "defensives" in families, "the fixture must produce a defensives finding"
     assert families.index("mechanics") < families.index("defensives")
+
+    # `scope` names who took the landings, not the encounter: "the raid", never
+    # the boss. `compare_mechanics`'s title reads "{scope} took N of {ability}",
+    # so a `scope` of the boss name would have this read as the boss taking its
+    # own damage -- exactly the slip this pins against returning silently.
+    [mechanics_finding] = [finding for finding in findings if finding.id.startswith("mechanics")]
+    assert mechanics_finding.title.startswith("the raid")
+    assert "Twin Fangs" not in mechanics_finding.title

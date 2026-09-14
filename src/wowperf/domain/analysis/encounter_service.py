@@ -77,6 +77,6 @@ def analyse_encounter(
     )
     findings += analyse_damage_outliers(encounter.players, loaded.damage_taken, roles)
     findings += compare_mechanics(
-        our_abilities, encounter.duration_seconds, mechanics, scope=encounter.boss_name
+        our_abilities, encounter.duration_seconds, mechanics, scope="the raid"
     )
     return rank_raid_findings(findings)

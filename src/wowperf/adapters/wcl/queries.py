@@ -431,6 +431,13 @@ query AbilityTakenTable($code: String!, $fightId: Int!) {
 # `targetID` selects who dealt the damage instead and returned no rows for a
 # player who had taken 26 million. The two are inverted from the reading in
 # design 2.5, which its amendment records.
+#
+# Defined and not yet wired into any adapter or caller: a per-player mechanics
+# comparison needs a per-player reference side too, and the sample plan 2
+# builds (`MechanicsSample`, from `execution` leaderboard kills) carries each
+# reference kill's raid-wide table only, not one per reference player. Scoping
+# only our own side would compare one player's landings against a whole
+# reference raid's, which is not the same comparison.
 ABILITY_TAKEN_TABLE_BY_VICTIM_QUERY = """
 query AbilityTakenTableByVictim($code: String!, $fightId: Int!, $actorId: Int!) {
   reportData {
