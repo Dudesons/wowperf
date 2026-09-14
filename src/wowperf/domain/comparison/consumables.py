@@ -147,7 +147,7 @@ def compare_potions(
             confidence=Confidence.MEASURED,
             seconds_lost=None,
             evidence=(
-                f"{ours_count} combat potion casts in this run",
+                f"{quantity(ours_count, 'combat potion', 'combat potions')} cast in this run",
                 f"sample median {their_median:g}, range {low:g} to {high:g} "
                 f"across {len(theirs)} references",
             ),

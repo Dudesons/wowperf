@@ -339,7 +339,7 @@ def test_the_finding_states_the_median_and_the_range() -> None:
         "Emberkin (actor 693) drank 0 combat potions; the sample's median is 2"
     )
     assert findings[0].evidence == (
-        "0 combat potion casts in this run",
+        "0 combat potions cast in this run",
         "sample median 2, range 0 to 22 across 5 references",
     )
 
@@ -353,6 +353,11 @@ def test_potions_are_not_compared_below_the_sample_floor() -> None:
 
 
 def test_no_potion_ids_means_no_comparison() -> None:
+    # Cannot discriminate the `if not wanted` guard from its absence: with no
+    # ids to look for, `_potion_casts` would count zero casts on every side
+    # regardless, both `ours_count` and the sample's median would be 0, and
+    # `ours_count >= their_median` would already return [] downstream. This
+    # only proves the empty-ids case does not raise or otherwise misbehave.
     sample = a_sample_casting_potion(2)
     assert compare_potions(ours_casting(POTION, 0), OURS, OUR_NAME, sample, ()) == []
 
@@ -377,7 +382,7 @@ def test_only_the_requested_ability_is_counted_for_us() -> None:
     presses here, not 1."""
     ours = ours_casting(POTION, 1, other_ability=DECOY, other_times=4)
     findings = compare_potions(ours, OURS, OUR_NAME, a_sample_casting_potion(3), (POTION,))
-    assert findings[0].evidence[0] == "1 combat potion casts in this run"
+    assert findings[0].evidence[0] == "1 combat potion cast in this run"
 
 
 def test_an_unresolved_member_is_not_counted_as_having_drunk_nothing() -> None:

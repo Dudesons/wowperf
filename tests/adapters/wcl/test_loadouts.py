@@ -55,7 +55,12 @@ def test_a_player_becomes_a_loadout_keyed_by_actor_id() -> None:
     assert set(loadouts) == {4}
 
 
-def test_the_stat_ratings_are_read_from_min() -> None:
+def test_stat_fields_map_to_the_right_rating_and_convert_to_int() -> None:
+    # Named for what this actually pins down: the field name -> rating mapping
+    # and the str-to-int conversion. It cannot tell reading `min` apart from
+    # reading `max` -- the fixture sets them equal, and the block is withheld
+    # entirely once they diverge (see test_stats_are_withheld_when_a_rating_
+    # moved_during_the_fight below), so no test here can make that distinction.
     stats = build_loadouts(a_payload(a_player()))[4].stats
     assert stats is not None
     assert (stats.crit, stats.haste, stats.mastery) == (904, 865, 1196)
