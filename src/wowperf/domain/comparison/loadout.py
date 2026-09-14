@@ -67,9 +67,22 @@ def _enchant_target(slot: int, slot_names: SlotNames) -> str:
     gives the two unidentified slots keeps its own phrasing instead:
     "enchanted the slot 3" would read as a mistake, not as a slot with no
     name.
+
+    A name shared by more than one slot -- the two rings, the two trinkets --
+    would otherwise produce two byte-identical titles for two different
+    slots, and `mplus-analysis` tells a reader to find a finding by echoing
+    its title. The slot index rides alongside the name for exactly those
+    slots, carried generically off `SlotNames.is_ambiguous` rather than
+    special-cased to rings: which ring is "left" and which is "right" is not
+    something the measurement this table comes from can answer, so nothing
+    here guesses at it.
     """
     name = slot_names.name_for(slot)
-    return name if name == f"slot {slot}" else f"the {name}"
+    if name == f"slot {slot}":
+        return name
+    if slot_names.is_ambiguous(slot):
+        return f"the {name} (slot {slot})"
+    return f"the {name}"
 
 
 def compare_enchants(

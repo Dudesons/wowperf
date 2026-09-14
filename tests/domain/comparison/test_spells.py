@@ -1046,6 +1046,43 @@ def test_missing_item_states_the_equip_count_not_the_cast_count() -> None:
     assert gear[0].quantifier == "every"
 
 
+def test_missing_item_falls_back_below_the_equip_floor() -> None:
+    """Five references, three casting the ability enough to argue from, but
+    only one reference's gear was ever fetched. `build_loadouts` skips any
+    player whose `combatantInfo` came back empty, so a sample with one
+    readable loadout is a real shape, not a hypothetical -- and "1 of 1 top
+    parses equipped it", `measured`, is the branch's own central failure at
+    low amplitude. `compare_enchants` and `compare_tier` already refuse an
+    equip-count claim below MIN_SAMPLE_FOR_AGGREGATE readable loadouts; this
+    proves `_missing_item` now holds itself to the same floor, falling
+    through to the widened cast wording rather than dropping the observation."""
+    loadout = Loadout(
+        items=(EquippedItem(item_id=TABLET_ITEM_ID, slot=12, name=TABLET_NAME,
+                             item_level=331),)
+    )
+    members = []
+    for i in range(5):
+        actor_id = 600 + i
+        player = Player(actor_id=actor_id, name="Bríala", class_name="Mage",
+                         spec="Arcane", item_level=320,
+                         loadout=loadout if i == 0 else None)
+        casts = tuple(
+            cast(actor_id, 1234, TABLET_NAME, n * 1_000, 0)
+            for n in range(MIN_CASTS_TO_COMPARE)
+        ) if i < 3 else ()
+        members.append(a_member(player, (boss_pull(0, 60.0),), casts))
+    sample = ParseSample(members=tuple(members))
+
+    findings = compare_spells_sample(
+        ours_without(1234), OURS_WITHOUT_THE_TABLET, OUR_NAME, sample
+    )
+
+    assert not [f for f in findings if f.id.startswith("compare.gear.missing_item")]
+    missing = [f for f in findings if f.id.startswith("compare.spells.missing")]
+    assert len(missing) == 1
+    assert "an item not owned" in missing[0].detail
+
+
 def test_a_cast_from_an_item_we_do_own_stays_a_cast_finding_and_says_so() -> None:
     sample = a_sample_casting(1234, name=TABLET_NAME, wearing_it=True)
     findings = compare_spells_sample(ours_without(1234), OURS_WEARING_THE_TABLET, OUR_NAME, sample)

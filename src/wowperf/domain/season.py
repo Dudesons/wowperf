@@ -153,6 +153,19 @@ class SlotNames(Frozen):
                 return name
         return f"slot {slot}"
 
+    def is_ambiguous(self, slot: int) -> bool:
+        """Whether another slot in this table carries the same name.
+
+        The two ring slots share "ring" and the two trinket slots share
+        "trinket": a title built from the name alone would then read
+        byte-identical for two different slots. A caller that finds this true
+        needs to disambiguate its own text; this makes no attempt to, since
+        which ring is "left" and which is "right" is not something the
+        measurement this table comes from can answer.
+        """
+        name = self.name_for(slot)
+        return sum(1 for _, other_name in self.entries if other_name == name) > 1
+
 
 class SelfResurrections(Frozen):
     """Spells a dead player casts to bring themselves back.

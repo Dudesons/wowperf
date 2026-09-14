@@ -6,7 +6,12 @@ from collections.abc import Sequence
 from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
 from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
-from wowperf.domain.comparison.sample import ParseMember, ParseSample, too_few
+from wowperf.domain.comparison.sample import (
+    MIN_SAMPLE_FOR_AGGREGATE,
+    ParseMember,
+    ParseSample,
+    too_few,
+)
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import (
@@ -436,6 +441,20 @@ def _missing_sample(
             if our_loadout.has_item(source.item_id):
                 findings.append(_missing_cast(our_name, matching, total, ability_id, name,
                                                owned=True))
+            elif len(their_loadouts) < MIN_SAMPLE_FOR_AGGREGATE:
+                # The claim is who *equipped* the item, and that needs enough
+                # readable gear to argue from -- the same floor
+                # `compare_enchants` and `compare_tier` already hold their own
+                # equip-count claims to. `build_loadouts` skips any player
+                # whose `combatantInfo` came back empty, so a sample with only
+                # one or two readable loadouts is a real shape, not a
+                # hypothetical. Below the floor, fall through to the widened
+                # cast wording rather than dropping the observation: the log
+                # still supports "a talent, a button or an item", just not "N
+                # of M equipped it" from a sample this small.
+                findings.append(
+                    _missing_cast(our_name, matching, total, ability_id, name, owned=False)
+                )
             else:
                 # The claim is who *equipped* the item, and a cast count cannot
                 # answer that: a reference can own a trinket and never press

@@ -202,6 +202,44 @@ def test_an_unidentified_slot_falls_back_to_its_raw_index_rather_than_a_guess() 
     assert findings[0].title == f"5 of 5 top parses enchanted slot 3; {OUR_NAME} did not"
 
 
+def test_two_slots_sharing_a_name_produce_distinguishable_titles() -> None:
+    # Slots 10 and 11 both carry "ring", per the measurement recorded in
+    # wcl-api's SKILL.md; a title built from the name alone would then read
+    # byte-identical for two different slots even though the ids (and so the
+    # DOM elements) do not collide. Rings were enchanted 10/10 in the
+    # measurement, so a player missing both is a routine shape, not an edge
+    # case. Which ring is "left" and which is "right" is not something the
+    # measurement can answer, so the fix must not invent that -- it carries
+    # the slot index alongside the shared name instead.
+    slot_names = SlotNames(entries=((10, "ring"), (11, "ring")))
+    theirs = [
+        a_loadout(an_item(slot=10, enchant_id=8017), an_item(slot=11, enchant_id=8017))
+        for _ in range(5)
+    ]
+    ours = a_loadout(an_item(slot=10, enchant_id=None), an_item(slot=11, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME, slot_names)
+    titles = {f.id: f.title for f in findings}
+    assert len(titles) == 2
+    assert len(set(titles.values())) == 2  # the titles themselves must differ
+    assert titles["compare.gear.enchant.10"] == (
+        f"5 of 5 top parses enchanted the ring (slot 10); {OUR_NAME} did not"
+    )
+    assert titles["compare.gear.enchant.11"] == (
+        f"5 of 5 top parses enchanted the ring (slot 11); {OUR_NAME} did not"
+    )
+
+
+def test_a_name_no_other_slot_shares_carries_no_index() -> None:
+    # The disambiguation above must not fire for a slot whose name is unique
+    # -- "the feet (slot 7)" would be needless noise for the five families
+    # that already render cleanly.
+    slot_names = SlotNames(entries=((7, "feet"), (10, "ring"), (11, "ring")))
+    theirs = [a_loadout(an_item(slot=7, enchant_id=8017)) for _ in range(5)]
+    ours = a_loadout(an_item(slot=7, enchant_id=None))
+    findings = compare_enchants(ours, theirs, OUR_NAME, slot_names)
+    assert findings[0].title == f"5 of 5 top parses enchanted the feet; {OUR_NAME} did not"
+
+
 def test_two_missing_enchant_slots_produce_distinct_finding_ids() -> None:
     # `_for_player` appends `.{slug}` uniformly with no dedup, so two rows
     # sharing one id before that suffix would mint the identical element id
