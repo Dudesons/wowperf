@@ -478,3 +478,118 @@ but weaker than an executed run, and noted that the requirement Step 7 actually 
 `--no-compare` mutation, does carry real executed output. Recorded so a reader comparing the two
 kinds of evidence in Task 8's history knows which is which; it is a different piece of evidence
 than the revert-and-rerun that verified the `scope` fix in Ruling 13, which was executed.
+
+The preflight conflict scan has a blind spot this branch exposed for the first time: it checks
+that one task's output agrees with another task's expectation, and never checks any task's
+output against the repository's own standing invariants. `repository.py`'s hardcoded
+`partition=1` carried a comment naming the exact plan that must not trust it, and this was that
+plan — but no two tasks disagreed about the value, so the scan's task-vs-task table had nothing
+to compare it against. Every row in that table asks whether two things this plan produced agree
+with each other; none of them asks whether either agrees with what the codebase already says
+about itself. Only the whole-branch review, reading the diff against the repository rather than
+against the plan's own text, found it — recorded below as Ruling 19.
+
+---
+
+## 6. The final whole-branch review's rulings
+
+Four more rulings came out of the review that read the whole branch after Task 10 closed,
+rather than one task's diff at a time. Both of that review's Critical findings, and two of its
+Important ones, are here. Numbered onward from the sixteen above.
+
+**Ruling 17 (final review).** The finding title states a count where the detail states a rate,
+and reads as a far larger gap than the numbers support. `_against_sample`'s title
+(`mechanics.py`, around line 347) read `f"{scope} took {our_row.landings} of {ability_name}
+where the references took a median of {their_median:.1f} a minute"` — `our_row.landings` is an
+absolute count over the whole fight, `their_median` is a per-minute rate. On the live wipe run
+this produced "took 24 of Ravenous Feast where the references took a median of 0.6 a minute":
+read as two counts, that is a 40x gap; the true gap, comparing like to like, is 5x — an 8x
+overstatement in the one sentence a reader sees first. The detail line one paragraph below
+already stated our own side as a rate and was correct throughout, which is what makes the title
+the outlier rather than the rule — the sibling finding `compare.spells.rate` already states both
+sides as rates for exactly this reason, so the fix brings the title into line with a convention
+the codebase already keeps elsewhere. No test reads the numbers inside a title string, which is
+how a sentence overstating its own finding shipped through every per-task review and the offline
+suite, and was only caught by a reviewer doing the arithmetic on real numbers from a real run.
+Ruled: state our own side as a rate in the title, matching the detail. Cost if wrong: none — the
+count is not lost, it survives as its own `FindingFact` beside the title.
+
+**Ruling 18 (final review).** `too_few`'s note contradicted the finding it was attached to, and
+the one test that could have caught it was built at the single sample size where the
+contradiction disappears. Below `MIN_SAMPLE_FOR_AGGREGATE`, `compare_mechanics` still computed a
+median, a range and a count over the whole sample, then appended a note reading "a single
+reference, not an aggregate" — a sentence describing a fallback that never happened, attached to
+output that was, in fact, an aggregate. `too_few` is not wrong as a piece of code; it is correct
+at every other call site, in `route.py` and `tempo.py`, where the fallback it names genuinely
+occurs first and the aggregate genuinely is never computed. Here the aggregate ran regardless of
+sample size and the note was glued on after, unconditionally, describing a computation that had
+not happened. The single test exercising this path used a sample of exactly one — the one value
+of `total` at which the note happens to be true — so nothing in the suite could tell the
+difference between "the note is correct" and "the note is only ever tested where it happens to
+be correct." The live wipe ran with two references, the shape that exposes the contradiction,
+and it shipped.
+
+Ruled: make the code match `sample.py`'s own stated design rather than reword the note around
+it — its docstring already says, of this same floor, "a median of two is a mean of two."
+`compare_mechanics` now falls back to a single reference below `MIN_SAMPLE_FOR_AGGREGATE`, the
+same way the route and tempo axes already do, so `too_few`'s existing wording becomes true
+instead of aspirational.
+
+Withholding the comparison entirely below the floor, rather than falling back to one reference,
+was considered and rejected. The live wipe's two references are the only place in this whole
+plan where real data proved the mechanics comparison and the severity ranking work correctly
+together end to end — every other proof is a fixture. Silencing the comparison below three
+references would have traded a small, honestly labelled answer for no answer at all, on the one
+fight this plan can point to as evidence the feature works. Cost if wrong: a two-reference sample
+states one reference's figures instead of a median of two — which is `sample.py`'s own stated
+preference for exactly this situation, not a compromise made to patch a bug.
+
+**Ruling 19 (final review).** A hardcoded `partition=1` was already steering a live query, and
+the comment sitting next to it had already named this plan as the one that must not trust it.
+`repository.py`'s comment (around lines 265-269) read "`1` is the current tier's default
+partition, a placeholder rather than a read value — the plan that fetches rankings must replace
+this, not trust it," and `cli.py` fed `encounter.partition` — which resolved through that
+placeholder — straight into a live ranking query. The value is correct for the current season
+and silently wrong the moment the next balance patch opens a new partition: every reference kill
+this comparison draws would then come from the previous patch, with no badge and no note
+distinguishing it from a same-patch reference, because nothing today records which partition a
+reference was measured under.
+
+Design §2.2 prescribes the real fix — reading the value from `Report.rankings` rather than
+hardcoding it — and this wave does not build that fetch. It needs a live schema verification
+this branch had no budget left to spend, and it reaches into the Mythic+ load path as well as the
+raid one, which makes it a different plan's work rather than a fix folded into this one's last
+round. Ruled: move the constant into `data/season.toml` under a new `[raid]` table, dated
+`2026-09-14`, which is exactly what that file exists to hold, rather than leave it live in a
+function with a comment only a reader of that one file would ever see.
+
+This is a debt a later plan inherits, and it is worth saying plainly rather than leaving it
+implicit: the day a new partition opens, this comparison keeps running, keeps returning
+references, and keeps labelling them exactly as it does today — nothing about a stale partition
+shows up in a finding or its confidence badge. Whoever builds the `Report.rankings` fetch design
+§2.2 asks for should treat the dated `season.toml` entry as the trip-wire that the season has
+moved on, rather than discover the drift the way this review did. Cost if wrong: the value stays
+`1` either way — what changes is that it is now dated and visible in the one file this repository
+already uses for exactly this kind of fact, instead of buried in an adapter function whose
+comment a plan had already walked past once.
+
+**Ruling 20 (final review).** `severity.py` claimed a guarantee its own test does not provide.
+Its ABOUTME and docstring said the enumerating test in `test_severity.py` stops a new analyser
+from ranking on a default. That test parametrizes a hand-written list of family names and
+asserts each one is a key of `SEVERITY_BY_FAMILY` — which catches a family being dropped from the
+table, because the hand-written list would then name a key the table no longer has, but proves
+nothing about the reverse. A new analyser emitting a family nobody added to that list, and so
+never added to the table either, ranks on `UNKNOWN_SEVERITY` with every test in the suite green,
+because nothing enumerates what `analyse_encounter` actually emits and checks that against the
+table — the hand-written list and the table were always going to agree with each other, having
+been written together.
+
+Ruled: correct the claim rather than build the missing test. A fixture-driven test that proves
+the reverse direction needs something that fires every analyser this plan and its predecessors
+have added and reads back the family each one actually produces — a larger fixture than this
+review's one remaining fix round should carry, and arguably a job done better once, deliberately,
+than assembled under a final-review deadline. A file whose documentation states its own guarantee
+accurately is worth more than one that overstates it and is trusted on the strength of that
+overstatement. The gap itself is left named in the file so the next reader sees it rather than
+discovers it. Cost if wrong: the gap stays exactly as open as it is today — the difference is
+that it is now written down instead of denied.
