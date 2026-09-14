@@ -61,7 +61,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     # comparison, and the routing of their findings onto one player's card --
     # is exercised against real data instead of only offline fixtures.
     names = display_names(loaded.run.players)
-    subject = _resolve_player(loaded.run, None, names)
+    subject = _resolve_player(loaded.run.players, loaded.run.owner_name, None, names)
     rankings, references = build_reference_repositories(repository.client, tmp_path)
     subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
     subject_name = names[subject.actor_id]
