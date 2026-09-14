@@ -464,7 +464,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 **Files:**
 - Modify: `src/wowperf/adapters/wcl/queries.py`
 - Modify: `.claude/skills/wcl-api/SKILL.md` (flip two rows to `yes`)
-- Test: `tests/adapters/wcl/test_queries.py` (append; create if absent)
+- Test: `tests/adapters/wcl/test_queries.py` (append to the existing file; match its import style)
 
 **Interfaces:**
 - Produces: `PLAYER_DETAILS_QUERY`, an operation named `PlayerDetails` taking `$code: String!`
@@ -2543,7 +2543,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 **Files:**
 - Modify: `src/wowperf/domain/comparison/service.py:86-127`
 - Modify: `src/wowperf/domain/report/players.py:54`
-- Test: `tests/domain/comparison/test_service.py` (append), `tests/domain/report/test_players.py` (append)
+- Test: `tests/domain/comparison/test_service.py` (append), `tests/domain/report/test_build_players.py` (append)
 
 **Interfaces:**
 - Consumes: every family from Tasks 7 to 13
@@ -2570,7 +2570,7 @@ def test_every_new_family_carries_the_player_it_is_about() -> None:
     assert all(f.player_slug for f in new)
 ```
 
-and in `tests/domain/report/test_players.py`:
+and in `tests/domain/report/test_build_players.py`:
 
 ```python
 def test_the_new_comparison_families_land_on_a_player_card() -> None:
@@ -2585,7 +2585,7 @@ the subject; do not invent new ones.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH" && uv run pytest tests/domain/comparison/test_service.py tests/domain/report/test_players.py -v -k "gear or stat or consumable"
+export PATH="$HOME/.local/bin:$PATH" && uv run pytest tests/domain/comparison/test_service.py tests/domain/report/test_build_players.py -v -k "gear or stat or consumable"
 ```
 
 Expected: FAIL — no such families are produced, and `COMPARISON_PREFIXES` names none of them.
@@ -2701,22 +2701,37 @@ each time. This task is not optional.
 # ABOUTME: End-to-end: a real report's loadouts, against the live API, no mocks.
 # ABOUTME: Spends quota. Marked e2e so the offline gate never runs it.
 
+import os
+from pathlib import Path
+
 import pytest
+
+from wowperf.cli import build_repository
+from wowperf.domain.loadout import TIER_SLOTS
+from wowperf.urls import parse_report_url
 
 pytestmark = pytest.mark.e2e
 
-REPORT = "VCGkLQtPwNRA8HhD"
-FIGHT = 1
+REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")
 
 
-def test_every_player_in_a_real_report_gets_a_loadout(repository) -> None:
-    loaded, _ = repository.load(REPORT, FIGHT)
+def a_loaded_report(tmp_path: Path):
+    if not REPORT:
+        pytest.fail(
+            "Set WOWPERF_E2E_REPORT to a public Warcraft Logs Mythic+ report URL to run this"
+        )
+    code, fight = parse_report_url(REPORT)
+    return build_repository(tmp_path).load(code, fight)
+
+
+def test_every_player_in_a_real_report_gets_a_loadout(tmp_path: Path) -> None:
+    loaded = a_loaded_report(tmp_path)
     assert loaded.run.players
     assert all(player.loadout is not None for player in loaded.run.players)
 
 
-def test_a_real_loadout_carries_eighteen_slots_and_a_stat_block(repository) -> None:
-    loaded, _ = repository.load(REPORT, FIGHT)
+def test_a_real_loadout_carries_eighteen_slots_and_a_stat_block(tmp_path: Path) -> None:
+    loaded = a_loaded_report(tmp_path)
     player = loaded.run.players[0]
     assert player.loadout is not None
     assert len(player.loadout.items) == 18
@@ -2724,22 +2739,25 @@ def test_a_real_loadout_carries_eighteen_slots_and_a_stat_block(repository) -> N
     assert player.loadout.stats.total_secondary() > 0
 
 
-def test_a_real_loadout_counts_tier_pieces_in_the_plausible_range(repository) -> None:
+def test_a_real_loadout_counts_tier_pieces_in_the_plausible_range(tmp_path: Path) -> None:
     # Measured 2026-09-14: real counts ran 4 or 5. A count above 5 means the
     # slot rule folded a non-tier set in, which is the defect this guards.
-    loaded, _ = repository.load(REPORT, FIGHT)
+    loaded = a_loaded_report(tmp_path)
     for player in loaded.run.players:
         assert player.loadout is not None
         assert 0 <= player.loadout.tier_pieces() <= len(TIER_SLOTS)
 ```
 
-Use whatever credential and repository fixture `tests/e2e/` already provides; read an existing
-file there before writing this one, and do not add a second way of building a repository.
+There is no `repository` fixture in `tests/e2e/` — the established pattern is
+`build_repository(tmp_path)` plus a `WOWPERF_E2E_REPORT` environment variable, and
+`repository.load(code, fight)` returns a single `LoadedRun`, not a pair. Read
+`tests/e2e/test_compare_e2e.py` before writing this file and follow it; do not add a second way
+of building a repository.
 
 - [ ] **Step 2: Run it**
 
 ```bash
-export PATH="$HOME/.local/bin:$PATH" && uv run pytest -m e2e -q
+export PATH="$HOME/.local/bin:$PATH" && WOWPERF_E2E_REPORT=VCGkLQtPwNRA8HhD uv run pytest tests/e2e/test_loadout_e2e.py -m e2e -q
 ```
 
 Expected: passed. This spends roughly 2 points per report against a 3600-point hour, and the
