@@ -382,6 +382,41 @@ every new `Frozen` model used as a mutable-looking default gets the same treatme
 
 ## 4. Gaps left open
 
+### 4.0 Ruling 10 was over-broad, and the Mythic+ sibling is the better sentence
+
+Ruling 10 cut the word "avoidable" from the raid mechanics finding, on the strength of a rule this
+plan's own Task 5 brief wrote: *no sentence this function produces may contain "missed",
+"avoidable", "should have" or "failed"*. The finding now reads "whether any single landing could
+have been prevented is not something the log records", which is honest and states no claim about
+intent.
+
+Checking the Mythic+ path afterwards showed the rule was drawn too widely. `players.damage.*` says
+"whether any single hit was **avoidable** is not something the log records" — and it says it on
+purpose. Master design section 5.5 requires damage be reported per ability against the group
+median, *never as "avoidable damage"*, because deciding whether a hit was avoidable needs
+per-mechanic knowledge the tool does not have. The master design amended itself on 2026-09-05 to
+strike "avoidable damage" from the per-player card for the same reason. "Avoidable damage" is also
+a metric name a Warcraft Logs reader already knows, so the analyser names the phrase in order to
+refuse it, out loud, in the sentence a reader is most likely to reach for it in.
+
+Five other places carry that intent — the ABOUTME lines of `analysis/players.py`,
+`report/players.py` and `_players.html.j2`, a comment in `report/model.py`, and the `mplus-analysis`
+skill's "Do not turn that into 'avoidable damage'. The report deliberately refuses the phrase."
+`tests/domain/report/test_build_players.py` pins the whole detail string verbatim, and its docstring
+says why: the disclaimer "uses the word 'avoidable' in order to deny it applies".
+
+So the difference between the two findings is not drift, and the Mythic+ side must not be changed
+to match the raid side. The rule Ruling 10 enforced bans a word; what the repository actually bans
+is a **claim**. A sentence that names the phrase in order to refuse it is the stronger of the two,
+because it answers the reader's own vocabulary instead of sidestepping it.
+
+**The improvement, deferred:** narrow the rule from a word ban to a claim ban, and consider giving
+the raid finding the Mythic+ sentence's shape — naming what it refuses rather than avoiding the
+term. That is a wording change to a shipped user-visible string plus its test, it is a design
+question about the rule rather than a defect in the code, and it belongs to whoever next touches
+`compare_mechanics` rather than riding into a reviewed branch. Nothing is wrong as it stands: both
+sentences refuse the same claim, and neither asserts anything the log cannot support.
+
 **Deferred minors from the ledger**, each correct as shipped and each left for the next plan or a
 future fix round to pick up:
 
