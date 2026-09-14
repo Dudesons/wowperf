@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from wowperf.adapters.config.toml import DEFAULT_SEASON_PATH, load_season_data
+from wowperf.adapters.config.toml import (
+    DEFAULT_SEASON_PATH,
+    load_raid_partition,
+    load_season_data,
+)
 
 
 def test_season_data_is_read_from_a_toml_file(tmp_path: Path) -> None:
@@ -26,6 +30,22 @@ def test_the_committed_season_file_parses() -> None:
     season = load_season_data(DEFAULT_SEASON_PATH)
     assert season.death_penalty(2) == 5.0
     assert season.death_penalty(12) == 15.0
+
+
+def test_the_raid_partition_is_read_from_the_file_not_assumed(tmp_path: Path) -> None:
+    # 7, never the 1 the committed file currently carries: a loader that
+    # returned the old hardcoded literal instead of reading the file would
+    # pass against 1 and fail here.
+    path = tmp_path / "season.toml"
+    path.write_text('[raid]\npartition = 7\n', encoding="utf-8")
+    assert load_raid_partition(path) == 7
+
+
+def test_the_committed_season_file_carries_a_raid_partition() -> None:
+    # A typo in the committed block fails here rather than at the first live
+    # raid query. The value is not pinned: a partition is whatever the current
+    # tier's is, and pinning one would make a new tier look like a code failure.
+    assert load_raid_partition(DEFAULT_SEASON_PATH) >= 1
 
 
 def test_a_missing_file_says_which_one(tmp_path: Path) -> None:

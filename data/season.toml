@@ -10,3 +10,12 @@ verified = "2026-09-03"
 seconds_high_key = 15.0
 high_key_threshold = 12
 verified_high_key = "2026-09-03"
+
+[raid]
+# The rankings partition a raid encounter's leaderboard is read at. A
+# ReportFight carries no partition, and design 2.2 prescribes reading it from
+# the report's own `Report.rankings` row -- no plan has built that fetch yet,
+# so the current tier's partition lives here, dated, rather than as a literal
+# in an adapter.
+partition = 1
+verified = "2026-09-14"

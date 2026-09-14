@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from typing import Any, Literal, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
+from wowperf.adapters.config.toml import load_raid_partition
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
@@ -261,11 +262,14 @@ class WclRunRepository:
         report = self._report(report_code, hits)
         fight = select_raid_fight(report["fights"], fight_id)
         talents = self._talents(report_code, fight, hits)
-        # ReportFight carries no partition field at all; it comes from the
-        # report's own rankings row, which no plan fetches yet. `1` is the
-        # current tier's default partition, a placeholder rather than a read
-        # value -- the plan that fetches rankings must replace this, not trust it.
-        encounter = build_encounter(report, fight, partition=1, talents=talents)
+        # ReportFight carries no partition field at all. Design 2.2 prescribes
+        # reading it from the report's own `Report.rankings` row, and no plan
+        # has built that fetch yet -- so it comes from `data/season.toml`,
+        # where every constant with no API source lives with the date it was
+        # verified, rather than from a literal buried here.
+        encounter = build_encounter(
+            report, fight, partition=load_raid_partition(), talents=talents
+        )
 
         abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
         try:

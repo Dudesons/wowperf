@@ -77,6 +77,19 @@ def load_season_data(path: Path = DEFAULT_SEASON_PATH) -> SeasonData:
     )
 
 
+def load_raid_partition(path: Path = DEFAULT_SEASON_PATH) -> int:
+    """The rankings partition a raid encounter's leaderboard is read at.
+
+    Kept beside the timer constants rather than returned on `SeasonData`: it is
+    a query argument an adapter needs, not a figure any analyser reads, and
+    putting it on the domain value object would hand every construction of that
+    object a field nothing in the domain consults.
+    """
+    raid = _read(path)["raid"]
+    assert isinstance(raid, dict)
+    return int(raid["partition"])
+
+
 def load_defensives(path: Path = DEFAULT_DEFENSIVES_PATH) -> Defensives:
     """Read the hand-maintained defensive cooldown list."""
     return Defensives(entries=_load_cooldowns(path, DefensiveAbility))
