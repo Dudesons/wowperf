@@ -655,6 +655,13 @@ every player observed.
 **Cost: `playerDetails` with `includeCombatantInfo: true` priced at 2.00 points** from its own
 `rateLimitData`.
 
+**A full-roster analysis multiplies that call, not just its cost.** Measured 2026-09-14 on an
+`analyze --all-players` run against a five-player roster: 19 `PlayerDetails` calls for 38.00
+points, inside a 219.47-point total against the 3600-point hourly budget. The driver is that
+each analysed player draws its own specialisation's parse sample, and each reference report
+needs its own fetch. `Talents` and `Fights` issued exactly the same 19 calls on that run, so
+this scaling predates the gear work rather than being introduced by it.
+
 **`talents` is empty on both routes.** `combatantInfo.talents` and the `talents` field on a
 `DamageDone` table entry both returned `[]` for all ten players. Talents come from
 `talentImportCode` and nowhere else.
