@@ -204,8 +204,11 @@ instead of adjusting for them, because adjusting would invent a number:
 
 - **Group composition.** Which packs can be held, which mechanics are trivial, and how much damage
   a route can absorb all change with the roster.
-- **Item level.** The only gear difference the tool can see. Tier, trinkets and embellishments are
-  uncorrected, and equal item level no longer implies a similar stat profile.
+- **Item level.** A gap here is still declared rather than corrected, and so is the aggregate
+  throughput effect of better gear — but item level is no longer the only gear difference the
+  tool can see. `compare.gear.missing_item`, `compare.gear.enchant.<slot>`, `compare.gear.tier`
+  and `compare.stats.rating.<stat>` each draw their own finding now. Embellishments are the one
+  gear signal still uncompared.
 - **Keystone level.** Enemy health scales about 10% a level and compounds, so anything shaped like
   a duration means something different on each side of a gap. `compare.duration` is what this
   gates: with fewer than three references at our own keystone level it becomes "Completion times
