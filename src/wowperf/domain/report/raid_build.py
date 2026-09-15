@@ -143,7 +143,11 @@ def build_raid_report(
     # and the fight-wide line does not cover it. And the suppression is on this
     # list alone -- every card keeps its own withheld reason on the card, where
     # a reader looking at one raider needs it without scrolling here.
-    stated_for_the_whole_fight = damage.reason if damage.state is SectionState.WITHHELD else ""
+    #
+    # No branch on the Damage section's own state is needed: `Section.reason` is
+    # "" unless a section was withheld, so a present Damage tab has stated
+    # nothing and suppresses nothing.
+    stated_for_the_whole_fight = damage.reason
 
     # `--no-compare` fetched no reference at all, so the whole fight gets one
     # report-level line rather than one per card -- a line per raider here

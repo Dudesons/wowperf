@@ -94,15 +94,35 @@ neither.
 """
 
 
+AN_UNPLACED_FAMILY = "compare.confound.difficulty"
+"""A family no raid placement claims and no raider's card claims either.
+
+`build_observations` is a structural catch-all, and a catch-all is only a
+guarantee if something actually takes the route. Every id in `RAID_FAMILIES` is
+placed by name, so without this one the call to `build_observations` could be a
+literal `()` and every test in this file would stay green -- which is precisely
+the guarantee it exists to give, untested.
+
+`compare.confound.` is a real id shape rather than an invented one: the Mythic+
+table places it on the route tab, and `RAID_PLACEMENTS` deliberately omits it
+because a boss fight has no route. It stands here for the analyser that starts
+emitting something tomorrow.
+"""
+
+
 def one_of_every_raid_family() -> tuple[Finding, ...]:
-    """One finding per family `analyse_encounter` can emit.
+    """One finding per family `analyse_encounter` can emit, plus one nothing places.
 
     Built from `RAID_FAMILIES`, which `test_raid_ledger` holds against the
     service itself, so a family the service starts emitting reaches this test
     without anybody remembering to add it here.
     """
-    return tuple(
-        a_finding(one, seconds=30.0 if one in TIMED_FAMILIES else None) for one in RAID_FAMILIES
+    return (
+        *(
+            a_finding(one, seconds=30.0 if one in TIMED_FAMILIES else None)
+            for one in RAID_FAMILIES
+        ),
+        a_finding(AN_UNPLACED_FAMILY),
     )
 
 
@@ -196,6 +216,24 @@ def test_every_finding_reaches_exactly_one_field() -> None:
         assert pointer.finding_id in placed, (
             f"{pointer.finding_id} heads the Summary and no tab carries the card it points at"
         )
+
+
+def test_a_family_nobody_placed_is_caught_rather_than_dropped() -> None:
+    """The catch-all catches, which is the one thing it exists to do.
+
+    A finding no placement claims must still reach the page. The alternative is
+    an analyser that starts measuring something and a report that silently
+    never shows it -- and `build_observations` is a structural catch-all rather
+    than a whitelist precisely so that nobody has to remember to add a prefix.
+    """
+    loaded, subject = a_raid_fixture()
+
+    report = build_raid_report(
+        loaded, one_of_every_raid_family(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert [row.finding_id for row in report.observations] == [AN_UNPLACED_FAMILY]
 
 
 def test_the_only_raid_decomposition_heads_the_summary_and_is_not_drawn_twice() -> None:
@@ -336,10 +374,17 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
 
 
 ONE_RAIDERS_REASON = (
-    "The parse leaderboard returned no reference kills for this specialisation at this "
-    "difficulty, so casts a minute, talents and buff uptime are not compared."
+    "The parse leaderboard returned no reference kills for this specialisation at "
+    "this difficulty, so casts a minute, talents and buff uptime are not compared. "
+    "The percentile and the damage comparisons beside this one read this report's "
+    "own rankings rather than a sample, and are unaffected."
 )
-"""A reason about one raider rather than about the attempt, in `_no_sample`'s words."""
+"""A reason about one raider rather than about the attempt.
+
+`parse_axis._no_sample`'s detail, carried whole rather than trimmed: this test
+would pass against any distinct string, so the only thing a shortened copy
+could do is claim a provenance it does not have.
+"""
 
 
 def test_a_raiders_own_reason_is_never_suppressed_with_the_attempts() -> None:
