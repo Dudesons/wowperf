@@ -82,12 +82,16 @@ def test_no_percentile_is_printed_for_an_attempt_that_did_not_kill() -> None:
     assert findings[0].id == "compare.rank.unavailable"
     assert "did not kill" in findings[0].detail
     assert findings[0].seconds_lost is None
+    # Whole string, not a substring: the bullet is what a reader sees inside
+    # <ul class="evidence">, and nothing else in this suite pins its wording.
+    assert findings[0].evidence == ("this attempt produced no rankings row at all",)
 
 
 def test_a_player_absent_from_the_rankings_row_is_not_given_a_rank_of_zero() -> None:
     findings = compare_rank(standing(96, 94, 247358.0), None, "Stonewake", "Stonewake")
     assert findings[0].id == "compare.rank.unavailable"
     assert "0" not in findings[0].title
+    assert findings[0].evidence == ("this player's name does not appear in the rankings row",)
 
 
 def test_a_disambiguated_display_name_is_not_what_the_rankings_row_is_joined_on() -> None:
