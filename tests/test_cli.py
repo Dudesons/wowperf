@@ -1032,6 +1032,25 @@ def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
     assert "EncounterKillRankings" in calls
 
 
+def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:
+    """Section 11: the command's output is both files, under `--out`."""
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+    [findings] = (tmp_path / "out").glob("*.findings.json")
+    [page] = (tmp_path / "out").glob("*.html")
+    assert page.stem == findings.stem.removesuffix(".findings")
+    assert "<section class=\"panel\"" in page.read_text(encoding="utf-8")
+
+
+def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
+    """A path printed is a path a person can open. Two files, two lines."""
+    result = run_raid(tmp_path)
+
+    assert ".findings.json" in result.output
+    assert ".html" in result.output
+
+
 def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path: Path) -> None:
     """The wiring this task exists for, read off the artefact a user gets.
 
