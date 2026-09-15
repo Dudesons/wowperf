@@ -879,13 +879,15 @@ so the per-row check could never have failed in production.
 
 Introspected 2026-09-15, looking for something `raid_frame.py`'s header could print instead of
 `Encounter.difficulty`'s bare int. **Neither `ReportFight` nor `worldData.encounter` carries a
-difficulty name.** `ReportFight`'s full field list (introspected the same day) has `difficulty`
-and forty more fields — `averageItemLevel`, `bossPercentage`, `completeRaid`, `countReached`,
+difficulty name.** `ReportFight`'s full field list (introspected the same day) returned 43 names
+including `difficulty`. The following twenty-four are transcribed verbatim from that response,
+not recalled — `averageItemLevel`, `bossPercentage`, `completeRaid`, `countReached`,
 `countRequired`, `dungeonPulls`, `encounterID`, `endTime`, `fightPercentage`, `friendlyPlayers`,
 `gameZone`, `hardModeLevel`, `id`, `keystoneAffixes`, `keystoneBonus`, `keystoneLevel`,
-`keystoneTime`, `kill`, `layer`, `name`, `npcCountMap`, `rating`, `size`, `startTime` among
-them — none of them a name for the difficulty. `worldData.encounter(id:)`'s type carries exactly
-`id, name, characterRankings, fightRankings, zone, journalID`; no name there either.
+`keystoneTime`, `kill`, `layer`, `name`, `npcCountMap`, `rating`, `size`, `startTime` — a partial
+list, not the other 42 in full: none of the 43 names the difficulty. `worldData.encounter(id:)`'s
+type carries exactly `id, name, characterRankings, fightRankings, zone, journalID`; no name there
+either.
 
 **A name exists one hop further out, on the zone.** `worldData.zone` (and `encounter(id:).zone`)
 carries `id, name, brackets, difficulties, encounters, expansion, frozen, partitions`, and
@@ -895,17 +897,18 @@ encounter 3470 is the same one this file already names "Heroic" below, from repo
 `cW38jmwdnZfbHVL4` fight 2, requested with `difficulty: 4` — the zone (id 53, "The Venomous
 Abyss") named its own four difficulties: id 5 "Mythic" (sizes `[20]`), id 4 "Heroic" (no size
 listed), id 3 "Normal" (no size listed), id 1 "LFR" (no size listed). `difficulty: 4` naming
-"Heroic" here agrees with the independent measurement below, from a different query against the
-same encounter.
+"Heroic" here is consistent with this file's own 2026-09-14 note below, which already described
+encounter 3470 as Heroic — prior descriptive knowledge, recorded without the query that produced
+it, not a second independent measurement.
 
 **This is a real, live-verified source, and it is still not what this project reads for a raid
 header.** Getting from an `Encounter` to its zone's difficulty names needs a second `worldData`
 query beyond the one that already fetches the fight, threaded through the adapter and passed in
 — `build_raid_header(encounter: Encounter) -> RaidHeader` in `raid_frame.py` takes a bare
 `Encounter` and performs no query of its own, being domain code. Wiring that second query through
-is future work, not this task's. Until then, `raid_frame.py` and `data/season.toml`'s
-`[raid.difficulty_names]` hand-keep the same three names this query returned for ids 3, 4 and 5,
-dated 2026-09-15 against it, and print the bare number for any id neither carries.
+is future work, not this task's. Until then, `raid_frame.py` hand-keeps the same three names
+this query returned for ids 3, 4 and 5, dated 2026-09-15 against it, and prints the bare number
+for any id it does not carry.
 
 ## A report carries its own players' ranks, and their amounts
 
