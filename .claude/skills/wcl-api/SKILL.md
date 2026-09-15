@@ -182,9 +182,11 @@ One approximation and three measurements:
   from fight 2's `Nek'zali the Soulcoiler`, found by listing the report's boss fights and reading
   its own already-cached `Fights` table for name and kill status, at no cost beyond the quota
   check): a `--no-compare` probe of it spent 36.20, and the recorded wipe run added 7.39 once the
-  comparison axis ran, 43.59 together against the 45.25 recorded above for the same fixture. Total
-  spent across every command this measurement ran, cold and warm together: 50.59 points of 3600,
-  leaving 2672.33.
+  comparison axis ran, 43.59 together against the 45.25 recorded above for the same fixture. That
+  1.66-point gap between two nominally-cold readings of the same fixture is unexplained: the API
+  documents no per-query cost, and nothing recorded about either run points to a cause, so it is
+  left as a gap rather than a guess. Total spent across every command this measurement ran, cold
+  and warm together: 50.59 points of 3600, leaving 2672.33.
 
 ## Every query reports its own cost
 

@@ -63,13 +63,14 @@ def _withheld(our_name: str) -> Finding:
 class ParseSubject(Frozen):
     """One player to measure against the world, and everything that measurement reads.
 
-    A sibling of `service.ComparisonSubject`, not a reuse of it: that one carries
-    a whole `LoadedRun` behind it. The slug is here for the same reason it is
-    there -- a report card is matched by it, and a finding id becomes an element
-    id on the page, where two raiders sharing one id is invalid HTML. It is
-    minted from the roster by `slugs_by_actor`, never from the display name,
-    because two names can reduce to one slug and the roster index is what keeps
-    them apart.
+    A sibling of `service.ComparisonSubject`, not a reuse of it: that one is
+    measured against a `LoadedRun`, which `_compare_player` takes as its own
+    separate argument rather than a field the subject carries. The slug is
+    here for the same reason it is there -- a report card is matched by it,
+    and a finding id becomes an element id on the page, where two raiders
+    sharing one id is invalid HTML. It is minted from the roster by
+    `slugs_by_actor`, never from the display name, because two names can
+    reduce to one slug and the roster index is what keeps them apart.
 
     Every field but the player and the slug is what an adapter fetched, arriving
     as a value: the domain performs no I/O, and each of these is one query

@@ -19,11 +19,14 @@ from wowperf.domain.model import Player
 class LoadedFight(Protocol):
     """The shape `LoadedRun` and `LoadedEncounter` already share.
 
-    A death recap and a run-wide ability panel read a roster, the stretch of
-    time the log covers, and five event streams. Both aggregates carry all
-    seven, so a function typed on this is stating what it reads rather than
-    which command loaded it -- which is what lets one recap serve a keystone
-    run and a boss fight without either of them learning about the other.
+    A death recap and a run-wide ability panel read a roster, whether the
+    fight is cut into pulls, the stretch of time the log covers, and seven
+    event and aura streams: `casts`, `deaths`, `damage_taken`, `healing`,
+    `health_samples`, `resurrections` and `auras_by_actor`. Both aggregates
+    carry all ten members, so a function typed on this is stating what it
+    reads rather than which command loaded it -- which is what lets one recap
+    serve a keystone run and a boss fight without either of them learning
+    about the other.
 
     Declared as a protocol rather than as a union of the two, and rather than
     as a base class they both inherit. A union would put an `isinstance` in
