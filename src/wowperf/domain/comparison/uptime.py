@@ -244,7 +244,6 @@ def compare_uptime(
     our_auras: PlayerAuras | None,
     our_name: str,
     theirs: ParseMember,
-    their_name: str,
     *,
     measured: UptimeRule,
     words: Wording,
@@ -258,7 +257,10 @@ def compare_uptime(
     The reference side is the member itself rather than a run and a pair of
     loose values: it already carries its own seconds, its own auras and its own
     route, and passing those three separately is how one player's figure ends
-    up under another player's name.
+    up under another player's name. Its name is read off it for the same
+    reason, rather than taken as an argument beside it: two channels for one
+    identity is the hazard the sentence above names, and the only way they can
+    disagree is to be two.
 
     Our own side arrives as the two values this reads — a route and the seconds
     that route was worth — rather than as a run, so that a raid fight, which has
@@ -286,7 +288,7 @@ def compare_uptime(
         fractions_of(our_auras.on_self, measured(our_pulls), our_seconds),
         fractions_of(their_auras.on_self, measured(theirs.pulls), their_seconds),
         our_name=our_name,
-        their_name=their_name,
+        their_name=theirs.character_name,
         our_seconds=our_seconds,
         their_seconds=their_seconds,
         words=words,
@@ -351,7 +353,7 @@ def compare_uptime_sample(
         # for a gap that was never the sample's fault.
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
-            our_pulls, our_seconds, our_auras, our_name, first, first.character_name,
+            our_pulls, our_seconds, our_auras, our_name, first,
             measured=measured, words=words,
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
