@@ -561,11 +561,19 @@ def test_every_panel_appears_once_in_tab_order() -> None:
     button pointing at the name nobody renamed opens nothing. Compared as a list
     so a missing panel, a duplicated one, a renamed one and a reordered one are
     each a failure, and `RAID_PANEL_ORDER` stays the one place the count is stated.
+
+    The count is kept beside the list rather than dropped for it, because the two
+    cover different halves. `PANEL_ID` reads only sections that carry an id, so
+    an eighth panel written without one is a section the list equality never
+    sees: the ids it did find are still the right seven in the right order. The
+    list says the ids are right; the count says there are no others.
     """
-    panels = PANEL_ID.findall(a_raid_page())
+    html = a_raid_page()
+    panels = PANEL_ID.findall(html)
 
     assert panels, "the page drew no panels at all"
     assert panels == RAID_PANEL_ORDER
+    assert html.count('<section class="panel"') == len(RAID_PANEL_ORDER)
 
 
 def test_every_panel_has_exactly_one_tab_button() -> None:
@@ -588,6 +596,17 @@ def test_the_tab_buttons_follow_panel_order() -> None:
     # The script opens the first button's panel by default, so button order is
     # the default tab; nothing else pins the order the buttons appear in.
     assert main_tab_targets(a_raid_page()) == RAID_PANEL_ORDER
+
+
+def test_the_root_class_the_script_adds_is_not_in_the_markup() -> None:
+    # The script adds it at run time; rendering it would hide panels with no script.
+    # This is the other half of the rule above it: `.tabs` is hidden until the
+    # root class arrives, so a page that shipped the class already would hide
+    # every panel but one for a reader whose browser runs no script -- and the
+    # raid page inherits exactly that stylesheet.
+    html = a_raid_page()
+    assert '<html lang="en">' in html
+    assert 'class="js' not in html
 
 
 def test_no_element_id_appears_twice() -> None:
@@ -754,7 +773,11 @@ def test_a_full_roster_collides_no_element_ids() -> None:
 
     html = render_raid(report)
 
-    assert len(report.players) == 20, "the fixture built fewer cards than it claims"
+    # Counted on the page and not on the model, the same guard the three-raider
+    # fixture above states: twenty cards the builder made and the template never
+    # drew would leave the assertion below passing over the panel ids alone, on
+    # a page carrying none of the collisions this test exists to look for.
+    assert html.count('class="player-head"') == 20, "the page drew fewer cards than that"
     element_ids = re.findall(r'\sid="([^"]+)"', html)
     assert element_ids, "a page with no element ids would pass this vacuously"
     duplicates = {value for value in element_ids if element_ids.count(value) > 1}
