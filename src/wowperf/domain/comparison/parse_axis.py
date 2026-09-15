@@ -63,20 +63,24 @@ def _withheld(our_name: str) -> Finding:
 class ParseSubject(Frozen):
     """One player to measure against the world, and everything that measurement reads.
 
-    A sibling of `service.ComparisonSubject`, not a reuse of it: that one
-    carries a slug, because a Mythic+ comparison re-mints every finding id with
-    the player it is about so a report card can be matched by it. A raid finding
-    keeps its plain id and names the player in its title instead, so there is no
-    slug here to be minted, stamped or left empty by mistake.
+    A sibling of `service.ComparisonSubject`, not a reuse of it: that one is
+    measured against a `LoadedRun`, which `_compare_player` takes as its own
+    separate argument rather than a field the subject carries. The slug is
+    here for the same reason it is there -- a report card is matched by it,
+    and a finding id becomes an element id on the page, where two raiders
+    sharing one id is invalid HTML. It is minted from the roster by
+    `slugs_by_actor`, never from the display name, because two names can
+    reduce to one slug and the roster index is what keeps them apart.
 
-    Every field but the player is what an adapter fetched, arriving as a value:
-    the domain performs no I/O, and each of these is one query somebody paid for.
-    An empty default is the honest reading of "not fetched" for all of them --
-    `compare_parse_axis` says so in the tool's own words rather than treating an
-    empty sample as a clean result.
+    Every field but the player and the slug is what an adapter fetched, arriving
+    as a value: the domain performs no I/O, and each of these is one query
+    somebody paid for. An empty default is the honest reading of "not fetched"
+    for all of them -- `compare_parse_axis` says so in the tool's own words
+    rather than treating an empty sample as a clean result.
     """
 
     player: Player
+    slug: str = Field(min_length=1)
     display_name: str = Field(min_length=1)
     our_auras: PlayerAuras | None = None
     sample: ParseSample = ParseSample()

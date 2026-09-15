@@ -36,11 +36,15 @@ report's own leaderboard, not a defect: see `.claude/skills/wcl-api/SKILL.md`, "
 echoes no `difficulty` per row" (2026-09-14), for why the filter matches size alone.
 """
 
+import json
 import os
+import re
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
+from typer.testing import CliRunner
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_consumables, load_defensives
@@ -53,6 +57,7 @@ from wowperf.cli import (
     _mechanics_sample,
     _parse_samples,
     _resolve_requested,
+    app,
     build_repository,
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
@@ -367,3 +372,114 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
+
+
+@pytest.mark.e2e
+def test_a_real_raid_roster_renders_one_page_with_no_collisions(tmp_path: Path) -> None:
+    """`--all-players` end to end: the real command, the real API, twenty people.
+
+    Driven as the command rather than reassembled from its parts. Who is
+    compared is decided in `raid` and nowhere else -- the flag, the roster it
+    sweeps up, the slug stamped on every finding it mints and the cards the
+    page then fills -- so a reassembly here would exercise the reassembly.
+
+    This is the run that would have caught what one live run at twenty raiders
+    measured before this plan: 266 findings over 79 distinct ids, 206 of them
+    sharing one.
+
+    Costs real quota. Against a warm cache it costs almost nothing, which is
+    how it should usually be run.
+    """
+    if not KILL:
+        pytest.fail(
+            "Set WOWPERF_E2E_RAID_KILL to a public report URL naming a boss kill "
+            "(include the #fight=N fragment) to run this"
+        )
+
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        app,
+        [
+            "raid", KILL,
+            "--all-players",
+            "--cache-dir", str(tmp_path / "cache"),
+            "--out", str(out),
+        ],
+    )
+    # Both halves of the diagnosis: a refusal the command wrote itself goes to
+    # stderr, and an exception it never expected is held on the result instead.
+    # This run costs real quota, so a failure has to say which it was.
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+
+    # Windows gives the process a cp1252 stdout, and `-s` sends this straight to
+    # it rather than through pytest's own capture. The breakdown names an
+    # operation and a point cost, never a player, so it is the one thing this
+    # test may print unconditionally once the command has actually succeeded.
+    print(result.stderr.encode("ascii", "backslashreplace").decode("ascii"))
+
+    [written] = out.glob("*.findings.json")
+    payload = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
+    [page] = out.glob("*.html")
+    html = page.read_text(encoding="utf-8")
+
+    # Every finding id is minted once. A collision is a real player's slug two
+    # raiders collided under, and this file must never print one -- so a
+    # failure here reports a count and the families that collided, the slug
+    # segment stripped off each, rather than the raw ids. `has_duplicate_ids`
+    # is asserted rather than `duplicate_ids` itself so the id set never
+    # reaches pytest's own assertion introspection, which would print it
+    # regardless of the message. This is the defect a fixture roster of three
+    # sanctioned names can never reproduce.
+    ids = [finding["id"] for finding in payload["findings"]]
+    assert ids, "the run produced no findings at all"
+    duplicate_ids = {value for value in ids if ids.count(value) > 1}
+    duplicate_id_families = sorted({value.rsplit(".", 1)[0] for value in duplicate_ids})
+    has_duplicate_ids = bool(duplicate_ids)
+    assert not has_duplicate_ids, (
+        f"{len(duplicate_ids)} duplicate finding id(s) across families {duplicate_id_families}"
+    )
+
+    # The same claim about the page, which mints an element id per card, per
+    # sub-tab and per row. A duplicate is invalid HTML and sends the page's
+    # own pointers to whichever of the two the browser happens to pick. Same
+    # care as above: a player card's id is `player-<slug>` outright, so that
+    # shape is named by its constant prefix alone rather than split on a dot
+    # that is never there.
+    element_ids = re.findall(r'\sid="([^"]+)"', html)
+    assert element_ids, "a page with no element ids would pass this vacuously"
+    duplicate_element_ids = {value for value in element_ids if element_ids.count(value) > 1}
+    duplicate_element_id_families = sorted({
+        "player" if value.startswith("player-") else value.rsplit(".", 1)[0]
+        for value in duplicate_element_ids
+    })
+    has_duplicate_element_ids = bool(duplicate_element_ids)
+    assert not has_duplicate_element_ids, (
+        f"{len(duplicate_element_ids)} duplicate element id(s) across families "
+        f"{duplicate_element_id_families}"
+    )
+
+    # `raid`'s own `comparison.players` is the roster's display names, not
+    # slugs -- unlike `analyze`'s, which the offline suite pins as slugs -- so
+    # the page's own cards are this test's only source of a slug. Under
+    # `--all-players` the whole roster is swept into the comparison, so the
+    # name list's length is the roster size, and doubles as an independent
+    # count to weigh the page's cards against: a card silently dropped, or an
+    # extra one minted, would show up here even though neither collides an id.
+    card_slugs = set(re.findall(r'data-tab-panel="players" id="player-([^"]+)"', html))
+    roster_size = len(payload["comparison"]["players"])
+    assert card_slugs, "a page with no player cards would pass this vacuously"
+    assert len(card_slugs) == roster_size, (
+        f"{len(card_slugs)} player card(s) rendered for a roster of {roster_size}"
+    )
+
+    # Every compared slug appears as some finding's `player_slug` -- the
+    # routing `raid` promises in its own docstring: a raider swept up by
+    # `--all-players` is compared once, under the one slug `slugs_by_actor`
+    # mints for them, and every family of the comparison stamps it onto
+    # whatever it emits about them. A slug with a card but no finding naming
+    # it would mean the comparison built their card and then lost them.
+    finding_player_slugs = {
+        finding["player_slug"] for finding in payload["findings"] if finding.get("player_slug")
+    }
+    uncompared = card_slugs - finding_player_slugs
+    assert uncompared == set(), f"{len(uncompared)} card(s) with no finding naming their slug"

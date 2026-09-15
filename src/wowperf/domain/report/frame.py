@@ -94,10 +94,12 @@ def section_for(findings: Sequence[Finding], unavailable_id: str, present: bool)
 def run_start_ms(run: Run) -> int:
     """The run's own clock origin: the earliest pull's start, or zero with no pulls.
 
-    Shared by `run_seconds` and `_when` so a death's elapsed time and the
-    run's span are measured from the same point and cannot drift apart.
+    Shared by `run_seconds` and the timelines so a run's span and the blocks
+    drawn across it are measured from the same point and cannot drift apart.
+    `Run.window_ms` is where that point is decided, because a loaded fight of
+    either kind has to be able to state it without going through this module.
     """
-    return min((p.start_ms for p in run.pulls), default=0)
+    return run.window_ms[0]
 
 
 def run_seconds(run: Run) -> float:

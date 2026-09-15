@@ -172,6 +172,21 @@ One approximation and three measurements:
   frame, of which 21.00 is one `Healing` query per death.
 - **The one-subject raid shape re-run against a warm cache spent 1.00 point** — the two
   `RateLimit` reads and nothing else, within the reference cache's 24 hours.
+- **This plan's own live run, cache warm from work done earlier the same day: the kill and the
+  roster both re-priced to 1.00 point each** (2026-09-15, report `cW38jmwdnZfbHVL4`, fight 2, one
+  subject and then `--all-players` naming all 20 raiders). Both spent only the two `RateLimit`
+  reads the quota check itself makes, extending the one-subject warm reading above to the full
+  twenty-player shape: once every class-and-specialisation pair's parse sample already sits on
+  disk, naming all twenty costs no more than naming one. **The wipe re-priced close to cold**,
+  because no fetch in this session's cache had ever touched fight 30 (`Ula'tek`, a different boss
+  from fight 2's `Nek'zali the Soulcoiler`, found by listing the report's boss fights and reading
+  its own already-cached `Fights` table for name and kill status, at no cost beyond the quota
+  check): a `--no-compare` probe of it spent 36.20, and the recorded wipe run added 7.39 once the
+  comparison axis ran, 43.59 together against the 45.25 recorded above for the same fixture. That
+  1.66-point gap between two nominally-cold readings of the same fixture is unexplained: the API
+  documents no per-query cost, and nothing recorded about either run points to a cause, so it is
+  left as a gap rather than a guess. Total spent across every command this measurement ran, cold
+  and warm together: 50.59 points of 3600, leaving 2672.33.
 
 ## Every query reports its own cost
 
@@ -874,6 +889,41 @@ which is why this went unnoticed until a live run: the row shape under test did 
 has had that filter removed rather than back-filled, since `reference_kills` already passes our
 own difficulty as the query argument -- every row the API returns is at that difficulty already,
 so the per-row check could never have failed in production.
+
+## A difficulty's name lives on its zone, not on the fight or the encounter
+
+Introspected 2026-09-15, looking for something `raid_frame.py`'s header could print instead of
+`Encounter.difficulty`'s bare int. **Neither `ReportFight` nor `worldData.encounter` carries a
+difficulty name.** `ReportFight`'s full field list (introspected the same day) returned 43 names
+including `difficulty`. The following twenty-four are transcribed verbatim from that response,
+not recalled — `averageItemLevel`, `bossPercentage`, `completeRaid`, `countReached`,
+`countRequired`, `dungeonPulls`, `encounterID`, `endTime`, `fightPercentage`, `friendlyPlayers`,
+`gameZone`, `hardModeLevel`, `id`, `keystoneAffixes`, `keystoneBonus`, `keystoneLevel`,
+`keystoneTime`, `kill`, `layer`, `name`, `npcCountMap`, `rating`, `size`, `startTime` — the other
+nineteen are not reproduced here, and none of the forty-three fields names a difficulty.
+`worldData.encounter(id:)`'s type carries exactly `id, name, characterRankings, fightRankings,
+zone, journalID`; no name there either.
+
+**A name exists one hop further out, on the zone.** `worldData.zone` (and `encounter(id:).zone`)
+carries `id, name, brackets, difficulties, encounters, expansion, frozen, partitions`, and
+`Zone.difficulties` returns `[Difficulty]` with fields exactly `id, name, sizes`. Queried live
+against `worldData.encounter(id: 3470) { zone { id name difficulties { id name sizes } } }` —
+encounter 3470 is the same one this file already names "Heroic" below, from report
+`cW38jmwdnZfbHVL4` fight 2, requested with `difficulty: 4` — the zone (id 53, "The Venomous
+Abyss") named its own four difficulties: id 5 "Mythic" (sizes `[20]`), id 4 "Heroic" (no size
+listed), id 3 "Normal" (no size listed), id 1 "LFR" (no size listed). `difficulty: 4` naming
+"Heroic" here is consistent with this file's own 2026-09-14 note below, which already described
+encounter 3470 as Heroic — prior descriptive knowledge, recorded without the query that produced
+it, not a second independent measurement.
+
+**This is a real, live-verified source, and it is still not what this project reads for a raid
+header.** Getting from an `Encounter` to its zone's difficulty names needs a second `worldData`
+query beyond the one that already fetches the fight, threaded through the adapter and passed in
+— `build_raid_header(encounter: Encounter) -> RaidHeader` in `raid_frame.py` takes a bare
+`Encounter` and performs no query of its own, being domain code. Wiring that second query through
+is future work, not this task's. Until then, `raid_frame.py` hand-keeps the same three names
+this query returned for ids 3, 4 and 5, dated 2026-09-15 against it, and prints the bare number
+for any id it does not carry.
 
 ## A report carries its own players' ranks, and their amounts
 

@@ -25,7 +25,7 @@ from wowperf.adapters.config.toml import (
     load_slot_names,
     load_throughput_cooldowns,
 )
-from wowperf.adapters.render.html import render
+from wowperf.adapters.render.html import render, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
@@ -77,6 +77,7 @@ from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.domain.report.players import slugs_by_actor
+from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.urls import parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
@@ -181,7 +182,7 @@ def _aura_icons(auras: PlayerAuras | None) -> dict[int, str]:
 
 
 def build_icons(
-    loaded: LoadedRun,
+    loaded: LoadedRun | LoadedEncounter,
     parse_samples: Sequence[ParseSample],
     our_auras: Sequence[PlayerAuras | None] = (),
 ) -> CdnIcons:
@@ -993,6 +994,12 @@ def _parse_samples(
     records: list[ReferenceRecord] = []
     drawn: dict[tuple[str, str], _SpecReferences] = {}
     built: list[ParseSubject] = []
+    # The only place this loop mints a slug: `analyse_encounter` stamps it onto
+    # every finding this subject's comparison produces, and the report matches
+    # their card by it. Read from the whole roster, never from `names`' own
+    # spelling -- two roster members can share a display name, and only the
+    # roster index tells them apart.
+    slugs = slugs_by_actor(encounter.players)
 
     for player in subjects:
         comparable = loaded.standing is not None and bool(player.spec)
@@ -1006,6 +1013,7 @@ def _parse_samples(
         built.append(
             ParseSubject(
                 player=player,
+                slug=slugs[player.actor_id],
                 display_name=names[player.actor_id],
                 our_auras=(
                     _auras(ours, encounter.report_code, encounter.fight_id, player.actor_id)
@@ -1265,7 +1273,7 @@ def analyze(
             # matches their card by it. The name beside it is `names`' spelling,
             # so a provenance row naming a player names the same one their card
             # does -- and the same one `--player` would have to be given.
-            slugs = slugs_by_actor(loaded.run)
+            slugs = slugs_by_actor(loaded.run.players)
             requested: tuple[RequestedPlayer, ...] = tuple(
                 RequestedPlayer(
                     player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
@@ -1501,6 +1509,10 @@ def raid(
             )
             reference_records += parse_records
 
+        compared_slugs: frozenset[str] | None = None
+        if parse_subjects:
+            compared_slugs = frozenset(one.slug for one in parse_subjects)
+
         findings = analyse_encounter(
             loaded,
             defensives,
@@ -1577,6 +1589,7 @@ def raid(
     }
 
     written = out / f"{encounter.report_code}-{encounter.fight_id}.findings.json"
+    report_file = out / f"{encounter.report_code}-{encounter.fight_id}.html"
     # A guard of its own, because this phase fails differently from the one
     # above: nothing here can be degraded or retried, and a failure can arrive
     # after the findings have been computed. `OSError` alone -- the API
@@ -1586,11 +1599,35 @@ def raid(
         # Real rosters contain non-ASCII names; write_text's default encoding is
         # locale-dependent (commonly cp1252 on Windows) and would raise on them.
         written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        typer.echo(f"{len(findings)} findings written to {written}")
+
+        report_file.write_text(
+            render_raid(
+                build_raid_report(
+                    loaded,
+                    findings,
+                    subject,
+                    compared_slugs,
+                    datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    defensives,
+                    consumables,
+                    externals=load_externals(),
+                    self_resurrections=load_self_resurrections(),
+                    reference_records=reference_records,
+                ),
+                icons=build_icons(
+                    loaded,
+                    tuple(one.sample for one in parse_subjects),
+                    tuple(one.our_auras for one in parse_subjects),
+                ),
+            ),
+            encoding="utf-8",
+        )
     except OSError as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
 
-    typer.echo(f"{len(findings)} findings written to {written}")
+    typer.echo(f"report written to {report_file}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 

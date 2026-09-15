@@ -3,9 +3,8 @@
 
 from wowperf.domain.analysis.recap import HIT, RecapEvent
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.events import DamageTakenEvent
+from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import LoadedRun
 from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import Tooltip, TooltipLine
@@ -248,7 +247,7 @@ def run_ability_tooltip(
     ability_name: str,
     cooldown_seconds: float,
     owner_id: int,
-    loaded: LoadedRun,
+    casts: tuple[CastEvent, ...],
     auras: PlayerAuras | None,
     hits: tuple[DamageTakenEvent, ...],
     window: tuple[int, int],
@@ -272,7 +271,9 @@ def run_ability_tooltip(
 
     Generic over its window, which is what lets a death card and a ledger card
     share it: a death passes the run-up it draws, a ledger card passes the
-    whole run.
+    whole run. Generic over its fight for the same reason, and by the same
+    means: `casts` is the one stream this counts presses from, so a keystone
+    run and a boss fight each hand over their own and neither is named here.
     """
     if auras is None:
         return None
@@ -281,7 +282,7 @@ def run_ability_tooltip(
         return None
     start_ms, end_ms = window
     presses = sum(
-        1 for cast in loaded.casts
+        1 for cast in casts
         if cast.actor_id == owner_id and cast.ability_id == ability_id
         and (on_target is None or cast.target_id in (on_target, None))
     )

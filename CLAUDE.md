@@ -367,7 +367,9 @@ scoped to one caster".
 The report is a frozen view model and a pure builder under `src/wowperf/domain/report/`,
 holding every judgement the page makes, and a Jinja2 adapter under
 `src/wowperf/adapters/render/` that loops and decides nothing. The page carries six tabs —
-Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. Each death is a recap: a
+Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. The raid page carries seven —
+Summary, Damage, Mechanics, Deaths, Interrupts, Players, Provenance — Route & tempo replaced
+by the two axes a boss fight has in its place. Each death is a recap: a
 health curve reconstructed between the player's own readings, a timeline of what hit them,
 how they came back, and every defensive, consumable and teammate external placed in one of
 four states at the moment of death — pressed, ready, on cooldown, or never seen all run.
@@ -429,8 +431,9 @@ lines are unreliable, so the code is the record.
 | `uv run mypy` | Type check (paths come from `pyproject.toml`; pass none) |
 | `uv run wowperf fetch <url> [--fight N] [--cache-dir DIR]` | Fetch a Mythic+ run and print it as JSON |
 | `uv run wowperf analyze <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--narrative FILE] [--throughput-ceiling] [--cache-dir DIR] [--out DIR]` | Analyse a run against its reference samples and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
+| `uv run wowperf raid <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--cache-dir DIR] [--out DIR]` | Analyse a raid boss fight against reference kills and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
 
-Both commands take a report URL or a bare report code, and both print what the run
+All three take a report URL or a bare report code, and all three print what the run
 spent from the hourly point budget, broken down by operation. `.github/workflows/gate.yml`
 runs the lint, the type check and the offline suite on every push and pull request, and
 builds the wheel to check it carries the report's templates — none of them is a `.py` file,

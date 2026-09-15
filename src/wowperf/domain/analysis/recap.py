@@ -6,8 +6,9 @@ import math
 from wowperf.domain.analysis.consumables import consumable_window_start
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.base import Frozen
-from wowperf.domain.events import CastEvent, Death, HealthSample
-from wowperf.domain.model import LoadedRun
+from wowperf.domain.events import CastEvent, Death, HealthSample, Resurrection
+from wowperf.domain.fight import LoadedFight
+from wowperf.domain.model import Player
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -73,8 +74,14 @@ def window_start(death: Death) -> int:
     return int(death.timestamp_ms - RUN_UP_SECONDS * 1000)
 
 
-def readings_in_window(loaded: LoadedRun, death: Death) -> tuple[HealthSample, ...]:
+def readings_in_window(
+    health_samples: tuple[HealthSample, ...], death: Death
+) -> tuple[HealthSample, ...]:
     """The dying player's own health readings inside the run-up, oldest first.
+
+    Takes the stream it reads rather than the fight that carries it, the way
+    `analyse_interrupts(casts, damage_taken)` already does: nothing here is a
+    claim about what kind of fight the readings came from.
 
     `with_health` also consults the latest reading taken before the window
     opens, as the anchor its arithmetic starts from. That one is deliberately
@@ -86,7 +93,7 @@ def readings_in_window(loaded: LoadedRun, death: Death) -> tuple[HealthSample, .
         sorted(
             (
                 sample
-                for sample in loaded.health_samples
+                for sample in health_samples
                 if sample.actor_id == death.actor_id and start <= sample.timestamp_ms <= end
             ),
             key=lambda sample: sample.timestamp_ms,
@@ -94,8 +101,15 @@ def readings_in_window(loaded: LoadedRun, death: Death) -> tuple[HealthSample, .
     )
 
 
-def recap_timeline(loaded: LoadedRun, death: Death) -> tuple[RecapEvent, ...]:
-    """Every event of the run-up where the player was hit, shielded, healed, or acted."""
+def recap_timeline(loaded: LoadedFight, death: Death) -> tuple[RecapEvent, ...]:
+    """Every event of the run-up where the player was hit, shielded, healed, or acted.
+
+    The one function here that keeps a whole fight, because it reads four of
+    its streams and naming all four would be a parameter list nobody could
+    read at the call site. `LoadedFight` is the whole set `build_deaths`
+    reads, of which this takes four: damage taken, healing, casts and health
+    samples.
+    """
     start, end, actor = window_start(death), death.timestamp_ms, death.actor_id
     events: list[RecapEvent] = []
     for hit in loaded.damage_taken:
@@ -317,7 +331,8 @@ def consumable_state(
 
 
 def availability_at(
-    loaded: LoadedRun,
+    players: tuple[Player, ...],
+    casts: tuple[CastEvent, ...],
     death: Death,
     defensives: Defensives,
     consumables: Consumables,
@@ -326,19 +341,24 @@ def availability_at(
 ) -> AvailabilityAt:
     """The player's own defensives, the consumables, and every teammate's externals.
 
+    Takes the two things it reads -- who was there, and what they pressed --
+    rather than the fight that carries them. A keystone run and a boss fight
+    each have a roster and a cast stream, and neither of those facts is what
+    this rule is about.
+
     A consumable category is judged only when its whole window lies inside the
     fight (`visible_from_ms`), the rule `consumables_up_at` applies: a potion
     drunk before the timer started is invisible. Externals come in roster
     order, each carrying its owner.
     """
-    players = {player.actor_id: player for player in loaded.run.players}
-    player = players.get(death.actor_id)
+    by_actor = {player.actor_id: player for player in players}
+    player = by_actor.get(death.actor_id)
     death_ms = death.timestamp_ms
 
     def presses_of(actor_id: int, ability_ids: tuple[int, ...]) -> tuple[CastEvent, ...]:
         return tuple(
             cast
-            for cast in loaded.casts
+            for cast in casts
             if cast.actor_id == actor_id and cast.ability_id in ability_ids
         )
 
@@ -368,7 +388,7 @@ def availability_at(
         )
 
     mates = []
-    for mate in loaded.run.players:
+    for mate in players:
         if mate.actor_id == death.actor_id:
             continue
         for ability in externals.for_spec(mate.class_name, mate.spec):
@@ -403,8 +423,16 @@ class Return(Frozen):
     ability_name: str = ""
 
 
-def return_of(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrections) -> Return:
+def return_of(
+    resurrections: tuple[Resurrection, ...],
+    casts: tuple[CastEvent, ...],
+    death: Death,
+    self_resurrections: SelfResurrections,
+) -> Return:
     """Exactly one of four outcomes, in this precedence.
+
+    Takes the two streams it reads. Neither of them is a keystone fact, and
+    coming back from the dead works the same way on a boss.
 
     A resurrect event targeting the player after the death and before their
     first action names how they came back: by a teammate, or by themselves
@@ -427,7 +455,7 @@ def return_of(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrect
     revivals = sorted(
         (
             revival
-            for revival in loaded.resurrections
+            for revival in resurrections
             if revival.actor_id == death.actor_id and in_window(revival.timestamp_ms)
         ),
         key=lambda revival: revival.timestamp_ms,
@@ -443,7 +471,7 @@ def return_of(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrect
     own_spells = sorted(
         (
             cast
-            for cast in loaded.casts
+            for cast in casts
             if cast.actor_id == death.actor_id
             and cast.ability_id in self_resurrections.ability_ids
             and in_window(cast.timestamp_ms)

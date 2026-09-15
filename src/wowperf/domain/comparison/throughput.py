@@ -30,13 +30,23 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def _unavailable(our_name: str, detail: str) -> Finding:
+def _unavailable(our_name: str, detail: str, evidence: tuple[str, ...] = ()) -> Finding:
+    """`evidence` defaults empty for the shared-name branch: a row does exist there,
+
+    it is only ambiguous which of two identically-named players it belongs to, and
+    `test_a_name_two_raiders_share_withholds_both_comparisons_rather_than_guessing`
+    holds that no figure off either row -- fact or evidence -- reaches a reader
+    under one player's name. The wipe and absent-from-rankings branches call with
+    an explicit bullet instead: both really did find no row, which the shared-name
+    case's row-exists-but-is-ambiguous state is not.
+    """
     return Finding(
         id=UNAVAILABLE_ID,
         title=f"No percentile is available for {our_name}",
         detail=detail,
         confidence=Confidence.MEASURED,
         seconds_lost=None,
+        evidence=evidence,
     )
 
 
@@ -110,6 +120,7 @@ def compare_rank(
                 our_name,
                 "This attempt did not kill the boss, so Warcraft Logs computed no rankings "
                 "row for it, and no percentile can be stated.",
+                evidence=("this attempt produced no rankings row at all",),
             )
         ]
     rows = standing.rows_named(ranked_name)
@@ -127,6 +138,7 @@ def compare_rank(
                 our_name,
                 f"{our_name} does not appear in this report's rankings, so no percentile can "
                 "be stated for them.",
+                evidence=("this player's name does not appear in the rankings row",),
             )
         ]
     player = rows[0]

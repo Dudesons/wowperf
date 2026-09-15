@@ -1,7 +1,7 @@
 # ABOUTME: The state of each saving tool at a death: pressed in the run-up, ready, on cooldown
 # ABOUTME: with an upper bound, or never seen. Each doubt resolves toward saying less.
 
-from tests.domain.analysis.test_recap_timeline import DUDE, a_death, loaded
+from tests.domain.analysis.test_recap_timeline import DUDE, a_death
 from wowperf.adapters.config.toml import load_consumables
 from wowperf.domain.analysis.recap import (
     COOLDOWN,
@@ -164,11 +164,11 @@ def test_availability_omits_the_row_for_a_category_never_drunk() -> None:
     # would otherwise be what empties this list, and the test would pass
     # without the new rule existing.
     drunk = availability_at(
-        loaded(casts=(press(6262, 100_000),)), a_death(at_ms=200_000), Defensives(),
+        (DUDE,), (press(6262, 100_000),), a_death(at_ms=200_000), Defensives(),
         Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
     )
     never = availability_at(
-        loaded(), a_death(at_ms=200_000), Defensives(),
+        (DUDE,), (), a_death(at_ms=200_000), Defensives(),
         Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
     )
     assert drunk.consumables is not None
@@ -180,13 +180,10 @@ def test_availability_groups_own_defensives_consumables_and_teammates_externals(
     # The stone is drunk at 100s: since 2026-09-12 a category nobody drank
     # from is not listed at all, so a fixture that never drinks one asserts
     # an empty group rather than the three-group shape this test is about.
-    run = loaded(
-        casts=(press(48792, 1_000), press(6262, 100_000),
-               press(102342, 150_000, actor_id=2, target_id=3)),
-    )
-    run = run.model_copy(update={"run": run.run.model_copy(update={"players": (DUDE, TREE)})})
+    casts = (press(48792, 1_000), press(6262, 100_000),
+             press(102342, 150_000, actor_id=2, target_id=3))
     at = availability_at(
-        run, a_death(at_ms=200_000),
+        (DUDE, TREE), casts, a_death(at_ms=200_000),
         Defensives(entries=(("DeathKnight/Blood", (ICEBOUND, RUNE_TAP)),)),
         Consumables(categories=(STONE,)), Externals(entries=(("Druid/Restoration", (IRONBARK,)),)),
         visible_from_ms=0,
@@ -204,7 +201,7 @@ def test_availability_groups_own_defensives_consumables_and_teammates_externals(
 
 def test_a_defensives_state_carries_the_ability_id_it_was_judged_from() -> None:
     at = availability_at(
-        loaded(), a_death(), Defensives(entries=(("DeathKnight/Blood", (ICEBOUND,)),)),
+        (DUDE,), (), a_death(), Defensives(entries=(("DeathKnight/Blood", (ICEBOUND,)),)),
         Consumables(), Externals(), visible_from_ms=0,
     )
     assert at.own is not None
@@ -216,7 +213,7 @@ def test_a_consumable_state_carries_no_ability_id() -> None:
     # of `state_of` rather than through the UNSEEN override, which is the path
     # that would carry an id through if one were ever passed in.
     at = availability_at(
-        loaded(casts=(press(6262, 195_000),)), a_death(at_ms=200_000), Defensives(),
+        (DUDE,), (press(6262, 195_000),), a_death(at_ms=200_000), Defensives(),
         Consumables(categories=(STONE,)), Externals(), visible_from_ms=0,
     )
     assert at.consumables is not None
@@ -224,14 +221,14 @@ def test_a_consumable_state_carries_no_ability_id() -> None:
 
 
 def test_a_spec_absent_from_a_file_yields_none_for_that_group_not_an_empty_list() -> None:
-    at = availability_at(loaded(), a_death(), Defensives(), Consumables(), Externals(),
+    at = availability_at((DUDE,), (), a_death(), Defensives(), Consumables(), Externals(),
                          visible_from_ms=0)
     assert (at.own, at.consumables, at.externals) == (None, None, ())
 
 
 def test_a_consumable_whose_window_reaches_before_the_fight_is_not_judged() -> None:
     # The stone's window is 60 + 10 s; a death 40 s in cannot see far enough back.
-    at = availability_at(loaded(), a_death(at_ms=40_000), Defensives(),
+    at = availability_at((DUDE,), (), a_death(at_ms=40_000), Defensives(),
                          Consumables(categories=(STONE,)), Externals(), visible_from_ms=0)
     assert at.consumables == ()
 
@@ -249,19 +246,18 @@ def test_availability_from_the_real_consumables_file_excludes_combat_potion() ->
     # its own 300s cooldown window, so it reads as READY -- the state a
     # pressed-then-recovered combat potion would show on the card.
     at = availability_at(
-        loaded(casts=(press(1236994, 50_000),)), a_death(at_ms=400_000), Defensives(),
+        (DUDE,), (press(1236994, 50_000),), a_death(at_ms=400_000), Defensives(),
         load_consumables(), Externals(), visible_from_ms=0,
     )
     assert at.consumables == ()
 
 
 def test_the_dying_player_is_not_their_own_teammate() -> None:
-    run = loaded(casts=(press(102342, 1_000),))
-    run = run.model_copy(update={"run": run.run.model_copy(update={"players": (
-        Player(actor_id=1, name="Leafy", class_name="Druid", spec="Restoration", item_level=680),
-    )})})
+    healer = Player(
+        actor_id=1, name="Leafy", class_name="Druid", spec="Restoration", item_level=680
+    )
     at = availability_at(
-        run, a_death(), Defensives(), Consumables(),
+        (healer,), (press(102342, 1_000),), a_death(), Defensives(), Consumables(),
         Externals(entries=(("Druid/Restoration", (IRONBARK,)),)), visible_from_ms=0,
     )
     assert at.externals == ()

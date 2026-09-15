@@ -46,6 +46,7 @@ from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
 from wowperf.domain.report.model import ReferenceRecord
+from wowperf.domain.report.players import slugs_by_actor
 
 runner = CliRunner()
 
@@ -231,6 +232,9 @@ RAID_ROSTER: tuple[dict[str, Any], ...] = (
 )
 """The report owner and two teammates, so a run has more than one subject to
 choose between and `--all-players` differs visibly from the default."""
+
+RAID_ROSTER_SLUGS = slugs_by_actor(tuple(Player(**player) for player in RAID_ROSTER))
+"""Every `RAID_ROSTER` member's fragment id, minted the one way `cli.py` mints one."""
 
 RAID_SHARED_SPEC_ROSTER: tuple[dict[str, Any], ...] = (
     {
@@ -1001,8 +1005,9 @@ def test_raid_on_a_wipe_still_answers_with_the_internal_frame(tmp_path: Path) ->
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
     ids = [one["id"] for one in payload["findings"]]
+    slug = RAID_ROSTER_SLUGS[11]
     assert any(one.startswith("mechanics.") for one in ids)
-    assert "compare.parse.unavailable" in ids
+    assert f"compare.parse.unavailable.{slug}" in ids
     assert not any(one.startswith("compare.rank") and "unavailable" not in one for one in ids)
 
 
@@ -1027,6 +1032,38 @@ def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
     assert "EncounterKillRankings" in calls
 
 
+def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:
+    """Section 11: the command's output is both files, under `--out`."""
+    # Create a roster with an accented name to verify UTF-8 encoding
+    roster_with_accents = (
+        {
+            "actor_id": 11,
+            "name": "Bríala",
+            "class_name": "Mage",
+            "spec": "Arcane",
+            "item_level": 700,
+        },
+        *RAID_ROSTER[1:],
+    )
+    result = run_raid(tmp_path, roster=roster_with_accents)
+
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+    [findings] = (tmp_path / "out").glob("*.findings.json")
+    [page] = (tmp_path / "out").glob("*.html")
+    assert page.stem == findings.stem.removesuffix(".findings")
+    html_text = page.read_text(encoding="utf-8")
+    assert "<section class=\"panel\"" in html_text
+    assert "Bríala" in html_text
+
+
+def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
+    """A path printed is a path a person can open. Two files, two lines."""
+    result = run_raid(tmp_path)
+
+    assert ".findings.json" in result.output
+    assert ".html" in result.output
+
+
 def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path: Path) -> None:
     """The wiring this task exists for, read off the artefact a user gets.
 
@@ -1041,8 +1078,9 @@ def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path:
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
     by_id = {one["id"]: one for one in payload["findings"]}
+    slug = RAID_ROSTER_SLUGS[11]
 
-    damage = by_id["compare.damage.total"]
+    damage = by_id[f"compare.damage.total.{slug}"]
     assert damage["title"] == (
         "Emberkin sat below the sample median on both all damage and boss damage"
     )
@@ -1051,12 +1089,12 @@ def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path:
     assert damage["facts"][0]["value"] == "45000.0 against a median of 60000.0"
     assert damage["facts"][1]["value"] == "30420.0 against a median of 40560.0"
 
-    targets = by_id["compare.damage.targets"]
+    targets = by_id[f"compare.damage.targets.{slug}"]
     assert targets["title"] == (
         "Emberkin sent 88.0% of their damage into The Twin Fangs, against 94.0% for the sample"
     )
 
-    rank = by_id["compare.rank"]
+    rank = by_id[f"compare.rank.{slug}"]
     assert rank["title"] == (
         "Emberkin ranks in the 62nd percentile on all damage and the 48th percentile "
         "on boss damage only"
@@ -1126,7 +1164,7 @@ def test_an_empty_parse_board_says_so_rather_than_comparing_nothing(tmp_path: Pa
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
     ids = [one["id"] for one in payload["findings"]]
-    assert "compare.parse.unavailable" in ids
+    assert f"compare.parse.unavailable.{RAID_ROSTER_SLUGS[11]}" in ids
     assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": 0}
 
 
@@ -1197,10 +1235,11 @@ def test_all_players_compares_every_player_and_not_only_the_subject(tmp_path: Pa
     assert payload["comparison"]["sample_size"]["parse"] == {
         "Emberkin": 5, "Stonewake": 5, "Bríala": 5
     }
-    ranked = [one["title"] for one in payload["findings"] if one["id"] == "compare.rank"]
+    expected = {f"compare.rank.{RAID_ROSTER_SLUGS[actor]}" for actor in (11, 12, 13)}
+    ranked = {one["id"]: one["title"] for one in payload["findings"] if one["id"] in expected}
     assert len(ranked) == 3
     for name in ("Emberkin", "Stonewake", "Bríala"):
-        assert any(title.startswith(name) for title in ranked)
+        assert any(title.startswith(name) for title in ranked.values())
 
 
 def test_by_default_only_the_subject_is_compared(tmp_path: Path) -> None:

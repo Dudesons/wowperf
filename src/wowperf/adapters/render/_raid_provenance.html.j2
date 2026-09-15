@@ -1,0 +1,27 @@
+{# ABOUTME: The Provenance panel: what was fetched, what was withheld, every reference. #}
+{# ABOUTME: A reference carries a link and never a figure, so the page is not a corpus. #}
+<section class="panel" data-tab-panel="main" id="tab-provenance">
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
+fetched {{ report.provenance.fetched_at }}.</p>
+{# No per-row difficulty here, unlike the Mythic+ line's "+<keystone level>": the rankings query #}
+{# takes difficulty as a request argument, so every reference on this page was drawn at the #}
+{# analysed fight's own difficulty already, and the header states it once. A per-row repeat of a #}
+{# constant is how a provenance list stops being read. #}
+{% for record in report.provenance.references %}
+<p class="sub"><a href="{{ record.url }}">{{ record.axis|capitalize }} candidate{% if record.player_name %} for {{ record.player_name }}{% endif %} (report {{ record.report_code }}, fight {{ record.fight_id }})</a>{% if record.from_cache %} <span class="legend">— reused from cache, not re-fetched</span>{% endif %}{% if record.reason %} <span class="withheld">— not used: {{ record.reason }}</span>{% endif %}</p>
+{% endfor %}
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+{% for line in report.provenance.methods %}
+<p class="sub">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>

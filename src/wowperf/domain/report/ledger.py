@@ -139,8 +139,10 @@ def ledger_row(
     )
 
 
-def _field_for(finding_id: str) -> str | None:
-    return next((field for prefix, field in PLACEMENTS if finding_id.startswith(prefix)), None)
+def _field_for(
+    finding_id: str, placements: tuple[tuple[str, str], ...] = PLACEMENTS
+) -> str | None:
+    return next((field for prefix, field in placements if finding_id.startswith(prefix)), None)
 
 
 def collapse_repeated_details(rows: Sequence[LedgerRow]) -> tuple[LedgerRow, ...]:
@@ -175,19 +177,26 @@ def collapse_repeated_details(rows: Sequence[LedgerRow]) -> tuple[LedgerRow, ...
 def place_rows(
     findings: Sequence[Finding], titles_by_id: dict[str, str], exclude: set[str],
     tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
+    placements: tuple[tuple[str, str], ...] = PLACEMENTS,
 ) -> dict[str, tuple[LedgerRow, ...]]:
-    """Every finding's row, keyed by the `Report` field it lands in.
+    """Every finding's row, keyed by the field it lands in.
 
     `exclude` holds the ids the decomposition already claimed, so a timed
     `deaths.total` heads the ledger and does not also sit beneath the death
     cards. Order within a field is the order the findings arrived in:
     `rank_findings` has already sorted them, and one ranking authority is enough.
+
+    `placements` defaults to the Mythic+ table so every existing caller is
+    unaffected; a raid caller passes `raid_ledger.RAID_PLACEMENTS` instead. The
+    table is an argument rather than a branch on which command is running,
+    because a raid report names fields the Mythic+ `Report` does not have and
+    lacks fields the Mythic+ table routes to.
     """
-    placed: dict[str, list[LedgerRow]] = {field: [] for _, field in PLACEMENTS}
+    placed: dict[str, list[LedgerRow]] = {field: [] for _, field in placements}
     for finding in findings:
         if finding.id in exclude:
             continue
-        field = _field_for(finding.id)
+        field = _field_for(finding.id, placements)
         if field is not None:
             placed[field].append(ledger_row(finding, titles_by_id, tooltips))
     return {field: collapse_repeated_details(rows) for field, rows in placed.items()}

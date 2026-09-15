@@ -37,7 +37,7 @@ def test_a_real_run_fills_its_sample_and_states_a_quantifier(tmp_path: Path) -> 
     subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
-    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_slug = slugs_by_actor(loaded.run.players)[subject.actor_id]
     subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, records = _samples(
         rankings,

@@ -1,0 +1,37 @@
+{# ABOUTME: The raid Summary panel: the decomposition ledger, the biggest losses, and what's left. #}
+{# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
+{% from "_macros.html.j2" import ledger_row, pointer with context %}
+<section class="panel" data-tab-panel="main" id="tab-summary">
+
+{% if report.ledger_decomposition %}
+<h2 id="ledger">Figures that contain others</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+<div class="findings">
+{% for row in report.ledger_decomposition %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
+
+{% if report.summary_pointers %}
+<h2 id="losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+{% for row in report.summary_pointers %}
+{{ pointer(row) }}
+{% endfor %}
+{% endif %}
+
+<h2 id="observations">Other findings</h2>
+{% if report.observations %}
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+{% for row in report.observations %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% else %}
+<p class="sub">Nothing else measured.</p>
+{% endif %}
+
+</section>

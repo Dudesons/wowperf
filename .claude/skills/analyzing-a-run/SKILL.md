@@ -138,10 +138,14 @@ the fast runs skipped a pack you spent time on".
 A raid boss fight is `wowperf raid <url>`, a sibling of `analyze` and not a mode of it. It takes
 `--fight`, `--player`, `--all-players`, `--no-compare`, `--cache-dir` and `--out` — the same shapes
 `analyze` offers, minus `--throughput-ceiling` and `--narrative`, which a boss fight has no pulls
-or ceiling to support. `--player`, `--all-players` and `--no-compare` are accepted but inert:
-comparing a boss fight against reference runs is not implemented yet, and the command says so on
-every run rather than silently doing nothing. It writes `<code>-<fight>.findings.json` only — no
-HTML report yet.
+or ceiling to support. `--player` and `--all-players` choose the report's subject and who else is
+named in `comparison.players`, exactly as they do for `analyze`; the mechanics comparison itself
+is drawn once for the whole encounter, never per player, so naming more players widens who the
+parse axis compares, not what the mechanics axis measures. `--no-compare` skips both axes and
+analyses the fight in isolation. A wipe withholds every finding that reads a completed-kill
+leaderboard — Warcraft Logs ranks kills alone — and both the findings file and the page say so
+rather than going quiet. It writes `<code>-<fight>.findings.json` and `<code>-<fight>.html`,
+exactly as `analyze` does.
 
 ## When it goes wrong
 

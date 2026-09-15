@@ -449,7 +449,7 @@ def test_two_names_that_reduce_to_one_slug_stay_apart() -> None:
         players=(a_player(actor_id=1, name="Bríala"), a_player(actor_id=2, name="Briala")),
         pulls=(a_pull(0, 0, 120_000),),
     )
-    slugs = slugs_by_actor(run)
+    slugs = slugs_by_actor(run.players)
     assert slugs[1] != slugs[2]
     assert slugs[1].startswith("briala")
     assert slugs[2].startswith("briala")
@@ -463,7 +463,7 @@ def test_a_findings_slug_addresses_the_card_that_carries_it() -> None:
     first = a_player(actor_id=1, name="Bríala")
     second = a_player(actor_id=2, name="Briala")
     loaded = a_loaded(players=(first, second))
-    slugs = slugs_by_actor(loaded.run)
+    slugs = slugs_by_actor(loaded.run.players)
     hers = Finding(
         id=f"compare.talents.{slugs[2]}", title="theirs", detail="d",
         confidence=Confidence.MEASURED, player_slug=slugs[2],

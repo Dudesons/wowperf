@@ -20,6 +20,7 @@ from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
+from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.season import Consumables, DefensiveAbility, Defensives, Roles
 
 DEFENSIVES = Defensives(
@@ -34,6 +35,9 @@ DEFENSIVES = Defensives(
         ),
     )
 )
+
+NO_DEFENSIVES = Defensives(entries=())
+NO_CONSUMABLES = Consumables()
 
 
 def a_loaded_encounter(**overrides: object) -> LoadedEncounter:
@@ -138,6 +142,9 @@ RAID = (
     Player(actor_id=13, name="Bríala", class_name="Mage", spec="Arcane", item_level=700),
 )
 
+RAID_SLUGS = slugs_by_actor(RAID)
+"""Every `RAID` member's fragment id, minted the one way `cli.py` mints one."""
+
 
 def a_raid_encounter() -> Encounter:
     """Three players and a 120-second fight, so a median has three takers."""
@@ -227,9 +234,9 @@ zero -- it is a different figure or no finding at all, which is what makes the
 rate row below an assertion about what `analyse_encounter` passed."""
 
 
-def a_ranked_player(amount: float, rank_percent: int) -> RankedPlayer:
+def a_ranked_player(amount: float, rank_percent: int, name: str = "Emberkin") -> RankedPlayer:
     return RankedPlayer(
-        character_name="Emberkin", class_name="Mage", spec="Arcane", role="dps",
+        character_name=name, class_name="Mage", spec="Arcane", role="dps",
         amount=amount, rank="~1200", best="~900", rank_percent=rank_percent,
         bracket_percent=rank_percent, total_parses=4_100,
     )
@@ -275,6 +282,7 @@ def a_parse_subject(**overrides: object) -> ParseSubject:
     """The subject as the adapter layer hands it over, with a full sample by default."""
     fields: dict[str, object] = {
         "player": RAID[0],
+        "slug": RAID_SLUGS[RAID[0].actor_id],
         "display_name": "Emberkin",
         "sample": ParseSample(
             members=tuple(a_parse_member(f"REF{one}", 14) for one in range(5))
@@ -311,10 +319,11 @@ def test_the_external_frame_joins_the_internal_one_over_this_fights_own_seconds(
         loaded, DEFENSIVES, Consumables(), parse_subjects=(a_parse_subject(),)
     )
     ids = [finding.id for finding in findings]
+    slug = RAID_SLUGS[RAID[0].actor_id]
 
-    assert "compare.damage.total" in ids
-    assert "compare.damage.targets" in ids
-    assert "compare.rank" in ids
+    assert f"compare.damage.total.{slug}" in ids
+    assert f"compare.damage.targets.{slug}" in ids
+    assert f"compare.rank.{slug}" in ids
     [rate] = [one for one in findings if one.id.startswith("compare.spells.rate")]
     # 10 casts over the encounter's own 374 seconds, against the sample's 3.5.
     assert "1.6" in rate.title, rate.title
@@ -334,10 +343,11 @@ def test_the_frame_is_withheld_on_a_wipe_without_the_internal_frame_going_with_i
         loaded, DEFENSIVES, Consumables(), parse_subjects=(a_parse_subject(),)
     )
     ids = [finding.id for finding in findings]
+    unavailable_id = f"compare.parse.unavailable.{RAID_SLUGS[RAID[0].actor_id]}"
 
     assert "deaths.total" in ids, "the internal frame went with the external one"
-    assert "compare.parse.unavailable" in ids
-    assert [one for one in ids if one.startswith("compare.")] == ["compare.parse.unavailable"]
+    assert unavailable_id in ids
+    assert [one for one in ids if one.startswith("compare.")] == [unavailable_id]
 
 
 def test_a_fight_with_no_subjects_named_emits_no_comparison_at_all() -> None:
@@ -361,16 +371,144 @@ def test_every_named_subject_gets_their_own_row_of_each_family() -> None:
     loaded = a_loaded_encounter(casts=OUR_CASTS, standing=a_standing(1_450_000.0, 62))
     subjects = (
         a_parse_subject(),
-        a_parse_subject(player=RAID[1], display_name="Stonewake"),
+        a_parse_subject(
+            player=RAID[1], display_name="Stonewake", slug=RAID_SLUGS[RAID[1].actor_id]
+        ),
     )
     findings = analyse_encounter(
         loaded, DEFENSIVES, Consumables(), parse_subjects=subjects
     )
 
-    ranks = [one for one in findings if one.id == "compare.rank"]
+    ranks = [
+        one for one in findings if one.id == f"compare.rank.{RAID_SLUGS[RAID[0].actor_id]}"
+    ]
     assert len(ranks) == 1, "only one roster member is in this fixture's rankings row"
     unavailable = [
         one for one in findings
-        if one.id == "compare.rank.unavailable" and "Stonewake" in one.title
+        if one.id == f"compare.rank.unavailable.{RAID_SLUGS[RAID[1].actor_id]}"
+        and "Stonewake" in one.title
     ]
     assert unavailable, "the second subject was never compared at all"
+
+
+def a_two_raider_encounter(
+    names: tuple[str, str] = ("Emberkin", "Stonewake"),
+) -> tuple[Encounter, LoadedEncounter]:
+    """Two roster members, both specced and both ranked.
+
+    Neither subject's comparison may short-circuit into an unavailable finding:
+    both carry a spec, the fight killed the boss, and both names are in the
+    rankings row `compare_rank` and `compare_damage_total` join against.
+    """
+    players = (
+        Player(actor_id=11, name=names[0], class_name="Mage", spec="Arcane", item_level=700),
+        Player(actor_id=12, name=names[1], class_name="Mage", spec="Arcane", item_level=700),
+    )
+    encounter = Encounter(
+        report_code="abc123", fight_id=22, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=True, fight_percentage=0.01, start_ms=1_000, end_ms=121_000,
+        players=players,
+    )
+    standing = ReportRankings(
+        fight_id=22, difficulty=4, partition=1, size=20, kill=True,
+        players=tuple(a_ranked_player(1_450_000.0, 62, name=name) for name in names),
+    )
+    casts = tuple(
+        CastEvent(actor_id=player.actor_id, ability_id=ARCANE_BLAST,
+                  ability_name="Arcane Blast", timestamp_ms=2_000 + one * 1_000)
+        for player in players
+        for one in range(10)
+    )
+    loaded = a_loaded_encounter(
+        encounter=encounter, casts=casts, standing=standing, boss_standing=standing,
+    )
+    return encounter, loaded
+
+
+def two_comparable_subjects(encounter: Encounter) -> tuple[ParseSubject, ...]:
+    """Both roster members, each with a parse sample thick enough to compare for real.
+
+    Slugs come from `slugs_by_actor`, exactly as `cli.py`'s `_parse_samples`
+    mints them -- never from the display name, which is the whole point of
+    the third test this helper feeds.
+    """
+    sample = ParseSample(members=tuple(a_parse_member(f"REF{one}", 14) for one in range(5)))
+    assert sample.members, "the fixture produced no parse sample to compare against"
+    slugs = slugs_by_actor(encounter.players)
+    return tuple(
+        ParseSubject(
+            player=player,
+            slug=slugs[player.actor_id],
+            display_name=player.name,
+            sample=sample,
+        )
+        for player in encounter.players
+    )
+
+
+def test_two_raiders_compared_at_once_never_share_a_finding_id() -> None:
+    """Under `--all-players` each subject's comparison is its own row.
+
+    Two subjects reach `compare_parse_axis` through the same loop, and the
+    comparison modules know nothing about who else is in the raid -- they mint
+    `compare.talents` and the loop appends the player. Without that the two
+    calls return the identical id twice, `build_raid_report` refuses the list,
+    and the page could not key an element id on one anyway.
+    """
+    encounter, loaded = a_two_raider_encounter()
+    subjects = two_comparable_subjects(encounter)
+
+    findings = analyse_encounter(
+        loaded, NO_DEFENSIVES, NO_CONSUMABLES, parse_subjects=subjects
+    )
+
+    compared = [f for f in findings if f.id.startswith("compare.")]
+    assert compared, "the fixture produced no comparison findings to distinguish"
+    ids = [f.id for f in compared]
+    assert len(ids) == len(set(ids)), sorted(i for i in ids if ids.count(i) > 1)
+
+
+def test_every_compared_finding_names_the_raider_it_is_about() -> None:
+    """The slug is a field as well as a suffix, because two consumers read it.
+
+    `RAID_COMPARISON_PREFIXES` routes a row to a card by `player_slug`, and the
+    page anchors `#finding-...` on the id. A suffix with no field leaves the
+    first consumer matching nothing, and a field with no suffix leaves the
+    second with duplicate element ids.
+    """
+    encounter, loaded = a_two_raider_encounter()
+    subjects = two_comparable_subjects(encounter)
+
+    findings = analyse_encounter(
+        loaded, NO_DEFENSIVES, NO_CONSUMABLES, parse_subjects=subjects
+    )
+
+    compared = [f for f in findings if f.id.startswith("compare.")]
+    assert compared, "the fixture produced no comparison findings to distinguish"
+    slugs = {subject.slug for subject in subjects}
+    for finding in compared:
+        assert finding.player_slug in slugs, finding.id
+        assert finding.id.endswith(f".{finding.player_slug}"), finding.id
+
+
+def test_two_raiders_whose_names_reduce_to_one_slug_stay_apart() -> None:
+    """The defect the last whole-branch review found, at the layer above it.
+
+    Plan 3a joined a rankings row on a disambiguated display name and told a
+    duplicate-named raider their kill was not a kill. The same two raiders
+    reach this loop, and here the failure would be quieter: both cards would
+    draw the same rows under two names.
+    """
+    encounter, loaded = a_two_raider_encounter(names=("Bríala", "Briala"))
+    subjects = two_comparable_subjects(encounter)
+
+    findings = analyse_encounter(
+        loaded, NO_DEFENSIVES, NO_CONSUMABLES, parse_subjects=subjects
+    )
+
+    compared = [f for f in findings if f.id.startswith("compare.")]
+    assert compared, "the fixture produced no comparison findings to distinguish"
+    ids = [f.id for f in compared]
+    assert len(ids) == len(set(ids))
+    assert len({f.player_slug for f in compared}) == 2
