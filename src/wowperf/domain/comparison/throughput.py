@@ -1,7 +1,7 @@
 # ABOUTME: How a raid player's throughput stacks up against the board, on two axes.
 # ABOUTME: compare_rank flags a percentile without diagnosing; compare_damage_total never divides.
 
-from wowperf.domain.comparison.raid_reference import RaidParseRow, RankedPlayer, ReportRankings
+from wowperf.domain.comparison.raid_reference import RaidParseRow, ReportRankings
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
 from wowperf.domain.comparison.statistics import median, observed_range
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
@@ -40,6 +40,33 @@ def _unavailable(our_name: str, detail: str) -> Finding:
     )
 
 
+def _shared_name_detail(ranked_name: str, withheld: str) -> str:
+    """Why a lookup that found two rows answers with neither, in a reader's words.
+
+    The third reason a lookup into this report's own rankings comes back with
+    nothing, and it must not read as either of the others. "There was no kill"
+    is about the attempt; "you are not on this board" is about one player's
+    absence from a row that exists; this one is about a row that exists, names
+    this player, and names somebody else identically.
+
+    A rankings row carries a character name and no actor id (`RankedPlayer`
+    records the measurement), so where two roster members share a name the two
+    rows cannot be told apart by anything the API sends. Taking the first would
+    print one player's standing on the other player's card under a
+    disambiguated title, badged `MEASURED` -- a confident wrong answer where
+    this says nothing and explains why.
+
+    Written for two or more matches: "more than one" stays true of three, which
+    a large guild raid can produce.
+    """
+    return (
+        f"More than one player in this report is named {ranked_name}, and a rankings row "
+        "carries a character name with no actor id beside it, so which of those rows is this "
+        f"player's cannot be established. {withheld} is stated rather than one that may be "
+        "another player's."
+    )
+
+
 def compare_rank(
     standing: ReportRankings | None,
     boss_standing: ReportRankings | None,
@@ -51,9 +78,10 @@ def compare_rank(
     `standing` is the report's `dps` rankings row and `boss_standing` its `bossdps`
     row -- both metrics of the same kill, never a second reference. Either is
     `None` on an attempt that produced no rankings row at all (a wipe, design
-    section 14 item 7), and a wipe or a player missing from a present row both
-    return `compare.rank.unavailable` rather than an empty list: silence would
-    read as a clean result, and this says why there is nothing instead.
+    section 14 item 7), and a wipe, a player missing from a present row and a
+    name that row carries twice all return `compare.rank.unavailable` rather
+    than an empty list: silence would read as a clean result, and this says why
+    there is nothing instead.
 
     `our_name` is the spelling every sentence below shows a reader, which
     `display_names` disambiguates as `Emberkin (actor 693)` whenever two roster
@@ -63,6 +91,13 @@ def compare_rank(
     nobody and reports a kill as an attempt with no rankings row. Two arguments
     rather than one because the two jobs are genuinely different -- collapsing
     them is what produced that sentence.
+
+    The plain name is what a row can be found by and not what tells two players
+    apart, so the shared-name case has a third sentence of its own: two rows
+    folding to one name are two rows the API gives nothing to separate, and this
+    withholds rather than take the first. A reader can tell the three states
+    apart -- no kill, absent from a row that exists, or a name this report
+    carries twice.
 
     Badged `MEASURED`: Warcraft Logs computed the percentile itself and nothing
     here reconstructs it. `seconds_lost` is always `None` -- a percentile costs
@@ -77,8 +112,16 @@ def compare_rank(
                 "row for it, and no percentile can be stated.",
             )
         ]
-    player = standing.player_named(ranked_name)
-    if player is None:
+    rows = standing.rows_named(ranked_name)
+    boss_rows = boss_standing.rows_named(ranked_name) if boss_standing is not None else ()
+    # Both metrics are checked before either is read: the two boards are the
+    # same roster under two measurements, so a name shared on one is shared on
+    # the other, and a card that stated an unambiguous all-damage percentile
+    # beside somebody else's boss-damage one would be half right and wholly
+    # unreadable.
+    if len(rows) > 1 or len(boss_rows) > 1:
+        return [_unavailable(our_name, _shared_name_detail(ranked_name, "No percentile"))]
+    if not rows:
         return [
             _unavailable(
                 our_name,
@@ -86,9 +129,8 @@ def compare_rank(
                 "be stated for them.",
             )
         ]
-    boss_player = (
-        boss_standing.player_named(ranked_name) if boss_standing is not None else None
-    )
+    player = rows[0]
+    boss_player = boss_rows[0] if boss_rows else None
 
     all_ordinal = _ordinal(player.rank_percent)
     facts = [
@@ -156,39 +198,58 @@ shipped once, comparing an absolute total against a per-minute figure.
 """
 
 
-def _damage_unavailable(our_name: str) -> Finding:
+def _damage_unavailable(our_name: str, detail: str) -> Finding:
+    """One title over four reasons, each of which a reader must be able to name.
+
+    The title says what is missing and the detail says why. Four states leave
+    this comparison with nothing to state -- no kill, a name this report carries
+    twice, a player absent from a row that exists, and a leaderboard that came
+    back empty -- and each asks something different of a reader, so each carries
+    a sentence of its own rather than a shared apology.
+    """
     return Finding(
         id=DAMAGE_UNAVAILABLE_ID,
         title=f"No damage comparison is available for {our_name}",
-        detail=(
-            "This attempt did not kill the boss, so Warcraft Logs computed no damage "
-            "rankings for it, and no comparison against the board can be made."
-        ),
+        detail=detail,
         confidence=Confidence.MEASURED,
         seconds_lost=None,
     )
 
 
-def _damage_unavailable_no_sample(our_name: str, axis: str) -> Finding:
+DAMAGE_WIPE_DETAIL = (
+    "This attempt did not kill the boss, so Warcraft Logs computed no damage "
+    "rankings for it, and no comparison against the board can be made."
+)
+"""Why there is no damage comparison at all: Warcraft Logs ranks kills alone."""
+
+
+def _damage_absent_detail(our_name: str) -> str:
+    """The kill happened and the rankings row does not carry this player.
+
+    Distinct from the wipe above and from the shared name beside it: a row
+    exists, it names other players, and it names nobody as this one. "This
+    attempt did not kill the boss" is false of that attempt, and a reader acting
+    on it would go looking for a kill the log already holds.
+    """
+    return (
+        f"This attempt killed the boss, but {our_name} does not appear in this report's "
+        "damage rankings for it, so there is no figure of theirs to set against the board."
+    )
+
+
+def _damage_no_sample_detail(axis: str) -> str:
     """The kill happened, but the axis named by `axis` has nothing to compare against.
 
-    Worded so it cannot be mistaken for `_damage_unavailable`'s wipe case: this
-    attempt killed the boss, and the log says so. What is missing is the
-    leaderboard's own reference sample -- a thin sample for an uncommon spec at
-    this difficulty, or a fetch that returned nothing -- not a rankings row for
-    us. A reader must be able to tell "there was no kill" from "there was a
-    kill and no reference sample to compare it against", because those call
-    for different things.
+    Worded so it cannot be mistaken for the wipe case: this attempt killed the
+    boss, and the log says so. What is missing is the leaderboard's own
+    reference sample -- a thin sample for an uncommon spec at this difficulty,
+    or a fetch that returned nothing -- not a rankings row for us. A reader must
+    be able to tell "there was no kill" from "there was a kill and no reference
+    sample to compare it against", because those call for different things.
     """
-    return Finding(
-        id=DAMAGE_UNAVAILABLE_ID,
-        title=f"No damage comparison is available for {our_name}",
-        detail=(
-            f"This attempt killed the boss, but the {axis} leaderboard returned no "
-            "reference rows to compare against, so no median can be stated for that metric."
-        ),
-        confidence=Confidence.MEASURED,
-        seconds_lost=None,
+    return (
+        f"This attempt killed the boss, but the {axis} leaderboard returned no "
+        "reference rows to compare against, so no median can be stated for that metric."
     )
 
 
@@ -256,19 +317,31 @@ def _labelled_too_few(finding: Finding, axis: str, eligible: int) -> Finding:
 
 
 def compare_damage_total(
-    ours: RankedPlayer | None,
-    our_boss: RankedPlayer | None,
+    standing: ReportRankings | None,
+    boss_standing: ReportRankings | None,
     board: tuple[RaidParseRow, ...],
     boss_board: tuple[RaidParseRow, ...],
     our_name: str,
+    ranked_name: str,
 ) -> list[Finding]:
     """Our damage throughput against the board median, on both metrics at once.
 
-    `ours` and `our_boss` are the player's own rows on the all-damage and the
-    boss-damage-only leaderboards. Either is `None` on an attempt that produced no
-    rankings row at all (a wipe), and that returns `compare.damage.total.unavailable`
-    rather than an empty list: silence would read as a clean result, and this says
-    why there is nothing instead.
+    `standing` and `boss_standing` are this report's own rankings rows for the
+    all-damage and the boss-damage-only metrics -- the whole containers and not
+    our row out of them, exactly as `compare_rank` takes them and for the same
+    reason: the three ways a row can fail to yield our figure say different
+    things to a reader, and a caller that resolved the row first could only hand
+    over `None` for all three. Either is `None` on an attempt that produced no
+    rankings row at all (a wipe), and that returns
+    `compare.damage.total.unavailable` rather than an empty list: silence would
+    read as a clean result, and this says why there is nothing instead.
+
+    `our_name` is the spelling every sentence shows a reader and `ranked_name`
+    the plain roster name a rankings row carries; `compare_rank`'s docstring
+    records why the two are separate arguments. A name two roster members share
+    folds to two rows with nothing to separate them, and that withholds too --
+    the first match would be another player's throughput printed under this
+    player's disambiguated title and badged `MEASURED`.
 
     A kill can still leave `board` or `boss_board` empty -- the two leaderboards
     are fetched independently of whether this report's own rankings produced a
@@ -297,20 +370,37 @@ def compare_damage_total(
     to show: the title states it as a difference in where the damage landed, never
     as a claim that either outcome was avoidable.
     """
-    if ours is None:
-        return [_damage_unavailable(our_name)]
+    if standing is None:
+        return [_damage_unavailable(our_name, DAMAGE_WIPE_DETAIL)]
+
+    rows = standing.rows_named(ranked_name)
+    boss_rows = boss_standing.rows_named(ranked_name) if boss_standing is not None else ()
+    # Both metrics are checked before either is read, for the reason
+    # `compare_rank` gives at the same check: the two boards measure one roster
+    # twice, so a name shared on one is shared on the other.
+    if len(rows) > 1 or len(boss_rows) > 1:
+        return [
+            _damage_unavailable(
+                our_name, _shared_name_detail(ranked_name, "No damage comparison")
+            )
+        ]
+    if not rows:
+        return [_damage_unavailable(our_name, _damage_absent_detail(our_name))]
+    ours = rows[0]
+    our_boss = boss_rows[0] if boss_rows else None
 
     # A kill can still leave a leaderboard empty -- a thin sample for an
     # uncommon spec at this difficulty, or a fetch that returned nothing.
     # That is a real state, not a failure to guard against: `_metric_state`
     # would otherwise hand an empty list to `median`, which raises. Checked
     # before either axis is touched, so neither board is read past its own
-    # emptiness, and the two reasons -- no kill, no reference sample -- stay
+    # emptiness, and the four reasons -- no kill, a name this report carries
+    # twice, a player absent from the row, no reference sample -- stay
     # distinguishable in the finding's own words.
     if not board:
-        return [_damage_unavailable_no_sample(our_name, "all damage")]
+        return [_damage_unavailable(our_name, _damage_no_sample_detail("all damage"))]
     if our_boss is not None and not boss_board:
-        return [_damage_unavailable_no_sample(our_name, "boss damage")]
+        return [_damage_unavailable(our_name, _damage_no_sample_detail("boss damage"))]
 
     all_middle, all_low, all_high, all_used, all_eligible = _metric_state(board)
     all_status = _status(ours.amount, all_middle)

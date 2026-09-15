@@ -72,9 +72,21 @@ class ReportRankings(Frozen):
     kill: bool
     players: tuple[RankedPlayer, ...] = ()
 
-    def player_named(self, name: str) -> RankedPlayer | None:
+    def rows_named(self, name: str) -> tuple[RankedPlayer, ...]:
+        """Every row whose character name folds to `name`: none, one, or several.
+
+        A tuple rather than the first match, because "several" is a state this
+        report cannot resolve and must not paper over. A rankings row carries no
+        actor id -- `RankedPlayer` above records why -- so two roster members
+        sharing a name, which twenty players make ordinary, are two rows nothing
+        here can tell apart. Answering with the first would hand the second
+        player the first one's percentile and throughput under their own name,
+        badged `MEASURED`.
+
+        Reading the count is the caller's job. Both raid callers withhold above
+        one and say which name the two players share.
+        """
         folded = name.casefold()
-        return next(
-            (player for player in self.players if player.character_name.casefold() == folded),
-            None,
+        return tuple(
+            player for player in self.players if player.character_name.casefold() == folded
         )

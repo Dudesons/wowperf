@@ -1,22 +1,30 @@
 # ABOUTME: Behaviour tests for compare_rank, the raid percentile stated as triage.
-# ABOUTME: The interesting cases are a metric gap, agreement, a wipe, and an absent player.
+# ABOUTME: The cases are a metric gap, agreement, a wipe, an absent player, and a shared name.
 
 from wowperf.domain.comparison.raid_reference import RaidParseRow, RankedPlayer, ReportRankings
 from wowperf.domain.comparison.throughput import compare_damage_total, compare_rank
 from wowperf.domain.findings import Confidence
 
 
+def rankings(*players: RankedPlayer) -> ReportRankings:
+    """One kill's rankings row carrying exactly these players.
+
+    Variadic because the count is the interesting part on one of these tests: a
+    row naming two players of one name is what neither comparison may resolve.
+    """
+    return ReportRankings(
+        fight_id=2, difficulty=4, partition=1, size=20, kill=True, players=players,
+    )
+
+
 def standing(
     rank_percent: int, bracket_percent: int, amount: float, total_parses: int = 31004
 ) -> ReportRankings:
-    return ReportRankings(
-        fight_id=2, difficulty=4, partition=1, size=20, kill=True,
-        players=(RankedPlayer(
-            character_name="Emberkin", class_name="Evoker", spec="Devastation", role="dps",
-            amount=amount, rank="~12", best="~9", rank_percent=rank_percent,
-            bracket_percent=bracket_percent, total_parses=total_parses,
-        ),),
-    )
+    return rankings(RankedPlayer(
+        character_name="Emberkin", class_name="Evoker", spec="Devastation", role="dps",
+        amount=amount, rank="~12", best="~9", rank_percent=rank_percent,
+        bracket_percent=bracket_percent, total_parses=total_parses,
+    ))
 
 
 def test_the_percentile_states_both_metrics_and_names_itself_as_triage() -> None:
@@ -120,9 +128,10 @@ def test_our_rate_is_compared_against_the_board_median_without_dividing_anything
     of 100, 200, 300, 400, 500 is 300, and none of the five is 300, so a
     mutation that picks a row instead of the median cannot pass."""
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0),
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
         board(100.0, 200.0, 300.0, 400.0, 500.0),
         board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
         "Emberkin",
     )
     assert len(findings) == 1
@@ -137,9 +146,10 @@ def test_a_player_above_one_median_and_below_the_other_is_told_so() -> None:
     """The signal the side-by-side pair exists for: ahead on everything, behind
     on the boss, means damage went into adds."""
     findings = compare_damage_total(
-        ranked(400.0), ranked(90.0),
+        rankings(ranked(400.0)), rankings(ranked(90.0)),
         board(100.0, 200.0, 300.0, 400.0, 500.0),
         board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
         "Emberkin",
     )
     title = findings[0].title.lower()
@@ -148,9 +158,10 @@ def test_a_player_above_one_median_and_below_the_other_is_told_so() -> None:
 
 def test_the_observed_range_is_stated_and_is_not_the_median() -> None:
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0),
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
         board(100.0, 200.0, 300.0, 400.0, 500.0),
         board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
         "Emberkin",
     )
     evidence = " ".join(findings[0].evidence)
@@ -161,7 +172,11 @@ def test_only_the_first_five_of_a_longer_board_are_counted() -> None:
     """SAMPLE_SIZE is 5 everywhere else in this codebase and is 5 here."""
     long_board = board(100.0, 200.0, 300.0, 400.0, 500.0, 10_000.0, 20_000.0)
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), long_board, long_board, "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        long_board,
+        long_board,
+        "Emberkin",
+        "Emberkin",
     )
     values = {fact.label: fact.value for fact in findings[0].facts}
     assert "300" in values["All damage"]
@@ -179,7 +194,11 @@ def test_two_references_fall_back_to_a_single_one_and_say_so() -> None:
     the figure the fallback produces is not the figure it replaced.
     """
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), board(100.0, 200.0), board(50.0, 100.0), "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        board(100.0, 200.0),
+        board(50.0, 100.0),
+        "Emberkin",
+        "Emberkin",
     )
     values = {fact.label: fact.value for fact in findings[0].facts}
 
@@ -202,7 +221,11 @@ def test_below_the_floor_no_sentence_on_the_card_claims_an_aggregate() -> None:
     disagreeing with an evidence line beneath them.
     """
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), board(100.0, 200.0), board(50.0, 100.0), "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        board(100.0, 200.0),
+        board(50.0, 100.0),
+        "Emberkin",
+        "Emberkin",
     )
     one = findings[0]
 
@@ -218,9 +241,10 @@ def test_one_axis_below_the_floor_leaves_the_other_one_calling_itself_a_median()
     independently, so one card can carry an aggregate and a single reference at
     once. Neither noun may be spread onto the other metric."""
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0),
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
         board(100.0),
         board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
         "Emberkin",
     )
     one = findings[0]
@@ -235,7 +259,7 @@ def test_one_axis_below_the_floor_leaves_the_other_one_calling_itself_a_median()
 
 
 def test_no_damage_comparison_is_printed_for_an_attempt_that_did_not_kill() -> None:
-    findings = compare_damage_total(None, None, (), (), "Emberkin")
+    findings = compare_damage_total(None, None, (), (), "Emberkin", "Emberkin")
     assert len(findings) == 1
     assert findings[0].id == "compare.damage.total.unavailable"
     assert "did not kill" in findings[0].detail
@@ -247,7 +271,11 @@ def test_an_empty_all_damage_board_leaves_the_comparison_unavailable() -> None:
     different reason than a wipe, and the wording must say so: not "did not
     kill", because this attempt did."""
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), (), board(50.0, 100.0, 150.0), "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        (),
+        board(50.0, 100.0, 150.0),
+        "Emberkin",
+        "Emberkin",
     )
     assert len(findings) == 1
     assert findings[0].id == "compare.damage.total.unavailable"
@@ -259,7 +287,11 @@ def test_an_empty_boss_damage_board_leaves_the_comparison_unavailable() -> None:
     """The reverse of the above: the all-damage board is fine, the boss-only
     board came back empty. Either alone must withhold the whole comparison."""
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), board(100.0, 200.0, 300.0), (), "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        board(100.0, 200.0, 300.0),
+        (),
+        "Emberkin",
+        "Emberkin",
     )
     assert len(findings) == 1
     assert findings[0].id == "compare.damage.total.unavailable"
@@ -272,7 +304,11 @@ def test_two_axes_below_floor_with_different_counts_are_each_labelled() -> None:
     collapse into indistinguishable notes -- a reader needs to know which
     count belongs to which metric."""
     findings = compare_damage_total(
-        ranked(150.0), ranked(90.0), board(100.0), board(50.0, 100.0), "Emberkin"
+        rankings(ranked(150.0)), rankings(ranked(90.0)),
+        board(100.0),
+        board(50.0, 100.0),
+        "Emberkin",
+        "Emberkin",
     )
     evidence = " ".join(findings[0].evidence)
     assert (
@@ -283,3 +319,89 @@ def test_two_axes_below_floor_with_different_counts_are_each_labelled() -> None:
         "boss damage: a single reference, not an aggregate: 2 of the sample were comparable"
         in evidence
     )
+
+
+FULL_BOARD = board(100.0, 200.0, 300.0, 400.0, 500.0)
+FULL_BOSS_BOARD = board(50.0, 100.0, 150.0, 200.0, 250.0)
+"""Two full boards, so nothing else on the card can be what withholds it."""
+
+
+def test_a_name_two_raiders_share_withholds_both_comparisons_rather_than_guessing() -> None:
+    """The row cannot be joined to one of the two, so neither comparison states one.
+
+    A rankings row carries a character name and no actor id, and twenty players
+    make a shared name ordinary. Taking the first match hands the second player
+    the first one's percentile, parse count and throughput under their own
+    disambiguated title, badged `MEASURED` -- a confident wrong answer where the
+    unjoined spelling at least produced a loud one.
+
+    Both families are asserted together because both read the same row, and a
+    card is what a reader meets: one of the two withholding while the other
+    printed somebody else's figure is the same defect half fixed.
+    """
+    shared = rankings(ranked(150.0), ranked(400.0))
+    shown = "Emberkin (actor 7)"
+
+    rank = compare_rank(shared, shared, shown, "Emberkin")
+    damage = compare_damage_total(
+        shared, shared, FULL_BOARD, FULL_BOSS_BOARD, shown, "Emberkin"
+    )
+
+    assert [one.id for one in rank] == ["compare.rank.unavailable"]
+    assert [one.id for one in damage] == ["compare.damage.total.unavailable"]
+    assert rank[0].title == "No percentile is available for Emberkin (actor 7)"
+    assert damage[0].title == "No damage comparison is available for Emberkin (actor 7)"
+    for finding in (*rank, *damage):
+        assert finding.confidence is Confidence.MEASURED
+        assert finding.seconds_lost is None
+        # The reason names the shared-name case, and the name it is shared on.
+        assert "More than one player in this report is named Emberkin" in finding.detail
+        # No figure off either row reaches a reader under one player's name.
+        assert finding.facts == ()
+        assert finding.evidence == ()
+
+
+def test_the_shared_name_reason_is_neither_the_wipe_nor_the_absent_one() -> None:
+    """Three states, three sentences: no kill, not on this board, two of this name.
+
+    Asserted against the other two reasons themselves rather than by searching
+    for a phrase, so a third sentence that drifted into either of the others
+    fails here whatever words it drifted into.
+    """
+    shared = rankings(ranked(150.0), ranked(400.0))
+    shown = "Emberkin (actor 7)"
+
+    shared_rank = compare_rank(shared, shared, shown, "Emberkin")[0]
+    wipe_rank = compare_rank(None, None, shown, "Emberkin")[0]
+    absent_rank = compare_rank(standing(96, 94, 247358.0), None, "Stonewake", "Stonewake")[0]
+
+    shared_damage = compare_damage_total(
+        shared, shared, FULL_BOARD, FULL_BOSS_BOARD, shown, "Emberkin"
+    )[0]
+    wipe_damage = compare_damage_total(None, None, (), (), shown, "Emberkin")[0]
+    absent_damage = compare_damage_total(
+        rankings(ranked(150.0)), None, FULL_BOARD, (), "Stonewake", "Stonewake"
+    )[0]
+
+    assert len({shared_rank.detail, wipe_rank.detail, absent_rank.detail}) == 3
+    assert len({shared_damage.detail, wipe_damage.detail, absent_damage.detail}) == 3
+    # The wipe sentence says the boss lived, and neither other sentence may.
+    assert "did not kill" in wipe_rank.detail and "did not kill" in wipe_damage.detail
+    for finding in (shared_rank, absent_rank, shared_damage, absent_damage):
+        assert "did not kill" not in finding.detail
+
+
+def test_a_player_absent_from_a_present_rankings_row_is_not_told_the_boss_lived() -> None:
+    """A row exists, it names other players, and it names nobody as this one.
+
+    That is not a wipe, and the damage card used to say it was: the seam
+    resolved the row and handed over `None`, which is the same `None` a wipe
+    produces. The container arrives whole for this reason.
+    """
+    findings = compare_damage_total(
+        rankings(ranked(150.0)), None, FULL_BOARD, (), "Stonewake", "Stonewake"
+    )
+
+    assert [one.id for one in findings] == ["compare.damage.total.unavailable"]
+    assert "did not kill" not in findings[0].detail
+    assert "Stonewake does not appear in this report's damage rankings" in findings[0].detail

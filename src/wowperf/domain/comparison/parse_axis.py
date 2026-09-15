@@ -158,16 +158,17 @@ def compare_parse_axis(
     in `analyse_encounter`, which is the one place raid findings are ranked.
 
     `standing` and `boss_standing` are this report's own rankings rows for the
-    two metrics -- the whole containers, not our row out of them, because
-    `compare_rank` has to tell "no rankings row at all, because this was a
-    wipe" from "a row exists and this player is not in it", and those two say
-    different things to a reader. `compare_damage_total` reads only our own row,
-    so it is handed exactly that.
+    two metrics -- the whole containers, not our row out of them, because both
+    callers have to tell "no rankings row at all, because this was a wipe" from
+    "a row exists and this player is not in it" from "a row exists and two
+    players in this report answer to this name", and those three say different
+    things to a reader. A seam that resolved the row here could hand over
+    nothing but `None` for all three, which is one sentence for three states.
 
     `our_name` is what every sentence shows a reader and is never what a row is
     found by: it is `display_names`' spelling, which two roster members sharing
     a name turn into `Emberkin (actor 693)`, and a rankings row carries the
-    plain name. Both joins therefore read `our_player.name`, and both keep
+    plain name. Both lookups therefore read `our_player.name`, and both keep
     `our_name` for the sentence.
 
     Both raid counting rules are bound here, and this is the only place they
@@ -205,17 +206,18 @@ def compare_parse_axis(
 
     findings: list[Finding] = [
         *compare_damage_total(
+            standing,
+            boss_standing,
+            board,
+            boss_board,
+            our_name,
             # `our_player.name` and never `our_name`: a rankings row carries the
             # plain character name, and `our_name` is the spelling
             # `display_names` rewrites to `Emberkin (actor 693)` when two roster
             # members share a name -- which twenty players make ordinary. Joined
             # on the shown spelling, both of those players are told the boss was
             # never killed, on a kill, beside families that compared fine.
-            standing.player_named(our_player.name),
-            boss_standing.player_named(our_player.name) if boss_standing is not None else None,
-            board,
-            boss_board,
-            our_name,
+            our_player.name,
         ),
         *compare_targets(our_targets, their_targets, our_name),
     ]

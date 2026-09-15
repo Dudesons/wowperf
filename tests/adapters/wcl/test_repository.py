@@ -1234,10 +1234,8 @@ def test_a_kill_loads_both_the_dps_and_bossdps_rankings_rows() -> None:
 
     assert loaded.standing is not None
     assert loaded.boss_standing is not None
-    dps_player = loaded.standing.player_named("Emberkin")
-    boss_player = loaded.boss_standing.player_named("Emberkin")
-    assert dps_player is not None
-    assert boss_player is not None
+    [dps_player] = loaded.standing.rows_named("Emberkin")
+    [boss_player] = loaded.boss_standing.rows_named("Emberkin")
     assert dps_player.amount == 59991.462335693
     assert boss_player.amount == 44818.47826087
     assert dps_player.amount != boss_player.amount

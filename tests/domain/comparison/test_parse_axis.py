@@ -174,28 +174,40 @@ being read. The Arcane Blast medians here are 3.5 casts a minute against our
 they are 2.8 against 2.0, which does not."""
 
 
-def a_standing(amount: float, rank_percent: int, total_parses: int) -> ReportRankings:
+def a_ranked_player(amount: float, rank_percent: int, total_parses: int) -> RankedPlayer:
+    """One row of this report's own rankings, always named for our subject.
+
+    The name is the constant here and the figures vary, which is what the
+    shared-name case needs: two rows a reader could tell apart by their numbers
+    and a join cannot tell apart at all.
+    """
+    return RankedPlayer(
+        character_name="Emberkin",
+        class_name="Mage",
+        spec="Arcane",
+        role="dps",
+        amount=amount,
+        rank="~1200",
+        best="~900",
+        rank_percent=rank_percent,
+        bracket_percent=rank_percent,
+        total_parses=total_parses,
+    )
+
+
+def a_standing_of(*players: RankedPlayer) -> ReportRankings:
     return ReportRankings(
         fight_id=7,
         difficulty=5,
         partition=2,
         size=20,
         kill=True,
-        players=(
-            RankedPlayer(
-                character_name="Emberkin",
-                class_name="Mage",
-                spec="Arcane",
-                role="dps",
-                amount=amount,
-                rank="~1200",
-                best="~900",
-                rank_percent=rank_percent,
-                bracket_percent=rank_percent,
-                total_parses=total_parses,
-            ),
-        ),
+        players=players,
     )
+
+
+def a_standing(amount: float, rank_percent: int, total_parses: int) -> ReportRankings:
+    return a_standing_of(a_ranked_player(amount, rank_percent, total_parses))
 
 
 def a_board(amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
@@ -256,6 +268,23 @@ NO_SECONDS_ARGS = {
 }
 """One reference whose fight length came back as nothing, which is what both
 availability sentences are for."""
+
+DOUBLED_STANDING = a_standing_of(
+    a_ranked_player(1_450_000.0, 62, 4_100), a_ranked_player(990_000.0, 41, 4_100)
+)
+"""A kill whose rankings row names two players alike -- the shape twenty raiders make.
+
+The two rows differ in every figure a finding would print, so a comparison that
+took either of them states a number this fixture can point at.
+"""
+
+SHARED_NAME_ARGS = {
+    **KILL_ARGS,
+    "our_name": "Emberkin (actor 693)",
+    "standing": DOUBLED_STANDING,
+    "boss_standing": DOUBLED_STANDING,
+}
+"""The same kill, read for a player whose name this report carries twice."""
 
 
 def one_of(findings: list[Finding], prefix: str) -> Finding:
@@ -332,6 +361,40 @@ def test_a_raider_who_shares_a_name_is_still_joined_to_their_rankings_row() -> N
     assert shown in by_id["compare.damage.targets"].title
 
 
+def test_a_report_naming_two_raiders_alike_withholds_the_two_families_that_read_its_row() -> None:
+    """The other half of the case the disambiguated display name exists for.
+
+    Joining on the plain roster name is what puts a shared-name player back on
+    their own rankings row -- and where the name really is shared, it finds two
+    rows with nothing to separate them, because a rankings row carries a
+    character name and no actor id. Taking the first would print the other
+    player's percentile, parse count and throughput on this player's card under
+    a title naming this player, badged `MEASURED`: the loud wrong answer the
+    join replaced, turned into a quiet one.
+
+    The four families that read a leaderboard rather than this report's own row
+    are untouched, so the shared name costs a reader two cards and not the axis.
+    """
+    findings = compare_parse_axis(**SHARED_NAME_ARGS)  # type: ignore[arg-type]
+    by_id = {one.id: one for one in findings}
+
+    assert "compare.rank" not in by_id
+    assert "compare.damage.total" not in by_id
+    for withheld in ("compare.rank.unavailable", "compare.damage.total.unavailable"):
+        note = by_id[withheld]
+        assert note.confidence is Confidence.MEASURED
+        assert "More than one player in this report is named Emberkin" in note.detail
+        assert "did not kill" not in note.detail
+        assert note.title.endswith("Emberkin (actor 693)")
+        # Neither row's figures reach the page under one player's name.
+        assert "1450000" not in note.detail and "990000" not in note.detail
+
+    assert "compare.damage.targets" in by_id
+    assert any(one.startswith("compare.spells") for one in by_id)
+    assert "compare.talents" in by_id
+    assert any(one.startswith("compare.uptime") for one in by_id)
+
+
 def test_a_raid_cast_reaches_the_rate_comparison_at_all() -> None:
     """The Task 2 trap, asserted end to end rather than only at `casts_in`.
     Before the predicate, every ability counted zero here and nothing raised."""
@@ -353,6 +416,7 @@ def test_no_finding_this_axis_emits_claims_a_player_should_have_done_anything() 
         + compare_parse_axis(**BELOW_FLOOR_ARGS)  # type: ignore[arg-type]
         + compare_parse_axis(**NO_SAMPLE_ARGS)  # type: ignore[arg-type]
         + compare_parse_axis(**NO_SECONDS_ARGS)  # type: ignore[arg-type]
+        + compare_parse_axis(**SHARED_NAME_ARGS)  # type: ignore[arg-type]
         + compare_parse_axis(
             our_player=PLAYER, our_name="Emberkin", our_seconds=300.0, our_casts=(),
             our_auras=None, sample=ParseSample(), standing=None, boss_standing=None,
@@ -372,7 +436,9 @@ def test_every_finding_id_is_unique_over_one_kill() -> None:
     Two families minting the same id is how a page draws one card over another,
     and the sibling modules each keep this test for the same reason.
     """
-    for arguments in (KILL_ARGS, BELOW_FLOOR_ARGS, NO_SAMPLE_ARGS, NO_SECONDS_ARGS):
+    for arguments in (
+        KILL_ARGS, BELOW_FLOOR_ARGS, NO_SAMPLE_ARGS, NO_SECONDS_ARGS, SHARED_NAME_ARGS
+    ):
         ids = [one.id for one in compare_parse_axis(**arguments)]  # type: ignore[arg-type]
         assert len(ids) == len(set(ids)), sorted(ids)
 

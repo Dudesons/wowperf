@@ -52,8 +52,7 @@ def test_a_rank_survives_the_tilde_the_api_puts_on_it() -> None:
     """`rank` and `best` are strings. Measured 2026-09-14: they read "~5764"."""
     built = build_report_rankings(PAYLOAD, fight_id=2)
     assert built is not None
-    tank = built.player_named("Stonewake")
-    assert tank is not None
+    [tank] = built.rows_named("Stonewake")
     assert tank.rank == "~3747"
     assert tank.best == "~2017"
     assert tank.rank_percent == 87
@@ -64,9 +63,8 @@ def test_the_two_players_differ_in_every_field_a_finding_reads() -> None:
     """Guard against an identity fixture: two rows that agree test nothing."""
     built = build_report_rankings(PAYLOAD, fight_id=2)
     assert built is not None
-    tank = built.player_named("Stonewake")
-    dps = built.player_named("Emberkin")
-    assert tank is not None and dps is not None
+    [tank] = built.rows_named("Stonewake")
+    [dps] = built.rows_named("Emberkin")
     assert tank.amount != dps.amount
     assert tank.rank != dps.rank
     assert tank.rank_percent != dps.rank_percent
@@ -92,6 +90,6 @@ def test_a_row_for_another_fight_is_not_mistaken_for_ours() -> None:
 def test_a_name_matches_whatever_case_the_roster_spells_it_in() -> None:
     built = build_report_rankings(PAYLOAD, fight_id=2)
     assert built is not None
-    assert built.player_named("stonewake") is not None
-    assert built.player_named("STONEWAKE") is not None
-    assert built.player_named("Bríala") is None
+    assert len(built.rows_named("stonewake")) == 1
+    assert len(built.rows_named("STONEWAKE")) == 1
+    assert built.rows_named("Bríala") == ()
