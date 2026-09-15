@@ -20,3 +20,18 @@ verified_high_key = "2026-09-03"
 # value used then, dated, rather than a literal in an adapter.
 partition = 1
 verified = "2026-09-14"
+
+[raid.difficulty_names]
+# Warcraft Logs' own difficulty numbers for a raid encounter. Neither
+# `ReportFight` nor `worldData.encounter` echoes a name alongside the number
+# an analysed fight carries (introspected 2026-09-15). A name does exist one
+# hop further out, on `Zone.difficulties`, verified live the same day against
+# `worldData.encounter(id: 3470).zone`: ids 5, 4, 3 and 1 named Mythic,
+# Heroic, Normal and LFR. Reaching it needs a query this project does not
+# otherwise make for a fight, so the mapping is hand-kept here instead, dated
+# against that same query -- see `.claude/skills/wcl-api/SKILL.md`. A report
+# that printed the number would be asking its reader to know this table.
+3 = "Normal"
+4 = "Heroic"
+5 = "Mythic"
+verified = "2026-09-15"

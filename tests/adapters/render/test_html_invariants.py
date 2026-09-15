@@ -57,6 +57,7 @@ from wowperf.domain.report.model import (
     TimelineTrack,
     all_ledger_rows,
 )
+from wowperf.domain.report.raid_frame import RaidHeader
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -948,6 +949,7 @@ def test_every_withheld_section_gives_a_reason() -> None:
 # pre-formatted as a string, the way every other seconds-lost figure already is.
 NUMBERS_THAT_ARE_NOT_TOTALS = {
     (Header, "keystone_level"),  # a difficulty tier, not a duration
+    (RaidHeader, "size"),  # a raid size, not a duration
     (Provenance, "fight_id"),  # an id, not a duration
     (ReferenceRecord, "fight_id"),  # an id, not a duration
     (ReferenceRecord, "keystone_level"),  # a difficulty tier, not a duration
