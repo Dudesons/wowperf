@@ -100,6 +100,16 @@ class LoadedEncounter(Frozen):
         return (self.encounter.start_ms, self.encounter.end_ms)
 
     @property
+    def has_pulls(self) -> bool:
+        """A boss fight is one continuous window. See `domain/fight.py`.
+
+        `Encounter` carries no pulls at all, which is the first thing its own
+        docstring says, so this is a fact about the fight and not a figure
+        that could come back otherwise.
+        """
+        return False
+
+    @property
     def ability_icon_map(self) -> Mapping[int, str]:
         """Icon file names by ability game id, as a read-only mapping."""
         return MappingProxyType(dict(self.ability_icons))

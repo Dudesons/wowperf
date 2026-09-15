@@ -49,7 +49,7 @@ from wowperf.domain.report.tooltip import (
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
 
-def _when(death: Death, start_ms: int) -> str:
+def _when(death: Death, start_ms: int, has_pulls: bool) -> str:
     """Elapsed time since the fight's start, never the absolute report timestamp.
 
     Clamped to zero so a death logged before the first pull — or a run with
@@ -59,10 +59,20 @@ def _when(death: Death, start_ms: int) -> str:
     Takes the origin rather than the fight it came from: a keystone run reads
     it off its first pull and a boss fight off its own start, and this only
     subtracts.
+
+    `has_pulls` is the fight's own answer to whether it is cut into pulls, and
+    it is what the trailing phrase depends on. A fight with pulls names the one
+    a death fell in, or says it fell between them. A fight with none is one
+    continuous window: there is nothing to be between, so the elapsed time
+    stands alone rather than carrying a phrase about a division this fight does
+    not have. Read as a value, so a card never asks which kind of fight it was
+    handed.
     """
     elapsed = max(death.timestamp_ms - start_ms, 0) / 1000
     at = format_seconds(elapsed)
     assert at is not None  # a float input always formats to a string
+    if not has_pulls:
+        return at
     if death.pull_index is None:
         return f"{at}, between pulls"
     return f"{at}, pull {death.pull_index}"
@@ -351,7 +361,7 @@ def build_deaths(
                 # on the roster at all, which `display_names` cannot disambiguate.
                 player=names.get(death.actor_id, death.player_name),
                 class_name=player.class_name if player else "unknown class",
-                when=_when(death, start_ms),
+                when=_when(death, start_ms, loaded.has_pulls),
                 killing_blow=death.killing_blow,
                 killing_blow_id=death.killing_blow_id or None,
                 timeline=timeline,

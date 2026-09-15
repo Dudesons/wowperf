@@ -232,13 +232,20 @@ def test_a_death_before_the_first_pull_does_not_go_negative() -> None:
 
 
 def test_a_death_in_a_run_with_no_pulls_does_not_crash() -> None:
+    """And names no pull, because a run with none has nothing to be between.
+
+    The trailing phrase depends on whether the fight is cut into pulls, which
+    this run is not. The death two tests above, on a run that does have one,
+    still reads ", between pulls" -- that is the distinction the phrase makes,
+    and it is a distinction this run does not have.
+    """
     run = a_run(players=(a_player(),), pulls=())
     death = Death(
         player_name="Stonewake", actor_id=1, timestamp_ms=5_000,
         killing_blow="Frigid Roar", pull_index=None,
     )
     card = build_deaths(LoadedRun(run=run, deaths=(death,)), NO_DEFENSIVES, NO_CONSUMABLES)[0]
-    assert card.when == "0:05, between pulls"
+    assert card.when == "0:05"
 
 
 BLOOD = Defensives(

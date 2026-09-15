@@ -77,6 +77,22 @@ def test_a_death_on_a_boss_fight_gets_a_recap_card() -> None:
     assert [row.ability for row in cards[0].timeline] == ["Frigid Roar"]
 
 
+def test_a_boss_deaths_time_claims_no_pull_the_fight_never_had() -> None:
+    """A boss fight is one continuous window, so there is nothing to be between.
+
+    `_when` appended ", between pulls" whenever a death carried no pull index,
+    which is every death of a raid: the card read "2:30, between pulls" about a
+    fight that has no pulls to sit between. The elapsed time stands alone here,
+    and a fight that does have pulls still names them -- that is the Mythic+
+    card, unchanged.
+    """
+    loaded = a_loaded_fight(deaths=(a_death(FIGHT_START_MS + 150_000),))
+
+    card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+    assert card.when == "2:30"
+
+
 def test_a_consumable_is_judged_only_from_the_fights_own_start() -> None:
     """Design section 6.11: `visible_from_ms` becomes the fight's start.
 

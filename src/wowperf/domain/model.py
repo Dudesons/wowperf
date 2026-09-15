@@ -248,6 +248,16 @@ class LoadedRun(Frozen):
         return self.run.window_ms
 
     @property
+    def has_pulls(self) -> bool:
+        """Whether this fight is cut into pulls. See `domain/fight.py`.
+
+        A run whose log recorded none is as continuous as a boss fight, and a
+        death card says the same thing about both: the elapsed time, with no
+        pull named and none implied.
+        """
+        return bool(self.run.pulls)
+
+    @property
     def ability_icon_map(self) -> Mapping[int, str]:
         """Icon file names by ability game id, as a read-only mapping."""
         return MappingProxyType(dict(self.ability_icons))

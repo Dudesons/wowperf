@@ -51,6 +51,19 @@ class LoadedFight(Protocol):
     def window_ms(self) -> tuple[int, int]: ...
 
     @property
+    def has_pulls(self) -> bool:
+        """Whether this fight is cut into pulls at all.
+
+        A death card states when it happened, and what "when" means depends on
+        this: a fight cut into pulls names the one a death fell in, or says it
+        fell between them, while a fight that is one continuous window has
+        nothing to be between and states the elapsed time alone. Declared here
+        so the card reads a fact about the fight rather than asking which kind
+        of fight it was handed.
+        """
+        ...
+
+    @property
     def casts(self) -> tuple[CastEvent, ...]: ...
 
     @property
