@@ -100,6 +100,19 @@ def a_wiped_attempt() -> tuple[
     return loaded, findings, emberkin, frozenset({"emberkin-0", "stonewake-1"}), {}
 
 
+def a_roster_where_the_subject_is_not_first() -> tuple[
+    LoadedEncounter, tuple[Finding, ...], Player, frozenset[str] | None, dict[str, str]
+]:
+    # Three raiders so "subject first" and "roster order" print different
+    # sequences -- a subject who already sits at index 0 cannot tell the two
+    # rules apart. Bríala is last on the roster and is the subject.
+    emberkin = a_player(1, "Emberkin")
+    stonewake = a_player(2, "Stonewake", class_name="DeathKnight", spec="Blood")
+    briala = a_player(3, "Bríala", class_name="Priest", spec="Discipline")
+    loaded = a_loaded(players=(emberkin, stonewake, briala))
+    return loaded, (), briala, None, {}
+
+
 def test_a_raiders_rows_land_on_their_own_card() -> None:
     """Routed by the slug the finding carries, never by who the subject is.
 
@@ -146,3 +159,18 @@ def test_a_wipe_tells_every_raider_why_their_comparison_is_empty() -> None:
         assert any(
             finding_id.startswith("compare.parse.unavailable") for finding_id in ids
         ), card.slug
+
+
+def test_the_subjects_card_opens_first_whatever_the_rosters_own_order() -> None:
+    """The Players tab opens whichever card is drawn first.
+
+    A subject who is not the roster's first entry is the only fixture that
+    can tell "subject first" apart from "roster order" -- either rule prints
+    the same sequence when the subject already sits at index 0. Get this
+    wrong and `--player` names one raider while the tab that opens is
+    someone else's.
+    """
+    cards = build_raid_players(*a_roster_where_the_subject_is_not_first())
+
+    assert cards, "the fixture built no cards"
+    assert [card.name for card in cards] == ["Bríala", "Emberkin", "Stonewake"]
