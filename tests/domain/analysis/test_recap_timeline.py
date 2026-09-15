@@ -187,17 +187,18 @@ def test_recap_timeline_reads_only_the_dying_players_samples() -> None:
 
 def test_readings_in_window_keeps_only_the_dying_players_samples() -> None:
     run = loaded(health_samples=(a_sample(55_000, 40_000, actor_id=3), a_sample(55_000, 90_000)))
-    assert readings_in_window(run, a_death()) == (a_sample(55_000, 90_000),)
+    assert readings_in_window(run.health_samples, a_death()) == (a_sample(55_000, 90_000),)
 
 
 def test_readings_in_window_drops_the_anchor_taken_before_the_window_opens() -> None:
     run = loaded(health_samples=(a_sample(49_999, 90_000), a_sample(50_000, 80_000)))
-    assert readings_in_window(run, a_death()) == (a_sample(50_000, 80_000),)
+    assert readings_in_window(run.health_samples, a_death()) == (a_sample(50_000, 80_000),)
 
 
 def test_readings_in_window_returns_them_oldest_first() -> None:
     run = loaded(health_samples=(a_sample(58_000, 20_000), a_sample(52_000, 90_000)))
-    assert [s.timestamp_ms for s in readings_in_window(run, a_death())] == [52_000, 58_000]
+    readings = readings_in_window(run.health_samples, a_death())
+    assert [s.timestamp_ms for s in readings] == [52_000, 58_000]
 
 
 def test_each_timeline_row_carries_the_ability_it_names() -> None:

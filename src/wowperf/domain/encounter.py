@@ -84,6 +84,22 @@ class LoadedEncounter(Frozen):
     partition_source: str = ""
 
     @property
+    def players(self) -> tuple[Player, ...]:
+        """Who was here, answered by the encounter itself. See `domain/fight.py`."""
+        return self.encounter.players
+
+    @property
+    def window_ms(self) -> tuple[int, int]:
+        """The stretch of the log this fight covers: the attempt's own bounds.
+
+        A boss fight states its start and its end outright, so nothing has to
+        be reconstructed from pulls it does not have. Design section 6.11
+        names this as the figure a recap's `visible_from_ms` becomes -- the
+        fight's start rather than the first pull's.
+        """
+        return (self.encounter.start_ms, self.encounter.end_ms)
+
+    @property
     def ability_icon_map(self) -> Mapping[int, str]:
         """Icon file names by ability game id, as a read-only mapping."""
         return MappingProxyType(dict(self.ability_icons))

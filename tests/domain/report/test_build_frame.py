@@ -319,6 +319,33 @@ def test_run_seconds_is_zero_with_no_pulls() -> None:
     assert run_seconds(run) == 0.0
 
 
+def test_the_window_opens_at_the_first_pull_and_closes_at_the_last() -> None:
+    run = a_run(pulls=(a_pull(0, 10_000, 40_000), a_pull(1, 50_000, 130_000)))
+    assert run.window_ms == (10_000, 130_000)
+
+
+def test_the_window_is_zero_wide_with_no_pulls() -> None:
+    assert a_run(pulls=()).window_ms == (0, 0)
+
+
+def test_the_windows_end_keeps_the_millisecond_the_span_arithmetic_drops() -> None:
+    """A deliberate quirk, pinned so nobody tidies it away without meaning to.
+
+    The end is the start plus the span taken through `run_seconds`' float, and
+    that round trip is a millisecond short for about one integer in a hundred
+    and twenty -- 1001 ms is the smallest such span, and `int(1.001 * 1000)` is
+    1000. Every reader of this window computed it exactly this way before
+    `Run.window_ms` named it, so the arithmetic was preserved rather than
+    corrected; correcting it moves where an aura band gets clipped on roughly
+    one real run in a hundred, which is a change of behaviour and deserves its
+    own commit saying so.
+    """
+    run = a_run(pulls=(a_pull(0, 0, 1_001),))
+
+    assert run.window_ms == (0, 1_000)
+    assert run.window_ms[1] != max(pull.end_ms for pull in run.pulls)
+
+
 def test_badge_for_measured() -> None:
     badge = badge_for(Confidence.MEASURED)
     assert badge.label == "measured"

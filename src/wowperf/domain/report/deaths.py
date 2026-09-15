@@ -25,10 +25,10 @@ from wowperf.domain.analysis.recap import (
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.events import Death
+from wowperf.domain.fight import LoadedFight
 from wowperf.domain.findings import Confidence
-from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.cover import band_holding, resolve_aura
-from wowperf.domain.report.frame import badge_for, format_seconds, plural, run_seconds, run_start_ms
+from wowperf.domain.report.frame import badge_for, format_seconds, plural
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
     AvailabilityGroup,
@@ -49,14 +49,18 @@ from wowperf.domain.report.tooltip import (
 from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
 
 
-def _when(death: Death, run: Run) -> str:
-    """Elapsed time since the run's start, never the absolute report timestamp.
+def _when(death: Death, start_ms: int) -> str:
+    """Elapsed time since the fight's start, never the absolute report timestamp.
 
     Clamped to zero so a death logged before the first pull — or a run with
     no pulls at all, where the run's start is taken as zero — reads as the
     start of the run rather than as a negative time.
+
+    Takes the origin rather than the fight it came from: a keystone run reads
+    it off its first pull and a boss fight off its own start, and this only
+    subtracts.
     """
-    elapsed = max(death.timestamp_ms - run_start_ms(run), 0) / 1000
+    elapsed = max(death.timestamp_ms - start_ms, 0) / 1000
     at = format_seconds(elapsed)
     assert at is not None  # a float input always formats to a string
     if death.pull_index is None:
@@ -186,7 +190,7 @@ def _recap_row(
 
 
 def _availability_tooltips(
-    loaded: LoadedRun, death: Death, defensives: Defensives, externals: Externals,
+    loaded: LoadedFight, death: Death, defensives: Defensives, externals: Externals,
 ) -> dict[tuple[int | None, int], Tooltip]:
     """Every availability row's tooltip, keyed as `_availability_row` looks it up.
 
@@ -195,28 +199,27 @@ def _availability_tooltips(
     hits they took across the whole run -- not scoped to this death's own
     run-up, which is a narrower window than what the ability actually covered.
     """
-    player = next((p for p in loaded.run.players if p.actor_id == death.actor_id), None)
+    player = next((p for p in loaded.players if p.actor_id == death.actor_id), None)
     auras = loaded.auras_by_actor.get(death.actor_id)
     hits = tuple(hit for hit in loaded.damage_taken if hit.actor_id == death.actor_id)
-    start_ms = run_start_ms(loaded.run)
-    window = (start_ms, start_ms + int(run_seconds(loaded.run) * 1000))
+    window = loaded.window_ms
 
     tooltips: dict[tuple[int | None, int], Tooltip] = {}
     if player is not None:
         for defensive in defensives.for_spec(player.class_name, player.spec):
             tip = run_ability_tooltip(
                 defensive.ability_id, defensive.name, defensive.cooldown_seconds, death.actor_id,
-                loaded, auras, hits, window,
+                loaded.casts, auras, hits, window,
             )
             if tip is not None:
                 tooltips[(None, defensive.ability_id)] = tip
-    for mate in loaded.run.players:
+    for mate in loaded.players:
         if mate.actor_id == death.actor_id:
             continue
         for external in externals.for_spec(mate.class_name, mate.spec):
             tip = run_ability_tooltip(
                 external.ability_id, external.name, external.cooldown_seconds, mate.actor_id,
-                loaded, auras, hits, window, on_target=death.actor_id,
+                loaded.casts, auras, hits, window, on_target=death.actor_id,
             )
             if tip is not None:
                 tooltips[(mate.actor_id, external.ability_id)] = tip
@@ -269,9 +272,9 @@ def _group(
     )
 
 
-def _came_back(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrections,
+def _came_back(loaded: LoadedFight, death: Death, self_resurrections: SelfResurrections,
                names: dict[int, str]) -> tuple[str, Badge]:
-    back = return_of(loaded, death, self_resurrections)
+    back = return_of(loaded.resurrections, loaded.casts, death, self_resurrections)
     if back.kind == RESURRECTED:
         caster_id = back.caster_id
         caster = "a teammate" if caster_id is None else names.get(caster_id, "a teammate")
@@ -295,7 +298,7 @@ def _came_back(loaded: LoadedRun, death: Death, self_resurrections: SelfResurrec
 
 
 def build_deaths(
-    loaded: LoadedRun,
+    loaded: LoadedFight,
     defensives: Defensives,
     consumables: Consumables,
     externals: Externals = Externals(),
@@ -308,13 +311,16 @@ def build_deaths(
     exists at all. The same run-up window decides the timeline and the
     availability, so the card shows the damage and the answers side by side.
     """
-    players_by_id = {player.actor_id: player for player in loaded.run.players}
-    names = display_names(loaded.run.players)
+    players_by_id = {player.actor_id: player for player in loaded.players}
+    names = display_names(loaded.players)
+    start_ms = loaded.window_ms[0]
     cards = []
     for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)
         events = recap_timeline(loaded, death)
-        curve = build_health_curve(events, readings_in_window(loaded, death), death)
+        curve = build_health_curve(
+            events, readings_in_window(loaded.health_samples, death), death
+        )
         slug = f"death-{index}"
         auras = loaded.auras_by_actor.get(death.actor_id)
         # Every event still reaches the curve and the press tooltips below:
@@ -333,8 +339,8 @@ def build_deaths(
         )
         has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
-            loaded, death, defensives, consumables, externals,
-            visible_from_ms=run_start_ms(loaded.run),
+            loaded.players, loaded.casts, death, defensives, consumables, externals,
+            visible_from_ms=start_ms,
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
         came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)
@@ -345,7 +351,7 @@ def build_deaths(
                 # on the roster at all, which `display_names` cannot disambiguate.
                 player=names.get(death.actor_id, death.player_name),
                 class_name=player.class_name if player else "unknown class",
-                when=_when(death, loaded.run),
+                when=_when(death, start_ms),
                 killing_blow=death.killing_blow,
                 killing_blow_id=death.killing_blow_id or None,
                 timeline=timeline,

@@ -144,6 +144,31 @@ class Run(Frozen):
         return MappingProxyType(dict(self.npc_counts))
 
     @property
+    def window_ms(self) -> tuple[int, int]:
+        """The stretch of the log this run covers: first pull's start, last pull's end.
+
+        The origin is the one `report/frame.py:run_start_ms` reports, so a
+        death's elapsed time and the run's span are measured from the same
+        point and cannot drift apart. Zero with no pulls, where the run has no
+        clock of its own to offer.
+
+        The end is computed through the span in whole seconds --
+        `start + int((last_end - start) / 1000 * 1000)` -- rather than as
+        `last_end` directly, which it is not always equal to: that round trip
+        through a float is a millisecond short for about one integer in a
+        hundred and twenty. Every reader of this window computed it that way
+        before it was named here, and the only thing the window does is clip
+        aura bands, so the arithmetic is preserved rather than corrected.
+        Correcting it is a change of behaviour and belongs to a change that
+        says so and tests it.
+        """
+        if not self.pulls:
+            return (0, 0)
+        start = min(pull.start_ms for pull in self.pulls)
+        span_seconds = (max(pull.end_ms for pull in self.pulls) - start) / 1000
+        return (start, start + int(span_seconds * 1000))
+
+    @property
     def keystone_time_seconds(self) -> float:
         return self.keystone_time_ms / 1000
 
@@ -206,6 +231,21 @@ class LoadedRun(Frozen):
     # fetched, which is a report that draws no cover window rather than one
     # that draws a wrong window.
     auras: tuple[PlayerAuras, ...] = ()
+
+    @property
+    def players(self) -> tuple[Player, ...]:
+        """Who was here, answered by the run itself.
+
+        A recap reads a roster and does not care which kind of fight holds it,
+        so both loaded aggregates answer this question in their own terms --
+        see `domain/fight.py`. This one reads it off the run.
+        """
+        return self.run.players
+
+    @property
+    def window_ms(self) -> tuple[int, int]:
+        """The stretch of the log this fight covers. `Run.window_ms` states it."""
+        return self.run.window_ms
 
     @property
     def ability_icon_map(self) -> Mapping[int, str]:

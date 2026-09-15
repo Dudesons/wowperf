@@ -4,9 +4,9 @@
 from collections.abc import Sequence
 
 from wowperf.domain.analysis.defensives import defensive_base_ids
+from wowperf.domain.fight import LoadedFight
 from wowperf.domain.findings import Finding
-from wowperf.domain.model import LoadedRun
-from wowperf.domain.report.frame import badge_for, run_seconds, run_start_ms
+from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import Tooltip, TooltipLine
 from wowperf.domain.report.tooltip import run_ability_tooltip
 from wowperf.domain.season import Defensives
@@ -43,7 +43,7 @@ def _from_facts(finding: Finding) -> Tooltip:
 
 def tooltips_by_finding_id(
     findings: Sequence[Finding],
-    loaded: LoadedRun,
+    loaded: LoadedFight,
     defensives: Defensives,
 ) -> dict[str, Tooltip]:
     """The hover panel for every finding that earns one, keyed by finding id.
@@ -64,18 +64,17 @@ def tooltips_by_finding_id(
     nothing, and its heading stays a plain name. Twenty-one of one real run's
     thirty-four findings name no ability at all.
     """
-    start_ms = run_start_ms(loaded.run)
-    window = (start_ms, start_ms + int(run_seconds(loaded.run) * 1000))
+    window = loaded.window_ms
     by_id = {finding.id: finding for finding in findings}
     tooltips: dict[str, Tooltip] = {}
 
     cooldowns = {
         (player.actor_id, ability.ability_id): ability
-        for player in loaded.run.players
+        for player in loaded.players
         for ability in defensives.for_spec(player.class_name, player.spec)
     }
     for (actor_id, ability_id), base_id in defensive_base_ids(
-        loaded.run.players, defensives
+        loaded.players, defensives
     ).items():
         wanted = [f"{family}{base_id}" for family in DEFENSIVE_FAMILIES if
                   f"{family}{base_id}" in by_id]
@@ -87,7 +86,7 @@ def tooltips_by_finding_id(
             ability.name,
             ability.cooldown_seconds,
             actor_id,
-            loaded,
+            loaded.casts,
             loaded.auras_by_actor.get(actor_id),
             tuple(hit for hit in loaded.damage_taken if hit.actor_id == actor_id),
             window,
