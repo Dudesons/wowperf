@@ -2,7 +2,9 @@
 # ABOUTME: Seven panels in order, one script, every finding drawn once, and every icon an address.
 
 import re
+from pathlib import Path
 
+import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import (
@@ -11,14 +13,30 @@ from tests.adapters.render.test_html_invariants import (
     NUMBERS_THAT_ARE_NOT_TOTALS,
     is_a_bare_number,
 )
+from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
 from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
 from wowperf.adapters.render.html import render_raid
 from wowperf.adapters.render.icons import CdnIcons
-from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
+from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.mechanics import (
+    AbilityTakenRow,
+    MechanicsMember,
+    MechanicsSample,
+    ReferenceKillRow,
+)
+from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL, ParseSubject
+from wowperf.domain.comparison.raid_reference import (
+    RaidParseRow,
+    RankedPlayer,
+    ReportRankings,
+)
+from wowperf.domain.comparison.sample import ParseMember, ParseSample
+from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.events import Death
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, EnemyCastRow
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.model import (
@@ -32,7 +50,7 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.report.raid_frame import RaidHeader
-from wowperf.domain.report.raid_model import RaidReport
+from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -809,3 +827,511 @@ def test_the_raid_report_carries_no_total_row() -> None:
                     f"{model_type.__name__}.{field_name} is a numeric field with no entry "
                     "on the allowlist explaining why it cannot hold a total"
                 )
+
+
+# Every fixture above renders from `Finding` literals, which is right for rules
+# about markup and wrong for a file that pins sentences: a hand-written title is
+# only ever pinned to itself. The Mythic+ golden fixture is exactly that -- it
+# passes `None` for its speed sample and writes its comparison rows out by hand,
+# so no `compare.*` family reaches the page it renders and a wording mutation
+# inside one of those sentences leaves the Mythic+ golden test green. That was
+# found by mutation during plan 3a, after the file had been cited as proof in
+# three separate review briefs.
+#
+# What follows is the other thing. `a_real_raid_comparison` calls
+# `analyse_encounter` -- the real service, the real comparison modules, the real
+# per-raider minting -- against two compared raiders, a five-member parse sample
+# and two leaderboards each, so every comparison sentence in `raid.html` was
+# written by the code the golden file is supposed to pin.
+
+RAID_GOLDEN = Path(__file__).parent / "golden" / "raid.html"
+
+COMBUSTION = 190319
+DEATH_STRIKE = 49998
+DANCING_RUNE_WEAPON = 49028
+ARCANE_INTELLECT = 1459
+BONE_SHIELD = 195181
+VOID_BOLT = 451288
+"""Ability ids the fixture's casts, auras and enemy casts are keyed on.
+
+Named rather than inlined because each is spelled on both sides of a comparison
+-- ours and the reference's -- and a comparison joins two streams on the same
+id. A typo in one of two literals would quietly become a spell the reference
+cast and we never did.
+"""
+
+REFERENCE_SECONDS = 240.0
+"""Every reference kill's own boss time, which its rates are stated over.
+
+Shorter than this fight's 300 seconds on purpose: a rate is casts per minute on
+both sides, and two sides sharing a denominator could not tell a rate apart from
+a count.
+"""
+
+ARCANE_BUILD = "CQUAmqWgLuBtT1EJyqZrqqIn6Jzs5AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+BLOOD_BUILD = "C4PAj7pKoDmTBWCX9ppIkB0MjZmZmZMzMzMYmZmZmZGmZmZmZMzMzMzAAAAAAAA"
+REFERENCE_ARCANE_BUILD = "CQUAmqWgLuBtT1EJyqZrqqIn6Jzs5AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB"
+REFERENCE_BLOOD_BUILD = "C4PAj7pKoDmTBWCX9ppIkB0MjZmZmZMzMzMYmZmZmZGmZmZmZMzMzMzAAAAAAAB"
+"""Four opaque talent strings, each differing from its counterpart in one place.
+
+`compare_talents` compares the two strings and never reads either, so what
+matters is that ours and theirs differ -- which is what makes the finding say
+the builds differ rather than that one of the two reports carries no string.
+"""
+
+GOLDEN_ROSTER = (
+    EMBERKIN.model_copy(update={"talent_import_string": ARCANE_BUILD}),
+    STONEWAKE.model_copy(update={"talent_import_string": BLOOD_BUILD}),
+    BRIALA,
+)
+"""`A_RAID` with a build on the two raiders a comparison is asked for.
+
+Copied rather than added to `A_RAID` itself, which every fixture above renders
+and none of which compares a build. Bríala carries none because nobody asked to
+compare her, which is the same reason her card is the page's `withheld` block.
+"""
+
+
+def _casts(
+    actor_id: int, ability_id: int, name: str, count: int, first_ms: int
+) -> tuple[CastEvent, ...]:
+    """`count` casts of one ability, two seconds apart, from `first_ms`.
+
+    The spacing is read by nothing -- every raid rate counts the whole stream
+    and divides by the fight -- so it exists only to keep two casts of one
+    ability from sharing a timestamp.
+    """
+    return tuple(
+        CastEvent(
+            actor_id=actor_id,
+            ability_id=ability_id,
+            ability_name=name,
+            timestamp_ms=first_ms + one * 2_000,
+        )
+        for one in range(count)
+    )
+
+
+def an_arcane_reference(index: int) -> ParseMember:
+    """One reference parse for the Mage: two abilities and one buff.
+
+    Arcane Blast is cast by both sides at rates far enough apart to report;
+    Combustion is cast by every reference and by our Mage never, which is the
+    other verdict `compare_spells_sample` can reach. The buff is up over most of
+    the reference's boss time and a fifth of ours, which is the gap
+    `compare_uptime_sample` reports.
+    """
+    them = Player(
+        actor_id=90, name="Кириллица", class_name="Mage", spec="Arcane",
+        item_level=710, talent_import_string=REFERENCE_ARCANE_BUILD,
+    )
+    return ParseMember(
+        character_name="Кириллица",
+        report_code=f"ARC{index}",
+        fight_id=index + 1,
+        boss_seconds=REFERENCE_SECONDS,
+        players=(them,),
+        casts=(
+            *_casts(90, ARCANE_BLAST, "Arcane Blast", 14, 0),
+            *_casts(90, COMBUSTION, "Combustion", 4, 40_000),
+        ),
+        auras=PlayerAuras(
+            actor_id=90,
+            on_self=(
+                Aura(
+                    ability_id=ARCANE_INTELLECT, name="Arcane Intellect",
+                    total_uptime_ms=200_000, uses=1,
+                    bands=(AuraBand(start_ms=0, end_ms=200_000),),
+                ),
+            ),
+        ),
+    )
+
+
+def a_blood_reference(index: int) -> ParseMember:
+    """One reference parse for the Death Knight, shaped like the Mage's.
+
+    Death Strike is cast at the same rate on both sides, so the only spell
+    verdict this raider draws is the ability the references press and she does
+    not. Her own Bone Shield sits inside the gap threshold of theirs, so her
+    card carries no uptime row -- two raiders whose comparisons differ is what
+    the page is for.
+    """
+    them = Player(
+        actor_id=91, name="Кириллица", class_name="DeathKnight", spec="Blood",
+        item_level=705, talent_import_string=REFERENCE_BLOOD_BUILD,
+    )
+    return ParseMember(
+        character_name="Кириллица",
+        report_code=f"BLD{index}",
+        fight_id=index + 1,
+        boss_seconds=REFERENCE_SECONDS,
+        players=(them,),
+        casts=(
+            *_casts(91, DEATH_STRIKE, "Death Strike", 24, 0),
+            *_casts(91, DANCING_RUNE_WEAPON, "Dancing Rune Weapon", 4, 60_000),
+        ),
+        auras=PlayerAuras(
+            actor_id=91,
+            on_self=(
+                Aura(
+                    ability_id=BONE_SHIELD, name="Bone Shield",
+                    total_uptime_ms=220_000, uses=1,
+                    bands=(AuraBand(start_ms=0, end_ms=220_000),),
+                ),
+            ),
+        ),
+    )
+
+
+def a_board(spec: str, amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
+    """One leaderboard, `amounts` long. `amount` is a per-second rate already."""
+    return tuple(
+        RaidParseRow(
+            report_code=f"BOARD{one}", fight_id=one + 1, duration_ms=240_000,
+            character_name="Кириллица",
+            class_name="Mage" if spec == "Arcane" else "DeathKnight",
+            spec=spec, amount=amount, size=20,
+        )
+        for one, amount in enumerate(amounts)
+    )
+
+
+def a_rankings_row(name: str, spec: str, role: str, amount: float, percent: int) -> RankedPlayer:
+    return RankedPlayer(
+        character_name=name,
+        class_name="Mage" if spec == "Arcane" else "DeathKnight",
+        spec=spec, role=role, amount=amount, rank="~1200", best="~900",
+        rank_percent=percent, bracket_percent=percent, total_parses=4_100,
+    )
+
+
+GOLDEN_STANDING = ReportRankings(
+    fight_id=2, difficulty=5, partition=1, size=20, kill=True,
+    players=(
+        a_rankings_row("Emberkin", "Arcane", "dps", 1_450_000.0, 62),
+        a_rankings_row("Stonewake", "Blood", "tank", 760_000.0, 81),
+    ),
+)
+
+GOLDEN_BOSS_STANDING = ReportRankings(
+    fight_id=2, difficulty=5, partition=1, size=20, kill=True,
+    players=(
+        a_rankings_row("Emberkin", "Arcane", "dps", 1_180_000.0, 48),
+        a_rankings_row("Stonewake", "Blood", "tank", 690_000.0, 81),
+    ),
+)
+"""This report's own rankings on both metrics, for the two compared raiders.
+
+The two take different branches of both throughput comparisons on purpose. The
+Mage's two percentiles differ, so `compare_rank` states them separately; the
+tank's are equal, so it states one. The Mage sits below both medians, so
+`compare_damage_total` says so in one clause; the tank sits above one and below
+the other, which is the split sentence that comparison exists to write. Bríala
+is in neither row: nobody asked for her comparison, and a rankings row she does
+not appear in is how that reads on the page.
+"""
+
+
+def a_parse_subject(player: Player, sample: ParseSample, **overrides: object) -> ParseSubject:
+    """One raider as the adapter hands them over: their sample, boards and targets.
+
+    The slug comes from `slugs_by_actor`, which is how `cli.py` mints one, and
+    never from the display name -- two names can reduce to one slug and the
+    roster index is what keeps them apart.
+    """
+    fields: dict[str, object] = {
+        "player": player,
+        "slug": slugs_by_actor(GOLDEN_ROSTER)[player.actor_id],
+        "display_name": player.name,
+        "sample": sample,
+    }
+    fields.update(overrides)
+    return ParseSubject(**fields)  # type: ignore[arg-type]
+
+
+def golden_subjects() -> tuple[ParseSubject, ...]:
+    """The two raiders a comparison was asked for, each against their own board."""
+    return (
+        a_parse_subject(
+            GOLDEN_ROSTER[0],
+            ParseSample(members=tuple(an_arcane_reference(one) for one in range(5))),
+            our_auras=PlayerAuras(
+                actor_id=1,
+                on_self=(
+                    Aura(
+                        ability_id=ARCANE_INTELLECT, name="Arcane Intellect",
+                        total_uptime_ms=60_000, uses=1,
+                        bands=(AuraBand(start_ms=0, end_ms=60_000),),
+                    ),
+                ),
+            ),
+            board=a_board(
+                "Arcane", (1_600_000.0, 1_720_000.0, 1_540_000.0, 1_880_000.0, 1_490_000.0)
+            ),
+            boss_board=a_board(
+                "Arcane", (1_310_000.0, 1_402_000.0, 1_255_000.0, 1_520_000.0, 1_190_000.0)
+            ),
+            our_targets=(
+                TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=880_000_000),
+                TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=120_000_000),
+            ),
+            their_targets=tuple(
+                (
+                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss",
+                              total=470_000_000),
+                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC",
+                              total=30_000_000),
+                )
+                for _ in range(5)
+            ),
+        ),
+        a_parse_subject(
+            GOLDEN_ROSTER[1],
+            ParseSample(members=tuple(a_blood_reference(one) for one in range(5))),
+            our_auras=PlayerAuras(
+                actor_id=2,
+                on_self=(
+                    Aura(
+                        ability_id=BONE_SHIELD, name="Bone Shield",
+                        total_uptime_ms=270_000, uses=1,
+                        bands=(AuraBand(start_ms=0, end_ms=270_000),),
+                    ),
+                ),
+            ),
+            board=a_board("Blood", (700_000.0, 740_000.0, 690_000.0, 810_000.0, 720_000.0)),
+            boss_board=a_board("Blood", (720_000.0, 760_000.0, 700_000.0, 790_000.0, 730_000.0)),
+            our_targets=(
+                TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=300_000_000),
+                TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=60_000_000),
+            ),
+            their_targets=tuple(
+                (
+                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss",
+                              total=340_000_000),
+                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC",
+                              total=20_000_000),
+                )
+                for _ in range(5)
+            ),
+        ),
+    )
+
+
+GOLDEN_MECHANICS = MechanicsSample(
+    members=tuple(
+        MechanicsMember(
+            row=ReferenceKillRow(
+                report_code=f"KILL{one}", fight_id=one + 1, size=20,
+                duration_ms=260_000, deaths=1,
+            ),
+            abilities=(
+                AbilityTakenRow(
+                    ability_id=KILLING_BLOW_ID, ability_name="Ravenous Feast",
+                    hit_count=6, source_types=("Boss",),
+                ),
+            ),
+        )
+        for one in range(3)
+    )
+)
+"""Three reference kills, so the mechanics row is a median and not one kill.
+
+`MIN_SAMPLE_FOR_AGGREGATE` is three, and below it `compare_mechanics` falls back
+to a pairwise sentence naming one report -- a different sentence, which the
+golden file would then pin instead of the aggregate one a real analysis writes.
+"""
+
+GOLDEN_ABILITIES_TAKEN = (
+    AbilityTakenRow(
+        ability_id=KILLING_BLOW_ID, ability_name="Ravenous Feast",
+        hit_count=14, source_types=("Boss",),
+    ),
+)
+
+
+def a_compared_raid_fight() -> LoadedEncounter:
+    """`a_raid_fight`'s fight with everything a real comparison reads attached.
+
+    The same roster, the same single death and the same killing blow, plus the
+    streams the comparison modules join against: our own casts, this report's
+    own rankings rows on both metrics, an enemy cast that landed, and the damage
+    the raid took. Kept beside `a_raid_fight` rather than folded into it,
+    because every rule above renders that one and a fixture that grew a rankings
+    row would change fifteen pages to pin one.
+    """
+    return LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs",
+            players=GOLDEN_ROSTER,
+            kill=True,
+            fight_percentage=0.0,
+            start_ms=FIGHT_START_MS,
+            end_ms=FIGHT_END_MS,
+        ),
+        casts=(
+            *_casts(1, ARCANE_BLAST, "Arcane Blast", 10, FIGHT_START_MS + 5_000),
+            *_casts(2, DEATH_STRIKE, "Death Strike", 30, FIGHT_START_MS + 4_000),
+        ),
+        deaths=(
+            Death(
+                actor_id=2,
+                player_name="Stonewake",
+                timestamp_ms=DEATH_MS,
+                killing_blow="Ravenous Feast",
+                killing_blow_id=KILLING_BLOW_ID,
+                # Timed, unlike `a_raid_fight`'s: a death nobody came back from
+                # costs no seconds, and a finding with no seconds reaches
+                # neither the decomposition nor a Summary pointer -- which
+                # would leave the golden page pinning an empty Summary tab.
+                seconds_until_next_action=42.0,
+            ),
+        ),
+        enemy_cast_rows=(
+            EnemyCastRow(source_id=500, source_instance=1, ability_id=VOID_BOLT,
+                         ability_name="Void Bolt", timestamp_ms=FIGHT_START_MS + 60_000,
+                         is_start=True),
+            EnemyCastRow(source_id=500, source_instance=1, ability_id=VOID_BOLT,
+                         ability_name="Void Bolt", timestamp_ms=FIGHT_START_MS + 61_500,
+                         is_start=False),
+        ),
+        damage_taken=(
+            # The Mage takes four times what the other two take of the same
+            # ability, which is the outlier `analyse_damage_outliers` reports
+            # against their shared median.
+            DamageTakenEvent(actor_id=1, ability_id=KILLING_BLOW_ID,
+                             ability_name="Ravenous Feast", amount=420_000,
+                             timestamp_ms=FIGHT_START_MS + 40_000),
+            DamageTakenEvent(actor_id=2, ability_id=KILLING_BLOW_ID,
+                             ability_name="Ravenous Feast", amount=110_000,
+                             timestamp_ms=FIGHT_START_MS + 40_000),
+            DamageTakenEvent(actor_id=3, ability_id=KILLING_BLOW_ID,
+                             ability_name="Ravenous Feast", amount=105_000,
+                             timestamp_ms=FIGHT_START_MS + 40_000),
+            # Lands inside the enemy cast's own follow window above, which is
+            # what makes it an uninterrupted cast rather than a stray hit.
+            DamageTakenEvent(actor_id=2, ability_id=VOID_BOLT, ability_name="Void Bolt",
+                             amount=98_000, timestamp_ms=FIGHT_START_MS + 61_600),
+        ),
+        standing=GOLDEN_STANDING,
+        boss_standing=GOLDEN_BOSS_STANDING,
+    )
+
+
+def a_real_raid_comparison() -> tuple[Finding, ...]:
+    """The golden page's findings, from the service rather than from this file.
+
+    Every `compare.*` sentence the golden file holds was written by a comparison
+    module and minted per raider by `analyse_encounter`, so a wording change
+    anywhere along that path reaches `raid.html` and has to be approved.
+
+    `mechanics` and `parse_subjects` are keyword-only, and that is load-bearing
+    rather than incidental: a call that splatted them positionally would produce
+    neither family and raise nothing, and the page would go quietly back to
+    being the thing this fixture was written to replace.
+    """
+    return tuple(
+        analyse_encounter(
+            a_compared_raid_fight(),
+            NO_DEFENSIVES,
+            NO_CONSUMABLES,
+            mechanics=GOLDEN_MECHANICS,
+            our_abilities=GOLDEN_ABILITIES_TAKEN,
+            parse_subjects=golden_subjects(),
+        )
+    )
+
+
+GOLDEN_REFERENCES = (
+    ReferenceRecord(
+        report_code="ARC0", fight_id=1, keystone_level=0,
+        url="https://www.warcraftlogs.com/reports/ARC0?fight=1",
+        axis="parse", player_slug=EMBERKIN_SLUG, player_name="Emberkin",
+    ),
+    ReferenceRecord(
+        report_code="BLD0", fight_id=1, keystone_level=0,
+        url="https://www.warcraftlogs.com/reports/BLD0?fight=1",
+        axis="parse", player_slug=STONEWAKE_SLUG, player_name="Stonewake",
+    ),
+)
+"""One candidate per compared raider, naming the report each sample's top parse
+came from, so the Provenance list traces back to the sentences above it."""
+
+
+def a_golden_raid_report() -> RaidReport:
+    return build_raid_report(
+        a_compared_raid_fight(),
+        a_real_raid_comparison(),
+        GOLDEN_ROSTER[0],
+        COMPARED,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        reference_records=GOLDEN_REFERENCES,
+    )
+
+
+def golden_raid_html() -> str:
+    return render_raid(a_golden_raid_report())
+
+
+def test_the_golden_fixture_actually_carries_a_comparison() -> None:
+    """The guard the Mythic+ golden file does not have.
+
+    Its fixture carries no reference sample, so no comparison family reaches
+    the page it renders, and a mutation to any comparison sentence leaves it
+    green -- discovered by mutation during plan 3a, after the file had been
+    cited as proof in three review briefs. A fixture that stops comparing must
+    fail here rather than quietly stop testing.
+    """
+    findings = a_real_raid_comparison()
+
+    families = {f.id.rsplit(".", 1)[0] for f in findings if f.id.startswith("compare.")}
+    assert families >= {
+        "compare.damage.total", "compare.rank", "compare.talents",
+    }, sorted(families)
+
+
+def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> None:
+    """The other half of the guard above: what the page did with the comparison.
+
+    The guard proves the service compared and the golden file pins whatever was
+    then rendered, so between them a page could pin a comparison stripped of
+    everything that makes it one raider's. Three things are held here that the
+    byte comparison states without asserting: both raiders are on the page under
+    their own slug, which is what Task 2's minting buys; each compared finding
+    draws exactly one card, so no raider's row is shown twice; and the sentence
+    on the card is the comparison module's own, not one the builder rewrote.
+
+    `title_before` rather than `title` because a title naming an ability is
+    rendered in three pieces around an icon span, and the piece before the span
+    is what the page carries as one string. For every other row it is the whole
+    sentence.
+    """
+    report = a_golden_raid_report()
+    html = render_raid(report)
+    rows = {row.finding_id: row for row in all_raid_ledger_rows(report)}
+
+    compared = [
+        finding for finding in a_real_raid_comparison() if finding.id.startswith("compare.")
+    ]
+    assert compared, "the fixture produced no comparison findings at all"
+    assert {finding.player_slug for finding in compared} == {EMBERKIN_SLUG, STONEWAKE_SLUG}
+    for finding in compared:
+        row = rows.get(finding.id)
+        assert row is not None, f"{finding.id} reached no row at all"
+        assert row.title == finding.title, finding.id
+        assert html.count(f'id="finding-{finding.id}"') == 1, finding.id
+        assert str(escape(row.title_before)) in html, finding.id
+
+
+def test_the_rendered_raid_page_matches_the_golden_file(pytestconfig: pytest.Config) -> None:
+    html = golden_raid_html()
+    if pytestconfig.getoption("--golden-update"):
+        RAID_GOLDEN.parent.mkdir(parents=True, exist_ok=True)
+        RAID_GOLDEN.write_text(html, encoding="utf-8")
+        pytest.skip("golden file rewritten")
+    assert html == RAID_GOLDEN.read_text(encoding="utf-8"), (
+        "The rendered raid report changed. Read the diff, then regenerate with "
+        "`uv run pytest tests/adapters/render/test_raid_html_invariants.py --golden-update`."
+    )
