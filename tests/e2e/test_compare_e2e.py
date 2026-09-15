@@ -48,7 +48,7 @@ def test_a_real_run_compares_against_real_leaderboards(tmp_path: Path) -> None:
         player.talent_import_string for player in loaded.run.players
     ), "at least one player should carry a talent import string"
 
-    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_slug = slugs_by_actor(loaded.run.players)[subject.actor_id]
     subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, records = _samples(
         rankings,
@@ -110,7 +110,7 @@ def test_a_real_run_compares_trash_packs_against_real_parses(tmp_path: Path) -> 
     subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
-    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_slug = slugs_by_actor(loaded.run.players)[subject.actor_id]
     subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, _records = _samples(
         rankings,
@@ -182,7 +182,7 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     subject = find_player(loaded.run.players, loaded.run.owner_name or loaded.run.players[0].name)
     assert subject is not None, "the report owner should be in the roster"
 
-    subject_slug = slugs_by_actor(loaded.run)[subject.actor_id]
+    subject_slug = slugs_by_actor(loaded.run.players)[subject.actor_id]
     subject_name = display_names(loaded.run.players)[subject.actor_id]
     speed_sample, parse_samples, _records = _samples(
         rankings,

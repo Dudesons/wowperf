@@ -1265,7 +1265,7 @@ def analyze(
             # matches their card by it. The name beside it is `names`' spelling,
             # so a provenance row naming a player names the same one their card
             # does -- and the same one `--player` would have to be given.
-            slugs = slugs_by_actor(loaded.run)
+            slugs = slugs_by_actor(loaded.run.players)
             requested: tuple[RequestedPlayer, ...] = tuple(
                 RequestedPlayer(
                     player=one, slug=slugs[one.actor_id], name=names[one.actor_id]

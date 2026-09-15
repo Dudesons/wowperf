@@ -15,7 +15,7 @@ from wowperf.domain.comparison.measures import (
 )
 from wowperf.domain.comparison.statistics import observed_range
 from wowperf.domain.findings import Finding
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import (
     NO_COMPARISON_RAN,
     NOT_REQUESTED,
@@ -90,7 +90,7 @@ def class_colour(class_name: str) -> str:
     return f"class-{class_name.lower()}" if class_name in CLASS_COLOURS else "class-unknown"
 
 
-def slugs_by_actor(run: Run) -> dict[int, str]:
+def slugs_by_actor(players: tuple[Player, ...]) -> dict[int, str]:
     """Every player's fragment id, keyed by actor id.
 
     Computed from the roster's own order, not from the order the cards are
@@ -99,16 +99,19 @@ def slugs_by_actor(run: Run) -> dict[int, str]:
     re-run that named someone else. Two display names can reduce to the same
     slug, so the roster index is appended to keep them apart.
 
+    This function takes a roster because both a run and an encounter have one
+    and neither is what it reads.
+
     This is the only place a player *fragment* id is minted. The comparison's
     finding ids and the card they belong to both read from here, and that
     agreement is what makes a `#finding-...` link land in the right sub-tab.
     The slugging itself is `wowperf.domain.slug`, which analysis shares:
     `defensives.*` mints its own ids and needs the same alphabet.
     """
-    names = display_names(run.players)
+    names = display_names(players)
     return {
         player.actor_id: f"{player_slug(names[player.actor_id])}-{index}"
-        for index, player in enumerate(run.players)
+        for index, player in enumerate(players)
     }
 
 
@@ -170,7 +173,7 @@ def build_players(
     was not asked for anybody.
     """
     names_by_actor = display_names(loaded.run.players)
-    slugs = slugs_by_actor(loaded.run)
+    slugs = slugs_by_actor(loaded.run.players)
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
