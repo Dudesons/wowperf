@@ -1,0 +1,15 @@
+{# ABOUTME: The raid Mechanics panel: what hit the raid, and who took more of it than the rest. #}
+{# ABOUTME: Design sections 6.8 and 6.9 -- mechanics that hit the raid, and damage taken against the median. #}
+{% from "_macros.html.j2" import ledger_row with context %}
+<section class="panel" data-tab-panel="main" id="tab-mechanics">
+
+<h2 id="mechanics">Mechanics</h2>
+{% if report.mechanics_rows %}
+<div class="findings">
+{% for row in report.mechanics_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
+
+</section>
