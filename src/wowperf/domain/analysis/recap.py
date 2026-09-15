@@ -106,9 +106,9 @@ def recap_timeline(loaded: LoadedFight, death: Death) -> tuple[RecapEvent, ...]:
 
     The one function here that keeps a whole fight, because it reads four of
     its streams and naming all four would be a parameter list nobody could
-    read at the call site. `LoadedFight` is a statement of those four (and no
-    roster, and no window), so this still says what it reads -- it simply says
-    it once.
+    read at the call site. `LoadedFight` is the whole set `build_deaths`
+    reads, of which this takes four: damage taken, healing, casts and health
+    samples.
     """
     start, end, actor = window_start(death), death.timestamp_ms, death.actor_id
     events: list[RecapEvent] = []
