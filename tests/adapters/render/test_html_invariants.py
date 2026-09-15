@@ -1033,6 +1033,27 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
 }
 
 
+def is_a_bare_number(annotation: object) -> bool:
+    """Whether a field's annotation is `int`, `float`, or one of those or None.
+
+    One implementation, because two pages are held to this rule: the raid
+    invariants beside this file walk their own view model's types against the
+    same allowlist above, and a predicate copied into that file could come to
+    disagree with this one about what counts as a number. Exported for the same
+    reason `FORBIDDEN_IN_SCRIPT` and `ICON_HOST` are.
+    """
+    if annotation in (int, float):
+        return True
+    origin = get_origin(annotation)
+    # Handle both typing.Union and types.UnionType (Python 3.10+ int | None).
+    if origin is Union or isinstance(annotation, UnionType):
+        args = get_args(annotation)
+        # Check if one arg is numeric and the other is None (optional type).
+        numeric_args = [arg for arg in args if arg in (int, float)]
+        return len(numeric_args) == 1 and len(args) == 2
+    return False
+
+
 def test_no_timeline_hover_states_a_damage_rate() -> None:
     """The graph this track is built from reports damage per second, and the
     postmortem design's section 5.5 refuses to produce that figure. The
@@ -1085,17 +1106,8 @@ def test_the_report_carries_no_total_row() -> None:
 
     for model_type in view_model_types():
         for field_name, field in model_type.model_fields.items():
-            # Check bare numeric types (int, float) and optional variants (int | None, etc).
-            is_numeric = field.annotation in (int, float)
-            if not is_numeric:
-                origin = get_origin(field.annotation)
-                # Handle both typing.Union and types.UnionType (Python 3.10+ int | None).
-                if origin is Union or isinstance(field.annotation, UnionType):
-                    args = get_args(field.annotation)
-                    # Check if one arg is numeric and the other is None (optional type).
-                    numeric_args = [arg for arg in args if arg in (int, float)]
-                    is_numeric = len(numeric_args) == 1 and len(args) == 2
-            if is_numeric:
+            # Bare numeric types (int, float) and optional variants (int | None, etc).
+            if is_a_bare_number(field.annotation):
                 assert (model_type, field_name) in NUMBERS_THAT_ARE_NOT_TOTALS, (
                     f"{model_type.__name__}.{field_name} is a numeric field with no entry "
                     "on the allowlist explaining why it cannot hold a total"

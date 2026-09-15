@@ -1,6 +1,12 @@
 # ABOUTME: Behaviour tests for the raid report view model and its row walker.
 # ABOUTME: The walker is checked against the model's own fields, not a hand-kept list.
 
+import inspect
+
+import pytest
+from pydantic import BaseModel, ValidationError
+
+from wowperf.domain.report import raid_frame, raid_model
 from wowperf.domain.report.model import (
     Badge,
     LedgerRow,
@@ -11,6 +17,58 @@ from wowperf.domain.report.model import (
 )
 from wowperf.domain.report.raid_frame import RaidHeader
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
+
+RAID_VIEW_MODEL_MODULES = (raid_model, raid_frame)
+"""Where the raid page's view model is defined.
+
+Two modules, where the Mythic+ model is one: `Report` and its `Header` are both
+declared in `report.model`, while `RaidReport`'s header is a type of its own in
+`raid_frame` -- a boss fight has no dungeon and no keystone level, so the
+header could not be reused. A scan of `raid_model` alone would walk exactly one
+class and miss the only bare number the raid page carries.
+"""
+
+
+def raid_view_model_types() -> list[type[BaseModel]]:
+    """Every pydantic model the raid view model defines, `Frozen` or not.
+
+    The raid counterpart of `test_model.view_model_types`, and filtering on
+    `BaseModel` for the same reason: a type someone adds straight off
+    `BaseModel` -- skipping `Frozen` by mistake -- still shows up here and fails
+    the freeze check below instead of escaping a hand-written list. Exported for
+    `test_raid_html_invariants.py`, which walks the same types against the
+    allowlist of numbers that cannot hold a total.
+    """
+    return [
+        obj
+        for module in RAID_VIEW_MODEL_MODULES
+        for _, obj in inspect.getmembers(module, inspect.isclass)
+        if issubclass(obj, BaseModel) and obj.__module__ == module.__name__
+    ]
+
+
+def test_the_raid_view_model_scan_reaches_both_of_its_modules() -> None:
+    """The guard under every rule that walks these types.
+
+    A scan that found nothing, or that found `RaidReport` and stopped, would
+    leave the freeze check below and the no-total rule in the render invariants
+    passing over an empty list. Both types are named because each stands for one
+    of the two modules the scan has to reach.
+    """
+    found = raid_view_model_types()
+
+    assert RaidReport in found
+    assert RaidHeader in found
+
+
+def test_every_raid_view_model_type_is_frozen() -> None:
+    # `model_construct` skips required-field validation, so one call covers every
+    # type regardless of its fields; a frozen model rejects the assignment before
+    # it ever checks whether the field exists or the value is well-typed.
+    for model_type in raid_view_model_types():
+        instance = model_type.model_construct()
+        with pytest.raises(ValidationError):
+            instance.a_field_that_need_not_exist = "something else"  # type: ignore[attr-defined]
 
 
 def a_section(state: SectionState = SectionState.PRESENT, reason: str = "") -> Section:
