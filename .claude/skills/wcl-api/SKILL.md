@@ -172,6 +172,19 @@ One approximation and three measurements:
   frame, of which 21.00 is one `Healing` query per death.
 - **The one-subject raid shape re-run against a warm cache spent 1.00 point** — the two
   `RateLimit` reads and nothing else, within the reference cache's 24 hours.
+- **This plan's own live run, cache warm from work done earlier the same day: the kill and the
+  roster both re-priced to 1.00 point each** (2026-09-15, report `cW38jmwdnZfbHVL4`, fight 2, one
+  subject and then `--all-players` naming all 20 raiders). Both spent only the two `RateLimit`
+  reads the quota check itself makes, extending the one-subject warm reading above to the full
+  twenty-player shape: once every class-and-specialisation pair's parse sample already sits on
+  disk, naming all twenty costs no more than naming one. **The wipe re-priced close to cold**,
+  because no fetch in this session's cache had ever touched fight 30 (`Ula'tek`, a different boss
+  from fight 2's `Nek'zali the Soulcoiler`, found by listing the report's boss fights and reading
+  its own already-cached `Fights` table for name and kill status, at no cost beyond the quota
+  check): a `--no-compare` probe of it spent 36.20, and the recorded wipe run added 7.39 once the
+  comparison axis ran, 43.59 together against the 45.25 recorded above for the same fixture. Total
+  spent across every command this measurement ran, cold and warm together: 50.59 points of 3600,
+  leaving 2672.33.
 
 ## Every query reports its own cost
 
