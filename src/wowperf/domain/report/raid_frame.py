@@ -14,10 +14,12 @@ from wowperf.domain.encounter import Encounter
 # `worldData.encounter(id: 3470).zone`, which named its own ids 5, 4, 3 and 1
 # as Mythic, Heroic, Normal and LFR -- but reaching it needs a query this
 # project does not otherwise make for a fight, so the mapping is hand-kept
-# here and in `data/season.toml`'s `[raid.difficulty_names]`, dated the same
-# day and against the same query. See `.claude/skills/wcl-api/SKILL.md` for
-# the full note. A number this table does not carry prints as a number
-# rather than a guess.
+# here instead, dated the same day and against the same query. See
+# `.claude/skills/wcl-api/SKILL.md` for the full note. These three ids are
+# stable game vocabulary rather than season data that would retune between
+# tiers, which is why they live beside the code that reads them rather than
+# in `data/season.toml`. A number this table does not carry prints as a
+# number rather than a guess.
 _DIFFICULTY_NAMES: dict[int, str] = {3: "Normal", 4: "Heroic", 5: "Mythic"}
 
 
@@ -39,6 +41,12 @@ class RaidHeader(Frozen):
 def build_raid_header(encounter: Encounter) -> RaidHeader:
     if encounter.kill:
         outcome = "Killed"
+    elif encounter.fight_percentage is None:
+        # The report itself does not say (`Encounter.fight_percentage`'s own
+        # docstring): no percentage, no "unknown", and never a zero standing
+        # in for a figure the log never gave. `Encounter.outcome` draws the
+        # same line in the findings' own words, reading "wiped" here too.
+        outcome = "Wiped"
     else:
         outcome = f"Wiped at {encounter.fight_percentage:.1f}% remaining"
     difficulty = _DIFFICULTY_NAMES.get(encounter.difficulty, f"Difficulty {encounter.difficulty}")

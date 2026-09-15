@@ -49,6 +49,21 @@ def test_a_wipe_states_how_far_the_raid_got() -> None:
     assert header.outcome == "Wiped at 12.4% remaining"
 
 
+def test_a_wipe_the_report_does_not_quantify_states_only_that_it_wiped() -> None:
+    """`fight_percentage` is None where the report does not say (`encounter.py`).
+
+    Formatting a missing figure is not an option this header has: no
+    percentage, no "unknown", and never a zero standing in for the number the
+    log never gave. `Encounter.outcome` draws the same line in the findings'
+    own words -- its None branch reads "wiped", not "wiped at 0%".
+    """
+    encounter = an_encounter(kill=False, difficulty=5, fight_percentage=None, partition=1)
+
+    header = build_raid_header(encounter)
+
+    assert header.outcome == "Wiped"
+
+
 def test_a_difficulty_nobody_recorded_prints_the_number_rather_than_a_guess() -> None:
     """An unmapped difficulty says what it knows, and does not invent a name.
 
