@@ -32,10 +32,12 @@ def _for_raider(findings: list[Finding], slug: str) -> list[Finding]:
     it is why the id is a suffix: every consumer of these ids matches by prefix,
     and a prefix survives anything appended to it.
 
-    The Mythic+ path does the same thing at `comparison/service.py:_for_player`.
-    Two call sites rather than one shared helper, because the two loops carry
-    different subject types and a shared helper would need a protocol to
-    describe a `str` field.
+    The Mythic+ path does the same thing at `comparison/service.py:_for_player`,
+    byte for byte. Duplicated rather than shared on purpose: this plan's scope
+    is the raid path, and lifting the two into one helper would edit
+    `comparison/service.py`, which sits on the `analyze` call site this plan
+    does not touch. The two must be kept in step by hand until a change that
+    owns both sides lifts them into one.
     """
     return [
         finding.model_copy(update={"id": f"{finding.id}.{slug}", "player_slug": slug})

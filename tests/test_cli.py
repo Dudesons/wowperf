@@ -1203,13 +1203,11 @@ def test_all_players_compares_every_player_and_not_only_the_subject(tmp_path: Pa
     assert payload["comparison"]["sample_size"]["parse"] == {
         "Emberkin": 5, "Stonewake": 5, "Bríala": 5
     }
-    ranked = [
-        one["title"] for one in payload["findings"]
-        if one["id"].startswith("compare.rank.") and "unavailable" not in one["id"]
-    ]
+    expected = {f"compare.rank.{RAID_ROSTER_SLUGS[actor]}" for actor in (11, 12, 13)}
+    ranked = {one["id"]: one["title"] for one in payload["findings"] if one["id"] in expected}
     assert len(ranked) == 3
     for name in ("Emberkin", "Stonewake", "Bríala"):
-        assert any(title.startswith(name) for title in ranked)
+        assert any(title.startswith(name) for title in ranked.values())
 
 
 def test_by_default_only_the_subject_is_compared(tmp_path: Path) -> None:
