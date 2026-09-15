@@ -321,6 +321,36 @@ def test_two_axes_below_floor_with_different_counts_are_each_labelled() -> None:
     )
 
 
+def test_one_board_below_the_floor_never_reads_as_a_median_on_both_metrics() -> None:
+    """Above both figures, with one board an aggregate and the other a single row.
+
+    The shape nothing else here holds: every other fixture either sits on the
+    same side of two boards that are both aggregates, or on different sides. Sat
+    on one side of both while the two boards straddle the aggregate floor, a
+    combined title that looked only at the side would read "above the sample
+    median on both all damage and boss damage" over an evidence line calling the
+    boss figure a single reference -- a card contradicting itself, which is what
+    the whole of `_reference` exists to prevent.
+    """
+    findings = compare_damage_total(
+        rankings(ranked(400.0)), rankings(ranked(90.0)),
+        board(100.0, 200.0, 300.0, 400.0, 500.0),
+        board(50.0),
+        "Emberkin",
+        "Emberkin",
+    )
+    one = findings[0]
+
+    assert one.title == (
+        "Emberkin sat above a single reference on boss damage while above the sample "
+        "median on all damage"
+    )
+    assert (
+        "boss damage: a single reference, not an aggregate: 1 of the sample was comparable"
+        in " ".join(one.evidence)
+    )
+
+
 FULL_BOARD = board(100.0, 200.0, 300.0, 400.0, 500.0)
 FULL_BOSS_BOARD = board(50.0, 100.0, 150.0, 200.0, 250.0)
 """Two full boards, so nothing else on the card can be what withholds it."""
