@@ -127,6 +127,24 @@ def build_raid_report(
     if damage.state is SectionState.WITHHELD:
         withheld.append(f"Damage against other kills: {damage.reason}")
 
+    # One line per distinct reason, never one per raider. A wipe withholds
+    # every raider's comparison for the same reason -- the boss lived, which is
+    # a fact about the attempt and not about any of them -- and the Damage line
+    # above has already given it, so restating it once per card would print the
+    # same paragraph twenty-one times on a twenty-player page.
+    #
+    # `build_report` does restate it per card, and this is the one place the
+    # two siblings deliberately differ: the rule was always "say it once when
+    # the reason is about the whole fight, per card when it is about that
+    # card", and a keystone roster of five made the repetition read as emphasis
+    # rather than as the bug it is at twenty. Do not fix this back.
+    #
+    # A raider whose reason differs is untouched: that reason is about them,
+    # and the fight-wide line does not cover it. And the suppression is on this
+    # list alone -- every card keeps its own withheld reason on the card, where
+    # a reader looking at one raider needs it without scrolling here.
+    stated_for_the_whole_fight = damage.reason if damage.state is SectionState.WITHHELD else ""
+
     # `--no-compare` fetched no reference at all, so the whole fight gets one
     # report-level line rather than one per card -- a line per raider here
     # would say a comparison for each of them was asked for and refused, when
@@ -137,7 +155,11 @@ def build_raid_report(
         withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
     else:
         for card in players:
-            if card.spell_and_talent.state is SectionState.WITHHELD and card.slug in compared_slugs:
+            if (
+                card.spell_and_talent.state is SectionState.WITHHELD
+                and card.slug in compared_slugs
+                and card.spell_and_talent.reason != stated_for_the_whole_fight
+            ):
                 withheld.append(
                     f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
                 )

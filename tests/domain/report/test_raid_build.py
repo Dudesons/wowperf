@@ -284,7 +284,7 @@ def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
     assert report.damage.reason == NO_COMPARISON_RAN
 
 
-def test_every_withheld_section_is_disclosed_in_the_provenance() -> None:
+def test_the_withheld_damage_tab_is_named_in_the_provenance() -> None:
     """A tab a reader never opens still has to be findable in one list.
 
     The Provenance tab is where this report states what it did not say, so a
@@ -299,10 +299,78 @@ def test_every_withheld_section_is_disclosed_in_the_provenance() -> None:
     )
 
     withheld = report.provenance.withheld
-    assert withheld, "a page with two withheld sections disclosed neither"
+    assert withheld, "a page with a withheld section disclosed nothing"
     assert [line for line in withheld if line.startswith("Damage against other kills: ")]
     assert all("did not kill" in line for line in withheld), withheld
-    assert [line for line in withheld if line.startswith("Spell and talent comparison for ")]
+
+
+def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider() -> None:
+    """One line per distinct reason, because the reason is about the attempt.
+
+    Every raider's comparison on a wipe is withheld for the same reason -- the
+    boss lived -- so a line per raider says nothing about any of them twenty
+    times. The Mythic+ sibling repeats it per card because a keystone roster is
+    five and five copies read as emphasis; twenty read as a bug.
+
+    The suppression is on this list alone. Each card still carries its own
+    reason, which is the half a reader looking at one raider needs without
+    scrolling to Provenance, and the second assertion is what keeps the fix
+    from being made in the wrong place.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    withheld = report.provenance.withheld
+    assert withheld, "a page with a withheld section disclosed nothing"
+    assert [line for line in withheld if WITHHELD_DETAIL in line] == [
+        f"Damage against other kills: {WITHHELD_DETAIL}"
+    ]
+    assert report.players, "the fixture built no cards to check the reason survived on"
+    assert [card.spell_and_talent.reason for card in report.players] == [
+        WITHHELD_DETAIL, WITHHELD_DETAIL
+    ]
+
+
+ONE_RAIDERS_REASON = (
+    "The parse leaderboard returned no reference kills for this specialisation at this "
+    "difficulty, so casts a minute, talents and buff uptime are not compared."
+)
+"""A reason about one raider rather than about the attempt, in `_no_sample`'s words."""
+
+
+def test_a_raiders_own_reason_is_never_suppressed_with_the_attempts() -> None:
+    """Only the reason the Damage section already gave is dropped from the list.
+
+    A raider whose comparison was withheld for a reason of their own is not
+    covered by the fight-wide line, and dropping theirs would lose the only
+    disclosure of it. Two raiders with different reasons is the cheapest shape
+    that states the rule -- the service gives everybody the same reason on a
+    wipe, which is exactly why the test above cannot prove this half.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    shared, _ = a_wipes_findings()
+    own = Finding(
+        id=f"compare.parse.unavailable.{STONEWAKE_SLUG}",
+        title="No ranked parse was available for Stonewake",
+        detail=ONE_RAIDERS_REASON,
+        confidence=Confidence.MEASURED,
+        player_slug=STONEWAKE_SLUG,
+    )
+
+    report = build_raid_report(
+        loaded, (shared, own), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    withheld = report.provenance.withheld
+    assert withheld, "a page with a withheld section disclosed nothing"
+    assert [line for line in withheld if ONE_RAIDERS_REASON in line] == [
+        f"Spell and talent comparison for Stonewake: {ONE_RAIDERS_REASON}"
+    ]
 
 
 def test_the_report_names_the_fight_and_the_moment_it_was_fetched() -> None:
