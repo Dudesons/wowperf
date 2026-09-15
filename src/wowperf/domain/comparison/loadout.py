@@ -30,7 +30,7 @@ def loadouts_of(members: Sequence[ParseMember]) -> tuple[Loadout, ...]:
     """
     loadouts = []
     for member in members:
-        player = find_player(member.run.players, member.row.character_name)
+        player = find_player(member.players, member.character_name)
         if player is not None and player.loadout is not None:
             loadouts.append(player.loadout)
     return tuple(loadouts)

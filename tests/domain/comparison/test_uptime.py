@@ -3,15 +3,19 @@
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.measures import Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.uptime import (
     UPTIME_GAP_FRACTION,
+    boss_pull_uptime,
     boss_windows,
     compare_uptime,
     compare_uptime_sample,
+    seconds_up_over_the_fight,
     uptime_measures,
+    whole_fight_uptime,
 )
+from wowperf.domain.comparison.wording import DUNGEON
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
 
@@ -83,8 +87,141 @@ BOSS = a_pull(0, 0, 100_000, encounter_id=12825)
 TRASH = a_pull(1, 100_000, 200_000, encounter_id=0)
 
 
+def a_reference(
+    run: Run, auras: PlayerAuras | None, name: str = "Bríala", report_code: str = "REF1"
+) -> ParseMember:
+    """One parse reference, built from the run a test wrote to describe it.
+
+    The member carries that run's boss seconds, roster and route rather than
+    the run itself, which is the whole of design 8.2's narrowing: a raid
+    reference has none of the three to take from a run it does not have.
+    """
+    return ParseMember(
+        character_name=name,
+        report_code=report_code,
+        fight_id=1,
+        boss_seconds=boss_seconds(run.pulls),
+        players=run.players,
+        auras=auras,
+        pulls=run.pulls,
+    )
+
+
+def pairwise_uptime(
+    ours: Run,
+    our_auras: PlayerAuras | None,
+    our_name: str,
+    theirs: ParseMember,
+) -> list[Finding]:
+    """`compare_uptime` for a Mythic+ run, whose route decides which milliseconds count.
+
+    Every run in this module is a dungeon, so every one of them binds
+    `boss_pull_uptime` and our own side is the two values that route produces.
+    What a raid binds instead is `test_parse_axis`'s subject.
+    """
+    return compare_uptime(
+        ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, theirs,
+        measured=boss_pull_uptime, words=DUNGEON,
+    )
+
+
+def sample_uptime(
+    ours: Run, our_auras: PlayerAuras | None, our_name: str, sample: ParseSample
+) -> list[Finding]:
+    """`compare_uptime_sample` for a Mythic+ run, bound the way `pairwise_uptime` is."""
+    return compare_uptime_sample(
+        ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, sample,
+        measured=boss_pull_uptime, words=DUNGEON,
+    )
+
+
 def test_boss_windows_covers_boss_pulls_only() -> None:
-    assert boss_windows(a_run(BOSS, TRASH)) == ((0, 100_000),)
+    assert boss_windows(a_run(BOSS, TRASH).pulls) == ((0, 100_000),)
+
+
+def test_overlapping_bands_over_a_whole_fight_are_counted_once() -> None:
+    """The raid rule's one distinguishing behaviour: it merges before it sums.
+
+    Nothing in the aura table's own response promises the bands it returns are
+    disjoint. A rule that added band lengths, or that read `total_uptime_ms`,
+    would report 25s here for 20s of real uptime -- and every other fixture in
+    this suite carries one band per aura, where all three readings agree.
+    """
+    aura = an_aura(391477, "Coagulopathy", (0, 10_000), (5_000, 20_000))
+
+    assert aura.total_uptime_ms == 25_000  # the sum of the parts, which is not the union
+    assert seconds_up_over_the_fight(aura) == 20.0
+    assert whole_fight_uptime(()) is seconds_up_over_the_fight
+
+
+def test_an_aura_with_no_bands_is_up_for_no_seconds_over_a_whole_fight() -> None:
+    assert seconds_up_over_the_fight(an_aura(391477, "Coagulopathy")) == 0.0
+
+
+def test_the_dungeon_uptime_sentence_measures_boss_pull_time_at_a_keystone_level() -> None:
+    """The Mythic+ rendering of the sentences `Wording` varies, whole and with numbers.
+
+    The raid rendering of the same ones is asserted in `test_parse_axis.py`, and
+    the golden report file holds these byte for byte. The two sides' boss time
+    differs, so neither figure below is reproducible from the other's denominator.
+    """
+    ours = a_run(BOSS)
+    theirs = a_run(a_pull(0, 0, 80_000, encounter_id=12825), player=a_player("Bríala", 3))
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 60_000)),))
+
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
+
+    assert findings[0].detail == (
+        "Both figures are the share of boss-pull time the aura was present, which is "
+        "comparable even though the two fights ran for different lengths. A shorter fight "
+        "at a different keystone level still changes what fits, so read a narrow gap as "
+        "noise. This compares by exact ability, though, so a gap can also mean a different "
+        "item of the same kind, or gear this player does not own — not that nothing was "
+        "used at all."
+    )
+    # 60s of their 80s against 20s of our 100s: 75% against 20%.
+    assert "75%" in findings[0].title and "20%" in findings[0].title
+    assert "ours over 100s of boss pulls" in findings[0].evidence
+    assert "theirs over 80s of boss pulls" in findings[0].evidence
+
+
+def test_the_dungeon_unavailable_sentence_names_boss_pulls() -> None:
+    ours = a_run(BOSS)
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    theirs = a_reference(a_run(TRASH), our_auras)
+
+    findings = pairwise_uptime(ours, our_auras, OUR_NAME, theirs)
+
+    assert findings[0].detail == (
+        "An uptime comparison needs boss pulls on both sides and aura data for both "
+        "players. One of those is missing, so no uptime numbers are reported rather than "
+        "numbers from an unlike sample."
+    )
+
+
+def test_the_reference_named_in_a_pairwise_title_is_the_member_being_compared() -> None:
+    """One identity, one channel.
+
+    The member already carries its own name, and a second argument carrying one
+    beside it is exactly the shape `compare_uptime`'s docstring warns of: two
+    channels for one identity is how one player's figure ends up under another
+    player's name. The name in this sentence is the member's own.
+    """
+    ours = a_run(BOSS)
+    theirs = a_run(BOSS, player=a_player("Кириллица", 3))
+    our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
+    their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
+
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras, name="Кириллица")
+    )
+
+    assert findings[0].title == (
+        f"Coagulopathy was up for 90% of Кириллица's boss time, 20% of {OUR_NAME}'s"
+    )
 
 
 def test_an_uptime_gap_on_self_is_reported() -> None:
@@ -93,7 +230,9 @@ def test_an_uptime_gap_on_self_is_reported() -> None:
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
     reported = [f for f in findings if f.id.startswith("compare.uptime.self.")]
 
     assert len(reported) == 1
@@ -111,7 +250,9 @@ def test_uptime_outside_boss_pulls_is_not_counted() -> None:
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (100_000, 200_000)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
 
     assert ids(findings, "compare.uptime.") == []
 
@@ -125,7 +266,9 @@ def test_a_gap_below_the_cut_off_is_left_alone() -> None:
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 80_000 + gap)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
 
     assert ids(findings, "compare.uptime.") == []
 
@@ -135,8 +278,8 @@ def test_an_aura_the_reference_barely_carried_is_not_argued_from() -> None:
     theirs = a_run(BOSS, player=a_player("Bríala", 3))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 5_000)),))
 
-    findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Bríala"
+    findings = pairwise_uptime(
+        ours, PlayerAuras(actor_id=7), OUR_NAME, a_reference(theirs, their_auras)
     )
 
     assert ids(findings, "compare.uptime.") == []
@@ -146,12 +289,21 @@ def test_a_missing_reference_says_so_rather_than_reporting_nothing() -> None:
     ours = a_run(BOSS)
     theirs = a_run(BOSS, player=a_player("Bríala", 3))
 
-    findings = compare_uptime(ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, None, "Bríala")
+    findings = pairwise_uptime(
+        ours, PlayerAuras(actor_id=7), OUR_NAME, a_reference(theirs, None)
+    )
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
-    assert "our aura data present" in findings[0].evidence
-    assert "their aura data absent" in findings[0].evidence
+    # Whole, because the two seconds lines name what those seconds are seconds
+    # of, and that noun comes from `Wording` now that a raid reads this row too.
+    # A substring check on the aura halves never looked at it.
+    assert list(findings[0].evidence) == [
+        "our boss time 100s",
+        "their boss time 100s",
+        "our aura data present",
+        "their aura data absent",
+    ]
 
 
 def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:
@@ -160,7 +312,9 @@ def test_our_own_missing_aura_data_is_named_as_the_cause() -> None:
     theirs = a_run(BOSS, player=a_player("Bríala", 3))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, None, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, None, OUR_NAME, a_reference(theirs, their_auras)
+    )
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
     assert findings[0].seconds_lost is None
@@ -172,8 +326,8 @@ def test_a_run_with_no_boss_pulls_says_so_instead_of_dividing_by_zero() -> None:
     ours = a_run(TRASH)
     theirs = a_run(BOSS, player=a_player("Bríala", 3))
 
-    findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, PlayerAuras(actor_id=3), "Bríala"
+    findings = pairwise_uptime(
+        ours, PlayerAuras(actor_id=7), OUR_NAME, a_reference(theirs, PlayerAuras(actor_id=3))
     )
 
     assert ids(findings, "compare.uptime.") == ["compare.uptime.unavailable"]
@@ -187,7 +341,9 @@ def test_a_gap_findings_detail_warns_the_comparison_is_by_exact_ability() -> Non
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
     reported = [f for f in findings if f.id.startswith("compare.uptime.self.")]
 
     assert "gear this player does not own" in reported[0].detail
@@ -208,7 +364,9 @@ def test_no_more_than_the_cap_is_reported() -> None:
         on_self=tuple(an_aura(100 + n, f"Buff {n}", (0, 90_000)) for n in range(8)),
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
 
     assert len(ids(findings, "compare.uptime.self.")) == 5
 
@@ -227,8 +385,8 @@ def test_an_aura_we_never_carried_at_all_produces_no_finding() -> None:
         actor_id=3, on_self=(an_aura(10060, "Power Infusion", (0, 33_000)),)
     )
 
-    findings = compare_uptime(
-        ours, PlayerAuras(actor_id=7), OUR_NAME, theirs, their_auras, "Bríala"
+    findings = pairwise_uptime(
+        ours, PlayerAuras(actor_id=7), OUR_NAME, a_reference(theirs, their_auras)
     )
 
     assert ids(findings, "compare.uptime.") == []
@@ -246,7 +404,9 @@ def test_an_aura_both_sides_carried_still_reports_a_real_gap() -> None:
         actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),)
     )
 
-    findings = compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+    findings = pairwise_uptime(
+        ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+    )
 
     assert ids(findings, "compare.uptime.self.") == ["compare.uptime.self.0"]
 
@@ -279,19 +439,7 @@ def a_sample_member(
         if auras is not None
         else None
     )
-    return ParseMember(
-        row=ParseRow(
-            report_code=f"REF{actor_id}",
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=100_000,
-            character_name=name,
-            class_name="DeathKnight",
-            spec="Blood",
-        ),
-        run=run,
-        auras=player_auras,
-    )
+    return a_reference(run, player_auras, name=name, report_code=f"REF{actor_id}")
 
 
 OUR_RUN = a_run(BOSS)
@@ -331,8 +479,84 @@ SAMPLE_WITHOUT_AURAS = ParseSample(
 )
 
 
+SIPHON_STORM = 384267
+
+
+def a_worded_member(actor_id: int, boss_ms: int, coagulopathy_ms: int, siphon_ms: int
+                    ) -> ParseMember:
+    """A reference on a boss pull of its own length, carrying two auras.
+
+    The lengths differ from each other and from `OUR_RUN`'s, so no fraction the
+    test below reads back could have come from the wrong denominator and still
+    matched.
+    """
+    player = a_player("Stonewake", actor_id)
+    run = a_run(a_pull(0, 0, boss_ms, encounter_id=12825), player=player)
+    return a_reference(
+        run,
+        PlayerAuras(
+            actor_id=actor_id,
+            on_self=(
+                an_aura(391477, "Coagulopathy", (0, coagulopathy_ms)),
+                an_aura(SIPHON_STORM, "Siphon Storm", (0, siphon_ms)),
+            ),
+        ),
+        name="Stonewake",
+        report_code=f"REF{actor_id}",
+    )
+
+
+WORDED_SAMPLE = ParseSample(
+    members=(
+        a_worded_member(21, 90_000, 72_000, 27_000),
+        a_worded_member(22, 80_000, 56_000, 24_000),
+        a_worded_member(23, 120_000, 90_000, 36_000),
+    )
+)
+"""Three references at 80%, 70% and 75% of their own boss time on Coagulopathy, and
+30% each on a Siphon Storm our own side never carries."""
+
+
+def test_the_dungeon_sampled_uptime_sentences_name_boss_pulls_and_a_keystone_level() -> None:
+    """The Mythic+ rendering of the two sampled sentences `Wording` varies.
+
+    The golden report file does not hold these: its fixture carries no reference
+    run, so no comparison family reaches the page it renders. These assertions
+    are what pins them.
+    """
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, WORDED_SAMPLE)
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    unjudged = next(f for f in findings if f.id == "compare.uptime.unjudged")
+
+    assert gap.detail == (
+        "Both figures are the share of boss-pull time the aura was present, which is "
+        "comparable even though the fights ran for different lengths. A shorter fight at a "
+        "different keystone level still changes what fits, so read a narrow gap as noise. "
+        "This compares by exact ability, so a gap can still mean a different item of the "
+        "same kind — but the gap is stated over several top parses, not one player's "
+        "build, so a single trinket this player happens not to own no longer explains it "
+        "away."
+    )
+    assert gap.title == (
+        f"Coagulopathy was up a median 75% of boss time across 3 top parses; 20% for "
+        f"{OUR_NAME}"
+    )
+    assert "ours over 100s of boss pulls" in gap.evidence
+
+    assert unjudged.title == f"1 aura the sample carried is not judged for {OUR_NAME}"
+    assert unjudged.detail == (
+        "Each of these was present over enough of the sample's boss time to compare, and "
+        "absent from ours. It is named rather than measured: the aura table cannot say "
+        "whose buff a row was, so a zero here may be a button this player never pressed or "
+        "one a teammate never gave them, and the log does not separate the two. Check "
+        "whether the build produces it before reading anything into it."
+    )
+    assert "Siphon Storm" in unjudged.evidence[0]
+    assert "absent from our own boss pulls" in unjudged.evidence
+
+
 def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     # Both percentages are pinned, and against the right side of the sentence.
@@ -351,7 +575,7 @@ def test_uptime_is_the_median_of_the_members_that_had_aura_data() -> None:
 def test_a_sampled_uptime_finding_carries_both_sides_as_facts() -> None:
     # The same figures the title above pins, taken a third way for a panel to
     # lay out. Nothing recomputed, nothing parsed back out of the title.
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     assert [(fact.label, fact.value) for fact in gap.facts] == [
         ("Ours", "20% of boss time"),
@@ -364,14 +588,14 @@ def test_a_sampled_uptime_finding_carries_both_sides_as_facts() -> None:
 def test_an_uptime_fact_is_derived_because_a_share_is_computed() -> None:
     # An unset tier is what a panel draws measured with, so a share this
     # report divided out has to say derived rather than leave the line bare.
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     assert all(fact.confidence is Confidence.DERIVED for fact in gap.facts[:3])
     assert gap.facts[3].confidence is None  # a count of parses, read not computed
 
 
 def test_a_sampled_uptime_panel_reports_a_median_and_a_range_never_a_mean() -> None:
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
     labels = [fact.label for fact in
               next(f for f in findings if f.id == "compare.uptime.self.0").facts]
     assert "Reference median" in labels and "Observed range" in labels
@@ -383,7 +607,7 @@ def test_no_reference_player_is_named_in_a_sampled_uptime_finding() -> None:
     spell finding, so no member's character name may reach the page. The one
     place a name still appears is the below-floor pairwise fallback, which is a
     single reference's own comparison and says so."""
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert findings, "the fixture must produce at least one aggregate finding"
     for name in ("Bríala", "Dawnseeker", "Emberfall", "Frostwhisper", "Glimmerose"):
@@ -393,7 +617,7 @@ def test_no_reference_player_is_named_in_a_sampled_uptime_finding() -> None:
 
 
 def test_members_without_aura_data_are_reported_not_silently_dropped() -> None:
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     assert "1 of 5 references had no aura data" in gap.evidence
@@ -413,7 +637,7 @@ def test_an_aura_the_sample_carried_and_we_did_not_is_named_as_unjudged() -> Non
     pressed. What changes is that the reader is told the aura exists and was set
     aside, instead of the page implying it was never looked at.
     """
-    findings = compare_uptime_sample(
+    findings = sample_uptime(
         OUR_RUN, OUR_AURAS_WITHOUT_COAGULOPATHY, OUR_NAME, SAMPLE_OF_FIVE
     )
 
@@ -424,7 +648,7 @@ def test_an_aura_the_sample_carried_and_we_did_not_is_named_as_unjudged() -> Non
 def test_an_unjudged_aura_produces_no_gap_row() -> None:
     """Naming it must not smuggle it back in as a measured gap: the whole reason it
     is set aside is that its zero cannot be attributed to this player."""
-    findings = compare_uptime_sample(
+    findings = sample_uptime(
         OUR_RUN, OUR_AURAS_WITHOUT_COAGULOPATHY, OUR_NAME, SAMPLE_OF_FIVE
     )
 
@@ -436,13 +660,13 @@ def test_an_aura_carried_by_too_few_parses_is_not_called_unjudged() -> None:
     never had a figure to set aside. Naming it would invent a comparison."""
     ours = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
 
-    findings = compare_uptime_sample(OUR_RUN, ours, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, ours, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(f.id == "compare.uptime.unjudged" for f in findings)
 
 
 def test_the_detail_no_longer_blames_a_single_players_gear() -> None:
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     assert "gear this player does not own" not in gap.detail
@@ -454,14 +678,14 @@ def test_an_ability_carried_by_too_few_parses_is_not_reported() -> None:
     even though both carriers are far above OUR_AURAS's 10% on it."""
     assert 2 < MIN_SAMPLE_FOR_AGGREGATE
 
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert not any(str(ICEBOUND) in line for f in findings for line in f.evidence)
     assert not any("Icebound Fortitude" in f.title for f in findings)
 
 
 def test_no_aura_data_at_all_still_reports_unavailable() -> None:
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
 
     assert findings[0].id == "compare.uptime.unavailable"
 
@@ -471,7 +695,7 @@ def test_no_reference_aura_data_blames_the_references_and_not_our_own_side() -> 
     counterpart resolves, so with no member carrying auras our own query may
     never have been issued. Reporting "our aura data absent" would name a
     failure that never happened."""
-    findings = compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+    findings = sample_uptime(OUR_RUN, None, OUR_NAME, SAMPLE_WITHOUT_AURAS)
 
     assert findings[0].id == "compare.uptime.unavailable"
     assert "0 of 5 references returned aura data" in findings[0].evidence
@@ -483,10 +707,10 @@ def test_both_ways_of_being_unavailable_name_the_player() -> None:
     aura data, and no reference having any — and a whole-group run emits one per
     player. A title naming nobody reads identically under every card, and the
     findings file the narrative is written from could not say whose it was."""
-    no_reference_has_auras = compare_uptime_sample(
+    no_reference_has_auras = sample_uptime(
         OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS
     )
-    our_own_side_has_none = compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+    our_own_side_has_none = sample_uptime(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
 
     for findings in (no_reference_has_auras, our_own_side_has_none):
         assert findings[0].id == "compare.uptime.unavailable"
@@ -500,10 +724,10 @@ def test_no_uptime_finding_promises_a_debuff_comparison() -> None:
     promise the report cannot keep, so every branch is swept rather than the two
     that happened to carry the wording."""
     every_branch = (
-        compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
-        + compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
-        + compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
-        + compare_uptime(OUR_RUN, None, OUR_NAME, OUR_RUN, None, "Bríala")
+        sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+        + sample_uptime(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+        + sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+        + pairwise_uptime(OUR_RUN, None, OUR_NAME, a_reference(OUR_RUN, None))
     )
 
     assert every_branch
@@ -515,8 +739,8 @@ def test_no_uptime_finding_promises_a_debuff_comparison() -> None:
 def test_an_unavailable_uptime_says_which_half_it_could_not_compare() -> None:
     unavailable = [
         f
-        for f in compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
-        + compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
+        for f in sample_uptime(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+        + sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_WITHOUT_AURAS)
         if f.id == "compare.uptime.unavailable"
     ]
 
@@ -528,7 +752,7 @@ def test_an_unavailable_uptime_says_which_half_it_could_not_compare() -> None:
 def test_a_wholly_empty_sample_produces_no_findings() -> None:
     # `service.compare()` already says "nothing to compare against" once, as
     # `compare.parse.unavailable`; this must not crash, and must not repeat it.
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, ParseSample())
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, ParseSample())
 
     assert findings == []
 
@@ -536,7 +760,7 @@ def test_a_wholly_empty_sample_produces_no_findings() -> None:
 def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
 
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     # The pairwise branch's own wording, both percentages against the name
@@ -544,13 +768,24 @@ def test_below_the_floor_the_pairwise_wording_is_used() -> None:
     assert gap.title == (
         f"Icebound Fortitude was up for 90% of Bríala's boss time, 10% of {OUR_NAME}'s"
     )
+    # The facts whole, and the sample's noun stated as a literal: it is
+    # `Wording`'s now, because a raid kill is not a run and this row serves
+    # both axes -- and the dungeon rendering must not have moved a byte for
+    # that. The twin of this assertion lives in `test_spells.py`, on the
+    # pairwise rate row, because the two facts are written in two modules and
+    # only one of them would move if the field were threaded at one site.
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "10% of boss time"),
+        ("Reference", "90% of boss time"),
+        ("Sample", "1 reference run"),
+    ]
     assert any("below the floor of" in line for line in gap.evidence)
 
 
 def test_our_own_missing_aura_data_is_unavailable_even_with_an_aggregate_sample() -> None:
     """The sample has plenty of aura-eligible members; the failure is ours, not
     the sample's, so this must not read as "below the floor of"."""
-    findings = compare_uptime_sample(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, None, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert findings[0].id == "compare.uptime.unavailable"
     assert not any(
@@ -564,7 +799,7 @@ def test_our_own_run_with_no_boss_pulls_is_unavailable_even_with_an_aggregate_sa
     references" either — the gap is ours, not the sample's."""
     ours_without_boss_pulls = a_run(TRASH)
 
-    findings = compare_uptime_sample(ours_without_boss_pulls, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(ours_without_boss_pulls, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     assert findings[0].id == "compare.uptime.unavailable"
     assert not any(
@@ -573,7 +808,7 @@ def test_our_own_run_with_no_boss_pulls_is_unavailable_even_with_an_aggregate_sa
 
 
 def test_every_finding_id_is_unique_over_the_sample() -> None:
-    ids_ = [f.id for f in compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)]
+    ids_ = [f.id for f in sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)]
 
     assert len(ids_) == len(set(ids_))
 
@@ -584,7 +819,10 @@ def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
     our_auras = PlayerAuras(actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 20_000)),))
     their_auras = PlayerAuras(actor_id=3, on_self=(an_aura(391477, "Coagulopathy", (0, 90_000)),))
     gap = next(
-        f for f in compare_uptime(ours, our_auras, OUR_NAME, theirs, their_auras, "Bríala")
+        f
+        for f in pairwise_uptime(
+            ours, our_auras, OUR_NAME, a_reference(theirs, their_auras)
+        )
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477
@@ -594,7 +832,7 @@ def test_an_uptime_gap_finding_names_the_aura_against_one_reference() -> None:
 
 def test_an_uptime_gap_finding_names_the_aura_across_the_sample() -> None:
     gap = next(
-        f for f in compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+        f for f in sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
         if f.id.startswith("compare.uptime.")
     )
     assert gap.ability_id == 391477
@@ -612,8 +850,8 @@ def test_no_uptime_title_says_a_player_kept_an_aura_up() -> None:
     branch and the aggregate branch build their titles separately.
     """
     below_floor = ParseSample(members=SAMPLE_OF_FIVE.members[: MIN_SAMPLE_FOR_AGGREGATE - 1])
-    aggregate = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
-    pairwise = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
+    aggregate = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    pairwise = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, below_floor)
 
     # Anchored on the row each branch must produce, so the absences below
     # cannot pass by the branch simply emitting nothing.
@@ -629,7 +867,7 @@ def test_an_uptime_title_names_the_aura_before_it_names_anyone() -> None:
     The old wording opened on a player and made the aura the object of a verb
     they did not perform.
     """
-    findings = compare_uptime_sample(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
+    findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, SAMPLE_OF_FIVE)
 
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
     # The literal, not `gap.ability_name`: an expected value read off the

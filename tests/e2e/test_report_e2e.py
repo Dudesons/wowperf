@@ -77,7 +77,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
     our_auras = None
     if parse_sample.members:
         top = parse_sample.members[0]
-        their_player = find_player(top.run.players, top.row.character_name)
+        their_player = find_player(top.players, top.character_name)
         if their_player is not None:
             our_auras = _auras(
                 repository, loaded.run.report_code, loaded.run.fight_id, subject.actor_id
@@ -85,7 +85,7 @@ def test_a_real_run_renders_a_self_contained_report(tmp_path: Path) -> None:
             top = top.model_copy(
                 update={
                     "auras": _auras(
-                        references, top.row.report_code, top.row.fight_id, their_player.actor_id
+                        references, top.report_code, top.fight_id, their_player.actor_id
                     )
                 }
             )

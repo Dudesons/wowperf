@@ -5,9 +5,14 @@ from typing import Any
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.client import WclClient
-from wowperf.adapters.wcl.queries import ENCOUNTER_KILL_RANKINGS_QUERY
+from wowperf.adapters.wcl.queries import (
+    ENCOUNTER_KILL_RANKINGS_QUERY,
+    RAID_CHARACTER_RANKINGS_QUERY,
+)
+from wowperf.adapters.wcl.raid_rankings import build_raid_parse_rows
 from wowperf.adapters.wcl.rankings import rankings_block, report_of
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
+from wowperf.domain.comparison.raid_reference import RaidParseRow
 
 
 def build_reference_kill_rows(rows: list[dict[str, Any]]) -> tuple[ReferenceKillRow, ...]:
@@ -49,3 +54,28 @@ class WclEncounterRankingRepository:
         )
         rows = rankings_block(payload).get("rankings") or []
         return build_reference_kill_rows(rows)
+
+    def top_parses(
+        self,
+        encounter_id: int,
+        difficulty: int,
+        partition: int,
+        class_name: str,
+        spec: str,
+        metric: str,
+    ) -> tuple[RaidParseRow, ...]:
+        variables = {
+            "encounterId": encounter_id,
+            "difficulty": difficulty,
+            "partition": partition,
+            "page": 1,
+            "className": class_name,
+            "specName": spec,
+            "metric": metric,
+        }
+        payload, _ = self._cache.get_or_fetch(
+            cache_key(RAID_CHARACTER_RANKINGS_QUERY, variables),
+            lambda: self._client.execute(RAID_CHARACTER_RANKINGS_QUERY, variables),
+        )
+        rows = rankings_block(payload).get("rankings") or []
+        return build_raid_parse_rows(rows)

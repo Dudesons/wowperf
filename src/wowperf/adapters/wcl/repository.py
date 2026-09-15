@@ -2,7 +2,7 @@
 # ABOUTME: Satisfies the RunRepository port so services never learn where a run came from.
 
 from collections.abc import Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, NamedTuple, cast
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.config.toml import load_raid_partition
@@ -21,6 +21,7 @@ from wowperf.adapters.wcl.ingest import (
     build_health_samples,
     build_interrupts,
     build_player_auras,
+    build_raid_roster,
     build_resurrections,
     build_run,
     select_keystone_fight,
@@ -43,19 +44,40 @@ from wowperf.adapters.wcl.queries import (
     HEALING_QUERY,
     INTERRUPTS_QUERY,
     PLAYER_DETAILS_QUERY,
+    REPORT_RANKINGS_QUERY,
     RESURRECTS_QUERY,
     talents_query,
 )
+from wowperf.adapters.wcl.report_rankings import build_report_rankings
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.comparison.raid_reference import ReportRankings
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.events import Death, HealingEvent
+from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
-from wowperf.domain.model import LoadedRun, Pull, Run
+from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
 # trimmed reference profiles, each fetching only the streams its own axis reads.
 _Profile = Literal["full", "speed", "parse"]
+
+
+class RaidReference(NamedTuple):
+    """One raid boss fight fetched to stand beside ours, as the three values a
+    `ParseMember` is built from.
+
+    Not a `LoadedEncounter`. An `Encounter` carries a `partition`, which a
+    reference's report never states and `build_encounter` therefore refuses to
+    guess -- inventing one here to satisfy a constructor would put a number this
+    project made up into a field every later reader would take for a measurement.
+    The reference's fight length is not here either: the leaderboard row that
+    named this fight already carries `duration`, and reading it twice is two
+    places for one fact to be got from.
+    """
+
+    players: tuple[Player, ...]
+    casts: tuple[CastEvent, ...]
+    ability_icons: tuple[tuple[int, str], ...]
 
 
 def healing_windows(deaths: Sequence[Death]) -> list[tuple[int, int, int]]:
@@ -244,6 +266,32 @@ class WclRunRepository:
             if codes.get(f"a{actor_id}")
         }
 
+    def _ability_dictionary(
+        self, report_code: str, hits: list[bool] | None = None
+    ) -> tuple[dict[int, str], tuple[tuple[int, str], ...]]:
+        """The report's ability names by game id, and the icon file names beside them.
+
+        One query for the whole report rather than one per fight, which is why
+        it is keyed by report code alone. An ability with no icon is left out of
+        the second half rather than carried with an empty name: an empty string
+        is not a file name, and a page addressing one draws a broken image where
+        a clean gap belongs.
+        """
+        payload = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
+        try:
+            rows = payload["reportData"]["report"]["masterData"]["abilities"]
+            names = {ability["gameID"]: ability["name"] for ability in rows}
+            icons = tuple(
+                (ability["gameID"], ability["icon"])
+                for ability in rows
+                if ability.get("icon")
+            )
+        except (KeyError, TypeError) as error:
+            raise WclError(
+                "The abilities response did not carry masterData.abilities as expected"
+            ) from error
+        return names, icons
+
     def _loadouts(
         self, report_code: str, fight: dict[str, Any], hits: list[bool] | None = None
     ) -> dict[int, Loadout]:
@@ -262,6 +310,28 @@ class WclRunRepository:
         loaded, _ = self._load(report_code, fight_id, profile="full")
         return loaded
 
+    def _report_rankings(
+        self,
+        report_code: str,
+        fight_id: int,
+        metric: str,
+        hits: list[bool] | None = None,
+    ) -> ReportRankings | None:
+        """One `Report.rankings` row for one `playerMetric`, or `None` off a wipe.
+
+        Called once for `dps` and once for `bossdps`: Tasks 7 and 8 each read
+        one of the two rows, and fetching either again later would pay its
+        2.00 points twice. A wipe's row list is empty, with no field
+        distinguishing it from a kill -- design section 14 item 7, measured
+        2026-09-14.
+        """
+        payload = self._query(
+            REPORT_RANKINGS_QUERY,
+            {"code": report_code, "fightId": fight_id, "metric": metric},
+            hits,
+        )
+        return build_report_rankings(payload, fight_id)
+
     def load_encounter(self, report_code: str, fight_id: int | None) -> LoadedEncounter:
         """Every stream the raid analysers and the death cards read, for one boss fight.
 
@@ -278,28 +348,21 @@ class WclRunRepository:
         report = self._report(report_code, hits)
         fight = select_raid_fight(report["fights"], fight_id)
         talents = self._talents(report_code, fight, hits)
+        standing = self._report_rankings(report_code, fight["id"], "dps", hits)
+        boss_standing = self._report_rankings(report_code, fight["id"], "bossdps", hits)
         # ReportFight carries no partition field at all. Design 2.2 prescribes
-        # reading it from the report's own `Report.rankings` row, and no plan
-        # has built that fetch yet -- so it comes from `data/season.toml`,
-        # where every constant with no API source lives with the date it was
-        # verified, rather than from a literal buried here.
-        encounter = build_encounter(
-            report, fight, partition=load_raid_partition(), talents=talents
-        )
+        # reading it from the report's own `Report.rankings` row, and this is
+        # that read. `boss_standing` is fetched and kept for Tasks 7 and 8 but
+        # takes no part here: only the `dps` row (`standing`) has been
+        # measured against a wipe, so it is the only one this fallback trusts.
+        # A wipe returns no row at all -- measured, design section 14 item 7
+        # -- so `data/season.toml` stays as the fallback for exactly that case
+        # rather than as the source for every case.
+        partition = standing.partition if standing else load_raid_partition()
+        partition_source = "report rankings" if standing else "data/season.toml"
+        encounter = build_encounter(report, fight, partition=partition, talents=talents)
 
-        abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
-        try:
-            rows = abilities["reportData"]["report"]["masterData"]["abilities"]
-            ability_names = {ability["gameID"]: ability["name"] for ability in rows}
-            ability_icons = tuple(
-                (ability["gameID"], ability["icon"])
-                for ability in rows
-                if ability.get("icon")
-            )
-        except (KeyError, TypeError) as error:
-            raise WclError(
-                "The abilities response did not carry masterData.abilities as expected"
-            ) from error
+        ability_names, ability_icons = self._ability_dictionary(report_code, hits)
 
         event_variables = {
             "code": report_code,
@@ -362,6 +425,9 @@ class WclRunRepository:
             healing=tuple(healing),
             resurrections=resurrections,
             ability_icons=ability_icons,
+            standing=standing,
+            boss_standing=boss_standing,
+            partition_source=partition_source,
         )
 
     def load_speed_reference(
@@ -396,10 +462,11 @@ class WclRunRepository:
 
         Talents are fetched even though neither `LoadedRun` nor `ParseMember`
         names a field for them: they ride inside `run.players[].talent_import_string`,
-        which `compare_talents` reads off the top parse member's run to name the
-        build a reader should copy. Skipping the query would not remove a field
-        nothing reads — it would make the one thing that does read it silently
-        report every build as absent.
+        and that roster is carried onto the member as `players`, where
+        `compare_talents` finds the top parse's own player and names the build a
+        reader should copy. Skipping the query would not remove a field nothing
+        reads — it would make the one thing that does read it silently report
+        every build as absent.
 
         Deaths, enemy casts and interrupts are not fetched. The fields left
         behind are empty tuples, which read the same as "this run had none".
@@ -412,6 +479,60 @@ class WclRunRepository:
         one that was actually fetched.
         """
         return self._load(report_code, fight_id, profile="parse")
+
+    def load_raid_parse_reference(
+        self, report_code: str, fight_id: int
+    ) -> tuple[RaidReference, bool]:
+        """Only the streams a raid parse comparison reads off a reference kill.
+
+        A sibling of `load_parse_reference`, not a profile of it: that path
+        selects a keystone fight and would refuse a boss fight outright, and the
+        `Run` it assembles has no raid meaning. This selects the boss fight the
+        leaderboard row named, and returns the three values a `ParseMember`
+        carries -- nothing else is fetched, so nothing else can be read as fact.
+
+        Talents are fetched for the reason `load_parse_reference` gives: they
+        ride inside `players[].talent_import_string`, and `compare_talents` names
+        the build a reader is invited to copy. `fight_id` is required rather than
+        optional, because a leaderboard row always names one and a raid report
+        holding several boss fights has no default to fall back on.
+
+        The second element is true only when every query this reference took was
+        served from the cache, so a caller can tell a reused reference from one
+        that was actually fetched.
+        """
+        hits: list[bool] = []
+        report = self._report(report_code, hits)
+        fight = select_raid_fight(report["fights"], fight_id)
+        talents = self._talents(report_code, fight, hits)
+        # No loadouts: `playerDetails` costs 2.00 points a fight and the only
+        # thing that reads it off a reference is the gear half of the spell
+        # comparison, which widens its own wording when a loadout is absent.
+        players = build_raid_roster(report, fight, talents)
+
+        ability_names, ability_icons = self._ability_dictionary(report_code, hits)
+
+        cast_events = fetch_all_events(
+            lambda one_query, variables: self._query(one_query, variables, hits),
+            CASTS_QUERY,
+            {
+                "code": report_code,
+                "fightId": fight["id"],
+                "startTime": float(fight["startTime"]),
+                "endTime": float(fight["endTime"]),
+            },
+        )
+        # A boss fight carries no pulls, so every cast is indexed against an
+        # empty route -- which `whole_fight_casts` is the rule for.
+        no_pulls: tuple[Pull, ...] = ()
+        return (
+            RaidReference(
+                players=players,
+                casts=build_casts(cast_events, no_pulls, ability_names),
+                ability_icons=ability_icons,
+            ),
+            all(hits),
+        )
 
     def _load(
         self, report_code: str, fight_id: int | None, *, profile: _Profile
@@ -427,19 +548,7 @@ class WclRunRepository:
         run = build_run(report, fight, talents, loadouts)
         run = run.model_copy(update={"affix_names": self._affix_names(run.affix_ids, hits)})
 
-        abilities = self._query(ABILITIES_QUERY, {"code": report_code}, hits)
-        try:
-            rows = abilities["reportData"]["report"]["masterData"]["abilities"]
-            ability_names = {ability["gameID"]: ability["name"] for ability in rows}
-            ability_icons = tuple(
-                (ability["gameID"], ability["icon"])
-                for ability in rows
-                if ability.get("icon")
-            )
-        except (KeyError, TypeError) as error:
-            raise WclError(
-                "The abilities response did not carry masterData.abilities as expected"
-            ) from error
+        ability_names, ability_icons = self._ability_dictionary(report_code, hits)
 
         event_variables = {
             "code": report_code,

@@ -31,12 +31,13 @@ from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
+from wowperf.adapters.wcl.damage_tables import build_target_rows
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
-from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY
+from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_TARGETS_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
-from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
@@ -50,6 +51,8 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
     select_reference_kills,
 )
+from wowperf.domain.comparison.parse_axis import ParseSubject
+from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.reference import (
     REPORT_URL,
     Comparability,
@@ -64,8 +67,10 @@ from wowperf.domain.comparison.sample import (
     SpeedSample,
 )
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
-from wowperf.domain.encounter import Encounter
+from wowperf.domain.comparison.targets import TargetRow
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
@@ -623,10 +628,14 @@ def _samples(
             )
             parse_members.append(
                 ParseMember(
-                    row=parse_row,
-                    run=theirs.run,
+                    character_name=parse_row.character_name,
+                    report_code=parse_row.report_code,
+                    fight_id=parse_row.fight_id,
+                    boss_seconds=boss_seconds(theirs.run.pulls),
+                    players=theirs.run.players,
                     casts=theirs.casts,
                     ability_icons=theirs.ability_icons,
+                    pulls=theirs.run.pulls,
                 )
             )
         parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
@@ -735,6 +744,303 @@ def _mechanics_sample(
     return MechanicsSample(members=tuple(members)), tuple(records)
 
 
+DAMAGE_METRICS = ("dps", "bossdps")
+"""The two throughput metrics a raid comparison reports, in the order it reports them.
+
+Both, because a reader given one figure cannot tell which it is: measured
+2026-09-14, the same tank read 59991.46 under `dps` and 44818.48 under
+`bossdps`. A statement about what this command reads, not about what it found --
+`comparison.compared` and `comparison.sample_size` say that.
+"""
+
+SAMPLE_BOARD = "dps"
+"""Which of the two boards the reference kills themselves are drawn from.
+
+The boards are not a reordering of each other -- measured 2026-09-14, their top
+rows are different reports entirely -- so drawing a sample from each would be
+two samples and twice the fetching. One is drawn, and the findings file says
+which, rather than leaving a reader to assume.
+"""
+
+
+def _damage_targets(
+    client: WclClient, cache: DiskCache, code: str, fight_id: int, actor_id: int
+) -> tuple[tuple[TargetRow, ...], bool]:
+    """One player's damage-done table split by target, cached, and whether it hit.
+
+    Scoped to one subject by `sourceID`, and one query per subject rather than
+    one for the roster: a `viewBy: Target` table's nested arrays cap at five
+    rows, so an unscoped call could not answer for twenty players (design
+    section 14 item 6).
+
+    Shared by our own report and every reference kill weighed, exactly as
+    `_ability_taken` is -- what differs between the two sides is which cache
+    they are stored in, which is the caller's decision and not this one's.
+    """
+    variables = {"code": code, "fightId": fight_id, "sourceId": actor_id}
+    payload, from_cache = cache.get_or_fetch(
+        cache_key(DAMAGE_DONE_TARGETS_QUERY, variables),
+        lambda: client.execute(DAMAGE_DONE_TARGETS_QUERY, variables),
+    )
+    return build_target_rows(payload, "targets"), from_cache
+
+
+def _parse_record(
+    row: RaidParseRow, *, loaded: bool, reason: str = "", from_cache: bool = False
+) -> ReferenceRecord:
+    """One raid parse-leaderboard row's outcome, in `_record`'s own shape.
+
+    `keystone_level` is written as 0, for `_mechanics_record`'s reason: a boss
+    kill has none, and a raid row's `bracketData` is not one either -- measured
+    2026-09-14 it reads 319 to 325, and what it means is unverified.
+
+    `player_slug` and `player_name` stay at their empty default. A raid parse
+    sample is drawn once per class-and-specialisation pair and shared by every
+    subject of that pair, so no candidate here was weighed for one particular
+    player -- unlike the Mythic+ parse axis, where a sample belongs to one
+    subject and the record says whose.
+    """
+    return ReferenceRecord(
+        report_code=row.report_code,
+        fight_id=row.fight_id,
+        keystone_level=0,
+        url=REPORT_URL.format(code=row.report_code, fight=row.fight_id),
+        axis="parse",
+        loaded=loaded,
+        reason=reason,
+        from_cache=from_cache,
+    )
+
+
+class _SpecReferences(NamedTuple):
+    """Everything drawn for one class-and-specialisation pair, shared by its players.
+
+    Two players of one specialisation read the same leaderboards and the same
+    reference kills; only their own side differs. Keeping the shared half in one
+    value is what makes "one sample per specialisation, not one per player" a
+    property of the code rather than of a comment.
+
+    `targets` is index-aligned with `sample.members`: each entry is that
+    member's own subject's per-target table, never the reference raid's.
+    """
+
+    board: tuple[RaidParseRow, ...] = ()
+    boss_board: tuple[RaidParseRow, ...] = ()
+    sample: ParseSample = ParseSample()
+    targets: tuple[tuple[TargetRow, ...], ...] = ()
+
+
+def _draw_spec_references(
+    rankings: WclEncounterRankingRepository,
+    references: WclRunRepository,
+    encounter: Encounter,
+    class_name: str,
+    spec: str,
+    records: list[ReferenceRecord],
+) -> _SpecReferences:
+    """Both boards for one specialisation, and up to `SAMPLE_SIZE` kills off the first.
+
+    Mirrors `_samples`' parse half, and skips a row for the same three reasons,
+    each recorded rather than silently dropped: it is our own report and fight,
+    its report failed to load, or its roster names one of our own characters.
+    That last check can only run after the load, because the roster arrives with
+    the fight and not with the leaderboard row -- so a self-match still costs
+    one fetch, and the alternative is comparing a raid against itself.
+
+    Every row is offered to the loop, which breaks once it holds `SAMPLE_SIZE`
+    members, for `_mechanics_sample`'s reason: slicing first would let each
+    discard shrink the sample instead of being refilled from the rows behind it.
+
+    The boards are not filtered by raid size. Measured 2026-09-14, our own raid
+    was 20 and the top five parse references ran 22 to 30 while the full board
+    ran 11 to 30, so a size filter would empty most samples; design section 14.1
+    records the confound this leaves standing, and `compare_damage_total`
+    medians the board exactly as it arrives.
+    """
+    board = rankings.top_parses(
+        encounter.encounter_id, encounter.difficulty, encounter.partition,
+        class_name, spec, "dps",
+    )
+    boss_board = rankings.top_parses(
+        encounter.encounter_id, encounter.difficulty, encounter.partition,
+        class_name, spec, "bossdps",
+    )
+
+    our_names = frozenset(player.name.casefold() for player in encounter.players)
+    members: list[ParseMember] = []
+    targets: list[tuple[TargetRow, ...]] = []
+    for row in board:
+        if len(members) >= SAMPLE_SIZE:
+            break
+        if row.report_code == encounter.report_code and row.fight_id == encounter.fight_id:
+            records.append(
+                _parse_record(row, loaded=False, reason="this is the run under analysis")
+            )
+            continue
+        try:
+            theirs, from_cache = references.load_raid_parse_reference(
+                row.report_code, row.fight_id
+            )
+        except (IngestError, WclError) as error:
+            records.append(_parse_record(row, loaded=False, reason=str(error)))
+            continue
+        if any(player.name.casefold() in our_names for player in theirs.players):
+            records.append(
+                _parse_record(
+                    row,
+                    loaded=True,
+                    reason="the roster includes one of our own characters",
+                    from_cache=from_cache,
+                )
+            )
+            continue
+        records.append(_parse_record(row, loaded=True, from_cache=from_cache))
+        members.append(
+            ParseMember(
+                character_name=row.character_name,
+                report_code=row.report_code,
+                fight_id=row.fight_id,
+                # The leaderboard row's own `duration`, not the fight's
+                # timestamps: the row is what named this kill, and reading the
+                # length twice is two places for one fact to be got from.
+                boss_seconds=row.duration_seconds,
+                players=theirs.players,
+                casts=theirs.casts,
+                ability_icons=theirs.ability_icons,
+                auras=_reference_auras(references, row, theirs),
+            )
+        )
+        targets.append(_reference_targets(references, row, theirs))
+
+    return _SpecReferences(
+        board=board,
+        boss_board=boss_board,
+        sample=ParseSample(members=tuple(members)),
+        targets=tuple(targets),
+    )
+
+
+def _reference_actor(row: RaidParseRow, theirs: RaidReference) -> Player | None:
+    """The reference's own subject, resolved from its own roster.
+
+    Resolved before either per-actor query is paid for: a reference whose roster
+    does not name the character its leaderboard row names can never be scoped to
+    them, and fetching first would buy two tables with no use. That member still
+    counts toward the sample, with no auras and no target table -- dropping it
+    would let a title name more references than it measured.
+    """
+    return find_player(theirs.players, row.character_name)
+
+
+def _reference_auras(
+    references: WclRunRepository, row: RaidParseRow, theirs: RaidReference
+) -> PlayerAuras | None:
+    their_player = _reference_actor(row, theirs)
+    if their_player is None:
+        return None
+    return _auras(references, row.report_code, row.fight_id, their_player.actor_id)
+
+
+def _reference_targets(
+    references: WclRunRepository, row: RaidParseRow, theirs: RaidReference
+) -> tuple[TargetRow, ...]:
+    """One reference's per-target table, or nothing where it cannot be had.
+
+    A failure is not fatal and is not recorded as a lost reference either: the
+    member is still compared on every other family, and `compare_targets` reads
+    an empty table as a reference with no boss row rather than as a zero share.
+    """
+    their_player = _reference_actor(row, theirs)
+    if their_player is None:
+        return ()
+    try:
+        rows, _ = _damage_targets(
+            references.client, references.cache,
+            row.report_code, row.fight_id, their_player.actor_id,
+        )
+    except (IngestError, WclError, httpx.HTTPError):
+        return ()
+    return rows
+
+
+def _parse_samples(
+    rankings: WclEncounterRankingRepository,
+    ours: WclRunRepository,
+    references: WclRunRepository,
+    loaded: LoadedEncounter,
+    subjects: Sequence[Player],
+    names: Mapping[int, str],
+) -> tuple[tuple[ParseSubject, ...], tuple[ReferenceRecord, ...]]:
+    """One external frame per subject, and a record of every reference weighed.
+
+    Drawn once per distinct `(class_name, spec)` pair and shared by every
+    subject of it, because a leaderboard belongs to a specialisation and not to
+    a player: measured 2026-09-14, a twenty-player roster held nineteen distinct
+    pairs, so the saving is small in the worst case and free to have.
+
+    Nothing is fetched for an attempt that did not kill. Every family of this
+    axis reads either this report's own rankings row or a sample drawn to stand
+    beside it, and a wipe has no row -- `compare_parse_axis` withholds the whole
+    frame in one sentence, so a board, five reference reports and their tables
+    would be paid for and then discarded. The subjects are still built, or that
+    sentence would never be written.
+
+    Nothing is fetched for a player the log records no specialisation for
+    either, for the reason `compare_parse_axis` states in the finding it
+    returns for them: a specialisation is what a leaderboard is asked for.
+    """
+    encounter = loaded.encounter
+    records: list[ReferenceRecord] = []
+    drawn: dict[tuple[str, str], _SpecReferences] = {}
+    built: list[ParseSubject] = []
+
+    for player in subjects:
+        comparable = loaded.standing is not None and bool(player.spec)
+        if comparable:
+            key = (player.class_name, player.spec)
+            if key not in drawn:
+                drawn[key] = _draw_spec_references(
+                    rankings, references, encounter, player.class_name, player.spec, records
+                )
+        spec_references = drawn.get((player.class_name, player.spec), _SpecReferences())
+        built.append(
+            ParseSubject(
+                player=player,
+                display_name=names[player.actor_id],
+                our_auras=(
+                    _auras(ours, encounter.report_code, encounter.fight_id, player.actor_id)
+                    if comparable
+                    else None
+                ),
+                sample=spec_references.sample if comparable else ParseSample(),
+                board=spec_references.board if comparable else (),
+                boss_board=spec_references.boss_board if comparable else (),
+                our_targets=(
+                    _our_targets(ours, encounter, player.actor_id) if comparable else ()
+                ),
+                their_targets=spec_references.targets if comparable else (),
+            )
+        )
+    return tuple(built), tuple(records)
+
+
+def _our_targets(
+    ours: WclRunRepository, encounter: Encounter, actor_id: int
+) -> tuple[TargetRow, ...]:
+    """Our own subject's per-target table, cached beside the rest of our report.
+
+    Not guarded: a failure here is a failure to read our own report, which is
+    the same class of problem as our own ability-taken table failing, and that
+    one stops the command too. Degrading would leave `compare_targets` saying
+    this fight's table carried one target, which would be false of a table that
+    was never read.
+    """
+    rows, _ = _damage_targets(
+        ours.client, ours.cache, encounter.report_code, encounter.fight_id, actor_id
+    )
+    return rows
+
+
 def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> PlayerAuras | None:
     """One player's auras, or None if they cannot be had.
 
@@ -783,7 +1089,7 @@ def _fetch_parse_auras(
     """Every parse member's own aura data, and our own side's, fetched at most once.
 
     A member's counterpart is resolved from that member's own roster,
-    `find_player(member.run.players, member.row.character_name)`, before paying for
+    `find_player(member.players, member.character_name)`, before paying for
     its aura query: when the reference's own roster does not contain the
     player its leaderboard row names, `find_player` can never resolve them,
     and fetching first would pay for a query with no use. A member whose
@@ -801,7 +1107,7 @@ def _fetch_parse_auras(
     our_auras_fetched = False
     updated_members: list[ParseMember] = []
     for member in sample.members:
-        their_player = find_player(member.run.players, member.row.character_name)
+        their_player = find_player(member.players, member.character_name)
         if their_player is None:
             updated_members.append(member)
             continue
@@ -813,8 +1119,8 @@ def _fetch_parse_auras(
                 update={
                     "auras": _auras(
                         references,
-                        member.row.report_code,
-                        member.row.fight_id,
+                        member.report_code,
+                        member.fight_id,
                         their_player.actor_id,
                     )
                 }
@@ -1167,6 +1473,7 @@ def raid(
         mechanics_sample = MechanicsSample()
         our_abilities: tuple[AbilityTakenRow, ...] = ()
         reference_records: tuple[ReferenceRecord, ...] = ()
+        parse_subjects: tuple[ParseSubject, ...] = ()
         if not no_compare:
             transient = DiskCache(
                 cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
@@ -1181,6 +1488,18 @@ def raid(
             our_abilities, _ = _ability_taken(
                 repository.client, repository.cache, encounter.report_code, encounter.fight_id
             )
+            # The reference reports this axis draws go in the transient store
+            # beside the reference kills': they are other players' logs, kept
+            # for one comparison and expired, never warehoused.
+            parse_subjects, parse_records = _parse_samples(
+                encounter_rankings,
+                repository,
+                WclRunRepository(repository.client, transient),
+                loaded,
+                to_compare,
+                names,
+            )
+            reference_records += parse_records
 
         findings = analyse_encounter(
             loaded,
@@ -1189,6 +1508,7 @@ def raid(
             roles=load_roles(),
             mechanics=mechanics_sample,
             our_abilities=our_abilities,
+            parse_subjects=parse_subjects,
         )
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -1205,15 +1525,36 @@ def raid(
         "kill": encounter.kill,
         "fight_percentage": encounter.fight_percentage,
         "duration_seconds": encounter.duration_seconds,
+        # Where the partition every leaderboard was queried at came from: this
+        # report's own rankings row, or the dated file that stands in when a
+        # wipe leaves no row to read one off.
+        "partition_source": loaded.partition_source,
         "player": subject.name,
         "comparison": {
-            "compared": bool(mechanics_sample.members),
+            "compared": bool(
+                mechanics_sample.members
+                or any(one.sample.members for one in parse_subjects)
+            ),
             # Who `--player`/`--all-players` named, subject first -- the same
             # promise `analyze`'s own "players" list keeps. Empty only when
             # nobody could be named at all, which never happens here: the
             # subject always resolves to at least the report owner.
             "players": [names[one.actor_id] for one in to_compare],
-            "sample_size": {"mechanics": len(mechanics_sample.members)},
+            # What this command reports throughput on, and which single board
+            # its reference kills were drawn from. Both are statements about
+            # the method rather than about what was found, so both stand
+            # whatever the leaderboards answered.
+            "metrics": list(DAMAGE_METRICS),
+            "sample_board": SAMPLE_BOARD,
+            "sample_size": {
+                "mechanics": len(mechanics_sample.members),
+                # The parse axis is drawn per specialisation and read per
+                # player, so its size is a figure per player: one number could
+                # only ever describe one of them.
+                "parse": {
+                    one.display_name: len(one.sample.members) for one in parse_subjects
+                },
+            },
             "references": [
                 {
                     "axis": record.axis,

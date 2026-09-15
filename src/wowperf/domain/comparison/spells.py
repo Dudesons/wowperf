@@ -1,17 +1,18 @@
-# ABOUTME: Compares one player's boss-pull casts and talent build against a top parse or sample.
-# ABOUTME: Boss pulls only: across trash an ability ratio measures the route, not the player.
+# ABOUTME: Compares one player's casts and talent build against a top parse or a sample.
+# ABOUTME: Which casts count is the caller's rule: a dungeon's boss pulls, or a whole raid fight.
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from wowperf.domain.comparison.loadout import item_sourced, loadouts_of
 from wowperf.domain.comparison.measures import AbilityRate, Stretch, Verdict
-from wowperf.domain.comparison.reference import REPORT_URL, ParseRow
+from wowperf.domain.comparison.reference import REPORT_URL
 from wowperf.domain.comparison.sample import (
     ParseMember,
     ParseSample,
     too_few,
 )
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.comparison.wording import Wording
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import (
     Confidence,
@@ -21,7 +22,7 @@ from wowperf.domain.findings import (
     quantity,
 )
 from wowperf.domain.loadout import Loadout
-from wowperf.domain.model import LoadedRun, Player, Run
+from wowperf.domain.model import Player, Pull
 
 MAX_SPELLS_REPORTED = 5
 MIN_CASTS_TO_COMPARE = 3
@@ -38,15 +39,75 @@ stray cast cannot make a member count towards this threshold either.
 """
 
 
-def boss_seconds(run: Run) -> float:
+def boss_pulls(pulls: Sequence[Pull]) -> tuple[Pull, ...]:
+    """The boss pulls of a route.
+
+    Takes the route rather than a `Run`, so that a parse reference — which
+    carries its pulls and no run — reaches the same rule our own side does.
+    """
+    return tuple(pull for pull in pulls if pull.is_boss)
+
+
+def boss_seconds(pulls: Sequence[Pull]) -> float:
     """Seconds spent on boss pulls — the only stretch where two runs fought the same thing."""
-    return sum(pull.duration_seconds for pull in run.boss_pulls)
+    return sum(pull.duration_seconds for pull in boss_pulls(pulls))
+
+
+def in_pulls(indices: frozenset[int]) -> Callable[[CastEvent], bool]:
+    """Count a cast only inside these pulls -- the Mythic+ rule.
+
+    A `Run` has pulls and a raid `Encounter` does not, so which casts count is
+    the caller's to decide rather than this module's to assume.
+    """
+    return lambda event: event.pull_index in indices
+
+
+def whole_fight(event: CastEvent) -> bool:
+    """Count every cast the stream carries -- the raid rule.
+
+    A raid cast's `pull_index` is always `None`, so no index rule can match one.
+    The stream is already scoped to one fight by the query that fetched it,
+    which is what makes "everything" the right denominator here and not a
+    widening.
+    """
+    return True
+
+
+CastRule = Callable[[Sequence[Pull]], Callable[[CastEvent], bool]]
+"""Which of a side's casts count, given that side's own route.
+
+One rule, applied to our route and to each reference's, is what keeps both
+sides of a rate counted the same way -- the property the whole comparison rests
+on. It cannot be a single bound predicate, because a pull index means one pull
+in our log and a different pull in theirs.
+"""
+
+
+def boss_pull_casts(pulls: Sequence[Pull]) -> Callable[[CastEvent], bool]:
+    """The Mythic+ rule bound to one route: casts inside that route's boss pulls.
+
+    Boss pulls only, because across trash an ability ratio measures the route
+    rather than the player.
+    """
+    return in_pulls(frozenset(pull.index for pull in boss_pulls(pulls)))
+
+
+def whole_fight_casts(pulls: Sequence[Pull]) -> Callable[[CastEvent], bool]:
+    """The raid rule, which has no route to bind to.
+
+    `pulls` is accepted and ignored: a raid fight carries none, and the stream
+    is already scoped to the fight by the query that fetched it. Handed the
+    Mythic+ rule instead, an empty route yields `in_pulls(frozenset())`, every
+    ability counts zero, and nothing raises -- which is the trap this rule
+    exists to close.
+    """
+    return whole_fight
 
 
 def casts_in(
-    casts: tuple[CastEvent, ...], actor_id: int, indices: frozenset[int]
+    casts: tuple[CastEvent, ...], actor_id: int, include: Callable[[CastEvent], bool]
 ) -> dict[int, tuple[str, int]]:
-    """One player's casts inside `indices`, as ability id to (name, count).
+    """Each ability this actor cast, and how often, over the casts `include` admits.
 
     The one counting rule in this package. `boss_casts` is this scoped to the
     boss pulls; the trash comparison is this scoped to the packs two routes
@@ -55,7 +116,7 @@ def casts_in(
     """
     counted: dict[int, tuple[str, int]] = {}
     for event in casts:
-        if event.actor_id != actor_id or event.pull_index not in indices:
+        if event.actor_id != actor_id or not include(event):
             continue
         name, count = counted.get(event.ability_id, (event.ability_name, 0))
         counted[event.ability_id] = (name, count + 1)
@@ -63,10 +124,15 @@ def casts_in(
 
 
 def boss_casts(
-    run: Run, casts: tuple[CastEvent, ...], actor_id: int
+    pulls: Sequence[Pull], casts: tuple[CastEvent, ...], actor_id: int
 ) -> dict[int, tuple[str, int]]:
-    """One player's casts inside boss pulls, as ability id to (name, count)."""
-    return casts_in(casts, actor_id, frozenset(pull.index for pull in run.boss_pulls))
+    """One player's casts inside boss pulls, as ability id to (name, count).
+
+    The casts are the whole stream and the route decides which of them count,
+    so nothing else that reads the same stream — the potion count, which is a
+    press wherever it happened — is narrowed by this one's rule.
+    """
+    return casts_in(casts, actor_id, boss_pull_casts(pulls))
 
 
 def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[int]:
@@ -76,7 +142,7 @@ def _all_cast_ability_ids(casts: tuple[CastEvent, ...], actor_id: int) -> set[in
 
 def their_actor_id(theirs: ParseMember, their_name: str) -> int | None:
     folded = their_name.casefold()
-    for player in theirs.run.players:
+    for player in theirs.players:
         if player.name.casefold() == folded:
             return player.actor_id
     return None
@@ -135,6 +201,7 @@ def _missing_cast_pairwise(
     name: str,
     count: int,
     their_boss_seconds: float,
+    words: Wording,
     *,
     owned: bool,
 ) -> Finding:
@@ -143,14 +210,14 @@ def _missing_cast_pairwise(
         detail = f"{our_name} had it equipped and never used it."
     else:
         detail = (
-            f"{name} does not appear anywhere in this run for {our_name} — not "
-            "on bosses and not on trash. That is a talent not taken, a button "
+            f"{name} does not appear anywhere in {words.run} for {our_name}"
+            f"{words.nowhere_else}. That is a talent not taken, a button "
             "not pressed, or an item not owned; the log cannot tell which."
         )
     return Finding(
         id="compare.spells.missing",
         title=(
-            f"{their_name} cast {name} {count} times on bosses; "
+            f"{their_name} cast {name} {count} times {words.on_stretch}; "
             f"{our_name} never cast it"
         ),
         detail=detail,
@@ -158,8 +225,8 @@ def _missing_cast_pairwise(
         seconds_lost=None,
         evidence=(
             f"ability {ability_id}",
-            f"{count} casts across {their_boss_seconds:.0f}s of their boss pulls",
-            "zero casts in the whole of our run",
+            f"{count} casts across {their_boss_seconds:.0f}s of {words.theirs_across}",
+            f"zero casts in the whole of {words.our_stretch}",
         ),
         ability_id=ability_id,
         ability_name=name,
@@ -167,22 +234,33 @@ def _missing_cast_pairwise(
 
 
 def compare_spells(
-    ours: LoadedRun,
+    our_pulls: Sequence[Pull],
+    our_boss_seconds: float,
+    our_casts: tuple[CastEvent, ...],
     our_player: Player,
     our_name: str,
     theirs: ParseMember,
     their_name: str,
+    *,
+    counted: CastRule,
+    words: Wording,
 ) -> list[Finding]:
-    """What the reference player cast on bosses that we did not, and how often.
+    """What the reference player cast that we did not, over the counted stretch, and how often.
 
     `our_name` is the roster's disambiguated spelling of `our_player`, and it
     is what every title below says. `our_player.name` is not: two roster
     members can share it, and a run comparing both would then emit two
     identical titles.
+
+    Our own side arrives as the three values this reads -- a route, the seconds
+    that route was worth, and a cast stream -- rather than as a run, so that a
+    raid fight, which has no run to give, reaches the same comparison. Its
+    route is empty and its seconds are the fight's own, which is why the two
+    are separate arguments and not one derived from the other: exactly the
+    reason `ParseMember` carries `boss_seconds` beside `pulls`.
     """
     actor_id = their_actor_id(theirs, their_name)
-    their_boss_seconds = boss_seconds(theirs.run)
-    our_boss_seconds = boss_seconds(ours.run)
+    their_boss_seconds = theirs.boss_seconds
 
     if actor_id is None or their_boss_seconds <= 0 or our_boss_seconds <= 0:
         return [
@@ -190,24 +268,25 @@ def compare_spells(
                 id="compare.spells.unavailable",
                 title=f"The spell comparison could not be made for {our_name}",
                 detail=(
-                    "A spell comparison needs boss pulls on both sides and the reference "
-                    "player present in their own report. One of those is missing, so no "
-                    "ability numbers are reported rather than numbers from an unlike sample."
+                    f"A spell comparison needs {words.both_sides} on both sides and the "
+                    "reference player present in their own report. One of those is missing, "
+                    "so no ability numbers are reported rather than numbers from an unlike "
+                    "sample."
                 ),
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
                 evidence=(
-                    f"our boss time {our_boss_seconds:.0f}s",
-                    f"their boss time {their_boss_seconds:.0f}s",
+                    f"our {words.stretch_time} {our_boss_seconds:.0f}s",
+                    f"their {words.stretch_time} {their_boss_seconds:.0f}s",
                     f"reference player {their_name!r} "
                     f"{'found' if actor_id is not None else 'not found'}",
                 ),
             )
         ]
 
-    theirs_on_bosses = boss_casts(theirs.run, theirs.casts, actor_id)
-    ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
-    ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
+    theirs_on_bosses = casts_in(theirs.casts, actor_id, counted(theirs.pulls))
+    ours_on_bosses = casts_in(our_casts, our_player.actor_id, counted(our_pulls))
+    ours_anywhere = _all_cast_ability_ids(our_casts, our_player.actor_id)
 
     findings: list[Finding] = []
 
@@ -237,7 +316,7 @@ def compare_spells(
                 findings.append(
                     _missing_cast_pairwise(
                         their_name, our_name, ability_id, name, count,
-                        their_boss_seconds, owned=True,
+                        their_boss_seconds, words, owned=True,
                     )
                 )
             # Otherwise it is an item we provably lack, and suppressed for the
@@ -245,11 +324,13 @@ def compare_spells(
             continue
         findings.append(
             _missing_cast_pairwise(
-                their_name, our_name, ability_id, name, count, their_boss_seconds, owned=False,
+                their_name, our_name, ability_id, name, count, their_boss_seconds, words,
+                owned=False,
             )
         )
 
-    # 2. Abilities both cast, where their rate on bosses is materially higher.
+    # 2. Abilities both cast, where their rate over the counted stretch is
+    #    materially higher.
     gaps = []
     for ability_id, (name, their_count) in theirs_on_bosses.items():
         if their_count < MIN_CASTS_TO_COMPARE or ability_id not in ours_on_bosses:
@@ -267,20 +348,19 @@ def compare_spells(
             Finding(
                 id="compare.spells.rate",
                 title=(
-                    f"{their_name} cast {name} {their_rate:.1f} times a minute on bosses, "
-                    f"{our_name} {our_rate:.1f}"
+                    f"{their_name} cast {name} {their_rate:.1f} times a minute "
+                    f"{words.on_stretch}, {our_name} {our_rate:.1f}"
                 ),
                 detail=(
-                    "Both rates are casts per minute of boss-pull time, which is the one stretch "
-                    "of a dungeon where two runs fought the same encounter. A longer fight at a "
-                    "higher key changes how many cooldowns fit, so treat a small gap as noise."
+                    f"Both rates are casts per minute of {words.rate_basis}, "
+                    f"{words.same_stretch_pairwise} {words.rate_hedge}"
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
                     f"ability {ability_id}",
-                    f"ours over {our_boss_seconds:.0f}s of boss pulls",
-                    f"theirs over {their_boss_seconds:.0f}s of boss pulls",
+                    f"ours over {our_boss_seconds:.0f}s of {words.over}",
+                    f"theirs over {their_boss_seconds:.0f}s of {words.over}",
                 ),
                 facts=(
                     FindingFact(label="Ours", value=f"{our_rate:.1f} casts a minute",
@@ -290,7 +370,13 @@ def compare_spells(
                     # Named rather than left implicit: this shape has no median
                     # and no range, and a panel that printed either label here
                     # would claim a sample the comparison never drew.
-                    FindingFact(label="Sample", value="1 reference run"),
+                    #
+                    # The noun is `Wording`'s and not a literal, because this
+                    # pair serves a raid fight as well as a dungeon and a raid
+                    # kill is not a run. It is a field of its own rather than
+                    # `run`, which is the demonstrative ("this run", "this
+                    # fight") and would read "1 reference this fight" here.
+                    FindingFact(label="Sample", value=f"1 reference {words.reference_noun}"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,
@@ -301,12 +387,22 @@ def compare_spells(
 
 
 def compare_spells_sample(
-    ours: LoadedRun, our_player: Player, our_name: str, sample: ParseSample
+    our_pulls: Sequence[Pull],
+    our_boss_seconds: float,
+    our_casts: tuple[CastEvent, ...],
+    our_player: Player,
+    our_name: str,
+    sample: ParseSample,
+    *,
+    counted: CastRule,
+    words: Wording,
 ) -> list[Finding]:
     """What the sample's top parses cast that we did not, and how our own rate compares.
 
     `our_name` is the roster's disambiguated spelling of `our_player`, for the
-    reason `compare_spells` above gives.
+    reason `compare_spells` above gives. Our own side arrives as values rather
+    than a run, and `counted` decides which casts count on both sides, for the
+    reasons that function's docstring gives.
 
     No member is named: the claim is about the sample as a population — "N of M
     top parses cast this" or "the median rate is this" — and naming one member
@@ -317,22 +413,24 @@ def compare_spells_sample(
     """
     # A wholly empty sample means there was nothing to compare against at all;
     # `service.compare()` already says so once, as `compare.parse.unavailable`,
-    # so returning nothing here avoids repeating that finding for a comparison
-    # that never ran.
+    # and `compare_parse_axis` says it once on the raid axis, so returning
+    # nothing here avoids repeating that finding for a comparison that never ran.
     if not sample.members:
         return []
 
     if not sample.can_aggregate(sample.members):
         first = sample.members[0]
         return too_few(
-            compare_spells(ours, our_player, our_name, first, first.row.character_name),
+            compare_spells(
+                our_pulls, our_boss_seconds, our_casts, our_player, our_name,
+                first, first.character_name, counted=counted, words=words,
+            ),
             len(sample.members),
         )
 
     total = len(sample.members)
-    our_boss_seconds = boss_seconds(ours.run)
-    ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
-    ours_anywhere = _all_cast_ability_ids(ours.casts, our_player.actor_id)
+    ours_on_bosses = casts_in(our_casts, our_player.actor_id, counted(our_pulls))
+    ours_anywhere = _all_cast_ability_ids(our_casts, our_player.actor_id)
 
     # Ability id to name, gathered from whichever member cast it first, and one
     # (boss seconds, qualifying casts) pair per member. A member whose own actor
@@ -344,12 +442,12 @@ def compare_spells_sample(
     names: dict[int, str] = {}
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in sample.members:
-        actor_id = their_actor_id(member, member.row.character_name)
-        their_boss_seconds = boss_seconds(member.run)
+        actor_id = their_actor_id(member, member.character_name)
+        their_boss_seconds = member.boss_seconds
         if actor_id is None or their_boss_seconds <= 0:
             per_member.append((0.0, {}))
             continue
-        casts_by_ability = boss_casts(member.run, member.casts, actor_id)
+        casts_by_ability = casts_in(member.casts, actor_id, counted(member.pulls))
         for ability_id, (name, _count) in casts_by_ability.items():
             names.setdefault(ability_id, name)
         qualifying = {
@@ -361,10 +459,10 @@ def compare_spells_sample(
 
     findings = _missing_sample(
         our_name, ours_anywhere, names, per_member, total,
-        our_player.loadout, loadouts_of(sample.members),
+        our_player.loadout, loadouts_of(sample.members), words,
     )
     if our_boss_seconds > 0:
-        findings += _rate_sample(our_name, ours_on_bosses, our_boss_seconds, per_member)
+        findings += _rate_sample(our_name, ours_on_bosses, our_boss_seconds, per_member, words)
     return findings
 
 
@@ -376,8 +474,9 @@ def _missing_sample(
     total: int,
     our_loadout: Loadout | None,
     their_loadouts: Sequence[Loadout],
+    words: Wording,
 ) -> list[Finding]:
-    """Abilities enough of the sample cast on bosses that we never cast anywhere.
+    """Abilities enough of the sample cast, over the counted stretch, that we never cast anywhere.
 
     Three branches, because the log supports three explanations and the two the
     detail used to offer made a false dichotomy of it. An ability that resolves
@@ -406,7 +505,7 @@ def _missing_sample(
         if source is not None and our_loadout is not None:
             if our_loadout.has_item(source.item_id):
                 findings.append(_missing_cast(our_name, matching, total, ability_id, name,
-                                               owned=True))
+                                               words, owned=True))
             # Otherwise the join has answered, and the answer is that the item
             # is not ours to press. Naming it at all -- as a cast we skipped or
             # as a gear gap -- puts an act the player cannot perform in front
@@ -415,12 +514,21 @@ def _missing_sample(
             # enter it: our own loadout settles ownership by itself, and a
             # thin sample is no reason to hand back the suggestion.
             continue
-        findings.append(_missing_cast(our_name, matching, total, ability_id, name, owned=False))
+        findings.append(
+            _missing_cast(our_name, matching, total, ability_id, name, words, owned=False)
+        )
     return _one_row_per_sentence(findings)
 
 
 def _missing_cast(
-    our_name: str, matching: int, total: int, ability_id: int, name: str, *, owned: bool
+    our_name: str,
+    matching: int,
+    total: int,
+    ability_id: int,
+    name: str,
+    words: Wording,
+    *,
+    owned: bool,
 ) -> Finding:
     """A cast the sample made and we did not, in whichever of two wordings is true."""
     if owned:
@@ -430,15 +538,15 @@ def _missing_cast(
         )
     else:
         detail = (
-            f"{name} does not appear anywhere in this run for {our_name} — not on bosses "
-            "and not on trash. That is a talent not taken, a button not pressed, or an "
+            f"{name} does not appear anywhere in {words.run} for {our_name}"
+            f"{words.nowhere_else}. That is a talent not taken, a button not pressed, or an "
             "item not owned; the log cannot tell which. The count is over the sample, not "
             "one parse, so no single reference needs naming to make the point."
         )
     return Finding(
         id="compare.spells.missing",
         title=(
-            f"{count_phrase(matching, total)} top parses cast {name} on bosses; "
+            f"{count_phrase(matching, total)} top parses cast {name} {words.on_stretch}; "
             f"{our_name} never did"
         ),
         detail=detail,
@@ -447,8 +555,8 @@ def _missing_cast(
         evidence=(
             f"ability {ability_id}",
             f"{matching} of {total} top parses cast it at least "
-            f"{MIN_CASTS_TO_COMPARE} times on bosses",
-            "zero casts in the whole of our run",
+            f"{MIN_CASTS_TO_COMPARE} times {words.on_stretch}",
+            f"zero casts in the whole of {words.our_stretch}",
         ),
         quantifier=quantifier_for(matching, total),
         ability_id=ability_id,
@@ -528,6 +636,7 @@ def _rate_sample(
     ours_on_bosses: dict[int, tuple[str, int]],
     our_boss_seconds: float,
     per_member: Sequence[tuple[float, dict[int, int]]],
+    words: Wording,
 ) -> list[Finding]:
     """Abilities both sides cast, where the sample's median rate is materially higher."""
     measures = rate_measures(ours_on_bosses, our_boss_seconds, per_member)
@@ -546,41 +655,43 @@ def _rate_sample(
     # page that dropped this list would read the two alike.
     level = [m.name for m in measures if m.verdict is Verdict.LEVEL]
 
-    findings = [_gap_finding(our_name, m, our_boss_seconds) for m in gaps]
+    findings = [_gap_finding(our_name, m, our_boss_seconds, words) for m in gaps]
     findings += [
         _above_finding(
             our_name, m.ability_id, m.name, m.ours, m.their_median,
-            list(m.their_rates), our_boss_seconds,
+            list(m.their_rates), our_boss_seconds, words,
         )
         for m in above
     ]
     rows = _one_row_per_sentence(findings)
     if level:
-        rows.append(_level_finding(our_name, level))
+        rows.append(_level_finding(our_name, level, words))
     return rows
 
 
-def _gap_finding(our_name: str, measure: AbilityRate, our_boss_seconds: float) -> Finding:
+def _gap_finding(
+    our_name: str, measure: AbilityRate, our_boss_seconds: float, words: Wording
+) -> Finding:
     """An ability the sample's median rate clears by `RATE_GAP_MULTIPLE`."""
     low, high = observed_range(measure.their_rates)
     return Finding(
         id="compare.spells.rate",
         title=(
             f"{len(measure.their_rates)} top parses cast {measure.name} a median "
-            f"{measure.their_median:.1f} times a minute on bosses; "
+            f"{measure.their_median:.1f} times a minute {words.on_stretch}; "
             f"{our_name} casts it {measure.ours:.1f}"
         ),
         detail=(
-            "Both rates are casts per minute of boss-pull time, which is the one "
-            "stretch of a dungeon where every run fought the same encounter. The "
+            f"Both rates are casts per minute of {words.rate_basis}, "
+            f"{words.same_stretch_sample} The "
             "reference side is the median across the sample, not one parse, so a "
-            "single busy or quiet run cannot carry the comparison alone."
+            f"single busy or quiet {words.reference_noun} cannot carry the comparison alone."
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,
         evidence=(
             f"ability {measure.ability_id}",
-            f"ours over {our_boss_seconds:.0f}s of boss pulls",
+            f"ours over {our_boss_seconds:.0f}s of {words.over}",
             f"range {low:.1f} to {high:.1f} casts a minute across "
             f"{len(measure.their_rates)} top parses",
         ),
@@ -612,6 +723,7 @@ def _above_finding(
     their_median: float,
     rates: Sequence[float],
     our_boss_seconds: float,
+    words: Wording,
 ) -> Finding:
     """An ability we cast far more often than the sample's median.
 
@@ -626,22 +738,20 @@ def _above_finding(
     return Finding(
         id="compare.spells.above",
         title=(
-            f"{our_name} casts {name} {our_rate:.1f} times a minute on bosses; "
+            f"{our_name} casts {name} {our_rate:.1f} times a minute {words.on_stretch}; "
             f"{len(rates)} top parses cast it a median {their_median:.1f}"
         ),
         detail=(
-            "Both rates are casts per minute of boss-pull time. This row states a difference "
-            "and no verdict: casting something more often than the sample is not a fault, and "
-            "on a class whose resources are shared it means those resources did not go "
-            "somewhere else, which is the thing worth checking. A defensive, a taunt or a "
-            "movement button pressed more often may simply be what the run demanded, and a "
-            "longer or harder key asks for more of them."
+            f"Both rates are casts per minute of {words.rate_basis}. This row states a "
+            "difference and no verdict: casting something more often than the sample is not "
+            "a fault, and on a class whose resources are shared it means those resources did "
+            f"not go somewhere else, which is the thing worth checking. {words.above_hedge}"
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,
         evidence=(
             f"ability {ability_id}",
-            f"ours over {our_boss_seconds:.0f}s of boss pulls",
+            f"ours over {our_boss_seconds:.0f}s of {words.over}",
             f"range {low:.1f} to {high:.1f} casts a minute across {len(rates)} top parses",
         ),
         facts=(
@@ -664,8 +774,8 @@ def _above_finding(
     )
 
 
-def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
-    """The abilities compared on bosses that produced no gap row.
+def _level_finding(our_name: str, names: Sequence[str], words: Wording) -> Finding:
+    """The abilities compared over the stretch both sides fought that produced no gap row.
 
     Kept out of `_one_row_per_sentence`: that collapses and ranks a family of
     competing rows, and this is one sentence about a set, not a row that could
@@ -675,7 +785,8 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
     return Finding(
         id="compare.spells.level",
         title=(
-            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast on bosses "
+            f"{quantity(len(ordered), 'ability', 'abilities')} {our_name} cast "
+            f"{words.on_stretch} "
             f"{'was' if len(ordered) == 1 else 'were'} compared and showed no gap"
         ),
         detail=(
@@ -696,7 +807,7 @@ def _level_finding(our_name: str, names: Sequence[str]) -> Finding:
 
 
 def compare_talents(
-    our_player: Player, our_name: str, their_player: Player | None, their_row: ParseRow
+    our_player: Player, our_name: str, their_player: Player | None, theirs: ParseMember
 ) -> list[Finding]:
     """Whether the two builds differ, and the string needed to import theirs.
 
@@ -711,11 +822,11 @@ def compare_talents(
     to tell them apart. `our_name` is the roster's disambiguated spelling, for
     the reason `compare_spells` above gives.
     """
-    ours = our_player.talent_import_string
-    theirs = their_player.talent_import_string if their_player else None
-    source = REPORT_URL.format(code=their_row.report_code, fight=their_row.fight_id)
+    our_build = our_player.talent_import_string
+    their_build = their_player.talent_import_string if their_player else None
+    source = REPORT_URL.format(code=theirs.report_code, fight=theirs.fight_id)
 
-    if ours is None or theirs is None:
+    if our_build is None or their_build is None:
         return [
             Finding(
                 id="compare.talents",
@@ -728,14 +839,14 @@ def compare_talents(
                 confidence=Confidence.MEASURED,
                 seconds_lost=None,
                 evidence=(
-                    f"ours {'present' if ours else 'absent'}",
-                    f"theirs {'present' if theirs else 'absent'}",
+                    f"ours {'present' if our_build else 'absent'}",
+                    f"theirs {'present' if their_build else 'absent'}",
                     f"top-ranked parse: {source}",
                 ),
             )
         ]
 
-    if ours == theirs:
+    if our_build == their_build:
         return [
             Finding(
                 id="compare.talents",
@@ -764,6 +875,10 @@ def compare_talents(
             ),
             confidence=Confidence.MEASURED,
             seconds_lost=None,
-            evidence=(f"theirs: {theirs}", f"ours: {ours}", f"top-ranked parse: {source}"),
+            evidence=(
+                f"theirs: {their_build}",
+                f"ours: {our_build}",
+                f"top-ranked parse: {source}",
+            ),
         )
     ]

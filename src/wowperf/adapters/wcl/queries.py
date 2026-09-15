@@ -389,6 +389,46 @@ query EncounterKillRankings(
 }
 """
 
+# `metric` is a variable because this plan draws both `dps` and `bossdps`. The
+# boards are not a reordering of each other -- measured 2026-09-14, their top
+# rows are different reports entirely -- so both are drawn and the reference
+# reports are fetched from the `dps` board alone. 100 rows, 0.0 points.
+RAID_CHARACTER_RANKINGS_QUERY = """
+query RaidCharacterRankings(
+  $encounterId: Int!, $difficulty: Int!, $partition: Int!, $page: Int!,
+  $className: String!, $specName: String!, $metric: CharacterRankingMetricType!
+) {
+  worldData {
+    encounter(id: $encounterId) {
+      id
+      name
+      characterRankings(
+        metric: $metric
+        difficulty: $difficulty
+        partition: $partition
+        page: $page
+        className: $className
+        specName: $specName
+      )
+    }
+  }
+}
+"""
+
+# `playerMetric` is a variable rather than a literal because this plan reports
+# `dps` and `bossdps` side by side: measured 2026-09-14, the same tank read
+# 59991.46 under one and 44818.48 under the other, and a reader given one figure
+# cannot tell which. Costs 2.00 points, whatever the roster's size.
+REPORT_RANKINGS_QUERY = """
+query ReportRankings($code: String!, $fightId: Int!, $metric: ReportRankingMetricType!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      rankings(fightIDs: [$fightId], playerMetric: $metric)
+    }
+  }
+}
+"""
+
 
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
@@ -462,6 +502,28 @@ query AbilityTakenTableByVictim($code: String!, $fightId: Int!, $actorId: Int!) 
         dataType: DamageTaken
         viewBy: Ability
         sourceID: $actorId
+      )
+    }
+  }
+}
+"""
+
+
+# `sourceID` scopes a damage-done table to one subject, and `viewBy: Target` breaks it into one
+# row per target rather than one row per source or per ability. Measured 2026-09-13: this
+# sourceID-scoped table cost 0.94 points -- see `.claude/skills/wcl-api/SKILL.md`, "A damage-done
+# table split by target names the boss itself". One query per subject, not one unscoped call for
+# the whole roster: a Target-viewed table's nested arrays cap at five rows (design's raid-analysis
+# amendment, §14 item 6), which is why a twenty-player roster cannot be served by one unscoped call.
+DAMAGE_DONE_TARGETS_QUERY = """
+query DamageDoneTargets($code: String!, $fightId: Int!, $sourceId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      targets: table(
+        fightIDs: [$fightId]
+        dataType: DamageDone
+        viewBy: Target
+        sourceID: $sourceId
       )
     }
   }

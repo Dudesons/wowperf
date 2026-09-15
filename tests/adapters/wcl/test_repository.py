@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
+from wowperf.adapters.wcl import repository as repository_module
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
@@ -953,6 +954,83 @@ RAID_FIGHTS_PAYLOAD: dict[str, Any] = {
 }
 
 
+# `Report.rankings` for fight 22 (the kill), one row per `playerMetric`. The
+# two payloads give the same player a different `amount` -- 59991.462335693
+# for `dps` against 44818.47826087 for `bossdps`, the ratio measured
+# 2026-09-14 -- so a load that queried "dps" twice would answer identically to
+# one that queried both metrics, and no test built only on identical rows
+# could tell the difference.
+RAID_RANKINGS_DPS_PAYLOAD: dict[str, Any] = {
+    "reportData": {
+        "report": {
+            "rankings": {
+                "data": [
+                    {
+                        "fightID": 22,
+                        "difficulty": 4,
+                        "partition": 1,
+                        "size": 20,
+                        "kill": True,
+                        "roles": {
+                            "tanks": {"characters": []},
+                            "healers": {"characters": []},
+                            "dps": {
+                                "characters": [
+                                    {
+                                        "name": "Emberkin", "class": "Mage", "spec": "Arcane",
+                                        "amount": 59991.462335693, "rank": "~5764",
+                                        "best": "~3746", "rankPercent": 80,
+                                        "bracketPercent": 73, "totalParses": 31004,
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                ]
+            }
+        }
+    }
+}
+
+RAID_RANKINGS_BOSSDPS_PAYLOAD: dict[str, Any] = {
+    "reportData": {
+        "report": {
+            "rankings": {
+                "data": [
+                    {
+                        "fightID": 22,
+                        "difficulty": 4,
+                        "partition": 1,
+                        "size": 20,
+                        "kill": True,
+                        "roles": {
+                            "tanks": {"characters": []},
+                            "healers": {"characters": []},
+                            "dps": {
+                                "characters": [
+                                    {
+                                        "name": "Emberkin", "class": "Mage", "spec": "Arcane",
+                                        "amount": 44818.47826087, "rank": "~3747",
+                                        "best": "~2017", "rankPercent": 87,
+                                        "bracketPercent": 81, "totalParses": 28826,
+                                    }
+                                ]
+                            },
+                        },
+                    }
+                ]
+            }
+        }
+    }
+}
+
+# Fight 30 is the wipe: no row for either metric, exactly as a wipe returns
+# nothing to distinguish it from a kill -- design section 14 item 7.
+RAID_RANKINGS_EMPTY_PAYLOAD: dict[str, Any] = {
+    "reportData": {"report": {"rankings": {"data": []}}}
+}
+
+
 def recording_raid_repository(calls: list[str], tmp_path: Path | None = None) -> WclRunRepository:
     """One repository whose mock transport answers a raid report, recording every
     GraphQL operation name -- the boss-fight counterpart of `recording_repository`.
@@ -1024,7 +1102,8 @@ def recording_raid_repository(calls: list[str], tmp_path: Path | None = None) ->
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
-        name = operation_name(json.loads(request.content))
+        body = json.loads(request.content)
+        name = operation_name(body)
         calls.append(name)
         if name == "Fights":
             return httpx.Response(200, json={"data": RAID_FIGHTS_PAYLOAD})
@@ -1032,6 +1111,13 @@ def recording_raid_repository(calls: list[str], tmp_path: Path | None = None) ->
             return httpx.Response(200, json={"data": abilities})
         if name == "DamageDoneGraph":
             return httpx.Response(200, json={"data": damage_done_graph})
+        if name == "ReportRankings":
+            variables = body["variables"]
+            if variables["fightId"] != 22:
+                return httpx.Response(200, json={"data": RAID_RANKINGS_EMPTY_PAYLOAD})
+            if variables["metric"] == "bossdps":
+                return httpx.Response(200, json={"data": RAID_RANKINGS_BOSSDPS_PAYLOAD})
+            return httpx.Response(200, json={"data": RAID_RANKINGS_DPS_PAYLOAD})
         if name == "Talents":
             return httpx.Response(
                 200,
@@ -1094,3 +1180,128 @@ def test_loading_an_encounter_skips_the_mythic_plus_only_streams() -> None:
     assert "Actors" not in calls
     assert "EnemyDeaths" not in calls
     assert "Affixes" not in calls
+
+
+def test_a_kill_takes_its_partition_from_the_report_not_the_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Design 2.2's prescription, finally built. The file's value is deliberately
+    different from the API's here, so an assertion that reads the file passes
+    for the wrong reason and this one does not."""
+    monkeypatch.setattr(repository_module, "load_raid_partition", lambda: 99)
+    repository = recording_raid_repository([])
+
+    loaded = repository.load_encounter(RAID_REPORT_CODE, 22)
+
+    assert loaded.encounter.partition == 1
+
+
+def test_a_wipe_falls_back_to_the_file_because_no_row_exists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(repository_module, "load_raid_partition", lambda: 99)
+    repository = recording_raid_repository([])
+
+    loaded = repository.load_encounter(RAID_REPORT_CODE, 30)
+
+    assert loaded.encounter.partition == 99
+
+
+def test_the_partition_source_is_recorded_rather_than_left_to_be_guessed() -> None:
+    repository = recording_raid_repository([])
+
+    kill = repository.load_encounter(RAID_REPORT_CODE, 22)
+    wipe = repository.load_encounter(RAID_REPORT_CODE, 30)
+
+    assert kill.partition_source == "report rankings"
+    assert wipe.partition_source == "data/season.toml"
+
+
+def test_a_kill_loads_both_the_dps_and_bossdps_rankings_rows() -> None:
+    """Tasks 7 and 8 each read one of these two rows off `LoadedEncounter`.
+    The fixture gives the same player a different `amount` per metric
+    (`RAID_RANKINGS_DPS_PAYLOAD` versus `RAID_RANKINGS_BOSSDPS_PAYLOAD`), so a
+    `load_encounter` that queried "dps" for both fetches could not pass this
+    by coincidence. Each side is pinned to its own literal rather than only
+    asserted unequal: an inequality alone would still pass if `standing` and
+    `boss_standing` were swapped at construction, since the two amounts would
+    still differ -- it would just be checking the wrong row against the wrong
+    field, which is exactly the provenance mix-up this task exists to
+    prevent."""
+    repository = recording_raid_repository([])
+
+    loaded = repository.load_encounter(RAID_REPORT_CODE, 22)
+
+    assert loaded.standing is not None
+    assert loaded.boss_standing is not None
+    [dps_player] = loaded.standing.rows_named("Emberkin")
+    [boss_player] = loaded.boss_standing.rows_named("Emberkin")
+    assert dps_player.amount == 59991.462335693
+    assert boss_player.amount == 44818.47826087
+    assert dps_player.amount != boss_player.amount
+
+
+def test_a_raid_parse_reference_fetches_the_roster_the_build_and_the_casts(
+    tmp_path: Path,
+) -> None:
+    """The three values a `ParseMember` is built from, and no fourth.
+
+    Asserted on the queries sent as well as on the result: a reference that came
+    back with no casts reads exactly like a player who pressed nothing, and the
+    talent string is the one thing `compare_talents` invites a reader to copy.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    reference, from_cache = repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    assert [player.name for player in reference.players] == ["Emberkin", "Stonewake"]
+    assert reference.players[0].talent_import_string == "C4DAAAAA"
+    assert reference.players[1].talent_import_string == "C4DBBBBB"
+    assert reference.casts, "the cast stream every rate comparison reads never arrived"
+    assert reference.ability_icons == ((900, "spell_x.jpg"),)
+    assert from_cache is False
+    assert "Casts" in calls
+
+
+def test_a_raid_parse_reference_pays_for_nothing_the_parse_axis_never_reads(
+    tmp_path: Path,
+) -> None:
+    """Every stream left unfetched is one a reference would be charged for.
+
+    Each name below is a query `load_encounter` does issue for our own report,
+    so this is a live distinction rather than a list of things nothing fetches.
+    A reference's own rankings row is in the list too: it would say how that
+    reference ranked, which is a fact about a stranger this tool has no use for.
+    """
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    for skipped in (
+        "Deaths", "EnemyCasts", "Interrupts", "DamageTaken", "DamageDoneGraph",
+        "Healing", "Resurrects", "ReportRankings", "Actors", "PlayerDetails",
+    ):
+        assert skipped not in calls, f"a raid parse reference paid for {skipped}"
+
+
+def test_a_reused_raid_parse_reference_reports_itself_as_cached(tmp_path: Path) -> None:
+    """A caller's provenance row distinguishes a reused reference from a fetched one."""
+    calls: list[str] = []
+    repository = recording_raid_repository(calls, tmp_path)
+
+    repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+    _second, from_cache = repository.load_raid_parse_reference(RAID_REPORT_CODE, 22)
+
+    assert from_cache is True
+
+
+def test_a_raid_parse_reference_refuses_a_keystone_fight(tmp_path: Path) -> None:
+    """The fight selector is the raid one, which is the whole reason this is not
+    a profile of `load_parse_reference`: fight 1 of this fixture is trash, and a
+    keystone selector would have taken it or raised about Mythic+."""
+    repository = recording_raid_repository([], tmp_path)
+
+    with pytest.raises(IngestError, match="not a boss fight"):
+        repository.load_raid_parse_reference(RAID_REPORT_CODE, 1)

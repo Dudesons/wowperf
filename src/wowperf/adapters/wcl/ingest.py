@@ -213,6 +213,28 @@ def build_run(
     )
 
 
+def build_raid_roster(
+    report: dict[str, Any],
+    fight: dict[str, Any],
+    talents: dict[int, str] | None = None,
+) -> tuple[Player, ...]:
+    """One boss fight's roster, with each player's build where the report has one.
+
+    Public because a reference kill needs exactly this and nothing else around
+    it: a leaderboard row names a fight in somebody else's report, and the only
+    things read off it are who was there and what they cast. Building a whole
+    `Encounter` for that would need a `partition` the reference's report never
+    states, which `build_encounter` deliberately refuses to guess.
+
+    No loadouts: the raid path does not fetch `playerDetails`, and an empty map
+    is what leaves every player's `loadout` None. Withholding the gear
+    comparison is the honest reading of "never fetched" -- inventing a zeroed
+    `Loadout` here would have the gear analysers argue from nothing.
+    """
+    actors = report.get("masterData", {}).get("actors") or []
+    return _build_players(fight, actors, talents or {}, {})
+
+
 def build_encounter(
     report: dict[str, Any],
     fight: dict[str, Any],
@@ -226,12 +248,7 @@ def build_encounter(
     no partition, and the report's own rankings row is where it comes from. The
     caller that has it passes it; nothing here guesses.
     """
-    actors = report.get("masterData", {}).get("actors") or []
-    # No loadouts: the raid path does not fetch `playerDetails`, and an empty
-    # map is what leaves every player's `loadout` None. Withholding the gear
-    # comparison is the honest reading of "never fetched" -- inventing a
-    # zeroed `Loadout` here would have the gear analysers argue from nothing.
-    players = _build_players(fight, actors, talents or {}, {})
+    players = build_raid_roster(report, fight, talents)
 
     difficulty = fight.get("difficulty")
     if difficulty is None:

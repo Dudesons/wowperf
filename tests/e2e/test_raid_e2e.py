@@ -45,16 +45,22 @@ import pytest
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_consumables, load_defensives
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
+from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     REFERENCE_CACHE_SECONDS,
     REFERENCE_CACHE_SUBDIR,
     _ability_taken,
     _mechanics_sample,
+    _parse_samples,
+    _resolve_requested,
     build_repository,
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.severity import SEVERITY_BY_FAMILY, UNKNOWN_SEVERITY, family_of
 from wowperf.domain.comparison.mechanics import AbilityTakenRow, MechanicsSample
+from wowperf.domain.comparison.parse_axis import ParseSubject
+from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.urls import parse_report_url
 
@@ -98,6 +104,166 @@ def assert_mechanics_output_is_well_formed(
         assert finding.ability_name in finding.title, finding.title
         assert finding.evidence, finding.id
         assert finding.seconds_lost is None, "a landing rate is not priced in seconds"
+
+
+def draw_parse_subjects(
+    repository: WclRunRepository,
+    rankings: WclEncounterRankingRepository,
+    transient: DiskCache,
+    loaded: LoadedEncounter,
+) -> tuple[ParseSubject, ...]:
+    """What `raid` hands `analyse_encounter` for the external frame, for the report owner.
+
+    Rebuilt here rather than mocked, for the reason the mechanics sample above
+    gives: a defaulted-away comparison is exactly the shape these tests exist to
+    catch.
+    """
+    encounter = loaded.encounter
+    names = display_names(encounter.players)
+    _subject, to_compare = _resolve_requested(
+        encounter.players, encounter.owner_name, [], False, names
+    )
+    subjects, _records = _parse_samples(
+        rankings,
+        repository,
+        WclRunRepository(repository.client, transient),
+        loaded,
+        to_compare,
+        names,
+    )
+    return subjects
+
+
+def assert_no_aura_band_overhangs_the_fight(loaded: LoadedEncounter, subject: ParseSubject) -> None:
+    """The one thing `seconds_up_over_the_fight` trusts and has never measured on a raid.
+
+    That rule divides the seconds an aura's own bands cover by the fight's
+    duration, and nothing clips the numerator: a band running past the fight it
+    was queried for would render an uptime above 100%. Measured across 22 cached
+    Mythic+ tables and 49,514 bands, none was outside its fight, and
+    `.claude/skills/wcl-api/SKILL.md` records that the measurement covered no
+    raid table at all. This is the raid half, taken live against the one
+    endpoint that could contradict it.
+    """
+    if subject.our_auras is None:
+        pytest.fail("no aura table fetched, so the band check below asserts nothing")
+    fight = (loaded.encounter.start_ms, loaded.encounter.end_ms)
+    overhanging = [
+        (aura.ability_id, band.start_ms, band.end_ms)
+        for aura in subject.our_auras.on_self
+        for band in aura.bands
+        if band.start_ms < fight[0] or band.end_ms > fight[1]
+    ]
+    assert overhanging == [], (
+        f"a raid aura band falls outside fight {fight}, so an uptime fraction can exceed "
+        f"100%: {overhanging[:5]}"
+    )
+
+
+@pytest.mark.e2e
+def test_a_real_boss_kill_is_measured_against_the_world(tmp_path: Path) -> None:
+    """The external frame, end to end, against a real leaderboard.
+
+    Every assertion below names something only a fetched reference side can
+    produce, and the sample's own presence is asserted first: an empty sample
+    fails here rather than quietly reducing this test to "the command did not
+    crash", which is the shape plan 2's kill test degraded into.
+    """
+    if not KILL:
+        pytest.fail(
+            "Set WOWPERF_E2E_RAID_KILL to a public report URL naming a boss kill "
+            "(include the #fight=N fragment) to run this"
+        )
+
+    code, fight = parse_report_url(KILL)
+    repository = build_repository(tmp_path)
+    loaded = repository.load_encounter(code, fight)
+    assert loaded.standing is not None, "a kill returned no rankings row of its own"
+
+    transient = DiskCache(
+        tmp_path / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    rankings = WclEncounterRankingRepository(repository.client, transient)
+    [subject] = draw_parse_subjects(repository, rankings, transient, loaded)
+
+    assert subject.board, "the all-damage leaderboard offered no row for this specialisation"
+    assert subject.boss_board, "the boss-damage leaderboard offered no row"
+    assert subject.sample.members, "no reference kill loaded, so nothing was compared"
+    assert subject.our_targets, "our own damage-by-target table never arrived"
+    assert any(subject.their_targets), "no reference's damage-by-target table arrived"
+    assert_no_aura_band_overhangs_the_fight(loaded, subject)
+
+    findings = analyse_encounter(
+        loaded, load_defensives(), load_consumables(), parse_subjects=(subject,)
+    )
+    ids = [finding.id for finding in findings]
+
+    assert "compare.damage.total" in ids
+    assert "compare.damage.targets" in ids
+    assert "compare.rank" in ids
+    assert "compare.parse.unavailable" not in ids, "the frame was withheld from a kill"
+
+    external = [f for f in findings if f.id.startswith("compare.")]
+    for finding in external:
+        assert isinstance(finding.confidence, Confidence), finding.id
+        assert finding.seconds_lost is None, "an external comparison is not priced in seconds"
+        assert subject.display_name in finding.title, finding.title
+
+    # F9, live: both sides of the damage comparison are per-second rates, and a
+    # raid boss total runs to hundreds of millions. A nine-digit figure here
+    # means a total reached a sentence that says "per second".
+    [damage] = [f for f in findings if f.id == "compare.damage.total"]
+    for fact in damage.facts:
+        for number in fact.value.replace(",", " ").split():
+            digits = number.split(".")[0]
+            if digits.isdigit():
+                assert len(digits) < 9, f"a total reached a per-second sentence: {fact.value}"
+
+
+@pytest.mark.e2e
+def test_a_real_wipe_withholds_the_external_frame_and_pays_for_none_of_it(
+    tmp_path: Path,
+) -> None:
+    """Design 13's first risk, live: a reader must not read absence as a clean result.
+
+    And the saving beside it: every family of this axis reads a rankings row
+    this attempt does not have, so no leaderboard, no reference report and no
+    per-target table is bought.
+    """
+    if not WIPE:
+        pytest.fail(
+            "Set WOWPERF_E2E_RAID_WIPE to a public report URL naming a wiped attempt "
+            "(include the #fight=N fragment) to run this"
+        )
+
+    code, fight = parse_report_url(WIPE)
+    repository = build_repository(tmp_path)
+    loaded = repository.load_encounter(code, fight)
+    assert loaded.standing is None, "a wipe carried a rankings row after all"
+
+    transient = DiskCache(
+        tmp_path / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+    )
+    rankings = WclEncounterRankingRepository(repository.client, transient)
+    before = repository.rate_limit().points_spent_this_hour
+    [subject] = draw_parse_subjects(repository, rankings, transient, loaded)
+    after = repository.rate_limit().points_spent_this_hour
+
+    assert not subject.board and not subject.sample.members and not subject.our_targets
+    # Two quota reads and nothing between them. Their own cost is billed to the
+    # read that follows, so the gap is what the frame spent: zero.
+    assert after - before <= 2.0, f"a withheld frame still spent {after - before:.2f} points"
+
+    findings = analyse_encounter(
+        loaded, load_defensives(), load_consumables(), parse_subjects=(subject,)
+    )
+    ids = [finding.id for finding in findings]
+
+    assert "compare.parse.unavailable" in ids
+    assert [one for one in ids if one.startswith("compare.")] == ["compare.parse.unavailable"]
+    [withheld] = [f for f in findings if f.id == "compare.parse.unavailable"]
+    assert "did not kill" in withheld.detail
+    assert findings != [withheld], "the internal frame went with the external one"
 
 
 @pytest.mark.e2e

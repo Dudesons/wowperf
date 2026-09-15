@@ -1,4 +1,4 @@
-# ABOUTME: Compares one player's buff uptime on boss pulls against a top parse or a sample.
+# ABOUTME: Compares one player's buff uptime against a top parse or a sample, by one caller's rule.
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
 # Buffs only, and the titles here say so. The design's other half — what a player
@@ -7,7 +7,7 @@
 # group. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped
 # to one caster".
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.measures import AuraUptime, Verdict
@@ -17,10 +17,11 @@ from wowperf.domain.comparison.sample import (
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.spells import boss_seconds
+from wowperf.domain.comparison.spells import boss_pulls
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.comparison.wording import Wording
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
-from wowperf.domain.model import Run
+from wowperf.domain.model import Pull
 
 MAX_AURAS_REPORTED = 5
 
@@ -31,19 +32,86 @@ UPTIME_GAP_FRACTION = 0.15
 """How much more of the boss fight they must have it up before it is worth reporting."""
 
 
-def boss_windows(run: Run) -> tuple[tuple[int, int], ...]:
-    """The millisecond spans of the boss pulls, for intersecting aura bands against."""
-    return tuple((pull.start_ms, pull.end_ms) for pull in run.boss_pulls)
+def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
+    """The millisecond spans of the boss pulls, for intersecting aura bands against.
+
+    Takes the route rather than a `Run`, so that a parse reference — which
+    carries its pulls and no run — reaches the same rule our own side does.
+    """
+    return tuple((pull.start_ms, pull.end_ms) for pull in boss_pulls(pulls))
+
+
+UptimeRule = Callable[[Sequence[Pull]], Callable[[Aura], float]]
+"""How long a side's auras count as up, given that side's own route.
+
+The counterpart of `spells.CastRule`, and one rule for both sides for the same
+reason: a fraction is only comparable when the two numerators were measured the
+same way.
+"""
+
+
+def seconds_up_in(windows: tuple[tuple[int, int], ...]) -> Callable[[Aura], float]:
+    """Seconds an aura was up inside these windows, as a rule one side can be read by."""
+    return lambda aura: uptime_seconds_in(aura, windows)
+
+
+def boss_pull_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
+    """The Mythic+ rule bound to one route: uptime inside that route's boss pulls."""
+    return seconds_up_in(boss_windows(pulls))
+
+
+def seconds_up_over_the_fight(aura: Aura) -> float:
+    """Seconds an aura was up over a stream already scoped to one fight -- the raid rule.
+
+    Clipped to the aura's own extent, which clips nothing: what it does is
+    reuse `uptime_seconds_in`'s merge, so two bands that overlap contribute
+    once here exactly as they do on the Mythic+ side. Read off the bands rather
+    than off `total_uptime_ms` because the bands are what the other rule reads,
+    and one aura measured two ways is how a fraction and its own evidence come
+    to disagree.
+
+    Nothing bounds this against the denominator it will be divided by. What
+    stands in for a bound is that the aura table returns bands already clipped
+    to the fight it was queried for: measured 2026-09-14 over every cached
+    response that joins to its own fight -- 22 tables, 49,514 bands, none
+    outside -- every one of them a Mythic+ fight; and again 2026-09-15 over
+    five raid tables, 2326 bands, where each table's earliest band start and
+    latest band end equal its fight's own start and end exactly. Recorded in
+    `.claude/skills/wcl-api/SKILL.md` under "In every table measured", and
+    re-checked on every live run by `tests/e2e/test_raid_e2e.py`.
+    """
+    if not aura.bands:
+        return 0.0
+    span = (
+        min(band.start_ms for band in aura.bands),
+        max(band.end_ms for band in aura.bands),
+    )
+    return uptime_seconds_in(aura, (span,))
+
+
+def whole_fight_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
+    """The raid rule, which has no route to bind to.
+
+    `pulls` is accepted and ignored, exactly as `spells.whole_fight_casts`
+    ignores it, and for the same reason: a raid fight carries no pulls, and the
+    Mythic+ rule over an empty route would clip every band to nothing and
+    report every aura as never present.
+    """
+    return seconds_up_over_the_fight
+
+
+def fractions_of(
+    auras: tuple[Aura, ...], measured: Callable[[Aura], float], seconds: float
+) -> dict[int, tuple[str, float]]:
+    """Ability id to (name, fraction of `seconds` this aura was up), by one rule."""
+    return {aura.ability_id: (aura.name, measured(aura) / seconds) for aura in auras}
 
 
 def aura_fractions(
     auras: tuple[Aura, ...], windows: tuple[tuple[int, int], ...], seconds: float
 ) -> dict[int, tuple[str, float]]:
-    """Ability id to (name, fraction of boss time this aura was up)."""
-    return {
-        aura.ability_id: (aura.name, uptime_seconds_in(aura, windows) / seconds)
-        for aura in auras
-    }
+    """Ability id to (name, fraction of the measured stretch this aura was up)."""
+    return fractions_of(auras, seconds_up_in(windows), seconds)
 
 
 def _unavailable(
@@ -52,20 +120,21 @@ def _unavailable(
     their_seconds: float,
     our_has_auras: bool,
     their_has_auras: bool,
+    words: Wording,
 ) -> Finding:
     return Finding(
         id="compare.uptime.unavailable",
         title=f"Buff uptime could not be compared for {our_name}",
         detail=(
-            "An uptime comparison needs boss pulls on both sides and aura data for both "
-            "players. One of those is missing, so no uptime numbers are reported rather "
+            f"An uptime comparison needs {words.both_sides} on both sides and aura data for "
+            "both players. One of those is missing, so no uptime numbers are reported rather "
             "than numbers from an unlike sample."
         ),
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=(
-            f"our boss time {our_seconds:.0f}s",
-            f"their boss time {their_seconds:.0f}s",
+            f"our {words.stretch_time} {our_seconds:.0f}s",
+            f"their {words.stretch_time} {their_seconds:.0f}s",
             f"our aura data {'present' if our_has_auras else 'absent'}",
             f"their aura data {'present' if their_has_auras else 'absent'}",
         ),
@@ -95,6 +164,7 @@ def _gap_findings(
     their_name: str,
     our_seconds: float,
     their_seconds: float,
+    words: Wording,
 ) -> list[Finding]:
     gaps = []
     for ability_id, (name, their_fraction) in theirs.items():
@@ -126,34 +196,40 @@ def _gap_findings(
                 # keeps up, and this family cannot tell a proc from a button:
                 # the aura table reports that a buff was present, not who or
                 # what put it there. So the aura is the subject and the two
-                # players are only whose boss time it is measured over.
+                # players are only whose stretch it is measured over -- boss
+                # pulls in a dungeon, the fight itself in a raid, which is what
+                # `words.stretch_time` spells out below.
                 title=(
-                    f"{name} was up for {their_fraction:.0%} of {their_name}'s boss time, "
-                    f"{our_fraction:.0%} of {our_name}'s"
+                    f"{name} was up for {their_fraction:.0%} of {their_name}'s "
+                    f"{words.stretch_time}, {our_fraction:.0%} of {our_name}'s"
                 ),
                 detail=(
-                    "Both figures are the share of boss-pull time the aura was present, which "
-                    "is comparable even though the two fights ran for different lengths. A "
-                    "shorter fight at a different keystone level still changes what fits, so "
-                    "read a narrow gap as noise. This compares by exact ability, though, so a "
-                    "gap can also mean a different item of the same kind, or gear this player "
-                    "does not own — not that nothing was used at all."
+                    f"Both figures are the share of {words.rate_basis} the aura was present, "
+                    "which is comparable even though the two fights ran for different "
+                    f"lengths. {words.uptime_hedge} This compares by exact ability, though, "
+                    "so a gap can also mean a different item of the same kind, or gear this "
+                    "player does not own — not that nothing was used at all."
                 ),
                 confidence=Confidence.DERIVED,
                 seconds_lost=None,
                 evidence=(
                     f"ability {ability_id}",
-                    f"ours over {our_seconds:.0f}s of boss pulls",
-                    f"theirs over {their_seconds:.0f}s of boss pulls",
+                    f"ours over {our_seconds:.0f}s of {words.over}",
+                    f"theirs over {their_seconds:.0f}s of {words.over}",
                 ),
                 facts=(
-                    FindingFact(label="Ours", value=f"{our_fraction:.0%} of boss time",
+                    FindingFact(label="Ours",
+                                value=f"{our_fraction:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
-                    FindingFact(label="Reference", value=f"{their_fraction:.0%} of boss time",
+                    FindingFact(label="Reference",
+                                value=f"{their_fraction:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
-                    # No median and no range in this shape: one reference run,
-                    # and a label claiming otherwise would claim a sample.
-                    FindingFact(label="Sample", value="1 reference run"),
+                    # No median and no range in this shape: one reference, and
+                    # a label claiming otherwise would claim a sample. The noun
+                    # comes from `Wording` for the reason its twin in
+                    # `spells.py` gives -- a raid kill is not a run, and this
+                    # pair serves both.
+                    FindingFact(label="Sample", value=f"1 reference {words.reference_noun}"),
                 ),
                 ability_id=ability_id,
                 ability_name=name,
@@ -163,21 +239,35 @@ def _gap_findings(
 
 
 def compare_uptime(
-    ours: Run,
+    our_pulls: Sequence[Pull],
+    our_seconds: float,
     our_auras: PlayerAuras | None,
     our_name: str,
-    theirs: Run,
-    their_auras: PlayerAuras | None,
-    their_name: str,
+    theirs: ParseMember,
+    *,
+    measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Where an aura was up markedly more of the reference's boss fight than of ours.
 
     `our_name` is the roster's disambiguated spelling of the player being
     compared — never `Player.name`, which two roster members can share, and
     which would then title two players' findings identically.
+
+    The reference side is the member itself rather than a run and a pair of
+    loose values: it already carries its own seconds, its own auras and its own
+    route, and passing those three separately is how one player's figure ends
+    up under another player's name. Its name is read off it for the same
+    reason, rather than taken as an argument beside it: two channels for one
+    identity is the hazard the sentence above names, and the only way they can
+    disagree is to be two.
+
+    Our own side arrives as the two values this reads — a route and the seconds
+    that route was worth — rather than as a run, so that a raid fight, which has
+    no run to give, reaches the same comparison through `whole_fight_uptime`.
     """
-    our_seconds = boss_seconds(ours)
-    their_seconds = boss_seconds(theirs)
+    their_auras = theirs.auras
+    their_seconds = theirs.boss_seconds
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
         return [
@@ -187,35 +277,39 @@ def compare_uptime(
                 their_seconds,
                 our_auras is not None,
                 their_auras is not None,
+                words,
             )
         ]
-
-    our_windows = boss_windows(ours)
-    their_windows = boss_windows(theirs)
 
     # Named at the call site: the four arguments below are two pairs of
     # same-typed values, and a swap inside either pair would put one player's
     # figure under the other's name without failing a type check.
     return _gap_findings(
-        aura_fractions(our_auras.on_self, our_windows, our_seconds),
-        aura_fractions(their_auras.on_self, their_windows, their_seconds),
+        fractions_of(our_auras.on_self, measured(our_pulls), our_seconds),
+        fractions_of(their_auras.on_self, measured(theirs.pulls), their_seconds),
         our_name=our_name,
-        their_name=their_name,
+        their_name=theirs.character_name,
         our_seconds=our_seconds,
         their_seconds=their_seconds,
+        words=words,
     )
 
 
 def compare_uptime_sample(
-    ours: Run,
+    our_pulls: Sequence[Pull],
+    our_seconds: float,
     our_auras: PlayerAuras | None,
     our_name: str,
     sample: ParseSample,
+    *,
+    measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Where an aura was up over markedly more of the sample's boss fights than of ours.
 
     `our_name` is the roster's disambiguated spelling, for the reason
-    `compare_uptime` above gives.
+    `compare_uptime` above gives, and our own side arrives as values rather
+    than a run for the reason it gives too.
 
     No member is named: the claim is about the sample as a population, the same way
     `compare_spells_sample` reports a count or a median rather than one parse's number.
@@ -228,9 +322,10 @@ def compare_uptime_sample(
     comparison, not a population claim.
     """
     # A wholly empty sample means there was nothing to compare against at all;
-    # `service.compare()` already says so once, as `compare.parse.unavailable`, so
-    # returning nothing here avoids repeating that finding for a comparison that
-    # never ran. This is distinct from every member lacking aura data, which the
+    # `service.compare()` already says so once, as `compare.parse.unavailable`,
+    # and `compare_parse_axis` says it once on the raid axis, so returning
+    # nothing here avoids repeating that finding for a comparison that never
+    # ran. This is distinct from every member lacking aura data, which the
     # below-floor fallback below reports as `compare.uptime.unavailable` because
     # the reference it falls back to has none.
     if not sample.members:
@@ -248,7 +343,7 @@ def compare_uptime_sample(
         # that was never issued.
         return [_no_reference_auras(our_name, len(sample.members))]
 
-    if our_auras is None or boss_seconds(ours) <= 0 or not aggregable:
+    if our_auras is None or our_seconds <= 0 or not aggregable:
         # Below the floor, or our own side has nothing to compute a fraction from
         # either way: one reference is all that can honestly be reported, and
         # `compare_uptime`'s own availability check already decides whether that
@@ -258,18 +353,18 @@ def compare_uptime_sample(
         # for a gap that was never the sample's fault.
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
-            ours, our_auras, our_name, first.run, first.auras, first.row.character_name
+            our_pulls, our_seconds, our_auras, our_name, first,
+            measured=measured, words=words,
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
 
-    our_windows = boss_windows(ours)
-    our_seconds = boss_seconds(ours)
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
-    our_fractions = aura_fractions(our_auras.on_self, our_windows, our_seconds)
+    our_fractions = fractions_of(our_auras.on_self, measured(our_pulls), our_seconds)
     return _gap_findings_sample(
-        our_fractions, eligible, our_name, our_seconds, missing_aura_data, total
+        our_fractions, eligible, our_name, our_seconds, missing_aura_data, total,
+        measured=measured, words=words,
     )
 
 
@@ -324,6 +419,9 @@ def _gap_findings_sample(
     our_seconds: float,
     missing_aura_data: int,
     total: int,
+    *,
+    measured: UptimeRule,
+    words: Wording,
 ) -> list[Finding]:
     """Auras up over markedly more of the sample's boss fights than of ours, by median.
 
@@ -335,9 +433,9 @@ def _gap_findings_sample(
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = boss_seconds(member.run)
+        their_seconds = member.boss_seconds
         fractions = (
-            aura_fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            fractions_of(member.auras.on_self, measured(member.pulls), their_seconds)
             if their_seconds > 0
             else {}
         )
@@ -368,14 +466,13 @@ def _gap_findings_sample(
                 id=f"compare.uptime.self.{rank}",
                 # Presence, never agency — see the pairwise branch above.
                 title=(
-                    f"{m.name} was up a median {m.their_median:.0%} of boss time across "
-                    f"{len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
+                    f"{m.name} was up a median {m.their_median:.0%} of {words.stretch_time} "
+                    f"across {len(m.their_fractions)} top parses; {m.ours:.0%} for {our_name}"
                 ),
                 detail=(
-                    "Both figures are the share of boss-pull time the aura was present, which "
-                    "is comparable even though the fights ran for different lengths. A shorter "
-                    "fight at a different keystone level still changes what fits, so read a "
-                    "narrow gap as noise. This compares by exact ability, so a gap can still "
+                    f"Both figures are the share of {words.rate_basis} the aura was present, "
+                    "which is comparable even though the fights ran for different lengths. "
+                    f"{words.uptime_hedge} This compares by exact ability, so a gap can still "
                     "mean a different item of the same kind — but the gap is stated over "
                     "several top parses, not one player's build, so a single trinket this "
                     "player happens not to own no longer explains it away."
@@ -384,7 +481,7 @@ def _gap_findings_sample(
                 seconds_lost=None,
                 evidence=(
                     f"ability {m.ability_id}",
-                    f"ours over {our_seconds:.0f}s of boss pulls",
+                    f"ours over {our_seconds:.0f}s of {words.over}",
                     f"range {low:.0%} to {high:.0%} across {len(m.their_fractions)} top parses",
                     f"{count_phrase(missing_aura_data, total)} references had no aura data",
                 ),
@@ -393,10 +490,10 @@ def _gap_findings_sample(
                 # derived: an unset tier is what a panel draws measured with.
                 # The parse count is a count, and is not.
                 facts=(
-                    FindingFact(label="Ours", value=f"{m.ours:.0%} of boss time",
+                    FindingFact(label="Ours", value=f"{m.ours:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Reference median",
-                                value=f"{m.their_median:.0%} of boss time",
+                                value=f"{m.their_median:.0%} of {words.stretch_time}",
                                 confidence=Confidence.DERIVED),
                     FindingFact(label="Observed range", value=f"{low:.0%} to {high:.0%}",
                                 confidence=Confidence.DERIVED),
@@ -407,12 +504,12 @@ def _gap_findings_sample(
             )
         )
     if unjudged:
-        findings.append(_unjudged_finding(our_name, unjudged))
+        findings.append(_unjudged_finding(our_name, unjudged, words))
     return findings
 
 
-def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
-    """Auras the sample carried that our own boss pulls show none of.
+def _unjudged_finding(our_name: str, names: Sequence[str], words: Wording) -> Finding:
+    """Auras the sample carried that our own side of the comparison shows none of.
 
     Deliberately not a gap row. `onSelf` has no source filter, so it returns
     teammate-cast buffs, consumables and gear procs alongside the player's own,
@@ -429,8 +526,9 @@ def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
             f"{'is' if len(ordered) == 1 else 'are'} not judged for {our_name}"
         ),
         detail=(
-            "Each of these was present over enough of the sample's boss time to compare, and "
-            "absent from ours. It is named rather than measured: the aura table cannot say "
+            f"Each of these was present over enough of the sample's {words.stretch_time} to "
+            "compare, and absent from ours. It is named rather than measured: the aura table "
+            "cannot say "
             "whose buff a row was, so a zero here may be a button this player never pressed "
             "or one a teammate never gave them, and the log does not separate the two. Check "
             "whether the build produces it before reading anything into it."
@@ -440,6 +538,6 @@ def _unjudged_finding(our_name: str, names: Sequence[str]) -> Finding:
         evidence=(
             ", ".join(ordered),
             f"carried by at least {MIN_SAMPLE_FOR_AGGREGATE} top parses each",
-            "absent from our own boss pulls",
+            f"absent from {words.absent_from}",
         ),
     )

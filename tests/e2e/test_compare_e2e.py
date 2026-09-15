@@ -156,7 +156,7 @@ def test_a_real_run_compares_trash_packs_against_real_parses(tmp_path: Path) -> 
         if not pull.is_boss and pull.is_a_pack
     )
     for member in parse_sample.members:
-        aligned = aligned_trash(loaded.run, member.run)
+        aligned = aligned_trash(loaded.run, member.pulls)
         assert aligned.our_seconds <= our_trash + 0.001, (
             f"aligned trash {aligned.our_seconds:.1f}s exceeds our own {our_trash:.1f}s, "
             "so a pull of ours was counted more than once"

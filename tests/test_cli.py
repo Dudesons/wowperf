@@ -17,6 +17,7 @@ from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
+from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
@@ -38,7 +39,7 @@ from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
-from wowperf.domain.comparison.reference import ParseRow
+from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -206,6 +207,20 @@ RAID_SIZE = 20
 RAID_REFERENCE_CODE = "refcode1"
 RAID_REFERENCE_FIGHT = 5
 
+RAID_WIPE_FIGHT_ID = 30
+RAID_PARSE_CODES = ("refpa", "refpb", "refpc", "refpd", "refpe")
+RAID_PARSE_FIGHT = 8
+RAID_PARSE_CHARACTER = "Кириллица"
+"""Who the parse leaderboard names on every reference kill.
+
+Not one of our own roster's names, or `_parse_samples` would drop each
+reference as a run of our own -- and the sample would be empty for a reason no
+assertion below is about."""
+
+RAID_PARSE_ABILITY = 900
+RAID_PARSE_ABILITY_THEIRS = 901
+RAID_PARSE_AURA = 800
+
 RAID_ROSTER: tuple[dict[str, Any], ...] = (
     {"actor_id": 11, "name": "Emberkin", "class_name": "Mage", "spec": "Arcane", "item_level": 700},
     {
@@ -217,8 +232,50 @@ RAID_ROSTER: tuple[dict[str, Any], ...] = (
 """The report owner and two teammates, so a run has more than one subject to
 choose between and `--all-players` differs visibly from the default."""
 
+RAID_SHARED_SPEC_ROSTER: tuple[dict[str, Any], ...] = (
+    {
+        "actor_id": 11, "name": "Emberkin", "class_name": "Evoker",
+        "spec": "Devastation", "item_level": 700,
+    },
+    {
+        "actor_id": 12, "name": "Stonewake", "class_name": "Evoker",
+        "spec": "Devastation", "item_level": 702,
+    },
+    {"actor_id": 13, "name": "Bríala", "class_name": "Priest", "spec": "Holy", "item_level": 705},
+)
+"""Three players holding two distinct class-and-specialisation pairs.
 
-def _raid_fights_payload() -> dict[str, Any]:
+The counts differ on purpose, and that is the whole test: at three players and
+three pairs, a command drawing one sample per player and a command drawing one
+per specialisation issue the same number of queries, and an assertion on that
+number would pass for either."""
+
+
+def _raid_fights_payload(roster: tuple[dict[str, Any], ...] = RAID_ROSTER) -> dict[str, Any]:
+    """Our own report: one boss killed, and one attempt on another boss that was not.
+
+    The wipe is a fight of this same report rather than a fixture of its own,
+    because that is how a raid night logs: `--fight` picks between them, and
+    `Report.rankings` answers for one and not the other.
+    """
+    def a_fight(fight_id: int, **overrides: Any) -> dict[str, Any]:
+        return {
+            "id": fight_id,
+            "name": "The Twin Fangs",
+            "encounterID": RAID_ENCOUNTER_ID,
+            "keystoneLevel": None,
+            "difficulty": RAID_DIFFICULTY,
+            "size": RAID_SIZE,
+            "kill": True,
+            "fightPercentage": 0.01,
+            "startTime": 1_000,
+            "endTime": 375_000,
+            "friendlyPlayers": [p["actor_id"] for p in roster],
+            "friendlySpecs": [p["spec"] for p in roster],
+            "friendlyItemLevels": [p["item_level"] for p in roster],
+            **overrides,
+        }
+
     return {
         "reportData": {
             "report": {
@@ -226,23 +283,18 @@ def _raid_fights_payload() -> dict[str, Any]:
                 "title": "Raid Night",
                 "startTime": 0,
                 "endTime": 700_000,
-                "owner": {"name": RAID_ROSTER[0]["name"].lower()},
+                "owner": {"name": roster[0]["name"].lower()},
                 "fights": [
-                    {
-                        "id": RAID_FIGHT_ID,
-                        "name": "The Twin Fangs",
-                        "encounterID": RAID_ENCOUNTER_ID,
-                        "keystoneLevel": None,
-                        "difficulty": RAID_DIFFICULTY,
-                        "size": RAID_SIZE,
-                        "kill": True,
-                        "fightPercentage": 0.01,
-                        "startTime": 1_000,
-                        "endTime": 375_000,
-                        "friendlyPlayers": [p["actor_id"] for p in RAID_ROSTER],
-                        "friendlySpecs": [p["spec"] for p in RAID_ROSTER],
-                        "friendlyItemLevels": [p["item_level"] for p in RAID_ROSTER],
-                    },
+                    a_fight(RAID_FIGHT_ID),
+                    a_fight(
+                        RAID_WIPE_FIGHT_ID,
+                        name="Ula'tek",
+                        encounterID=RAID_ENCOUNTER_ID + 71,
+                        kill=False,
+                        fightPercentage=16.49,
+                        startTime=400_000,
+                        endTime=700_000,
+                    ),
                 ],
                 "masterData": {
                     "actors": [
@@ -250,12 +302,88 @@ def _raid_fights_payload() -> dict[str, Any]:
                             "id": p["actor_id"], "name": p["name"],
                             "subType": p["class_name"], "server": "Hyjal",
                         }
-                        for p in RAID_ROSTER
+                        for p in roster
                     ]
                 },
             }
         }
     }
+
+
+def _raid_reference_fights_payload(code: str) -> dict[str, Any]:
+    """One reference kill of the same boss, in somebody else's report.
+
+    Its fight runs 300 seconds against our own 374, and its roster names one
+    player. Both matter: a reference sharing our denominator would make every
+    rate `count / seconds * 60` compares a comparison of two counts, and a
+    roster that does not name the leaderboard row's character is a member whose
+    own casts can never be found.
+    """
+    return {
+        "reportData": {
+            "report": {
+                "code": code,
+                "title": "Somebody Else's Raid Night",
+                "startTime": 0,
+                "endTime": 500_000,
+                "owner": {"name": RAID_PARSE_CHARACTER.lower()},
+                "fights": [
+                    {
+                        "id": RAID_PARSE_FIGHT,
+                        "name": "The Twin Fangs",
+                        "encounterID": RAID_ENCOUNTER_ID,
+                        "keystoneLevel": None,
+                        "difficulty": RAID_DIFFICULTY,
+                        "size": RAID_SIZE,
+                        "kill": True,
+                        "fightPercentage": 0.01,
+                        "startTime": 2_000,
+                        "endTime": 302_000,
+                        "friendlyPlayers": [55],
+                        "friendlySpecs": ["Arcane"],
+                        "friendlyItemLevels": [710],
+                    },
+                ],
+                "masterData": {
+                    "actors": [
+                        {
+                            "id": 55, "name": RAID_PARSE_CHARACTER,
+                            "subType": "Mage", "server": "Hyjal",
+                        }
+                    ]
+                },
+            }
+        }
+    }
+
+
+def _raid_parse_row(code: str, amount: float) -> dict[str, Any]:
+    """One row of a raid specialisation's parse leaderboard, as `build_raid_parse_rows`
+    reads it. No `score`, `medal` or `affixes`: a raid row carries none."""
+    return {
+        "report": {"code": code, "fightID": RAID_PARSE_FIGHT, "startTime": 1},
+        "name": RAID_PARSE_CHARACTER,
+        "class": "Mage",
+        "spec": "Arcane",
+        "amount": amount,
+        "duration": 300_000,
+        "size": RAID_SIZE,
+    }
+
+
+# Five references, no two at the same throughput, so a median is a real
+# choice among them rather than a number any one row could have supplied.
+RAID_PARSE_AMOUNTS = (58_000.0, 62_000.0, 60_000.0, 65_000.0, 59_000.0)
+
+BOSS_DPS_SHARE = 0.676
+"""What `bossdps` measured as a share of `dps` for one run, design section 14
+item 5. Used here only to keep the two boards from being the same numbers
+twice: a fixture whose metrics agree cannot tell a command that read one board
+for both from one that read each."""
+
+RAID_OUR_DPS = 45_000.0
+"""Our own throughput, below every row of the board above, so the title this
+produces says "below" and would say something else if the median moved."""
 
 
 def _reference_kill_row(
@@ -281,38 +409,80 @@ def _reference_kill_row(
 
 def build_raid_transport(
     *,
+    roster: tuple[dict[str, Any], ...] = RAID_ROSTER,
     kill_rankings: list[dict[str, Any]] | None = None,
+    parse_rankings: list[dict[str, Any]] | None = None,
     ability_entries: list[dict[str, Any]] | None = None,
+    our_ability_entries: list[dict[str, Any]] | None = None,
     broken_ability_reports: frozenset[tuple[str, int]] = frozenset(),
+    broken_parse_reports: frozenset[str] = frozenset(),
     calls: list[str] | None = None,
 ) -> httpx.MockTransport:
-    """Answer every query `raid` issues for report abc123, fight 22.
+    """Answer every query `raid` issues for report abc123, fight 22 or fight 30.
 
     `kill_rankings` answers `EncounterKillRankings` with the rows given, in
     place of one matching reference kill -- a working comparison by default,
     the same convention `build_analyze_transport` uses for its own two
     leaderboards. Pass `[]` for a leaderboard with nothing to offer.
 
-    `ability_entries` answers every `AbilityTakenTable` request identically,
-    in place of one entry: this transport does not distinguish whose report is
-    asking, which is enough to prove a count and a provenance link, not to
-    measure a real difference between two reports' landings.
+    `parse_rankings` does the same for `RaidCharacterRankings`, the parse axis's
+    own leaderboard: five reference kills by default, whose `amount` differs
+    per row and again per metric, so neither a median nor the two boards can be
+    reproduced by reading one row or one board twice. Pass `[]` for a
+    specialisation the board has nothing for.
+
+    `ability_entries` answers a reference kill's `AbilityTakenTable`, and
+    `our_ability_entries` answers our own report's. They differ by default --
+    twenty landings of one ability against five -- so the mechanics comparison
+    has a real difference to find rather than two identical tables, which would
+    produce no finding and let a test asserting one pass only by never having
+    one to assert about.
 
     `broken_ability_reports` names `(code, fight id)` pairs whose
     `AbilityTakenTable` request answers a GraphQL error instead of a table, so
     a caller can simulate a reference row whose ability table fails to load
-    without the row itself failing to load.
+    without the row itself failing to load. `broken_parse_reports` names report
+    codes whose `Fights` request answers a null report, so a parse reference can
+    fail to load at all.
+
+    `roster` is our own report's roster. `calls` records every operation name
+    this transport answers, in order -- requests, not calls into the
+    repository: the reference cache answers a repeated query without one, so a
+    count taken here is a count of distinct queries.
     """
     if kill_rankings is None:
         kill_rankings = [_reference_kill_row()]
+    if parse_rankings is None:
+        parse_rankings = [
+            _raid_parse_row(code, amount)
+            for code, amount in zip(RAID_PARSE_CODES, RAID_PARSE_AMOUNTS, strict=True)
+        ]
     if ability_entries is None:
         ability_entries = [
             {"guid": 900, "name": "Venom Bolt", "hitCount": 5, "sources": [{"type": "Boss"}]}
         ]
+    if our_ability_entries is None:
+        our_ability_entries = [
+            {"guid": 900, "name": "Venom Bolt", "hitCount": 20, "sources": [{"type": "Boss"}]}
+        ]
 
-    fights_payload = _raid_fights_payload()
+    fights_payload = _raid_fights_payload(roster)
+    reference_fights = {
+        code: _raid_reference_fights_payload(code) for code in RAID_PARSE_CODES
+    }
     abilities_payload: dict[str, Any] = {
-        "reportData": {"report": {"masterData": {"abilities": []}}}
+        "reportData": {
+            "report": {
+                "masterData": {
+                    "abilities": [
+                        {"gameID": RAID_PARSE_ABILITY, "name": "Arcane Blast",
+                         "icon": "spell_arcane.jpg"},
+                        {"gameID": RAID_PARSE_ABILITY_THEIRS, "name": "Meteor",
+                         "icon": "spell_meteor.jpg"},
+                    ]
+                }
+            }
+        }
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
@@ -322,9 +492,8 @@ def build_raid_transport(
             "report": {"graph": {"data": {"series": [], "startTime": 1_000, "endTime": 375_000}}}
         }
     }
-    ability_taken_payload: dict[str, Any] = {
-        "reportData": {"report": {"taken": {"data": {"entries": ability_entries}}}}
-    }
+    def ability_taken_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
+        return {"reportData": {"report": {"taken": {"data": {"entries": entries}}}}}
     broken_ability_response: dict[str, Any] = {
         "errors": [{"message": "no damage-taken table for this report"}]
     }
@@ -343,12 +512,119 @@ def build_raid_transport(
                 "fights": [
                     {
                         "id": RAID_FIGHT_ID,
-                        **{f"a{p['actor_id']}": "C4DAAAAA" for p in RAID_ROSTER},
+                        **{f"a{p['actor_id']}": "C4DAAAAA" for p in roster},
+                        "a55": "C4DZZZZZ",
                     }
                 ]
             }
         }
     }
+
+    def cast_rows(
+        actor_id: int, ability_id: int, count: int, first_ms: int
+    ) -> list[dict[str, Any]]:
+        return [
+            {"type": "cast", "sourceID": actor_id, "abilityGameID": ability_id,
+             "timestamp": first_ms + one * 1_000}
+            for one in range(count)
+        ]
+
+    # Ten casts over our own 374-second fight against fourteen over the
+    # reference's 300, which is 1.6 a minute against 2.8 -- past
+    # RATE_GAP_MULTIPLE, and a figure neither side's count alone produces.
+    # Meteor is cast only by the references, which is the missing-cast row.
+    our_casts = cast_rows(roster[0]["actor_id"], RAID_PARSE_ABILITY, 10, 5_000)
+    their_casts = cast_rows(55, RAID_PARSE_ABILITY, 14, 5_000) + cast_rows(
+        55, RAID_PARSE_ABILITY_THEIRS, 4, 200_000
+    )
+
+    def aura_payload(uptime_ms: int, start_ms: int) -> dict[str, Any]:
+        return {
+            "reportData": {
+                "report": {
+                    "onSelf": {
+                        "data": {
+                            "auras": [
+                                {
+                                    "guid": RAID_PARSE_AURA,
+                                    "name": "Arcane Surge",
+                                    "totalUptime": uptime_ms,
+                                    "totalUses": 1,
+                                    "abilityIcon": "spell_surge.jpg",
+                                    "bands": [
+                                        {"startTime": start_ms,
+                                         "endTime": start_ms + uptime_ms}
+                                    ],
+                                }
+                            ],
+                            "totalTime": uptime_ms,
+                        }
+                    }
+                }
+            }
+        }
+
+    def targets_payload(boss_total: int, add_total: int) -> dict[str, Any]:
+        return {
+            "reportData": {
+                "report": {
+                    "targets": {
+                        "data": {
+                            "entries": [
+                                {"id": 57, "name": "The Twin Fangs", "type": "Boss",
+                                 "total": boss_total},
+                                {"id": 88, "name": "Venom Spitter", "type": "NPC",
+                                 "total": add_total},
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
+    def report_rankings_payload(fight_id: int, metric: str) -> dict[str, Any]:
+        # A wipe returns no row at all, and no field on a row distinguishes the
+        # two cases -- design section 14 item 7, measured 2026-09-14.
+        if fight_id != RAID_FIGHT_ID:
+            return {"reportData": {"report": {"rankings": {"data": []}}}}
+        amount = RAID_OUR_DPS if metric == "dps" else RAID_OUR_DPS * BOSS_DPS_SHARE
+        return {
+            "reportData": {
+                "report": {
+                    "rankings": {
+                        "data": [
+                            {
+                                "fightID": fight_id,
+                                "difficulty": RAID_DIFFICULTY,
+                                "partition": 2,
+                                "size": RAID_SIZE,
+                                "kill": True,
+                                "roles": {
+                                    "tanks": {"characters": []},
+                                    "healers": {"characters": []},
+                                    "dps": {
+                                        "characters": [
+                                            {
+                                                "name": player["name"],
+                                                "class": player["class_name"],
+                                                "spec": player["spec"],
+                                                "amount": amount,
+                                                "rank": "~5764",
+                                                "best": "~3746",
+                                                "rankPercent": 62 if metric == "dps" else 48,
+                                                "bracketPercent": 60,
+                                                "totalParses": 31_004,
+                                            }
+                                            for player in roster
+                                        ]
+                                    },
+                                },
+                            }
+                        ]
+                    }
+                }
+            }
+        }
 
     running = 100.0
 
@@ -360,14 +636,16 @@ def build_raid_transport(
         if calls is not None:
             calls.append(name)
         variables = body.get("variables") or {}
+        code = variables.get("code")
         if name == "RateLimit":
             return httpx.Response(200, json={"data": {}})
         if name == "Fights":
-            payload = (
-                fights_payload
-                if variables.get("code") == RAID_REPORT_CODE
-                else {"reportData": {"report": None}}
-            )
+            if code == RAID_REPORT_CODE:
+                payload = fights_payload
+            elif code in reference_fights and code not in broken_parse_reports:
+                payload = reference_fights[code]
+            else:
+                payload = {"reportData": {"report": None}}
             return httpx.Response(200, json={"data": payload})
         if name == "Abilities":
             return httpx.Response(200, json={"data": abilities_payload})
@@ -377,11 +655,77 @@ def build_raid_transport(
             return httpx.Response(200, json={"data": damage_done_graph})
         if name == "EncounterKillRankings":
             return httpx.Response(200, json={"data": rankings_payload})
+        if name == "RaidCharacterRankings":
+            amounts = (
+                parse_rankings
+                if variables.get("metric") == "dps"
+                else [
+                    {**row, "amount": row["amount"] * BOSS_DPS_SHARE} for row in parse_rankings
+                ]
+            )
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "worldData": {
+                            "encounter": {
+                                "id": RAID_ENCOUNTER_ID,
+                                "name": "The Twin Fangs",
+                                "characterRankings": {
+                                    "page": 1, "hasMorePages": False, "rankings": amounts,
+                                },
+                            }
+                        }
+                    }
+                },
+            )
+        if name == "ReportRankings":
+            return httpx.Response(
+                200,
+                json={
+                    "data": report_rankings_payload(
+                        int(variables["fightId"]), str(variables["metric"])
+                    )
+                },
+            )
+        if name == "AuraTable":
+            # A tenth of our fight against a half of theirs, so an uptime row
+            # states a real gap rather than two equal shares.
+            ours = code == RAID_REPORT_CODE
+            return httpx.Response(
+                200,
+                json={"data": aura_payload(37_400 if ours else 150_000, 10_000)},
+            )
+        if name == "DamageDoneTargets":
+            # 88% of ours into the boss against 94% of theirs: a difference
+            # neither side's own total states on its own.
+            ours = code == RAID_REPORT_CODE
+            return httpx.Response(
+                200,
+                json={
+                    "data": targets_payload(880_000_000, 120_000_000)
+                    if ours
+                    else targets_payload(470_000_000, 30_000_000)
+                },
+            )
         if name == "AbilityTakenTable":
-            key = (variables.get("code"), variables.get("fightId"))
+            key = (code, variables.get("fightId"))
             if key in broken_ability_reports:
                 return httpx.Response(200, json=broken_ability_response)
-            return httpx.Response(200, json={"data": ability_taken_payload})
+            entries = our_ability_entries if code == RAID_REPORT_CODE else ability_entries
+            return httpx.Response(200, json={"data": ability_taken_payload(entries)})
+        if name == "Casts":
+            rows = our_casts if code == RAID_REPORT_CODE else their_casts
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {
+                            "report": {"events": {"data": rows, "nextPageTimestamp": None}}
+                        }
+                    }
+                },
+            )
         return httpx.Response(200, json={"data": empty_events})
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -403,8 +747,14 @@ def build_raid_transport(
     return httpx.MockTransport(handler)
 
 
-def run_raid(tmp_path: Path, *extra_args: str, **transport_kwargs: Any) -> Any:
-    """Invoke `raid abc123 --fight 22` against the mock transport."""
+def run_raid(
+    tmp_path: Path, *extra_args: str, fight_id: int = RAID_FIGHT_ID, **transport_kwargs: Any
+) -> Any:
+    """Invoke `raid abc123 --fight 22` against the mock transport.
+
+    `fight_id` picks the other fight of the same report -- the attempt that did
+    not kill -- without any other part of the fixture changing.
+    """
     transport = build_raid_transport(**transport_kwargs)
     real_client = httpx.Client
 
@@ -418,7 +768,7 @@ def run_raid(tmp_path: Path, *extra_args: str, **transport_kwargs: Any) -> Any:
         return runner.invoke(
             app,
             [
-                "raid", RAID_REPORT_CODE, "--fight", str(RAID_FIGHT_ID),
+                "raid", RAID_REPORT_CODE, "--fight", str(fight_id),
                 "--cache-dir", str(tmp_path / "cache"),
                 "--out", str(tmp_path / "out"),
                 *extra_args,
@@ -480,8 +830,12 @@ def test_raid_compares_against_the_execution_leaderboard_sample(tmp_path: Path) 
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
     assert payload["comparison"]["compared"] is True
-    assert payload["comparison"]["sample_size"] == {"mechanics": 1}
-    [record] = payload["comparison"]["references"]
+    assert payload["comparison"]["sample_size"] == {
+        "mechanics": 1, "parse": {"Emberkin": 5}
+    }
+    [record] = [
+        one for one in payload["comparison"]["references"] if one["axis"] == "mechanics"
+    ]
     assert record["axis"] == "mechanics"
     assert record["report_code"] == RAID_REFERENCE_CODE
     assert record["fight_id"] == RAID_REFERENCE_FIGHT
@@ -502,8 +856,10 @@ def test_a_reference_kill_matching_our_own_report_is_excluded(tmp_path: Path) ->
 
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
-    assert payload["comparison"]["sample_size"] == {"mechanics": 1}
-    references = payload["comparison"]["references"]
+    assert payload["comparison"]["sample_size"] == {
+        "mechanics": 1, "parse": {"Emberkin": 5}
+    }
+    references = [one for one in payload["comparison"]["references"] if one["axis"] == "mechanics"]
     assert len(references) == 2
     reasons = {record["report_code"]: record["reason"] for record in references}
     assert reasons[RAID_REPORT_CODE] == "this is the run under analysis"
@@ -547,8 +903,10 @@ def test_a_discarded_reference_kill_is_refilled_from_the_rows_behind_it(
 
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
-    assert payload["comparison"]["sample_size"] == {"mechanics": SAMPLE_SIZE}
-    references = payload["comparison"]["references"]
+    assert payload["comparison"]["sample_size"] == {
+        "mechanics": SAMPLE_SIZE, "parse": {"Emberkin": 5}
+    }
+    references = [one for one in payload["comparison"]["references"] if one["axis"] == "mechanics"]
     loaded = [
         record["report_code"] for record in references if record["loaded"] and not record["reason"]
     ]
@@ -567,8 +925,12 @@ def test_a_reference_kills_broken_ability_table_is_skipped_not_fatal(tmp_path: P
 
     assert result.exit_code == 0, result.output
     payload = written_raid_findings(tmp_path)
-    assert payload["comparison"]["sample_size"] == {"mechanics": 0}
-    [record] = payload["comparison"]["references"]
+    assert payload["comparison"]["sample_size"] == {
+        "mechanics": 0, "parse": {"Emberkin": 5}
+    }
+    [record] = [
+        one for one in payload["comparison"]["references"] if one["axis"] == "mechanics"
+    ]
     assert record["loaded"] is False
     assert record["reason"]
 
@@ -598,6 +960,255 @@ def test_an_unknown_player_name_is_refused_for_raid_too(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "Pass --player with one of:" in result.output
+
+
+def test_raid_names_both_damage_metrics_in_the_findings_file(tmp_path: Path) -> None:
+    """A reader given one throughput figure cannot tell which metric it is.
+
+    Measured 2026-09-14, the same tank read 59991.46 under `dps` and 44818.48
+    under `bossdps`, and the two boards hold different reports entirely -- so
+    the file says which metrics it reports and which single board the reference
+    kills themselves were drawn from (Ruling R1).
+    """
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["metrics"] == ["dps", "bossdps"]
+    assert payload["comparison"]["sample_board"] == "dps"
+
+
+def test_raid_records_where_the_partition_came_from(tmp_path: Path) -> None:
+    """A kill's partition is the report's own; a wipe has no row to read it off.
+
+    The two sources date differently -- one is this fight's, the other is a
+    file with a verified-on date that a patch eventually invalidates -- so a
+    reader has to be able to tell which was used.
+    """
+    kill = run_raid(tmp_path / "kill")
+    wipe = run_raid(tmp_path / "wipe", fight_id=RAID_WIPE_FIGHT_ID)
+
+    assert kill.exit_code == 0, kill.output
+    assert wipe.exit_code == 0, wipe.output
+    assert written_raid_findings(tmp_path / "kill")["partition_source"] == "report rankings"
+    assert written_raid_findings(tmp_path / "wipe")["partition_source"] == "data/season.toml"
+
+
+def test_raid_on_a_wipe_still_answers_with_the_internal_frame(tmp_path: Path) -> None:
+    """Design 15's whole reason for building plan 2 first."""
+    result = run_raid(tmp_path, fight_id=RAID_WIPE_FIGHT_ID)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert any(one.startswith("mechanics.") for one in ids)
+    assert "compare.parse.unavailable" in ids
+    assert not any(one.startswith("compare.rank") and "unavailable" not in one for one in ids)
+
+
+def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
+    """Withholding the frame on a wipe is a saving, not only a sentence.
+
+    Every external comparison reads either this report's own rankings row or a
+    sample drawn against it, and a wipe has no row -- so a leaderboard query, a
+    reference report and a target table would each be paid for and then thrown
+    away.
+    """
+    calls: list[str] = []
+    result = run_raid(tmp_path, fight_id=RAID_WIPE_FIGHT_ID, calls=calls)
+
+    assert result.exit_code == 0, result.output
+    assert "RaidCharacterRankings" not in calls
+    assert "DamageDoneTargets" not in calls
+    assert "AuraTable" not in calls
+    # The internal frame still paid for its own streams, so this is a narrowing
+    # of what was fetched rather than a run that fetched nothing.
+    assert "Casts" in calls
+    assert "EncounterKillRankings" in calls
+
+
+def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path: Path) -> None:
+    """The wiring this task exists for, read off the artefact a user gets.
+
+    Every figure asserted is one only a fetched reference side produces: our
+    throughput against a median of five board rows, our share of damage into the
+    boss against theirs, and a cast rate over two different fight lengths. A
+    comparison that ran but compared nothing would emit the unavailable rows
+    instead, and every assertion here would fail.
+    """
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    by_id = {one["id"]: one for one in payload["findings"]}
+
+    damage = by_id["compare.damage.total"]
+    assert damage["title"] == (
+        "Emberkin sat below the sample median on both all damage and boss damage"
+    )
+    # 45000.0 against the board's median of 60000.0, and the bossdps board's
+    # own median of 40560.0 -- neither reproducible from the other board.
+    assert damage["facts"][0]["value"] == "45000.0 against a median of 60000.0"
+    assert damage["facts"][1]["value"] == "30420.0 against a median of 40560.0"
+
+    targets = by_id["compare.damage.targets"]
+    assert targets["title"] == (
+        "Emberkin sent 88.0% of their damage into The Twin Fangs, against 94.0% for the sample"
+    )
+
+    rank = by_id["compare.rank"]
+    assert rank["title"] == (
+        "Emberkin ranks in the 62nd percentile on all damage and the 48th percentile "
+        "on boss damage only"
+    )
+
+    [rate] = [one for one in payload["findings"] if one["id"].startswith("compare.spells.rate")]
+    # Ten casts over our 374 seconds against fourteen over the references' 300.
+    assert "2.8" in rate["title"] and "1.6" in rate["title"]
+    assert "ours over 374s of the fight" in rate["evidence"]
+
+
+def test_the_raid_findings_file_names_no_reference_character(tmp_path: Path) -> None:
+    """RPGLogs terms section 5d: a reference is a link, never a stranger's name.
+
+    Dumped with `ensure_ascii=False`, for the reason the Mythic+ sibling of this
+    test gives: the default escaping would hide a non-ASCII name from a
+    substring search and let this pass without having looked.
+    """
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    dumped = json.dumps(payload, ensure_ascii=False)
+    assert RAID_PARSE_CHARACTER not in dumped
+    # The references themselves are in the file, or the assertion above holds
+    # over a comparison that never drew one.
+    assert [one for one in payload["comparison"]["references"] if one["axis"] == "parse"]
+
+
+def test_every_parse_reference_is_recorded_with_its_report_and_whether_it_loaded(
+    tmp_path: Path,
+) -> None:
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    references = written_raid_findings(tmp_path)["comparison"]["references"]
+    parse = [one for one in references if one["axis"] == "parse"]
+    assert [one["report_code"] for one in parse] == list(RAID_PARSE_CODES)
+    for record in parse:
+        assert record["loaded"] is True
+        assert record["fight_id"] == RAID_PARSE_FIGHT
+        assert record["url"].startswith("https://www.warcraftlogs.com/reports/")
+        # A raid parse sample is drawn per specialisation and shared by every
+        # player of it, so no candidate was weighed for one player in particular.
+        assert record["player_name"] == ""
+        assert record["player_slug"] == ""
+
+
+def test_a_parse_reference_that_fails_to_load_is_skipped_not_fatal(tmp_path: Path) -> None:
+    result = run_raid(tmp_path, broken_parse_reports=frozenset({RAID_PARSE_CODES[0]}))
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": 4}
+    [broken] = [
+        one
+        for one in payload["comparison"]["references"]
+        if one["report_code"] == RAID_PARSE_CODES[0]
+    ]
+    assert broken["loaded"] is False
+    assert broken["reason"]
+
+
+def test_an_empty_parse_board_says_so_rather_than_comparing_nothing(tmp_path: Path) -> None:
+    result = run_raid(tmp_path, parse_rankings=[])
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert "compare.parse.unavailable" in ids
+    assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": 0}
+
+
+def test_no_compare_skips_the_parse_axis_along_with_the_reference_kills(
+    tmp_path: Path,
+) -> None:
+    calls: list[str] = []
+    result = run_raid(tmp_path, "--no-compare", calls=calls)
+
+    assert result.exit_code == 0, result.output
+    assert "RaidCharacterRankings" not in calls
+    assert "DamageDoneTargets" not in calls
+    payload = written_raid_findings(tmp_path)
+    assert not [one for one in payload["findings"] if one["id"].startswith("compare.")]
+
+
+def test_all_players_draws_one_sample_per_specialisation_not_one_per_player(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Design 14 item 6: a 20-player roster held 19 distinct class and spec
+    pairs. Two players sharing a spec share a leaderboard query.
+
+    The fixture roster is three players holding two pairs, so the two counts
+    differ: one draw per player is six and one per specialisation is four, and
+    an assertion that could not tell them apart would prove nothing.
+
+    Counted at `top_parses` rather than at the transport, and that is the whole
+    point of the spy. The reference cache answers a repeated leaderboard query
+    without a request, so counting HTTP requests counts distinct queries and
+    would pass for a command that asked once per player -- measured here by
+    mutation: keying the sample by actor id left the transport seeing four
+    requests exactly as before.
+    """
+    drawn: list[tuple[str, str, str]] = []
+    real_top_parses = WclEncounterRankingRepository.top_parses
+
+    def recording_top_parses(
+        self: WclEncounterRankingRepository,
+        encounter_id: int,
+        difficulty: int,
+        partition: int,
+        class_name: str,
+        spec: str,
+        metric: str,
+    ) -> tuple[RaidParseRow, ...]:
+        drawn.append((class_name, spec, metric))
+        return real_top_parses(
+            self, encounter_id, difficulty, partition, class_name, spec, metric
+        )
+
+    monkeypatch.setattr(WclEncounterRankingRepository, "top_parses", recording_top_parses)
+    result = run_raid(tmp_path, "--all-players", roster=RAID_SHARED_SPEC_ROSTER)
+
+    assert result.exit_code == 0, result.output
+    assert {(class_name, spec) for class_name, spec, _ in drawn} == {
+        ("Evoker", "Devastation"), ("Priest", "Holy")
+    }
+    assert len(drawn) == 4, "a board per specialisation and metric, not one per player"
+    assert {metric for _, _, metric in drawn} == {"dps", "bossdps"}
+
+
+def test_all_players_compares_every_player_and_not_only_the_subject(tmp_path: Path) -> None:
+    """The flag narrows this axis, unlike the mechanics comparison beside it."""
+    result = run_raid(tmp_path, "--all-players")
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"]["parse"] == {
+        "Emberkin": 5, "Stonewake": 5, "Bríala": 5
+    }
+    ranked = [one["title"] for one in payload["findings"] if one["id"] == "compare.rank"]
+    assert len(ranked) == 3
+    for name in ("Emberkin", "Stonewake", "Bríala"):
+        assert any(title.startswith(name) for title in ranked)
+
+
+def test_by_default_only_the_subject_is_compared(tmp_path: Path) -> None:
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": 5}
 
 
 def test_fetch_rejects_a_value_that_is_not_a_report_url() -> None:
@@ -750,7 +1361,15 @@ ANALYZE_FIGHTS_PAYLOAD: dict[str, Any] = {
 SPEED_REFERENCE_CODE = "71cv4MRdNCp8ZFjG"
 SPEED_REFERENCE_FIGHT = 28
 PARSE_REFERENCE_CODE = "37FzMg9pVPH6fnJT"
-PARSE_REFERENCE_FIGHT = 16
+PARSE_REFERENCE_FIGHT = 41
+"""Deliberately unlike every other integer this fixture could confuse it with.
+
+Not the analysed run's own fight (36), not the speed reference's (28), and
+above all not the keystone level (16), which it used to equal. `cli._samples`
+copies six separate values off a leaderboard row onto a `ParseMember`, and a
+fight id that coincided with any of them would let the wrong one be copied and
+still satisfy every assertion made about it.
+"""
 # The character name the default `_parse_row()` puts on the top-parse leaderboard row.
 # The parse reference's own roster fixture must carry an actor under this same name —
 # see `build_analyze_transport`'s `fights_by_code` — or `find_player` can never resolve
@@ -2005,10 +2624,10 @@ def test_comparison_fields_hold_correct_values(tmp_path: Path) -> None:
 
     parse_reference = references["parse"]
     assert parse_reference["report_code"] == "37FzMg9pVPH6fnJT"
-    assert parse_reference["fight_id"] == 16
+    assert parse_reference["fight_id"] == 41
     assert parse_reference["keystone_level"] == 16
     assert (
-        parse_reference["url"] == "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=16"
+        parse_reference["url"] == "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41"
     )
     assert parse_reference["loaded"] is True
     assert parse_reference["reason"] == ""
@@ -2089,6 +2708,41 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
     assert result.exit_code == 0, result.output
     assert calls.count("AuraTable") == 2
     assert "compare.uptime.self.0.emberkin-0" in ids
+
+
+def test_the_talent_row_links_the_reference_fight_the_member_was_built_from(
+    tmp_path: Path,
+) -> None:
+    """The sixth value `_samples` copies onto a member, and the only one nothing else pins.
+
+    A `ParseMember` is built from six values read off one leaderboard row, and
+    five are already held to the row by other tests here: the report code twice
+    over in the provenance records, and the character name, roster, route and
+    boss seconds by the uptime test above, which cannot report a gap unless all
+    four are the reference's own.
+
+    `fight_id` had nothing. The aura fake keys on report code alone, so a wrong
+    fight id still returns the reference's auras; and the provenance record's
+    url is built straight from the row rather than from the member, so it
+    cannot notice either. The one thing built from `theirs.fight_id` is the
+    link `compare_talents` hands a reader who is being asked to copy a
+    stranger's build -- so that link is what this pins, and a mistyped field
+    sends the reader to the wrong fight of the right report.
+
+    The url is spelled out rather than composed from `PARSE_REFERENCE_FIGHT`:
+    an expected value read off the same constant the code read would agree with
+    itself however the wiring was crossed.
+    """
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0, result.output
+    findings = {f["id"]: f for f in written_findings(tmp_path)["findings"]}
+    talents = findings["compare.talents.emberkin-0"]
+
+    assert (
+        "top-ranked parse: https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41"
+        in talents["evidence"]
+    )
 
 
 def test_a_counterpart_missing_from_the_references_own_roster_fetches_no_extra_auras(
@@ -2259,9 +2913,10 @@ def _candidate_parse_row(
 
     `character_name` must be on the roster the paired `_candidate_fights_payload`
     gives that report: `_fetch_parse_auras` resolves the parser with
-    `find_player(member.run.players, member.row.character_name)`, so a row naming
-    somebody the reference's own roster does not hold is a reference no
-    comparison can ever use. The default pairs with the default roster.
+    `find_player(member.players, member.character_name)`, both carried onto the
+    member from this row's report, so a row naming somebody the reference's own
+    roster does not hold is a reference no comparison can ever use. The default
+    pairs with the default roster.
     """
     return {
         "name": character_name,
@@ -2587,7 +3242,7 @@ def test_the_parse_axis_mirrors_every_speed_exclusion(tmp_path: Path) -> None:
 
     _speed, parses, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
 
-    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
+    assert [member.report_code for member in parses[SUBJECT.actor_id].members] == ["cleanparse"]
 
     by_code = {record.report_code: record for record in records if record.axis == "parse"}
     # Every outcome names whose comparison weighed it, not only the clean one:
@@ -2754,8 +3409,8 @@ def test_each_player_gets_their_own_specialisations_sample(tmp_path: Path) -> No
     _speed, parses, _records = _samples(rankings, runs, OUR_RUN_WITH_TANK, TWO_SUBJECTS)
 
     assert set(parses) == {SUBJECT.actor_id, OUR_TANK.actor_id}
-    assert [member.row.report_code for member in parses[SUBJECT.actor_id].members] == ["arcaneref"]
-    assert [member.row.report_code for member in parses[OUR_TANK.actor_id].members] == ["protref"]
+    assert [member.report_code for member in parses[SUBJECT.actor_id].members] == ["arcaneref"]
+    assert [member.report_code for member in parses[OUR_TANK.actor_id].members] == ["protref"]
 
 
 def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
@@ -2788,7 +3443,7 @@ def test_a_reference_naming_one_of_our_own_is_dropped_from_every_players_sample(
         # A clean candidate followed the tainted one, so an empty sample would
         # pass the exclusion below while proving nothing.
         assert sample.members
-        assert all(member.row.report_code != "ourown" for member in sample.members)
+        assert all(member.report_code != "ourown" for member in sample.members)
     dropped = [record for record in records if record.report_code == "ourown"]
     assert len(dropped) == 2
     assert all("one of our own characters" in record.reason for record in dropped)
@@ -2870,8 +3525,8 @@ def test_a_player_with_no_ingested_specialisation_is_never_queried_for(tmp_path:
 
 def _member_run(actor_id: int, name: str) -> Run:
     """A minimal reference run whose roster holds exactly one player, for
-    `find_player` to resolve (or fail to resolve) a `ParseRow`'s character
-    name against."""
+    `find_player` to resolve (or fail to resolve) a member's character name
+    against."""
     return Run(
         report_code="irrelevant",
         fight_id=1,
@@ -2896,16 +3551,11 @@ def _parse_member(code: str, actor_id: int, roster_name: str, row_name: str) -> 
     `roster_name` — the same name for a resolvable counterpart, different
     names to reproduce a leaderboard row `find_player` can never resolve."""
     return ParseMember(
-        row=ParseRow(
-            report_code=code,
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1000000,
-            character_name=row_name,
-            class_name="Mage",
-            spec="Arcane",
-        ),
-        run=_member_run(actor_id, roster_name),
+        character_name=row_name,
+        report_code=code,
+        fight_id=1,
+        boss_seconds=0.0,
+        players=_member_run(actor_id, roster_name).players,
     )
 
 
@@ -3046,7 +3696,7 @@ def test_a_member_whose_counterpart_cannot_be_resolved_keeps_auras_none(tmp_path
 
     updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
 
-    by_code = {member.row.report_code: member for member in updated.members}
+    by_code = {member.report_code: member for member in updated.members}
     assert by_code["ref0"].auras is not None
     assert by_code["ref1"].auras is None
     assert our_auras is not None
@@ -3121,16 +3771,17 @@ def a_minimal_run() -> Run:
     return _member_run(693, "Emberkin")
 
 
-def _parse_row_model() -> ParseRow:
-    """A parse leaderboard row barely enough to construct, unrelated to any roster."""
-    return ParseRow(
+def a_minimal_member(
+    ability_icons: tuple[tuple[int, str], ...] = (), auras: PlayerAuras | None = None
+) -> ParseMember:
+    """A parse reference barely enough to construct, unrelated to any roster."""
+    return ParseMember(
+        character_name="Stonewake",
         report_code="ref1",
         fight_id=1,
-        keystone_level=16,
-        duration_ms=1_000_000,
-        character_name="Stonewake",
-        class_name="Mage",
-        spec="Arcane",
+        boss_seconds=0.0,
+        ability_icons=ability_icons,
+        auras=auras,
     )
 
 
@@ -3138,11 +3789,7 @@ def test_the_resolver_knows_an_icon_named_only_by_a_reference_report() -> None:
     """A comparison finding names an ability our player never cast, so its file
     name is in the reference's dictionary and in no other."""
     ours = LoadedRun(run=a_minimal_run())
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((157997, "spell_ice_nova.jpg"),),
-    )
+    theirs = a_minimal_member(ability_icons=((157997, "spell_ice_nova.jpg"),))
 
     icons = build_icons(ours, (ParseSample(members=(theirs,)),))
 
@@ -3158,16 +3805,8 @@ def test_the_resolver_knows_an_icon_named_only_by_a_teammates_sample() -> None:
     at all.
     """
     ours = LoadedRun(run=a_minimal_run())
-    mine = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((157997, "spell_ice_nova.jpg"),),
-    )
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
-        ability_icons=((6572, "ability_warrior_revenge.jpg"),),
-    )
+    mine = a_minimal_member(ability_icons=((157997, "spell_ice_nova.jpg"),))
+    theirs = a_minimal_member(ability_icons=((6572, "ability_warrior_revenge.jpg"),))
 
     icons = build_icons(
         ours, (ParseSample(members=(mine,)), ParseSample(members=(theirs,)))
@@ -3190,9 +3829,7 @@ def test_the_resolver_knows_an_icon_only_the_aura_table_names() -> None:
     drew no icon, and all eleven were passive auras of exactly this kind.
     """
     ours = LoadedRun(run=a_minimal_run())
-    theirs = ParseMember(
-        row=_parse_row_model(),
-        run=a_minimal_run(),
+    theirs = a_minimal_member(
         ability_icons=(),
         auras=PlayerAuras(
             actor_id=11,
@@ -3233,9 +3870,7 @@ def test_an_aura_the_table_named_no_icon_for_is_left_unaddressed() -> None:
 
 def test_our_own_dictionary_wins_where_both_name_an_ability() -> None:
     ours = LoadedRun(run=a_minimal_run(), ability_icons=((1, "ours.jpg"),))
-    theirs = ParseMember(
-        row=_parse_row_model(), run=a_minimal_run(), ability_icons=((1, "theirs.jpg"),)
-    )
+    theirs = a_minimal_member(ability_icons=((1, "theirs.jpg"),))
 
     icons = build_icons(ours, (ParseSample(members=(theirs,)),))
 

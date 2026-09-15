@@ -6,10 +6,10 @@ from collections.abc import Sequence
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
-from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
+from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.events import CastEvent, Death, EnemyCastRow, InterruptEvent
 from wowperf.domain.findings import Finding
-from wowperf.domain.model import Player, Run
+from wowperf.domain.model import Player, Pull, Run
 
 SAMPLE_SIZE = 5
 """How many references to draw per axis.
@@ -69,16 +69,33 @@ class ParseMember(Frozen):
     shaped like a duration. Casts are compared as rates per minute of boss time
     and auras as fractions of it, and both mean the same thing at any keystone
     level, so the rule that gates `compare.duration` has nothing to gate here.
+
+    There is deliberately no `Run` either, and no `ParseRow`: the member holds
+    the values it is read for, so that one sample type serves both axes. A raid
+    reference has no `Run` to give, and design section 5.3 records what happens
+    when a caller invents a degenerate one -- four analysers go on computing,
+    quietly, over a route that never existed. `boss_seconds` is therefore a
+    value rather than a sum over pulls, because a raid fight's denominator is
+    the fight itself and no pull produces it.
     """
 
-    row: ParseRow
-    run: Run
+    character_name: str
+    report_code: str
+    fight_id: int
+    boss_seconds: float
+    players: tuple[Player, ...] = ()
     casts: tuple[CastEvent, ...] = ()
     auras: PlayerAuras | None = None
     # Icon file names by ability game id, from this reference's own report. A
     # comparison names abilities our player never cast, which are therefore in
     # no dictionary but this one.
     ability_icons: tuple[tuple[int, str], ...] = ()
+    # This reference's route, for the three readers that need more of it than a
+    # denominator: which casts landed on a boss, which milliseconds an aura had
+    # to be up over, and which packs the two routes shared. Empty for a raid
+    # reference, which has no route -- and a trash comparison over an empty one
+    # aligns nothing, which is the right answer rather than a missing one.
+    pulls: tuple[Pull, ...] = ()
 
 
 class _Sample(Frozen):

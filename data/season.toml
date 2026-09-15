@@ -12,10 +12,11 @@ high_key_threshold = 12
 verified_high_key = "2026-09-03"
 
 [raid]
-# The rankings partition a raid encounter's leaderboard is read at. A
-# ReportFight carries no partition, and design 2.2 prescribes reading it from
-# the report's own `Report.rankings` row -- no plan has built that fetch yet,
-# so the current tier's partition lives here, dated, rather than as a literal
-# in an adapter.
+# The rankings partition a raid encounter's leaderboard is read at, used only
+# where the report itself cannot supply one. `Report.rankings` carries
+# `partition` on its row and `load_encounter` prefers it -- but that row is
+# absent for an attempt that did not kill (measured 2026-09-14, design section
+# 14 item 7), and the mechanics comparison still runs on a wipe. This is the
+# value used then, dated, rather than a literal in an adapter.
 partition = 1
 verified = "2026-09-14"

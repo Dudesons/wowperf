@@ -1,6 +1,8 @@
 # ABOUTME: Lines our pull sequence up against a reference run's, by what each pack was made of.
 # ABOUTME: Set containment over enemy game IDs, so a chain-pulled stretch finds the packs it covers.
 
+from collections.abc import Sequence
+
 from wowperf.domain.base import Frozen
 from wowperf.domain.model import Pull, Run
 
@@ -141,6 +143,11 @@ def _reordered(matched: list[PullMatch]) -> list[PullMatch]:
 
 
 def align_pulls(ours: Run, theirs: Run) -> Alignment:
+    """Two runs' routes, paired. The speed axis holds a whole run on each side."""
+    return align_routes(ours.pulls, theirs.pulls)
+
+
+def align_routes(ours: Sequence[Pull], theirs: Sequence[Pull]) -> Alignment:
     """Pair our pulls with theirs by what each contained.
 
     A boss pull matches the boss pull with the same encounter id, whatever
@@ -149,11 +156,16 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
     Warcraft Logs recorded as one pull matches each separate pull it covers.
     Pulls with no recorded enemies match nothing. See design §6.3, amended
     2026-09-06, for why containment rather than exact signatures.
+
+    Takes the two routes rather than the two runs, because a parse reference
+    carries its route and no run at all: nothing here reads a keystone level,
+    a roster or a report code, and asking for them would put the aggregate back
+    where design section 5.3 refused it.
     """
     matched: list[PullMatch] = []
 
-    their_bosses = {pull.encounter_id: pull for pull in theirs.pulls if pull.is_boss}
-    for pull in ours.pulls:
+    their_bosses = {pull.encounter_id: pull for pull in theirs if pull.is_boss}
+    for pull in ours:
         if pull.is_boss and pull.encounter_id in their_bosses:
             matched.append(
                 PullMatch(
@@ -161,8 +173,8 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
                 )
             )
 
-    our_trash = [pull for pull in ours.pulls if not pull.is_boss and pull.enemies]
-    their_trash = [pull for pull in theirs.pulls if not pull.is_boss and pull.enemies]
+    our_trash = [pull for pull in ours if not pull.is_boss and pull.enemies]
+    their_trash = [pull for pull in theirs if not pull.is_boss and pull.enemies]
 
     taken_theirs: set[int] = set()
     for pull in our_trash:
@@ -188,13 +200,13 @@ def align_pulls(ours: Run, theirs: Run) -> Alignment:
     matched_theirs = {match.theirs_index for match in matched}
     return Alignment(
         matched=tuple(matched),
-        only_ours=tuple(pull.index for pull in ours.pulls if pull.index not in matched_ours),
+        only_ours=tuple(pull.index for pull in ours if pull.index not in matched_ours),
         only_theirs=tuple(
-            pull.index for pull in theirs.pulls if pull.index not in matched_theirs
+            pull.index for pull in theirs if pull.index not in matched_theirs
         ),
         out_of_order=tuple(_reordered(matched)),
         our_pack_indices=tuple(
-            pull.index for pull in ours.pulls if not pull.is_boss and pull.is_a_pack
+            pull.index for pull in ours if not pull.is_boss and pull.is_a_pack
         ),
-        boss_indices=tuple(pull.index for pull in ours.pulls if pull.is_boss),
+        boss_indices=tuple(pull.index for pull in ours if pull.is_boss),
     )

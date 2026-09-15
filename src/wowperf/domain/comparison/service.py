@@ -19,10 +19,16 @@ from wowperf.domain.comparison.loadout import (
 from wowperf.domain.comparison.route import compare_route_sample
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
 from wowperf.domain.comparison.sample import find_player as find_player
-from wowperf.domain.comparison.spells import compare_spells_sample, compare_talents
+from wowperf.domain.comparison.spells import (
+    boss_pull_casts,
+    boss_seconds,
+    compare_spells_sample,
+    compare_talents,
+)
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
-from wowperf.domain.comparison.uptime import compare_uptime_sample
+from wowperf.domain.comparison.uptime import boss_pull_uptime, compare_uptime_sample
+from wowperf.domain.comparison.wording import DUNGEON
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.season import ConsumableBuffs, SlotNames
@@ -123,16 +129,27 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
     # separately: a player with no spec or no sample gets one unavailable
     # finding, never a crash from a family that assumed one existed.
     their_loadouts = loadouts_of(parse.members)
+    # Our own side of the two parse comparisons, as the values they read rather
+    # than as a run: this axis is a dungeon, so its route decides which casts
+    # and which milliseconds count, on our side and on every reference's alike.
+    our_pulls = ours.run.pulls
+    our_boss_seconds = boss_seconds(our_pulls)
     return [
-        *compare_spells_sample(ours, subject.player, subject.display_name, parse),
+        *compare_spells_sample(
+            our_pulls, our_boss_seconds, ours.casts, subject.player, subject.display_name,
+            parse, counted=boss_pull_casts, words=DUNGEON,
+        ),
         *compare_trash_spells_sample(ours, subject.player, subject.display_name, parse),
         *compare_talents(
             subject.player,
             subject.display_name,
-            find_player(top.run.players, top.row.character_name),
-            top.row,
+            find_player(top.players, top.character_name),
+            top,
         ),
-        *compare_uptime_sample(ours.run, subject.our_auras, subject.display_name, parse),
+        *compare_uptime_sample(
+            our_pulls, our_boss_seconds, subject.our_auras, subject.display_name,
+            parse, measured=boss_pull_uptime, words=DUNGEON,
+        ),
         *compare_enchants(
             subject.player.loadout, their_loadouts, subject.display_name, subject.slot_names
         ),

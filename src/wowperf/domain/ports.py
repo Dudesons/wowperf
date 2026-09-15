@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Protocol
 
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
+from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.reference import ParseRow, SpeedRow
 from wowperf.domain.model import Run
 
@@ -34,6 +35,16 @@ class EncounterRankingRepository(Protocol):
     def reference_kills(
         self, encounter_id: int, difficulty: int, partition: int
     ) -> tuple[ReferenceKillRow, ...]: ...
+
+    def top_parses(
+        self,
+        encounter_id: int,
+        difficulty: int,
+        partition: int,
+        class_name: str,
+        spec: str,
+        metric: str,
+    ) -> tuple[RaidParseRow, ...]: ...
 
 
 class ReportRenderer(Protocol):

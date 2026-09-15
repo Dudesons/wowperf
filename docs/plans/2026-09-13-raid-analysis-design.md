@@ -595,6 +595,13 @@ End-to-end tests spend quota and stay behind `-m e2e`.
   roughly a point each. The projection remains a projection and must not be stated as a
   measurement.
 
+  **Measured 2026-09-15, plan 3a Task 11: 877.74 points of 3600**, cold cache, report
+  `cW38jmwdnZfbHVL4` fight 2, 20 players over 19 distinct specialisations — about 20% above the
+  projection above, which stands as the record of what was believed before the run. The
+  composition and the cause of the gap (`Talents` and `Fights` at about 2 points a call rather
+  than one) are in `.claude/skills/wcl-api/SKILL.md`'s rate-limit section. One reading, of one
+  report, against one day's leaderboards.
+
 ---
 
 ## 14. Open items, resolved
@@ -656,6 +663,14 @@ earlier section, that section carries an inline amendment note pointing here.
    twenty points, because `abilities`, `sources` and `targets` are each capped at five rows.
    Aliasing twenty tables into one operation cost 20.05 — points are billed per table, not per
    request.
+
+   **Amended 2026-09-15 (plan 3a Task 11): measured at 877.74 points of 3600**, cold cache,
+   report `cW38jmwdnZfbHVL4` fight 2. The projection above stands as what was believed before
+   the axis was built and is about 20% under. The 19 specialisations and 5 references each were
+   right; 95 references were drawn over 92 distinct reports, so the overlap the projection hoped
+   for was three reports. The per-reference figure was the error: `Talents` and `Fights` cost
+   about 2 points a call rather than one. Composition and per-shape figures — one subject cold,
+   a wipe, and a warm re-run — are in `.claude/skills/wcl-api/SKILL.md`'s rate-limit section.
 
 7. **`Report.rankings` for a wipe — resolved: zero rows.** A kill returned one row carrying
    `kill`, `difficulty`, `partition`, `size`, `bracket`, `duration`, `deaths`,

@@ -13,6 +13,7 @@ from wowperf.domain.comparison.spells import (
     boss_casts,
     boss_seconds,
     casts_in,
+    in_pulls,
     rate_measures,
     their_actor_id,
 )
@@ -103,15 +104,15 @@ def _boss(
 
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in parse.members:
-        actor_id = their_actor_id(member, member.row.character_name)
-        their_boss_seconds = boss_seconds(member.run)
+        actor_id = their_actor_id(member, member.character_name)
+        their_boss_seconds = member.boss_seconds
         if actor_id is None or their_boss_seconds <= 0:
             # The seconds half of this is what keeps a zero out of
             # `rate_measures`' denominator: it divides by a member's seconds
             # with no guard of its own, and says why in its own docstring.
             per_member.append((0.0, {}))
             continue
-        casts_by_ability = boss_casts(member.run, member.casts, actor_id)
+        casts_by_ability = boss_casts(member.pulls, member.casts, actor_id)
         qualifying = {
             ability_id: count
             for ability_id, (_name, count) in casts_by_ability.items()
@@ -119,10 +120,10 @@ def _boss(
         }
         per_member.append((their_boss_seconds, qualifying))
 
-    our_boss_seconds = boss_seconds(ours.run)
+    our_boss_seconds = boss_seconds(ours.run.pulls)
     if our_boss_seconds <= 0:
         return (), 0.0
-    ours_on_bosses = boss_casts(ours.run, ours.casts, our_player.actor_id)
+    ours_on_bosses = boss_casts(ours.run.pulls, ours.casts, our_player.actor_id)
     return rate_measures(ours_on_bosses, our_boss_seconds, per_member), our_boss_seconds
 
 
@@ -151,13 +152,13 @@ def _trash(
     ours_aligned: list[AlignedTrash] = []
     per_member: list[tuple[float, dict[int, int]]] = []
     for member in parse.members:
-        actor_id = their_actor_id(member, member.row.character_name)
-        aligned = aligned_trash(ours.run, member.run)
+        actor_id = their_actor_id(member, member.character_name)
+        aligned = aligned_trash(ours.run, member.pulls)
         if actor_id is None or not is_comparable(aligned):
             per_member.append((0.0, {}))
             continue
         ours_aligned.append(aligned)
-        their_casts = casts_in(member.casts, actor_id, aligned.their_pulls)
+        their_casts = casts_in(member.casts, actor_id, in_pulls(aligned.their_pulls))
         per_member.append(
             (
                 aligned.their_seconds,
@@ -180,7 +181,7 @@ def _trash(
     )
     if our_seconds <= 0:
         return (), 0.0, 0
-    ours_on_trash = casts_in(ours.casts, our_player.actor_id, our_pulls)
+    ours_on_trash = casts_in(ours.casts, our_player.actor_id, in_pulls(our_pulls))
     return (
         trash_rate_measures(ours_on_trash, our_seconds, per_member),
         our_seconds,
@@ -203,7 +204,7 @@ def _auras(
         # reference side alone: there is nothing for ours to be compared against.
         return ()
 
-    our_seconds = boss_seconds(ours.run)
+    our_seconds = boss_seconds(ours.run.pulls)
     if our_auras is None or our_seconds <= 0 or not parse.can_aggregate(eligible):
         # Below the floor, or our own side has nothing to compute a fraction
         # from either way. The comparison states a single reference here rather
@@ -214,9 +215,9 @@ def _auras(
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = boss_seconds(member.run)
+        their_seconds = member.boss_seconds
         fractions = (
-            aura_fractions(member.auras.on_self, boss_windows(member.run), their_seconds)
+            aura_fractions(member.auras.on_self, boss_windows(member.pulls), their_seconds)
             if their_seconds > 0
             else {}
         )
@@ -231,5 +232,5 @@ def _auras(
             qualifying[ability_id] = fraction
         per_member.append(qualifying)
 
-    our_fractions = aura_fractions(our_auras.on_self, boss_windows(ours.run), our_seconds)
+    our_fractions = aura_fractions(our_auras.on_self, boss_windows(ours.run.pulls), our_seconds)
     return uptime_measures(our_fractions, per_member, names)

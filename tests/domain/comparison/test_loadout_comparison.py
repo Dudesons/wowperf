@@ -14,7 +14,6 @@ from wowperf.domain.comparison.loadout import (
     stat_measures,
 )
 from wowperf.domain.comparison.measures import Verdict
-from wowperf.domain.comparison.reference import ParseRow
 from wowperf.domain.comparison.sample import ParseMember
 from wowperf.domain.findings import Confidence
 from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
@@ -100,16 +99,11 @@ def a_reference_run(*players: Player) -> Run:
 def a_reference_member(player: Player, *roster: Player) -> ParseMember:
     """A parse reference whose own report rosters `player` alongside `roster`."""
     return ParseMember(
-        row=ParseRow(
-            report_code="REF1",
-            fight_id=1,
-            keystone_level=16,
-            duration_ms=1_000_000,
-            character_name=player.name,
-            class_name=player.class_name,
-            spec=player.spec,
-        ),
-        run=a_reference_run(player, *roster),
+        character_name=player.name,
+        report_code="REF1",
+        fight_id=1,
+        boss_seconds=0.0,
+        players=a_reference_run(player, *roster).players,
     )
 
 
@@ -147,11 +141,11 @@ def test_loadouts_of_skips_a_member_whose_player_cannot_be_found() -> None:
     briala = Player(actor_id=11, name="Bríala", class_name="Mage", spec="Arcane",
                      item_level=330, loadout=a_loadout())
     ghost = ParseMember(
-        row=ParseRow(
-            report_code="REF2", fight_id=2, keystone_level=16, duration_ms=1_000_000,
-            character_name="Nobody", class_name="Mage", spec="Arcane",
-        ),
-        run=a_reference_run(briala),
+        character_name="Nobody",
+        report_code="REF2",
+        fight_id=2,
+        boss_seconds=0.0,
+        players=a_reference_run(briala).players,
     )
 
     found = loadouts_of([ghost])

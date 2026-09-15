@@ -82,7 +82,12 @@ def load_season_data(path: Path = DEFAULT_SEASON_PATH) -> SeasonData:
 
 
 def load_raid_partition(path: Path = DEFAULT_SEASON_PATH) -> int:
-    """The rankings partition a raid encounter's leaderboard is read at.
+    """The rankings partition a raid encounter's leaderboard is read at, used only
+    where the report itself cannot supply one. `Report.rankings` carries
+    `partition` on its row and `load_encounter` prefers it -- but that row is
+    absent for an attempt that did not kill (measured 2026-09-14, design section
+    14 item 7), and the mechanics comparison still runs on a wipe. This is the
+    value used then.
 
     Kept beside the timer constants rather than returned on `SeasonData`: it is
     a query argument an adapter needs, not a figure any analyser reads, and

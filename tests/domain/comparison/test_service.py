@@ -6,9 +6,10 @@ from pydantic import ValidationError
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.comparison.reference import Comparability, ParseRow, SpeedRow
+from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare, find_player
+from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.loadout import TIER_SLOTS, EquippedItem, Loadout, StatBlock
@@ -146,18 +147,14 @@ def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
         ),
     )
     return ParseMember(
-        row=ParseRow(
-            report_code="37FzMg9pVPH6fnJT",
-            fight_id=16,
-            keystone_level=16,
-            duration_ms=1_399_143,
-            character_name="Bríala",
-            class_name="Mage",
-            spec="Arcane",
-        ),
-        run=theirs.run,
+        character_name="Bríala",
+        report_code="37FzMg9pVPH6fnJT",
+        fight_id=16,
+        boss_seconds=boss_seconds(theirs.run.pulls),
+        players=theirs.run.players,
         casts=theirs.casts,
         auras=auras,
+        pulls=theirs.run.pulls,
     )
 
 
@@ -528,17 +525,13 @@ def a_shared_pack_member(report_code: str) -> ParseMember:
         ),
     )
     return ParseMember(
-        row=ParseRow(
-            report_code=report_code,
-            fight_id=16,
-            keystone_level=16,
-            duration_ms=1_399_143,
-            character_name="Bríala",
-            class_name="Mage",
-            spec="Arcane",
-        ),
-        run=theirs.run,
+        character_name="Bríala",
+        report_code=report_code,
+        fight_id=16,
+        boss_seconds=boss_seconds(theirs.run.pulls),
+        players=theirs.run.players,
         casts=theirs.casts,
+        pulls=theirs.run.pulls,
     )
 
 
@@ -669,12 +662,13 @@ def a_geared_parse_member(report_code: str, name: str) -> ParseMember:
         ),
     )
     return ParseMember(
-        row=ParseRow(
-            report_code=report_code, fight_id=16, keystone_level=16, duration_ms=1_399_143,
-            character_name=name, class_name="Mage", spec="Arcane",
-        ),
-        run=theirs.run,
+        character_name=name,
+        report_code=report_code,
+        fight_id=16,
+        boss_seconds=boss_seconds(theirs.run.pulls),
+        players=theirs.run.players,
         casts=theirs.casts,
+        pulls=theirs.run.pulls,
         auras=PlayerAuras(
             actor_id=800,
             on_self=(
