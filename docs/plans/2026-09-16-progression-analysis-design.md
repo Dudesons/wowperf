@@ -231,10 +231,17 @@ rather than by `seconds_lost`. §6 covers the vocabulary that table gains.
   see what was excluded.
 
 **`progression.movement` must be able to say nothing.** "No movement we can distinguish" is a
-first-class result: on §2.3's measured night it is the truthful answer, and a tool that
-manufactures a slope from that data is worse than one that stays quiet. Below a stated minimum
-of qualifying attempts the finding is withheld entirely, in the same words the keystone
-comparison uses when its sample falls below three.
+first-class result, and a tool that manufactures a slope rather than reaching it is worse than
+one that stays quiet. Below a stated minimum of qualifying attempts the finding is withheld
+entirely, in the same words the keystone comparison uses when its sample falls below three.
+
+**What §2.3's night actually reports, computed rather than assumed.** Its seven qualifying
+attempts split into half-medians of 64.81 and 55.65, so the later half sat **9.16 points
+deeper** and the finding says so. That is not a contradiction of §2.3: the deepest attempt is
+still the third of eight, and the raid never came close to it again. Stating a gap between two
+halves and extrapolating a slope are different claims, and only the second is forbidden. A
+reader told "later attempts sat deeper by nine points" and "the best attempt was your third"
+has both facts and can hold them at once, which a trend line would not allow.
 
 ### 5.2 Layer 2 — what repeats
 
