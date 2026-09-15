@@ -956,6 +956,31 @@ the fetch.
 **Raid size varies widely on a parse board.** The `dps` board's first four rows read `size` 29,
 30, 29, 30 and the `bossdps` board's 29, 24, 23, 25, against an analysed raid of 20.
 
+**`duration` on a raid board matches the fight's own wall-clock length, for every reference
+checked so far.** Measured 2026-09-15 against the same `dps` board above (encounter 3470,
+difficulty 4, partition 1, Evoker/Devastation): for its first five rows, each row's own
+`duration` was checked against `endTime - startTime` read from `FIGHTS_QUERY` for the report and
+fight that same row names. All five agreed to the millisecond -- durations 407086, 375044,
+276534, 321355 and 212911 ms, the same four leading rows the paragraph above already quotes plus
+a fifth, every one with a signed difference of exactly 0 ms. The whole check -- one
+`RaidCharacterRankings` board plus five `Fights` calls -- cost 13.05 points of 3600,
+`RaidCharacterRankings` itself billing 2.01 this time against the 0.0 recorded above for the same
+board: not reconciled, and not this measurement's question.
+
+**This says nothing about the Mythic+ board, which does not behave this way.** A cache
+measurement over 113 Mythic+ `characterRankings` references found `duration` equal to
+`endTime - startTime` zero times, differing from -11s to +96s in a pattern shaped like a
+keystone timer -- consistent with a Mythic+ board's `duration` counting the keystone timer rather
+than the fight's wall clock, though nothing here traces the mechanism. The two boards are not
+shown to measure the same quantity; they are shown, on the readings taken so far, to disagree in
+one case and agree in the other.
+
+**What this does not show:** five references, one boss, one difficulty, one partition, one
+specialisation, one metric (`dps` -- the `bossdps` board above draws a different set of reports
+and rows, and was not checked). Whether `duration` still matches the fight's own length on a
+different encounter, a different difficulty, or under `bossdps` is unmeasured, and so is every
+raid board beyond this one specialisation on this one day.
+
 ## A damage-done table split by target names the boss itself
 
 Measured 2026-09-14, same report and fight. `table(dataType: DamageDone, fightIDs: [N],
