@@ -884,10 +884,10 @@ including `difficulty`. The following twenty-four are transcribed verbatim from 
 not recalled — `averageItemLevel`, `bossPercentage`, `completeRaid`, `countReached`,
 `countRequired`, `dungeonPulls`, `encounterID`, `endTime`, `fightPercentage`, `friendlyPlayers`,
 `gameZone`, `hardModeLevel`, `id`, `keystoneAffixes`, `keystoneBonus`, `keystoneLevel`,
-`keystoneTime`, `kill`, `layer`, `name`, `npcCountMap`, `rating`, `size`, `startTime` — a partial
-list, not the other 42 in full: none of the 43 names the difficulty. `worldData.encounter(id:)`'s
-type carries exactly `id, name, characterRankings, fightRankings, zone, journalID`; no name there
-either.
+`keystoneTime`, `kill`, `layer`, `name`, `npcCountMap`, `rating`, `size`, `startTime` — the other
+nineteen are not reproduced here, and none of the forty-three fields names a difficulty.
+`worldData.encounter(id:)`'s type carries exactly `id, name, characterRankings, fightRankings,
+zone, journalID`; no name there either.
 
 **A name exists one hop further out, on the zone.** `worldData.zone` (and `encounter(id:).zone`)
 carries `id, name, brackets, difficulties, encounters, expansion, frozen, partitions`, and
