@@ -23,6 +23,26 @@ from wowperf.domain.findings import Finding
 from wowperf.domain.season import Consumables, Defensives, Roles
 
 
+def _for_raider(findings: list[Finding], slug: str) -> list[Finding]:
+    """Re-mint plain comparison ids as one raider's own.
+
+    The comparison modules know nothing about who else is in the raid, so they
+    mint `compare.talents` and this appends the player. Doing it in one place
+    is what keeps six modules from each having to be told about the roster, and
+    it is why the id is a suffix: every consumer of these ids matches by prefix,
+    and a prefix survives anything appended to it.
+
+    The Mythic+ path does the same thing at `comparison/service.py:_for_player`.
+    Two call sites rather than one shared helper, because the two loops carry
+    different subject types and a shared helper would need a protocol to
+    describe a `str` field.
+    """
+    return [
+        finding.model_copy(update={"id": f"{finding.id}.{slug}", "player_slug": slug})
+        for finding in findings
+    ]
+
+
 def analyse_encounter(
     loaded: LoadedEncounter,
     defensives: Defensives,
@@ -96,21 +116,25 @@ def analyse_encounter(
         our_abilities, encounter.duration_seconds, mechanics, scope="the raid"
     )
     for subject in parse_subjects:
-        findings += compare_parse_axis(
-            subject.player,
-            subject.display_name,
-            # The whole fight on our side, matching `whole_fight_casts` and
-            # `whole_fight_uptime` inside: a raid fight has no shorter stretch
-            # that both sides fought, the way a dungeon's boss pulls do.
-            encounter.duration_seconds,
-            loaded.casts,
-            subject.our_auras,
-            subject.sample,
-            loaded.standing,
-            loaded.boss_standing,
-            subject.board,
-            subject.boss_board,
-            subject.our_targets,
-            subject.their_targets,
+        findings += _for_raider(
+            compare_parse_axis(
+                subject.player,
+                subject.display_name,
+                # The whole fight on our side, matching `whole_fight_casts` and
+                # `whole_fight_uptime` inside: a raid fight has no shorter
+                # stretch that both sides fought, the way a dungeon's boss
+                # pulls do.
+                encounter.duration_seconds,
+                loaded.casts,
+                subject.our_auras,
+                subject.sample,
+                loaded.standing,
+                loaded.boss_standing,
+                subject.board,
+                subject.boss_board,
+                subject.our_targets,
+                subject.their_targets,
+            ),
+            subject.slug,
         )
     return rank_raid_findings(findings)

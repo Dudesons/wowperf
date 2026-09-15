@@ -993,6 +993,12 @@ def _parse_samples(
     records: list[ReferenceRecord] = []
     drawn: dict[tuple[str, str], _SpecReferences] = {}
     built: list[ParseSubject] = []
+    # The only place this loop mints a slug: `analyse_encounter` stamps it onto
+    # every finding this subject's comparison produces, and the report matches
+    # their card by it. Read from the whole roster, never from `names`' own
+    # spelling -- two roster members can share a display name, and only the
+    # roster index tells them apart.
+    slugs = slugs_by_actor(encounter.players)
 
     for player in subjects:
         comparable = loaded.standing is not None and bool(player.spec)
@@ -1006,6 +1012,7 @@ def _parse_samples(
         built.append(
             ParseSubject(
                 player=player,
+                slug=slugs[player.actor_id],
                 display_name=names[player.actor_id],
                 our_auras=(
                     _auras(ours, encounter.report_code, encounter.fight_id, player.actor_id)
