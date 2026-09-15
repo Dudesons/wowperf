@@ -912,6 +912,22 @@ def _casts(
     )
 
 
+ARCANE_BLASTS = (12, 13, 14, 15, 16)
+ARCANE_INTELLECT_MS = (190_000, 195_000, 200_000, 205_000, 210_000)
+DEATH_STRIKES = (22, 23, 24, 25, 26)
+BONE_SHIELD_MS = (210_000, 215_000, 220_000, 225_000, 230_000)
+"""One value per reference, so no sample the page states a median of is flat.
+
+Five identical references produce a median that equals the minimum, the maximum
+and every member, so a bug returning any of those instead of the middle would
+leave every sentence on the page unchanged -- and the golden file would go on
+being cited as proof the medians are right. That is the Mythic+ golden's defect
+one level down, and it is why every one of these is a spread rather than a
+constant. Each is centred on the value the sentences already stated, so the
+medians the page prints are unchanged and only the ranges stop being degenerate.
+"""
+
+
 def an_arcane_reference(index: int) -> ParseMember:
     """One reference parse for the Mage: two abilities and one buff.
 
@@ -920,11 +936,16 @@ def an_arcane_reference(index: int) -> ParseMember:
     other verdict `compare_spells_sample` can reach. The buff is up over most of
     the reference's boss time and a fifth of ours, which is the gap
     `compare_uptime_sample` reports.
+
+    Combustion alone is held at the same count across the five: the verdict it
+    produces counts how many references cast it at all, states no rate and no
+    range, and there is nothing for a spread to make visible.
     """
     them = Player(
         actor_id=90, name="Кириллица", class_name="Mage", spec="Arcane",
         item_level=710, talent_import_string=REFERENCE_ARCANE_BUILD,
     )
+    uptime_ms = ARCANE_INTELLECT_MS[index]
     return ParseMember(
         character_name="Кириллица",
         report_code=f"ARC{index}",
@@ -932,7 +953,7 @@ def an_arcane_reference(index: int) -> ParseMember:
         boss_seconds=REFERENCE_SECONDS,
         players=(them,),
         casts=(
-            *_casts(90, ARCANE_BLAST, "Arcane Blast", 14, 0),
+            *_casts(90, ARCANE_BLAST, "Arcane Blast", ARCANE_BLASTS[index], 0),
             *_casts(90, COMBUSTION, "Combustion", 4, 40_000),
         ),
         auras=PlayerAuras(
@@ -940,8 +961,8 @@ def an_arcane_reference(index: int) -> ParseMember:
             on_self=(
                 Aura(
                     ability_id=ARCANE_INTELLECT, name="Arcane Intellect",
-                    total_uptime_ms=200_000, uses=1,
-                    bands=(AuraBand(start_ms=0, end_ms=200_000),),
+                    total_uptime_ms=uptime_ms, uses=1,
+                    bands=(AuraBand(start_ms=0, end_ms=uptime_ms),),
                 ),
             ),
         ),
@@ -961,6 +982,7 @@ def a_blood_reference(index: int) -> ParseMember:
         actor_id=91, name="Кириллица", class_name="DeathKnight", spec="Blood",
         item_level=705, talent_import_string=REFERENCE_BLOOD_BUILD,
     )
+    uptime_ms = BONE_SHIELD_MS[index]
     return ParseMember(
         character_name="Кириллица",
         report_code=f"BLD{index}",
@@ -968,7 +990,7 @@ def a_blood_reference(index: int) -> ParseMember:
         boss_seconds=REFERENCE_SECONDS,
         players=(them,),
         casts=(
-            *_casts(91, DEATH_STRIKE, "Death Strike", 24, 0),
+            *_casts(91, DEATH_STRIKE, "Death Strike", DEATH_STRIKES[index], 0),
             *_casts(91, DANCING_RUNE_WEAPON, "Dancing Rune Weapon", 4, 60_000),
         ),
         auras=PlayerAuras(
@@ -976,8 +998,8 @@ def a_blood_reference(index: int) -> ParseMember:
             on_self=(
                 Aura(
                     ability_id=BONE_SHIELD, name="Bone Shield",
-                    total_uptime_ms=220_000, uses=1,
-                    bands=(AuraBand(start_ms=0, end_ms=220_000),),
+                    total_uptime_ms=uptime_ms, uses=1,
+                    bands=(AuraBand(start_ms=0, end_ms=uptime_ms),),
                 ),
             ),
         ),
@@ -1078,12 +1100,16 @@ def golden_subjects() -> tuple[ParseSubject, ...]:
             ),
             their_targets=tuple(
                 (
-                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss",
-                              total=470_000_000),
-                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC",
-                              total=30_000_000),
+                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=boss),
+                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=adds),
                 )
-                for _ in range(5)
+                for boss, adds in (
+                    (450_000_000, 34_000_000),
+                    (460_000_000, 32_000_000),
+                    (470_000_000, 30_000_000),
+                    (480_000_000, 28_000_000),
+                    (490_000_000, 26_000_000),
+                )
             ),
         ),
         a_parse_subject(
@@ -1107,12 +1133,16 @@ def golden_subjects() -> tuple[ParseSubject, ...]:
             ),
             their_targets=tuple(
                 (
-                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss",
-                              total=340_000_000),
-                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC",
-                              total=20_000_000),
+                    TargetRow(target_id=57, name="The Twin Fangs", kind="Boss", total=boss),
+                    TargetRow(target_id=88, name="Venom Spitter", kind="NPC", total=adds),
                 )
-                for _ in range(5)
+                for boss, adds in (
+                    (320_000_000, 24_000_000),
+                    (330_000_000, 22_000_000),
+                    (340_000_000, 20_000_000),
+                    (350_000_000, 18_000_000),
+                    (360_000_000, 16_000_000),
+                )
             ),
         ),
     )
@@ -1123,16 +1153,18 @@ GOLDEN_MECHANICS = MechanicsSample(
         MechanicsMember(
             row=ReferenceKillRow(
                 report_code=f"KILL{one}", fight_id=one + 1, size=20,
-                duration_ms=260_000, deaths=1,
+                duration_ms=duration_ms, deaths=one,
             ),
             abilities=(
                 AbilityTakenRow(
                     ability_id=KILLING_BLOW_ID, ability_name="Ravenous Feast",
-                    hit_count=6, source_types=("Boss",),
+                    hit_count=hits, source_types=("Boss",),
                 ),
             ),
         )
-        for one in range(3)
+        for one, (duration_ms, hits) in enumerate(
+            ((252_000, 5), (260_000, 6), (268_000, 7))
+        )
     )
 )
 """Three reference kills, so the mechanics row is a median and not one kill.
@@ -1140,6 +1172,11 @@ GOLDEN_MECHANICS = MechanicsSample(
 `MIN_SAMPLE_FOR_AGGREGATE` is three, and below it `compare_mechanics` falls back
 to a pairwise sentence naming one report -- a different sentence, which the
 golden file would then pin instead of the aggregate one a real analysis writes.
+
+Three kills of one boss that ran to the same millisecond and took the same
+mechanic the same number of times are the flat sample the constants above were
+spread to avoid: the median would equal the range's ends, and the sentence
+stating it would read the same whichever of the three the code returned.
 """
 
 GOLDEN_ABILITIES_TAKEN = (
@@ -1225,10 +1262,13 @@ def a_real_raid_comparison() -> tuple[Finding, ...]:
     module and minted per raider by `analyse_encounter`, so a wording change
     anywhere along that path reaches `raid.html` and has to be approved.
 
-    `mechanics` and `parse_subjects` are keyword-only, and that is load-bearing
-    rather than incidental: a call that splatted them positionally would produce
-    neither family and raise nothing, and the page would go quietly back to
-    being the thing this fixture was written to replace.
+    `mechanics` and `parse_subjects` are passed by name because
+    `analyse_encounter` marks them keyword-only, so a call that tried to splat
+    them positionally raises `TypeError` here and now. That marker is what makes
+    the failure loud: without it the same call would bind each argument one slot
+    to the left, and an earlier task on this plan lost time to a call that meant
+    to supply these two and did not. A fixture that stopped supplying them would
+    go quietly back to being the thing this one was written to replace.
     """
     return tuple(
         analyse_encounter(
@@ -1245,17 +1285,23 @@ def a_real_raid_comparison() -> tuple[Finding, ...]:
 GOLDEN_REFERENCES = (
     ReferenceRecord(
         report_code="ARC0", fight_id=1, keystone_level=0,
-        url="https://www.warcraftlogs.com/reports/ARC0?fight=1",
-        axis="parse", player_slug=EMBERKIN_SLUG, player_name="Emberkin",
+        url="https://www.warcraftlogs.com/reports/ARC0?fight=1", axis="parse",
     ),
     ReferenceRecord(
         report_code="BLD0", fight_id=1, keystone_level=0,
-        url="https://www.warcraftlogs.com/reports/BLD0?fight=1",
-        axis="parse", player_slug=STONEWAKE_SLUG, player_name="Stonewake",
+        url="https://www.warcraftlogs.com/reports/BLD0?fight=1", axis="parse",
     ),
 )
-"""One candidate per compared raider, naming the report each sample's top parse
-came from, so the Provenance list traces back to the sentences above it."""
+"""One candidate per sample, naming the report its top parse came from.
+
+`player_slug` and `player_name` stay at their empty defaults, which is what
+`cli._parse_record` writes and why: a raid parse sample is drawn once per
+class-and-specialisation pair and shared by every subject of that pair, so no
+raid candidate was ever weighed for one particular player. The builder would
+pass a name straight through, and a golden page carrying one would freeze a
+Provenance line the real raid path cannot produce -- and teach the next reader
+re-approving this file that it is the normal shape.
+"""
 
 
 def a_golden_raid_report() -> RaidReport:
