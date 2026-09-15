@@ -1034,13 +1034,26 @@ def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
 
 def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:
     """Section 11: the command's output is both files, under `--out`."""
-    result = run_raid(tmp_path)
+    # Create a roster with an accented name to verify UTF-8 encoding
+    roster_with_accents = (
+        {
+            "actor_id": 11,
+            "name": "Bríala",
+            "class_name": "Mage",
+            "spec": "Arcane",
+            "item_level": 700,
+        },
+        *RAID_ROSTER[1:],
+    )
+    result = run_raid(tmp_path, roster=roster_with_accents)
 
     assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
     [findings] = (tmp_path / "out").glob("*.findings.json")
     [page] = (tmp_path / "out").glob("*.html")
     assert page.stem == findings.stem.removesuffix(".findings")
-    assert "<section class=\"panel\"" in page.read_text(encoding="utf-8")
+    html_text = page.read_text(encoding="utf-8")
+    assert "<section class=\"panel\"" in html_text
+    assert "Bríala" in html_text
 
 
 def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
