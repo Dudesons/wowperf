@@ -422,22 +422,41 @@ def test_a_real_raid_roster_renders_one_page_with_no_collisions(tmp_path: Path) 
     [page] = out.glob("*.html")
     html = page.read_text(encoding="utf-8")
 
-    # Every finding id is minted once. Named rather than counted, as this
-    # file's own docstring instructs for a failure here: a duplicate id is a
-    # slug two raiders collided under, which is exactly the defect a fixture
-    # roster of three sanctioned names can never reproduce.
+    # Every finding id is minted once. A collision is a real player's slug two
+    # raiders collided under, and this file must never print one -- so a
+    # failure here reports a count and the families that collided, the slug
+    # segment stripped off each, rather than the raw ids. `has_duplicate_ids`
+    # is asserted rather than `duplicate_ids` itself so the id set never
+    # reaches pytest's own assertion introspection, which would print it
+    # regardless of the message. This is the defect a fixture roster of three
+    # sanctioned names can never reproduce.
     ids = [finding["id"] for finding in payload["findings"]]
     assert ids, "the run produced no findings at all"
     duplicate_ids = {value for value in ids if ids.count(value) > 1}
-    assert duplicate_ids == set()
+    duplicate_id_families = sorted({value.rsplit(".", 1)[0] for value in duplicate_ids})
+    has_duplicate_ids = bool(duplicate_ids)
+    assert not has_duplicate_ids, (
+        f"{len(duplicate_ids)} duplicate finding id(s) across families {duplicate_id_families}"
+    )
 
     # The same claim about the page, which mints an element id per card, per
     # sub-tab and per row. A duplicate is invalid HTML and sends the page's
-    # own pointers to whichever of the two the browser happens to pick.
+    # own pointers to whichever of the two the browser happens to pick. Same
+    # care as above: a player card's id is `player-<slug>` outright, so that
+    # shape is named by its constant prefix alone rather than split on a dot
+    # that is never there.
     element_ids = re.findall(r'\sid="([^"]+)"', html)
     assert element_ids, "a page with no element ids would pass this vacuously"
     duplicate_element_ids = {value for value in element_ids if element_ids.count(value) > 1}
-    assert duplicate_element_ids == set()
+    duplicate_element_id_families = sorted({
+        "player" if value.startswith("player-") else value.rsplit(".", 1)[0]
+        for value in duplicate_element_ids
+    })
+    has_duplicate_element_ids = bool(duplicate_element_ids)
+    assert not has_duplicate_element_ids, (
+        f"{len(duplicate_element_ids)} duplicate element id(s) across families "
+        f"{duplicate_element_id_families}"
+    )
 
     # `raid`'s own `comparison.players` is the roster's display names, not
     # slugs -- unlike `analyze`'s, which the offline suite pins as slugs -- so

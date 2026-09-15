@@ -707,6 +707,30 @@ def test_every_withheld_section_gives_a_reason() -> None:
     assert withheld.group(1).strip() == str(escape(WITHHELD_DETAIL))
 
 
+def test_a_raid_report_with_no_mechanics_rows_states_nothing_to_report() -> None:
+    """`mechanics_rows` empties out for real: `--no-compare` guarantees no
+    reference sample, and a fight with no damage outlier emits no row either.
+    Every sibling panel that can empty out says so -- Route and Interrupts
+    print "Nothing to report.", and the Damage tab has its own withheld
+    branch -- so Mechanics must not go silent instead of joining them.
+    """
+    html = render_raid(a_minimal_raid_report())
+    panel = html[html.index('id="tab-mechanics"'):html.index('id="tab-deaths"')]
+    assert "Nothing to report." in panel
+
+
+def test_a_deathless_kill_opens_the_summary_with_no_bare_decomposition_heading() -> None:
+    """`RAID_DECOMPOSITION_IDS` is `("deaths.total",)` alone, so a boss killed
+    with zero deaths -- the best possible raid outcome -- carries no
+    `ledger_decomposition` at all. The heading and the "Not additive" caveat
+    must not render over figures that are not there.
+    """
+    html = render_raid(a_minimal_raid_report())
+    panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+    assert "Figures that contain others" not in panel
+    assert "Not additive" not in panel
+
+
 def a_full_roster(size: int) -> tuple[Player, ...]:
     """A roster of `size` raiders, two of whom reduce to one slug on their own.
 

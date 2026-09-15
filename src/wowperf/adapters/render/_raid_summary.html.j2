@@ -3,10 +3,10 @@
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="main" id="tab-summary">
 
+{% if report.ledger_decomposition %}
 <h2 id="ledger">Figures that contain others</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
 never be summed.</p>
-{% if report.ledger_decomposition %}
 <div class="findings">
 {% for row in report.ledger_decomposition %}
 {{ ledger_row(row) }}
