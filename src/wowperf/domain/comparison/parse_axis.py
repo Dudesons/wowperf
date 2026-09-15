@@ -164,6 +164,12 @@ def compare_parse_axis(
     different things to a reader. `compare_damage_total` reads only our own row,
     so it is handed exactly that.
 
+    `our_name` is what every sentence shows a reader and is never what a row is
+    found by: it is `display_names`' spelling, which two roster members sharing
+    a name turn into `Emberkin (actor 693)`, and a rankings row carries the
+    plain name. Both joins therefore read `our_player.name`, and both keep
+    `our_name` for the sentence.
+
     Both raid counting rules are bound here, and this is the only place they
     are: `whole_fight_casts` is what makes a raid cast count at all, because a
     raid cast carries no pull index and the Mythic+ rule would count every
@@ -194,13 +200,19 @@ def compare_parse_axis(
     if not our_player.spec:
         return [
             _no_specialisation(our_name, our_player.class_name),
-            *compare_rank(standing, boss_standing, our_name),
+            *compare_rank(standing, boss_standing, our_name, our_player.name),
         ]
 
     findings: list[Finding] = [
         *compare_damage_total(
-            standing.player_named(our_name),
-            boss_standing.player_named(our_name) if boss_standing is not None else None,
+            # `our_player.name` and never `our_name`: a rankings row carries the
+            # plain character name, and `our_name` is the spelling
+            # `display_names` rewrites to `Emberkin (actor 693)` when two roster
+            # members share a name -- which twenty players make ordinary. Joined
+            # on the shown spelling, both of those players are told the boss was
+            # never killed, on a kill, beside families that compared fine.
+            standing.player_named(our_player.name),
+            boss_standing.player_named(our_player.name) if boss_standing is not None else None,
             board,
             boss_board,
             our_name,
@@ -229,5 +241,5 @@ def compare_parse_axis(
     # this list was built in -- which makes the seam's own order the page's
     # order. Section 6.7 says a percentile is triage and never a headline, so
     # it goes below everything that says what the triage was about.
-    findings += compare_rank(standing, boss_standing, our_name)
+    findings += compare_rank(standing, boss_standing, our_name, our_player.name)
     return findings

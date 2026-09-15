@@ -685,7 +685,7 @@ def _gap_finding(
             f"Both rates are casts per minute of {words.rate_basis}, "
             f"{words.same_stretch_sample} The "
             "reference side is the median across the sample, not one parse, so a "
-            "single busy or quiet run cannot carry the comparison alone."
+            f"single busy or quiet {words.reference_noun} cannot carry the comparison alone."
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,

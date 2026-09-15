@@ -28,6 +28,7 @@ def test_the_percentile_states_both_metrics_and_names_itself_as_triage() -> None
         standing(96, 94, 247358.0, total_parses=31004),
         standing(71, 68, 167000.0, total_parses=18422),
         "Emberkin",
+        "Emberkin",
     )
     assert len(findings) == 1
     one = findings[0]
@@ -48,6 +49,7 @@ def test_a_gap_between_the_two_percentiles_is_what_the_title_says() -> None:
         standing(96, 94, 247358.0, total_parses=31004),
         standing(71, 68, 167000.0, total_parses=18422),
         "Emberkin",
+        "Emberkin",
     )
     title = findings[0].title
     assert "96" in title and "71" in title
@@ -58,6 +60,7 @@ def test_two_percentiles_that_agree_are_said_once() -> None:
         standing(96, 94, 247358.0, total_parses=31004),
         standing(96, 94, 167000.0, total_parses=18422),
         "Emberkin",
+        "Emberkin",
     )
     assert "96" in findings[0].title
     assert findings[0].title.count("96") == 1
@@ -66,7 +69,7 @@ def test_two_percentiles_that_agree_are_said_once() -> None:
 def test_no_percentile_is_printed_for_an_attempt_that_did_not_kill() -> None:
     """Design 14 item 7: a wipe returns no rankings row at all. Silence would
     read as a clean result, so the finding says why instead."""
-    findings = compare_rank(None, None, "Emberkin")
+    findings = compare_rank(None, None, "Emberkin", "Emberkin")
     assert len(findings) == 1
     assert findings[0].id == "compare.rank.unavailable"
     assert "did not kill" in findings[0].detail
@@ -74,9 +77,23 @@ def test_no_percentile_is_printed_for_an_attempt_that_did_not_kill() -> None:
 
 
 def test_a_player_absent_from_the_rankings_row_is_not_given_a_rank_of_zero() -> None:
-    findings = compare_rank(standing(96, 94, 247358.0), None, "Stonewake")
+    findings = compare_rank(standing(96, 94, 247358.0), None, "Stonewake", "Stonewake")
     assert findings[0].id == "compare.rank.unavailable"
     assert "0" not in findings[0].title
+
+
+def test_a_disambiguated_display_name_is_not_what_the_rankings_row_is_joined_on() -> None:
+    """A rankings row carries a plain character name, and two roster members
+    sharing one is ordinary in a raid. The name a reader is shown tells them
+    apart; the name this row is found by cannot, so the two are separate
+    arguments and only one of them reaches the join."""
+    findings = compare_rank(
+        standing(96, 94, 247358.0), None, "Emberkin (actor 7)", "Emberkin"
+    )
+
+    assert findings[0].id == "compare.rank"
+    assert "96th percentile" in findings[0].title
+    assert findings[0].title.startswith("Emberkin (actor 7) ranks")
 
 
 def board(*amounts: float) -> tuple[RaidParseRow, ...]:
@@ -152,10 +169,69 @@ def test_only_the_first_five_of_a_longer_board_are_counted() -> None:
 
 
 def test_two_references_fall_back_to_a_single_one_and_say_so() -> None:
+    """Below the floor the figure is one reference's own, not a median of two.
+
+    The note alone cannot say that: it fires off the eligible count and is
+    appended whether the fallback ran or not, so a card stating the median of
+    both references -- 150.0 on the all-damage board, which is also its mean --
+    would carry the note unchanged and read as a single reference while being
+    an aggregate of two. The two amounts on each board therefore differ, so
+    the figure the fallback produces is not the figure it replaced.
+    """
     findings = compare_damage_total(
         ranked(150.0), ranked(90.0), board(100.0, 200.0), board(50.0, 100.0), "Emberkin"
     )
+    values = {fact.label: fact.value for fact in findings[0].facts}
+
+    assert values["All damage"] == "150.0 against a single reference's 100.0"
+    assert values["Boss damage only"] == "90.0 against a single reference's 50.0"
+    assert "all damage range 100.0 to 100.0 over 1 reference" in findings[0].evidence
+    assert "boss damage range 50.0 to 50.0 over 1 reference" in findings[0].evidence
     assert any("a single reference, not an aggregate" in note for note in findings[0].evidence)
+
+
+def test_below_the_floor_no_sentence_on_the_card_claims_an_aggregate() -> None:
+    """The evidence says "a single reference, not an aggregate"; a title above it
+    reading "the sample median" contradicts it on the same card.
+
+    Every other axis that calls `too_few` changes its words below the floor --
+    `compare_mechanics`, `compare_tempo`, `compare_route` and `compare_spells`
+    each hand off to a pairwise form worded for one reference. This one states
+    its own two metrics, so it changes the nouns rather than the function, and
+    the whole card is swept because the contradiction was a title and a fact
+    disagreeing with an evidence line beneath them.
+    """
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0), board(100.0, 200.0), board(50.0, 100.0), "Emberkin"
+    )
+    one = findings[0]
+
+    assert one.title == (
+        "Emberkin sat above a single reference on both all damage and boss damage"
+    )
+    for line in (one.title, one.detail, *(fact.value for fact in one.facts)):
+        assert "median" not in line, line
+
+
+def test_one_axis_below_the_floor_leaves_the_other_one_calling_itself_a_median() -> None:
+    """The two boards are drawn independently and fall below the floor
+    independently, so one card can carry an aggregate and a single reference at
+    once. Neither noun may be spread onto the other metric."""
+    findings = compare_damage_total(
+        ranked(150.0), ranked(90.0),
+        board(100.0),
+        board(50.0, 100.0, 150.0, 200.0, 250.0),
+        "Emberkin",
+    )
+    one = findings[0]
+    values = {fact.label: fact.value for fact in one.facts}
+
+    assert one.title == (
+        "Emberkin sat below the sample median on boss damage while above a single "
+        "reference on all damage"
+    )
+    assert values["All damage"] == "150.0 against a single reference's 100.0"
+    assert values["Boss damage only"] == "90.0 against a median of 150.0"
 
 
 def test_no_damage_comparison_is_printed_for_an_attempt_that_did_not_kill() -> None:

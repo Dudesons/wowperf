@@ -44,6 +44,7 @@ def compare_rank(
     standing: ReportRankings | None,
     boss_standing: ReportRankings | None,
     our_name: str,
+    ranked_name: str,
 ) -> list[Finding]:
     """The subject's percentile on this boss, on both metrics, as one triage line.
 
@@ -53,6 +54,15 @@ def compare_rank(
     section 14 item 7), and a wipe or a player missing from a present row both
     return `compare.rank.unavailable` rather than an empty list: silence would
     read as a clean result, and this says why there is nothing instead.
+
+    `our_name` is the spelling every sentence below shows a reader, which
+    `display_names` disambiguates as `Emberkin (actor 693)` whenever two roster
+    members share a name. `ranked_name` is the plain roster name the rankings
+    row itself carries, and is the only one the join may read: a raid of twenty
+    produces a shared name readily, and joining on the shown spelling matches
+    nobody and reports a kill as an attempt with no rankings row. Two arguments
+    rather than one because the two jobs are genuinely different -- collapsing
+    them is what produced that sentence.
 
     Badged `MEASURED`: Warcraft Logs computed the percentile itself and nothing
     here reconstructs it. `seconds_lost` is always `None` -- a percentile costs
@@ -67,7 +77,7 @@ def compare_rank(
                 "row for it, and no percentile can be stated.",
             )
         ]
-    player = standing.player_named(our_name)
+    player = standing.player_named(ranked_name)
     if player is None:
         return [
             _unavailable(
@@ -76,7 +86,9 @@ def compare_rank(
                 "be stated for them.",
             )
         ]
-    boss_player = boss_standing.player_named(our_name) if boss_standing is not None else None
+    boss_player = (
+        boss_standing.player_named(ranked_name) if boss_standing is not None else None
+    )
 
     all_ordinal = _ordinal(player.rank_percent)
     facts = [
@@ -123,12 +135,18 @@ DAMAGE_UNAVAILABLE_ID = "compare.damage.total.unavailable"
 
 DAMAGE_DETAIL = (
     "Both figures are damage per second, not a total over the fight, so our own figure and "
-    "the sample's median are the same unit throughout. Sitting on one side of the median for "
-    "all damage and the other for boss damage only states a difference between the two: where "
-    "the damage landed, on the boss alone or on adds as well. It states no verdict on which is "
-    "right for this kill."
+    "the one it is set against are the same unit throughout. Sitting on one side of that "
+    "figure for all damage and the other for boss damage only states a difference between "
+    "the two: where the damage landed, on the boss alone or on adds as well. It states no "
+    "verdict on which is right for this kill."
 )
 """What `compare.damage.total` tells a reader, in the finding's own words.
+
+Names no statistic. One detail is written for a card whose two metrics reach the
+aggregate floor independently, so it can be beside a median, beside a single
+reference, or beside one of each -- and "the sample's median" is false of two of
+those three. The title and the facts say which of the two each metric got; this
+sentence says what the comparison means either way.
 
 Both `RankedPlayer.amount` and `RaidParseRow.amount` are per-second rates already
 (measured 2026-09-14; `RaidParseRow`'s own docstring records the same fact for its
@@ -172,6 +190,26 @@ def _damage_unavailable_no_sample(our_name: str, axis: str) -> Finding:
         confidence=Confidence.MEASURED,
         seconds_lost=None,
     )
+
+
+def _reference(eligible: int) -> str:
+    """What one metric's reference side is, as a title names it.
+
+    Below `MIN_SAMPLE_FOR_AGGREGATE` the figure is one board row and `too_few`
+    says so in the evidence, so a title calling it the sample median would
+    contradict the line beneath it. The siblings that call `too_few` --
+    `compare_mechanics`, `compare_tempo`, `compare_route` and `compare_spells`
+    -- each delegate to a pairwise form for the same reason; this comparison
+    states two metrics on one card and switches the noun per metric instead.
+    """
+    return "the sample median" if eligible >= MIN_SAMPLE_FOR_AGGREGATE else "a single reference"
+
+
+def _against(ours: float, middle: float, eligible: int) -> str:
+    """Our figure and the one it is set against, as a fact states the pair."""
+    if eligible >= MIN_SAMPLE_FOR_AGGREGATE:
+        return f"{ours:.1f} against a median of {middle:.1f}"
+    return f"{ours:.1f} against a single reference's {middle:.1f}"
 
 
 def _status(ours: float, middle: float) -> str:
@@ -246,7 +284,10 @@ def compare_damage_total(
     boss damage alone -- so each is sliced to `SAMPLE_SIZE` and medianed on its own,
     and each falls back to `too_few`'s single-reference wording on its own below
     `MIN_SAMPLE_FOR_AGGREGATE`, labelled by which axis it belongs to so two
-    different counts on the two axes never read as one ambiguous pair.
+    different counts on the two axes never read as one ambiguous pair. Each
+    metric's own title clause and fact name what it stands against as well, so
+    that neither says "the sample median" over a figure `too_few` has just
+    called a single reference.
 
     Both `RankedPlayer.amount` and `RaidParseRow.amount` are per-second rates
     already, so nothing here divides by a duration or multiplies by one -- F9 is
@@ -273,10 +314,11 @@ def compare_damage_total(
 
     all_middle, all_low, all_high, all_used, all_eligible = _metric_state(board)
     all_status = _status(ours.amount, all_middle)
+    all_reference = _reference(all_eligible)
     facts = [
         FindingFact(
             label="All damage",
-            value=f"{ours.amount:.1f} against a median of {all_middle:.1f}",
+            value=_against(ours.amount, all_middle, all_eligible),
         )
     ]
     evidence = [
@@ -285,14 +327,15 @@ def compare_damage_total(
     ]
 
     if our_boss is None:
-        title = f"{our_name} sat {all_status} the sample median on all damage"
+        title = f"{our_name} sat {all_status} {all_reference} on all damage"
     else:
         boss_middle, boss_low, boss_high, boss_used, boss_eligible = _metric_state(boss_board)
         boss_status = _status(our_boss.amount, boss_middle)
+        boss_reference = _reference(boss_eligible)
         facts.append(
             FindingFact(
                 label="Boss damage only",
-                value=f"{our_boss.amount:.1f} against a median of {boss_middle:.1f}",
+                value=_against(our_boss.amount, boss_middle, boss_eligible),
             )
         )
         evidence.append(
@@ -300,15 +343,20 @@ def compare_damage_total(
             f"{quantity(boss_used, 'reference', 'references')}"
         )
 
-        if boss_status == all_status:
+        if boss_status == all_status and boss_reference == all_reference:
             title = (
-                f"{our_name} sat {all_status} the sample median on both all damage and "
+                f"{our_name} sat {all_status} {all_reference} on both all damage and "
                 "boss damage"
             )
         else:
+            # "it" only where both metrics stand against the same kind of
+            # reference side. The two boards fall below the aggregate floor
+            # independently, so one can be a median while the other is a single
+            # reference -- and there the pronoun would point at the wrong one.
+            tail = "it" if boss_reference == all_reference else all_reference
             title = (
-                f"{our_name} sat {boss_status} the sample median on boss damage while "
-                f"{all_status} it on all damage"
+                f"{our_name} sat {boss_status} {boss_reference} on boss damage while "
+                f"{all_status} {tail} on all damage"
             )
 
     finding = Finding(

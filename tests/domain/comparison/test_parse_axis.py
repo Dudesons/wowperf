@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for compare_parse_axis -- the external frame of one raid boss fight.
 # ABOUTME: The fixture's denominators all differ, so no rate assertion can pass by identity.
 
+from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.parse_axis import compare_parse_axis
 from wowperf.domain.comparison.raid_reference import (
@@ -298,6 +299,39 @@ def test_a_kill_with_a_sample_emits_every_family_the_external_frame_owns() -> No
     assert any(one.startswith("compare.uptime") for one in families)
 
 
+def test_a_raider_who_shares_a_name_is_still_joined_to_their_rankings_row() -> None:
+    """The rankings row carries a plain name, and the seam is handed a disambiguated one.
+
+    Two roster members sharing a name is ordinary in a twenty-player raid, and
+    `display_names` rewrites both spellings when it happens. A join on the
+    rewritten spelling matches nobody, and the two families that read this
+    report's own rankings would then tell a player on a kill that the boss was
+    never killed -- beside families that compared perfectly well.
+
+    So the join is the roster's plain name and the sentences keep the
+    disambiguated one: a reader handed a name that could mean two people is
+    what `display_names` exists to prevent.
+    """
+    twin = PLAYER.model_copy(update={"actor_id": 700})
+    shown = display_names((PLAYER, twin))[PLAYER.actor_id]
+    assert shown == "Emberkin (actor 693)"
+
+    findings = compare_parse_axis(**{**KILL_ARGS, "our_name": shown})  # type: ignore[arg-type]
+    by_id = {one.id: one for one in findings}
+
+    assert "compare.damage.total.unavailable" not in by_id
+    assert "compare.rank.unavailable" not in by_id
+    assert "1450000.0 against a median of 1600000.0" in [
+        fact.value for fact in by_id["compare.damage.total"].facts
+    ]
+    assert "62nd percentile" in by_id["compare.rank"].title
+    # Six of the eight names the seam writes are title text, and every one of
+    # them keeps the spelling that tells the two players apart.
+    assert shown in by_id["compare.damage.total"].title
+    assert shown in by_id["compare.rank"].title
+    assert shown in by_id["compare.damage.targets"].title
+
+
 def test_a_raid_cast_reaches_the_rate_comparison_at_all() -> None:
     """The Task 2 trap, asserted end to end rather than only at `casts_in`.
     Before the predicate, every ability counted zero here and nothing raised."""
@@ -370,7 +404,7 @@ def test_the_raid_rate_sentence_measures_fight_time_and_names_no_dungeon() -> No
     assert row.detail == (
         "Both rates are casts per minute of fight time, which is the whole of one boss "
         "fight and the same encounter in every kill compared. The reference side is the "
-        "median across the sample, not one parse, so a single busy or quiet run cannot "
+        "median across the sample, not one parse, so a single busy or quiet fight cannot "
         "carry the comparison alone."
     )
     assert "ours over 300s of the fight" in row.evidence
@@ -445,8 +479,14 @@ def test_no_raid_title_says_a_cast_or_a_share_was_counted_on_bosses() -> None:
     assert_no_dungeon_vocabulary(findings)
 
 
-DUNGEON_ONLY = ("on bosses", "boss time", "boss pull", "keystone", "this run", "reference run")
+DUNGEON_ONLY = ("on bosses", "boss time", "boss pull", "keystone", "run")
 """Phrases a raid sentence may not carry, in any of the four places one is written.
+
+`run` is the bare noun rather than the two phrases it replaced, `this run` and
+`reference run`: both of those were written from the sentences that had already
+been caught, and the one that had not -- "a single busy or quiet run" -- sat one
+clause away from a phrase this list did name. A raid axis has no honest use for
+the word in any composition, so the word itself is what is banned.
 
 A backstop and never the assertion: each of these entered the codebase as a
 phrase that was true when only a dungeon reached it, and the list can only ever
@@ -672,8 +712,24 @@ def test_the_raid_uptime_sentence_measures_fight_time_and_names_no_keystone_leve
 
 
 def test_the_raid_unjudged_aura_is_absent_from_a_fight_and_not_from_boss_pulls() -> None:
+    """Title and detail whole, not the evidence alone.
+
+    This row's detail names the stretch the sample carried the aura over, and a
+    dungeon's noun for it would survive every assertion that read only the
+    evidence -- which is the residual the bare-word backstop above was widened
+    for. The Mythic+ rendering of the same two sentences is pinned in
+    `test_uptime.py`, so a swap of the two fails in both directions.
+    """
     row = one_of(compare_parse_axis(**KILL_ARGS), "compare.uptime.unjudged")  # type: ignore[arg-type]
 
+    assert row.title == "1 aura the sample carried is not judged for Emberkin"
+    assert row.detail == (
+        "Each of these was present over enough of the sample's fight time to compare, and "
+        "absent from ours. It is named rather than measured: the aura table cannot say "
+        "whose buff a row was, so a zero here may be a button this player never pressed or "
+        "one a teammate never gave them, and the log does not separate the two. Check "
+        "whether the build produces it before reading anything into it."
+    )
     assert "Siphon Storm" in row.evidence[0]
     assert "absent from our own fight" in row.evidence
 
