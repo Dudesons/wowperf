@@ -61,6 +61,28 @@ def test_is_silent_below_two_attempts_with_a_phase() -> None:
     assert repeat_phase(series(attempt(1, last_phase=2), attempt(2, last_phase=None))) is None
 
 
+def test_is_silent_when_no_phase_recurs() -> None:
+    """Two attempts identified, each ending in a different phase: nothing
+    repeated, so this must stay quiet rather than report "1 of 2 attempts
+    ended in X" as if a mode of one were a pattern.
+    """
+    assert repeat_phase(series(attempt(1, last_phase=1), attempt(2, last_phase=2))) is None
+
+
+def test_names_every_phase_tied_for_the_top_count() -> None:
+    """`Counter.most_common(1)` would silently pick whichever tied phase
+    happened to appear first; both phases sharing the win must be named.
+    """
+    finding = repeat_phase(series(
+        attempt(1, last_phase=2), attempt(2, last_phase=3),
+        attempt(3, last_phase=2), attempt(4, last_phase=3),
+    ))
+    assert finding is not None
+    assert "Intermission: Tide" in finding.title
+    assert "The Drowning" in finding.title
+    assert "2 of 4" in finding.title
+
+
 def test_names_an_unmatched_phase_id_by_number_rather_than_inventing_one() -> None:
     finding = repeat_phase(series(attempt(1, last_phase=9), attempt(2, last_phase=9)))
     assert finding is not None
@@ -112,6 +134,33 @@ def test_collapse_counts_only_attempts_that_had_one() -> None:
     ))
     assert finding is not None
     assert "2 attempts" in finding.detail
+
+
+def test_collapse_seconds_ignores_a_death_outside_the_roster() -> None:
+    """`_first_death_ms` anchors both `collapse_seconds` and `repeat_ability`'s
+    window; a pet or an unidentified actor dying before any roster player must
+    not pull that anchor ahead of the first roster death.
+    """
+    roster = (
+        Player(actor_id=1, name="Emberkin", class_name="Paladin", spec="Holy", item_level=600),
+    )
+    encounter = an_attempt(1, 50.0, 100.0, players=roster)
+    start = encounter.start_ms
+    deaths = (
+        Death(
+            player_name="Unidentified", actor_id=999, timestamp_ms=start + 10_000,
+            killing_blow="x",
+        ),
+        Death(
+            player_name=roster[0].name, actor_id=roster[0].actor_id, timestamp_ms=start + 30_000,
+            killing_blow="x",
+        ),
+    )
+    one = LoadedEncounter(encounter=encounter, deaths=deaths)
+
+    # From the roster death at 30s to the 100s end -- 70s -- never from the
+    # pet/unidentified death at 10s, which would read 90s instead.
+    assert collapse_seconds(one) == 70.0
 
 
 # --- progression.repeat.first_death ---
@@ -231,6 +280,34 @@ def test_is_withheld_below_two_identified_not_just_at_zero() -> None:
     )) is None
 
 
+def test_is_withheld_when_no_specialisation_recurs() -> None:
+    """Two attempts identified, two different specialisations died first:
+    nothing repeated, so this must stay quiet rather than report "died first
+    in 1 of 2 attempts" as if a mode of one were a pattern.
+    """
+    assert repeat_first_death(series_of(
+        loaded_attempt_with_roster(1, first_dead_index=0),
+        loaded_attempt_with_roster(2, first_dead_index=1),
+    )) is None
+
+
+def test_names_every_specialisation_tied_for_first_death() -> None:
+    """`Counter.most_common(1)` would silently pick whichever tied
+    specialisation happened to appear first; both sharing the win must be
+    named.
+    """
+    finding = repeat_first_death(series_of(
+        loaded_attempt_with_roster(1, first_dead_index=0),
+        loaded_attempt_with_roster(2, first_dead_index=1),
+        loaded_attempt_with_roster(3, first_dead_index=0),
+        loaded_attempt_with_roster(4, first_dead_index=1),
+    ))
+    assert finding is not None
+    assert "Frost DeathKnight" in finding.title
+    assert "Elemental Shaman" in finding.title
+    assert "2 of 4" in finding.title
+
+
 def test_ties_resolve_by_actor_id_not_by_stream_order() -> None:
     forwards = repeat_first_death(series_of(
         tied_attempt(1, order="forwards"), tied_attempt(2, order="forwards"),
@@ -281,6 +358,20 @@ ONE_WARRIOR: tuple[Player, ...] = (
 ENEMY_SOURCE = 999
 
 
+def a_control_attempt(fight_id: int) -> LoadedEncounter:
+    """The deepest attempt in a series, pinned there by a low `remaining`, with
+    a death of its own -- so it carries a window -- and no damage at all, so
+    it excludes nothing from `repeat_ability`'s count.
+
+    `repeat_ability` reads the deepest attempt as its control and drops
+    whatever landed in that attempt's own window (FIX 3). Most of the tests
+    below are about counting, exclusion or capping, not about the control
+    itself, so they add this alongside their own attempts purely to give
+    `repeat_ability` a control that never interferes with what they assert on.
+    """
+    return a_loaded_attempt(fight_id, seconds=100.0, remaining=1.0, deaths_after_ms=(50_000,))
+
+
 def test_counts_attempts_an_ability_appeared_in_not_hits() -> None:
     names = {100: "Rockfall", 200: "Tidal Crush"}
     nine_hits_one_attempt = tuple((60_000 + i * 100, 100, ENEMY_SOURCE) for i in range(9))
@@ -298,10 +389,11 @@ def test_counts_attempts_an_ability_appeared_in_not_hits() -> None:
             3, seconds=100.0, deaths_after_ms=(50_000,),
             damage_after_ms=((60_000, 200, ENEMY_SOURCE),), ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     assert finding.confidence is Confidence.DERIVED
-    assert "3 of 3" in finding.detail
+    assert "3 of 4" in finding.detail
     assert "Tidal Crush" in finding.detail          # the ability in three attempts
     assert "Rockfall" not in finding.detail         # the nine-hit, one-attempt ability
 
@@ -318,6 +410,7 @@ def test_excludes_hits_sourced_by_a_teammate() -> None:
             2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
             players=ONE_PALADIN, ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     assert "Soul Sever" in finding.detail                 # ability 301, enemy-sourced
@@ -336,6 +429,7 @@ def test_excludes_self_damage() -> None:
             2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
             players=ONE_WARRIOR, ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     assert "Fel Rupture" in finding.detail        # enemy-sourced, still named
@@ -354,6 +448,7 @@ def test_only_counts_hits_inside_the_collapse_window() -> None:
             2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=before_and_after,
             ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     assert "Tidal Surge" in finding.detail          # lands after the first death
@@ -390,10 +485,11 @@ def test_requires_more_than_half_not_merely_half() -> None:
             ability_names=names,
         ),
         a_loaded_attempt(4, seconds=100.0, deaths_after_ms=(50_000,)),
+        a_control_attempt(999),
     ))
     assert finding is not None
-    assert "Majority Blast" in finding.detail    # present in 3 of 4 -- more than half
-    assert "Half Nova" not in finding.detail     # present in exactly 2 of 4 -- not more than half
+    assert "Majority Blast" in finding.detail    # present in 3 of 5 -- more than half
+    assert "Half Nova" not in finding.detail     # present in exactly 2 of 5 -- not more than half
 
 
 def test_caps_at_five_abilities() -> None:
@@ -408,7 +504,7 @@ def test_caps_at_five_abilities() -> None:
             damage_after_ms=six_abilities, ability_names=names,
         )
         for fight_id in (1, 2, 3)
-    )))
+    ), a_control_attempt(999)))
     assert finding is not None
     assert "5 abilities" in finding.title
     for name in ("Ability A", "Ability B", "Ability C", "Ability D", "Ability E"):
@@ -427,6 +523,7 @@ def test_titles_a_single_qualifying_ability_in_the_singular() -> None:
             2, seconds=100.0, deaths_after_ms=(50_000,),
             damage_after_ms=((60_000, 950, ENEMY_SOURCE),), ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     assert "1 ability " in finding.title      # singular, not "1 abilities"
@@ -444,8 +541,50 @@ def test_says_nothing_about_a_mechanic_being_missed() -> None:
             2, seconds=100.0, deaths_after_ms=(50_000,),
             damage_after_ms=((60_000, 900, ENEMY_SOURCE),), ability_names=names,
         ),
+        a_control_attempt(999),
     ))
     assert finding is not None
     text = f"{finding.title} {finding.detail}".lower()
     for banned in ("missed", "avoidable", "should have", "failed", "mistake"):
         assert banned not in text
+
+
+def test_withholds_an_ability_that_also_lands_in_the_deepest_attempts_own_window() -> None:
+    """Design section 5.2: an ability landing inside the deepest attempt's own
+    window is the encounter working as designed, not something that kept a
+    shallower attempt from surviving -- the tool stays quiet about it even
+    though it also landed, every time, in every other attempt.
+    """
+    names = {910: "Lingering Toxin"}
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, remaining=10.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 910, ENEMY_SOURCE),), ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, remaining=50.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 910, ENEMY_SOURCE),), ability_names=names,
+        ),
+    ))
+    assert finding is None
+
+
+def test_withholds_entirely_when_the_deepest_attempt_never_had_a_death() -> None:
+    """The control's premise fails when the deepest attempt carries no
+    collapse window at all: every ability would trivially "not appear in the
+    control", inverting the rule into naming everything instead of staying
+    quiet.
+    """
+    names = {920: "Ground Slam"}
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, remaining=10.0, deaths_after_ms=()),
+        a_loaded_attempt(
+            2, seconds=100.0, remaining=50.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 920, ENEMY_SOURCE),), ability_names=names,
+        ),
+        a_loaded_attempt(
+            3, seconds=100.0, remaining=60.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 920, ENEMY_SOURCE),), ability_names=names,
+        ),
+    ))
+    assert finding is None

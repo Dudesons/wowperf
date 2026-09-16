@@ -258,13 +258,24 @@ def test_a_night_where_only_some_attempts_carry_boss_health_reads_as_encounter_p
     assert "31.9" not in cluster.title
 
 
-def a_deepened_pair() -> LoadedProgression:
-    """Two qualifying attempts, deepened enough to fire every Layer 2 analyser.
+def a_deepened_trio() -> LoadedProgression:
+    """Three qualifying attempts, deepened enough to fire every Layer 2 analyser.
 
-    Both attempts end in the same phase, both have their roster's first
-    player die, and both take a hit from the same non-roster ability after
-    that death -- so `repeat_phase`, `repeat_first_death`, `repeat_ability`
-    and `collapse` all clear their own "at least two" floors at once.
+    All three end in the same phase and have their roster's first player die
+    first, clearing `repeat_phase` and `repeat_first_death`'s "at least two"
+    floor with a clean majority. The first two also take a hit from the same
+    non-roster ability after that death; the third -- deepest, by its lower
+    `remaining` -- takes no damage at all, so that ability never lands inside
+    the deepest attempt's own window and `repeat_ability` still names it
+    instead of reading it as the encounter working as designed.
+    `collapse` only needs a death in at least two attempts, which all three
+    supply.
+
+    Named `a_deepened_trio`, not `a_deepened_pair`: it grew a third attempt so
+    `repeat_ability`'s shared ability could sit outside the deepest attempt's
+    own window, which two attempts alone cannot arrange -- with only two, an
+    ability shared by both is unavoidably shared with whichever one is
+    deepest, and `repeat_ability` would withhold rather than name it.
     """
     players = (
         Player(actor_id=1, name="Emberkin", class_name="Priest", spec="Holy", item_level=450),
@@ -285,21 +296,29 @@ def a_deepened_pair() -> LoadedProgression:
     second = a_loaded_attempt(
         29,
         seconds=180.0,
-        remaining=40.0,
+        remaining=45.0,
         players=players,
         deaths_after_ms=(40_000,),
         damage_after_ms=((45_000, 900, 999),),
         ability_names={900: "Void Bolt"},
         last_phase=3,
     )
-    return a_loaded_series(first, second)
+    third = a_loaded_attempt(
+        30,
+        seconds=150.0,
+        remaining=20.0,
+        players=players,
+        deaths_after_ms=(30_000,),
+        last_phase=3,
+    )
+    return a_loaded_series(first, second, third)
 
 
-def test_two_deepened_attempts_emit_both_layer_one_and_layer_two_findings() -> None:
+def test_three_deepened_attempts_emit_both_layer_one_and_layer_two_findings() -> None:
     """R6's whole point: a `LoadedProgression` carrying `loaded` attempts must
     fire Layer 2 alongside Layer 1, not just the metadata-only findings.
     """
-    found = ids(analyse_progression(a_deepened_pair()))
+    found = ids(analyse_progression(a_deepened_trio()))
 
     assert "progression.best" in found
     assert "progression.cluster" in found

@@ -63,8 +63,13 @@ persisted cache directory would be, paying nothing for it a second time -- so a 
 measured that way is a different scenario, not a contradiction. Rather than pin an exact figure
 for either case here, the test reads `repository.rate_limit()` itself, once before
 `load_progression` and once after `load_progression_attempts`, and asserts the gap stays under 40
-points: comfortable headroom for the cold case this test always exercises, without letting an
-unnoticed extra stream through.
+points. That is loose relative to the roughly 18-point cold cost above: a stray third stream per
+attempt would land near 25 and even a whole `Casts` stream near 36, both still under 40, so this
+bound does not catch one unnoticed extra stream --
+`test_sends_only_deaths_and_damage_taken_per_attempt` proves that narrower claim offline instead,
+by counting operations directly. What the 40-point bound catches here is a wholesale change in
+shape against the real API: doubling every stream, or refetching the whole night a second time,
+the kind of drift that would blow past it rather than nudge it.
 """
 
 import re
@@ -166,21 +171,23 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
 
     # Phases 1 and 2 tie at three attempts each (measured 2026-09-16, encounter
     # 3492 reports `separatesWipes: true` with four phases); `repeat_phase`
-    # breaks the tie by first-seen order. Asserting the count both sides of
-    # that tie share -- 3 of the 7 attempts that carried a phase -- exercises
-    # the counting a wrong implementation could get wrong (a miscount, or
-    # excluding an attempt that does carry a phase) without pinning which side
-    # of an unrelated tie wins.
+    # names every phase tied for the top count rather than picking one.
+    # Asserting the count both sides of that tie share -- 3 of the 7 attempts
+    # that carried a phase -- exercises the counting a wrong implementation
+    # could get wrong (a miscount, or excluding an attempt that does carry a
+    # phase) without pinning the exact wording of which phases get named.
     phase_finding = next(f for f in findings if f.id == "progression.repeat.phase")
     assert phase_finding.title.startswith("3 of 7 attempts ended in "), phase_finding.title
 
     # The report holds twenty real people (CLAUDE.md's test-data rule): read
     # the roster back from the loaded progression itself, rather than listing
     # a name here, and check that no finding's title, detail, evidence, facts,
-    # ability name or player slug -- every text field `Finding` carries --
-    # repeats one. A finding that names a player -- say, by building a detail
-    # string from `Player.name` instead of `.spec`/`.class_name` -- would be
-    # caught here. Matched on a word boundary rather than a bare substring, so
+    # ability name or player slug -- the free-text fields a name could
+    # plausibly land in, unlike `id` and `quantifier`, which are fixed machine
+    # strings no player name could reach -- repeats one. A finding that names
+    # a player -- say, by building a detail string from `Player.name` instead
+    # of `.spec`/`.class_name` -- would be caught here. Matched on a word
+    # boundary rather than a bare substring, so
     # a short roster name does not raise a false alarm just because it happens
     # to sit inside an unrelated word of ordinary finding prose.
     roster_names = {

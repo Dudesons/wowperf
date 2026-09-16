@@ -1337,7 +1337,10 @@ six earlier fights cost 6.03 for 6 calls. The report-wide `DamageTaken` sweep of
 fights spent **18.76**, higher only because the larger fights paginate: 26,606 rows on one fight
 is three pages, and a page is a call.
 
-**So deepening a whole night is cheap.** An eight-attempt night reading deaths and damage taken
-per attempt is on the order of 20 points of 3600, against the design's projection of 40 to 60 for
-three streams. That projection is not wrong — it simply priced a debuff stream that measurement
-then cut.
+**So deepening a whole night is projected to be cheap — this has not itself been measured.** Two
+streams a fight at ~1.00 point each projects an eight-attempt night to about 20 points of 3600,
+against the design's estimate of 40 to 60 for three streams. Lower only because it drops the
+debuff stream that estimate priced in, not because the estimate was wrong. The one figure actually
+measured for `load_progression_attempts` is a warm-cache re-run at 8.00 points: 7 `Deaths` calls
+for 7.00 and 2 `RateLimit` calls for 1.00, with `Fights`, `Abilities` and `DamageTaken` all served
+from cache — a re-run price, not a cold one.

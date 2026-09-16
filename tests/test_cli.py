@@ -4341,12 +4341,16 @@ def build_progression_transport(fights: list[dict[str, Any]]) -> httpx.MockTrans
     serves `report_fights.json`, a Mythic+ fixture `load_progression` has no
     use for, so this carries its own raid-shaped payload instead.
 
-    `Abilities` is answered unconditionally, even when no fight qualifies: the
-    ability dictionary is fetched once per report before `load_progression_attempts`
-    ever looks at an attempt. `Deaths` and `DamageTaken` answer with no rows for
-    every qualifying attempt -- `attempts_deepened` only needs a count, and no
-    test here reads what a Layer 2 analyser makes of an attempt with nothing in
-    it.
+    `Abilities` is answered whenever it is asked for: the ability dictionary is
+    fetched once per report, before `load_progression_attempts` looks at any
+    attempt, for every test here that has at least one qualifying attempt. When
+    every fight is discarded, `load_progression_attempts` returns before
+    fetching anything at all, so this handler is never asked for `Abilities` in
+    that case -- it stays here regardless, since most tests in this file do
+    have a qualifying attempt. `Deaths` and `DamageTaken` answer with no rows
+    for every qualifying attempt -- `attempts_deepened` only needs a count, and
+    no test here reads what a Layer 2 analyser makes of an attempt with
+    nothing in it.
     """
     quota = [100.0, 101.0]
     running = 100.0

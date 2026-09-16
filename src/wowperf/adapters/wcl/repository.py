@@ -518,15 +518,30 @@ class WclRunRepository:
 
         Two streams an attempt, against the nine `load_encounter` fetches for one
         fight. Measured 2026-09-16: an event stream costs about 1.00 points a
-        fight whatever its size, so an eight-attempt night lands near 20 points
-        of 3600 rather than the design's projected 40 to 60 -- which priced a
-        debuff stream the measurement then cut.
+        fight whatever its size.
+
+        Projected, not measured: two streams over an eight-attempt night lands
+        near 20 points of 3600, well under the design's 40-to-60 estimate for
+        three streams -- lower only because that estimate priced a debuff
+        stream this command never sends. Nobody has clocked a cold run of this
+        command end to end; the one figure actually measured for it is a
+        warm-cache re-run at 8.00 points -- 7 `Deaths` calls for 7.00 and 2
+        `RateLimit` calls for 1.00, with `Fights`, `Abilities` and `DamageTaken`
+        all served from cache -- so it prices a re-run, not a cold one.
 
         No casts stream. `build_deaths` uses casts only to time how long a dead
         player stayed out of the fight, which is a Mythic+ recap's figure and
         which nothing in Layer 2 reads; fetching one per attempt would double
         the command's cost for a field nobody looks at.
+
+        Returns before fetching anything when `progression.attempts` is empty:
+        a night where every attempt fell under `MIN_ATTEMPT_SECONDS` has
+        nothing to deepen, and an ability dictionary nothing would read is a
+        point spent for no reason.
         """
+        if not progression.attempts:
+            return LoadedProgression(progression=progression)
+
         hits: list[bool] = []
         ability_names, _icons = self._ability_dictionary(progression.report_code, hits)
 

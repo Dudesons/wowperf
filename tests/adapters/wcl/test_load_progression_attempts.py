@@ -14,6 +14,7 @@ from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.repository import WclRunRepository
+from wowperf.domain.progression import Progression
 
 # Three fights at one boss: two above MIN_ATTEMPT_SECONDS (44.0), one a 20s
 # reset that build_progression discards. Only the two kept attempts should
@@ -135,6 +136,22 @@ def test_sends_only_deaths_and_damage_taken_per_attempt(tmp_path: Path) -> None:
     assert "Debuffs" not in operations
     assert "Healing" not in operations
     assert operations.count("Abilities") == 1  # once for the command, not once per attempt
+
+
+def test_returns_empty_and_fetches_nothing_when_no_attempt_qualifies(tmp_path: Path) -> None:
+    """A night where every attempt falls under `MIN_ATTEMPT_SECONDS` leaves
+    `progression.attempts` empty. `load_progression_attempts` must return
+    before spending a point on an ability dictionary nothing would read.
+    """
+    repository, operations = a_repository_counting_calls(tmp_path)
+    empty = Progression(
+        report_code="abc123", encounter_id=3492, boss_name="Boss", difficulty=5, size=20,
+    )
+
+    deep = repository.load_progression_attempts(empty)
+
+    assert deep.loaded == ()
+    assert operations == []
 
 
 def test_carries_the_deaths_and_damage_the_streams_returned(tmp_path: Path) -> None:

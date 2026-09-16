@@ -3,11 +3,41 @@
 
 from collections import Counter
 from statistics import median
+from typing import TypeVar
 
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.progression import LoadedProgression, Progression
+
+# Bound to the two concrete key types this module counts: a `PhaseMetadata.id`
+# in `repeat_phase`, a "spec class" label in `repeat_first_death`. Both order
+# comparably, which an unbound TypeVar would not let `sorted()` assume.
+_K = TypeVar("_K", int, str)
+
+
+def _tied_for_first(counts: "Counter[_K]") -> tuple[int, list[_K]]:
+    """The winning count and every key that reaches it, sorted for determinism.
+
+    `Counter.most_common(1)` breaks a tie by first-seen order and reports one
+    winner as if it had no rivals, hiding that a tie happened at all. This
+    returns every key sharing the top count instead, so a caller can name them
+    all rather than picking one arbitrarily.
+    """
+    top = max(counts.values())
+    winners = sorted(key for key, count in counts.items() if count == top)
+    return top, winners
+
+
+def _join_or(items: list[str]) -> str:
+    """Join tied names as prose: one alone, or a comma list ending in "or".
+
+    Never an "and": these are alternatives that tied for the same count, not a
+    set that all held true together.
+    """
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} or {items[-1]}"
 
 
 def repeat_phase(progression: Progression) -> Finding | None:
@@ -22,6 +52,13 @@ def repeat_phase(progression: Progression) -> Finding | None:
     `last_phase` is a `PhaseMetadata.id` -- measured across all eight, and the
     reason the name is looked up rather than derived from `phase_transitions`,
     whose last entry disagreed with `last_phase` on one of them.
+
+    Withheld when the winning count is 1: with every attempt ending somewhere
+    different, nothing repeated, and reporting "1 of N attempts ended in X"
+    would dress that noise as a pattern. When more than one phase ties for the
+    top count, every tied phase is named -- `Counter.most_common(1)` would
+    otherwise report whichever tied phase happened to appear first, silently
+    hiding the tie.
     """
     if not progression.separates_wipes or not progression.phases:
         return None
@@ -32,9 +69,12 @@ def repeat_phase(progression: Progression) -> Finding | None:
     if len(ended_in) < 2:
         return None
 
-    phase_id, count = Counter(ended_in).most_common(1)[0]
+    count, winners = _tied_for_first(Counter(ended_in))
+    if count < 2:
+        return None
+
     names = {phase.id: phase.name for phase in progression.phases}
-    name = names.get(phase_id, f"phase {phase_id}")
+    name = _join_or([names.get(phase_id, f"phase {phase_id}") for phase_id in winners])
 
     return Finding(
         id="progression.repeat.phase",
@@ -54,15 +94,22 @@ def repeat_phase(progression: Progression) -> Finding | None:
 
 
 def _first_death_ms(one: LoadedEncounter) -> int | None:
-    """The timestamp of an attempt's first death, or None if nobody died.
+    """The timestamp of an attempt's first roster death, or None if no roster
+    player died.
 
     The one figure `collapse_seconds` and `repeat_ability` both build their
     window from, so the two findings cannot disagree about when an attempt
-    started falling apart.
+    started falling apart. Filtered to `one.players` for the same reason
+    `repeat_first_death` matches its own earliest death against the roster: a
+    pet or an unidentified actor dying first is not a roster player's death,
+    and letting one anchor this window would let the three analysers disagree
+    about which death started an attempt's collapse.
     """
-    if not one.deaths:
+    roster_ids = {player.actor_id for player in one.players}
+    deaths = [death for death in one.deaths if death.actor_id in roster_ids]
+    if not deaths:
         return None
-    return min(death.timestamp_ms for death in one.deaths)
+    return min(death.timestamp_ms for death in deaths)
 
 
 def collapse_seconds(one: LoadedEncounter) -> float | None:
@@ -127,6 +174,12 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
     specialisation dying first is usually a fact about where that role stands
     when a pull goes wrong, not about who was playing it. This counts and
     names no one.
+
+    Withheld when the winning count is 1: two or more attempts identified is
+    not the same claim as one specialisation recurring, and "died first in 1
+    of N attempts" would report a mode of one as if it were a pattern. When
+    more than one specialisation ties for the top count, both are named
+    rather than one picked arbitrarily.
     """
     specs = []
     for one in series.attempts_with_events:
@@ -141,14 +194,17 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
     if len(specs) < 2:
         return None
 
-    spec, count = Counter(specs).most_common(1)[0]
+    count, winners = _tied_for_first(Counter(specs))
+    if count < 2:
+        return None
+    name = _join_or(winners)
 
     return Finding(
         id="progression.repeat.first_death",
-        title=f"{spec} died first in {count} of {len(specs)} attempts",
+        title=f"{name} died first in {count} of {len(specs)} attempts",
         detail=(
             f"Across the {len(specs)} attempts whose earliest death matched a roster "
-            f"player, {spec} was the specialisation that died first {count} times. "
+            f"player, {name} died first {count} times. "
             "A specialisation dying first is usually about where that role stands when "
             "a pull comes apart, not about the player in the seat -- this counts, and "
             "assigns no blame."
@@ -161,12 +217,10 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
 MAX_REPEAT_ABILITIES = 5
 
 
-def repeat_ability(series: LoadedProgression) -> Finding | None:
-    """Which abilities kept landing while attempts fell apart, named and counted.
-
-    The window is the one `_first_death_ms` gives `collapse_seconds`: from an
-    attempt's first death to its end. An attempt with no death contributes
-    nothing.
+def _abilities_in_window(one: LoadedEncounter) -> dict[int, str] | None:
+    """Enemy-sourced abilities landing from an attempt's first death to its
+    end, named by id. None when the attempt had no death, so it carries no
+    window at all.
 
     A hit whose `source_id` is a roster player -- including the victim's own
     id, which is self-damage -- is excluded outright rather than counted.
@@ -177,38 +231,69 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
     did. An ability like Blessing of Sacrifice, a cooldown that redirects
     damage away from an ally, would otherwise show up here as something that
     repeatedly ends attempts, which is not what it does.
+    """
+    first = _first_death_ms(one)
+    if first is None:
+        return None
+
+    friendly_ids = {player.actor_id for player in one.players}
+    names: dict[int, str] = {}
+    for hit in one.damage_taken:
+        if hit.timestamp_ms < first:
+            continue
+        # A hit with no source_id is kept rather than excluded: the log naming
+        # nobody is not evidence of a teammate, and dropping it would silently
+        # discard a real enemy hit. Measured 2026-09-16: all 15,798 damage rows
+        # on the probed fight carried a source_id, so this branch is
+        # near-unreachable in practice, but it is a live and deliberate default.
+        if hit.source_id is not None and hit.source_id in friendly_ids:
+            continue
+        names.setdefault(hit.ability_id, hit.ability_name)
+    return names
+
+
+def repeat_ability(series: LoadedProgression) -> Finding | None:
+    """Which abilities kept landing while attempts fell apart, named and counted.
+
+    The window is the one `_first_death_ms` gives `collapse_seconds`: from an
+    attempt's first death to its end. An attempt with no death contributes
+    nothing.
+
+    The deepest attempt in the series -- `LoadedProgression.deepest_loaded` --
+    is the control. An ability landing inside its own window is the encounter
+    working as designed: a soak, a link, a controlled detonation that the best
+    attempt took too, not something that kept a shallower attempt from
+    surviving (design section 5.2). Such an ability is dropped regardless of
+    how many other attempts it appeared in. The finding is withheld entirely
+    when the deepest attempt carries no window of its own: no death there
+    means no control to compare against, and treating every ability as "absent
+    from the control" in that case would invert the rule into naming
+    everything rather than staying quiet.
 
     Counts attempts an ability appeared in, never hits, and reports only
     abilities present in more than half the attempts with a window, capped at
     five. Confidence is derived rather than measured: which hits fall inside
     the window is a modelling choice, not a fact the log states outright.
     """
+    deepest = series.deepest_loaded
+    if deepest is None:
+        return None
+    control = _abilities_in_window(deepest)
+    if control is None:
+        return None
+    control_ids = set(control)
+
     attempts_with_window = 0
     ability_names: dict[int, str] = {}
     attempts_by_ability: Counter[int] = Counter()
 
     for one in series.attempts_with_events:
-        first = _first_death_ms(one)
-        if first is None:
+        seen = _abilities_in_window(one)
+        if seen is None:
             continue
         attempts_with_window += 1
-
-        friendly_ids = {player.actor_id for player in one.players}
-        seen_this_attempt: set[int] = set()
-        for hit in one.damage_taken:
-            if hit.timestamp_ms < first:
-                continue
-            # A hit with no source_id is kept rather than excluded: the log naming
-            # nobody is not evidence of a teammate, and dropping it would silently
-            # discard a real enemy hit. Measured 2026-09-16: all 15,798 damage rows
-            # on the probed fight carried a source_id, so this branch is
-            # near-unreachable in practice, but it is a live and deliberate default.
-            if hit.source_id is not None and hit.source_id in friendly_ids:
-                continue
-            ability_names.setdefault(hit.ability_id, hit.ability_name)
-            seen_this_attempt.add(hit.ability_id)
-
-        for ability_id in seen_this_attempt:
+        for ability_id, name in seen.items():
+            ability_names.setdefault(ability_id, name)
             attempts_by_ability[ability_id] += 1
 
     if attempts_with_window < 2:
@@ -217,7 +302,7 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
     qualifying = [
         (ability_id, count)
         for ability_id, count in attempts_by_ability.items()
-        if count > attempts_with_window / 2
+        if count > attempts_with_window / 2 and ability_id not in control_ids
     ]
     if not qualifying:
         return None
@@ -239,10 +324,12 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
             "started coming apart: "
             + "; ".join(lines)
             + ". This counts the attempts each ability appeared in, not hits, and excludes "
-            "any hit a roster player dealt, self-damage included. Which hits fall inside "
-            "that window is a modelling choice, so this reads as derived rather than "
-            "measured, and states only what kept landing, nothing about why an attempt "
-            "ended."
+            "any hit a roster player dealt, self-damage included, along with any ability "
+            "that also landed inside the deepest attempt's own window -- the deepest attempt "
+            "is the control, so an ability it saw too reads as the encounter working as "
+            "designed, not as something worth naming. Which hits fall inside a window is a "
+            "modelling choice, so this reads as derived rather than measured, and states "
+            "only what kept landing, nothing about why an attempt ended."
         ),
         confidence=Confidence.DERIVED,
         evidence=lines,

@@ -81,15 +81,15 @@ def test_every_family_the_progression_path_emits_has_a_severity() -> None:
     every `progression.*` id, Layer 1 or Layer 2, resolves through the single
     `"progression"` key, and this proves that rather than assuming it.
 
-    `a_deepened_pair` is the same two-attempt fixture
+    `a_deepened_trio` is the same three-attempt fixture
     `test_progression_service.py` uses to prove Layer 2 fires at all --
     reused here rather than rebuilt, so the two tests cannot silently drift
     onto two different claims about what "deepened" means.
     """
-    from tests.domain.analysis.test_progression_service import a_deepened_pair
+    from tests.domain.analysis.test_progression_service import a_deepened_trio
     from wowperf.domain.analysis.progression_service import analyse_progression
 
-    findings = analyse_progression(a_deepened_pair())
+    findings = analyse_progression(a_deepened_trio())
     found_ids = {finding.id for finding in findings}
 
     assert findings, "a fixture that emits nothing would make this pass vacuously"
