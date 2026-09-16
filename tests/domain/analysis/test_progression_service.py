@@ -328,6 +328,62 @@ def test_three_deepened_attempts_emit_both_layer_one_and_layer_two_findings() ->
     assert "progression.collapse" in found
 
 
+def a_deepened_quartet_with_a_survivor() -> LoadedProgression:
+    """A deepest attempt and three others, arranged so both Layer 3 findings fire.
+
+    Protection Warrior dies in all three other attempts and in none of the
+    deepest one, clearing `best_survived`'s "more than half of the others"
+    floor with a clean majority; Holy Priest dies on every attempt including
+    the deepest, so it is a candidate on no attempt and never named. The
+    deepest attempt also loses one roster player against the others' median of
+    two, clearing `best_deaths`'s floor the same way. Built separately from
+    `a_deepened_trio`, whose two others never lose Protection Warrior at all,
+    so it cannot qualify as a survivor there.
+
+    No attempt sets `last_phase`, so `repeat_phase` stays silent, and none
+    takes any damage, so `repeat_ability` stays silent too -- this fixture
+    exists to isolate Layer 3's wiring, not to re-exercise every Layer 2
+    analyser, which `a_deepened_trio` already does.
+    """
+    players = (
+        Player(actor_id=1, name="Emberkin", class_name="Priest", spec="Holy", item_level=450),
+        Player(
+            actor_id=2, name="Stonewake", class_name="Warrior", spec="Protection", item_level=460
+        ),
+    )
+    deepest = a_loaded_attempt(
+        40, seconds=200.0, remaining=10.0, players=players, deaths_after_ms=(1_000,)
+    )
+    others = [
+        a_loaded_attempt(
+            n, seconds=200.0, remaining=60.0, players=players, deaths_after_ms=(1_000, 2_000)
+        )
+        for n in (41, 42, 43)
+    ]
+    return a_loaded_series(deepest, *others)
+
+
+def test_layer_three_findings_are_appended_after_layer_two() -> None:
+    """Asserts the whole list, not membership alone.
+
+    Membership would still pass if `best_deaths` or `best_survived` were
+    silently dropped from the service's loop, or if either were spliced in
+    ahead of a Layer 2 id. Pinning the full ordered list is what actually
+    fails in those cases.
+    """
+    found = ids(analyse_progression(a_deepened_quartet_with_a_survivor()))
+
+    assert found == [
+        "progression.best",
+        "progression.cluster",
+        "progression.movement",
+        "progression.repeat.first_death",
+        "progression.collapse",
+        "progression.best.deaths",
+        "progression.best.survived",
+    ]
+
+
 def test_a_night_where_every_attempt_is_discarded_still_emits_only_layer_one() -> None:
     """The trap this task's brief calls out by name.
 

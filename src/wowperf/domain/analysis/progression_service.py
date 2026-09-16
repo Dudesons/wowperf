@@ -3,6 +3,7 @@
 
 from statistics import median
 
+from wowperf.domain.analysis.progression_best import best_deaths, best_survived
 from wowperf.domain.analysis.progression_repeats import (
     collapse,
     repeat_ability,
@@ -33,18 +34,22 @@ def _depth_label(progression: Progression) -> str:
 
 
 def analyse_progression(series: LoadedProgression) -> list[Finding]:
-    """Layer 1's findings from fight metadata, then Layer 2's from the deepened attempts.
+    """Layer 1's findings from fight metadata, then Layer 2's and Layer 3's from the
+    deepened attempts.
 
     Layer 1 reads `series.progression` alone and fetches nothing; it is
     untouched by R6 and its findings are neither reworded nor renumbered here.
     Layer 2 reads `series` itself -- `repeat_phase` excepted, which reads only
     `series.progression` because a phase is fight metadata, not something a
-    deepened attempt adds -- and is appended after, in a fixed order, skipping
-    any analyser that found nothing to say. A night where every attempt falls
-    below the duration floor leaves both `series.progression.attempts` and
-    `series.loaded` empty: Layer 1 still reports the discard, and every Layer 2
-    analyser below returns `None` on an empty `attempts_with_events` rather
-    than raising.
+    deepened attempt adds. Layer 3 compares the deepest deepened attempt
+    against the rest, reading only `deepest_loaded` and the other deepened
+    attempts. Both layers are appended after Layer 1, in a fixed order,
+    skipping any analyser that found nothing to say. A night where every
+    attempt falls below the duration floor leaves both
+    `series.progression.attempts` and `series.loaded` empty: Layer 1 still
+    reports the discard, and every Layer 2 and Layer 3 analyser below returns
+    `None` on an empty `attempts_with_events` rather than raising, so a night
+    where nothing was deepened leaves both Layer 3 findings silent too.
     """
     progression = series.progression
     findings: list[Finding] = []
@@ -131,14 +136,16 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
             )
         )
 
-    for layer_two in (
+    for deeper in (
         repeat_phase(progression),
         repeat_first_death(series),
         repeat_ability(series),
         collapse(series),
+        best_deaths(series),
+        best_survived(series),
     ):
-        if layer_two is not None:
-            findings.append(layer_two)
+        if deeper is not None:
+            findings.append(deeper)
 
     return findings
 
