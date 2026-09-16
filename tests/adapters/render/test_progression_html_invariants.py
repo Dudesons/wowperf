@@ -8,7 +8,12 @@ import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON_HOST
-from tests.domain.progression_fixtures import PHASES, a_loaded_attempt, a_loaded_series
+from tests.domain.progression_fixtures import (
+    _DEFAULT_PLAYER,
+    PHASES,
+    a_loaded_attempt,
+    a_loaded_series,
+)
 from tests.domain.test_progression import an_attempt
 from wowperf.adapters.render.html import render_progression
 from wowperf.adapters.render.icons import CdnIcons
@@ -51,14 +56,19 @@ def _measured_attempts() -> list[Encounter]:
     neither the first row nor the last, which is the one behaviour a monotonic
     fixture could never exercise. Attempt 35, at 15.8 seconds, is the one
     `build_progression` discards below `MIN_ATTEMPT_SECONDS`.
+
+    The three fight ids `a_progression_series` deepens (28, 30, 33) carry
+    `_DEFAULT_PLAYER` as their roster, so `roster_deaths` has someone to count
+    a death against; the other five carry none, since they are never wrapped
+    in a `LoadedEncounter` and nothing ever reads their roster.
     """
     return [
-        an_attempt(28, 64.81, 215.7, boss_name=BOSS_NAME, last_phase=1),
+        an_attempt(28, 64.81, 215.7, boss_name=BOSS_NAME, last_phase=1, players=_DEFAULT_PLAYER),
         an_attempt(29, 85.80, 105.9, boss_name=BOSS_NAME, last_phase=1),
-        an_attempt(30, 16.49, 480.0, boss_name=BOSS_NAME, last_phase=3),
+        an_attempt(30, 16.49, 480.0, boss_name=BOSS_NAME, last_phase=3, players=_DEFAULT_PLAYER),
         an_attempt(31, 85.40, 110.0, boss_name=BOSS_NAME, last_phase=1),
         an_attempt(32, 87.65, 88.0, boss_name=BOSS_NAME, last_phase=1),
-        an_attempt(33, 53.30, 278.8, boss_name=BOSS_NAME, last_phase=2),
+        an_attempt(33, 53.30, 278.8, boss_name=BOSS_NAME, last_phase=2, players=_DEFAULT_PLAYER),
         an_attempt(34, 55.65, 227.0, boss_name=BOSS_NAME, last_phase=2),
         an_attempt(35, 100.0, 15.8, boss_name=BOSS_NAME),
     ]
