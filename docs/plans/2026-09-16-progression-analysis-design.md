@@ -56,13 +56,20 @@ one means progress, which is the same fact `separatesWipes` reports from the oth
 
 ### 2.3 Progression is not monotonic, and this is the finding that shapes the design
 
-Measured on a real eight-attempt night, no kill. Boss health remaining at each attempt's end, in
-the order they were pulled:
+Measured on a real eight-attempt night, no kill. **`fightPercentage`** — encounter progress
+remaining, not boss health — at each attempt's end, in the order they were pulled:
 
 | Attempt | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Remaining | 64.81 | 85.80 | **16.49** | 85.40 | 87.65 | 53.30 | 55.65 | 100 |
+| `fightPercentage` | 64.81 | 85.80 | **16.49** | 85.40 | 87.65 | 53.30 | 55.65 | 100 |
 | Duration (s) | 215.7 | 105.9 | **480.0** | 110.0 | 88.0 | 278.8 | 227.0 | 15.8 |
+
+**Corrected 2026-09-16.** This table was headed "boss health remaining" until the `progression`
+command read the same night from the live API. The figures are and always were `fightPercentage`.
+The deepest attempt's `bossPercentage` is **23.15**, not the 16.49 above, and the two scales
+diverge by 3 to 8 points on six of the eight attempts. They agree on *which* attempt was deepest,
+so nothing this table is used to argue changes — but §2.4's rule that every printed percentage
+names which one it is binds this design's own prose too.
 
 The deepest attempt was **third of eight**. Five pulls followed it without coming close, two
 recovered partway, and the night ended on a 15.8-second reset.
@@ -237,7 +244,23 @@ entirely, in the same words the keystone comparison uses when its sample falls b
 
 **What §2.3's night actually reports, computed rather than assumed.** Its seven qualifying
 attempts split into half-medians of 64.81 and 55.65, so the later half sat **9.16 points
-deeper** and the finding says so. That is not a contradiction of §2.3: the deepest attempt is
+deeper** and the finding says so.
+
+**Corrected 2026-09-16: that worked example is on the `fightPercentage` scale, and the shipped
+command does not read this night on that scale.** Every qualifying attempt here carries a
+`bossPercentage`, so `Progression.uses_boss_health` selects boss health, and the figures the
+command printed on 2026-09-16 are half-medians of **59.2 and 54.1 on boss health — a gap of
+5.1 points**, against the 9.16 derived here. The arithmetic above is still the arithmetic; only
+the column it runs on changed. Any later plan quoting 9.16 as "what the tool says" is quoting the
+wrong scale.
+
+**That 5.1 clears the 5.0-point threshold by a tenth of a point**, and the threshold is the one
+constant in the shipped command with no measurement behind it. Raise it to 5.2 and this night
+reports "no movement we can distinguish" instead. Any plan that builds on
+`progression.movement` measures how far a static night's half-medians drift by chance before it
+relies on the current value.
+
+That is not a contradiction of §2.3: the deepest attempt is
 still the third of eight, and the raid never came close to it again. Stating a gap between two
 halves and extrapolating a slope are different claims, and only the second is forbidden. A
 reader told "later attempts sat deeper by nine points" and "the best attempt was your third"
@@ -403,10 +426,20 @@ was a test that could not have failed, so the fixtures carry the burden.
 
 1. **The composition of player-to-player debuff applications** (§9.1). Blocks Layer 2's
    player-sourced findings and nothing else.
-2. **The duration floor** (§4.3). Blocks attempt selection.
+2. ~~**The duration floor** (§4.3).~~ **Settled 2026-09-16**: `MIN_ATTEMPT_SECONDS = 44.0`,
+   measured over 349 cached boss attempts across 37 reports. The docstring in
+   `src/wowperf/domain/progression.py` carries the reading, the corridor it sits in, and the one
+   attempt it could not classify.
 3. **The margin at which `fightPercentage` and `bossPercentage` are reported separately** (§2.4).
+   **Partly measured 2026-09-16**: on the one boss read so far, every qualifying attempt carried a
+   `bossPercentage`, so the series reads on boss health and the question of showing both never
+   arose. The margin is still unmeasured, and so is how often a night has attempts on only one of
+   the two scales — which is the case `Progression.uses_boss_health` exists to handle.
 4. **Whether a session gap should split a series or merely be declared** (§9.6). The design's
    position is declare; a measurement of real multi-session reports could change it.
+5. **The movement threshold** (§5.1). 5.0 points is chosen, not measured, and the first real night
+   cleared it by 0.1. Blocks nothing that already ships; blocks any new claim built on
+   `progression.movement`.
 
 Each is a measurement, not a debate. None may be settled by assumption.
 
