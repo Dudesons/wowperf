@@ -1214,6 +1214,35 @@ the log says nothing about what it is.
 | The ability also arrives from a non-player source on the same fight | 2 of 67 — and both are class debuffs (`Mortal Wounds`, `Blood Plague`). Useless, and it produces false positives. |
 | The ability is applied by more than one class | 3 of 67, of which 2 are shared class effects. Isolates one candidate, with no way to confirm what it is. |
 
+**A positive control settles it, and the reason is stronger than the one above.** Measured
+2026-09-16 against a death a raider reported as caused by another player passing them a mechanic
+(report `cW38jmwdnZfbHVL4`, fight 26, the subject is actor 21, who supplied the log). The ability
+is `Gloombomb`, ids 1310881, 1310882 and 1310883.
+
+**Every Gloombomb row in either stream is sourced to an NPC.** All 18 debuff applications and
+removals, and all 22 damage rows, carry `sourceID: 238`. Not one names a player. The log records
+"the boss's Gloombomb hit this player", identically for every target, so **the carrier whose bomb
+reached a victim is not in the event at all.**
+
+So the player-to-player stream was never where this mechanic lived, and the composition above —
+however it had come out — could not have decided it. **Searching for a passed mechanic among
+player-sourced events is searching the wrong stream.**
+
+**What the log does carry is the spread, and it needs no boss knowledge.** Three detonations on
+that fight, each preceded by the debuff on exactly three players:
+
+| Detonation | Carried it | Took the damage | Spread past its carriers |
+| --- | --- | --- | --- |
+| 1 | 3 | 12 | 9 |
+| 2 | 3 | 3 | **0** |
+| 3 | 3 | 7 | 4 |
+
+The second detonation is the same mechanic executed cleanly, and it is the control that makes the
+other two readable. **The derivable rule is generic**: a debuff removed from N actors, followed
+within about a second by damage from the *same ability id* to M actors, where M > N. It encodes no
+encounter, names no carrier, and distinguishes a mechanic that was contained from one that was
+not. Nothing in this project reads it yet.
+
 **So a passed raid mechanic cannot be separated from a rogue's bleed by anything measured here.**
 `docs/plans/2026-09-16-progression-analysis-design.md` §9.1 says that if it cannot, the feature is
 cut rather than hedged. It is cut. Reopening it needs a **positive control**: a fight where a

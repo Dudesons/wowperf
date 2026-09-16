@@ -422,9 +422,18 @@ safe, and the progression page needs its own.
    encounter. Both discriminators tested — "also arrives from a non-player source" and "applied
    by more than one class" — either produce false positives or isolate a single candidate with no
    way to confirm what it is. `.claude/skills/wcl-api/SKILL.md` carries the full reading.
-   **Reopening this needs a positive control**: a fight where a passed mechanic is known to have
-   occurred, so a candidate can be confirmed instead of guessed at. Nothing in a log supplies
-   that; a person who was there does.
+   **The positive control arrived the same day and makes the cut firmer.** RwlRwlRwlRwl named a
+   death of their own caused by another raider passing them `Gloombomb`. Every one of that
+   ability's 18 debuff rows and 22 damage rows is sourced to an NPC; not one names a player. **The
+   mechanic is not in the player-to-player stream at all**, so the composition measured above
+   could never have decided it either way — it was the wrong stream.
+
+   **The carrier is unrecoverable, but the spread is not.** Each detonation applies the debuff to
+   exactly three players; the damage that follows hit 12, then 3, then 7. The middle one is the
+   same mechanic contained, and it is the control that makes the other two readable. The generic
+   rule — a debuff removed from N actors, then damage from the same ability id to M actors within
+   about a second, M > N — encodes no encounter and names no carrier. **That is a new finding this
+   design does not contain**, and it belongs in a brainstorm rather than smuggled into a plan.
 2. **Small n.** Eight attempts is a small sample and a four-against-four split is smaller. State
    the count, and withhold `progression.movement` below a floor, exactly as the keystone
    comparison falls back below three comparable members.
