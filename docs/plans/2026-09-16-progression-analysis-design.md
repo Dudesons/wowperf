@@ -490,6 +490,19 @@ was a test that could not have failed, so the fixtures carry the burden.
    the two scales — which is the case `Progression.uses_boss_health` exists to handle.
 4. **Whether a session gap should split a series or merely be declared** (§9.6). The design's
    position is declare; a measurement of real multi-session reports could change it.
+   **Measured 2026-09-16, and the reading is negative: no report this project has cached holds
+   two sessions.** Across 295 cached responses, 4 distinct reports carry raid fights with both a
+   start and an end time, giving 9 series of two or more attempts and 59 within-series gaps
+   measured end-of-one to start-of-the-next. Median 143s, p90 701s, **maximum 6281s (1.74h)**;
+   across a whole report's consecutive raid fights, 71 gaps with a maximum of 10572s (2.94h). An
+   overnight boundary is eight hours or more, and nothing here reaches two. The two largest
+   within-series gaps both sit on one encounter of report `xBDdYAjbRFqWKC8n`, whose cached fights
+   carry no `difficulty` at all, so they may be a difficulty switch inside one evening rather
+   than a break. **So the declaration is cut from plan 3**: a threshold above 2.94h would never
+   fire on any data we have, and one below it would call an ordinary break a second night. The
+   population is small — 4 reports, three of them this project's own probes — so this says no
+   multi-session report is *here* to set a threshold against, not that none exists. One turning
+   up reopens the item.
 5. **The movement threshold** (§5.1). 5.0 points is chosen, not measured, and the first real night
    cleared it by 0.1. Blocks nothing that already ships; blocks any new claim built on
    `progression.movement`.
