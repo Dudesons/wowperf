@@ -60,6 +60,15 @@ covers it otherwise.
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
 | `playerDetails` | `Report` | 2026-09-14 | yes |
 | `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
+| `bossPercentage` | `ReportFight` | 2026-09-16 | no |
+| `lastPhase` | `ReportFight` | 2026-09-16 | no |
+| `lastPhaseAsAbsoluteIndex` | `ReportFight` | 2026-09-16 | no |
+| `lastPhaseIsIntermission` | `ReportFight` | 2026-09-16 | no |
+| `phaseTransitions` | `ReportFight` | 2026-09-16 | no |
+| `wipeCalledTime` | `ReportFight` | 2026-09-16 | no |
+| `phases` | `Report` | 2026-09-16 | no |
+| `separatesWipes` | `EncounterPhases` | 2026-09-16 | no |
+| `killerID` | `Deaths event` | 2026-09-16 | no |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -1078,3 +1087,83 @@ corrected 2026-09-03 against the schema.
   `src/wowperf/adapters/wcl/ingest.py`. Whether those correspond exactly to the client's
   `SPELL_CAST_SUCCESS` lines is the community reading, unverified here; nothing in this project
   depends on it.
+
+## Phases are named by the API, so no phase table needs writing
+
+Introspected 2026-09-16, looking for whatever a progression report could say about how far an
+attempt got. **`ReportFight` carries 43 fields and six of them are about how an attempt ended**:
+`bossPercentage`, `fightPercentage`, `lastPhase`, `lastPhaseAsAbsoluteIndex`,
+`lastPhaseIsIntermission` and `phaseTransitions`. The full 43 were read in one introspection; the
+twenty-four transcribed under "A difficulty's name lives on its zone" remain accurate and this
+section adds the phase half rather than restating them.
+
+The phase vocabulary is three types, each read verbatim from the introspection response:
+
+- `Report.phases` returns `[EncounterPhases]`.
+- `EncounterPhases` carries exactly `encounterID`, `separatesWipes`, `phases`.
+- `PhaseMetadata` carries exactly `id`, `name`, `isIntermission`.
+- `PhaseTransition` carries exactly `id`, `startTime`.
+
+**So a phase's human-readable name comes from the API.** `docs/plans/2026-09-13-raid-analysis-design.md`
+§3.3 forbids encoding a phase table, and nothing needs encoding: the names are fetched. Measured
+against report `cW38jmwdnZfbHVL4` the same day, `Report.phases` returned six entries, one naming four phases
+including an intermission flagged by `isIntermission`.
+
+**`separatesWipes` varies by encounter and is the API's own opinion.** Of the three entries
+inspected, two read `true` and one read `false`. Read it as Warcraft Logs stating whether phase is
+a meaningful way to group that encounter's attempts, and gate any phase claim on it.
+
+**`phaseTransitions` is not a ladder.** One encounter's transitions ran `1, 2, 1, 2, 1` and
+another ran `1, 2, 1, 3, 1`, both within a single attempt. On such an encounter neither the last
+phase nor the highest phase reached means progress. Two other encounters reported `lastPhase: 0`
+with no transitions at all, which is a boss with no phases rather than an error.
+
+**`wipeCalledTime` exists and was `null` on all nineteen fights of that report.** Present in the
+schema, absent from the data. Do not build on it without measuring it somewhere it is populated;
+this file's opening warning exists because of exactly this shape of field.
+
+## Warcraft Logs does not attribute a death to another player
+
+Measured 2026-09-16 against a fight chosen because a raider who was there reported a death caused
+by another player passing a mechanic to them. **Across all 15 deaths, `killerID` was never a
+friendly player.** Where it is set it names an enemy actor; it is `null` on 7 of the 15. The
+killing blow on the death in question is credited to the boss.
+
+A death event carries exactly `abilityGameID`, `fight`, `killerID`, `killingAbilityGameID`,
+`sourceID`, `targetID`, `timestamp`, `type`. `sourceID` read `-1` on every one of the 15.
+
+**So "player A killed player B" is not a fact this API reports.** It can only be reconstructed
+from a player-to-player application followed by damage credited to the encounter, and every link
+in that chain is an inference. `docs/plans/2026-09-16-progression-analysis-design.md` §9.1 carries
+the measurement that must come before anything is built on it.
+
+## Damage-taken events name their source, and some of it is friendly
+
+Measured 2026-09-16 on one 20-player wipe (report `cW38jmwdnZfbHVL4` fight 30), both pages of the
+stream. **Every one of 2009 damage-taken rows carried `sourceID`**, and **357 of them (17.8%) had a friendly player as the
+source, across 6 distinct abilities**.
+
+A damage-taken event carries `timestamp`, `type`, `sourceID`, `targetID`, `abilityGameID`,
+`fight`, `hitType`, `amount` and `isAoE` on every row, and `unmitigatedAmount`, `buffs`,
+`mitigated`, `absorbed`, `tick`, `targetMarker`, `sourceInstance`, `sourceMarker` and `blocked` on
+some. `DamageTakenEvent` in `src/wowperf/domain/events.py` keeps none of the source fields today.
+
+`EventDataType` offers exactly fourteen values, transcribed from the same introspection: `All`,
+`Buffs`, `Casts`, `CombatantInfo`, `DamageDone`, `DamageTaken`, `Deaths`, `Debuffs`, `Dispels`,
+`Healing`, `Interrupts`, `Resources`, `Summons`, `Threat`.
+
+**The `Debuffs` stream carries player-to-player applications, and its composition is unmeasured.**
+A *different* fight -- the one the section above measures death attribution on, not the one this
+section's damage figures come from -- returned 610 events whose source and target were two
+different friendly players,
+split `applydebuff` 308, `removedebuff` 217, `refreshdebuff` 51, `applydebuffstack` 34. Several of
+the most frequent ability ids resemble ordinary class debuffs rather than a passed raid mechanic,
+so **this count is not yet evidence that a passed mechanic can be isolated**. Treat 610 as an
+upper bound on the signal and nothing more until the composition is measured.
+
+## What a whole day of this investigation cost
+
+**14.04 points of 3600** (2026-09-16), covering four schema introspections, a report-wide `fights`
+listing, and two fully paginated event streams on a 20-player fight. Introspection is cheap: the
+first probe, which read all 43 `ReportFight` fields and every type name in the schema, moved the
+counter by 1.00.
