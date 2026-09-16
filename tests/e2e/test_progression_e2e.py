@@ -52,22 +52,20 @@ pin the fight id, not just "not last", precisely so a future series where the tw
 would be caught here rather than passing by the same luck `deepest is not attempts[-1]` used to
 rely on.
 
-Cost, measured 2026-09-16. This test calls `build_repository` and `load_progression` directly and
-makes no quota-reading call of its own, so its only network cost is the one `Fights` query
-`load_progression` sends. That query's own price -- 2.01 points -- was read from
-`wowperf progression cW38jmwdnZfbHVL4 --boss 3492`'s own cost ledger, run twice directly against a
-persisted cache directory the same way `test_raid_e2e.py`'s docstring measures its two commands:
-cold (a cache directory that had never seen this report), it printed "Fights 1 call 2.01 points"
-inside a total of 3.01 points spent (the extra 1.00 is that command's own opening quota read,
-which this test never makes); re-run against the same, now-warm cache directory, it spent 1.00
-point total with no `Fights` line at all -- the two `RateLimit` reads its quota check makes and
-nothing else, because the report's `Fights` response was already on disk. So this test's own
-marginal cost is 2.01 points against a cold `tmp_path` (its only possible state, since `tmp_path`
-is a fresh directory every run) and would be 0.00 against a warm one. Both figures are
-measurements, not the design's own 40-to-60-point projection for a *deepened* night: this test
-stops at Layer 1, deepens no attempt, and so never approaches that projection's shape.
+Cost, measured 2026-09-16 for Layer 1 alone: the 2.01-point `Fights` query documented above,
+against a cold `tmp_path` cache. This test now deepens every qualifying attempt as well, through
+`load_progression_attempts`, whose own docstring documents about 1.00 point per event stream, two
+streams (deaths, damage taken) per attempt -- around 14 points for this night's seven qualifying
+attempts, close to the ~20-point total that same docstring measures for a full eight-attempt
+night's Layer 1 and Layer 2 cost together. Both of those are the other docstring's measurements,
+not this test's own -- the work that wrote this assertion did not run it against the live API, so
+rather than pin an exact combined figure here, the test reads `repository.rate_limit()` itself,
+once before `load_progression` and once after `load_progression_attempts`, and asserts the gap
+stays under 40 points: twice the ~20-point measurement, enough headroom for pagination without
+letting an unnoticed third stream through.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -75,7 +73,6 @@ import pytest
 from wowperf.cli import build_repository
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import rank_raid_findings
-from wowperf.domain.progression import LoadedProgression
 
 
 @pytest.mark.e2e
@@ -90,6 +87,7 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     """
     repository = build_repository(tmp_path / "cache")
 
+    before = repository.rate_limit().points_spent_this_hour
     progression = repository.load_progression("cW38jmwdnZfbHVL4", 3492, None)
 
     assert len(progression.attempts) + len(progression.discarded) == 8
@@ -107,12 +105,18 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     assert len(progression.phases) == 4
     assert any(p.is_intermission for p in progression.phases)
 
-    # This test stops at Layer 1 and deepens no attempt (see the cost note
-    # above), so it wraps the bare `Progression` with no `loaded` rather than
-    # calling `load_progression_attempts`.
-    findings = rank_raid_findings(analyse_progression(LoadedProgression(progression=progression)))
+    # Layer 2 reads the deepened attempts `load_progression_attempts` fetches;
+    # see the cost note above for what that spends on top of Layer 1's `Fights`
+    # query.
+    series = repository.load_progression_attempts(progression)
+    after = repository.rate_limit().points_spent_this_hour
+    spent = after - before
+    assert spent < 40, f"the whole command spent {spent:.2f} points, want under 40"
+
+    findings = rank_raid_findings(analyse_progression(series))
     assert {f.id for f in findings} >= {
-        "progression.best", "progression.cluster", "progression.movement"
+        "progression.best", "progression.cluster", "progression.movement",
+        "progression.collapse", "progression.repeat.phase",
     }
     assert len({f.id for f in findings}) == len(findings), "ids must be unique"
 
@@ -121,3 +125,57 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     # the two scales agree on which attempt is deepest here, not on its figure.
     assert "(boss health)" in best.title
     assert "23.1" in best.title
+
+    # Seven attempts deepened (fight ids 28-34); fight 35 was discarded at
+    # 15.8s and never reaches `load_progression_attempts`. A wrong filter --
+    # deepening a discarded attempt, or dropping a qualifying one -- shows up
+    # as a count other than 7.
+    assert len(series.attempts_with_events) == 7
+
+    # The night's shortest qualifying attempt is 88 seconds -- long enough
+    # that an attempt with zero damage-taken rows means a stream came back
+    # empty, not that nothing happened during it.
+    for loaded in series.attempts_with_events:
+        assert loaded.damage_taken, (
+            f"fight {loaded.encounter.fight_id} deepened with no damage-taken rows"
+        )
+
+    # The collapse window is measured from each attempt's first death to its
+    # end, so its median must fall strictly inside (0, longest attempt) --
+    # equal to or past that bound would mean the window was measured from the
+    # wrong starting point (the attempt's start, say) rather than the first
+    # death.
+    collapse_finding = next(f for f in findings if f.id == "progression.collapse")
+    collapse_match = re.search(r"median of (\d+) seconds", collapse_finding.title)
+    assert collapse_match is not None, collapse_finding.title
+    collapse_median = float(collapse_match.group(1))
+    longest_attempt_seconds = max(a.duration_seconds for a in progression.attempts)
+    assert 0 < collapse_median < longest_attempt_seconds, (
+        f"collapse median {collapse_median}s outside (0, {longest_attempt_seconds}s)"
+    )
+
+    # Phases 1 and 2 tie at three attempts each (measured 2026-09-16, encounter
+    # 3492 reports `separatesWipes: true` with four phases); `repeat_phase`
+    # breaks the tie by first-seen order. Asserting the count both sides of
+    # that tie share -- 3 of the 7 attempts that carried a phase -- exercises
+    # the counting a wrong implementation could get wrong (a miscount, or
+    # excluding an attempt that does carry a phase) without pinning which side
+    # of an unrelated tie wins.
+    phase_finding = next(f for f in findings if f.id == "progression.repeat.phase")
+    assert phase_finding.title.startswith("3 of 7 attempts ended in "), phase_finding.title
+
+    # The report holds twenty real people (CLAUDE.md's test-data rule): read
+    # the roster back from the loaded progression itself, rather than listing
+    # a name here, and check that no finding's text repeats one. A finding
+    # that names a player -- say, by building a detail string from
+    # `Player.name` instead of `.spec`/`.class_name` -- would be caught here.
+    roster_names = {
+        player.name
+        for attempt in (*progression.attempts, *progression.discarded)
+        for player in attempt.players
+    }
+    assert roster_names, "the fixture roster should not be empty"
+    for finding in findings:
+        haystack = " ".join((finding.title, finding.detail, *finding.evidence))
+        for name in roster_names:
+            assert name not in haystack, f"finding {finding.id} named a roster member"
