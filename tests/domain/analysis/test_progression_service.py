@@ -1,13 +1,15 @@
 # ABOUTME: Behaviour tests for what a night of attempts may and may not claim.
 # ABOUTME: The central case is a night that moved nowhere -- silence is the right answer.
 
+from tests.domain.progression_fixtures import a_loaded_attempt, a_loaded_series
 from tests.domain.test_progression import a_measured_night, an_attempt
 from wowperf.domain.analysis.progression_service import (
     MIN_ATTEMPTS_FOR_MOVEMENT,
     analyse_progression,
 )
 from wowperf.domain.findings import Finding
-from wowperf.domain.progression import build_progression
+from wowperf.domain.model import Player
+from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 
 def ids(findings: list[Finding]) -> list[str]:
@@ -20,10 +22,20 @@ def one(findings: list[Finding], finding_id: str) -> Finding:
     return match[0]
 
 
+def not_deepened(progression: Progression) -> LoadedProgression:
+    """Wrap a bare `Progression` for tests that exercise Layer 1 only.
+
+    `loaded` stays empty, so every Layer 2 analyser sees no attempt to read
+    and returns `None` -- these tests keep asserting on Layer 1's findings
+    exactly as they did before `analyse_progression` took a `LoadedProgression`.
+    """
+    return LoadedProgression(progression=progression)
+
+
 def test_the_best_finding_names_the_deepest_attempt_not_the_last() -> None:
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    best = one(analyse_progression(progression), "progression.best")
+    best = one(analyse_progression(not_deepened(progression)), "progression.best")
 
     assert "16.5" in best.title or "16.49" in best.title
     assert best.confidence == "measured"
@@ -37,7 +49,7 @@ def test_the_best_finding_says_which_percentage_it_means() -> None:
     """
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    best = one(analyse_progression(progression), "progression.best")
+    best = one(analyse_progression(not_deepened(progression)), "progression.best")
 
     assert "(encounter progress)" in best.title
 
@@ -45,7 +57,7 @@ def test_the_best_finding_says_which_percentage_it_means() -> None:
 def test_the_cluster_reports_a_median_and_a_range_never_a_mean() -> None:
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    cluster = one(analyse_progression(progression), "progression.cluster")
+    cluster = one(analyse_progression(not_deepened(progression)), "progression.cluster")
 
     assert "mean" not in (cluster.title + cluster.detail).lower()
     # Median of 64.81, 85.80, 16.49, 85.40, 87.65, 53.30, 55.65 is 64.81.
@@ -65,7 +77,7 @@ def test_the_measured_night_reports_the_movement_its_halves_actually_show() -> N
     """
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    movement = one(analyse_progression(progression), "progression.movement")
+    movement = one(analyse_progression(not_deepened(progression)), "progression.movement")
 
     assert movement.confidence == "derived"
     assert "deeper" in movement.title.lower()
@@ -89,7 +101,7 @@ def test_a_night_whose_halves_barely_differ_says_no_movement() -> None:
     ]
     progression = build_progression(flat, encounter_id=3492, difficulty=5)
 
-    movement = one(analyse_progression(progression), "progression.movement")
+    movement = one(analyse_progression(not_deepened(progression)), "progression.movement")
 
     assert movement.confidence == "derived"
     assert "no movement" in movement.title.lower()
@@ -103,7 +115,7 @@ def test_a_night_that_really_did_deepen_is_allowed_to_say_so() -> None:
     ]
     progression = build_progression(deepening, encounter_id=3492, difficulty=5)
 
-    movement = one(analyse_progression(progression), "progression.movement")
+    movement = one(analyse_progression(not_deepened(progression)), "progression.movement")
 
     assert "no movement" not in movement.title.lower()
     assert "deep" in movement.title.lower()
@@ -127,7 +139,7 @@ def test_a_night_that_sat_shallower_later_prints_a_positive_gap() -> None:
     ]
     progression = build_progression(shallowing, encounter_id=3492, difficulty=5)
 
-    movement = one(analyse_progression(progression), "progression.movement")
+    movement = one(analyse_progression(not_deepened(progression)), "progression.movement")
 
     assert movement.confidence == "derived"
     assert "shallower" in movement.title.lower()
@@ -140,7 +152,7 @@ def test_movement_is_withheld_when_too_few_attempts_qualify() -> None:
     few = [an_attempt(i, 80.0 - i, 200.0) for i in range(1, MIN_ATTEMPTS_FOR_MOVEMENT)]
     progression = build_progression(few, encounter_id=3492, difficulty=5)
 
-    findings = analyse_progression(progression)
+    findings = analyse_progression(not_deepened(progression))
     movement = one(findings, "progression.movement")
 
     assert "not compared" in movement.title.lower() or "too few" in movement.title.lower()
@@ -150,7 +162,8 @@ def test_movement_is_withheld_when_too_few_attempts_qualify() -> None:
 def test_discarded_attempts_are_reported_with_their_count() -> None:
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    discarded = one(analyse_progression(progression), "progression.attempts.discarded")
+    findings = analyse_progression(not_deepened(progression))
+    discarded = one(findings, "progression.attempts.discarded")
 
     assert "1" in discarded.title
 
@@ -159,13 +172,14 @@ def test_nothing_is_reported_about_discards_when_there_were_none() -> None:
     clean = [an_attempt(i, 80.0 - i, 200.0) for i in range(1, 8)]
     progression = build_progression(clean, encounter_id=3492, difficulty=5)
 
-    assert "progression.attempts.discarded" not in ids(analyse_progression(progression))
+    found = ids(analyse_progression(not_deepened(progression)))
+    assert "progression.attempts.discarded" not in found
 
 
 def test_every_finding_carries_a_confidence_badge() -> None:
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    for finding in analyse_progression(progression):
+    for finding in analyse_progression(not_deepened(progression)):
         assert finding.confidence in ("measured", "derived", "inferred")
 
 
@@ -173,7 +187,7 @@ def test_no_finding_claims_a_rate_or_a_slope() -> None:
     """Design section 2.3. The tool never extrapolates."""
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
-    for finding in analyse_progression(progression):
+    for finding in analyse_progression(not_deepened(progression)):
         text = (finding.title + finding.detail).lower()
         for banned in ("per pull", "trend", "on track", "at this rate", "projected"):
             assert banned not in text, f"{finding.id} says '{banned}'"
@@ -182,7 +196,7 @@ def test_no_finding_claims_a_rate_or_a_slope() -> None:
 def test_an_empty_night_produces_no_findings_rather_than_raising() -> None:
     progression = build_progression([], encounter_id=3492, difficulty=5)
 
-    assert analyse_progression(progression) == []
+    assert analyse_progression(not_deepened(progression)) == []
 
 
 def test_a_night_of_only_discards_still_reports_the_discard() -> None:
@@ -199,7 +213,7 @@ def test_a_night_of_only_discards_still_reports_the_discard() -> None:
     only_resets = [an_attempt(1, 90.0, 20.0), an_attempt(2, 80.0, 30.0)]
     progression = build_progression(only_resets, encounter_id=3492, difficulty=5)
 
-    findings = analyse_progression(progression)
+    findings = analyse_progression(not_deepened(progression))
 
     assert ids(findings) == ["progression.attempts.discarded"]
     assert "2" in findings[0].title
@@ -216,7 +230,7 @@ def test_a_night_where_every_attempt_carries_boss_health_uses_it_throughout() ->
     ]
     progression = build_progression(boss_health_night, encounter_id=3492, difficulty=5)
 
-    cluster = one(analyse_progression(progression), "progression.cluster")
+    cluster = one(analyse_progression(not_deepened(progression)), "progression.cluster")
 
     assert "(boss health)" in cluster.title
     # median of 3.76, 40.0, 20.0 is 20.0 -- the boss-health figures.
@@ -236,9 +250,97 @@ def test_a_night_where_only_some_attempts_carry_boss_health_reads_as_encounter_p
     ]
     progression = build_progression(mixed_night, encounter_id=3492, difficulty=5)
 
-    cluster = one(analyse_progression(progression), "progression.cluster")
+    cluster = one(analyse_progression(not_deepened(progression)), "progression.cluster")
 
     assert "(encounter progress)" in cluster.title
     # median of 51.12, 60.0 (both read as fightPercentage) is 55.56.
     assert "55.6" in cluster.title
     assert "31.9" not in cluster.title
+
+
+def a_deepened_trio() -> LoadedProgression:
+    """Three qualifying attempts, deepened enough to fire every Layer 2 analyser.
+
+    All three end in the same phase and have their roster's first player die
+    first, clearing `repeat_phase` and `repeat_first_death`'s "at least two"
+    floor with a clean majority. The first two also take a hit from the same
+    non-roster ability after that death; the third -- deepest, by its lower
+    `remaining` -- takes no damage at all, so that ability never lands inside
+    the deepest attempt's own window and `repeat_ability` still names it
+    instead of reading it as the encounter working as designed.
+    `collapse` only needs a death in at least two attempts, which all three
+    supply.
+
+    Named `a_deepened_trio`, not `a_deepened_pair`: it grew a third attempt so
+    `repeat_ability`'s shared ability could sit outside the deepest attempt's
+    own window, which two attempts alone cannot arrange -- with only two, an
+    ability shared by both is unavoidably shared with whichever one is
+    deepest, and `repeat_ability` would withhold rather than name it.
+    """
+    players = (
+        Player(actor_id=1, name="Emberkin", class_name="Priest", spec="Holy", item_level=450),
+        Player(
+            actor_id=2, name="Stonewake", class_name="Warrior", spec="Protection", item_level=460
+        ),
+    )
+    first = a_loaded_attempt(
+        28,
+        seconds=200.0,
+        remaining=60.0,
+        players=players,
+        deaths_after_ms=(50_000,),
+        damage_after_ms=((60_000, 900, 999),),
+        ability_names={900: "Void Bolt"},
+        last_phase=3,
+    )
+    second = a_loaded_attempt(
+        29,
+        seconds=180.0,
+        remaining=45.0,
+        players=players,
+        deaths_after_ms=(40_000,),
+        damage_after_ms=((45_000, 900, 999),),
+        ability_names={900: "Void Bolt"},
+        last_phase=3,
+    )
+    third = a_loaded_attempt(
+        30,
+        seconds=150.0,
+        remaining=20.0,
+        players=players,
+        deaths_after_ms=(30_000,),
+        last_phase=3,
+    )
+    return a_loaded_series(first, second, third)
+
+
+def test_three_deepened_attempts_emit_both_layer_one_and_layer_two_findings() -> None:
+    """R6's whole point: a `LoadedProgression` carrying `loaded` attempts must
+    fire Layer 2 alongside Layer 1, not just the metadata-only findings.
+    """
+    found = ids(analyse_progression(a_deepened_trio()))
+
+    assert "progression.best" in found
+    assert "progression.cluster" in found
+    assert "progression.repeat.phase" in found
+    assert "progression.repeat.first_death" in found
+    assert "progression.repeat.ability" in found
+    assert "progression.collapse" in found
+
+
+def test_a_night_where_every_attempt_is_discarded_still_emits_only_layer_one() -> None:
+    """The trap this task's brief calls out by name.
+
+    Both attempts fall under `MIN_ATTEMPT_SECONDS`, so `progression.attempts`
+    is empty and `discarded` holds both -- `loaded` is empty too, since
+    `WclRunRepository.load_progression_attempts` only ever deepens a
+    qualifying attempt. Layer 1's discard finding must still fire, no Layer 2
+    id may appear, and the call must not raise.
+    """
+    only_resets = [an_attempt(1, 90.0, 20.0), an_attempt(2, 80.0, 30.0)]
+    progression = build_progression(only_resets, encounter_id=3492, difficulty=5)
+    series = LoadedProgression(progression=progression)
+
+    findings = analyse_progression(series)
+
+    assert ids(findings) == ["progression.attempts.discarded"]

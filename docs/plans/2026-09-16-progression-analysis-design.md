@@ -56,13 +56,20 @@ one means progress, which is the same fact `separatesWipes` reports from the oth
 
 ### 2.3 Progression is not monotonic, and this is the finding that shapes the design
 
-Measured on a real eight-attempt night, no kill. Boss health remaining at each attempt's end, in
-the order they were pulled:
+Measured on a real eight-attempt night, no kill. **`fightPercentage`** — encounter progress
+remaining, not boss health — at each attempt's end, in the order they were pulled:
 
 | Attempt | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Remaining | 64.81 | 85.80 | **16.49** | 85.40 | 87.65 | 53.30 | 55.65 | 100 |
+| `fightPercentage` | 64.81 | 85.80 | **16.49** | 85.40 | 87.65 | 53.30 | 55.65 | 100 |
 | Duration (s) | 215.7 | 105.9 | **480.0** | 110.0 | 88.0 | 278.8 | 227.0 | 15.8 |
+
+**Corrected 2026-09-16.** This table was headed "boss health remaining" until the `progression`
+command read the same night from the live API. The figures are and always were `fightPercentage`.
+The deepest attempt's `bossPercentage` is **23.15**, not the 16.49 above, and the two scales
+diverge by 3 to 8 points on six of the eight attempts. They agree on *which* attempt was deepest,
+so nothing this table is used to argue changes — but §2.4's rule that every printed percentage
+names which one it is binds this design's own prose too.
 
 The deepest attempt was **third of eight**. Five pulls followed it without coming close, two
 recovered partway, and the night ended on a 15.8-second reset.
@@ -95,12 +102,20 @@ The causal chain — one raider passes a mechanic to another, the damage that fo
 to the encounter — is **reconstructed, never read**. §9.1 carries this as the design's first
 risk, with the measurement that must precede any attempt to build it.
 
-### 2.6 Damage events name their source; our ingest discards it
+### 2.6 Damage events name their source, and the ingest already keeps it
 
 Every one of 2009 damage-taken rows on one wipe carried `sourceID`. **357 rows (17.8%) came from
-a friendly player, across 6 distinct abilities.** `DamageTakenEvent` in
-`src/wowperf/domain/events.py` keeps the victim and drops the source, so the signal is present
-in the API and absent from the domain.
+a friendly player, across 6 distinct abilities.**
+
+**Corrected 2026-09-16.** This section was headed "our ingest discards it" and said
+`DamageTakenEvent` keeps the victim and drops the source. That is wrong, and was wrong on the day
+it was written: `source_id: int | None` has been a field on `DamageTakenEvent` and populated by
+`build_damage_taken` since `fd90170` on 2026-09-11, five days earlier. `sourceInstance` and
+`sourceMarker` are the source fields the ingest really drops, and nothing here wants them. The
+same false claim reached `.claude/skills/wcl-api/SKILL.md` and is corrected there too.
+
+**So the damage half of §4.4 is already built, and no plan should re-add the field.** What is
+genuinely missing is a *reader*: no analyser asks whether a hit's source was a friendly player.
 
 Self-damage (`sourceID == targetID`) is class mechanics and is excluded wherever this design
 counts player-sourced damage.
@@ -202,8 +217,10 @@ silently dropped.
 
 ### 4.4 The player-sourced damage seam
 
-`DamageTakenEvent` gains `source_id: int | None`, defaulting to `None`. Where it is a friendly
-player and not the victim, the hit is player-sourced.
+`DamageTakenEvent` **already carries** `source_id: int | None` (§2.6's correction). Where it is a
+friendly player and not the victim, the hit is player-sourced. Nothing is added to that event
+type; what is missing is a reader, and the roster that says which actor ids are friendly players
+is already on `Encounter.players`.
 
 The debuff stream is new to this project. `PlayerDebuffEvent` carries
 `{source_id, target_id, ability_id, ability_name, kind, timestamp_ms}` where `kind` is the event
@@ -237,7 +254,23 @@ entirely, in the same words the keystone comparison uses when its sample falls b
 
 **What §2.3's night actually reports, computed rather than assumed.** Its seven qualifying
 attempts split into half-medians of 64.81 and 55.65, so the later half sat **9.16 points
-deeper** and the finding says so. That is not a contradiction of §2.3: the deepest attempt is
+deeper** and the finding says so.
+
+**Corrected 2026-09-16: that worked example is on the `fightPercentage` scale, and the shipped
+command does not read this night on that scale.** Every qualifying attempt here carries a
+`bossPercentage`, so `Progression.uses_boss_health` selects boss health, and the figures the
+command printed on 2026-09-16 are half-medians of **59.2 and 54.1 on boss health — a gap of
+5.1 points**, against the 9.16 derived here. The arithmetic above is still the arithmetic; only
+the column it runs on changed. Any later plan quoting 9.16 as "what the tool says" is quoting the
+wrong scale.
+
+**That 5.1 clears the 5.0-point threshold by a tenth of a point**, and the threshold is the one
+constant in the shipped command with no measurement behind it. Raise it to 5.2 and this night
+reports "no movement we can distinguish" instead. Any plan that builds on
+`progression.movement` measures how far a static night's half-medians drift by chance before it
+relies on the current value.
+
+That is not a contradiction of §2.3: the deepest attempt is
 still the third of eight, and the raid never came close to it again. Stating a gap between two
 halves and extrapolating a slope are different claims, and only the second is forbidden. A
 reader told "later attempts sat deeper by nine points" and "the best attempt was your third"
@@ -254,8 +287,8 @@ has both facts and can hold them at once, which a trend line would not allow.
 - **`progression.collapse`** — seconds from the first death to the wipe. A slow bleed and a sudden
   detonation are different problems wanting different fixes, and the single figure that separates
   them is cheap.
-- **`progression.player_sourced.<ability>`** — damage taken from a friendly player, counted per
-  ability across attempts. `measured`, because the log states the source (§2.6). Subject to §9.1.
+- ~~**`progression.player_sourced.<ability>`** — damage taken from a friendly player, counted per
+  ability across attempts.~~ **Cut 2026-09-16 by the measurement §9.1 required.** See below.
 
 **The discriminator is the night itself, never boss knowledge.** An ability whose player-sourced
 damage appears in the attempts that ended early and not in the deepest attempt is a real
@@ -263,9 +296,29 @@ within-night difference and may be named. An ability that appears in every attem
 best one is the encounter working as designed — a soak, a link, a controlled detonation — and the
 tool stays quiet. The best attempt is the control, so no per-encounter rule is required.
 
+**That rule was run against real data on 2026-09-16 and named nothing, because there was nothing
+to name.** The measurement is recorded in `.claude/skills/wcl-api/SKILL.md`; what it found:
+
+- Across 19 boss fights and 8 encounters, 139,891 damage rows, **89.9% of all friendly-sourced
+  damage is self-damage**, which this design excludes by its own rule. What remains — one player
+  hitting another — is **1.66% of all damage rows**.
+- **95.7% of that remainder falls on two fights of one encounter**, and every ability in it is an
+  ordinary class ability from the class that owns it. The shape is a raid damaging a raid member
+  the encounter turned hostile. Naming those would report a rogue's Rupture as a finding.
+- On this design's own fixture night the whole population is **34 hits of `Blessing of Sacrifice`
+  on the deepest attempt**, a Paladin cooldown that redirects damage *away* from an ally — and the
+  source the log records for it is the protected player, not the Paladin.
+- §2.6's "357 rows (17.8%)" is the friendly-sourced figure *before* self-damage is split out. The
+  share replicates; the conclusion does not survive the split.
+
+So the finding is cut under §9.1's own rule rather than shipped behind a hedge. **`source_id`
+keeps its place in Layer 2 by exclusion**: it is how `progression.repeat.ability` avoids reporting
+a teammate's bleed as something that repeatedly ends attempts.
+
 **The confound is declared, not corrected**, in the house style of every comparison this project
 ships: on some encounters player-sourced damage is correct play, and a raid soaking properly will
-show a great deal of it.
+show a great deal of it. That confound is now measured rather than anticipated, and it is large
+enough to have taken the finding with it.
 
 ### 5.3 Layer 3 — what the best attempt did differently
 
@@ -361,6 +414,26 @@ safe, and the progression page needs its own.
    encounters before building anything on it.** If a passed mechanic cannot be separated from a
    rogue's bleed without encoding boss knowledge, the feature is cut. It is not fudged, and it is
    not shipped behind a hedge.
+
+   **Measured 2026-09-16 across 19 fights and 8 encounters — 26,328 debuff rows, 1,900 of them
+   player-to-player across 67 abilities. It cannot be separated, so it is cut.** 64 of the 67
+   abilities are applied by exactly one class and are named class debuffs; of the three
+   exceptions two are shared class effects. 97.7% of all applications fall on two fights of one
+   encounter. Both discriminators tested — "also arrives from a non-player source" and "applied
+   by more than one class" — either produce false positives or isolate a single candidate with no
+   way to confirm what it is. `.claude/skills/wcl-api/SKILL.md` carries the full reading.
+   **The positive control arrived the same day and makes the cut firmer.** RwlRwlRwlRwl named a
+   death of their own caused by another raider passing them `Gloombomb`. Every one of that
+   ability's 18 debuff rows and 22 damage rows is sourced to an NPC; not one names a player. **The
+   mechanic is not in the player-to-player stream at all**, so the composition measured above
+   could never have decided it either way — it was the wrong stream.
+
+   **The carrier is unrecoverable, but the spread is not.** Each detonation applies the debuff to
+   exactly three players; the damage that follows hit 12, then 3, then 7. The middle one is the
+   same mechanic contained, and it is the control that makes the other two readable. The generic
+   rule — a debuff removed from N actors, then damage from the same ability id to M actors within
+   about a second, M > N — encodes no encounter and names no carrier. **That is a new finding this
+   design does not contain**, and it belongs in a brainstorm rather than smuggled into a plan.
 2. **Small n.** Eight attempts is a small sample and a four-against-four split is smaller. State
    the count, and withhold `progression.movement` below a floor, exactly as the keystone
    comparison falls back below three comparable members.
@@ -401,12 +474,25 @@ was a test that could not have failed, so the fixtures carry the burden.
 
 ## 11. Open items
 
-1. **The composition of player-to-player debuff applications** (§9.1). Blocks Layer 2's
-   player-sourced findings and nothing else.
-2. **The duration floor** (§4.3). Blocks attempt selection.
+1. ~~**The composition of player-to-player debuff applications** (§9.1).~~ **Settled 2026-09-16:
+   it is ordinary class debuffs, and both player-sourced findings are cut** — the debuff-derived
+   one and `progression.player_sourced` alike (§5.2, §9.1). Measured across 19 fights and 8
+   encounters; the reading is in `.claude/skills/wcl-api/SKILL.md`. Reopening needs a positive
+   control fight, which only a person who was there can name.
+2. ~~**The duration floor** (§4.3).~~ **Settled 2026-09-16**: `MIN_ATTEMPT_SECONDS = 44.0`,
+   measured over 349 cached boss attempts across 37 reports. The docstring in
+   `src/wowperf/domain/progression.py` carries the reading, the corridor it sits in, and the one
+   attempt it could not classify.
 3. **The margin at which `fightPercentage` and `bossPercentage` are reported separately** (§2.4).
+   **Partly measured 2026-09-16**: on the one boss read so far, every qualifying attempt carried a
+   `bossPercentage`, so the series reads on boss health and the question of showing both never
+   arose. The margin is still unmeasured, and so is how often a night has attempts on only one of
+   the two scales — which is the case `Progression.uses_boss_health` exists to handle.
 4. **Whether a session gap should split a series or merely be declared** (§9.6). The design's
    position is declare; a measurement of real multi-session reports could change it.
+5. **The movement threshold** (§5.1). 5.0 points is chosen, not measured, and the first real night
+   cleared it by 0.1. Blocks nothing that already ships; blocks any new claim built on
+   `progression.movement`.
 
 Each is a measurement, not a debate. None may be settled by assumption.
 

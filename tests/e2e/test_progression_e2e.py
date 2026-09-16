@@ -52,23 +52,29 @@ pin the fight id, not just "not last", precisely so a future series where the tw
 would be caught here rather than passing by the same luck `deepest is not attempts[-1]` used to
 rely on.
 
-Cost, measured 2026-09-16. This test calls `build_repository` and `load_progression` directly and
-makes no quota-reading call of its own, so its only network cost is the one `Fights` query
-`load_progression` sends. That query's own price -- 2.01 points -- was read from
-`wowperf progression cW38jmwdnZfbHVL4 --boss 3492`'s own cost ledger, run twice directly against a
-persisted cache directory the same way `test_raid_e2e.py`'s docstring measures its two commands:
-cold (a cache directory that had never seen this report), it printed "Fights 1 call 2.01 points"
-inside a total of 3.01 points spent (the extra 1.00 is that command's own opening quota read,
-which this test never makes); re-run against the same, now-warm cache directory, it spent 1.00
-point total with no `Fights` line at all -- the two `RateLimit` reads its quota check makes and
-nothing else, because the report's `Fights` response was already on disk. So this test's own
-marginal cost is 2.01 points against a cold `tmp_path` (its only possible state, since `tmp_path`
-is a fresh directory every run) and would be 0.00 against a warm one. Both figures are
-measurements, not the design's own 40-to-60-point projection for a *deepened* night: this test
-stops at Layer 1, deepens no attempt, and so never approaches that projection's shape.
+Cost. Layer 1 alone costs the 2.01-point `Fights` query documented above, itself measured against
+a cold cache -- this test's `tmp_path` is fresh every run, so it is always cold in that sense.
+`load_progression_attempts` adds one deaths stream and one damage-taken stream per qualifying
+attempt on top of that; its own docstring estimates about 1.00 point per stream, so this night's
+seven qualifying attempts add roughly fourteen points to the `Fights` query's 2.01. That combined,
+cold-cache figure is not the same measurement as a warm-cache run of the same two calls -- one
+where the report's `Fights` response is already on disk, as a repeated CLI invocation against a
+persisted cache directory would be, paying nothing for it a second time -- so a lower point count
+measured that way is a different scenario, not a contradiction. Rather than pin an exact figure
+for either case here, the test reads `repository.rate_limit()` itself, once before
+`load_progression` and once after `load_progression_attempts`, and asserts the gap stays under 40
+points. That is loose relative to the roughly 18-point cold cost above: a stray third stream per
+attempt would land near 25 and even a whole `Casts` stream near 36, both still under 40, so this
+bound does not catch one unnoticed extra stream --
+`test_sends_only_deaths_and_damage_taken_per_attempt` proves that narrower claim offline instead,
+by counting operations directly. What the 40-point bound catches here is a wholesale change in
+shape against the real API: doubling every stream, or refetching the whole night a second time,
+the kind of drift that would blow past it rather than nudge it.
 """
 
+import re
 from pathlib import Path
+from statistics import median
 
 import pytest
 
@@ -89,6 +95,7 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     """
     repository = build_repository(tmp_path / "cache")
 
+    before = repository.rate_limit().points_spent_this_hour
     progression = repository.load_progression("cW38jmwdnZfbHVL4", 3492, None)
 
     assert len(progression.attempts) + len(progression.discarded) == 8
@@ -106,9 +113,18 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     assert len(progression.phases) == 4
     assert any(p.is_intermission for p in progression.phases)
 
-    findings = rank_raid_findings(analyse_progression(progression))
+    # Layer 2 reads the deepened attempts `load_progression_attempts` fetches;
+    # see the cost note above for what that spends on top of Layer 1's `Fights`
+    # query.
+    series = repository.load_progression_attempts(progression)
+    after = repository.rate_limit().points_spent_this_hour
+    spent = after - before
+    assert spent < 40, f"the whole command spent {spent:.2f} points, want under 40"
+
+    findings = rank_raid_findings(analyse_progression(series))
     assert {f.id for f in findings} >= {
-        "progression.best", "progression.cluster", "progression.movement"
+        "progression.best", "progression.cluster", "progression.movement",
+        "progression.collapse", "progression.repeat.phase",
     }
     assert len({f.id for f in findings}) == len(findings), "ids must be unique"
 
@@ -117,3 +133,81 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     # the two scales agree on which attempt is deepest here, not on its figure.
     assert "(boss health)" in best.title
     assert "23.1" in best.title
+
+    # Seven attempts deepened (fight ids 28-34); fight 35 was discarded at
+    # 15.8s and never reaches `load_progression_attempts`. A wrong filter --
+    # deepening a discarded attempt, or dropping a qualifying one -- shows up
+    # as a count other than 7.
+    assert len(series.attempts_with_events) == 7
+
+    # The night's shortest qualifying attempt is 88 seconds -- long enough
+    # that an attempt with zero damage-taken rows means a stream came back
+    # empty, not that nothing happened during it.
+    for loaded in series.attempts_with_events:
+        assert loaded.damage_taken, (
+            f"fight {loaded.encounter.fight_id} deepened with no damage-taken rows"
+        )
+
+    # A collapse window is the tail of an attempt -- from its first death to
+    # its end -- never the whole of it. Bounding the median only by the
+    # longest attempt's duration is too loose to prove that: an anchor bug
+    # that started the window at the attempt's start instead of its first
+    # death would make every window equal that attempt's own duration, and
+    # the median of seven real durations still sits comfortably under the
+    # longest one. Bounding it by the *median* attempt duration instead closes
+    # that gap -- under the anchor bug the collapse-median and the
+    # attempt-duration median are computed from the same set of numbers, so
+    # they would be equal and the strict "<" below would fail exactly when
+    # the bug is present.
+    collapse_finding = next(f for f in findings if f.id == "progression.collapse")
+    collapse_match = re.search(r"median of (\d+) seconds", collapse_finding.title)
+    assert collapse_match is not None, collapse_finding.title
+    collapse_median = float(collapse_match.group(1))
+    median_attempt_seconds = median(a.duration_seconds for a in progression.attempts)
+    assert 0 < collapse_median < median_attempt_seconds, (
+        f"collapse median {collapse_median}s not below median attempt duration "
+        f"{median_attempt_seconds}s"
+    )
+
+    # Phases 1 and 2 tie at three attempts each (measured 2026-09-16, encounter
+    # 3492 reports `separatesWipes: true` with four phases); `repeat_phase`
+    # names every phase tied for the top count rather than picking one.
+    # Asserting the count both sides of that tie share -- 3 of the 7 attempts
+    # that carried a phase -- exercises the counting a wrong implementation
+    # could get wrong (a miscount, or excluding an attempt that does carry a
+    # phase) without pinning the exact wording of which phases get named.
+    phase_finding = next(f for f in findings if f.id == "progression.repeat.phase")
+    assert phase_finding.title.startswith("3 of 7 attempts ended in "), phase_finding.title
+
+    # The report holds twenty real people (CLAUDE.md's test-data rule): read
+    # the roster back from the loaded progression itself, rather than listing
+    # a name here, and check that no finding's title, detail, evidence, facts,
+    # ability name or player slug -- the free-text fields a name could
+    # plausibly land in, unlike `id` and `quantifier`, which are fixed machine
+    # strings no player name could reach -- repeats one. A finding that names
+    # a player -- say, by building a detail string from `Player.name` instead
+    # of `.spec`/`.class_name` -- would be caught here. Matched on a word
+    # boundary rather than a bare substring, so
+    # a short roster name does not raise a false alarm just because it happens
+    # to sit inside an unrelated word of ordinary finding prose.
+    roster_names = {
+        player.name
+        for attempt in (*progression.attempts, *progression.discarded)
+        for player in attempt.players
+    }
+    assert roster_names, "the fixture roster should not be empty"
+    roster_patterns = [re.compile(rf"\b{re.escape(name)}\b") for name in roster_names]
+    for finding in findings:
+        haystack = " ".join(
+            (
+                finding.title,
+                finding.detail,
+                finding.ability_name,
+                finding.player_slug,
+                *finding.evidence,
+                *(fact.label for fact in finding.facts),
+                *(fact.value for fact in finding.facts),
+            )
+        )
+        for pattern in roster_patterns:
+            assert pattern.search(haystack) is None, f"finding {finding.id} named a roster member"

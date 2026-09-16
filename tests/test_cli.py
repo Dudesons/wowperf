@@ -4334,11 +4334,23 @@ def _progression_fights_payload(fights: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def build_progression_transport(fights: list[dict[str, Any]]) -> httpx.MockTransport:
-    """Answer the token exchange, the one `Fights` query, and both quota reads.
+    """Answer the token exchange, the one `Fights` query, both quota reads, and
+    the deepening `load_progression_attempts` now issues for every attempt.
 
     A sibling of `build_transport`, not a reuse of it: that helper always
     serves `report_fights.json`, a Mythic+ fixture `load_progression` has no
     use for, so this carries its own raid-shaped payload instead.
+
+    `Abilities` is answered whenever it is asked for: the ability dictionary is
+    fetched once per report, before `load_progression_attempts` looks at any
+    attempt, for every test here that has at least one qualifying attempt. When
+    every fight is discarded, `load_progression_attempts` returns before
+    fetching anything at all, so this handler is never asked for `Abilities` in
+    that case -- it stays here regardless, since most tests in this file do
+    have a qualifying attempt. `Deaths` and `DamageTaken` answer with no rows
+    for every qualifying attempt -- `attempts_deepened` only needs a count, and
+    no test here reads what a Layer 2 analyser makes of an attempt with
+    nothing in it.
     """
     quota = [100.0, 101.0]
     running = 100.0
@@ -4360,12 +4372,23 @@ def build_progression_transport(fights: list[dict[str, Any]]) -> httpx.MockTrans
             },
         )
 
+    abilities_payload: dict[str, Any] = {
+        "reportData": {"report": {"masterData": {"abilities": []}}}
+    }
+    empty_events: dict[str, Any] = {
+        "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
         name = operation_name(json.loads(request.content)["query"])
         if name == "RateLimit":
             return quota_response(quota.pop(0))
+        if name == "Abilities":
+            return carrying_quota(abilities_payload)
+        if name in ("Deaths", "DamageTaken"):
+            return carrying_quota(empty_events)
         return carrying_quota(_progression_fights_payload(fights))
 
     return httpx.MockTransport(handler)
@@ -4424,6 +4447,9 @@ def test_progression_writes_findings_keyed_on_the_boss(tmp_path: Path) -> None:
     assert payload["encounter_id"] == PROGRESSION_ENCOUNTER_ID
     assert payload["attempts_counted"] >= 1
     assert payload["attempts_counted"] == 2
+    # Both qualifying attempts get deepened: R6 wires `load_progression_attempts`
+    # into the command, and this is the one field naming how many it deepened.
+    assert payload["attempts_deepened"] == 2
     assert payload["findings"], "a run that writes no finding has nothing to say"
     expected_note = PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE
     assert payload["findings_are_ranked_not_additive"] == expected_note
@@ -4494,3 +4520,33 @@ def test_progression_discards_short_attempts_and_says_how_many(tmp_path: Path) -
 
     assert payload["attempts_counted"] == 1
     assert payload["attempts_discarded"] == 1
+    assert payload["attempts_deepened"] == 1
+
+
+def test_progression_reports_zero_deepened_attempts_when_every_attempt_is_discarded(
+    tmp_path: Path,
+) -> None:
+    """R6's trap case, run through the CLI: a night where every attempt falls
+    below `MIN_ATTEMPT_SECONDS` leaves `progression.attempts` empty, so
+    `load_progression_attempts` has nothing to deepen. `attempts_deepened`
+    must read 0 rather than the command raising or the field going missing,
+    and Layer 1's discard finding must still be the whole story.
+
+    Both fights run 20s and 30s -- under the 44s floor -- so both are
+    discarded and none counted.
+    """
+    fights = [
+        _progression_fight(11, fight_percentage=90.0, start_ms=0, end_ms=20_000),
+        _progression_fight(12, fight_percentage=80.0, start_ms=100_000, end_ms=130_000),
+    ]
+    result = run_progression(tmp_path, fights, "--boss", str(PROGRESSION_ENCOUNTER_ID))
+
+    assert result.exit_code == 0, result.output
+    written = _progression_written_path(tmp_path)
+    payload = json.loads(written.read_text(encoding="utf-8"))
+
+    assert payload["attempts_counted"] == 0
+    assert payload["attempts_discarded"] == 2
+    assert payload["attempts_deepened"] == 0
+    finding_ids = [f["id"] for f in payload["findings"]]
+    assert finding_ids == ["progression.attempts.discarded"]

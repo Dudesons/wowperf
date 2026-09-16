@@ -4,7 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.base import Frozen
-from wowperf.domain.encounter import Encounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.phases import Phase
 
 MIN_ATTEMPT_SECONDS = 44.0
@@ -166,14 +166,41 @@ class Progression(Frozen):
 
 
 class LoadedProgression(Frozen):
-    """A `Progression` and whichever attempts have been deepened.
+    """A `Progression` and the attempts that have been deepened.
 
-    Layer 1 needs no deepened attempt at all, so `loaded` is empty here and
-    stays that way until the plan that builds Layer 2.
+    `loaded` carries only attempts in `progression.attempts`: a discarded
+    attempt takes no part in any figure the series reports, so fetching its
+    events would spend points on rows nothing reads.
     """
 
     progression: Progression
-    loaded: tuple[object, ...] = ()
+    loaded: tuple[LoadedEncounter, ...] = ()
+
+    @property
+    def attempts_with_events(self) -> tuple[LoadedEncounter, ...]:
+        """The deepened attempts in pull order, whatever order they arrived in.
+
+        Every Layer 2 analyser iterates this rather than `loaded`, so "earlier"
+        and "later" mean the same thing here as they do in Layer 1's movement
+        finding.
+        """
+        return tuple(sorted(self.loaded, key=lambda one: one.encounter.start_ms))
+
+    @property
+    def deepest_loaded(self) -> LoadedEncounter | None:
+        """The deepened attempt that got furthest, matched by fight id.
+
+        Not by model equality: pydantic compares frozen models by value, so two
+        attempts identical in every field would be indistinguishable, and the
+        one this returns would depend on iteration order.
+        """
+        deepest = self.progression.deepest
+        if deepest is None:
+            return None
+        for one in self.loaded:
+            if one.encounter.fight_id == deepest.fight_id:
+                return one
+        return None
 
 
 def build_progression(

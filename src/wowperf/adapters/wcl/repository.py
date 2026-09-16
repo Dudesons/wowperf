@@ -57,7 +57,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
-from wowperf.domain.progression import Progression, build_progression
+from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
 # trimmed reference profiles, each fetching only the streams its own axis reads.
@@ -512,6 +512,69 @@ class WclRunRepository:
             phases=phases,
             separates_wipes=separates_wipes,
         )
+
+    def load_progression_attempts(self, progression: Progression) -> LoadedProgression:
+        """Deepen every qualifying attempt: deaths and damage taken, nothing else.
+
+        Two streams an attempt, against the nine `load_encounter` fetches for one
+        fight. Measured 2026-09-16: an event stream costs about 1.00 points a
+        fight whatever its size.
+
+        Projected, not measured: two streams over an eight-attempt night lands
+        near 20 points of 3600, well under the design's 40-to-60 estimate for
+        three streams -- lower only because that estimate priced a debuff
+        stream this command never sends. Nobody has clocked a cold run of this
+        command end to end; the one figure actually measured for it is a
+        warm-cache re-run at 8.00 points -- 7 `Deaths` calls for 7.00 and 2
+        `RateLimit` calls for 1.00, with `Fights`, `Abilities` and `DamageTaken`
+        all served from cache -- so it prices a re-run, not a cold one.
+
+        No casts stream. `build_deaths` uses casts only to time how long a dead
+        player stayed out of the fight, which is a Mythic+ recap's figure and
+        which nothing in Layer 2 reads; fetching one per attempt would double
+        the command's cost for a field nobody looks at.
+
+        Returns before fetching anything when `progression.attempts` is empty:
+        a night where every attempt fell under `MIN_ATTEMPT_SECONDS` has
+        nothing to deepen, and an ability dictionary nothing would read is a
+        point spent for no reason.
+        """
+        if not progression.attempts:
+            return LoadedProgression(progression=progression)
+
+        hits: list[bool] = []
+        ability_names, _icons = self._ability_dictionary(progression.report_code, hits)
+
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables, hits)
+
+        no_pulls: tuple[Pull, ...] = ()
+        loaded: list[LoadedEncounter] = []
+        for attempt in progression.attempts:
+            event_variables = {
+                "code": attempt.report_code,
+                "fightId": attempt.fight_id,
+                "startTime": float(attempt.start_ms),
+                "endTime": float(attempt.end_ms),
+            }
+            player_names = {player.actor_id: player.name for player in attempt.players}
+            deaths = build_deaths(
+                fetch_all_events(query, DEATHS_QUERY, event_variables),
+                no_pulls,
+                (),
+                player_names,
+                ability_names,
+            )
+            damage_taken = build_damage_taken(
+                fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables),
+                no_pulls,
+                ability_names,
+            )
+            loaded.append(
+                LoadedEncounter(encounter=attempt, deaths=deaths, damage_taken=damage_taken)
+            )
+
+        return LoadedProgression(progression=progression, loaded=tuple(loaded))
 
     def load_speed_reference(
         self, report_code: str, fight_id: int | None

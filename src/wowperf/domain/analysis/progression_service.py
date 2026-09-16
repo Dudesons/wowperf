@@ -3,8 +3,14 @@
 
 from statistics import median
 
+from wowperf.domain.analysis.progression_repeats import (
+    collapse,
+    repeat_ability,
+    repeat_first_death,
+    repeat_phase,
+)
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.progression import Progression, remaining_percent
+from wowperf.domain.progression import LoadedProgression, Progression, remaining_percent
 
 MIN_ATTEMPTS_FOR_MOVEMENT = 6
 """Below this the night is not split into halves at all.
@@ -26,8 +32,21 @@ def _depth_label(progression: Progression) -> str:
     return "boss health" if progression.uses_boss_health else "encounter progress"
 
 
-def analyse_progression(progression: Progression) -> list[Finding]:
-    """Layer 1: where the attempts sit. Reads metadata only and fetches nothing."""
+def analyse_progression(series: LoadedProgression) -> list[Finding]:
+    """Layer 1's findings from fight metadata, then Layer 2's from the deepened attempts.
+
+    Layer 1 reads `series.progression` alone and fetches nothing; it is
+    untouched by R6 and its findings are neither reworded nor renumbered here.
+    Layer 2 reads `series` itself -- `repeat_phase` excepted, which reads only
+    `series.progression` because a phase is fight metadata, not something a
+    deepened attempt adds -- and is appended after, in a fixed order, skipping
+    any analyser that found nothing to say. A night where every attempt falls
+    below the duration floor leaves both `series.progression.attempts` and
+    `series.loaded` empty: Layer 1 still reports the discard, and every Layer 2
+    analyser below returns `None` on an empty `attempts_with_events` rather
+    than raising.
+    """
+    progression = series.progression
     findings: list[Finding] = []
     uses_boss_health = progression.uses_boss_health
     depths = [
@@ -111,6 +130,15 @@ def analyse_progression(progression: Progression) -> list[Finding]:
                 ),
             )
         )
+
+    for layer_two in (
+        repeat_phase(progression),
+        repeat_first_death(series),
+        repeat_ability(series),
+        collapse(series),
+    ):
+        if layer_two is not None:
+            findings.append(layer_two)
 
     return findings
 
