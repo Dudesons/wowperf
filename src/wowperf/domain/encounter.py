@@ -18,6 +18,7 @@ from wowperf.domain.events import (
     Resurrection,
 )
 from wowperf.domain.model import DamageDoneSeries, Player
+from wowperf.domain.phases import PhaseTransition
 
 
 class Encounter(Frozen):
@@ -38,6 +39,16 @@ class Encounter(Frozen):
     size: int
     kill: bool
     fight_percentage: float | None = None
+    # `fightPercentage` is the encounter's own progress and `bossPercentage` is
+    # the boss's health; they diverge sharply -- one measured attempt read 51.12
+    # against 3.76 (skill file, 2026-09-16) -- so both are carried and every
+    # figure printed anywhere names which one it is.
+    boss_percentage: float | None = None
+    # The phase the attempt ended in, as the report states it. None where the
+    # report says nothing; 0 is a real answer meaning a boss with no phases.
+    last_phase: int | None = None
+    last_phase_is_intermission: bool = False
+    phase_transitions: tuple[PhaseTransition, ...] = ()
     start_ms: int
     end_ms: int
     owner_name: str | None = None
