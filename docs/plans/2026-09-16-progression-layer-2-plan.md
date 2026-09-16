@@ -87,6 +87,7 @@ Every task's requirements implicitly include this section.
 | `src/wowperf/domain/analysis/progression_repeats.py` | Create: the four Layer 2 analysers, pure | 1, 3, 4, 5 |
 | `src/wowperf/adapters/wcl/repository.py` | Modify: `load_progression_attempts`, the narrow per-attempt fetch | 2 |
 | `src/wowperf/cli.py` | Modify: `progression` deepens and reports the new counts | 6 |
+| `tests/domain/progression_fixtures.py` | Create: shared builders, extending `an_attempt` | 1, 3 |
 | `tests/domain/analysis/test_progression_repeats.py` | Create: the analysers, one test file | 1, 3, 4, 5 |
 | `tests/domain/test_loaded_progression.py` | Create: the aggregate's pairing and guards | 2 |
 | `tests/adapters/wcl/test_load_progression_attempts.py` | Create: the fetch shape and its operation count | 2 |
@@ -143,6 +144,7 @@ anything has to be loaded into it.
 **Files:**
 - Create: `src/wowperf/domain/analysis/progression_repeats.py`
 - Create: `tests/domain/analysis/test_progression_repeats.py`
+- Create: `tests/domain/progression_fixtures.py`
 
 **Interfaces:**
 - Consumes: `Progression` and `Phase` from `wowperf.domain.progression` / `wowperf.domain.phases`;
@@ -168,30 +170,14 @@ anything has to be loaded into it.
 # tests/domain/analysis/test_progression_repeats.py
 from wowperf.domain.analysis.progression_repeats import repeat_phase
 from wowperf.domain.findings import Confidence
-from wowperf.domain.phases import Phase
-from wowperf.domain.progression import Progression
 
-from tests.domain.analysis.conftest import attempt  # see Step 2 for this helper
-
-
-PHASES = (
-    Phase(id=1, name="The Gathering"),
-    Phase(id=2, name="Intermission: Tide", is_intermission=True),
-    Phase(id=3, name="The Drowning"),
-)
+from tests.domain.progression_fixtures import a_series as series
+from tests.domain.test_progression import an_attempt
 
 
-def series(*attempts, separates_wipes=True, phases=PHASES):
-    return Progression(
-        report_code="abc123",
-        encounter_id=3492,
-        boss_name="Stonewake",
-        difficulty=5,
-        size=20,
-        phases=phases,
-        separates_wipes=separates_wipes,
-        attempts=attempts,
-    )
+def attempt(fight_id: int, *, last_phase: int | None = None):
+    """One qualifying attempt, 200 seconds long, at a stated ending phase."""
+    return an_attempt(fight_id, 50.0, 200.0, last_phase=last_phase)
 
 
 def test_names_the_phase_most_attempts_ended_in():
@@ -243,46 +229,62 @@ def test_says_nothing_about_failure():
         assert banned not in text
 ```
 
-- [ ] **Step 2: Write the shared `attempt` fixture helper**
+- [ ] **Step 2: Create the shared fixture module**
 
-Every Layer 2 test builds attempts. One helper, in a conftest the whole analysis test package
-already has a directory for.
+**Do not write a new `attempt()` helper and do not create a conftest.**
+`tests/domain/test_progression.py` already has `an_attempt(fight_id, remaining, seconds,
+**overrides)`, and `tests/domain/analysis/test_severity.py` already imports across packages from
+it — that is this repo's precedent, and a second builder for the same aggregate is duplication a
+reviewer will reject.
+
+Create `tests/domain/progression_fixtures.py`, a plain module (not a conftest — an explicit
+import of a `conftest.py` risks pytest loading it twice):
 
 ```python
-# tests/domain/analysis/conftest.py  -- ADD to the existing file; do not replace it
-from wowperf.domain.encounter import Encounter
+# ABOUTME: Shared builders for progression tests: one attempt, one deepened attempt, one series.
+# ABOUTME: Timestamps are offsets from the attempt's own start, because an_attempt offsets by id.
+
+from wowperf.domain.encounter import Encounter, LoadedEncounter
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.model import Player
+from wowperf.domain.phases import Phase
+from wowperf.domain.progression import LoadedProgression, Progression
+
+from tests.domain.test_progression import an_attempt
+
+PHASES = (
+    Phase(id=1, name="The Gathering"),
+    Phase(id=2, name="Intermission: Tide", is_intermission=True),
+    Phase(id=3, name="The Drowning"),
+)
 
 
-def attempt(
-    fight_id: int,
-    *,
-    last_phase: int | None = None,
-    boss_percentage: float | None = None,
-    start_ms: int = 0,
-    end_ms: int = 300_000,
-    players: tuple[Player, ...] = (),
-) -> Encounter:
-    """One raid attempt, with only the fields a progression test reads set."""
-    return Encounter(
+def a_series(
+    *attempts: Encounter,
+    separates_wipes: bool = True,
+    phases: tuple[Phase, ...] = PHASES,
+) -> Progression:
+    """A `Progression` around already-built attempts, with nothing discarded."""
+    return Progression(
         report_code="abc123",
-        fight_id=fight_id,
         encounter_id=3492,
-        boss_name="Stonewake",
+        boss_name="Emberkin",
         difficulty=5,
-        partition=1,
         size=20,
-        kill=False,
-        boss_percentage=boss_percentage,
-        last_phase=last_phase,
-        start_ms=start_ms + fight_id * 1_000_000,
-        end_ms=end_ms + fight_id * 1_000_000,
-        players=players,
+        phases=phases,
+        separates_wipes=separates_wipes,
+        attempts=attempts,
     )
 ```
 
-If `tests/domain/analysis/conftest.py` does not exist, create it with this content. If it does,
-append the helper and leave everything already there untouched.
+Tasks 3, 4 and 5 add `a_loaded_attempt` and `a_loaded_series` to this same module. **Task 1 adds
+only `a_series`** — the phase finding needs no events.
+
+**The timestamp convention, which Tasks 3-5 depend on:** `an_attempt` sets
+`start_ms = fight_id * 1_000_000`, so an attempt's window is not at zero. Every death and damage
+timestamp a fixture places is therefore written as an **offset from that attempt's own
+`start_ms`**, never as an absolute figure. An absolute 70_000 against fight 1 is 930 seconds
+*before* the attempt began.
 
 - [ ] **Step 3: Run the tests to verify they fail**
 
@@ -376,7 +378,7 @@ a test fails, revert:
 /c/Users/damien/.local/bin/uv.exe run mypy
 ```
 ```bash
-/mingw64/bin/git add src/wowperf/domain/analysis/progression_repeats.py tests/domain/analysis/
+/mingw64/bin/git add src/wowperf/domain/analysis/progression_repeats.py tests/domain/
 ```
 ```bash
 /mingw64/bin/git commit -m "Count which phase a night's attempts ended in" -m "Gated on separatesWipes, which two of eight measured encounters report false and two more do not report at all, so silence is the ordinary case. The phase name is looked up from lastPhase against the phase table rather than taken from the last phase transition: one encounter measured 2026-09-16 disagrees between the two." -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
@@ -432,25 +434,20 @@ per attempt is what would make this command expensive.
 ```python
 # tests/domain/test_loaded_progression.py
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.progression import LoadedProgression, Progression
+from wowperf.domain.progression import LoadedProgression
 
-from tests.domain.analysis.conftest import attempt
+from tests.domain.progression_fixtures import a_series
+from tests.domain.test_progression import an_attempt
 
 
 def loaded(*fight_ids, boss_percentages=None):
+    """A series whose `loaded` tuple is deliberately in the reverse of pull order."""
     attempts = tuple(
-        attempt(f, boss_percentage=(boss_percentages or {}).get(f)) for f in fight_ids
-    )
-    progression = Progression(
-        report_code="abc123",
-        encounter_id=3492,
-        boss_name="Stonewake",
-        difficulty=5,
-        size=20,
-        attempts=attempts,
+        an_attempt(f, 50.0, 200.0, boss_percentage=(boss_percentages or {}).get(f))
+        for f in fight_ids
     )
     return LoadedProgression(
-        progression=progression,
+        progression=a_series(*attempts),
         loaded=tuple(LoadedEncounter(encounter=a) for a in reversed(attempts)),
     )
 
@@ -471,12 +468,15 @@ def test_deepest_loaded_is_none_when_no_attempt_carries_a_reading():
     assert loaded(1, 2).deepest_loaded is None
 
 
-def test_deepest_loaded_matches_by_fight_id_not_by_value():
-    # Two attempts identical in every field the model compares except fight id.
-    series = loaded(1, 2, boss_percentages={1: 30.0, 2: 30.0})
+def test_deepest_loaded_follows_progression_deepest_not_load_order():
+    # `loaded` is built in reverse, so a lookup that returns loaded[0] would
+    # answer fight 3 here while progression.deepest names fight 2.
+    series = loaded(1, 2, 3, boss_percentages={1: 60.0, 2: 12.5, 3: 55.0})
     deepest = series.deepest_loaded
     assert deepest is not None
-    assert deepest.encounter.fight_id == series.progression.deepest.fight_id
+    assert series.loaded[0].encounter.fight_id == 3
+    assert series.progression.deepest is not None
+    assert deepest.encounter.fight_id == series.progression.deepest.fight_id == 2
 ```
 
 - [ ] **Step 2: Run them to verify they fail**
@@ -654,9 +654,11 @@ Run: `/c/Users/damien/.local/bin/uv.exe run pytest tests/adapters/wcl/ tests/dom
    to fail.
 2. Move the `_ability_dictionary` call inside the loop — expect the `Abilities` count assertion to
    fail.
-3. Change `deepest_loaded`'s `fight_id` match to `one.encounter == deepest` — expect
-   `test_deepest_loaded_matches_by_fight_id_not_by_value` to fail. If it does not, the fixture is
-   not exercising the collision and must be fixed before this task is done.
+3. Change `deepest_loaded` to `return self.loaded[0] if self.loaded else None` — expect
+   `test_deepest_loaded_follows_progression_deepest_not_load_order` to fail. Then change
+   `attempts_with_events` to `return self.loaded` — expect
+   `test_attempts_with_events_are_in_pull_order_however_they_were_loaded` to fail. Both fixtures
+   build `loaded` in reverse precisely so these two mutations are reachable.
 
 - [ ] **Step 10: Gate and commit**
 
@@ -693,21 +695,25 @@ different problems wanting different fixes, and this is the one figure that sepa
 
 - [ ] **Step 1: Write the failing tests**
 
+**Every timestamp below is an offset from the attempt's own start** (ruling R8). An attempt built
+by `an_attempt(1, 50.0, 100.0)` runs from `1_000_000` to `1_100_000`, so `death_after_ms=70_000`
+places the death at `1_070_000` and leaves a 30-second collapse.
+
 ```python
 def test_collapse_seconds_is_first_death_to_the_end_of_the_attempt():
-    one = loaded_attempt(1, start_ms=0, end_ms=100_000, death_ms=(70_000, 90_000))
+    one = a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(70_000, 90_000))
     assert collapse_seconds(one) == 30.0
 
 
 def test_collapse_seconds_is_none_without_a_death():
-    assert collapse_seconds(loaded_attempt(1, death_ms=())) is None
+    assert collapse_seconds(a_loaded_attempt(1, seconds=100.0, deaths_after_ms=())) is None
 
 
 def test_collapse_reports_a_median_and_a_range_never_a_mean():
-    finding = collapse(series_of(
-        loaded_attempt(1, start_ms=0, end_ms=100_000, death_ms=(90_000,)),   # 10.0s
-        loaded_attempt(2, start_ms=0, end_ms=100_000, death_ms=(80_000,)),   # 20.0s
-        loaded_attempt(3, start_ms=0, end_ms=100_000, death_ms=(10_000,)),   # 90.0s
+    finding = collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),   # 10.0s
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=(80_000,)),   # 20.0s
+        a_loaded_attempt(3, seconds=100.0, deaths_after_ms=(10_000,)),   # 90.0s
     ))
     assert finding is not None
     assert "20" in finding.title              # the median, not the 40.0 mean
@@ -717,23 +723,55 @@ def test_collapse_reports_a_median_and_a_range_never_a_mean():
 
 
 def test_collapse_is_withheld_below_two_attempts_with_a_death():
-    assert collapse(series_of(loaded_attempt(1, death_ms=(90_000,)), loaded_attempt(2, death_ms=()))) is None
+    assert collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=()),
+    )) is None
 
 
 def test_collapse_counts_only_attempts_that_had_one():
-    finding = collapse(series_of(
-        loaded_attempt(1, start_ms=0, end_ms=100_000, death_ms=(90_000,)),
-        loaded_attempt(2, start_ms=0, end_ms=100_000, death_ms=(80_000,)),
-        loaded_attempt(3, death_ms=()),
+    finding = collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=(80_000,)),
+        a_loaded_attempt(3, seconds=100.0, deaths_after_ms=()),
     ))
     assert finding is not None
     assert "2 attempts" in finding.detail
 ```
 
-Add a `loaded_attempt(fight_id, *, start_ms, end_ms, death_ms)` helper to
-`tests/domain/analysis/conftest.py` that wraps `attempt(...)` in a `LoadedEncounter` with one
-`Death` per timestamp, and a `series_of(*loaded)` that wraps them in a `LoadedProgression`. Use
-the sanctioned names only: `Emberkin`, `Stonewake`, `Bríala`, `Кириллица`.
+**Add both helpers to `tests/domain/progression_fixtures.py`** (Task 1 created it). They are the
+fixtures Tasks 4 and 5 extend, so give them the full signature now even though this task uses only
+part of it:
+
+```python
+def a_loaded_attempt(
+    fight_id: int,
+    *,
+    seconds: float = 200.0,
+    remaining: float = 50.0,
+    deaths_after_ms: tuple[int, ...] = (),
+    damage_after_ms: tuple[tuple[int, int, int | None], ...] = (),
+    players: tuple[Player, ...] = (),
+    **overrides: object,
+) -> LoadedEncounter:
+    """One deepened attempt.
+
+    `deaths_after_ms` and `damage_after_ms` are offsets from this attempt's own
+    start, because `an_attempt` places the window at `fight_id * 1_000_000`.
+    Each `damage_after_ms` entry is `(offset, ability_id, source_id)`; a
+    `source_id` of None means the log named no source.
+
+    Deaths are dealt round-robin to `players` where a roster is given, so a
+    test that cares which actor died first can say so by ordering the roster.
+    """
+
+
+def a_loaded_series(*loaded: LoadedEncounter, **series_kwargs: object) -> LoadedProgression:
+    """A `LoadedProgression` whose `progression.attempts` are these attempts' encounters."""
+```
+
+Use the sanctioned names only where a roster is built: `Emberkin`, `Stonewake`, `Bríala`,
+`Кириллица`.
 
 - [ ] **Step 2: Run to verify failure.** Expected: `ImportError: cannot import name 'collapse_seconds'`.
 
@@ -912,14 +950,20 @@ def test_counts_attempts_an_ability_appeared_in_not_hits():
 
 
 def test_excludes_hits_sourced_by_a_teammate():
-    # Ability 300 is in every attempt's window, but every hit's source_id is a
-    # raider's actor id. It must not be named.
+    # Two abilities in every attempt's window: 300 sourced by a raider's actor
+    # id, 301 sourced by an enemy. The finding must name 301 and not 300 --
+    # asserting only the absence would pass if the finding were withheld
+    # entirely, which "exclude everything" would also achieve.
     finding = repeat_ability(...)
-    assert finding is None or "Blessing of Sacrifice" not in finding.detail
+    assert finding is not None
+    assert "Soul Sever" in finding.detail          # ability 301, enemy-sourced
+    assert "Blessing of Sacrifice" not in finding.detail   # ability 300, teammate-sourced
 
 
 def test_excludes_self_damage():
-    # source_id == actor_id on every hit of ability 400.
+    # As above, with source_id == the victim's own actor id on ability 400.
+    # Assert the enemy-sourced ability is still named, so the test cannot pass
+    # by the finding being withheld.
     ...
 
 
