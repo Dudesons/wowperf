@@ -45,7 +45,7 @@ def a_fight(**overrides: Any) -> dict[str, Any]:
         "phaseTransitions": [
             {"id": 1, "startTime": 9518.2},
             {"id": 2, "startTime": 9682.4},
-            {"id": 3, "startTime": 9827.3},
+            {"id": 3, "startTime": 9827.7},
         ],
         "startTime": 0,
         "endTime": 480_000,
@@ -63,7 +63,11 @@ def test_an_encounter_carries_both_percentages_from_the_response() -> None:
 
 
 def test_transitions_are_truncated_to_whole_milliseconds() -> None:
-    """The API reports a Float; truncating never reports a transition as later."""
+    """The API reports a Float; truncating never reports a transition as later.
+
+    The third transition's fractional part is 0.7: rounding would read 9828,
+    so this fails if truncation is ever replaced by `round()`.
+    """
     encounter = build_encounter(a_report(), a_fight(), partition=1)
 
     assert [(t.id, t.start_ms) for t in encounter.phase_transitions] == [
