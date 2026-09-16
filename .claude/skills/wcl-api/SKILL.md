@@ -1181,9 +1181,134 @@ the most frequent ability ids resemble ordinary class debuffs rather than a pass
 so **this count is not yet evidence that a passed mechanic can be isolated**. Treat 610 as an
 upper bound on the signal and nothing more until the composition is measured.
 
+**Measured 2026-09-16. It is composed of ordinary class debuffs.** See the section below.
+
+## The player-to-player debuff stream is class debuffs, measured
+
+Measured 2026-09-16 over **every boss fight in report `cW38jmwdnZfbHVL4`: 19 fights across 8
+encounters, 26,328 rows** of `events(dataType: Debuffs, hostilityType: Friendlies)`, fully
+paginated. A row counts as player-to-player when `sourceID` and `targetID` are both in
+`masterData.actors(type: "Player")` and differ. **1,900 rows qualified, across 67 distinct
+abilities.**
+
+**Two facts decide it.**
+
+**First, 1,857 of the 1,900 (97.7%) come from two fights on one encounter.** Every other fight in
+the report produced between 0 and 10. A phenomenon confined to one encounter out of eight is not a
+population to build a general finding on.
+
+**Second, 64 of the 67 abilities are applied by exactly one class**, and they are named class
+debuffs: `Chaos Brand` from the one Demon Hunter, `Chilled` from a Mage, `Rend` and `Thunder Clap`
+from Warriors, the Death Knight's `Famine`/`Death`/`War`/`Pestilence`, Rogue poisons,
+`Mystic Touch` from a Monk. Of the three exceptions, two are shared class effects —
+`Resurrecting` (160029) from the two battle-resurrection classes, already documented above, and
+`Mortal Wounds` (115804) from a Monk and a Warrior. **The third, `Rune of Lingering` (1287663), is
+sourced by 12 of the 13 classes present, from 18 distinct actors.** No class owns it. It is the
+only ability in 1,900 applications whose source profile is not explicable as a class ability, and
+the log says nothing about what it is.
+
+**Two discriminators were tested, neither encoding any boss knowledge:**
+
+| Discriminator | Result |
+| --- | --- |
+| The ability also arrives from a non-player source on the same fight | 2 of 67 — and both are class debuffs (`Mortal Wounds`, `Blood Plague`). Useless, and it produces false positives. |
+| The ability is applied by more than one class | 3 of 67, of which 2 are shared class effects. Isolates one candidate, with no way to confirm what it is. |
+
+**So a passed raid mechanic cannot be separated from a rogue's bleed by anything measured here.**
+`docs/plans/2026-09-16-progression-analysis-design.md` §9.1 says that if it cannot, the feature is
+cut rather than hedged. It is cut. Reopening it needs a **positive control**: a fight where a
+passed mechanic is known to have occurred, so a candidate can be confirmed rather than guessed at.
+
+**The 610 figure above was not reproduced.** No fight in this report produced it: the two large
+fights read 904 and 953, and every other fight reads 10 or fewer. Either that measurement was of a
+different report, or it counted by a different rule. Recorded rather than resolved.
+
+## Friendly-sourced damage is 90% self-damage, and the rest is one encounter
+
+Measured 2026-09-16 over the same 19 fights, **139,891 rows** of
+`events(dataType: DamageTaken, hostilityType: Friendlies)`, fully paginated, counting only rows of
+`type: "damage"`.
+
+| Population | Rows | Share |
+| --- | --- | --- |
+| All damage rows | 139,891 | — |
+| `sourceID` is a friendly player | 22,989 | 16.4% |
+| …of which `sourceID == targetID` (self-damage) | 20,663 | **89.9% of the friendly-sourced** |
+| …of which one player to a *different* player | 2,326 | **1.66% of all rows** |
+
+**This corrects the reading in the section above.** That section reports "357 of them (17.8%) had
+a friendly player as the source" for fight 30 and treats it as the evidence for a player-sourced
+finding. At whole-fight scope fight 30 reads **15,798 damage rows, 2,371 friendly-sourced
+(15.0%), and only 34 player-to-a-different-player** — the friendly-sourced figure is dominated by
+self-damage, which the design that cites it excludes by its own rule. The 17.8% and 15.0% shares
+agree; the conclusion drawn from the 17.8% does not survive splitting self-damage out. The 2009
+row count was not reproduced either and is consistent with a per-player scope rather than a
+whole-fight one.
+
+**2,227 of the 2,326 (95.7%) come from the same two fights on the same one encounter** as the
+debuff finding above, and every ability in them is an ordinary class damage ability from the class
+that owns it — `Virulent Plague`, `Rend`, `Immolation Aura`, `Frozen Orb`, `Rupture`, `Moonfire`,
+`Starfall`. The shape is a raid damaging a raid member the encounter turned hostile.
+
+**Outside that encounter the whole report yields 99 hits across 17 fights.** The design's own
+eight-attempt fixture night (encounter 3492) yields **34 hits of one ability across 7 qualifying
+attempts**, and that ability is `Blessing of Sacrifice` (6940) — a Paladin cooldown that redirects
+damage *away* from an ally. Its recorded source classes across the report are DeathKnight, Evoker,
+Rogue and Warrior, so **the "source" of that damage is the protected player, not the Paladin**.
+The one ability that appears across five encounters is therefore one where "player-sourced" names
+the wrong player and the correct play.
+
+**So `source_id` on `DamageTakenEvent` earns its place by exclusion, not by attribution**: it is
+how an analyser keeps a rogue's Rupture out of a list of what repeatedly hits the raid.
+
+## `lastPhase` is a phase id; `lastPhaseAsAbsoluteIndex` is not
+
+Measured 2026-09-16 across all 8 encounters of report `cW38jmwdnZfbHVL4`, reading one fight per
+encounter against that encounter's `Report.phases` entry. Costs nothing: `FIGHTS_QUERY` already
+selects every field involved.
+
+| Encounter | `separatesWipes` | `Report.phases` ids | `lastPhase` | `lastPhaseAsAbsoluteIndex` | that fight's transition ids |
+| --- | --- | --- | --- | --- | --- |
+| 3470 | `true` | 1, 2, 3 | 2 | 2 | 1, 2, 3 |
+| 3445 | `false` | 1, 2 | 1 | 2 | 1, 2, 1 |
+| 3455 | *no entry* | — | 0 | 0 | — |
+| 3497 | `false` | 1, 2, 3, 4 | 1 | 4 | 1, 2, 1, 3, 1 |
+| 3420 | `false` | 1, 2 | 1 | 0 | 1 |
+| 3421 | *no entry* | — | 0 | 0 | — |
+| 3429 | `true` | 1, 2, 3, 4 | 1 | 0 | 1 |
+| 3492 | `true` | 1, 2, 3, 4 | 2 | 1 | 1, 2 |
+
+**`lastPhase` is a `PhaseMetadata.id`.** On all 8 it is either a value in that encounter's own
+phase id list, or `0` where the encounter has no phases at all. **So a phase name can be looked up
+by matching `lastPhase` against `Report.phases[].phases[].id`**, and a `lastPhase` of 0 means a
+boss with no phases rather than a missing reading.
+
+**`lastPhaseAsAbsoluteIndex` is not a phase id, and reading it as one is wrong on 5 of these 8.**
+On all 8 it equals the zero-based index of the *last transition in that attempt's own
+`phaseTransitions` list* — 3497's five transitions end at index 4 while its last phase is 1, and
+3420's single transition sits at index 0 while its last phase is 1. It counts transitions, not
+phases.
+
+**One encounter does not fit the obvious shortcut.** `lastPhase` equals the id of the last
+transition on 7 of the 8, but encounter 3470 reports `lastPhase: 2` against transitions ending in
+3. Unexplained, and recorded rather than guessed at: **read `lastPhase`, never
+`phaseTransitions[-1].id`.**
+
 ## What a whole day of this investigation cost
 
 **14.04 points of 3600** (2026-09-16), covering four schema introspections, a report-wide `fights`
 listing, and two fully paginated event streams on a 20-player fight. Introspection is cheap: the
 first probe, which read all 43 `ReportFight` fields and every type name in the schema, moved the
 counter by 1.00.
+
+**An event stream is about 1.00 points a fight, whatever its size.** Measured 2026-09-16: the
+`Debuffs` sweep of all 19 boss fights spent **14.00 points**, of which `Debuffs` was 13 calls for
+13.00 — one call each, 1.00 each, on fights from 15.8s to 480.0s and from 2 rows to 5,254. The
+six earlier fights cost 6.03 for 6 calls. The report-wide `DamageTaken` sweep of the same 19
+fights spent **18.76**, higher only because the larger fights paginate: 26,606 rows on one fight
+is three pages, and a page is a call.
+
+**So deepening a whole night is cheap.** An eight-attempt night reading deaths and damage taken
+per attempt is on the order of 20 points of 3600, against the design's projection of 40 to 60 for
+three streams. That projection is not wrong — it simply priced a debuff stream that measurement
+then cut.

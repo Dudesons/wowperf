@@ -287,8 +287,8 @@ has both facts and can hold them at once, which a trend line would not allow.
 - **`progression.collapse`** — seconds from the first death to the wipe. A slow bleed and a sudden
   detonation are different problems wanting different fixes, and the single figure that separates
   them is cheap.
-- **`progression.player_sourced.<ability>`** — damage taken from a friendly player, counted per
-  ability across attempts. `measured`, because the log states the source (§2.6). Subject to §9.1.
+- ~~**`progression.player_sourced.<ability>`** — damage taken from a friendly player, counted per
+  ability across attempts.~~ **Cut 2026-09-16 by the measurement §9.1 required.** See below.
 
 **The discriminator is the night itself, never boss knowledge.** An ability whose player-sourced
 damage appears in the attempts that ended early and not in the deepest attempt is a real
@@ -296,9 +296,29 @@ within-night difference and may be named. An ability that appears in every attem
 best one is the encounter working as designed — a soak, a link, a controlled detonation — and the
 tool stays quiet. The best attempt is the control, so no per-encounter rule is required.
 
+**That rule was run against real data on 2026-09-16 and named nothing, because there was nothing
+to name.** The measurement is recorded in `.claude/skills/wcl-api/SKILL.md`; what it found:
+
+- Across 19 boss fights and 8 encounters, 139,891 damage rows, **89.9% of all friendly-sourced
+  damage is self-damage**, which this design excludes by its own rule. What remains — one player
+  hitting another — is **1.66% of all damage rows**.
+- **95.7% of that remainder falls on two fights of one encounter**, and every ability in it is an
+  ordinary class ability from the class that owns it. The shape is a raid damaging a raid member
+  the encounter turned hostile. Naming those would report a rogue's Rupture as a finding.
+- On this design's own fixture night the whole population is **34 hits of `Blessing of Sacrifice`
+  on the deepest attempt**, a Paladin cooldown that redirects damage *away* from an ally — and the
+  source the log records for it is the protected player, not the Paladin.
+- §2.6's "357 rows (17.8%)" is the friendly-sourced figure *before* self-damage is split out. The
+  share replicates; the conclusion does not survive the split.
+
+So the finding is cut under §9.1's own rule rather than shipped behind a hedge. **`source_id`
+keeps its place in Layer 2 by exclusion**: it is how `progression.repeat.ability` avoids reporting
+a teammate's bleed as something that repeatedly ends attempts.
+
 **The confound is declared, not corrected**, in the house style of every comparison this project
 ships: on some encounters player-sourced damage is correct play, and a raid soaking properly will
-show a great deal of it.
+show a great deal of it. That confound is now measured rather than anticipated, and it is large
+enough to have taken the finding with it.
 
 ### 5.3 Layer 3 — what the best attempt did differently
 
@@ -394,6 +414,17 @@ safe, and the progression page needs its own.
    encounters before building anything on it.** If a passed mechanic cannot be separated from a
    rogue's bleed without encoding boss knowledge, the feature is cut. It is not fudged, and it is
    not shipped behind a hedge.
+
+   **Measured 2026-09-16 across 19 fights and 8 encounters — 26,328 debuff rows, 1,900 of them
+   player-to-player across 67 abilities. It cannot be separated, so it is cut.** 64 of the 67
+   abilities are applied by exactly one class and are named class debuffs; of the three
+   exceptions two are shared class effects. 97.7% of all applications fall on two fights of one
+   encounter. Both discriminators tested — "also arrives from a non-player source" and "applied
+   by more than one class" — either produce false positives or isolate a single candidate with no
+   way to confirm what it is. `.claude/skills/wcl-api/SKILL.md` carries the full reading.
+   **Reopening this needs a positive control**: a fight where a passed mechanic is known to have
+   occurred, so a candidate can be confirmed instead of guessed at. Nothing in a log supplies
+   that; a person who was there does.
 2. **Small n.** Eight attempts is a small sample and a four-against-four split is smaller. State
    the count, and withhold `progression.movement` below a floor, exactly as the keystone
    comparison falls back below three comparable members.
@@ -434,8 +465,11 @@ was a test that could not have failed, so the fixtures carry the burden.
 
 ## 11. Open items
 
-1. **The composition of player-to-player debuff applications** (§9.1). Blocks Layer 2's
-   player-sourced findings and nothing else.
+1. ~~**The composition of player-to-player debuff applications** (§9.1).~~ **Settled 2026-09-16:
+   it is ordinary class debuffs, and both player-sourced findings are cut** — the debuff-derived
+   one and `progression.player_sourced` alike (§5.2, §9.1). Measured across 19 fights and 8
+   encounters; the reading is in `.claude/skills/wcl-api/SKILL.md`. Reopening needs a positive
+   control fight, which only a person who was there can name.
 2. ~~**The duration floor** (§4.3).~~ **Settled 2026-09-16**: `MIN_ATTEMPT_SECONDS = 44.0`,
    measured over 349 cached boss attempts across 37 reports. The docstring in
    `src/wowperf/domain/progression.py` carries the reading, the corridor it sits in, and the one
