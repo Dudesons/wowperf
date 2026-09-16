@@ -115,10 +115,11 @@ def test_collapse_counts_only_attempts_that_had_one() -> None:
 
 # --- progression.repeat.first_death ---
 
-# A fixed two-player roster: `Frost Death Knight` carries the lower actor id,
+# A fixed two-player roster: `Frost DeathKnight` carries the lower actor id,
 # so a tied pair of deaths resolves to it under the "lowest actor id" rule.
+# `class_name` is unspaced -- `subType` off the live API, measured 2026-09-16.
 ROSTER: tuple[Player, ...] = (
-    Player(actor_id=1, name="Emberkin", class_name="Death Knight", spec="Frost", item_level=600),
+    Player(actor_id=1, name="Emberkin", class_name="DeathKnight", spec="Frost", item_level=600),
     Player(actor_id=2, name="Stonewake", class_name="Shaman", spec="Elemental", item_level=600),
 )
 
@@ -191,7 +192,7 @@ def test_counts_the_specialisation_that_died_first_most_often() -> None:
         loaded_attempt_with_roster(3, first_dead_index=1),
     ))
     assert finding is not None
-    assert "Frost Death Knight" in finding.title
+    assert "Frost DeathKnight" in finding.title
     assert "2 of 3" in finding.title
     assert finding.confidence is Confidence.MEASURED
 
@@ -214,6 +215,21 @@ def test_a_death_with_no_roster_row_contributes_nothing() -> None:
     )) is None
 
 
+def test_is_withheld_below_two_identified_not_just_at_zero() -> None:
+    """Exactly one attempt's earliest death matches the roster, the other does not.
+
+    `test_a_death_with_no_roster_row_contributes_nothing` only exercises the
+    zero-identified case, which a guard of `if not specs` also satisfies. The
+    requirement is "below two", so one identified attempt must withhold too --
+    this is the boundary that guard would get wrong while still passing that
+    other test.
+    """
+    assert repeat_first_death(series_of(
+        loaded_attempt_with_roster(1, first_dead_index=0),
+        loaded_attempt_with_roster(2, first_dead_index=None),
+    )) is None
+
+
 def test_ties_resolve_by_actor_id_not_by_stream_order() -> None:
     forwards = repeat_first_death(series_of(
         tied_attempt(1, order="forwards"), tied_attempt(2, order="forwards"),
@@ -223,24 +239,26 @@ def test_ties_resolve_by_actor_id_not_by_stream_order() -> None:
     ))
     assert forwards is not None and backwards is not None
     assert forwards.title == backwards.title
-    # Not just deterministic -- specifically the lower actor id (Frost Death
-    # Knight, id 1) wins the tie, per the requirement, in either direction.
-    assert "Frost Death Knight" in forwards.title
-    assert "Frost Death Knight" in backwards.title
+    # Not just deterministic -- specifically the lower actor id (Frost
+    # DeathKnight, id 1) wins the tie, per the requirement, in either direction.
+    assert "Frost DeathKnight" in forwards.title
+    assert "Frost DeathKnight" in backwards.title
 
 
 def test_disclaims_blame_rather_than_naming_a_mistake() -> None:
     """The detail must read as a count, not an accusation.
 
     The design forbids naming a mechanic, or a person, as at fault -- this is
-    the finding most easily misread that way, so the disclaimer is a required
-    part of the text, not merely an absence of loaded words.
+    the finding most easily misread that way, so both halves of the required
+    framing (where the role stands, not who was playing it) are required
+    parts of the text, not merely an absence of loaded words.
     """
     finding = repeat_first_death(series_of(
         loaded_attempt_with_roster(1, first_dead_index=0),
         loaded_attempt_with_roster(2, first_dead_index=0),
     ))
     assert finding is not None
+    assert "about where that role stands" in finding.detail
     assert "not about the player" in finding.detail
     text = f"{finding.title} {finding.detail}".lower()
     for banned in ("fail", "failed", "missed", "mistake", "wrong", "fault"):
