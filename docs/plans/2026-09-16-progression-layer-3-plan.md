@@ -1909,8 +1909,12 @@ Its last paragraph currently reads "Writes no HTML. The report for this command 
 - [ ] **Step 5: Run the command against the real night and read the page**
 
 ```bash
-uv run wowperf progression cW38jmwdnZfbHVL4 --boss 3492 --difficulty 5 --out out
+uv run wowperf progression cW38jmwdnZfbHVL4 --boss 3492 --difficulty 4 --out out
 ```
+
+(The real night is difficulty 4, not 5; the command refuses a `--difficulty` the report holds no
+fight at. `--difficulty` can also be omitted entirely -- it defaults to the boss's own first fight
+in the report, which is difficulty 4 here too.)
 
 **This step is not optional and is not a formality.** Plan 2's live run found three findings that fired with nothing to say, and none of them was reachable from an offline fixture, because a fixture is built to make its finding fire. Open the written HTML and read every tab. Check specifically:
 
