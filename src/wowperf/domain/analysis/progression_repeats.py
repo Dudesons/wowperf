@@ -5,6 +5,7 @@ from collections import Counter
 from statistics import median
 
 from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.progression import LoadedProgression, Progression
 
@@ -90,4 +91,56 @@ def collapse(series: LoadedProgression) -> Finding | None:
             f"{len(windows)} attempts with a death",
             f"range {min(windows):.0f} to {max(windows):.0f} seconds",
         ),
+    )
+
+
+def _earliest_death(one: LoadedEncounter) -> Death | None:
+    """The attempt's first death, ties broken by the lowest actor id.
+
+    Warcraft Logs' own event stream has no guaranteed order for two deaths
+    sharing a timestamp, so breaking the tie on `actor_id` keeps the pick
+    deterministic instead of depending on the order events arrived in.
+    """
+    if not one.deaths:
+        return None
+    return min(one.deaths, key=lambda death: (death.timestamp_ms, death.actor_id))
+
+
+def repeat_first_death(series: LoadedProgression) -> Finding | None:
+    """Which specialisation died first, counted across a night's attempts.
+
+    Matches each attempt's earliest death against the roster by `actor_id` and
+    reads `spec` and `class_name` off the matching `Player` -- never
+    `Death.player_name` or `Player.name`. The report holds real people, and a
+    specialisation dying first is usually a fact about where that role stands
+    when a pull goes wrong, not about who was playing it. This counts and
+    names no one.
+    """
+    specs = []
+    for one in series.attempts_with_events:
+        death = _earliest_death(one)
+        if death is None:
+            continue
+        player = next((p for p in one.players if p.actor_id == death.actor_id), None)
+        if player is None:
+            continue
+        specs.append(f"{player.spec} {player.class_name}")
+
+    if len(specs) < 2:
+        return None
+
+    spec, count = Counter(specs).most_common(1)[0]
+
+    return Finding(
+        id="progression.repeat.first_death",
+        title=f"{spec} died first in {count} of {len(specs)} attempts",
+        detail=(
+            f"Across the {len(specs)} attempts whose earliest death matched a roster "
+            f"player, {spec} was the specialisation that died first {count} times. "
+            "A specialisation dying first is usually about where that role stands when "
+            "a pull comes apart, not about the player in the seat -- this counts, and "
+            "assigns no blame."
+        ),
+        confidence=Confidence.MEASURED,
+        evidence=(f"{count} of {len(specs)} attempts",),
     )
