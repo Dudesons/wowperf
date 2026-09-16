@@ -69,6 +69,7 @@ query Fights($code: String!) {
       startTime
       endTime
       owner { name }
+      phases { encounterID separatesWipes phases { id name isIntermission } }
       fights(translate: true) {
         id
         name
@@ -79,6 +80,11 @@ query Fights($code: String!) {
         difficulty
         size
         fightPercentage
+        bossPercentage
+        lastPhase
+        lastPhaseAsAbsoluteIndex
+        lastPhaseIsIntermission
+        phaseTransitions { id startTime }
         keystoneLevel
         keystoneAffixes
         keystoneTime

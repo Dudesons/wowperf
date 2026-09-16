@@ -23,6 +23,7 @@ from wowperf.adapters.wcl.rankings import bracket_for
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     RequestedPlayer,
     _cost_breakdown,
@@ -187,13 +188,23 @@ def test_the_keystone_flags_are_not_offered_by_raid() -> None:
 
 
 @pytest.mark.usefixtures("wired_cli")
-def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it() -> None:
+def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it(
+    tmp_path: Path,
+) -> None:
     """`wired_cli`'s mock transport serves a Mythic+ report.
 
     Pointing `raid` at one is the mistake a reader will actually make, and the
     error has to be a signpost rather than a complaint.
+
+    `--cache-dir` must be given explicitly: `wired_cli` takes a `tmp_path` of
+    its own but never wires it to the cache directory, so a bare invocation
+    here would fetch the report for real and cache the response under this
+    repository's own `cache/`, gitignored but real, rather than in a
+    directory pytest cleans up.
     """
-    result = runner.invoke(app, ["raid", "abc123"])
+    result = runner.invoke(
+        app, ["raid", "abc123", "--cache-dir", str(tmp_path / "cache")]
+    )
 
     assert result.exit_code != 0
     assert "analyze" in plain(result.output)
@@ -4262,3 +4273,224 @@ def test_a_compared_analyze_accounts_for_every_point_it_reports(tmp_path: Path) 
 
     assert len(tabled) > 5, "a compared run touches many operations; this listed few"
     assert round(sum(tabled), 2) == float(spent)
+
+
+# --- progression -----------------------------------------------------------
+
+PROGRESSION_REPORT_CODE = "abc123"
+PROGRESSION_ENCOUNTER_ID = 3492
+PROGRESSION_OTHER_ENCOUNTER_ID = 3493
+PROGRESSION_DIFFICULTY = 5
+PROGRESSION_SIZE = 20
+
+
+def _progression_fight(
+    fight_id: int,
+    *,
+    encounter_id: int = PROGRESSION_ENCOUNTER_ID,
+    kill: bool = False,
+    fight_percentage: float = 40.0,
+    start_ms: int = 0,
+    end_ms: int = 120_000,
+) -> dict[str, Any]:
+    """One boss attempt: long enough to count (`MIN_ATTEMPT_SECONDS` is 44s)
+    and carrying a `fightPercentage` so it has somewhere to sit in a finding.
+
+    No roster: `friendlyPlayers` is empty, so `build_raid_roster` never looks
+    a friendly id up in `masterData.actors` at all, which `analyse_progression`
+    reads no player data from anyway.
+    """
+    return {
+        "id": fight_id,
+        "name": "The Twin Fangs",
+        "encounterID": encounter_id,
+        "difficulty": PROGRESSION_DIFFICULTY,
+        "size": PROGRESSION_SIZE,
+        "kill": kill,
+        "fightPercentage": fight_percentage,
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "friendlyPlayers": [],
+        "friendlySpecs": [],
+        "friendlyItemLevels": [],
+    }
+
+
+def _progression_fights_payload(fights: list[dict[str, Any]]) -> dict[str, Any]:
+    """The one `Fights` query response `load_progression` reads everything from."""
+    return {
+        "reportData": {
+            "report": {
+                "code": PROGRESSION_REPORT_CODE,
+                "title": "Raid Night",
+                "startTime": 0,
+                "endTime": 700_000,
+                "owner": {"name": "emberkin"},
+                "fights": fights,
+                "masterData": {"actors": []},
+            }
+        }
+    }
+
+
+def build_progression_transport(fights: list[dict[str, Any]]) -> httpx.MockTransport:
+    """Answer the token exchange, the one `Fights` query, and both quota reads.
+
+    A sibling of `build_transport`, not a reuse of it: that helper always
+    serves `report_fights.json`, a Mythic+ fixture `load_progression` has no
+    use for, so this carries its own raid-shaped payload instead.
+    """
+    quota = [100.0, 101.0]
+    running = 100.0
+
+    def carrying_quota(payload: dict[str, Any]) -> httpx.Response:
+        nonlocal running
+        running += 1.0
+        return httpx.Response(
+            200,
+            json={
+                "data": {
+                    **payload,
+                    "rateLimitData": {
+                        "limitPerHour": 3600,
+                        "pointsSpentThisHour": running,
+                        "pointsResetIn": 900,
+                    },
+                }
+            },
+        )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
+        name = operation_name(json.loads(request.content)["query"])
+        if name == "RateLimit":
+            return quota_response(quota.pop(0))
+        return carrying_quota(_progression_fights_payload(fights))
+
+    return httpx.MockTransport(handler)
+
+
+def _progression_written_path(tmp_path: Path, encounter_id: int = PROGRESSION_ENCOUNTER_ID) -> Path:
+    return tmp_path / "out" / f"{PROGRESSION_REPORT_CODE}-{encounter_id}.progression.json"
+
+
+def run_progression(tmp_path: Path, fights: list[dict[str, Any]], *extra_args: str) -> Any:
+    transport = build_progression_transport(fights)
+    real_client = httpx.Client
+
+    def fake_client(*args: Any, **kwargs: Any) -> httpx.Client:
+        return real_client(transport=transport)
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(httpx, "Client", fake_client)
+        mp.setenv("WCL_CLIENT_ID", "id")
+        mp.setenv("WCL_CLIENT_SECRET", "secret")
+        return runner.invoke(
+            app,
+            [
+                "progression", PROGRESSION_REPORT_CODE,
+                "--cache-dir", str(tmp_path / "cache"),
+                "--out", str(tmp_path / "out"),
+                *extra_args,
+            ],
+        )
+
+
+def test_progression_writes_findings_keyed_on_the_boss(tmp_path: Path) -> None:
+    """The three-behaviour brief's first claim: exit 0, the boss-keyed
+    filename, and a payload with an encounter id, at least one counted
+    attempt and something to say.
+
+    Two attempts, at two different depths, are enough for `progression.best`
+    and `progression.cluster` to both fire -- an implementation that dropped
+    `analyse_progression` entirely, or that never wrote `findings` into the
+    payload at all, leaves this list empty. An implementation that mixed up
+    `report_code`/`encounter_id` in the filename, or wrote the sibling
+    `raid` command's `<code>-<fight>.findings.json` name instead, finds no
+    file at the path this asserts.
+    """
+    fights = [
+        _progression_fight(11, fight_percentage=40.0, start_ms=0, end_ms=120_000),
+        _progression_fight(12, fight_percentage=20.0, start_ms=200_000, end_ms=320_000),
+    ]
+    result = run_progression(tmp_path, fights, "--boss", str(PROGRESSION_ENCOUNTER_ID))
+
+    assert result.exit_code == 0, result.output
+    written = _progression_written_path(tmp_path)
+    assert written.exists()
+
+    payload = json.loads(written.read_text(encoding="utf-8"))
+    assert payload["encounter_id"] == PROGRESSION_ENCOUNTER_ID
+    assert payload["attempts_counted"] >= 1
+    assert payload["attempts_counted"] == 2
+    assert payload["findings"], "a run that writes no finding has nothing to say"
+    expected_note = PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    assert payload["findings_are_ranked_not_additive"] == expected_note
+
+
+def test_progression_states_what_it_spent(tmp_path: Path) -> None:
+    """The second claim: the command prints what it spent from the hourly
+    point budget, the same promise `fetch` and `raid` keep.
+
+    An implementation that swallowed `_quota_sentence`'s return value instead
+    of echoing it -- or never called it at all -- leaves no digit followed by
+    "points" anywhere in the output, and this fails without needing to name
+    which line was supposed to carry it.
+    """
+    fights = [_progression_fight(11, fight_percentage=40.0)]
+    result = run_progression(tmp_path, fights, "--boss", str(PROGRESSION_ENCOUNTER_ID))
+
+    assert result.exit_code == 0, result.output
+    assert "points" in plain(result.output)
+
+
+def test_progression_names_the_bosses_when_the_report_holds_several(tmp_path: Path) -> None:
+    """The third claim: with several bosses in the report and no `--boss`,
+    the command refuses rather than silently guessing one, and says which
+    flag would resolve it.
+
+    `load_progression` raises this from `_pick_boss`, already covered at the
+    repository layer; what this pins is that the CLI's `except` clause
+    actually reaches that `ValueError`, prints its message, and exits
+    non-zero -- an implementation that let the exception escape uncaught
+    would fail this on `exit_code` (Typer reports a crash as a nonzero code
+    too, but `plain(result.output)` would then hold a traceback with no
+    `--boss` in it, so the second assertion still catches that case).
+    """
+    fights = [
+        _progression_fight(11, encounter_id=PROGRESSION_ENCOUNTER_ID),
+        _progression_fight(21, encounter_id=PROGRESSION_OTHER_ENCOUNTER_ID),
+    ]
+    result = run_progression(tmp_path, fights)
+
+    assert result.exit_code != 0
+    assert "--boss" in plain(result.output)
+
+
+def test_progression_discards_short_attempts_and_says_how_many(tmp_path: Path) -> None:
+    """A fourth behaviour worth pinning on its own: an attempt under
+    `MIN_ATTEMPT_SECONDS` is excluded from `attempts_counted` and counted
+    separately in `attempts_discarded`, rather than silently vanishing or
+    being counted as a real attempt.
+
+    One real attempt (120s) and one reset (20s, under the 44s floor). An
+    implementation that counted every fight as an attempt regardless of
+    duration would report `attempts_counted == 2` and
+    `attempts_discarded == 0`; one that dropped the short attempt with no
+    record of it would report `attempts_discarded == 0` too. Only the
+    boss-fight-selection floor this task inherits from `Progression` itself
+    produces exactly one of each.
+    """
+    fights = [
+        _progression_fight(11, fight_percentage=40.0, start_ms=0, end_ms=120_000),
+        _progression_fight(12, fight_percentage=99.9, start_ms=200_000, end_ms=220_000),
+    ]
+    result = run_progression(tmp_path, fights, "--boss", str(PROGRESSION_ENCOUNTER_ID))
+
+    assert result.exit_code == 0, result.output
+    written = _progression_written_path(tmp_path)
+    payload = json.loads(written.read_text(encoding="utf-8"))
+
+    assert payload["attempts_counted"] == 1
+    assert payload["attempts_discarded"] == 1

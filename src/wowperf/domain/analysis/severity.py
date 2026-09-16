@@ -7,12 +7,13 @@ from wowperf.domain.findings import Finding
 
 SEVERITY_BY_FAMILY = {
     "deaths": 0,
-    "mechanics": 1,
-    "players": 2,
-    "defensives": 3,
-    "consumables": 4,
-    "interrupts": 5,
-    "compare": 6,
+    "progression": 1,
+    "mechanics": 2,
+    "players": 3,
+    "defensives": 4,
+    "consumables": 5,
+    "interrupts": 6,
+    "compare": 7,
 }
 """How much each finding family is worth reading first, lowest first.
 

@@ -147,6 +147,21 @@ leaderboard — Warcraft Logs ranks kills alone — and both the findings file a
 rather than going quiet. It writes `<code>-<fight>.findings.json` and `<code>-<fight>.html`,
 exactly as `analyze` does.
 
+## The `progression` command
+
+A whole night of attempts at one boss is `wowperf progression <url> [--boss ID] [--difficulty N]`,
+a sibling of `analyze` and `raid`, not a mode of either. It reads every fight in the report in one
+query and reports where a night's attempts sat against each other — never against another report,
+since a night's attempts are compared only to one another and no external reference is drawn.
+`--boss` is required whenever the report holds more than one boss, since nothing else picks one
+out; an explicit `--boss` with no `--difficulty` takes the difficulty of that boss's own first
+fight in the report. `--cache-dir` and `--out` move the response cache and the findings file, the
+same shapes `analyze` and `raid` offer. `--player`, `--all-players`, `--no-compare` and
+`--narrative` do not apply here and are not offered, because this command draws no comparison
+sample and writes no narrative-bearing page. It writes `<code>-<encounter>.progression.json` and
+no HTML: the report for this command belongs to a later plan, and there is no page to hand over
+yet.
+
 ## When it goes wrong
 
 - **No credentials.** The tool needs `WCL_CLIENT_ID` and `WCL_CLIENT_SECRET` in the environment,

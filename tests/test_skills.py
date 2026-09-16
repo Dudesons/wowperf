@@ -4,6 +4,7 @@
 import re
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from tests.test_cli import plain
@@ -23,6 +24,60 @@ FIELD_ROW = re.compile(
 )
 
 FLAG = re.compile(r"--[a-z][a-z-]+")
+
+# The skill documents three sibling commands, one section each. Checking the
+# whole file against one command's `--help` only ever worked for `analyze`
+# by coincidence -- `raid`'s flags happen to be a subset of `analyze`'s -- and
+# stopped working the moment `progression` added flags (`--boss`,
+# `--difficulty`) that are not. Each command's own section is checked against
+# its own `--help` instead, so a fourth command means one more entry here
+# rather than a moved boundary.
+COMMANDS = ("analyze", "raid", "progression")
+
+# Flags a section names only to say the command does *not* offer them, for
+# contrast with a sibling -- "the same shapes `analyze` offers, minus
+# `--narrative`". A regex can't tell that from an offer, so these are carved
+# out of "does this flag exist" and checked the other way in the same test:
+# that the command's own Options block really doesn't have them.
+EXPLICITLY_UNSUPPORTED: dict[str, frozenset[str]] = {
+    "raid": frozenset({"--throughput-ceiling", "--narrative"}),
+    "progression": frozenset({"--player", "--all-players", "--no-compare", "--narrative"}),
+}
+
+
+def _section_text(command: str) -> str:
+    """The paragraph(s) of `ANALYZING_SKILL` that document one command's flags.
+
+    `analyze`'s own text is everything before its two younger siblings'
+    headings, plus "When it goes wrong" -- which sits after both in the file
+    but is about a Mythic+ run that never completed, `analyze`'s own failure
+    mode, not `raid`'s or `progression`'s.
+    """
+    text = ANALYZING_SKILL.read_text(encoding="utf-8")
+    if command == "analyze":
+        head = text.split("## The `raid` command")[0]
+        trouble = "## When it goes wrong" + text.split("## When it goes wrong")[1]
+        return head + trouble
+    if command == "raid":
+        return text.split("## The `raid` command")[1].split("## The `progression` command")[0]
+    if command == "progression":
+        return text.split("## The `progression` command")[1].split("## When it goes wrong")[0]
+    raise ValueError(f"no section known for {command!r}")
+
+
+def _offered_flags(command: str) -> set[str]:
+    """Real options only, from the command's own Options block.
+
+    Typer renders a command's docstring above its Options block, and a
+    docstring can talk *about* a flag while explaining the command does not
+    have it -- `progression --help` names `--player` in exactly that sentence.
+    Scanning the whole rendered help would count that mention as an offer;
+    the Options block never does, so it is the only part read here.
+    """
+    help_text = plain(CliRunner().invoke(app, [command, "--help"]).output)
+    _, _, options_block = help_text.partition("Options")
+    assert options_block, f"{command} --help printed no Options block"
+    return set(FLAG.findall(options_block)) - {"--help"}
 
 
 def field_rows() -> list[tuple[str, str]]:
@@ -53,26 +108,37 @@ def test_every_field_the_table_says_we_do_not_query_is_absent() -> None:
     assert present == [], f"documented as unused but present in queries.py: {present}"
 
 
-def test_every_flag_the_workflow_tells_you_to_type_exists() -> None:
+@pytest.mark.parametrize("command", COMMANDS)
+def test_every_flag_the_workflow_tells_you_to_type_exists(command: str) -> None:
     # Asserted against the command's own help rather than against cli.py's text:
     # typer infers `--player` and `--narrative` from their parameter names, so
     # neither string appears in the source at all.
-    help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
-    flags = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
-    assert flags, "the workflow names no flags at all, so this test proves nothing"
-    missing = sorted(flag for flag in flags if flag not in help_text)
-    assert missing == [], f"named in the skill but absent from the command: {missing}"
+    offered = _offered_flags(command)
+    unsupported = EXPLICITLY_UNSUPPORTED.get(command, frozenset())
+
+    # The flip side of the carve-out below: a flag the skill says this command
+    # does *not* offer must actually be missing from its Options block, or
+    # that sentence is the one that has drifted.
+    wrongly_offered = sorted(unsupported & offered)
+    assert wrongly_offered == [], (
+        f"the skill says {command} does not offer {wrongly_offered}, but it does"
+    )
+
+    flags = set(FLAG.findall(_section_text(command))) - unsupported
+    assert flags, f"{command}'s section names no flags at all, so this test proves nothing"
+    missing = sorted(flag for flag in flags if flag not in offered)
+    assert missing == [], f"named in the skill but absent from {command}: {missing}"
 
 
-def test_every_flag_the_command_offers_is_named_in_the_workflow() -> None:
+@pytest.mark.parametrize("command", COMMANDS)
+def test_every_flag_the_command_offers_is_named_in_the_workflow(command: str) -> None:
     # The reverse of the test above. A flag the command has and the workflow never
     # mentions is a feature nobody following the workflow can reach.
-    help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
-    offered = set(FLAG.findall(help_text)) - {"--help"}
-    assert offered, "the command's help names no flags at all, so this test proves nothing"
-    named = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
+    offered = _offered_flags(command)
+    assert offered, f"{command}'s help names no flags at all, so this test proves nothing"
+    named = set(FLAG.findall(_section_text(command)))
     missing = sorted(offered - named)
-    assert missing == [], f"offered by the command but never named in the skill: {missing}"
+    assert missing == [], f"offered by {command} but never named in the skill: {missing}"
 
 
 def test_the_template_the_workflow_tells_you_to_copy_is_one_the_repository_ships() -> None:

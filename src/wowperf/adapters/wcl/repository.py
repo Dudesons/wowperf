@@ -20,6 +20,7 @@ from wowperf.adapters.wcl.ingest import (
     build_healing,
     build_health_samples,
     build_interrupts,
+    build_phases,
     build_player_auras,
     build_raid_roster,
     build_resurrections,
@@ -56,6 +57,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
+from wowperf.domain.progression import Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
 # trimmed reference profiles, each fetching only the streams its own axis reads.
@@ -99,6 +101,52 @@ def healing_windows(deaths: Sequence[Death]) -> list[tuple[int, int, int]]:
         else:
             windows.append((death.actor_id, start, end))
     return windows
+
+
+def _pick_boss(
+    fights: list[dict[str, Any]],
+    encounter_id: int | None,
+    difficulty: int | None,
+) -> tuple[int, int]:
+    """The boss and difficulty a night's fights are read against.
+
+    `fights` is a report's boss fights, never empty -- the caller raises before
+    reaching here. With no `encounter_id`, this stands in for the CLI flag a
+    keystone run never needs: `select_raid_fight` refuses the same way with one
+    fight already picked, and this refuses one step earlier, before any fight
+    is built. The only boss present is chosen without asking; several bosses
+    raise, naming every one of them and the flag that resolves the question.
+
+    An explicit `encounter_id` with no `difficulty` takes the difficulty of
+    that boss's first fight, on the same reasoning `Progression` itself uses:
+    a raid night is fought at one difficulty, so the fight list settles it
+    rather than making the caller repeat what the report already states.
+
+    The existence check runs whether or not `difficulty` was supplied. An
+    explicit `--boss` naming a fight absent from the report, or naming one
+    present only at a different difficulty, is a routine user error and must
+    be refused with a message -- not answered with an unchecked pair that
+    `build_progression` then turns into an empty, nameless series.
+    """
+    if encounter_id is None:
+        boss_ids = sorted({int(fight["encounterID"]) for fight in fights})
+        if len(boss_ids) != 1:
+            named = ", ".join(str(boss_id) for boss_id in boss_ids)
+            raise ValueError(f"This report holds several bosses ({named}); pass --boss")
+        encounter_id = boss_ids[0]
+
+    matching = [fight for fight in fights if fight["encounterID"] == encounter_id]
+    if not matching:
+        raise ValueError(f"This report holds no fight for boss {encounter_id}")
+
+    if difficulty is None:
+        difficulty = int(matching[0]["difficulty"])
+    elif not any(int(fight["difficulty"]) == difficulty for fight in matching):
+        raise ValueError(
+            f"This report holds no difficulty {difficulty} fight for boss {encounter_id}"
+        )
+
+    return encounter_id, difficulty
 
 
 class WclRunRepository:
@@ -428,6 +476,41 @@ class WclRunRepository:
             standing=standing,
             boss_standing=boss_standing,
             partition_source=partition_source,
+        )
+
+    def load_progression(
+        self,
+        report_code: str,
+        encounter_id: int | None,
+        difficulty: int | None,
+    ) -> Progression:
+        """Every attempt at one boss, from one report, in one query.
+
+        Layer 1 of the progression design needs fight metadata and nothing else,
+        and `FIGHTS_QUERY` already returns every fight in the report. So a whole
+        night costs one query, which is the design's central cost claim.
+
+        No rankings query is sent. The series compares attempts to each other and
+        draws no external reference, so the partition comes from the season file
+        and is carried only because `Encounter` requires one.
+        """
+        report = self._report(report_code)
+        boss_fights = [f for f in report.get("fights") or () if f.get("encounterID")]
+        if not boss_fights:
+            raise ValueError(f"Report {report_code} holds no boss fight")
+
+        encounter_id, difficulty = _pick_boss(boss_fights, encounter_id, difficulty)
+        partition = load_raid_partition()
+        phases, separates_wipes = build_phases(report, encounter_id)
+        encounters = [
+            build_encounter(report, fight, partition=partition) for fight in boss_fights
+        ]
+        return build_progression(
+            encounters,
+            encounter_id=encounter_id,
+            difficulty=difficulty,
+            phases=phases,
+            separates_wipes=separates_wipes,
         )
 
     def load_speed_reference(

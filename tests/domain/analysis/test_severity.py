@@ -39,7 +39,16 @@ def test_an_unknown_family_sorts_last_rather_than_first() -> None:
 
 @pytest.mark.parametrize(
     "family",
-    ["deaths", "mechanics", "players", "defensives", "consumables", "interrupts", "compare"],
+    [
+        "deaths",
+        "progression",
+        "mechanics",
+        "players",
+        "defensives",
+        "consumables",
+        "interrupts",
+        "compare",
+    ],
 )
 def test_every_family_the_raid_path_emits_has_a_severity(family: str) -> None:
     # This catches a family dropped from the table. It cannot catch one added
@@ -52,3 +61,26 @@ def test_every_family_the_raid_path_emits_has_a_severity(family: str) -> None:
 def test_family_of_reads_the_first_segment() -> None:
     assert family_of("mechanics.ability.3") == "mechanics"
     assert family_of("deaths.total") == "deaths"
+
+
+def test_the_progression_family_has_a_severity() -> None:
+    assert "progression" in SEVERITY_BY_FAMILY
+
+
+def test_every_family_the_progression_path_emits_has_a_severity() -> None:
+    """Derived from the analyser rather than hand-written, unlike the raid list above.
+
+    This is the guard the raid version admits it cannot be: it builds a real
+    progression, runs the real analyser, and checks every id it emits.
+    """
+    from tests.domain.test_progression import a_measured_night
+    from wowperf.domain.analysis.progression_service import analyse_progression
+    from wowperf.domain.progression import build_progression
+
+    progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
+    findings = analyse_progression(progression)
+
+    assert findings, "a fixture that emits nothing would make this pass vacuously"
+    for finding in findings:
+        family = finding.id.split(".")[0]
+        assert family in SEVERITY_BY_FAMILY, f"{finding.id} ranks on UNKNOWN_SEVERITY"
