@@ -70,17 +70,40 @@ bound does not catch one unnoticed extra stream --
 by counting operations directly. What the 40-point bound catches here is a wholesale change in
 shape against the real API: doubling every stream, or refetching the whole night a second time,
 the kind of drift that would blow past it rather than nudge it.
+
+The command itself is then driven end to end over the cache those reads have already filled, so
+every query it makes is warm and it costs the two `RateLimit` reads it brackets its own work with
+rather than a second night's worth of streams. That spend falls outside the bracket measured
+above, which closes before the command runs, so the 40-point bound neither covers it nor is
+loosened by it. Driving the command rather than re-rendering its parts here is the point: which
+file the page lands in, what it is handed for icons, and the order the two writes happen in are
+decided in `cli.progression` and nowhere else.
 """
 
+import json
 import re
 from pathlib import Path
 from statistics import median
+from typing import Any, cast
 
 import pytest
+from typer.testing import CliRunner
 
-from wowperf.cli import build_repository
+from tests.adapters.render.test_progression_html_invariants import (
+    PANEL_ID,
+    PROGRESSION_PANEL_ORDER,
+)
+from wowperf.cli import app, build_repository
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import rank_raid_findings
+
+DEPTH_SCALES = ("boss health", "encounter progress")
+"""The only two scales a depth figure on this page can be on.
+
+Named here rather than imported from `progression_frame.depth_label` so the
+assertions below read the page and the findings file against a literal, not
+against the same function that produced both.
+"""
 
 
 @pytest.mark.e2e
@@ -211,3 +234,62 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
         )
         for pattern in roster_patterns:
             assert pattern.search(haystack) is None, f"finding {finding.id} named a roster member"
+
+    # The command, over the cache the reads above already filled. Everything it
+    # queries is warm, so this costs the two `RateLimit` reads it brackets its
+    # own work with and nothing else -- spent after `after` was read, so
+    # outside the bound asserted above.
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        app,
+        [
+            "progression", "cW38jmwdnZfbHVL4",
+            "--boss", "3492",
+            "--cache-dir", str(tmp_path / "cache"),
+            "--out", str(out),
+        ],
+    )
+    # Both halves of the diagnosis, as `test_raid_e2e` does: a refusal the
+    # command wrote itself goes to stderr, an exception it never expected is
+    # held on the result. Neither prints a roster.
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+
+    [written_json] = out.glob("*.progression.json")
+    [page] = out.glob("*.progression.html")
+    payload = cast(dict[str, Any], json.loads(written_json.read_text(encoding="utf-8")))
+    html = page.read_text(encoding="utf-8")
+    assert html.strip(), "the command wrote an empty page"
+
+    # The five panels, by the ids they render, in the order they render --
+    # `PROGRESSION_PANEL_ORDER` stays the one place the count is stated, and a
+    # sixth tab added without a line there is a tab no test sees.
+    assert PANEL_ID.findall(html) == PROGRESSION_PANEL_ORDER
+
+    # Both artefacts name the same scale. Read out of the findings file rather
+    # than recomputed, so a page whose header said "boss health" over figures
+    # the findings called encounter progress -- the one mistake a page carrying
+    # two scales makes -- fails here. `progression.best` is asserted present
+    # above, so this cannot pass by there being no title to read.
+    best_title = next(
+        one["title"] for one in payload["findings"] if one["id"] == "progression.best"
+    )
+    named = [scale for scale in DEPTH_SCALES if f"({scale})" in best_title]
+    assert len(named) == 1, f"the best finding named {named} of the two scales: {best_title}"
+    assert f"Depth left ({named[0]})" in html, f"the depth column is not on the {named[0]} scale"
+
+    # The report holds twenty real people, and the page is the artefact that
+    # gets shared: not one of them may be named on it. `roster_patterns` is
+    # read back from the fetched night above rather than listed here, on
+    # CLAUDE.md's test-data rule, and a failure reports only that a name was
+    # found -- never which, and never where. Neither half of this can pass
+    # vacuously: `roster_patterns` is asserted non-empty above, and the two
+    # assertions before this one prove the page was written with the attempts
+    # table on it.
+    for pattern in roster_patterns:
+        assert pattern.search(html) is None, "the page named a roster member"
+
+    # No link back to the report. This page draws one group's own night and
+    # never a corpus of anyone else's logs (RPGLogs terms SS5d); the findings
+    # that want a single attempt's anatomy carry a `wowperf raid` invocation
+    # instead of a URL.
+    assert "warcraftlogs.com/reports/" not in html

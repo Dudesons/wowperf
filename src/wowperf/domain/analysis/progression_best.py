@@ -11,10 +11,10 @@ from wowperf.domain.progression import LoadedProgression
 MIN_OTHER_ATTEMPTS = 2
 """Below this the deepest attempt has no cluster to stand against.
 
-A median of one figure is that figure, and "the best attempt lost fewer
-players than the one other attempt" is an anecdote wearing a comparison's
-words. The keystone comparison falls back below three comparable references
-for the same reason.
+A median of one figure is that figure, and "the best attempt had fewer deaths
+than the one other attempt" is an anecdote wearing a comparison's words. The
+keystone comparison falls back below three comparable references for the same
+reason.
 """
 
 
@@ -42,7 +42,12 @@ def roster_deaths(one: LoadedEncounter) -> int:
 
 
 def best_deaths(series: LoadedProgression) -> Finding | None:
-    """How many players the deepest attempt lost, against the median of the rest.
+    """How many deaths the deepest attempt took, against the median of the rest.
+
+    Deaths, not players, and the title says so. A battle-rezzed player dies
+    twice, so on a real night this count runs past the roster size -- measured
+    2026-09-16 on a twenty-player night whose deepest attempt logged 21 -- and
+    a title phrased as players lost would state an impossibility.
 
     `measured`: both figures are counts of logged deaths, and the median is
     arithmetic over them. The comparison is internal -- the night against
@@ -50,7 +55,7 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
 
     Withheld below `MIN_OTHER_ATTEMPTS` others, and when nothing was deepened.
     Never withheld for being unflattering: an attempt that went deepest while
-    losing more players than the rest is a real difference and is stated in
+    taking more deaths than the rest is a real difference and is stated in
     those words.
     """
     deepest = series.deepest_loaded
@@ -70,14 +75,14 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
     gap = theirs - mine
 
     if gap > 0:
-        title = f"The best attempt lost {mine} players against a median of {theirs:.0f}"
+        title = f"The best attempt took {mine} roster deaths against a median of {theirs:.0f}"
     elif gap < 0:
         title = (
-            f"The best attempt lost {mine} players -- {-gap:.0f} more "
+            f"The best attempt took {mine} roster deaths -- {-gap:.0f} more "
             f"than the median of {theirs:.0f}"
         )
     else:
-        title = f"The best attempt lost {mine} players, no difference from the rest"
+        title = f"The best attempt took {mine} roster deaths, no difference from the rest"
 
     return Finding(
         id="progression.best.deaths",

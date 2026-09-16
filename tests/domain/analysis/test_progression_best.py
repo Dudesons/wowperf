@@ -27,7 +27,7 @@ def test_a_deaths_count_ignores_an_actor_who_is_not_on_the_roster() -> None:
     assert roster_deaths(stripped) == 0
 
 
-def test_the_best_attempt_losing_fewer_players_is_stated_with_both_figures() -> None:
+def test_the_best_attempt_taking_fewer_deaths_is_stated_with_both_figures() -> None:
     deepest = a_loaded_attempt(1, remaining=10.0, deaths_after_ms=(1_000, 2_000))
     others = [
         a_loaded_attempt(2, remaining=60.0, deaths_after_ms=tuple(range(1_000, 10_000, 1_000))),
@@ -46,7 +46,7 @@ def test_the_best_attempt_losing_fewer_players_is_stated_with_both_figures() -> 
     assert "wowperf raid abc123 --fight 1" in finding.detail
 
 
-def test_the_best_attempt_losing_more_players_is_said_rather_than_hidden() -> None:
+def test_the_best_attempt_taking_more_deaths_is_said_rather_than_hidden() -> None:
     """The best attempt is not always the cleanest, and that is worth reading.
 
     A finding that only speaks when the deepest attempt looks good is a finding
@@ -79,6 +79,30 @@ def test_an_equal_count_is_reported_as_no_difference() -> None:
 
     assert finding is not None
     assert "no difference" in finding.title.lower()
+
+
+def test_the_count_is_stated_as_deaths_rather_than_players_lost() -> None:
+    """A battle rez makes one player die twice, so this count outruns the roster.
+
+    Measured 2026-09-16: a twenty-player night's deepest attempt logged 21
+    roster deaths, and the title said it had lost 21 players. Here every death
+    lands on `_DEFAULT_PLAYER`, a roster of one, so three deaths against a
+    one-player raid reproduce that impossibility in miniature -- the title has
+    to name deaths, and a title phrased as players lost fails both halves
+    below.
+    """
+    deepest = a_loaded_attempt(1, remaining=10.0, deaths_after_ms=(1_000, 2_000, 3_000))
+    others = [
+        a_loaded_attempt(2, remaining=60.0, deaths_after_ms=(1_000,)),
+        a_loaded_attempt(3, remaining=70.0, deaths_after_ms=(1_000,)),
+    ]
+
+    finding = best_deaths(a_loaded_series(deepest, *others))
+
+    assert finding is not None
+    assert len(deepest.players) == 1, "the point of this fixture is more deaths than players"
+    assert "3 roster deaths" in finding.title
+    assert "players" not in finding.title
 
 
 def test_one_other_attempt_is_not_a_comparison() -> None:
