@@ -14,7 +14,6 @@ from wowperf.domain.report.progression_ledger import (
     [
         ("progression.best", "best_rows"),
         ("progression.best.deaths", "best_rows"),
-        ("progression.best.survived", "best_rows"),
         ("progression.cluster", "attempt_rows"),
         ("progression.movement", "attempt_rows"),
         ("progression.attempts.discarded", "attempt_rows"),

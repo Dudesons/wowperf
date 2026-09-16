@@ -4,8 +4,7 @@
 from statistics import median
 
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.findings import Confidence, Finding, quantity
-from wowperf.domain.model import Player
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.progression import LoadedProgression
 
 MIN_OTHER_ATTEMPTS = 2
@@ -101,104 +100,3 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
         ),
     )
 
-
-MAX_SURVIVORS = 5
-"""At six the finding stops being a difference and starts being the roster.
-
-So at six the finding is withheld, not trimmed to five. Naming the top five out
-of a dozen would print a list that reads as the whole difference while the
-condition that makes it meaningless -- that nearly everyone came through --
-goes unmentioned, which is the one failure a cap can turn into a quiet lie.
-"""
-
-
-def _spec_label(player: Player) -> str:
-    """"Frost DeathKnight", not "Frost Death Knight".
-
-    `class_name` is the API's own `subType` (`ingest.py`), which carries no
-    space. A test asserting the spaced spelling asserts a string this code
-    cannot produce.
-    """
-    return f"{player.spec} {player.class_name}"
-
-
-def _specs_that_died(one: LoadedEncounter) -> set[str]:
-    """Which specialisations lost at least one player in this attempt."""
-    by_actor = {player.actor_id: player for player in one.players}
-    return {
-        _spec_label(by_actor[death.actor_id])
-        for death in one.deaths
-        if death.actor_id in by_actor
-    }
-
-
-def best_survived(series: LoadedProgression) -> Finding | None:
-    """Specialisations that usually died and did not, on the attempt that went deepest.
-
-    Counted only over specialisations on the deepest attempt's own roster: a
-    specialisation that was not there did not survive anything, and a swap out
-    reads identically to a survival in a log that records deaths rather than
-    lives.
-
-    `derived` rather than `measured`. Not dying is not the same as surviving
-    something: a player who stood further out, a healer who was dead already in
-    the other attempts and so could not die again, and a raid that reached a
-    phase that ability never fires in all produce this shape, and the log
-    distinguishes none of them.
-
-    Withheld below `MIN_OTHER_ATTEMPTS` others, when nothing was deepened, and
-    when nothing qualifies -- "usually" means more than half of the others,
-    strictly, so a specialisation dying in exactly half is not named. Withheld
-    again above `MAX_SURVIVORS`, at the other end: a night where most of the
-    raid came through the best attempt has no difference to name, and saying so
-    by staying silent is honest where naming five of twelve would not be.
-    """
-    deepest = series.deepest_loaded
-    if deepest is None:
-        return None
-
-    others = [
-        one
-        for one in series.attempts_with_events
-        if one.encounter.fight_id != deepest.encounter.fight_id
-    ]
-    if len(others) < MIN_OTHER_ATTEMPTS:
-        return None
-
-    candidates = {_spec_label(player) for player in deepest.players} - _specs_that_died(deepest)
-
-    counts: dict[str, int] = {}
-    for one in others:
-        for spec in _specs_that_died(one) & candidates:
-            counts[spec] = counts.get(spec, 0) + 1
-
-    qualifying = [(spec, count) for spec, count in counts.items() if count > len(others) / 2]
-    if not qualifying or len(qualifying) > MAX_SURVIVORS:
-        return None
-
-    qualifying.sort(key=lambda pair: (-pair[1], pair[0]))
-    lines = tuple(
-        f"{spec} died in {count} of the {len(others)} other attempts, and not in the best one"
-        for spec, count in qualifying
-    )
-
-    return Finding(
-        id="progression.best.survived",
-        title=(
-            f"{quantity(len(qualifying), 'specialisation', 'specialisations')} that usually died "
-            "came through the best attempt"
-        ),
-        detail=(
-            "Counted across the deepest attempt's own roster, so a specialisation that was "
-            "not in the raid for it is never named: "
-            + "; ".join(lines)
-            + ". Not dying is not the same as surviving something -- standing further out, "
-            "being dead already when the others ended, and reaching a phase an ability never "
-            "fires in all look like this, and the log tells them apart from none of the "
-            "others. That is why this reads as derived. This counts specialisations and "
-            "names no player; to see what the best attempt actually looked like, run "
-            f"`{raid_invocation(deepest)}`."
-        ),
-        confidence=Confidence.DERIVED,
-        evidence=lines,
-    )

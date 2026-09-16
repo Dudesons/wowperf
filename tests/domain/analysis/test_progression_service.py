@@ -328,17 +328,14 @@ def test_three_deepened_attempts_emit_both_layer_one_and_layer_two_findings() ->
     assert "progression.collapse" in found
 
 
-def a_deepened_quartet_with_a_survivor() -> LoadedProgression:
-    """A deepest attempt and three others, arranged so both Layer 3 findings fire.
+def a_deepened_quartet() -> LoadedProgression:
+    """A deepest attempt and three others, arranged so Layer 3 fires with a gap.
 
-    Protection Warrior dies in all three other attempts and in none of the
-    deepest one, clearing `best_survived`'s "more than half of the others"
-    floor with a clean majority; Holy Priest dies on every attempt including
-    the deepest, so it is a candidate on no attempt and never named. The
-    deepest attempt also loses one roster player against the others' median of
-    two, clearing `best_deaths`'s floor the same way. Built separately from
-    `a_deepened_trio`, whose two others never lose Protection Warrior at all,
-    so it cannot qualify as a survivor there.
+    The deepest attempt takes one roster death against the others' median of
+    two, so `best_deaths` clears `MIN_OTHER_ATTEMPTS` and reports a difference
+    rather than "no difference from the rest" -- a fixture where the two
+    figures matched would still fire, but would not show that the figures
+    reached the finding.
 
     No attempt sets `last_phase`, so `repeat_phase` stays silent, and none
     takes any damage, so `repeat_ability` stays silent too -- this fixture
@@ -363,15 +360,14 @@ def a_deepened_quartet_with_a_survivor() -> LoadedProgression:
     return a_loaded_series(deepest, *others)
 
 
-def test_layer_three_findings_are_appended_after_layer_two() -> None:
+def test_the_layer_three_finding_is_appended_after_layer_two() -> None:
     """Asserts the whole list, not membership alone.
 
-    Membership would still pass if `best_deaths` or `best_survived` were
-    silently dropped from the service's loop, or if either were spliced in
-    ahead of a Layer 2 id. Pinning the full ordered list is what actually
-    fails in those cases.
+    Membership would still pass if `best_deaths` were silently dropped from the
+    service's loop, or if it were spliced in ahead of a Layer 2 id. Pinning the
+    full ordered list is what actually fails in those cases.
     """
-    found = ids(analyse_progression(a_deepened_quartet_with_a_survivor()))
+    found = ids(analyse_progression(a_deepened_quartet()))
 
     assert found == [
         "progression.best",
@@ -380,7 +376,6 @@ def test_layer_three_findings_are_appended_after_layer_two() -> None:
         "progression.repeat.first_death",
         "progression.collapse",
         "progression.best.deaths",
-        "progression.best.survived",
     ]
 
 

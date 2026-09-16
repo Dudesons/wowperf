@@ -3,7 +3,7 @@
 
 from statistics import median
 
-from wowperf.domain.analysis.progression_best import best_deaths, best_survived
+from wowperf.domain.analysis.progression_best import best_deaths
 from wowperf.domain.analysis.progression_repeats import (
     collapse,
     repeat_ability,
@@ -49,7 +49,7 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
     `series.progression.attempts` and `series.loaded` empty: Layer 1 still
     reports the discard, and every Layer 2 and Layer 3 analyser below returns
     `None` on an empty `attempts_with_events` rather than raising, so a night
-    where nothing was deepened leaves both Layer 3 findings silent too.
+    where nothing was deepened leaves Layer 3 silent too.
     """
     progression = series.progression
     findings: list[Finding] = []
@@ -142,7 +142,6 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
         repeat_ability(series),
         collapse(series),
         best_deaths(series),
-        best_survived(series),
     ):
         if deeper is not None:
             findings.append(deeper)
