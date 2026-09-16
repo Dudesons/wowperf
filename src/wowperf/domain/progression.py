@@ -1,6 +1,12 @@
 # ABOUTME: A night of attempts on one raid boss, and which of them a reader should be shown.
 # ABOUTME: Selection is a claim about the log's shape, so the floor carries its measurement.
 
+from collections.abc import Sequence
+
+from wowperf.domain.base import Frozen
+from wowperf.domain.encounter import Encounter
+from wowperf.domain.phases import Phase
+
 MIN_ATTEMPT_SECONDS = 44.0
 
 _MIN_ATTEMPT_SECONDS_NOTE = """Under this an attempt is a reset or an instant
@@ -75,3 +81,106 @@ the corridor rests on two confirmed points on the reset side and one on
 the real side, and it has not been checked against a real-attempt reading
 shorter than 47.17s, nor against a third population. Call it provisional
 in that sense, and revisit it if either turns up."""
+
+
+def remaining_percent(encounter: Encounter) -> float | None:
+    """How much was left when the attempt ended, and which figure that is.
+
+    `bossPercentage` is the boss's own health and `fightPercentage` is the
+    encounter's progress. They diverge sharply -- one measured attempt read
+    51.12 against 3.76 -- so the boss figure is preferred where the report gives
+    one, because a raid that pushed the boss to 3.76% learned something the
+    encounter figure hides. Every caller that prints either must name which it
+    got; `Progression` carries both on the attempt itself so a caller can.
+
+    Both count down: a kill reads about 0.01 and an instant wipe reads 100.
+    """
+    if encounter.boss_percentage is not None:
+        return encounter.boss_percentage
+    return encounter.fight_percentage
+
+
+class Progression(Frozen):
+    """Every attempt at one boss, at one difficulty, from one report.
+
+    `attempts` are the ones worth reading, in pull order. `discarded` are the
+    ones below `MIN_ATTEMPT_SECONDS`, kept rather than dropped so the report can
+    say how many were excluded instead of leaving a reader to wonder.
+
+    Carries no external reference of any kind. The series compares attempts to
+    each other, which is what makes the command an order of magnitude cheaper
+    than a compared raid analysis.
+    """
+
+    report_code: str
+    encounter_id: int
+    boss_name: str
+    difficulty: int
+    size: int
+    phases: tuple[Phase, ...] = ()
+    separates_wipes: bool = False
+    attempts: tuple[Encounter, ...] = ()
+    discarded: tuple[Encounter, ...] = ()
+
+    @property
+    def killed(self) -> bool:
+        return any(attempt.kill for attempt in self.attempts)
+
+    @property
+    def deepest(self) -> Encounter | None:
+        """The attempt that got furthest -- least left, not last pulled.
+
+        Measured 2026-09-16: on a real eight-attempt night the deepest was the
+        third. Reading the last attempt as the best one is the single mistake
+        this whole design exists to avoid.
+        """
+        rated = [(remaining_percent(a), a) for a in self.attempts]
+        scored = [(left, a) for left, a in rated if left is not None]
+        if not scored:
+            return None
+        return min(scored, key=lambda pair: pair[0])[1]
+
+
+class LoadedProgression(Frozen):
+    """A `Progression` and whichever attempts have been deepened.
+
+    Layer 1 needs no deepened attempt at all, so `loaded` is empty here and
+    stays that way until the plan that builds Layer 2.
+    """
+
+    progression: Progression
+    loaded: tuple[object, ...] = ()
+
+
+def build_progression(
+    encounters: Sequence[Encounter],
+    *,
+    encounter_id: int,
+    difficulty: int,
+    phases: tuple[Phase, ...] = (),
+    separates_wipes: bool = False,
+) -> Progression:
+    """Select one boss's attempts at one difficulty, in pull order.
+
+    Difficulty is never mixed. A Heroic pull is not evidence about a Mythic one,
+    and slice 2 already refuses that comparison for the same reason.
+    """
+    mine = [
+        e for e in encounters
+        if e.encounter_id == encounter_id and e.difficulty == difficulty
+    ]
+    mine.sort(key=lambda e: e.start_ms)
+    kept = tuple(e for e in mine if e.duration_seconds >= MIN_ATTEMPT_SECONDS)
+    dropped = tuple(e for e in mine if e.duration_seconds < MIN_ATTEMPT_SECONDS)
+    first = mine[0] if mine else None
+    return Progression(
+        report_code=first.report_code if first else "",
+        encounter_id=encounter_id,
+        boss_name=first.boss_name if first else "",
+        difficulty=difficulty,
+        size=first.size if first else 0,
+        phases=phases,
+        separates_wipes=separates_wipes,
+        attempts=kept,
+        discarded=dropped,
+    )
