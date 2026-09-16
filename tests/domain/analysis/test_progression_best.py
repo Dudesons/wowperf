@@ -104,6 +104,30 @@ def test_the_count_is_stated_as_deaths_rather_than_players_lost() -> None:
     assert "players" not in finding.title
 
 
+def test_a_split_median_is_printed_as_a_half_rather_than_rounded() -> None:
+    """others=[2, 3] have a median of 2.5, not 2 or 3, and rounding it to a whole
+    number can make the title contradict its own figures.
+
+    Measured against the unfixed `:.0f` formatting: with mine=3 the old title
+    read "The best attempt took 3 roster deaths -- 0 more than the median of
+    2" -- 0 more, over two figures that are not equal, because Python's `:.0f`
+    rounds 0.5 and 2.5 both down to the nearest even integer. Printing the
+    median at one decimal place removes the rounding step that produced the
+    contradiction.
+    """
+    deepest = a_loaded_attempt(1, remaining=10.0, deaths_after_ms=(1_000, 2_000, 3_000))
+    others = [
+        a_loaded_attempt(2, remaining=60.0, deaths_after_ms=(1_000, 2_000)),
+        a_loaded_attempt(3, remaining=70.0, deaths_after_ms=(1_000, 2_000, 3_000)),
+    ]
+
+    finding = best_deaths(a_loaded_series(deepest, *others))
+
+    assert finding is not None
+    assert "2.5" in finding.title
+    assert "0.5 more" in finding.title
+
+
 def test_one_other_attempt_is_not_a_comparison() -> None:
     """A median of one figure is that figure, and a claim drawn from it reads
     exactly as confident as one drawn from fifty."""

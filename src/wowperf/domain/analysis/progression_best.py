@@ -74,11 +74,11 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
     gap = theirs - mine
 
     if gap > 0:
-        title = f"The best attempt took {mine} roster deaths against a median of {theirs:.0f}"
+        title = f"The best attempt took {mine} roster deaths against a median of {theirs:.1f}"
     elif gap < 0:
         title = (
-            f"The best attempt took {mine} roster deaths -- {-gap:.0f} more "
-            f"than the median of {theirs:.0f}"
+            f"The best attempt took {mine} roster deaths -- {-gap:.1f} more "
+            f"than the median of {theirs:.1f}"
         )
     else:
         title = f"The best attempt took {mine} roster deaths, no difference from the rest"
@@ -88,7 +88,7 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
         title=title,
         detail=(
             f"Counted across the {len(others)} other deepened attempts, whose median was "
-            f"{theirs:.0f} roster deaths. A median and a range, never an average. This "
+            f"{theirs:.1f} roster deaths. A median and a range, never an average. This "
             "counts deaths and says nothing about what caused them; to see that attempt's "
             "anatomy -- the health curves, what hit whom, and what each player still had "
             f"-- run `{raid_invocation(deepest)}`."
@@ -96,7 +96,7 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
         confidence=Confidence.MEASURED,
         evidence=(
             f"{mine} roster deaths on the deepest attempt, fight {deepest.encounter.fight_id}",
-            f"median {theirs:.0f} across {len(others)} other attempts",
+            f"median {theirs:.1f} across {len(others)} other attempts",
         ),
     )
 
