@@ -341,8 +341,8 @@ Everything that touches the network lives in `src/wowperf/adapters/wcl/`: OAuth 
 credentials, the GraphQL client, event pagination, and the ingest that turns a response into
 the domain model. Responses are cached to disk in two tiers — the analysed run is kept for
 good, leaderboard rows and reference runs expire after a day — and every query records what
-it cost from the API's own quota reading, so both commands close by printing where the run's
-points went, dearest operation first.
+it cost from the API's own quota reading, so every command that touches the network closes
+by printing where the run's points went, dearest operation first.
 
 The analysers under `src/wowperf/domain/analysis/` produce the findings: time decomposition,
 deaths and what each one cost, missed interrupts, trash efficiency, per-player facts,
