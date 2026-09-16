@@ -1,9 +1,10 @@
 # ABOUTME: Behaviour tests for the phase a night's attempts most often ended in.
 # ABOUTME: Every guard -- separatesWipes, an empty phase table, phase zero -- gets its own case.
 
+from tests.domain.progression_fixtures import a_loaded_attempt, a_loaded_series
 from tests.domain.progression_fixtures import a_series as series
 from tests.domain.test_progression import an_attempt
-from wowperf.domain.analysis.progression_repeats import repeat_phase
+from wowperf.domain.analysis.progression_repeats import collapse, collapse_seconds, repeat_phase
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import Confidence
 
@@ -63,3 +64,42 @@ def test_says_nothing_about_failure() -> None:
     text = f"{finding.title} {finding.detail}".lower()
     for banned in ("fail", "failed", "missed", "mistake", "wrong"):
         assert banned not in text
+
+
+def test_collapse_seconds_is_first_death_to_the_end_of_the_attempt() -> None:
+    one = a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(70_000, 90_000))
+    assert collapse_seconds(one) == 30.0
+
+
+def test_collapse_seconds_is_none_without_a_death() -> None:
+    assert collapse_seconds(a_loaded_attempt(1, seconds=100.0, deaths_after_ms=())) is None
+
+
+def test_collapse_reports_a_median_and_a_range_never_a_mean() -> None:
+    finding = collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),   # 10.0s
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=(80_000,)),   # 20.0s
+        a_loaded_attempt(3, seconds=100.0, deaths_after_ms=(10_000,)),   # 90.0s
+    ))
+    assert finding is not None
+    assert "20" in finding.title              # the median, not the 40.0 mean
+    assert "40" not in finding.title
+    assert "10" in " ".join(finding.evidence)
+    assert "90" in " ".join(finding.evidence)
+
+
+def test_collapse_is_withheld_below_two_attempts_with_a_death() -> None:
+    assert collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=()),
+    )) is None
+
+
+def test_collapse_counts_only_attempts_that_had_one() -> None:
+    finding = collapse(a_loaded_series(
+        a_loaded_attempt(1, seconds=100.0, deaths_after_ms=(90_000,)),
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=(80_000,)),
+        a_loaded_attempt(3, seconds=100.0, deaths_after_ms=()),
+    ))
+    assert finding is not None
+    assert "2 attempts" in finding.detail

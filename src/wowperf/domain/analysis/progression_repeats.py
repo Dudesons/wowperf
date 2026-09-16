@@ -2,9 +2,11 @@
 # ABOUTME: Counts and presence only -- naming a mechanic as missed is the one claim forbidden here.
 
 from collections import Counter
+from statistics import median
 
+from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
-from wowperf.domain.progression import Progression
+from wowperf.domain.progression import LoadedProgression, Progression
 
 
 def repeat_phase(progression: Progression) -> Finding | None:
@@ -46,5 +48,46 @@ def repeat_phase(progression: Progression) -> Finding | None:
         evidence=(
             f"{count} of {len(ended_in)} attempts ended in {name}",
             f"phase table carries {len(progression.phases)} phases",
+        ),
+    )
+
+
+def collapse_seconds(one: LoadedEncounter) -> float | None:
+    """From the first death to the end of the attempt, or None if nobody died.
+
+    The same window `repeat_ability` reads, so the two findings cannot disagree
+    about when an attempt started falling apart.
+    """
+    if not one.deaths:
+        return None
+    first = min(death.timestamp_ms for death in one.deaths)
+    return (one.encounter.end_ms - first) / 1000
+
+
+def collapse(series: LoadedProgression) -> Finding | None:
+    """How long each attempt took to fall apart once the first player died."""
+    windows = [
+        seconds
+        for seconds in (collapse_seconds(one) for one in series.attempts_with_events)
+        if seconds is not None
+    ]
+    if len(windows) < 2:
+        return None
+
+    middle = median(windows)
+    return Finding(
+        id="progression.collapse",
+        title=f"Attempts took a median of {middle:.0f} seconds to fall apart",
+        detail=(
+            f"Measured across {len(windows)} attempts that had a death, from the first one "
+            f"to the end of the attempt. The observed range ran {min(windows):.0f} to "
+            f"{max(windows):.0f} seconds. A long window is a raid bleeding out and a short "
+            "one is a raid losing the fight at once; they want different fixes, and this "
+            "figure is the one that tells them apart. A median and a range, never an average."
+        ),
+        confidence=Confidence.MEASURED,
+        evidence=(
+            f"{len(windows)} attempts with a death",
+            f"range {min(windows):.0f} to {max(windows):.0f} seconds",
         ),
     )

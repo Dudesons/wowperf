@@ -1,9 +1,12 @@
 # ABOUTME: Shared builders for progression tests: one attempt, one deepened attempt, one series.
 # ABOUTME: Timestamps are offsets from the attempt's own start, because an_attempt offsets by id.
 
-from wowperf.domain.encounter import Encounter
+from tests.domain.test_progression import an_attempt
+from wowperf.domain.encounter import Encounter, LoadedEncounter
+from wowperf.domain.events import DamageTakenEvent, Death
+from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase
-from wowperf.domain.progression import Progression
+from wowperf.domain.progression import LoadedProgression, Progression
 
 PHASES = (
     Phase(id=1, name="The Gathering"),
@@ -28,3 +31,64 @@ def a_series(
         separates_wipes=separates_wipes,
         attempts=attempts,
     )
+
+
+def a_loaded_attempt(
+    fight_id: int,
+    *,
+    seconds: float = 200.0,
+    remaining: float = 50.0,
+    deaths_after_ms: tuple[int, ...] = (),
+    damage_after_ms: tuple[tuple[int, int, int | None], ...] = (),
+    players: tuple[Player, ...] = (),
+    **overrides: object,
+) -> LoadedEncounter:
+    """One deepened attempt.
+
+    `deaths_after_ms` and `damage_after_ms` are offsets from this attempt's own
+    start, because `an_attempt` places the window at `fight_id * 1_000_000`.
+    Each `damage_after_ms` entry is `(offset, ability_id, source_id)`; a
+    `source_id` of None means the log named no source.
+
+    Deaths are dealt round-robin to `players` where a roster is given, so a
+    test that cares which actor died first can say so by ordering the roster.
+    Damage events are dealt the same way, for the same reason.
+    """
+    encounter = an_attempt(fight_id, remaining, seconds, players=players, **overrides)
+    start_ms = encounter.start_ms
+
+    def actor_for(index: int) -> tuple[int, str]:
+        if not players:
+            return 1, "Emberkin"
+        dealt = players[index % len(players)]
+        return dealt.actor_id, dealt.name
+
+    deaths = tuple(
+        Death(
+            player_name=actor_for(index)[1],
+            actor_id=actor_for(index)[0],
+            timestamp_ms=start_ms + offset,
+            killing_blow="x",
+        )
+        for index, offset in enumerate(deaths_after_ms)
+    )
+
+    damage_taken = tuple(
+        DamageTakenEvent(
+            actor_id=actor_for(index)[0],
+            ability_id=ability_id,
+            ability_name="x",
+            amount=0,
+            timestamp_ms=start_ms + offset,
+            source_id=source_id,
+        )
+        for index, (offset, ability_id, source_id) in enumerate(damage_after_ms)
+    )
+
+    return LoadedEncounter(encounter=encounter, deaths=deaths, damage_taken=damage_taken)
+
+
+def a_loaded_series(*loaded: LoadedEncounter, **series_kwargs: object) -> LoadedProgression:
+    """A `LoadedProgression` whose `progression.attempts` are these attempts' encounters."""
+    progression = a_series(*(one.encounter for one in loaded), **series_kwargs)  # type: ignore[arg-type]
+    return LoadedProgression(progression=progression, loaded=loaded)
