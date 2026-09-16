@@ -103,7 +103,13 @@ def best_deaths(series: LoadedProgression) -> Finding | None:
 
 
 MAX_SURVIVORS = 5
-"""At six the finding stops being a difference and starts being the roster."""
+"""At six the finding stops being a difference and starts being the roster.
+
+So at six the finding is withheld, not trimmed to five. Naming the top five out
+of a dozen would print a list that reads as the whole difference while the
+condition that makes it meaningless -- that nearly everyone came through --
+goes unmentioned, which is the one failure a cap can turn into a quiet lie.
+"""
 
 
 def _spec_label(player: Player) -> str:
@@ -142,7 +148,10 @@ def best_survived(series: LoadedProgression) -> Finding | None:
 
     Withheld below `MIN_OTHER_ATTEMPTS` others, when nothing was deepened, and
     when nothing qualifies -- "usually" means more than half of the others,
-    strictly, so a specialisation dying in exactly half is not named.
+    strictly, so a specialisation dying in exactly half is not named. Withheld
+    again above `MAX_SURVIVORS`, at the other end: a night where most of the
+    raid came through the best attempt has no difference to name, and saying so
+    by staying silent is honest where naming five of twelve would not be.
     """
     deepest = series.deepest_loaded
     if deepest is None:
@@ -164,20 +173,19 @@ def best_survived(series: LoadedProgression) -> Finding | None:
             counts[spec] = counts.get(spec, 0) + 1
 
     qualifying = [(spec, count) for spec, count in counts.items() if count > len(others) / 2]
-    if not qualifying:
+    if not qualifying or len(qualifying) > MAX_SURVIVORS:
         return None
 
     qualifying.sort(key=lambda pair: (-pair[1], pair[0]))
-    top = qualifying[:MAX_SURVIVORS]
     lines = tuple(
         f"{spec} died in {count} of the {len(others)} other attempts, and not in the best one"
-        for spec, count in top
+        for spec, count in qualifying
     )
 
     return Finding(
         id="progression.best.survived",
         title=(
-            f"{quantity(len(top), 'specialisation', 'specialisations')} that usually died "
+            f"{quantity(len(qualifying), 'specialisation', 'specialisations')} that usually died "
             "came through the best attempt"
         ),
         detail=(

@@ -2,7 +2,12 @@
 # ABOUTME: Internal comparison only -- no reference run, and never a named player.
 
 from tests.domain.progression_fixtures import a_loaded_attempt, a_loaded_series, a_series
-from wowperf.domain.analysis.progression_best import best_deaths, best_survived, roster_deaths
+from wowperf.domain.analysis.progression_best import (
+    MAX_SURVIVORS,
+    best_deaths,
+    best_survived,
+    roster_deaths,
+)
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 from wowperf.domain.progression import LoadedProgression
@@ -199,3 +204,83 @@ def test_one_other_attempt_is_not_a_comparison_for_survivors_either() -> None:
     other = a_loaded_attempt(2, remaining=60.0, deaths_after_ms=(1_000,), players=ROSTER)
 
     assert best_survived(a_loaded_series(deepest, other)) is None
+
+
+SANCTIONED_NAMES = ("Emberkin", "Stonewake", "Bríala", "Кириллица")
+"""CLAUDE.md's whole permitted set. Nothing below reads a name -- `best_survived`
+labels a player by spec and class alone -- so these repeat around a roster longer
+than four rather than inventing a fifth."""
+
+SPECS = (
+    ("Paladin", "Holy"),
+    ("Warrior", "Protection"),
+    ("Mage", "Frost"),
+    ("Priest", "Discipline"),
+    ("Druid", "Balance"),
+    ("Rogue", "Outlaw"),
+)
+"""Six distinct specialisations, one more than `MAX_SURVIVORS`."""
+
+
+def a_roster(size: int) -> tuple[Player, ...]:
+    """`size` players, every one a different specialisation."""
+    return tuple(
+        Player(
+            actor_id=index + 1,
+            name=SANCTIONED_NAMES[index % len(SANCTIONED_NAMES)],
+            class_name=class_name,
+            spec=spec,
+            item_level=600,
+        )
+        for index, (class_name, spec) in enumerate(SPECS[:size])
+    )
+
+
+def _everyone_came_through(size: int) -> LoadedProgression:
+    """A night where `size` specialisations died in every other attempt and in none
+    of the deepest one, so every one of them qualifies.
+
+    Deaths are dealt round-robin over the roster, so one death per player in
+    each of the three others puts every specialisation at 3 of 3 -- past the
+    "more than half" bar -- while the deepest attempt lost nobody.
+    """
+    roster = a_roster(size)
+    deepest = a_loaded_attempt(1, remaining=10.0, deaths_after_ms=(), players=roster)
+    round_robin = tuple(1_000 * (n + 1) for n in range(size))
+    others = [
+        a_loaded_attempt(n, remaining=60.0, deaths_after_ms=round_robin, players=roster)
+        for n in (2, 3, 4)
+    ]
+    return a_loaded_series(deepest, *others)
+
+
+def test_a_night_most_of_the_raid_came_through_is_withheld_rather_than_trimmed() -> None:
+    """`MAX_SURVIVORS`'s own docstring: at six this stops being a difference and
+    starts being the roster.
+
+    Trimming to the top five would print a list that reads as the whole
+    difference while the condition that makes it meaningless -- that nearly
+    everyone came through -- goes unsaid. Silence is the honest answer, and
+    this fails the moment the cap goes back to slicing.
+    """
+    series = _everyone_came_through(MAX_SURVIVORS + 1)
+
+    assert best_survived(series) is None
+
+
+def test_the_cap_names_every_survivor_up_to_its_own_limit() -> None:
+    """The other side of the same cap, without which withholding everything passes.
+
+    At exactly `MAX_SURVIVORS` the finding still speaks, and it names all of
+    them rather than a sample: a cap that trimmed here would print fewer
+    evidence lines than there are qualifying specialisations.
+    """
+    series = _everyone_came_through(MAX_SURVIVORS)
+
+    finding = best_survived(series)
+
+    assert finding is not None
+    assert finding.title.startswith(f"{MAX_SURVIVORS} specialisations")
+    assert len(finding.evidence) == MAX_SURVIVORS
+    for class_name, spec in SPECS[:MAX_SURVIVORS]:
+        assert f"{spec} {class_name}" in finding.detail
