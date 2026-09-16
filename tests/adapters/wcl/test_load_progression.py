@@ -176,3 +176,34 @@ def test_a_report_with_no_boss_fight_says_so(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="no boss fight"):
         repository.load_progression("abc123", None, None)
+
+
+def test_an_explicit_boss_with_no_difficulty_takes_its_first_fights_difficulty(
+    tmp_path: Path,
+) -> None:
+    """`--boss` with no `--difficulty` is the calling convention the next task uses.
+
+    NIGHT holds fight 40 on this same boss at difficulty 4, after four fights
+    at difficulty 5. Asserting 5 -- not 4 -- is what tells "first matching
+    fight" apart from "some other fight" or "the last one".
+    """
+    repository, _ = a_repository_counting_calls(tmp_path)
+
+    progression = repository.load_progression("abc123", 3492, None)
+
+    assert progression.difficulty == 5
+
+
+def test_an_explicit_boss_absent_from_the_report_says_so(tmp_path: Path) -> None:
+    """A mistyped or stale `--boss` id, with no `--difficulty` to fall back on.
+
+    `_pick_boss` cannot take "the first matching fight's difficulty" when no
+    fight matches at all, so it names the id that found nothing rather than
+    letting an empty list subscript raise `IndexError`.
+    """
+    repository, _ = a_repository_counting_calls(tmp_path)
+
+    with pytest.raises(ValueError) as error:
+        repository.load_progression("abc123", 9999, None)
+
+    assert "9999" in str(error.value)
