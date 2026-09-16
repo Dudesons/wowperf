@@ -38,31 +38,40 @@ remaining lasting 105.9s and 110.0s as real qualifying attempts. What marks
 a reset is the combination this population shows only below 41.01s:
 near-total health remaining *and* well under a minute of combat.
 
-That report, `cW38jmwdnZfbHVL4`, is a second, independent population, and it
-does not appear in this project's cache: an earlier session probed it live
+A second, independent population exists, and it does not appear in this
+project's cache: an earlier session probed report `cW38jmwdnZfbHVL4` live
 through a scratch cache directory that was never part of this checkout, so
-its 349-attempt count above does not include it. Recorded in
-`docs/plans/2026-09-16-progression-analysis-design.md` §2.3 and §4.3, three
-of its attempts ran 15.8s, 17.1s and 25.4s, every one at or near 100%
-remaining -- confirmed resets, the same shape as this population's 26.70s
-and 41.01s -- and its next-shortest attempt ran 88.0s at 87.65% remaining, a
-real attempt matching this population's 47.17s at 87.86% almost exactly.
+its 349-attempt count above does not include it. That report holds
+nineteen fights across about eight bosses (section 7.1's fight count and
+section 2.3's phase note, both in
+docs/plans/2026-09-16-progression-analysis-design.md). Section 2.3 tables
+eight of those nineteen -- a full night on one boss -- and it is the source
+of two readings: 15.8s at 100% remaining (that night's own shortest,
+its attempt 8) and 88.0s at 87.65% remaining (its next-shortest, attempt
+5). Section 4.3 adds that three attempts across the *whole* report ran
+15.8s, 17.1s and 25.4s at or near 100% remaining. Only 15.8s is in the
+eight-attempt table; 17.1s and 25.4s must belong to two of the other eleven
+fights, on other bosses, whose durations the design records nowhere.
 
-The two populations agree rather than conflict: this population's confirmed
-resets top out at 41.01s and its confirmed real attempt starts at 47.17s;
-`cW38jmwdnZfbHVL4`'s confirmed resets top out at 25.4s and its confirmed
-real attempts start at 88.0s. Both ranges are consistent with any floor
-between 41.01s and 47.17s, and this population's corridor is the tighter of
-the two, so it governs. One attempt sits inside that corridor unresolved:
-44.56s, on the same boss (Sszorak) as the 47.17s real attempt and 2.6s
-short of it, with no `fightPercentage` ever cached for it. Its true
-classification is unknown; the floor set below does not depend on it.
+So the second population corroborates this one's reset side without
+bounding its real-attempt side. 15.8s, 17.1s and 25.4s confirm the same
+shape recurs across several bosses in that report -- a pull under a minute
+that ends at or near full boss health is a reset, matching this
+population's 26.70s and 41.01s. But 88.0s is only known to be the shortest
+real attempt on the *one* boss section 2.3 tables; the other eleven fights'
+durations were never recorded, so nothing rules out a shorter real attempt
+existing among them. This population's own 41.01s-47.17s corridor --
+26.70s and 41.01s as confirmed resets, 47.17s as a confirmed real attempt
+-- is therefore self-sufficient and is what governs the floor below. One
+attempt sits inside that corridor unresolved: 44.56s, on the same boss
+(Sszorak) as the 47.17s real attempt and 2.6s short of it, with no
+`fightPercentage` ever cached for it. Its true classification is unknown;
+the floor set below does not depend on it.
 
-44.0 sits near the midpoint of the 41.01s-47.17s corridor: 2.99s above the
-longest confirmed reset and 3.17s below the shortest confirmed real attempt,
-in both populations. It is a considered value rather than a guess, but the
-corridor itself is narrow, built from two confirmed points on each side
-(three resets and one real attempt in `cW38jmwdnZfbHVL4`; two resets and one
-real attempt here), and it has not been checked against a third population.
-Call it provisional in that sense, and revisit it if a third night's data
-narrows the corridor further or, unlike this one, disagrees."""
+44.0 sits near the midpoint of this population's 41.01s-47.17s corridor:
+2.99s above the longest confirmed reset and 3.17s below the shortest
+confirmed real attempt. It is a considered value rather than a guess, but
+the corridor rests on two confirmed points on the reset side and one on
+the real side, and it has not been checked against a real-attempt reading
+shorter than 47.17s, nor against a third population. Call it provisional
+in that sense, and revisit it if either turns up."""
