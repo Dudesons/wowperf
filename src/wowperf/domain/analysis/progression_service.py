@@ -138,14 +138,14 @@ def _movement(progression: Progression, depths: list[float], label: str) -> Find
             "ordinary shape of progression, not a decline."
         )
     elif gap > 0:
-        title = f"Later attempts went deeper, by {gap:.1f} points of median"
+        title = f"Later attempts went deeper, by {gap:.1f} points of median ({label})"
         detail = (
             f"The earlier attempts sat at a median of {early:.1f}% and the later ones "
             f"at {late:.1f}% ({label}). Splitting a night in half is a modelling "
             "choice, and this states the two halves rather than a rate."
         )
     else:
-        title = f"Later attempts sat shallower, by {-gap:.1f} points of median"
+        title = f"Later attempts sat shallower, by {-gap:.1f} points of median ({label})"
         detail = (
             f"The earlier attempts sat at a median of {early:.1f}% and the later ones "
             f"at {late:.1f}% ({label}). Fatigue, a roster change and a strategy "

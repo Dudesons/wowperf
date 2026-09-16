@@ -66,6 +66,7 @@ def test_the_measured_night_reports_the_movement_its_halves_actually_show() -> N
     assert movement.confidence == "derived"
     assert "deeper" in movement.title.lower()
     assert "9.2" in movement.title
+    assert "encounter" in movement.title.lower()
 
 
 def test_a_night_whose_halves_barely_differ_says_no_movement() -> None:
@@ -102,6 +103,33 @@ def test_a_night_that_really_did_deepen_is_allowed_to_say_so() -> None:
 
     assert "no movement" not in movement.title.lower()
     assert "deep" in movement.title.lower()
+    assert "encounter" in movement.title.lower()
+
+
+def test_a_night_that_sat_shallower_later_prints_a_positive_gap() -> None:
+    """Guards the sign of the shallower branch specifically.
+
+    Earlier attempts sit deep (median 35.0), later ones sit shallow (median
+    88.0): gap = early - late = -53.0. The branch negates that to print the
+    positive figure a reader should see, 53.0. Printing the raw, still-negative
+    gap instead would read "by -53.0 points" -- wrong, but every other test in
+    this file would still pass, since none of them reaches this branch. The
+    substring assertion below is chosen so that regression breaks it: "by
+    53.0 points" is not a substring of "by -53.0 points of median".
+    """
+    shallowing = [
+        an_attempt(1, 30.0, 300.0), an_attempt(2, 35.0, 320.0), an_attempt(3, 40.0, 340.0),
+        an_attempt(4, 86.0, 140.0), an_attempt(5, 88.0, 130.0), an_attempt(6, 90.0, 120.0),
+    ]
+    progression = build_progression(shallowing, encounter_id=3492, difficulty=5)
+
+    movement = one(analyse_progression(progression), "progression.movement")
+
+    assert movement.confidence == "derived"
+    assert "shallower" in movement.title.lower()
+    assert "by 53.0 points" in movement.title
+    assert "-53.0" not in movement.title
+    assert "encounter" in movement.title.lower()
 
 
 def test_movement_is_withheld_when_too_few_attempts_qualify() -> None:
