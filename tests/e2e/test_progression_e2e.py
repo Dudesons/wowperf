@@ -146,8 +146,8 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
 
     findings = rank_raid_findings(analyse_progression(series))
     assert {f.id for f in findings} >= {
-        "progression.best", "progression.cluster", "progression.movement",
-        "progression.collapse", "progression.repeat.phase",
+        "progression.best", "progression.best.deaths", "progression.cluster",
+        "progression.movement", "progression.collapse", "progression.repeat.phase",
     }
     assert len({f.id for f in findings}) == len(findings), "ids must be unique"
 
@@ -264,6 +264,18 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     # `PROGRESSION_PANEL_ORDER` stays the one place the count is stated, and a
     # sixth tab added without a line there is a tab no test sees.
     assert PANEL_ID.findall(html) == PROGRESSION_PANEL_ORDER
+
+    # This plan's own layer: the deepest attempt's death count against the
+    # rest of the night, on the Best attempt tab. `progression.best.deaths` is
+    # asserted present in the findings above; this proves it also reaches the
+    # page, in the one panel that carries it, rather than only the JSON.
+    best_panel = re.search(
+        r'<section class="panel"[^>]*\sid="tab-best">(.*?)</section>', html, re.DOTALL
+    )
+    assert best_panel is not None, "the page drew no Best attempt panel at all"
+    assert 'id="finding-progression.best.deaths"' in best_panel.group(1), (
+        "the Best attempt panel carries no card for the deaths finding"
+    )
 
     # Both artefacts name the same scale. Read out of the findings file rather
     # than recomputed, so a page whose header said "boss health" over figures
