@@ -57,7 +57,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
-from wowperf.domain.progression import Progression, build_progression
+from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
 # trimmed reference profiles, each fetching only the streams its own axis reads.
@@ -512,6 +512,54 @@ class WclRunRepository:
             phases=phases,
             separates_wipes=separates_wipes,
         )
+
+    def load_progression_attempts(self, progression: Progression) -> LoadedProgression:
+        """Deepen every qualifying attempt: deaths and damage taken, nothing else.
+
+        Two streams an attempt, against the nine `load_encounter` fetches for one
+        fight. Measured 2026-09-16: an event stream costs about 1.00 points a
+        fight whatever its size, so an eight-attempt night lands near 20 points
+        of 3600 rather than the design's projected 40 to 60 -- which priced a
+        debuff stream the measurement then cut.
+
+        No casts stream. `build_deaths` uses casts only to time how long a dead
+        player stayed out of the fight, which is a Mythic+ recap's figure and
+        which nothing in Layer 2 reads; fetching one per attempt would double
+        the command's cost for a field nobody looks at.
+        """
+        hits: list[bool] = []
+        ability_names, _icons = self._ability_dictionary(progression.report_code, hits)
+
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables, hits)
+
+        no_pulls: tuple[Pull, ...] = ()
+        loaded: list[LoadedEncounter] = []
+        for attempt in progression.attempts:
+            event_variables = {
+                "code": attempt.report_code,
+                "fightId": attempt.fight_id,
+                "startTime": float(attempt.start_ms),
+                "endTime": float(attempt.end_ms),
+            }
+            player_names = {player.actor_id: player.name for player in attempt.players}
+            deaths = build_deaths(
+                fetch_all_events(query, DEATHS_QUERY, event_variables),
+                no_pulls,
+                (),
+                player_names,
+                ability_names,
+            )
+            damage_taken = build_damage_taken(
+                fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables),
+                no_pulls,
+                ability_names,
+            )
+            loaded.append(
+                LoadedEncounter(encounter=attempt, deaths=deaths, damage_taken=damage_taken)
+            )
+
+        return LoadedProgression(progression=progression, loaded=tuple(loaded))
 
     def load_speed_reference(
         self, report_code: str, fight_id: int | None
