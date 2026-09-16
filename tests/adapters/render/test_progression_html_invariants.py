@@ -11,6 +11,7 @@ from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON
 from tests.domain.progression_fixtures import PHASES, a_loaded_attempt, a_loaded_series
 from tests.domain.test_progression import an_attempt
 from wowperf.adapters.render.html import render_progression
+from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.progression import LoadedProgression, build_progression
@@ -229,6 +230,12 @@ def test_the_page_makes_no_request_but_its_icons() -> None:
     for forbidden in FORBIDDEN_IN_SCRIPT:
         assert forbidden not in body, forbidden
 
+    # Vacuous on this page today, on purpose kept rather than dropped: icons here
+    # are addressed through a CSS url() and an SVG <image href>, never through
+    # `src=`, so no fixture in this file makes this loop match anything. It is a
+    # standing check against a future template that starts using `src=` for an
+    # icon -- see `a_progression_page_with_an_icon` below for the coverage this
+    # page's actual icon-resolution path needs, which this loop cannot give it.
     for src in re.findall(r'src="([^"]*)"', html, flags=re.IGNORECASE):
         assert src.startswith(ICON_HOST), src
 
@@ -284,6 +291,83 @@ def test_the_page_carries_no_reference_to_another_report() -> None:
     check: the page links to no report at all.
     """
     assert "warcraftlogs.com/reports/" not in a_progression_page()
+
+
+ICON_ABILITY_ID = 445432
+ICON_FILENAME = "inv_misc_food_wheatbread.jpg"
+
+
+def a_progression_findings_with_an_ability() -> tuple[Finding, ...]:
+    """One finding whose title names a single ability, so `ledger_row`'s title
+    split can hand it an `ability_id`.
+
+    `progression.repeat.ability` is the one finding family that names one --
+    `render_progression`'s own docstring says so -- so this is the only shape a
+    progression finding can take that an icon could ever resolve against.
+    """
+    return (
+        Finding(
+            id="progression.repeat.ability",
+            title="Ravenous Feast kept landing as attempts fell apart",
+            detail="It landed in three of the four attempts carrying a window.",
+            confidence=Confidence.MEASURED,
+            ability_id=ICON_ABILITY_ID,
+            ability_name="Ravenous Feast",
+        ),
+    )
+
+
+def a_progression_page_with_an_icon() -> str:
+    """The one page in this file that actually resolves an icon.
+
+    A fixture of its own rather than an `icons=` argument added to
+    `a_progression_page()`: that one feeds the committed golden file, which
+    pins the page a run with no `icons` argument produces -- the CLI may never
+    pass one, and folding an icon into it would make the golden byte-diff turn
+    on a CDN address instead of on the run itself. Every other fixture in this
+    file renders with no `icons` argument at all, so the scoping rules below
+    would still pass over a page that started drawing a wrongly-scoped address,
+    because nothing there resolves one to catch. This is the fixture that does.
+    """
+    report = build_progression_report(
+        a_progression_series(), a_progression_findings_with_an_ability(), FETCHED_AT
+    )
+    return render_progression(report, CdnIcons({ICON_ABILITY_ID: ICON_FILENAME}))
+
+
+def test_every_image_address_the_page_draws_points_at_the_icon_host() -> None:
+    # The self-containment loop above checks `src=` attributes; an icon reaches
+    # this page through a CSS url() instead, which that loop cannot see since
+    # nothing here ever draws one through `src=`. Icons are the only thing the
+    # report may load, and one host is the only place it may load them from.
+    html = a_progression_page_with_an_icon()
+    drawn = re.findall(r"url\(([^)]*)\)", html)
+    assert drawn, "the fixture resolved no icon, so this rule was never exercised"
+    for address in drawn:
+        assert address.startswith(ICON_HOST), address
+
+
+def test_a_resolved_icon_reaches_the_page_as_an_address_never_as_embedded_bytes() -> None:
+    # The page carries no image bytes of its own. Embedding would satisfy every
+    # scoping rule above perfectly well, which is why it needs a check of its
+    # own rather than following from the two around it.
+    html = a_progression_page_with_an_icon()
+    assert f"url({ICON_HOST}{ICON_FILENAME})" in html
+    assert "data:image" not in html
+
+
+def test_every_href_stays_scoped_even_when_an_icon_resolves() -> None:
+    # `test_the_page_carries_no_reference_to_another_report` above is proved
+    # against a page that resolves no icon at all. An SVG <image href> is the
+    # one other shape an href may take on this page, and this applies the same
+    # scoping -- a fragment, or the icon host -- to a page that draws one.
+    html = a_progression_page_with_an_icon()
+    hrefs = re.findall(r'href="([^"]*)"', html)
+    assert any(href.startswith(ICON_HOST) for href in hrefs), (
+        "the fixture resolved no icon href, so this rule was never exercised"
+    )
+    for href in hrefs:
+        assert href.startswith("#") or href.startswith(ICON_HOST), href
 
 
 ATTEMPT_ROW_CELLS = re.compile(
