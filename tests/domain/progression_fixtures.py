@@ -41,6 +41,7 @@ def a_loaded_attempt(
     deaths_after_ms: tuple[int, ...] = (),
     damage_after_ms: tuple[tuple[int, int, int | None], ...] = (),
     players: tuple[Player, ...] = (),
+    ability_names: dict[int, str] | None = None,
     **overrides: object,
 ) -> LoadedEncounter:
     """One deepened attempt.
@@ -53,6 +54,11 @@ def a_loaded_attempt(
     Deaths are dealt round-robin to `players` where a roster is given, so a
     test that cares which actor died first can say so by ordering the roster.
     Damage events are dealt the same way, for the same reason.
+
+    `ability_names` names each `DamageTakenEvent` by its `ability_id`, falling
+    back to `"x"` for any id it does not cover. A finding reports names to a
+    reader, never ids, so a test asserting on what the reader sees needs a
+    real name to look for.
     """
     encounter = an_attempt(fight_id, remaining, seconds, players=players, **overrides)
     start_ms = encounter.start_ms
@@ -77,7 +83,7 @@ def a_loaded_attempt(
         DamageTakenEvent(
             actor_id=actor_for(index)[0],
             ability_id=ability_id,
-            ability_name="x",
+            ability_name=(ability_names or {}).get(ability_id, "x"),
             amount=0,
             timestamp_ms=start_ms + offset,
             source_id=source_id,

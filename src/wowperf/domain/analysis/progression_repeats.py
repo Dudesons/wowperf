@@ -53,15 +53,27 @@ def repeat_phase(progression: Progression) -> Finding | None:
     )
 
 
+def _first_death_ms(one: LoadedEncounter) -> int | None:
+    """The timestamp of an attempt's first death, or None if nobody died.
+
+    The one figure `collapse_seconds` and `repeat_ability` both build their
+    window from, so the two findings cannot disagree about when an attempt
+    started falling apart.
+    """
+    if not one.deaths:
+        return None
+    return min(death.timestamp_ms for death in one.deaths)
+
+
 def collapse_seconds(one: LoadedEncounter) -> float | None:
     """From the first death to the end of the attempt, or None if nobody died.
 
     The same window `repeat_ability` reads, so the two findings cannot disagree
     about when an attempt started falling apart.
     """
-    if not one.deaths:
+    first = _first_death_ms(one)
+    if first is None:
         return None
-    first = min(death.timestamp_ms for death in one.deaths)
     return (one.encounter.end_ms - first) / 1000
 
 
@@ -143,4 +155,90 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
         ),
         confidence=Confidence.MEASURED,
         evidence=(f"{count} of {len(specs)} attempts",),
+    )
+
+
+MAX_REPEAT_ABILITIES = 5
+
+
+def repeat_ability(series: LoadedProgression) -> Finding | None:
+    """Which abilities kept landing while attempts fell apart, named and counted.
+
+    The window is the one `_first_death_ms` gives `collapse_seconds`: from an
+    attempt's first death to its end. An attempt with no death contributes
+    nothing.
+
+    A hit whose `source_id` is a roster player -- including the victim's own
+    id, which is self-damage -- is excluded outright rather than counted.
+    Measured 2026-09-16 across 19 fights and 8 encounters: outside one
+    anomalous encounter, that population is 99 hits across 17 fights, and even
+    inside it, it is entirely teammates' own class abilities landing on a raid
+    member the encounter turned hostile -- never a bearing on what the enemy
+    did. An ability like Blessing of Sacrifice, a cooldown that redirects
+    damage away from an ally, would otherwise show up here as something that
+    repeatedly ends attempts, which would be wrong.
+
+    Counts attempts an ability appeared in, never hits, and reports only
+    abilities present in more than half the attempts with a window, capped at
+    five. Confidence is derived rather than measured: which hits fall inside
+    the window is a modelling choice, not a fact the log states outright.
+    """
+    attempts_with_window = 0
+    ability_names: dict[int, str] = {}
+    attempts_by_ability: Counter[int] = Counter()
+
+    for one in series.attempts_with_events:
+        first = _first_death_ms(one)
+        if first is None:
+            continue
+        attempts_with_window += 1
+
+        friendly_ids = {player.actor_id for player in one.players}
+        seen_this_attempt: set[int] = set()
+        for hit in one.damage_taken:
+            if hit.timestamp_ms < first:
+                continue
+            if hit.source_id is not None and hit.source_id in friendly_ids:
+                continue
+            ability_names.setdefault(hit.ability_id, hit.ability_name)
+            seen_this_attempt.add(hit.ability_id)
+
+        for ability_id in seen_this_attempt:
+            attempts_by_ability[ability_id] += 1
+
+    if attempts_with_window < 2:
+        return None
+
+    qualifying = [
+        (ability_id, count)
+        for ability_id, count in attempts_by_ability.items()
+        if count > attempts_with_window / 2
+    ]
+    if not qualifying:
+        return None
+
+    qualifying.sort(key=lambda pair: (-pair[1], ability_names[pair[0]]))
+    top = qualifying[:MAX_REPEAT_ABILITIES]
+
+    lines = tuple(
+        f"{ability_names[ability_id]} landed in {count} of {attempts_with_window} attempts"
+        for ability_id, count in top
+    )
+
+    return Finding(
+        id="progression.repeat.ability",
+        title=f"{len(top)} abilities kept landing as attempts fell apart",
+        detail=(
+            f"Across the {attempts_with_window} attempts carrying a window from the first "
+            "death to the end, these abilities kept landing on someone after the raid "
+            "started coming apart: "
+            + "; ".join(lines)
+            + ". This counts the attempts each ability appeared in, not hits, and excludes "
+            "any hit a roster player dealt, self-damage included. Which hits fall inside "
+            "that window is a modelling choice, so this reads as derived rather than "
+            "measured, and states only what kept landing, nothing about why an attempt "
+            "ended."
+        ),
+        confidence=Confidence.DERIVED,
+        evidence=lines,
     )

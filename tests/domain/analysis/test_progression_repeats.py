@@ -7,6 +7,7 @@ from tests.domain.test_progression import an_attempt
 from wowperf.domain.analysis.progression_repeats import (
     collapse,
     collapse_seconds,
+    repeat_ability,
     repeat_first_death,
     repeat_phase,
 )
@@ -262,4 +263,172 @@ def test_disclaims_blame_rather_than_naming_a_mistake() -> None:
     assert "not about the player" in finding.detail
     text = f"{finding.title} {finding.detail}".lower()
     for banned in ("fail", "failed", "missed", "mistake", "wrong", "fault"):
+        assert banned not in text
+
+
+# --- progression.repeat.ability ---
+
+# A single-player roster, its one member's actor id doubling as the id a
+# "teammate-sourced" or "self-damage" hit is attributed to. Real spec fields
+# are never read by this finding, so they are filled in but not asserted on.
+ONE_PALADIN: tuple[Player, ...] = (
+    Player(actor_id=1, name="Emberkin", class_name="Paladin", spec="Holy", item_level=600),
+)
+ONE_WARRIOR: tuple[Player, ...] = (
+    Player(actor_id=7, name="Stonewake", class_name="Warrior", spec="Fury", item_level=600),
+)
+
+ENEMY_SOURCE = 999
+
+
+def test_counts_attempts_an_ability_appeared_in_not_hits() -> None:
+    names = {100: "Rockfall", 200: "Tidal Crush"}
+    nine_hits_one_attempt = tuple((60_000 + i * 100, 100, ENEMY_SOURCE) for i in range(9))
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=nine_hits_one_attempt + ((60_000, 200, ENEMY_SOURCE),),
+            ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 200, ENEMY_SOURCE),), ability_names=names,
+        ),
+        a_loaded_attempt(
+            3, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 200, ENEMY_SOURCE),), ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    assert finding.confidence is Confidence.DERIVED
+    assert "3 of 3" in finding.detail
+    assert "Tidal Crush" in finding.detail          # the ability in three attempts
+    assert "Rockfall" not in finding.detail         # the nine-hit, one-attempt ability
+
+
+def test_excludes_hits_sourced_by_a_teammate() -> None:
+    names = {300: "Blessing of Sacrifice", 301: "Soul Sever"}
+    both = ((60_000, 300, 1), (60_000, 301, ENEMY_SOURCE))
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
+            players=ONE_PALADIN, ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
+            players=ONE_PALADIN, ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    assert "Soul Sever" in finding.detail                 # ability 301, enemy-sourced
+    assert "Blessing of Sacrifice" not in finding.detail  # ability 300, teammate-sourced
+
+
+def test_excludes_self_damage() -> None:
+    names = {400: "Void Grasp", 401: "Fel Rupture"}
+    both = ((60_000, 400, 7), (60_000, 401, ENEMY_SOURCE))
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
+            players=ONE_WARRIOR, ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=both,
+            players=ONE_WARRIOR, ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    assert "Fel Rupture" in finding.detail        # enemy-sourced, still named
+    assert "Void Grasp" not in finding.detail      # source_id is the victim's own actor id
+
+
+def test_only_counts_hits_inside_the_collapse_window() -> None:
+    names = {500: "Early Cleave", 501: "Tidal Surge"}
+    before_and_after = ((10_000, 500, ENEMY_SOURCE), (60_000, 501, ENEMY_SOURCE))
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=before_and_after,
+            ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,), damage_after_ms=before_and_after,
+            ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    assert "Tidal Surge" in finding.detail          # lands after the first death
+    assert "Early Cleave" not in finding.detail     # lands before it
+
+
+def test_is_withheld_below_two_attempts_with_a_window() -> None:
+    assert repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 600, ENEMY_SOURCE),),
+            ability_names={600: "Aftershock"},
+        ),
+        a_loaded_attempt(2, seconds=100.0, deaths_after_ms=()),
+    )) is None
+
+
+def test_requires_more_than_half_not_merely_half() -> None:
+    names = {700: "Half Nova", 701: "Majority Blast"}
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 700, ENEMY_SOURCE), (60_000, 701, ENEMY_SOURCE)),
+            ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 700, ENEMY_SOURCE), (60_000, 701, ENEMY_SOURCE)),
+            ability_names=names,
+        ),
+        a_loaded_attempt(
+            3, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 701, ENEMY_SOURCE),),
+            ability_names=names,
+        ),
+        a_loaded_attempt(4, seconds=100.0, deaths_after_ms=(50_000,)),
+    ))
+    assert finding is not None
+    assert "Majority Blast" in finding.detail    # present in 3 of 4 -- more than half
+    assert "Half Nova" not in finding.detail     # present in exactly 2 of 4 -- not more than half
+
+
+def test_caps_at_five_abilities() -> None:
+    names = {
+        800: "Ability A", 801: "Ability B", 802: "Ability C",
+        803: "Ability D", 804: "Ability E", 805: "Ability F",
+    }
+    six_abilities = tuple((60_000, ability_id, ENEMY_SOURCE) for ability_id in names)
+    finding = repeat_ability(a_loaded_series(*(
+        a_loaded_attempt(
+            fight_id, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=six_abilities, ability_names=names,
+        )
+        for fight_id in (1, 2, 3)
+    )))
+    assert finding is not None
+    assert "5 abilities" in finding.title
+    for name in ("Ability A", "Ability B", "Ability C", "Ability D", "Ability E"):
+        assert name in finding.detail
+    assert "Ability F" not in finding.detail    # sixth-place tie, dropped by the cap
+
+
+def test_says_nothing_about_a_mechanic_being_missed() -> None:
+    names = {900: "Tidal Crush"}
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 900, ENEMY_SOURCE),), ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 900, ENEMY_SOURCE),), ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    text = f"{finding.title} {finding.detail}".lower()
+    for banned in ("missed", "avoidable", "should have", "failed", "mistake"):
         assert banned not in text
