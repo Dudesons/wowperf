@@ -12,7 +12,8 @@ from tests.domain.progression_fixtures import PHASES, a_loaded_attempt, a_loaded
 from tests.domain.test_progression import an_attempt
 from wowperf.adapters.render.html import render_progression
 from wowperf.adapters.render.icons import CdnIcons
-from wowperf.domain.encounter import Encounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.progression import LoadedProgression, build_progression
 from wowperf.domain.report.progression_build import build_progression_report
@@ -63,6 +64,28 @@ def _measured_attempts() -> list[Encounter]:
     ]
 
 
+def _loaded(encounter: Encounter, *, deaths_after_ms: tuple[int, ...] = ()) -> LoadedEncounter:
+    """Wraps one of `_measured_attempts()`'s own encounters as a deepened attempt.
+
+    `a_loaded_attempt` builds its own encounter from scratch -- its own
+    default boss name, no `last_phase` -- so a loaded attempt built that way
+    reads a different encounter than `progression.attempts` holds for the
+    same fight id: harmless while only `loaded.deaths` is read off it, wrong
+    the moment anything reads `loaded.encounter.last_phase`, `.kill` or
+    `.duration_seconds` instead. Wrapping the very object `_measured_attempts()`
+    returned keeps the two in agreement on every field, not only the one this
+    fixture happens to exercise today.
+    """
+    deaths = tuple(
+        Death(
+            player_name="", actor_id=1, timestamp_ms=encounter.start_ms + offset,
+            killing_blow="x",
+        )
+        for offset in deaths_after_ms
+    )
+    return LoadedEncounter(encounter=encounter, deaths=deaths, damage_taken=())
+
+
 def a_progression_series() -> LoadedProgression:
     """A night that varies: the deepest attempt sits third of seven, one attempt
     was discarded below the duration floor, phases are separated, and nothing
@@ -72,16 +95,16 @@ def a_progression_series() -> LoadedProgression:
     deepest, and one more -- so the fixture also carries the "no reading yet"
     state the Deaths column has for an attempt nobody fetched events for.
     """
+    measured = _measured_attempts()
     progression = build_progression(
-        _measured_attempts(), encounter_id=3492, difficulty=5, phases=PHASES,
+        measured, encounter_id=3492, difficulty=5, phases=PHASES,
         separates_wipes=True,
     )
+    by_fight_id = {encounter.fight_id: encounter for encounter in measured}
     loaded = (
-        a_loaded_attempt(28, remaining=64.81, seconds=215.7, deaths_after_ms=(180_000,)),
-        a_loaded_attempt(
-            30, remaining=16.49, seconds=480.0, deaths_after_ms=(400_000, 450_000)
-        ),
-        a_loaded_attempt(33, remaining=53.30, seconds=278.8),
+        _loaded(by_fight_id[28], deaths_after_ms=(180_000,)),
+        _loaded(by_fight_id[30], deaths_after_ms=(400_000, 450_000)),
+        _loaded(by_fight_id[33]),
     )
     return LoadedProgression(progression=progression, loaded=loaded)
 
@@ -118,7 +141,7 @@ def a_progression_findings() -> tuple[Finding, ...]:
         ),
         Finding(
             id="progression.best.deaths",
-            title="The deepest attempt lost more players than the rest of the night",
+            title="The deepest attempt took more roster deaths than the rest of the night",
             detail="Two roster deaths, against zero and one on the other attempts read.",
             confidence=Confidence.MEASURED,
         ),
