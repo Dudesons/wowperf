@@ -75,6 +75,7 @@ import pytest
 from wowperf.cli import build_repository
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import rank_raid_findings
+from wowperf.domain.progression import LoadedProgression
 
 
 @pytest.mark.e2e
@@ -106,7 +107,10 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
     assert len(progression.phases) == 4
     assert any(p.is_intermission for p in progression.phases)
 
-    findings = rank_raid_findings(analyse_progression(progression))
+    # This test stops at Layer 1 and deepens no attempt (see the cost note
+    # above), so it wraps the bare `Progression` with no `loaded` rather than
+    # calling `load_progression_attempts`.
+    findings = rank_raid_findings(analyse_progression(LoadedProgression(progression=progression)))
     assert {f.id for f in findings} >= {
         "progression.best", "progression.cluster", "progression.movement"
     }

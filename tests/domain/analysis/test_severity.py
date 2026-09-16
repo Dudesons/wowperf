@@ -71,16 +71,35 @@ def test_every_family_the_progression_path_emits_has_a_severity() -> None:
     """Derived from the analyser rather than hand-written, unlike the raid list above.
 
     This is the guard the raid version admits it cannot be: it builds a real
-    progression, runs the real analyser, and checks every id it emits.
-    """
-    from tests.domain.test_progression import a_measured_night
-    from wowperf.domain.analysis.progression_service import analyse_progression
-    from wowperf.domain.progression import build_progression
+    `LoadedProgression` -- deepened with deaths and damage taken, not a bare
+    `Progression` -- runs the real analyser, and checks every id it emits.
 
-    progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
-    findings = analyse_progression(progression)
+    A bare `LoadedProgression(progression=...)` with no `loaded` would compile
+    and pass here while covering none of Layer 2's four ids, since every Layer
+    2 analyser returns `None` on an attempt nothing was deepened for. Deepening
+    the fixture and asserting each id by name is what closes that gap: R4 says
+    every `progression.*` id, Layer 1 or Layer 2, resolves through the single
+    `"progression"` key, and this proves that rather than assuming it.
+
+    `a_deepened_pair` is the same two-attempt fixture
+    `test_progression_service.py` uses to prove Layer 2 fires at all --
+    reused here rather than rebuilt, so the two tests cannot silently drift
+    onto two different claims about what "deepened" means.
+    """
+    from tests.domain.analysis.test_progression_service import a_deepened_pair
+    from wowperf.domain.analysis.progression_service import analyse_progression
+
+    findings = analyse_progression(a_deepened_pair())
+    found_ids = {finding.id for finding in findings}
 
     assert findings, "a fixture that emits nothing would make this pass vacuously"
+    for layer_two_id in (
+        "progression.repeat.phase",
+        "progression.repeat.first_death",
+        "progression.repeat.ability",
+        "progression.collapse",
+    ):
+        assert layer_two_id in found_ids, f"{layer_two_id} never fired from the deepened fixture"
     for finding in findings:
         family = finding.id.split(".")[0]
         assert family in SEVERITY_BY_FAMILY, f"{finding.id} ranks on UNKNOWN_SEVERITY"

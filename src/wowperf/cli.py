@@ -1666,8 +1666,9 @@ def progression(
     A sibling of `raid`, not a mode of it: `raid` compares one fight against
     other reports' kills, while this compares a report's own attempts at one
     boss against each other, which is what makes it an order of magnitude
-    cheaper -- one query answers every fight in the report at once. Layer 1
-    only: it reads fight metadata and draws no external reference, so
+    cheaper -- one query answers every fight in the report's metadata at
+    once, and each qualifying attempt costs one more pair of streams: its
+    deaths and its damage taken. It still draws no external reference, so
     `--player`, `--all-players` and `--no-compare` do not apply here and are
     not offered.
 
@@ -1684,7 +1685,8 @@ def progression(
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
         progression = repository.load_progression(code, boss, difficulty)
-        findings = rank_raid_findings(analyse_progression(progression))
+        deep = repository.load_progression_attempts(progression)
+        findings = rank_raid_findings(analyse_progression(deep))
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
@@ -1699,6 +1701,7 @@ def progression(
         "killed": progression.killed,
         "attempts_counted": len(progression.attempts),
         "attempts_discarded": len(progression.discarded),
+        "attempts_deepened": len(deep.loaded),
         "separates_wipes": progression.separates_wipes,
         "phases": [phase.model_dump(mode="json") for phase in progression.phases],
         "findings_are_ranked_not_additive": PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
