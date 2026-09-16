@@ -24,10 +24,12 @@ from wowperf.domain.phases import PhaseTransition
 class Encounter(Frozen):
     """One boss fight. Carries no pulls: a raid fight has none to carry.
 
-    `fight_percentage` is the boss health remaining when the attempt ended, as
-    Warcraft Logs reports it, and is None where the report does not say. A kill
-    reports about 0.01 rather than 0, which is why `outcome` reads `kill`
-    rather than comparing the percentage against zero.
+    `fight_percentage` is the *encounter's* progress remaining when the attempt
+    ended, as Warcraft Logs reports it, and is None where the report does not
+    say. It is not boss health: `boss_percentage` below is, and the two diverge
+    by 3 to 8 points on most attempts of the one night measured. A kill reports
+    about 0.01 rather than 0, which is why `outcome` reads `kill` rather than
+    comparing the percentage against zero.
     """
 
     report_code: str

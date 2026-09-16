@@ -1157,7 +1157,16 @@ source, across 6 distinct abilities**.
 A damage-taken event carries `timestamp`, `type`, `sourceID`, `targetID`, `abilityGameID`,
 `fight`, `hitType`, `amount` and `isAoE` on every row, and `unmitigatedAmount`, `buffs`,
 `mitigated`, `absorbed`, `tick`, `targetMarker`, `sourceInstance`, `sourceMarker` and `blocked` on
-some. `DamageTakenEvent` in `src/wowperf/domain/events.py` keeps none of the source fields today.
+some.
+
+**Corrected 2026-09-16.** This paragraph ended "`DamageTakenEvent` in
+`src/wowperf/domain/events.py` keeps none of the source fields today", and that was already false
+when it was written. `source_id: int | None` has been a field on `DamageTakenEvent`, populated by
+`build_damage_taken` from `sourceID`, since `fd90170` on 2026-09-11. The source fields the ingest
+really drops are `sourceInstance` and `sourceMarker`. The same claim reached
+`docs/plans/2026-09-16-progression-analysis-design.md` §2.6 and is corrected there too. This is
+the shape of defect this file's opening warning exists for — a claim about our own code, written
+without running it.
 
 `EventDataType` offers exactly fourteen values, transcribed from the same introspection: `All`,
 `Buffs`, `Casts`, `CombatantInfo`, `DamageDone`, `DamageTaken`, `Deaths`, `Debuffs`, `Dispels`,

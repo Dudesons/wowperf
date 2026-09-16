@@ -102,12 +102,20 @@ The causal chain — one raider passes a mechanic to another, the damage that fo
 to the encounter — is **reconstructed, never read**. §9.1 carries this as the design's first
 risk, with the measurement that must precede any attempt to build it.
 
-### 2.6 Damage events name their source; our ingest discards it
+### 2.6 Damage events name their source, and the ingest already keeps it
 
 Every one of 2009 damage-taken rows on one wipe carried `sourceID`. **357 rows (17.8%) came from
-a friendly player, across 6 distinct abilities.** `DamageTakenEvent` in
-`src/wowperf/domain/events.py` keeps the victim and drops the source, so the signal is present
-in the API and absent from the domain.
+a friendly player, across 6 distinct abilities.**
+
+**Corrected 2026-09-16.** This section was headed "our ingest discards it" and said
+`DamageTakenEvent` keeps the victim and drops the source. That is wrong, and was wrong on the day
+it was written: `source_id: int | None` has been a field on `DamageTakenEvent` and populated by
+`build_damage_taken` since `fd90170` on 2026-09-11, five days earlier. `sourceInstance` and
+`sourceMarker` are the source fields the ingest really drops, and nothing here wants them. The
+same false claim reached `.claude/skills/wcl-api/SKILL.md` and is corrected there too.
+
+**So the damage half of §4.4 is already built, and no plan should re-add the field.** What is
+genuinely missing is a *reader*: no analyser asks whether a hit's source was a friendly player.
 
 Self-damage (`sourceID == targetID`) is class mechanics and is excluded wherever this design
 counts player-sourced damage.
@@ -209,8 +217,10 @@ silently dropped.
 
 ### 4.4 The player-sourced damage seam
 
-`DamageTakenEvent` gains `source_id: int | None`, defaulting to `None`. Where it is a friendly
-player and not the victim, the hit is player-sourced.
+`DamageTakenEvent` **already carries** `source_id: int | None` (§2.6's correction). Where it is a
+friendly player and not the victim, the hit is player-sourced. Nothing is added to that event
+type; what is missing is a reader, and the roster that says which actor ids are friendly players
+is already on `Encounter.players`.
 
 The debuff stream is new to this project. `PlayerDebuffEvent` carries
 `{source_id, target_id, ability_id, ability_name, kind, timestamp_ms}` where `kind` is the event
