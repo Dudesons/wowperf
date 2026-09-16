@@ -188,13 +188,23 @@ def test_the_keystone_flags_are_not_offered_by_raid() -> None:
 
 
 @pytest.mark.usefixtures("wired_cli")
-def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it() -> None:
+def test_raid_on_a_keystone_report_names_the_command_that_does_handle_it(
+    tmp_path: Path,
+) -> None:
     """`wired_cli`'s mock transport serves a Mythic+ report.
 
     Pointing `raid` at one is the mistake a reader will actually make, and the
     error has to be a signpost rather than a complaint.
+
+    `--cache-dir` must be given explicitly: `wired_cli` takes a `tmp_path` of
+    its own but never wires it to the cache directory, so a bare invocation
+    here would fetch the report for real and cache the response under this
+    repository's own `cache/`, gitignored but real, rather than in a
+    directory pytest cleans up.
     """
-    result = runner.invoke(app, ["raid", "abc123"])
+    result = runner.invoke(
+        app, ["raid", "abc123", "--cache-dir", str(tmp_path / "cache")]
+    )
 
     assert result.exit_code != 0
     assert "analyze" in plain(result.output)
@@ -4401,8 +4411,8 @@ def test_progression_writes_findings_keyed_on_the_boss(tmp_path: Path) -> None:
     file at the path this asserts.
     """
     fights = [
-        _progression_fight(11, fight_percentage=40.0),
-        _progression_fight(12, fight_percentage=20.0),
+        _progression_fight(11, fight_percentage=40.0, start_ms=0, end_ms=120_000),
+        _progression_fight(12, fight_percentage=20.0, start_ms=200_000, end_ms=320_000),
     ]
     result = run_progression(tmp_path, fights, "--boss", str(PROGRESSION_ENCOUNTER_ID))
 
