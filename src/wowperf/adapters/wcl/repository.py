@@ -121,6 +121,12 @@ def _pick_boss(
     that boss's first fight, on the same reasoning `Progression` itself uses:
     a raid night is fought at one difficulty, so the fight list settles it
     rather than making the caller repeat what the report already states.
+
+    The existence check runs whether or not `difficulty` was supplied. An
+    explicit `--boss` naming a fight absent from the report, or naming one
+    present only at a different difficulty, is a routine user error and must
+    be refused with a message -- not answered with an unchecked pair that
+    `build_progression` then turns into an empty, nameless series.
     """
     if encounter_id is None:
         boss_ids = sorted({int(fight["encounterID"]) for fight in fights})
@@ -129,11 +135,16 @@ def _pick_boss(
             raise ValueError(f"This report holds several bosses ({named}); pass --boss")
         encounter_id = boss_ids[0]
 
+    matching = [fight for fight in fights if fight["encounterID"] == encounter_id]
+    if not matching:
+        raise ValueError(f"This report holds no fight for boss {encounter_id}")
+
     if difficulty is None:
-        matching = [fight for fight in fights if fight["encounterID"] == encounter_id]
-        if not matching:
-            raise ValueError(f"This report holds no fight for boss {encounter_id}")
         difficulty = int(matching[0]["difficulty"])
+    elif not any(int(fight["difficulty"]) == difficulty for fight in matching):
+        raise ValueError(
+            f"This report holds no difficulty {difficulty} fight for boss {encounter_id}"
+        )
 
     return encounter_id, difficulty
 
