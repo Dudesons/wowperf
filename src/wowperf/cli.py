@@ -39,8 +39,10 @@ from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
+from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.measures import PlayerMeasures
@@ -134,6 +136,21 @@ own rather than borrowing the wording: `analyse_encounter` ranks with
 `FINDINGS_ARE_RANKED_NOT_ADDITIVE` first and carried its rule across would take
 a mechanics finding outranking a longer death for a mistake in the seconds,
 when it is the severity table doing exactly what it is for.
+"""
+
+PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
+    "Findings are ranked by severity, never summed. No figure here is a "
+    "share of another, and the night's shape is stated as a median and a "
+    "range rather than as a trend."
+)
+"""Why the figures in a progression findings file must never be summed.
+
+A third sibling, not a reuse of either warning above: `analyse_progression`
+reads fight metadata only and sets `seconds_lost` on no finding at all, so
+there is no nesting to name the way the Mythic+ and raid warnings each do.
+What this states instead is the one thing a reader could still get wrong --
+that the median and the range progression.cluster reports are a summary of
+where attempts sat, never a trend a slope could be drawn through.
 """
 
 
@@ -1628,6 +1645,81 @@ def raid(
         raise typer.Exit(1) from error
 
     typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository.client.costs)
+
+
+@app.command()
+def progression(
+    report: str = typer.Argument(..., help="Report URL or code"),
+    boss: int | None = typer.Option(
+        None, help="Encounter id; required when the report holds more than one boss"
+    ),
+    difficulty: int | None = typer.Option(
+        None, help="Difficulty id; defaults to the boss's own first fight in the report"
+    ),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings JSON"),
+) -> None:
+    """Analyse a night of attempts on one raid boss and write its findings as JSON.
+
+    A sibling of `raid`, not a mode of it: `raid` compares one fight against
+    other reports' kills, while this compares a report's own attempts at one
+    boss against each other, which is what makes it an order of magnitude
+    cheaper -- one query answers every fight in the report at once. Layer 1
+    only: it reads fight metadata and draws no external reference, so
+    `--player`, `--all-players` and `--no-compare` do not apply here and are
+    not offered.
+
+    Writes no HTML. The report for this command belongs to a later plan; a
+    half-rendered page is worse than none.
+    """
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    try:
+        code, _ = parse_report_url(report)
+        repository = build_repository(cache_dir)
+        before = repository.rate_limit()
+        progression = repository.load_progression(code, boss, difficulty)
+        findings = rank_raid_findings(analyse_progression(progression))
+        after = repository.rate_limit()
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    payload = {
+        "report_code": progression.report_code,
+        "encounter_id": progression.encounter_id,
+        "boss_name": progression.boss_name,
+        "difficulty": progression.difficulty,
+        "size": progression.size,
+        "killed": progression.killed,
+        "attempts_counted": len(progression.attempts),
+        "attempts_discarded": len(progression.discarded),
+        "separates_wipes": progression.separates_wipes,
+        "phases": [phase.model_dump(mode="json") for phase in progression.phases],
+        "findings_are_ranked_not_additive": PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+    }
+
+    written = out / f"{progression.report_code}-{progression.encounter_id}.progression.json"
+    # A guard of its own, on the same reasoning `raid`'s write phase carries
+    # one: this fails differently from the block above, and can fail after
+    # the findings have already been computed.
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        # Real rosters and boss names contain non-ASCII characters; write_text's
+        # default encoding is locale-dependent (commonly cp1252 on Windows) and
+        # would raise on them.
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"{len(findings)} findings written to {written}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 
