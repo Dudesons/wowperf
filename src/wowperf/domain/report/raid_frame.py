@@ -20,7 +20,7 @@ from wowperf.domain.encounter import Encounter
 # tiers, which is why they live beside the code that reads them rather than
 # in `data/season.toml`. A number this table does not carry prints as a
 # number rather than a guess.
-_DIFFICULTY_NAMES: dict[int, str] = {3: "Normal", 4: "Heroic", 5: "Mythic"}
+DIFFICULTY_NAMES: dict[int, str] = {3: "Normal", 4: "Heroic", 5: "Mythic"}
 
 
 class RaidHeader(Frozen):
@@ -49,7 +49,7 @@ def build_raid_header(encounter: Encounter) -> RaidHeader:
         outcome = "Wiped"
     else:
         outcome = f"Wiped at {encounter.fight_percentage:.1f}% remaining"
-    difficulty = _DIFFICULTY_NAMES.get(encounter.difficulty, f"Difficulty {encounter.difficulty}")
+    difficulty = DIFFICULTY_NAMES.get(encounter.difficulty, f"Difficulty {encounter.difficulty}")
     return RaidHeader(
         boss=encounter.boss_name,
         difficulty=difficulty,
