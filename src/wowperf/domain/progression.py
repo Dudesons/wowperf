@@ -83,19 +83,21 @@ shorter than 47.17s, nor against a third population. Call it provisional
 in that sense, and revisit it if either turns up."""
 
 
-def remaining_percent(encounter: Encounter) -> float | None:
-    """How much was left when the attempt ended, and which figure that is.
+def remaining_percent(encounter: Encounter, *, uses_boss_health: bool) -> float | None:
+    """How much was left when the attempt ended, on the scale the whole series uses.
 
     `bossPercentage` is the boss's own health and `fightPercentage` is the
     encounter's progress. They diverge sharply -- one measured attempt read
-    51.12 against 3.76 -- so the boss figure is preferred where the report gives
-    one, because a raid that pushed the boss to 3.76% learned something the
-    encounter figure hides. Every caller that prints either must name which it
-    got; `Progression` carries both on the attempt itself so a caller can.
+    51.12 against 3.76 -- so pooling the two under one label would make that
+    label true of only some of the figures it describes. Which scale a series
+    uses is therefore decided once, for every attempt in it, by
+    `Progression.uses_boss_health`, and passed in here rather than re-decided
+    per attempt: a series where even one qualifying attempt lacks a boss
+    reading reads entirely on `fightPercentage`, never a mix of the two.
 
     Both count down: a kill reads about 0.01 and an instant wipe reads 100.
     """
-    if encounter.boss_percentage is not None:
+    if uses_boss_health:
         return encounter.boss_percentage
     return encounter.fight_percentage
 
@@ -127,6 +129,25 @@ class Progression(Frozen):
         return any(attempt.kill for attempt in self.attempts)
 
     @property
+    def uses_boss_health(self) -> bool:
+        """Whether this whole series reads as boss health rather than encounter progress.
+
+        True only when every attempt in `attempts` carries a `bossPercentage`
+        reading. The choice is all-or-nothing for the series: pooling a night
+        where only some attempts carry one would put two different scales
+        under a single label, so even one qualifying attempt without a boss
+        reading falls the whole series back to `fightPercentage`. This is the
+        one place that decision is made; `deepest` and every finding in
+        `progression_service.py` read it from here rather than deciding it
+        again, so they cannot drift apart.
+
+        `discarded` attempts are not consulted: they are excluded from every
+        figure the series reports, so they take no part in choosing which
+        figure that is.
+        """
+        return bool(self.attempts) and all(a.boss_percentage is not None for a in self.attempts)
+
+    @property
     def deepest(self) -> Encounter | None:
         """The attempt that got furthest -- least left, not last pulled.
 
@@ -134,7 +155,10 @@ class Progression(Frozen):
         third. Reading the last attempt as the best one is the single mistake
         this whole design exists to avoid.
         """
-        rated = [(remaining_percent(a), a) for a in self.attempts]
+        uses_boss_health = self.uses_boss_health
+        rated = [
+            (remaining_percent(a, uses_boss_health=uses_boss_health), a) for a in self.attempts
+        ]
         scored = [(left, a) for left, a in rated if left is not None]
         if not scored:
             return None

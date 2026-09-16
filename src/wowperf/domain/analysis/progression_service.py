@@ -17,65 +17,78 @@ from fifty.
 
 
 def _depth_label(progression: Progression) -> str:
-    """Which percentage the figures in this report are, in one word."""
-    uses_boss = any(a.boss_percentage is not None for a in progression.attempts)
-    return "boss health" if uses_boss else "encounter progress"
+    """Which percentage the figures in this report are, in one word.
+
+    Reads `Progression.uses_boss_health` rather than deciding again from the
+    attempts itself -- that decision has exactly one home, so the label and
+    the figures it names cannot drift onto different scales.
+    """
+    return "boss health" if progression.uses_boss_health else "encounter progress"
 
 
 def analyse_progression(progression: Progression) -> list[Finding]:
     """Layer 1: where the attempts sit. Reads metadata only and fetches nothing."""
     findings: list[Finding] = []
+    uses_boss_health = progression.uses_boss_health
     depths = [
-        left for left in (remaining_percent(a) for a in progression.attempts)
+        left
+        for left in (
+            remaining_percent(a, uses_boss_health=uses_boss_health) for a in progression.attempts
+        )
         if left is not None
     ]
-    if not depths:
-        return findings
 
-    label = _depth_label(progression)
-    deepest = progression.deepest
+    # A night that qualifies nothing still has something to say: whatever was
+    # excluded, below. Only the figures that depend on a qualifying attempt --
+    # best, cluster, movement -- are skipped when there are none.
+    if depths:
+        label = _depth_label(progression)
+        deepest = progression.deepest
 
-    if deepest is not None:
-        left = remaining_percent(deepest)
-        assert left is not None
-        position = progression.attempts.index(deepest) + 1
+        if deepest is not None:
+            left = remaining_percent(deepest, uses_boss_health=uses_boss_health)
+            if left is None:
+                raise AssertionError(
+                    "deepest was chosen by remaining_percent, so it must have a reading"
+                )
+            position = progression.attempts.index(deepest) + 1
+            findings.append(
+                Finding(
+                    id="progression.best",
+                    title=f"The best attempt left {left:.1f}% ({label})",
+                    detail=(
+                        f"Attempt {position} of {len(progression.attempts)} got furthest, "
+                        f"lasting {deepest.duration_seconds:.0f} seconds. The deepest attempt "
+                        "of a night is often not its last."
+                    ),
+                    confidence=Confidence.MEASURED,
+                    evidence=(
+                        f"Attempt {position} of {len(progression.attempts)}, "
+                        f"fight {deepest.fight_id}",
+                        f"{deepest.duration_seconds:.0f} seconds",
+                    ),
+                )
+            )
+
         findings.append(
             Finding(
-                id="progression.best",
-                title=f"The best attempt left {left:.1f}% ({label})",
+                id="progression.cluster",
+                title=f"Attempts sat at a median of {median(depths):.1f}% ({label})",
                 detail=(
-                    f"Attempt {position} of {len(progression.attempts)} got furthest, "
-                    f"lasting {deepest.duration_seconds:.0f} seconds. The deepest attempt "
-                    "of a night is often not its last."
+                    f"Across {len(depths)} attempts the observed range ran "
+                    f"{min(depths):.1f}% to {max(depths):.1f}%. A median and a range, "
+                    "never an average: one attempt that went deep does not move a median, "
+                    "but it would drag an average down."
                 ),
                 confidence=Confidence.MEASURED,
                 evidence=(
-                    f"Attempt {position} of {len(progression.attempts)}, "
-                    f"fight {deepest.fight_id}",
-                    f"{deepest.duration_seconds:.0f} seconds",
+                    f"{len(depths)} attempts counted",
+                    f"range {min(depths):.1f}% to {max(depths):.1f}%",
                 ),
             )
         )
 
-    findings.append(
-        Finding(
-            id="progression.cluster",
-            title=f"Attempts sat at a median of {median(depths):.1f}% ({label})",
-            detail=(
-                f"Across {len(depths)} attempts the observed range ran "
-                f"{min(depths):.1f}% to {max(depths):.1f}%. A median and a range, "
-                "never an average: one attempt that went deep does not move a median, "
-                "but it would drag an average down."
-            ),
-            confidence=Confidence.MEASURED,
-            evidence=(
-                f"{len(depths)} attempts counted",
-                f"range {min(depths):.1f}% to {max(depths):.1f}%",
-            ),
-        )
-    )
-
-    findings.append(_movement(progression, depths, label))
+        findings.append(_movement(progression, depths, label))
 
     if progression.discarded:
         n = len(progression.discarded)

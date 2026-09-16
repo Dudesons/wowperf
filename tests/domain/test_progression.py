@@ -114,11 +114,48 @@ def test_the_phase_table_and_its_guard_travel_with_the_series() -> None:
     assert progression.separates_wipes is True
 
 
-def test_remaining_prefers_the_boss_figure_where_the_report_gives_one() -> None:
-    """bossPercentage is the boss's own health; fightPercentage is the encounter's."""
-    assert remaining_percent(an_attempt(1, 51.12, 200.0, boss_percentage=3.76)) == 3.76
-    assert remaining_percent(an_attempt(1, 51.12, 200.0)) == 51.12
+def test_remaining_reads_the_boss_figure_when_the_series_uses_boss_health() -> None:
+    """bossPercentage is the boss's own health; fightPercentage is the encounter's.
+
+    Which one a given attempt is read on is not this attempt's own choice --
+    `uses_boss_health` is decided for the whole series and passed in.
+    """
+    attempt = an_attempt(1, 51.12, 200.0, boss_percentage=3.76)
+    assert remaining_percent(attempt, uses_boss_health=True) == 3.76
+
+
+def test_remaining_reads_the_fight_figure_when_the_series_does_not_use_boss_health() -> None:
+    attempt = an_attempt(1, 51.12, 200.0, boss_percentage=3.76)
+    assert remaining_percent(attempt, uses_boss_health=False) == 51.12
 
 
 def test_an_attempt_the_report_says_nothing_about_has_no_depth() -> None:
-    assert remaining_percent(an_attempt(1, 50.0, 200.0, fight_percentage=None)) is None
+    empty = an_attempt(1, 50.0, 200.0, fight_percentage=None)
+    assert remaining_percent(empty, uses_boss_health=False) is None
+    assert remaining_percent(empty, uses_boss_health=True) is None
+
+
+def test_a_series_uses_boss_health_only_when_every_attempt_carries_one() -> None:
+    """Finding: two incompatible percentages must never pool under one label.
+
+    All three qualify: one series where every attempt carries both readings
+    uses boss health throughout; one where even a single attempt lacks a
+    boss reading falls the whole series back to encounter progress, not a
+    per-attempt mix of the two; and an empty series is neither.
+    """
+    every_attempt_has_both = [
+        an_attempt(1, 51.12, 200.0, boss_percentage=40.0),
+        an_attempt(2, 60.0, 210.0, boss_percentage=25.0),
+    ]
+    only_some_have_boss_health = [
+        an_attempt(1, 51.12, 200.0, boss_percentage=3.76),
+        an_attempt(2, 60.0, 210.0),
+    ]
+
+    all_boss = build_progression(every_attempt_has_both, encounter_id=3492, difficulty=5)
+    mixed = build_progression(only_some_have_boss_health, encounter_id=3492, difficulty=5)
+    empty = build_progression([], encounter_id=3492, difficulty=5)
+
+    assert all_boss.uses_boss_health is True
+    assert mixed.uses_boss_health is False
+    assert empty.uses_boss_health is False

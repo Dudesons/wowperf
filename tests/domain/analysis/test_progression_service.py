@@ -30,12 +30,16 @@ def test_the_best_finding_names_the_deepest_attempt_not_the_last() -> None:
 
 
 def test_the_best_finding_says_which_percentage_it_means() -> None:
+    """`a_measured_night` never sets `boss_percentage`, so the only correct
+    label is "encounter progress". Asserting either word would pass even if
+    the wrong scale were picked -- both labels contain one of the two words,
+    so only pinning the exact label can catch a mislabelled series.
+    """
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 
     best = one(analyse_progression(progression), "progression.best")
 
-    text = best.title + best.detail + " ".join(best.evidence)
-    assert "encounter" in text.lower() or "boss" in text.lower()
+    assert "(encounter progress)" in best.title
 
 
 def test_the_cluster_reports_a_median_and_a_range_never_a_mean() -> None:
@@ -179,3 +183,62 @@ def test_an_empty_night_produces_no_findings_rather_than_raising() -> None:
     progression = build_progression([], encounter_id=3492, difficulty=5)
 
     assert analyse_progression(progression) == []
+
+
+def test_a_night_of_only_discards_still_reports_the_discard() -> None:
+    """A night where nothing qualifies must still say so.
+
+    Two attempts under `MIN_ATTEMPT_SECONDS` (20s and 30s) leave `attempts`
+    empty and `discarded` holding both. The old `if not depths: return
+    findings` returned before the discarded block was ever reached, so a
+    night that excluded everything reported nothing at all -- the one case
+    where the exclusion finding is the whole story. A reimplementation of
+    that early return would make this list empty again instead of holding
+    exactly one finding.
+    """
+    only_resets = [an_attempt(1, 90.0, 20.0), an_attempt(2, 80.0, 30.0)]
+    progression = build_progression(only_resets, encounter_id=3492, difficulty=5)
+
+    findings = analyse_progression(progression)
+
+    assert ids(findings) == ["progression.attempts.discarded"]
+    assert "2" in findings[0].title
+
+
+def test_a_night_where_every_attempt_carries_boss_health_uses_it_throughout() -> None:
+    """All three qualifying attempts carry a boss reading, so the series reads
+    entirely on boss health -- label and median must agree on that scale.
+    """
+    boss_health_night = [
+        an_attempt(1, 51.12, 200.0, boss_percentage=3.76),
+        an_attempt(2, 60.0, 210.0, boss_percentage=40.0),
+        an_attempt(3, 70.0, 220.0, boss_percentage=20.0),
+    ]
+    progression = build_progression(boss_health_night, encounter_id=3492, difficulty=5)
+
+    cluster = one(analyse_progression(progression), "progression.cluster")
+
+    assert "(boss health)" in cluster.title
+    # median of 3.76, 40.0, 20.0 is 20.0 -- the boss-health figures.
+    assert "20.0" in cluster.title
+
+
+def test_a_night_where_only_some_attempts_carry_boss_health_reads_as_encounter_progress() -> None:
+    """Reproduces the bug directly: pooling (fight 51.12, boss 3.76) with
+    (fight 60.0, boss absent) used to print a median of 31.9% -- the median
+    of 3.76 and 60.0, two different scales -- labelled "boss health", true
+    of only one of the two figures. One attempt without a boss reading must
+    pull the WHOLE series back to fightPercentage instead.
+    """
+    mixed_night = [
+        an_attempt(1, 51.12, 200.0, boss_percentage=3.76),
+        an_attempt(2, 60.0, 210.0),
+    ]
+    progression = build_progression(mixed_night, encounter_id=3492, difficulty=5)
+
+    cluster = one(analyse_progression(progression), "progression.cluster")
+
+    assert "(encounter progress)" in cluster.title
+    # median of 51.12, 60.0 (both read as fightPercentage) is 55.56.
+    assert "55.6" in cluster.title
+    assert "31.9" not in cluster.title
