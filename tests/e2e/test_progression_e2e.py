@@ -32,6 +32,26 @@ per-encounter: Ula'tek's `separates_wipes` is True, and `Report.phases` names fo
 (three stages and one intermission). Both happened to match this test's original draft, so
 neither assertion below was corrected -- they are recorded here as verified, not as assumed.
 
+**Measures design section 11 item 3, previously left open.** Every one of the 7 qualifying
+attempts on this boss carries a `bossPercentage` reading, not only some -- so
+`Progression.uses_boss_health` is True for this series and every finding reads on the boss-health
+scale, not the encounter-progress one. That matters because design section 2.3's own table --
+64.81, 85.80, 16.49, 85.40, 87.65, 53.30, 55.65, 100 -- is stated in `fightPercentage`
+(confirmed above), and is *not* what this report's `bossPercentage` reads for the same eight
+attempts: 59.25, 80.08, 23.15, 79.52, 82.68, 54.14, 50.92, 100.0, measured live 2026-09-16 against
+the same fetch this test makes. The two scales diverge by 3 to 8 points on six of the eight
+attempts, consistent with design section 2.4's general observation that they diverge sharply.
+
+They agree, on this one series, about *which* attempt is deepest: fight 30 (16.49 fightPercentage,
+23.15 bossPercentage) is the minimum on both scales, so section 2.3's headline claim -- the
+deepest attempt is the third of eight, not the last -- holds regardless of which scale is read.
+That agreement is this series' own property, not a general guarantee: a series where the two
+scales ranked attempts differently would report a different "best" attempt depending on which one
+`uses_boss_health` picked, and nothing rules that out for some other boss. The assertions below
+pin the fight id, not just "not last", precisely so a future series where the two scales disagree
+would be caught here rather than passing by the same luck `deepest is not attempts[-1]` used to
+rely on.
+
 Cost, measured 2026-09-16. This test calls `build_repository` and `load_progression` directly and
 makes no quota-reading call of its own, so its only network cost is the one `Fights` query
 `load_progression` sends. That query's own price -- 2.01 points -- was read from
@@ -59,15 +79,28 @@ from wowperf.domain.analysis.severity import rank_raid_findings
 
 @pytest.mark.e2e
 def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
-    """The eight-attempt night measured 2026-09-16. No kill, deepest attempt third."""
+    """The eight-attempt night measured 2026-09-16. No kill, deepest attempt third.
+
+    Asserts the specific truth rather than a shape that would pass by luck:
+    which fight is deepest, which scale the series reads on, and the figure
+    the best-attempt finding actually prints -- not merely "not the last
+    attempt", which a wrong implementation could satisfy on 6 of 7 qualifying
+    attempts without being right.
+    """
     repository = build_repository(tmp_path / "cache")
 
     progression = repository.load_progression("cW38jmwdnZfbHVL4", 3492, None)
 
     assert len(progression.attempts) + len(progression.discarded) == 8
     assert progression.killed is False
+    # Every qualifying attempt on this boss carries a bossPercentage reading,
+    # so the series reads on that scale throughout -- design section 11 item 3,
+    # measured for the first time by this test.
+    assert progression.uses_boss_health is True
+    # The finding the whole design exists to get right, pinned by fight id
+    # rather than merely "not the last one".
     assert progression.deepest is not None
-    # The finding the whole design exists to get right.
+    assert progression.deepest.fight_id == 30
     assert progression.deepest is not progression.attempts[-1]
     assert progression.separates_wipes is True
     assert len(progression.phases) == 4
@@ -78,3 +111,9 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
         "progression.best", "progression.cluster", "progression.movement"
     }
     assert len({f.id for f in findings}) == len(findings), "ids must be unique"
+
+    best = next(f for f in findings if f.id == "progression.best")
+    # 23.15 bossPercentage on fight 30, not section 2.3's 16.49 fightPercentage --
+    # the two scales agree on which attempt is deepest here, not on its figure.
+    assert "(boss health)" in best.title
+    assert "23.1" in best.title
