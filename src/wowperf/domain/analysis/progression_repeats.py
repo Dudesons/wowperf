@@ -6,7 +6,7 @@ from statistics import median
 
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.progression import LoadedProgression, Progression
 
 
@@ -176,7 +176,7 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
     member the encounter turned hostile -- never a bearing on what the enemy
     did. An ability like Blessing of Sacrifice, a cooldown that redirects
     damage away from an ally, would otherwise show up here as something that
-    repeatedly ends attempts, which would be wrong.
+    repeatedly ends attempts, which is not what it does.
 
     Counts attempts an ability appeared in, never hits, and reports only
     abilities present in more than half the attempts with a window, capped at
@@ -198,6 +198,11 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
         for hit in one.damage_taken:
             if hit.timestamp_ms < first:
                 continue
+            # A hit with no source_id is kept rather than excluded: the log naming
+            # nobody is not evidence of a teammate, and dropping it would silently
+            # discard a real enemy hit. Measured 2026-09-16: all 15,798 damage rows
+            # on the probed fight carried a source_id, so this branch is
+            # near-unreachable in practice, but it is a live and deliberate default.
             if hit.source_id is not None and hit.source_id in friendly_ids:
                 continue
             ability_names.setdefault(hit.ability_id, hit.ability_name)
@@ -227,7 +232,7 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
 
     return Finding(
         id="progression.repeat.ability",
-        title=f"{len(top)} abilities kept landing as attempts fell apart",
+        title=f"{quantity(len(top), 'ability', 'abilities')} kept landing as attempts fell apart",
         detail=(
             f"Across the {attempts_with_window} attempts carrying a window from the first "
             "death to the end, these abilities kept landing on someone after the raid "

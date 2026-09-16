@@ -416,6 +416,23 @@ def test_caps_at_five_abilities() -> None:
     assert "Ability F" not in finding.detail    # sixth-place tie, dropped by the cap
 
 
+def test_titles_a_single_qualifying_ability_in_the_singular() -> None:
+    names = {950: "Tidal Crush"}
+    finding = repeat_ability(a_loaded_series(
+        a_loaded_attempt(
+            1, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 950, ENEMY_SOURCE),), ability_names=names,
+        ),
+        a_loaded_attempt(
+            2, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=((60_000, 950, ENEMY_SOURCE),), ability_names=names,
+        ),
+    ))
+    assert finding is not None
+    assert "1 ability " in finding.title      # singular, not "1 abilities"
+    assert "1 abilities" not in finding.title
+
+
 def test_says_nothing_about_a_mechanic_being_missed() -> None:
     names = {900: "Tidal Crush"}
     finding = repeat_ability(a_loaded_series(
