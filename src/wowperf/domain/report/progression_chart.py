@@ -3,6 +3,7 @@
 
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.model import Section, SectionState
+from wowperf.domain.report.progression_frame import depth_label
 from wowperf.domain.report.progression_model import AttemptBar, AttemptsChart
 
 CHART_WIDTH = 680.0
@@ -36,10 +37,23 @@ TICK_PERCENTS = (0, 25, 50, 75, 100)
 TICK_LABEL_X = 40.0
 """Where a gridline's label sits, right-aligned against the plot's left edge."""
 
-LEGEND = (
-    "One bar an attempt, in pull order. A taller bar got further into the encounter. "
-    "The outlined bar is the attempt that went deepest."
-)
+
+def _legend(label: str) -> str:
+    """The chart's caption, naming the one thing its axis never spells out on its own.
+
+    Every tick reads a bare percentage -- `0%` through `100%` -- and means
+    depth *reached*, the opposite of the scale every other percentage on this
+    page prints (`remaining_percent`, the table's `Depth left` column, and this
+    same bar's own hover text). `label` is read from `depth_label`, the one
+    place that decides whether a night is on boss health or encounter
+    progress, so the axis and the header can never name two different scales.
+    """
+    return (
+        f"One bar an attempt, in pull order. Height is depth reached ({label}): a taller "
+        "bar got further into the encounter. The outlined bar is the attempt that went "
+        "deepest."
+    )
+
 
 NO_READING_REASON = (
     "This series has no depth reading on any attempt, so there is no shape to draw. "
@@ -65,6 +79,7 @@ def build_attempts_chart(series: LoadedProgression) -> AttemptsChart:
     attempts = progression.attempts
     uses_boss_health = progression.uses_boss_health
     deepest = progression.deepest
+    label = depth_label(uses_boss_health)
 
     blank = AttemptsChart(section=Section(state=SectionState.WITHHELD, reason=NO_READING_REASON))
     if not attempts:
@@ -99,7 +114,7 @@ def build_attempts_chart(series: LoadedProgression) -> AttemptsChart:
                 height=height,
                 css_class=" ".join(classes),
                 hover=(
-                    f"Attempt {index + 1}: {left:.1f}% left, "
+                    f"Attempt {index + 1}: {left:.1f}% left ({label}), "
                     f"{attempt.duration_seconds:.0f} seconds"
                 ),
             )
@@ -108,10 +123,10 @@ def build_attempts_chart(series: LoadedProgression) -> AttemptsChart:
     if not bars:
         return blank
 
-    legend = LEGEND
+    legend = _legend(label)
     if missing:
         legend = (
-            f"{LEGEND} {missing} attempt{'' if missing == 1 else 's'} "
+            f"{legend} {missing} attempt{'' if missing == 1 else 's'} "
             f"carr{'ies' if missing == 1 else 'y'} no depth reading and draw"
             f"{'s' if missing == 1 else ''} no bar."
         )

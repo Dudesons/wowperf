@@ -116,3 +116,39 @@ def test_every_tick_label_names_a_depth_the_axis_reaches() -> None:
     assert ys[0] == chart.baseline_y
     assert ys == sorted(ys, reverse=True)
     assert chart.tick_x1 < chart.tick_x2
+
+
+def test_the_legend_names_the_depth_scale_the_bars_are_on() -> None:
+    """Section 2.4's Global Constraint: every printed percentage names which one
+    it is. The bars' own height is a percentage read upward -- depth reached --
+    the one figure on this page with no naming of its own on the axis itself,
+    so the legend sentence above the chart is where it has to say so, and it
+    has to read the same word `depth_label` gives the header and the table.
+    """
+    on_boss_health = build_attempts_chart(
+        a_loaded_series(
+            a_loaded_attempt(1, remaining=50.0, boss_percentage=30.0),
+            a_loaded_attempt(2, remaining=60.0, boss_percentage=40.0),
+        )
+    )
+    assert "depth reached (boss health)" in on_boss_health.legend
+
+    on_progress = build_attempts_chart(
+        a_loaded_series(
+            a_loaded_attempt(1, remaining=50.0),
+            a_loaded_attempt(2, remaining=60.0),
+        )
+    )
+    assert "depth reached (encounter progress)" in on_progress.legend
+
+
+def test_a_bars_hover_text_names_the_depth_scale_too() -> None:
+    """The legend names the scale once; a reader hovering one bar, without
+    having read the legend first, gets the same naming again."""
+    chart = build_attempts_chart(
+        a_loaded_series(
+            a_loaded_attempt(1, remaining=50.0, boss_percentage=30.0),
+            a_loaded_attempt(2, remaining=60.0, boss_percentage=40.0),
+        )
+    )
+    assert all("(boss health)" in bar.hover for bar in chart.bars)
