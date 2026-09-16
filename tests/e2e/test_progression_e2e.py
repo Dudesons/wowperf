@@ -52,21 +52,24 @@ pin the fight id, not just "not last", precisely so a future series where the tw
 would be caught here rather than passing by the same luck `deepest is not attempts[-1]` used to
 rely on.
 
-Cost, measured 2026-09-16 for Layer 1 alone: the 2.01-point `Fights` query documented above,
-against a cold `tmp_path` cache. This test now deepens every qualifying attempt as well, through
-`load_progression_attempts`, whose own docstring documents about 1.00 point per event stream, two
-streams (deaths, damage taken) per attempt -- around 14 points for this night's seven qualifying
-attempts, close to the ~20-point total that same docstring measures for a full eight-attempt
-night's Layer 1 and Layer 2 cost together. Both of those are the other docstring's measurements,
-not this test's own -- the work that wrote this assertion did not run it against the live API, so
-rather than pin an exact combined figure here, the test reads `repository.rate_limit()` itself,
-once before `load_progression` and once after `load_progression_attempts`, and asserts the gap
-stays under 40 points: twice the ~20-point measurement, enough headroom for pagination without
-letting an unnoticed third stream through.
+Cost. Layer 1 alone costs the 2.01-point `Fights` query documented above, itself measured against
+a cold cache -- this test's `tmp_path` is fresh every run, so it is always cold in that sense.
+`load_progression_attempts` adds one deaths stream and one damage-taken stream per qualifying
+attempt on top of that; its own docstring estimates about 1.00 point per stream, so this night's
+seven qualifying attempts add roughly fourteen points to the `Fights` query's 2.01. That combined,
+cold-cache figure is not the same measurement as a warm-cache run of the same two calls -- one
+where the report's `Fights` response is already on disk, as a repeated CLI invocation against a
+persisted cache directory would be, paying nothing for it a second time -- so a lower point count
+measured that way is a different scenario, not a contradiction. Rather than pin an exact figure
+for either case here, the test reads `repository.rate_limit()` itself, once before
+`load_progression` and once after `load_progression_attempts`, and asserts the gap stays under 40
+points: comfortable headroom for the cold case this test always exercises, without letting an
+unnoticed extra stream through.
 """
 
 import re
 from pathlib import Path
+from statistics import median
 
 import pytest
 
@@ -140,18 +143,25 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
             f"fight {loaded.encounter.fight_id} deepened with no damage-taken rows"
         )
 
-    # The collapse window is measured from each attempt's first death to its
-    # end, so its median must fall strictly inside (0, longest attempt) --
-    # equal to or past that bound would mean the window was measured from the
-    # wrong starting point (the attempt's start, say) rather than the first
-    # death.
+    # A collapse window is the tail of an attempt -- from its first death to
+    # its end -- never the whole of it. Bounding the median only by the
+    # longest attempt's duration is too loose to prove that: an anchor bug
+    # that started the window at the attempt's start instead of its first
+    # death would make every window equal that attempt's own duration, and
+    # the median of seven real durations still sits comfortably under the
+    # longest one. Bounding it by the *median* attempt duration instead closes
+    # that gap -- under the anchor bug the collapse-median and the
+    # attempt-duration median are computed from the same set of numbers, so
+    # they would be equal and the strict "<" below would fail exactly when
+    # the bug is present.
     collapse_finding = next(f for f in findings if f.id == "progression.collapse")
     collapse_match = re.search(r"median of (\d+) seconds", collapse_finding.title)
     assert collapse_match is not None, collapse_finding.title
     collapse_median = float(collapse_match.group(1))
-    longest_attempt_seconds = max(a.duration_seconds for a in progression.attempts)
-    assert 0 < collapse_median < longest_attempt_seconds, (
-        f"collapse median {collapse_median}s outside (0, {longest_attempt_seconds}s)"
+    median_attempt_seconds = median(a.duration_seconds for a in progression.attempts)
+    assert 0 < collapse_median < median_attempt_seconds, (
+        f"collapse median {collapse_median}s not below median attempt duration "
+        f"{median_attempt_seconds}s"
     )
 
     # Phases 1 and 2 tie at three attempts each (measured 2026-09-16, encounter
@@ -166,16 +176,31 @@ def test_a_real_night_of_attempts_reads_as_a_series(tmp_path: Path) -> None:
 
     # The report holds twenty real people (CLAUDE.md's test-data rule): read
     # the roster back from the loaded progression itself, rather than listing
-    # a name here, and check that no finding's text repeats one. A finding
-    # that names a player -- say, by building a detail string from
-    # `Player.name` instead of `.spec`/`.class_name` -- would be caught here.
+    # a name here, and check that no finding's title, detail, evidence, facts,
+    # ability name or player slug -- every text field `Finding` carries --
+    # repeats one. A finding that names a player -- say, by building a detail
+    # string from `Player.name` instead of `.spec`/`.class_name` -- would be
+    # caught here. Matched on a word boundary rather than a bare substring, so
+    # a short roster name does not raise a false alarm just because it happens
+    # to sit inside an unrelated word of ordinary finding prose.
     roster_names = {
         player.name
         for attempt in (*progression.attempts, *progression.discarded)
         for player in attempt.players
     }
     assert roster_names, "the fixture roster should not be empty"
+    roster_patterns = [re.compile(rf"\b{re.escape(name)}\b") for name in roster_names]
     for finding in findings:
-        haystack = " ".join((finding.title, finding.detail, *finding.evidence))
-        for name in roster_names:
-            assert name not in haystack, f"finding {finding.id} named a roster member"
+        haystack = " ".join(
+            (
+                finding.title,
+                finding.detail,
+                finding.ability_name,
+                finding.player_slug,
+                *finding.evidence,
+                *(fact.label for fact in finding.facts),
+                *(fact.value for fact in finding.facts),
+            )
+        )
+        for pattern in roster_patterns:
+            assert pattern.search(haystack) is None, f"finding {finding.id} named a roster member"
