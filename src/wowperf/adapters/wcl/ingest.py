@@ -18,6 +18,7 @@ from wowperf.domain.events import (
 )
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import DamageDoneSeries, EnemyNpc, Player, Pull, Run
+from wowperf.domain.phases import Phase, PhaseTransition
 
 
 class IngestError(ValueError):
@@ -235,6 +236,33 @@ def build_raid_roster(
     return _build_players(fight, actors, talents or {}, {})
 
 
+def build_phases(report: dict[str, Any], encounter_id: int) -> tuple[tuple[Phase, ...], bool]:
+    """The phases this encounter has, and whether they separate its wipes.
+
+    `Report.phases` lists one entry per encounter in the report. An encounter
+    with no entry has no phases, which is a fact about the boss rather than an
+    error: two of eight bosses measured on 2026-09-16 were like this.
+
+    `separatesWipes` is Warcraft Logs' own opinion on whether phase is a
+    meaningful way to group that encounter's attempts, and it varies between
+    encounters in one report. Returning it beside the names keeps the guard and
+    the thing it guards in one place.
+    """
+    for entry in report.get("phases") or ():
+        if entry.get("encounterID") != encounter_id:
+            continue
+        phases = tuple(
+            Phase(
+                id=int(phase["id"]),
+                name=str(phase["name"]),
+                is_intermission=bool(phase.get("isIntermission")),
+            )
+            for phase in entry.get("phases") or ()
+        )
+        return phases, bool(entry.get("separatesWipes"))
+    return (), False
+
+
 def build_encounter(
     report: dict[str, Any],
     fight: dict[str, Any],
@@ -269,6 +297,15 @@ def build_encounter(
         size=int(fight["size"]) if fight.get("size") else len(players),
         kill=bool(fight.get("kill")),
         fight_percentage=fight.get("fightPercentage"),
+        boss_percentage=fight.get("bossPercentage"),
+        last_phase=fight.get("lastPhase"),
+        last_phase_is_intermission=bool(fight.get("lastPhaseIsIntermission")),
+        phase_transitions=tuple(
+            # int() truncates the API's Float rather than rounding, so a
+            # transition is never reported as later than it happened.
+            PhaseTransition(id=int(t["id"]), start_ms=int(t["startTime"]))
+            for t in fight.get("phaseTransitions") or ()
+        ),
         start_ms=int(fight["startTime"]),
         end_ms=int(fight["endTime"]),
         owner_name=(report.get("owner") or {}).get("name"),

@@ -60,14 +60,14 @@ covers it otherwise.
 | `petOwner` | `ReportActor` | 2026-09-12 | no |
 | `playerDetails` | `Report` | 2026-09-14 | yes |
 | `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
-| `bossPercentage` | `ReportFight` | 2026-09-16 | no |
-| `lastPhase` | `ReportFight` | 2026-09-16 | no |
-| `lastPhaseAsAbsoluteIndex` | `ReportFight` | 2026-09-16 | no |
-| `lastPhaseIsIntermission` | `ReportFight` | 2026-09-16 | no |
-| `phaseTransitions` | `ReportFight` | 2026-09-16 | no |
+| `bossPercentage` | `ReportFight` | 2026-09-16 | yes |
+| `lastPhase` | `ReportFight` | 2026-09-16 | yes |
+| `lastPhaseAsAbsoluteIndex` | `ReportFight` | 2026-09-16 | yes |
+| `lastPhaseIsIntermission` | `ReportFight` | 2026-09-16 | yes |
+| `phaseTransitions` | `ReportFight` | 2026-09-16 | yes |
 | `wipeCalledTime` | `ReportFight` | 2026-09-16 | no |
-| `phases` | `Report` | 2026-09-16 | no |
-| `separatesWipes` | `EncounterPhases` | 2026-09-16 | no |
+| `phases` | `Report` | 2026-09-16 | yes |
+| `separatesWipes` | `EncounterPhases` | 2026-09-16 | yes |
 | `killerID` | `Deaths event` | 2026-09-16 | no |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
