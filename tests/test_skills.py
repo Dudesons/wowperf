@@ -24,6 +24,14 @@ FIELD_ROW = re.compile(
 
 FLAG = re.compile(r"--[a-z][a-z-]+")
 
+# `analyze`'s own workflow, sliced off before its two younger siblings' sections.
+# `raid` happens to offer a subset of `analyze`'s own flags, so scanning the
+# whole file never caught it; `progression` does not -- `--boss` and
+# `--difficulty` name nothing `analyze --help` offers -- so the flag checks
+# below must read only the section that is actually about `analyze`.
+def _analyze_workflow_text() -> str:
+    return ANALYZING_SKILL.read_text(encoding="utf-8").split("## The `raid` command")[0]
+
 
 def field_rows() -> list[tuple[str, str]]:
     """(field name, "yes" or "no") for every row of the skill's field table."""
@@ -58,7 +66,7 @@ def test_every_flag_the_workflow_tells_you_to_type_exists() -> None:
     # typer infers `--player` and `--narrative` from their parameter names, so
     # neither string appears in the source at all.
     help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
-    flags = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
+    flags = set(FLAG.findall(_analyze_workflow_text()))
     assert flags, "the workflow names no flags at all, so this test proves nothing"
     missing = sorted(flag for flag in flags if flag not in help_text)
     assert missing == [], f"named in the skill but absent from the command: {missing}"
@@ -70,7 +78,7 @@ def test_every_flag_the_command_offers_is_named_in_the_workflow() -> None:
     help_text = plain(CliRunner().invoke(app, ["analyze", "--help"]).output)
     offered = set(FLAG.findall(help_text)) - {"--help"}
     assert offered, "the command's help names no flags at all, so this test proves nothing"
-    named = set(FLAG.findall(ANALYZING_SKILL.read_text(encoding="utf-8")))
+    named = set(FLAG.findall(_analyze_workflow_text()))
     missing = sorted(offered - named)
     assert missing == [], f"offered by the command but never named in the skill: {missing}"
 

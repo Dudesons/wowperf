@@ -196,6 +196,17 @@ One approximation and three measurements:
   documents no per-query cost, and nothing recorded about either run points to a cause, so it is
   left as a gap rather than a guess. Total spent across every command this measurement ran, cold
   and warm together: 50.59 points of 3600, leaving 2672.33.
+- **`wowperf progression` on an eight-attempt night, cold cache: 3.01 points of 3600**
+  (2026-09-16, report `cW38jmwdnZfbHVL4`, encounter 3492, `Ula'tek` -- the same boss fight 30's
+  wipe above names). One `Fights` query for the whole report, 2.01 points, plus the command's own
+  opening `RateLimit` read; the closing read stays unpriced, as always. This is the design's own
+  §7.1 cost claim -- one query answers a whole night -- measured rather than assumed: no attempt
+  was deepened, so this reading is not comparable to the design's 40-to-60-point *projection* for
+  a *deepened* night, which this plan's Layer 1 never approaches. **Re-run against the same,
+  now-warm cache: 1.00 point** -- the two `RateLimit` reads and nothing else, no `Fights` line at
+  all. `tests/e2e/test_progression_e2e.py` runs the equivalent query directly, without its own
+  `RateLimit` calls, so its own marginal network cost is the `Fights` line alone: 2.01 points
+  cold, every run, since it uses a fresh `tmp_path` cache each time.
 
 ## Every query reports its own cost
 

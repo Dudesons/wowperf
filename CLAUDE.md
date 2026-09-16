@@ -432,8 +432,9 @@ lines are unreliable, so the code is the record.
 | `uv run wowperf fetch <url> [--fight N] [--cache-dir DIR]` | Fetch a Mythic+ run and print it as JSON |
 | `uv run wowperf analyze <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--narrative FILE] [--throughput-ceiling] [--cache-dir DIR] [--out DIR]` | Analyse a run against its reference samples and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
 | `uv run wowperf raid <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--cache-dir DIR] [--out DIR]` | Analyse a raid boss fight against reference kills and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
+| `uv run wowperf progression <url> [--boss ID] [--difficulty N] [--cache-dir DIR] [--out DIR]` | Read every attempt at one boss from one report and write `<code>-<encounter>.progression.json` |
 
-All three take a report URL or a bare report code, and all three print what the run
+All four take a report URL or a bare report code, and all four print what the run
 spent from the hourly point budget, broken down by operation. `.github/workflows/gate.yml`
 runs the lint, the type check and the offline suite on every push and pull request, and
 builds the wheel to check it carries the report's templates — none of them is a `.py` file,
