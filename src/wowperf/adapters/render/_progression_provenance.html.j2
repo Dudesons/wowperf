@@ -1,0 +1,20 @@
+{# ABOUTME: The Provenance panel: what was read from the log, and what was withheld. #}
+{# ABOUTME: No reference loop: the view model carries no references field to loop over. #}
+<section class="panel" data-tab-panel="main" id="tab-provenance">
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report {{ report.provenance.report_code }}, encounter {{ report.provenance.encounter_id }}, {{ report.provenance.attempts_counted }} attempts read and {{ report.provenance.attempts_deepened }} deepened, fetched {{ report.provenance.fetched_at }}.</p>
+<p class="sub">No reference run of any kind was fetched: this page compares a night against itself.</p>
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+{% for line in report.provenance.methods %}
+<p class="sub">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>

@@ -1,0 +1,45 @@
+{# ABOUTME: The Attempts panel: the night's shape as a drawing, then every attempt as a row. #}
+{# ABOUTME: Every coordinate below was computed in progression_chart.py; this loops and prints. #}
+{% from "_macros.html.j2" import ledger_row with context %}
+<section class="panel" data-tab-panel="main" id="tab-attempts">
+
+<h2 id="attempts">Attempts</h2>
+{% if report.chart.section.state.value == "withheld" %}
+<p class="withheld">{{ report.chart.section.reason }}</p>
+{% else %}
+<p class="legend">{{ report.chart.legend }}</p>
+<svg width="100%" viewBox="0 0 {{ report.chart.width }} {{ report.chart.height }}">
+  {% for y, label in report.chart.ticks %}
+  <line class="tick" x1="{{ report.chart.tick_x1 }}" y1="{{ y }}"
+        x2="{{ report.chart.tick_x2 }}" y2="{{ y }}"></line>
+  <text class="tick-label" x="{{ report.chart.tick_label_x }}" y="{{ y }}"
+        text-anchor="end" dominant-baseline="middle">{{ label }}</text>
+  {% endfor %}
+  {% for bar in report.chart.bars %}
+  <rect class="{{ bar.css_class }}" x="{{ bar.x }}" y="{{ bar.y }}"
+        width="{{ bar.width }}" height="{{ bar.height }}"><title>{{ bar.hover }}</title></rect>
+  {% endfor %}
+</svg>
+{% endif %}
+
+<table class="attempts">
+<thead>
+<tr><th>#</th><th>Depth left ({{ report.header.depth_label }})</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+</thead>
+<tbody>
+{% for row in report.attempts %}
+<tr{% if row.is_best %} class="best"{% endif %}>
+<td>{{ row.index }}</td><td>{{ row.depth }}</td><td>{{ row.duration }}</td><td>{{ row.phase }}</td><td>{{ row.deaths }}</td></tr>
+{% endfor %}
+</tbody>
+</table>
+
+{% if report.attempt_rows %}
+<div class="findings">
+{% for row in report.attempt_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
+
+</section>

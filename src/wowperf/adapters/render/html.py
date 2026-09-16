@@ -8,11 +8,16 @@ from jinja2 import Environment, FileSystemLoader
 
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.report.model import DeathCard, LedgerRow, PlayerCard, Report, all_ledger_rows
+from wowperf.domain.report.progression_model import (
+    ProgressionReport,
+    all_progression_ledger_rows,
+)
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "report.html.j2"
 RAID_TEMPLATE_NAME = "raid.html.j2"
+PROGRESSION_TEMPLATE_NAME = "progression.html.j2"
 
 
 def _environment() -> Environment:
@@ -142,5 +147,31 @@ def render_raid(report: RaidReport, icons: CdnIcons | None = None) -> str:
         else _icon_addresses(report.deaths, all_raid_ledger_rows(report), report.players, icons)
     )
     return _environment().get_template(RAID_TEMPLATE_NAME).render(
+        report=report, icons_by_id=addresses
+    )
+
+
+def render_progression(report: ProgressionReport, icons: CdnIcons | None = None) -> str:
+    """`render_raid`'s counterpart for the five-tab progression page.
+
+    `_icon_addresses` is not reused: it walks death cards and player cards, and
+    this page has neither. Only a ledger row can name an ability here --
+    `progression.repeat.ability` is the one finding that does -- so the walk is
+    that single loop rather than a third caller of a function whose other two
+    arguments would every time be empty.
+
+    Without an `icons` source the page draws exactly as the other two do
+    without one: every ability id on the view model is inert until something
+    can address it, and the `ability` macro renders a bare name.
+    """
+    addresses: dict[int, str] = {}
+    if icons is not None:
+        for row in all_progression_ledger_rows(report):
+            if row.ability_id is None or row.ability_id in addresses:
+                continue
+            address = icons.url(row.ability_id)
+            if address is not None:
+                addresses[row.ability_id] = address
+    return _environment().get_template(PROGRESSION_TEMPLATE_NAME).render(
         report=report, icons_by_id=addresses
     )

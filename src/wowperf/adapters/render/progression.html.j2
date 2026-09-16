@@ -1,0 +1,56 @@
+{# ABOUTME: Document skeleton for the progression report: a header, five tab panels, and one #}
+{# ABOUTME: inline script that only shows and hides -- one self-contained file. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.header.boss }} {{ report.header.difficulty }} progression</title>
+<style>
+{% include "report.css.j2" %}
+{% for ability_id, uri in icons_by_id.items() %}
+.i-{{ ability_id }} { background-image: url({{ uri }}); }
+{% endfor %}
+</style>
+</head>
+<body>
+{% if icons_by_id %}
+<svg class="icon-defs" aria-hidden="true">
+{% for ability_id, uri in icons_by_id.items() %}
+<symbol id="icon-{{ ability_id }}" viewBox="0 0 1 1"><image href="{{ uri }}" width="1" height="1"/></symbol>
+{% endfor %}
+</svg>
+{% endif %}
+<main>
+
+<h1>{{ report.header.boss }} {{ report.header.difficulty }}</h1>
+<p class="sub">{{ report.header.outcome }} &middot; {{ report.header.attempts_counted }} attempts read{% if report.header.attempts_discarded %}, {{ report.header.attempts_discarded }} excluded as too short{% endif %} &middot; depth is {{ report.header.depth_label }}</p>
+
+<nav class="tabs" data-tab-group="main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="tab-best">Best attempt</button>
+  <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
+</nav>
+{# The blank lines below are page output, not source spacing: text outside a tag renders, #}
+{# and a comment or an include tag does not. Removing one changes the rendered page. #}
+
+
+
+{% include "_progression_summary.html.j2" %}
+
+{% include "_progression_attempts.html.j2" %}
+
+{% include "_progression_repeats.html.j2" %}
+
+{% include "_progression_best.html.j2" %}
+
+{% include "_progression_provenance.html.j2" %}
+
+</main>
+<script>
+{% include "report.js.j2" %}
+</script>
+</body>
+</html>
