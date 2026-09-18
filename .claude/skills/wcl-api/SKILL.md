@@ -932,6 +932,31 @@ never been passed: `difficulty: 4` hardcoded into a fixture the first time, and 
 made at `difficulty: 5` the second. **The question that finds this class is which argument values
 the live runs have actually taken**, not whether a live run happened.
 
+**A row's `deaths` counts death events, not the players behind them. Measured 2026-09-18.**
+Twelve rows of encounter 3492's `default` board at `difficulty: 4, partition: 1`, each joined to
+its own fully paginated `events(dataType: Deaths)` stream for the report and fight the row names.
+**Four of the twelve had at least one player die more than once, and those four are the only ones
+that can tell the two readings apart**: on all four the row's `deaths` equalled the death-event
+count and differed from the count of distinct `targetID`s -- claimed 6 against 6 events and 5
+players, claimed 5 against 5 and 3, claimed 5 against 5 and 4, claimed 4 against 4 and 3. On the
+remaining eight nobody died twice, so both counts agreed and neither reading is excluded by them.
+Across all twelve, `claimed == events` held 12 of 12 and `claimed == distinct players` held 8 of
+12. The whole probe cost 35.6 points of 3600.
+
+So anything set beside this field has to be an event count. `attempt_shape.classify_attempt`
+compared a count of distinct players against a median of it until this was measured, and
+`compare_lethal_abilities` counted events correctly while wording them as players; both are
+corrected.
+
+**The board to take this reading on is not encounter 3470's.** The 2026-09-14 note above records
+`default` and `speed` there "with deaths ranging 0 to 20"; measured again 2026-09-18, the same
+board at the same difficulty and partition read `{0: 40, 1: 9, 2: 1}` -- a maximum of 2 over 50
+rows, which cannot separate an event from a player at all. Encounter 3492's board at the same
+difficulty read `{0: 7, 1: 15, 2: 9, 3: 8, 4: 6, 5: 2, 6: 3}`. Whether the 0-to-20 reading was of
+a different board or the board has simply moved in four days is not established, and the older
+line is left standing rather than overwritten: what is recorded here is that a range deep enough
+for this measurement has to be looked for rather than assumed.
+
 ## A difficulty's name lives on its zone, not on the fight or the encounter
 
 Introspected 2026-09-15, looking for something `raid_frame.py`'s header could print instead of

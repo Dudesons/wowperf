@@ -140,6 +140,14 @@ def classify_attempt(
         return None
 
     died = len({death.actor_id for death in deaths})
+    # `ReferenceKillRow.deaths` counts death events, measured 2026-09-18 against
+    # twelve reference fights: on the four where somebody died twice, the row's
+    # figure matched the event count and not the count of distinct players. So
+    # the reference median can only be met with an event count. `died` stays a
+    # count of players, because the roster share and `DISMANTLED_SHARE` both
+    # ask what fraction of the raid was lost, and a raid cannot lose more
+    # members than it has.
+    death_events = len(deaths)
     alive = _alive_at_the_end(size, deaths, resurrections)
     reference_seconds = median([member.row.duration_seconds for member in sample.members])
     reference_deaths = median([float(member.row.deaths) for member in sample.members])
@@ -160,8 +168,16 @@ def classify_attempt(
         ) + _ordering_clause(encounter, deaths)
     elif dismantled:
         headline = "execution: the raid was taken apart"
+        # The second clause appears only where the two counts differ, which is
+        # where a battle rez put somebody in the tally twice. Stating it on
+        # every attempt would print the same number twice in one sentence.
+        toll = (
+            f"{died} of {size} died"
+            if death_events == died
+            else f"{died} of {size} died and {death_events} deaths were logged"
+        )
         story = (
-            f"{died} of {size} died, against a median of {reference_deaths:.0f} across "
+            f"{toll}, against a median of {reference_deaths:.0f} across "
             "the reference kills. This attempt ended before the damage question could "
             "be asked."
         )
@@ -196,12 +212,11 @@ def classify_attempt(
             f"{encounter.boss_percentage:.1f}% boss health remaining",
             f"{encounter.duration_seconds:.0f}s against a reference median of "
             f"{reference_seconds:.0f}s",
-            # Our side counts players who died at any point; the reference side
-            # counts death events, which is what `ReferenceKillRow.deaths`
-            # carries and what a battle-rezzed player contributes twice to. The
-            # line names both units rather than letting one word cover both.
-            f"{died} of our players died, against a reference median of "
-            f"{reference_deaths:.0f} deaths",
+            # Both sides of this comparison are death events. The line still
+            # names the players too, because "13 deaths" alone leaves a reader
+            # to guess whether thirteen raiders died or fewer died twice.
+            f"{death_events} deaths among {died} of our players, against a "
+            f"reference median of {reference_deaths:.0f} deaths",
         ),
         facts=(
             FindingFact(

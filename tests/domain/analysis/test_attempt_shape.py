@@ -309,7 +309,9 @@ def test_players_brought_back_count_among_the_living() -> None:
     assert "19 of 20 were still alive" in finding.detail, finding.detail
     assert "19 of 20 alive at the end" in finding.evidence, finding.evidence
     # Still five players who died, and the evidence says so beside the living.
-    assert any("5 of our players died" in line for line in finding.evidence), finding.evidence
+    # Nobody died twice here, so the line's event count and its player count
+    # are both five; what this pins is that the players are still named.
+    assert any("5 of our players" in line for line in finding.evidence), finding.evidence
 
 
 def test_a_player_who_died_again_after_being_brought_back_is_not_among_the_living() -> None:
@@ -398,3 +400,53 @@ def test_no_verdict_from_classify_attempt_names_a_remedy() -> None:
                 assert word not in fact.value.lower(), fact.value
             for line in finding.evidence:
                 assert word not in line.lower(), line
+
+
+def _deaths_with_one_player_dying_twice() -> tuple[Death, ...]:
+    """Twelve raiders die, one of them twice: 13 events over 12 distinct players.
+
+    The two counts are equal on every other fixture in this file, so only a
+    repeat can tell which unit a sentence is quoting.
+    """
+    return _deaths(12) + (
+        Death(
+            player_name="Raider 0",
+            actor_id=0,
+            timestamp_ms=60_000,
+            killing_blow="Caustic Waves",
+            killing_blow_id=11,
+        ),
+    )
+
+
+def test_the_reference_death_median_is_met_with_our_death_events() -> None:
+    """`ReferenceKillRow.deaths` counts death events -- measured 2026-09-18.
+
+    Twelve of twenty died and thirteen deaths were logged. The roster share is
+    a count of players, because a raid cannot lose more members than it has;
+    the figure set against the reference median has to be the event count, or
+    the sentence compares players to events. Both belong in the sentence.
+    """
+    finding = classify_attempt(
+        _encounter(kill=False, boss_percentage=40.0, seconds=200.0),
+        _deaths_with_one_player_dying_twice(),
+        _sample(seconds=300.0, deaths=3),
+    )
+
+    assert finding is not None
+    assert "execution" in finding.title.lower()
+    assert "12 of 20" in finding.detail, finding.detail
+    assert "13" in finding.detail, finding.detail
+
+
+def test_the_death_evidence_line_names_events_beside_the_reference_median() -> None:
+    """The evidence line carries the same pairing as the detail sentence."""
+    finding = classify_attempt(
+        _encounter(kill=False, boss_percentage=40.0, seconds=200.0),
+        _deaths_with_one_player_dying_twice(),
+        _sample(seconds=300.0, deaths=3),
+    )
+
+    assert finding is not None
+    [line] = [text for text in finding.evidence if text.endswith("deaths")]
+    assert "13" in line, line
