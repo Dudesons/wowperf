@@ -78,6 +78,24 @@ WIPE = os.environ.get("WOWPERF_E2E_RAID_WIPE", "")
 KEYSTONE_SHAPED = ("time.", "trash.", "compare.route", "compare.downtime")
 
 
+def in_family(finding_id: str, family: str) -> bool:
+    """Whether one id belongs to `family`, slug and all.
+
+    `encounter_service._for_raider` re-mints every `compare.*` id as
+    `<family>.<slug>`, one per raider, so on a raid page the bare id never
+    occurs. Its own docstring says every consumer matches by prefix; these
+    tests did not, and asserted ids that cannot exist from the commit that
+    introduced the slug until 2026-09-19, unnoticed because the gate runs the
+    offline suite only and no file recorded which report to run these against.
+    """
+    return finding_id == family or finding_id.startswith(f"{family}.")
+
+
+def has_family(ids: Sequence[str], family: str) -> bool:
+    """Whether any finding on the page belongs to `family`."""
+    return any(in_family(one, family) for one in ids)
+
+
 def assert_mechanics_output_is_well_formed(
     findings: Sequence[Finding],
     mechanics_sample: MechanicsSample,
@@ -271,10 +289,10 @@ def test_a_real_boss_kill_is_measured_against_the_world(tmp_path: Path) -> None:
     )
     ids = [finding.id for finding in findings]
 
-    assert "compare.damage.total" in ids
-    assert "compare.damage.targets" in ids
-    assert "compare.rank" in ids
-    assert "compare.parse.unavailable" not in ids, "the frame was withheld from a kill"
+    assert has_family(ids, "compare.damage.total")
+    assert has_family(ids, "compare.damage.targets")
+    assert has_family(ids, "compare.rank")
+    assert not has_family(ids, "compare.parse.unavailable"), "the frame was withheld from a kill"
 
     external = [f for f in findings if f.id.startswith("compare.")]
     for finding in external:
@@ -285,7 +303,7 @@ def test_a_real_boss_kill_is_measured_against_the_world(tmp_path: Path) -> None:
     # F9, live: both sides of the damage comparison are per-second rates, and a
     # raid boss total runs to hundreds of millions. A nine-digit figure here
     # means a total reached a sentence that says "per second".
-    [damage] = [f for f in findings if f.id == "compare.damage.total"]
+    [damage] = [f for f in findings if in_family(f.id, "compare.damage.total")]
     for fact in damage.facts:
         for number in fact.value.replace(",", " ").split():
             digits = number.split(".")[0]
@@ -332,11 +350,14 @@ def test_a_real_wipe_withholds_the_external_frame_and_pays_for_none_of_it(
     )
     ids = [finding.id for finding in findings]
 
-    assert "compare.parse.unavailable" in ids
-    assert [one for one in ids if one.startswith("compare.")] == ["compare.parse.unavailable"]
-    [withheld] = [f for f in findings if f.id == "compare.parse.unavailable"]
-    assert "did not kill" in withheld.detail
-    assert findings != [withheld], "the internal frame went with the external one"
+    withheld = [f for f in findings if in_family(f.id, "compare.parse.unavailable")]
+    assert withheld, "the wipe withheld the external frame without saying why"
+    # The withheld notice is the only `compare.*` family a wipe may carry: any
+    # other means a measure read a rankings row this attempt does not have.
+    assert [one for one in ids if one.startswith("compare.")] == [f.id for f in withheld]
+    for notice in withheld:
+        assert "did not kill" in notice.detail
+    assert findings != withheld, "the internal frame went with the external one"
 
 
 @pytest.mark.e2e

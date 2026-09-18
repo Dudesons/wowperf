@@ -168,8 +168,10 @@ Before implementing new functionality:
 - The five players on report `6Kx1P9GbNXrcLdHa` are real people. Refer to them by class, spec,
   role or index — in code, in tests, in commit messages and in documents.
 - The twenty players on report `cW38jmwdnZfbHVL4` are real people. The raid end-to-end tests
-  run against it. Refer to them by class, spec, role or index — in code, in tests, in commit
-  messages and in documents.
+  run against it: **fight 2 is the canonical kill and fight 30 the canonical wipe**, and
+  `.env.example` carries both as `WOWPERF_E2E_RAID_KILL` and `WOWPERF_E2E_RAID_WIPE`. Point
+  them at a different fight and tests unrelated to your change will fail. Refer to the players
+  by class, spec, role or index — in code, in tests, in commit messages and in documents.
 
 ## Test Coverage Requirements
 
