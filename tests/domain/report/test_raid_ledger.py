@@ -34,7 +34,7 @@ RAID_FAMILIES = (
     "defensives.never.emberkin.0", "defensives.ceiling.emberkin.0",
     "defensives.unused.emberkin", "consumables.never.emberkin",
     "consumables.unused.emberkin", "interrupts.summary", "interrupts.ability.0",
-    "mechanics.ability.0", "players.damage.0",
+    "mechanics.ability.0", "mechanics.lethal.0", "players.damage.0",
     "compare.damage.total.emberkin-0", "compare.damage.targets.emberkin-0",
     "compare.rank.emberkin-0", "compare.parse.unavailable.emberkin-0",
     "compare.spells.missing.0.emberkin-0", "compare.spells.rate.0.emberkin-0",
@@ -63,6 +63,7 @@ _FAMILY_PREFIXES = (
     "interrupts.summary",
     "interrupts.ability.",
     "mechanics.ability.",
+    "mechanics.lethal.",
     "players.damage.",
     "compare.damage.total.",
     "compare.damage.targets.",
@@ -396,6 +397,31 @@ def a_rich_encounter() -> list[Finding]:
         mechanics=MECHANICS_SAMPLE, our_abilities=OUR_ABILITIES_TAKEN,
         parse_subjects=parse_subjects,
     )
+
+
+def test_the_new_mechanics_families_land_where_the_old_one_does() -> None:
+    """`RAID_PLACEMENTS` carries a bare `mechanics.` prefix, so both new
+    families route themselves. This test fails if someone narrows it.
+
+    Written against `_raid_field_for` rather than a new `_tab_for` wrapper:
+    the module already exposes exactly this lookup under that name, and a
+    second helper wrapping it would duplicate the thing this test is meant
+    to hold against drift.
+    """
+    assert (
+        _raid_field_for("mechanics.lethal.0")
+        == _raid_field_for("mechanics.ability.0")
+        == "mechanics_rows"
+    )
+    assert _raid_field_for("mechanics.phase.0") == "mechanics_rows"
+
+
+def test_a_verdict_is_claimed_by_no_tab_prefix() -> None:
+    """`wipe.cause` matches no prefix and falls through to Summary's unclaimed
+    observations, which is where Layer 1 wants it. Layer 2 promotes it to a
+    headline; until then this asserts it is not silently swallowed elsewhere.
+    """
+    assert _raid_field_for("wipe.cause") is None
 
 
 def test_the_family_list_matches_what_the_service_emits() -> None:

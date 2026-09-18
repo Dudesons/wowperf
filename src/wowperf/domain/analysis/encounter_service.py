@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.attempt_shape import classify_attempt
 from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
@@ -15,11 +16,18 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
-from wowperf.domain.comparison.mechanics import AbilityTakenRow, MechanicsSample, compare_mechanics
+from wowperf.domain.comparison.mechanics import (
+    AbilityTakenRow,
+    MechanicsSample,
+    compare_lethal_abilities,
+    compare_mechanics,
+    compare_phase_cost,
+)
 from wowperf.domain.comparison.parse_axis import ParseSubject, compare_parse_axis
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
+from wowperf.domain.phase_windows import dominant_phase_by_ability
 from wowperf.domain.season import Consumables, Defensives, Roles
 
 
@@ -114,9 +122,23 @@ def analyse_encounter(
         encounter.players, loaded.casts, consumables, loaded.deaths
     )
     findings += analyse_damage_outliers(encounter.players, loaded.damage_taken, roles)
-    findings += compare_mechanics(
-        our_abilities, encounter.duration_seconds, mechanics, scope="the raid"
+    phase_shares = dominant_phase_by_ability(
+        loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
+    findings += compare_mechanics(
+        our_abilities,
+        encounter.duration_seconds,
+        mechanics,
+        scope="the raid",
+        phase_shares=phase_shares,
+    )
+    findings += compare_lethal_abilities(loaded.deaths, mechanics)
+    findings += compare_phase_cost(
+        loaded.damage_taken, encounter.phases, encounter.phase_transitions
+    )
+    verdict = classify_attempt(encounter, loaded.deaths, mechanics)
+    if verdict is not None:
+        findings.append(verdict)
     for subject in parse_subjects:
         findings += _for_raider(
             compare_parse_axis(

@@ -20,6 +20,7 @@ from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
+from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.season import Consumables, DefensiveAbility, Defensives, Roles
 
@@ -512,3 +513,99 @@ def test_two_raiders_whose_names_reduce_to_one_slug_stay_apart() -> None:
     ids = [f.id for f in compared]
     assert len(ids) == len(set(ids))
     assert len({f.player_slug for f in compared}) == 2
+
+
+def _mechanics_sample() -> MechanicsSample:
+    """One reference kill, below `MIN_SAMPLE_FOR_AGGREGATE`, matching the shape
+    `test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds` above
+    already builds inline -- named here because the two tests below need it
+    twice. `deaths=1` is what `classify_attempt` reads back as the reference
+    median death count.
+    """
+    return MechanicsSample(
+        members=(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="ref", fight_id=1, size=20,
+                    duration_ms=120_000, deaths=1,
+                ),
+                abilities=(),
+            ),
+        )
+    )
+
+
+def _loaded_wipe_with(deaths: int) -> LoadedEncounter:
+    """A wipe with `deaths` of a 20-player raid dead.
+
+    At 14, that clears `classify_attempt`'s own `DISMANTLED_SHARE` of one
+    half, so a verdict fires. `boss_percentage` is set outright rather than
+    left at its `None` default: `classify_attempt` withholds a verdict
+    whenever it reads `None`, and a wipe fixture must not do that by omission.
+    """
+    death_events = tuple(
+        Death(
+            actor_id=index,
+            player_name=RAID[index % len(RAID)].name,
+            timestamp_ms=60_000 + (index - 1) * 30_000,
+            killing_blow="Ravenous Feast",
+            killing_blow_id=400,
+        )
+        for index in range(1, deaths + 1)
+    )
+    encounter = Encounter(
+        report_code="wipe1", fight_id=5, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=False, boss_percentage=60.0, start_ms=1_000, end_ms=500_000,
+        players=(),
+    )
+    return LoadedEncounter(encounter=encounter, deaths=death_events)
+
+
+def _loaded_wipe_with_phases() -> LoadedEncounter:
+    """A fight whose encounter carries named phases and a transition list.
+
+    Gates `compare_phase_cost` on `Encounter.phases` rather than on
+    `separatesWipes` -- the global constraint measured 2026-09-18 across 8
+    encounters, 3 of which read `separatesWipes` false while still naming
+    phases.
+    """
+    phases = (
+        Phase(id=1, name="Stage One: Something"),
+        Phase(id=2, name="Stage Two: Something Else"),
+    )
+    transitions = (
+        PhaseTransition(id=1, start_ms=1_000),
+        PhaseTransition(id=2, start_ms=61_000),
+    )
+    encounter = Encounter(
+        report_code="wipe2", fight_id=6, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=False, boss_percentage=60.0, start_ms=1_000, end_ms=121_000,
+        phases=phases, phase_transitions=transitions,
+        players=(),
+    )
+    damage_taken = (
+        DamageTakenEvent(actor_id=1, ability_id=400, ability_name="Ravenous Feast",
+                          amount=500, timestamp_ms=70_000),
+    )
+    return LoadedEncounter(encounter=encounter, damage_taken=damage_taken)
+
+
+def test_a_wipe_reaches_a_lethal_finding_and_a_verdict() -> None:
+    loaded = _loaded_wipe_with(deaths=14)
+
+    ids = {finding.id for finding in analyse_encounter(loaded, DEFENSIVES, Consumables(),
+                                                       mechanics=_mechanics_sample())}
+
+    assert any(one.startswith("mechanics.lethal.") for one in ids)
+    assert "wipe.cause" in ids
+
+
+def test_a_fight_with_phases_reaches_a_phase_finding() -> None:
+    loaded = _loaded_wipe_with_phases()
+
+    ids = {finding.id for finding in analyse_encounter(loaded, DEFENSIVES, Consumables(),
+                                                       mechanics=_mechanics_sample())}
+
+    assert any(one.startswith("mechanics.phase.") for one in ids)
