@@ -2,7 +2,7 @@ from wowperf.domain.analysis.attempt_shape import classify_attempt
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import Death, Resurrection
-from wowperf.domain.findings import Confidence
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 
 
@@ -218,13 +218,12 @@ def test_a_both_verdict_whose_deaths_straddle_the_midpoint_names_no_order() -> N
 def test_an_unlucky_wipe_near_the_kill_is_withheld() -> None:
     """Raid mostly alive, boss nearly dead, attempt shorter than the references.
     Neither reading holds, so the verdict abstains rather than guessing."""
-    assert (
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=2.0, seconds=250.0),
             _deaths(3),
             _sample(seconds=300.0, deaths=1),
         )
-        is None
     )
 
 
@@ -240,24 +239,23 @@ def test_a_kill_gets_no_verdict() -> None:
 
 
 def test_an_attempt_with_no_reference_sample_is_withheld() -> None:
-    assert (
+    # That it withholds; the reason it gives is pinned separately, below.
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
             _deaths(1),
             MechanicsSample(),
         )
-        is None
     )
 
 
 def test_an_attempt_the_report_gives_no_boss_health_for_is_withheld() -> None:
-    assert (
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=None, seconds=400.0),
             _deaths(1),
             _sample(seconds=300.0, deaths=1),
         )
-        is None
     )
 
 
@@ -265,13 +263,12 @@ def test_a_boss_below_the_wall_on_a_long_attempt_is_withheld() -> None:
     """Boss health under WALL_HEALTH, attempt already as long as the references, hardly
     anyone dead. Guards WALL_HEALTH's floor against being read too low: lower it and 15%
     boss health starts reading as a wall, turning this into a throughput verdict."""
-    assert (
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=15.0, seconds=400.0),
             _deaths(1),
             _sample(seconds=300.0, deaths=1),
         )
-        is None
     )
 
 
@@ -279,13 +276,12 @@ def test_a_raid_that_is_neither_dismantled_nor_intact_is_withheld() -> None:
     """Boss health and duration both read as stalled, but only three in four survived --
     below the intact floor without being dismantled either. Guards INTACT_SHARE's floor
     against being read too low: lower it and 75% alive starts reading as intact."""
-    assert (
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
             _deaths(5),
             _sample(seconds=300.0, deaths=1),
         )
-        is None
     )
 
 
@@ -334,14 +330,16 @@ def test_a_player_who_died_again_after_being_brought_back_is_not_among_the_livin
         for index in range(4)
     )
 
-    assert (
+    # Withheld, which is what a raid ending with five of twenty down reaches.
+    # The wrong reading would reach a throughput verdict instead, and a
+    # withheld notice is not one.
+    _withheld_reason(
         classify_attempt(
             _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
             deaths,
             _sample(seconds=300.0, deaths=1),
             resurrections=_resurrections(4, at_ms=10_000),
         )
-        is None
     )
 
 
@@ -450,3 +448,116 @@ def test_the_death_evidence_line_names_events_beside_the_reference_median() -> N
     assert finding is not None
     [line] = [text for text in finding.evidence if text.endswith("deaths")]
     assert "13" in line, line
+
+
+WITHHELD_ID = "wipe.cause.withheld"
+
+
+def _withheld_reason(finding: Finding | None) -> str:
+    """The detail of a withheld verdict, failing loudly on a verdict or on silence."""
+    assert finding is not None, "the verdict was dropped instead of explained"
+    assert finding.id == WITHHELD_ID, f"expected a withheld notice, got {finding.id}"
+    return finding.detail
+
+
+def test_a_kill_is_the_only_case_that_returns_nothing() -> None:
+    """A kill has no wipe to explain, so silence is the whole answer.
+
+    Every other way this function declines to reach a verdict is something a
+    reader can be told, and after this change `None` means exactly one thing.
+    """
+    assert (
+        classify_attempt(
+            _encounter(kill=True, boss_percentage=0.0, seconds=400.0),
+            _deaths(14),
+            _sample(seconds=300.0, deaths=1),
+        )
+        is None
+    )
+
+
+def test_an_attempt_with_no_reference_sample_names_the_missing_sample() -> None:
+    """Every `--no-compare` run takes this path, and said nothing at all before.
+
+    Design 8.3 wants the withheld case recorded rather than dropped: a reader
+    who sees no verdict cannot otherwise tell a comparison that was refused
+    from one that was never asked for.
+    """
+    reason = _withheld_reason(
+        classify_attempt(
+            _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+            _deaths(1),
+            MechanicsSample(),
+        )
+    )
+
+    assert "reference" in reason.lower(), reason
+
+
+def test_an_attempt_with_no_boss_health_reading_names_that() -> None:
+    reason = _withheld_reason(
+        classify_attempt(
+            _encounter(kill=False, boss_percentage=None, seconds=400.0),
+            _deaths(1),
+            _sample(seconds=300.0, deaths=1),
+        )
+    )
+
+    assert "boss health" in reason.lower(), reason
+
+
+def test_a_raid_matching_neither_shape_names_that() -> None:
+    """The judgement was made and came out indeterminate, which is a third thing.
+
+    Distinct from both absences above: the sample and the reading were both
+    there, and the attempt simply sat between the two shapes.
+    """
+    reason = _withheld_reason(
+        classify_attempt(
+            _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+            _deaths(5),
+            _sample(seconds=300.0, deaths=1),
+        )
+    )
+
+    assert "neither" in reason.lower(), reason
+
+
+def test_the_four_withheld_reasons_are_all_different() -> None:
+    """A reason that does not distinguish its case is the defect being fixed.
+
+    Four situations reached one bare `None` before, so a test asserting each
+    is explained could still pass over four identical sentences.
+    """
+    reasons = {
+        _withheld_reason(
+            classify_attempt(
+                _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+                _deaths(1),
+                MechanicsSample(),
+            )
+        ),
+        _withheld_reason(
+            classify_attempt(
+                _encounter(kill=False, boss_percentage=None, seconds=400.0),
+                _deaths(1),
+                _sample(seconds=300.0, deaths=1),
+            )
+        ),
+        _withheld_reason(
+            classify_attempt(
+                _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+                _deaths(5),
+                _sample(seconds=300.0, deaths=1),
+            )
+        ),
+        _withheld_reason(
+            classify_attempt(
+                _encounter(kill=False, boss_percentage=2.0, seconds=250.0),
+                _deaths(3),
+                _sample(seconds=300.0, deaths=1),
+            )
+        ),
+    }
+
+    assert len(reasons) == 3, reasons

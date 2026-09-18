@@ -7,6 +7,7 @@ import pytest
 
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
+from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
@@ -453,3 +454,54 @@ def test_the_subjects_card_opens_the_players_tab() -> None:
     )
 
     assert [card.name for card in report.players] == ["Stonewake", "Emberkin"]
+
+
+def _a_withheld_verdict() -> Finding:
+    """What `classify_attempt` now returns instead of dropping its reason."""
+    return Finding(
+        id=WITHHELD_ID,
+        title="No verdict on why this attempt ended",
+        detail=NO_REFERENCE_SAMPLE,
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=("no reference kills were drawn",),
+    )
+
+
+def test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance() -> None:
+    """Design 8.3: the withheld case is recorded, not dropped.
+
+    `classify_attempt` returned a bare `None` for five situations and
+    `analyse_encounter` dropped it, so a reader could not tell a verdict that
+    was refused from one nobody asked for.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert [
+        line for line in report.provenance.withheld if NO_REFERENCE_SAMPLE in line
+    ], report.provenance.withheld
+
+
+def test_a_withheld_attempt_verdict_never_heads_the_summary() -> None:
+    """`wipe` ranks 0, so a notice left among the findings leads the page.
+
+    `severity.SEVERITY_BY_FAMILY` puts the wipe family first because a verdict
+    frames everything under it. A notice saying there is no verdict inherits
+    that rank, and would take the Summary's headline to say nothing.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    placed = [row.finding_id for row in all_raid_ledger_rows(report)]
+    assert WITHHELD_ID not in placed, placed
