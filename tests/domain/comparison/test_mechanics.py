@@ -372,7 +372,11 @@ def test_an_ability_that_killed_more_than_the_references_lost_in_total() -> None
 
 
 def test_the_deadliest_ability_is_reported_first() -> None:
+    # Two deaths for the quieter ability, not one: against this sample's median
+    # of one, a single death does not clear `LETHAL_MULTIPLE` and the ordering
+    # would be pinned over a list with only one entry in it.
     deaths = (
+        _death(11, "Caustic Waves"),
         _death(11, "Caustic Waves"),
         _death(22, "Purge"),
         _death(22, "Purge"),
@@ -391,7 +395,9 @@ def test_at_most_five_abilities_are_reported() -> None:
     # of its nine on a death that never reaches the tally.
     deaths = tuple(_death(identifier, f"Ability {identifier}") for identifier in range(1, 10))
 
-    assert len(compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))) == 5
+    # Deathless references, so `LETHAL_MULTIPLE` lets every one of the nine
+    # through and the cap is the only thing left that can hold the list to five.
+    assert len(compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))) == 5
 
 
 def test_a_death_the_log_names_no_killing_ability_for_takes_no_slot() -> None:
@@ -407,7 +413,9 @@ def test_a_death_the_log_names_no_killing_ability_for_takes_no_slot() -> None:
         _death(11, "Caustic Waves"),
     )
 
-    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+    # Deathless references, so the one real ability clears `LETHAL_MULTIPLE` on
+    # a single death and the assertion below is about the tally, not the bar.
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))
 
     assert [finding.ability_name for finding in findings] == ["Caustic Waves"]
     assert all("Unknown ability" not in finding.title for finding in findings)
@@ -421,7 +429,9 @@ def test_deaths_the_log_names_no_ability_for_at_all_yield_no_finding() -> None:
 
 
 def test_a_sample_below_the_aggregate_floor_names_one_reference_kill() -> None:
-    deaths = (_death(11, "Caustic Waves"),)
+    # Three deaths against the one reference kill's two: 1.5, which is
+    # `LETHAL_MULTIPLE` exactly, so the finding this test reads into exists.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(3))
 
     findings = compare_lethal_abilities(deaths, _sample_losing(2, 3))
 
@@ -444,7 +454,9 @@ def _reference_deaths_fact(findings: list[Finding]) -> FindingFact:
 def test_the_reference_deaths_fact_is_derived_at_the_aggregate_floor() -> None:
     # Three members clears MIN_SAMPLE_FOR_AGGREGATE, so the phrase is a median
     # this function computed over the sample -- derived, not read off one row.
-    findings = compare_lethal_abilities((_death(11, "Caustic Waves"),), _sample_losing(0, 1, 2))
+    # Two deaths against that median of one clears `LETHAL_MULTIPLE`.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(2))
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
 
     assert _reference_deaths_fact(findings).confidence is Confidence.DERIVED
 
@@ -453,7 +465,9 @@ def test_the_reference_deaths_fact_is_unbadged_below_the_aggregate_floor() -> No
     # One member is below the floor: the phrase is that one row's own death
     # count with no computation in between, so it is measured -- None, per
     # FindingFact's own rule that an unset confidence means exactly that.
-    findings = compare_lethal_abilities((_death(11, "Caustic Waves"),), _sample_losing(2))
+    # Three deaths against that row's two clears `LETHAL_MULTIPLE`.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(3))
+    findings = compare_lethal_abilities(deaths, _sample_losing(2))
 
     assert _reference_deaths_fact(findings).confidence is None
 
@@ -501,6 +515,104 @@ def test_no_finding_from_compare_lethal_abilities_claims_intent() -> None:
                 assert word not in fact.value.lower(), fact.value
             for line in finding.evidence:
                 assert word not in line.lower(), line
+
+
+def _death_of(actor_id: int, ability_id: int, name: str) -> Death:
+    """A death of a named raider, where `_death` always speaks for actor 1.
+
+    Every other fixture in this file reuses one actor, so a tally of death
+    events and a tally of distinct players agree on all of them and neither
+    can be told from the other.
+    """
+    return Death(
+        player_name=f"Raider {actor_id}",
+        actor_id=actor_id,
+        timestamp_ms=1000 * actor_id,
+        killing_blow=name,
+        killing_blow_id=ability_id,
+    )
+
+
+def test_an_ability_that_killed_one_player_twice_does_not_claim_two_players() -> None:
+    """The tally counts death events, so the sentence must not say "players".
+
+    `ReferenceKillRow.deaths` counts death events -- measured 2026-09-18 --
+    and this side is counted the same way so that the two are comparable. What
+    shipped was an event count worded as a count of players, which reports a
+    battle-rezzed raider dying twice as two raiders dying once.
+    """
+    deaths = (
+        _death_of(1, 11, "Caustic Waves"),
+        _death_of(1, 11, "Caustic Waves"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings, "one ability killed somebody twice, so there is something to report"
+    assert "2 players" not in findings[0].title, findings[0].title
+    assert "2 deaths" in findings[0].title, findings[0].title
+
+
+def test_the_reference_death_figure_is_not_worded_as_a_count_of_players() -> None:
+    """`ReferenceKillRow.deaths` counts events, so no line may call them players.
+
+    Checked on both branches of `_reference_deaths`: the median it draws from
+    a full sample, and the single kill it falls back to below
+    `MIN_SAMPLE_FOR_AGGREGATE`. A reference kill that battle-rezzed somebody
+    contributes two to that figure and one player to the raid it was drawn
+    from, so "players" states something the row cannot support.
+    """
+    # Three deaths clears `LETHAL_MULTIPLE` on both samples: 3 against the
+    # median branch's 1, and 3 against the single branch's 2.
+    deaths = tuple(_death_of(actor, 11, "Caustic Waves") for actor in range(3))
+
+    for sample, branch in ((_sample_losing(0, 1, 2), "median"), (_sample_losing(2), "single")):
+        [finding] = compare_lethal_abilities(deaths, sample)
+        for line in finding.evidence:
+            assert "players" not in line, f"{branch} branch: {line}"
+        for fact in finding.facts:
+            assert "players" not in fact.value, f"{branch} branch: {fact.value}"
+
+
+def test_an_ability_matching_the_reference_death_median_says_nothing() -> None:
+    """A clean kill must not produce cards, and this is the shape it produced them in.
+
+    One ability killed one player where the reference kills lost one death
+    between them from every source combined. That is not a gap, and the live
+    kill of 2026-09-18 printed four such cards.
+    """
+    deaths = (_death_of(1, 11, "Caustic Waves"),)
+
+    assert compare_lethal_abilities(deaths, _sample_losing(0, 1, 2)) == []
+
+
+def test_an_ability_half_again_over_the_reference_median_is_reported() -> None:
+    """The bar is `LETHAL_MULTIPLE`, and clearing it is what earns a card.
+
+    Three deaths against a reference median of two: 1.5 exactly, so this pins
+    the boundary from the reporting side. The two sides are not symmetrical --
+    ours is one ability and theirs is every source -- which is why the bar sits
+    below the 2.0 its sibling families use.
+    """
+    deaths = tuple(_death_of(actor, 11, "Caustic Waves") for actor in range(3))
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(1, 2, 3))
+
+    assert findings, "three deaths against a median of two clears the bar"
+    assert findings[0].ability_name == "Caustic Waves"
+
+
+def test_a_deathless_reference_sample_reports_any_death_of_ours() -> None:
+    """No ratio is computed against zero; the gap is the whole finding.
+
+    `_worth_reporting`'s own rule, which this family now shares: reference
+    kills that lost nobody make a single death of ours worth naming.
+    """
+    deaths = (_death_of(1, 11, "Caustic Waves"),)
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))
+
+    assert findings, "the references lost nobody at all"
 
 
 def _taken(ability_id: int, timestamp_ms: int, amount: int) -> DamageTakenEvent:

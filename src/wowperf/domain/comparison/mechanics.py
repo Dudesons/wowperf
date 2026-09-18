@@ -141,6 +141,22 @@ The same threshold `players.damage.*` uses against a group median, for the same
 reason: below it, sample noise and a real difference are indistinguishable.
 """
 
+LETHAL_MULTIPLE = 1.5
+"""How far past the reference death median one ability must reach to be worth saying.
+
+Lower than `MECHANIC_MULTIPLE` because the two sides of the lethal comparison
+are not symmetrical: ours is one ability's deaths and theirs is every death
+from every source, so a ratio of 1.0 already means one of our abilities killed
+as many as everything did in a reference kill. What it excludes is the
+equality case -- an ability that killed one where the references also lost one
+-- which is noise at these counts and which a clean kill produced four of on
+2026-09-18.
+
+Death counts are small integers, so against a median of 1 or 2 this bar and a
+bare "more than the median" agree; they part company from a median of 3, where
+this one asks for 5 rather than 4.
+"""
+
 MAX_MECHANICS_REPORTED = 5
 """At most this many abilities, worst gap first, matching `MAX_OUTLIERS_REPORTED`."""
 
@@ -163,13 +179,17 @@ def _landings_by_ability(member: MechanicsMember) -> dict[int, AbilityTakenRow]:
     return {row.ability_id: row for row in hostile_rows(member.abilities)}
 
 
-def _worth_reporting(our_rate: float, their_rate: float) -> bool:
-    """Whether the gap between two landing rates clears the bar for a finding.
+def _worth_reporting(ours: float, theirs: float, multiple: float = MECHANIC_MULTIPLE) -> bool:
+    """Whether the gap between our figure and the reference's clears the bar.
 
     A ratio against zero is not computed. Where the reference side took none
     and we took some, the gap is the whole finding and the evidence says so.
+
+    Serves landing rates at `MECHANIC_MULTIPLE` and death counts at
+    `LETHAL_MULTIPLE`; the arithmetic is the same and only the bar moves, so
+    the zero rule is stated once rather than in each family.
     """
-    return their_rate <= 0 or our_rate / their_rate >= MECHANIC_MULTIPLE
+    return theirs <= 0 or ours / theirs >= multiple
 
 
 def _ranked(candidates: list[tuple[float, Finding]]) -> list[Finding]:
@@ -429,8 +449,12 @@ def _against_sample(
 
 def _reference_deaths(
     members: tuple[MechanicsMember, ...],
-) -> tuple[str, str, str, Confidence | None]:
-    """What the reference kills lost, as a title phrase, a fact, an evidence line and its badge.
+) -> tuple[float, str, str, str, Confidence | None]:
+    """What the reference kills lost: the figure, then its title phrase, fact, line and badge.
+
+    The figure leads because the gate reads it. It is the same number the
+    phrase spells, returned unrounded so the comparison is made on what was
+    measured rather than on what is printed.
 
     Below `MIN_SAMPLE_FOR_AGGREGATE` members this names a single reference kill
     rather than a median, exactly as `compare_mechanics` does one function
@@ -449,15 +473,17 @@ def _reference_deaths(
         low, high = observed_range(counts)
         middle = median(counts)
         return (
+            middle,
             f"a median of {middle:.0f}",
             f"{len(counts)} reference kills",
-            f"reference kills lost {low:.0f} to {high:.0f} players, median {middle:.0f}",
+            f"reference kills lost {low:.0f} to {high:.0f} deaths, median {middle:.0f}",
             Confidence.DERIVED,
         )
     return (
+        counts[0],
         f"{counts[0]:.0f}",
         "1 reference kill",
-        f"one reference kill lost {counts[0]:.0f} players in total",
+        f"one reference kill lost {counts[0]:.0f} deaths in total",
         None,
     )
 
@@ -478,6 +504,13 @@ def compare_lethal_abilities(
     ours is one ability's kills, theirs is everything that killed anyone. A
     per-ability reference death count would need each reference kill's own
     death stream, which is a query per candidate.
+
+    Both sides count **death events**, not the players behind them.
+    `ReferenceKillRow.deaths` was measured on 2026-09-18 against twelve
+    reference fights: on the four where somebody died twice, the row matched
+    the event count and not the count of distinct players. The tally below
+    counts one entry per `Death`, which is the same unit, so no line here may
+    word either side as a number of players.
     """
     if not deaths or not sample.members:
         return []
@@ -496,16 +529,25 @@ def compare_lethal_abilities(
     )
     if not tally:
         return []
-    phrase, sample_label, evidence_line, reference_confidence = _reference_deaths(sample.members)
+    figure, phrase, sample_label, evidence_line, reference_confidence = _reference_deaths(
+        sample.members
+    )
 
-    ranked = sorted(tally.items(), key=lambda pair: (-pair[1], pair[0][1]))
+    # Gated like every sibling family in this module, at a bar of its own:
+    # without one, a clean kill prints a card for each ability that killed
+    # somebody, however ordinary that toll was against the references.
+    ranked = [
+        pair
+        for pair in sorted(tally.items(), key=lambda pair: (-pair[1], pair[0][1]))
+        if _worth_reporting(float(pair[1]), figure, LETHAL_MULTIPLE)
+    ]
     findings = []
     for rank, ((ability_id, ability_name), killed) in enumerate(ranked[:MAX_MECHANICS_REPORTED]):
         findings.append(
             Finding(
                 id=f"mechanics.lethal.{rank}",
                 title=(
-                    f"{ability_name} killed {quantity(killed, 'player', 'players')}, "
+                    f"{ability_name} caused {quantity(killed, 'death', 'deaths')}, "
                     f"where the reference kills lost {phrase} to everything combined"
                 ),
                 detail=(
@@ -515,9 +557,12 @@ def compare_lethal_abilities(
                     "per-ability figure."
                 ),
                 confidence=Confidence.DERIVED,
-                evidence=(f"{ability_name} killed {killed}", evidence_line),
+                evidence=(
+                    f"{ability_name} caused {quantity(killed, 'death', 'deaths')}",
+                    evidence_line,
+                ),
                 facts=(
-                    FindingFact(label="Killed by this", value=f"{killed}"),
+                    FindingFact(label="Deaths from this", value=f"{killed}"),
                     FindingFact(
                         label="Reference deaths, all sources",
                         value=phrase,
