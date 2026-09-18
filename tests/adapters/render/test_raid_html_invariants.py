@@ -37,8 +37,9 @@ from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, EnemyCastRow
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, FindingFact
 from wowperf.domain.model import Player
+from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.model import (
     Badge,
     LedgerRow,
@@ -1393,6 +1394,136 @@ def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> No
         assert row.title == finding.title, finding.id
         assert html.count(f'id="finding-{finding.id}"') == 1, finding.id
         assert str(escape(row.title_before)) in html, finding.id
+
+
+# Design section 12.5 asks for the two comparisons that cannot honestly be made
+# to be held as a page-level invariant rather than inside two analysers, because
+# "a rule living only in a docstring is a rule that gets broken" and a
+# function-scoped test sees only the function it was written for. What follows
+# is that rule, over every finding a real raid analysis produces.
+#
+# It is written per *fact*, never per finding. A `mechanics.ability.*` finding
+# legitimately carries a reference rate and a phase label at once -- design
+# section 6 asks for exactly that, one on each side of the same card -- and an
+# invariant written per finding would fail on correct code the day a phased
+# encounter reached it.
+
+PHASE_ONE = Phase(id=1, name="Stage One: The Fangs Close")
+PHASE_TWO = Phase(id=2, name="Stage Two: The Venom Rises")
+"""Two named phases, spelled distinctly enough to be searched for in a string.
+
+Phase names come from the API and never from a table of ours, so these are
+invented as any encounter's would read -- what matters is that a fact quoting
+one is recognisable as quoting one.
+"""
+
+
+def a_phased_raid_fight() -> LoadedEncounter:
+    """The golden fight with phases on its encounter and nothing else changed.
+
+    Its Ravenous Feast hits all fall before the second transition and its Void
+    Bolt after, so `dominant_phase_by_ability` has a real choice to make and the
+    comparison that names the killing blow picks up a phase label beside its
+    reference rate -- the pair of facts this rule exists to keep apart.
+    """
+    fight = a_compared_raid_fight()
+    return fight.model_copy(
+        update={
+            "encounter": fight.encounter.model_copy(
+                update={
+                    "phases": (PHASE_ONE, PHASE_TWO),
+                    "phase_transitions": (
+                        PhaseTransition(id=1, start_ms=FIGHT_START_MS),
+                        PhaseTransition(id=2, start_ms=FIGHT_START_MS + 50_000),
+                    ),
+                }
+            )
+        }
+    )
+
+
+def a_phased_raids_findings() -> tuple[Finding, ...]:
+    """Everything the raid service emits for that fight, comparison and all."""
+    return tuple(
+        analyse_encounter(
+            a_phased_raid_fight(),
+            NO_DEFENSIVES,
+            NO_CONSUMABLES,
+            mechanics=GOLDEN_MECHANICS,
+            our_abilities=GOLDEN_ABILITIES_TAKEN,
+            parse_subjects=golden_subjects(),
+        )
+    )
+
+
+def states_a_phase(fact: FindingFact) -> bool:
+    return any(phase.name in fact.label or phase.name in fact.value
+               for phase in (PHASE_ONE, PHASE_TWO))
+
+
+def states_a_reference(fact: FindingFact) -> bool:
+    """Whether a fact carries a figure drawn from the reference side.
+
+    Matched on the word rather than on a list of labels: the rule has to hold
+    for a family nobody has written yet, and every reference figure this
+    project prints names itself -- "Reference median", "3 reference kills",
+    "1 reference kill".
+    """
+    return "reference" in fact.label.lower() or "reference" in fact.value.lower()
+
+
+def test_no_one_fact_states_a_phase_and_a_reference_figure_together() -> None:
+    """Section 9's rule, held over the whole page rather than one comparison.
+
+    A reference kill's ability table carries no timestamps at all, so its
+    landings cannot be split by time at any price -- which makes a fact reading
+    "Stage Two, against a reference median of 1.4" a claim no reader could
+    check and no query could support.
+    """
+    findings = a_phased_raids_findings()
+    facts = [(finding, fact) for finding in findings for fact in finding.facts]
+    assert facts, "the analysis produced no facts at all, so this rule was never exercised"
+
+    assert any(
+        any(states_a_phase(fact) for fact in finding.facts)
+        and any(states_a_reference(fact) for fact in finding.facts)
+        for finding in findings
+    ), (
+        "no finding carries a phase label and a reference figure at once, so this rule "
+        "held over a page that never risked breaking it"
+    )
+
+    for finding, fact in facts:
+        assert not (states_a_phase(fact) and states_a_reference(fact)), (
+            f"{finding.id} states a phase and a reference figure in one fact: "
+            f"{fact.label} = {fact.value}"
+        )
+
+
+def test_no_one_fact_states_our_own_damage_and_a_reference_figure_together() -> None:
+    """Section 12.5's other half, and ruling 4.5's reason for it.
+
+    Our figure is unmitigated and a reference table's is mitigated, measured
+    4.61x apart on a real fight, and nothing reconciles them. Cross-raid
+    comparison is landings per minute or death counts; a damage figure stays on
+    our own side of the page. Every one of ours says `unmitigated` in the fact
+    that prints it, which is what makes this searchable.
+    """
+    findings = a_phased_raids_findings()
+    facts = [(finding, fact) for finding in findings for fact in finding.facts]
+
+    assert any("unmitigated" in fact.value.lower() for _finding, fact in facts), (
+        "no fact states a damage figure of ours at all, so this rule was never exercised"
+    )
+    assert any(states_a_reference(fact) for _finding, fact in facts), (
+        "no fact states a reference figure at all, so this rule was never exercised"
+    )
+
+    for finding, fact in facts:
+        assert not ("unmitigated" in fact.value.lower() and states_a_reference(fact)), (
+            f"{finding.id} puts our unmitigated figure beside a reference one: "
+            f"{fact.label} = {fact.value}"
+        )
 
 
 def test_the_rendered_raid_page_matches_the_golden_file(pytestconfig: pytest.Config) -> None:

@@ -111,6 +111,74 @@ def assert_mechanics_output_is_well_formed(
         assert finding.seconds_lost is None, "a landing rate is not priced in seconds"
 
 
+def assert_the_wipe_analysis_fired(
+    loaded: LoadedEncounter,
+    mechanics_sample: MechanicsSample,
+    findings: Sequence[Finding],
+) -> None:
+    """The three families the wipe analysis added, against a real wiped attempt.
+
+    Offline every one of these reads a fixture that decided its own phases, its
+    own deaths and its own reference sample. This is the only place all three
+    arrive from the API at once, and the only place the ability-id join behind
+    a phase label meets the two API surfaces it spans: a `viewBy: Ability`
+    table carrying no timestamps, and a damage-taken stream carrying no landing
+    counts. Nothing offline can tell whether those two number their abilities
+    the same way.
+    """
+    encounter = loaded.encounter
+    ids = [finding.id for finding in findings]
+
+    # Both sides have to have arrived, so this is stated both ways: with no
+    # deaths carrying a killing ability, or no reference sample, a lethal
+    # finding would be the comparison inventing a side it never drew.
+    attributable = [death for death in loaded.deaths if death.killing_blow_id]
+    lethal = [one for one in ids if one.startswith("mechanics.lethal.")]
+    if attributable and mechanics_sample.members:
+        assert lethal, "a wipe with deaths and a reference sample named no lethal ability"
+    else:
+        assert not lethal, "a lethal finding with no deaths to read or no sample to compare"
+    for finding in findings:
+        if finding.id.startswith("mechanics.lethal."):
+            assert finding.ability_id, f"{finding.id} names no ability id at all"
+
+    # Phase names come from the API and never from a table of ours, so every
+    # phase a finding names has to be one this encounter supplied. Transitions
+    # tile the fight -- measured across 104 fights, every first transition sat
+    # at its fight's start -- so an encounter with phases and damage events
+    # places them, and a silent phase family means the gate broke.
+    named = {phase.name for phase in encounter.phases}
+    phase_findings = [f for f in findings if f.id.startswith("mechanics.phase.")]
+    if encounter.phases and encounter.phase_transitions and loaded.damage_taken:
+        assert phase_findings, "an encounter carrying named phases reported none of them"
+    else:
+        assert not phase_findings, "a phase finding on an encounter that names no phases"
+    for finding in phase_findings:
+        assert any(name in finding.title for name in named), finding.title
+
+    # The label a whole-fight comparison picks up from our own event stream.
+    for finding in findings:
+        for fact in finding.facts:
+            if fact.label == "Mostly in":
+                assert fact.value in named, f"{finding.id} named a phase this fight has not"
+
+    # The verdict. Its two preconditions are asserted first, so an attempt the
+    # API reports no boss health for, or one nothing comparable was drawn for,
+    # fails by name rather than looking like a verdict that went missing.
+    assert encounter.boss_percentage is not None, (
+        "the report gives this attempt no boss health, so no verdict could be reached"
+    )
+    assert mechanics_sample.members, "no reference kills drawn, so the verdict has no duration"
+    verdicts = [f for f in findings if f.id == "wipe.cause"]
+    assert verdicts, (
+        "a real wipe reached no verdict. Design 8.3's fourth outcome is to withhold on "
+        "conflicting signals, so read this attempt's own alive count, boss health and "
+        "duration before relaxing this"
+    )
+    assert verdicts[0].confidence is Confidence.INFERRED
+    assert len(verdicts[0].evidence) == 4, "the verdict states its reasoning, not its conclusion"
+
+
 def draw_parse_subjects(
     repository: WclRunRepository,
     rankings: WclEncounterRankingRepository,
@@ -320,6 +388,12 @@ def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
 
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
 
+    # The verdict withholds on a kill, whatever else it reads: there is no
+    # failure to explain. Asserted here because the wipe test asserts the
+    # opposite, and one of the two without the other would pass on an analyser
+    # that answered the same thing every time.
+    assert "wipe.cause" not in {finding.id for finding in findings}
+
     # The streams the analysers depend on must have actually arrived, or every
     # assertion above holds over an empty list and proves nothing.
     assert loaded.casts, "no casts fetched"
@@ -372,6 +446,7 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
+    assert_the_wipe_analysis_fired(loaded, mechanics_sample, findings)
 
 
 @pytest.mark.e2e

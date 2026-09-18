@@ -512,6 +512,51 @@ def test_a_phase_finding_carries_no_reference_figure() -> None:
     assert all(fact.label != "Reference" for fact in finding.facts)
 
 
+def test_a_phase_finding_states_its_damage_and_its_share_exactly() -> None:
+    """Every figure this family prints, pinned as the reader meets it.
+
+    Its other tests read ids, phase names, the badge, emptiness, ordering and
+    the cap -- not one of them touches a number, so swapping the phase's own
+    total for the attempt's in the title, or dropping the hundred that turns a
+    fraction into a percentage, left the whole suite green. Both mutations
+    were run against this test and both fail it.
+
+    The amounts are six figures so the thousands separators are asserted too,
+    and they are unequal so the share is a real division rather than a number
+    that reads the same whichever of the two it divided.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=250_000),
+        _taken(ability_id=11, timestamp_ms=6000, amount=500_000),
+        _taken(ability_id=11, timestamp_ms=7000, amount=250_000),
+    )
+
+    worst, second = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert worst.title == (
+        "Stage Two cost this raid 750,000 damage taken, 75% of the attempt's total"
+    )
+    assert worst.evidence == (
+        "750,000 of 1,000,000 damage taken",
+        "phase named by the API as Stage Two",
+    )
+    assert [(fact.label, fact.value) for fact in worst.facts] == [
+        ("Damage taken", "750,000"),
+        ("Share of attempt", "75%"),
+    ]
+    assert second.title == (
+        "Stage One cost this raid 250,000 damage taken, 25% of the attempt's total"
+    )
+    assert second.evidence == (
+        "250,000 of 1,000,000 damage taken",
+        "phase named by the API as Stage One",
+    )
+    assert [(fact.label, fact.value) for fact in second.facts] == [
+        ("Damage taken", "250,000"),
+        ("Share of attempt", "25%"),
+    ]
+
+
 def test_an_encounter_with_no_phases_reports_nothing() -> None:
     events = (_taken(ability_id=11, timestamp_ms=100, amount=50),)
 

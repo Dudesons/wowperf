@@ -575,6 +575,25 @@ def _loaded_wipe_with(deaths: int, resurrected: int = 0) -> LoadedEncounter:
     return LoadedEncounter(encounter=encounter, deaths=death_events, resurrections=back_up)
 
 
+PHASED_ABILITY = 400
+
+PHASED_ABILITIES_TAKEN = (
+    AbilityTakenRow(
+        ability_id=PHASED_ABILITY, ability_name="Ravenous Feast", hit_count=4,
+        source_types=("Boss",),
+    ),
+)
+"""Our own `viewBy: Ability` row for the ability the fixture's events carry.
+
+The id is the join the phase label depends on, and the two sides of it come
+from two different API surfaces: this table has no timestamps, the event stream
+has no landing count. Spelled from one constant so the fixture cannot pass by
+comparing an ability against itself under two different ids -- and `hit_count`
+matches the number of events below, so the landings the comparison states and
+the landings the phase share is drawn from are the same four.
+"""
+
+
 def _loaded_wipe_with_phases() -> LoadedEncounter:
     """A fight whose encounter carries named phases and a transition list.
 
@@ -582,6 +601,10 @@ def _loaded_wipe_with_phases() -> LoadedEncounter:
     `separatesWipes` -- the global constraint measured 2026-09-18 across 8
     encounters, 3 of which read `separatesWipes` false while still naming
     phases.
+
+    Its damage events fall in both phases, three of four in Stage Two, so the
+    dominant phase is a choice a wrong join could get wrong rather than the
+    only phase on offer.
     """
     phases = (
         Phase(id=1, name="Stage One: Something"),
@@ -598,9 +621,10 @@ def _loaded_wipe_with_phases() -> LoadedEncounter:
         phases=phases, phase_transitions=transitions,
         players=(),
     )
-    damage_taken = (
-        DamageTakenEvent(actor_id=1, ability_id=400, ability_name="Ravenous Feast",
-                          amount=500, timestamp_ms=70_000),
+    damage_taken = tuple(
+        DamageTakenEvent(actor_id=1, ability_id=PHASED_ABILITY, ability_name="Ravenous Feast",
+                         amount=500, timestamp_ms=when)
+        for when in (30_000, 70_000, 80_000, 90_000)
     )
     return LoadedEncounter(encounter=encounter, damage_taken=damage_taken)
 
@@ -644,3 +668,30 @@ def test_a_fight_with_phases_reaches_a_phase_finding() -> None:
                                                        mechanics=_mechanics_sample())}
 
     assert any(one.startswith("mechanics.phase.") for one in ids)
+
+
+def test_a_compared_ability_carries_the_phase_its_landings_fell_in() -> None:
+    """The half of the phase work no fixture used to reach: the label on a comparison.
+
+    Every fixture passing `our_abilities` carried no phases, and the one fixture
+    with phases passed no `our_abilities`, so the two halves never met and
+    `dominant_phase_by_ability` could be stubbed out of the service with the
+    whole suite green. This is the only test that joins them, and the join it
+    covers is a real one: the landing count comes from a `viewBy: Ability`
+    table with no timestamps, the phase from an event stream with no landing
+    count, and the ability id is all that holds them together.
+    """
+    loaded = _loaded_wipe_with_phases()
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(),
+        mechanics=_mechanics_sample(), our_abilities=PHASED_ABILITIES_TAKEN,
+    )
+
+    [compared] = [one for one in findings if one.id.startswith("mechanics.ability.")]
+    [label] = [fact for fact in compared.facts if fact.label == "Mostly in"]
+    assert label.value == "Stage Two: Something Else", label.value
+    assert label.confidence is Confidence.DERIVED
+    assert "3 of 4 landings fell in Stage Two: Something Else" in compared.evidence, (
+        compared.evidence
+    )
