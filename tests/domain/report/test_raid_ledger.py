@@ -48,7 +48,6 @@ RAID_FAMILIES = (
 kill and names no phases, not because their routing is unchecked: both are
 pinned directly against `_raid_field_for` beside the tests that use this.
 
-
 Enumerated rather than generated: a family this list forgets is a row that
 falls silently through to `observations`, which is a tab a reader does not
 look under for it. `test_the_family_list_matches_what_the_service_emits`
@@ -332,28 +331,33 @@ def a_rich_encounter() -> list[Finding]:
                   timestamp_ms=5_000),
         *OUR_SPELL_CASTS,
     )
+    # Every killing blow carries its ability id as a real log's does. Without
+    # one the id defaults to zero, which is how the log records a death it
+    # names no killing ability for -- `compare_lethal_abilities` leaves those
+    # out, so a fixture omitting the ids would stop emitting the family
+    # altogether. The ids are the ones the damage events below already use.
     deaths = (
         # Isolated in time: a single, and the first of Emberkin's two deaths.
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=61_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=5.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=5.0, pull_index=None),
         # Five seconds apart: one chain of two.
         Death(actor_id=13, player_name="Bríala", timestamp_ms=150_000,
-              killing_blow="Venomous Bite", seconds_until_next_action=2.0,
-              pull_index=None),
+              killing_blow="Venomous Bite", killing_blow_id=401,
+              seconds_until_next_action=2.0, pull_index=None),
         Death(actor_id=14, player_name="Кириллица", timestamp_ms=155_000,
-              killing_blow="Venomous Bite", seconds_until_next_action=2.0,
-              pull_index=None),
+              killing_blow="Venomous Bite", killing_blow_id=401,
+              seconds_until_next_action=2.0, pull_index=None),
         # Isolated, far past her one Prismatic Barrier cast: a single, a
         # defensives.ceiling and a defensives.unused all at once.
         Death(actor_id=12, player_name="Stonewake", timestamp_ms=300_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=4.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=4.0, pull_index=None),
         # Isolated, far past her one Health Potion: Emberkin's second death,
         # her repeat, and a consumables.unused.
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=450_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=5.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=5.0, pull_index=None),
     )
     damage_taken = (
         # Emberkin takes four times the other three's Ravenous Feast: an

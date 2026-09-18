@@ -482,9 +482,20 @@ def compare_lethal_abilities(
     if not deaths or not sample.members:
         return []
 
+    # A death the log records no killing ability for carries id 0, which
+    # `ingest._ability_name` spells "Unknown ability 0" -- a phrase that reads
+    # as a mechanic, can take one of the five slots from an ability that really
+    # killed somebody, and would head a card naming it. `analyse_deaths` guards
+    # the same 0 for its icon; here the death is left out of the tally
+    # altogether, because an ability comparison has nothing to say about a
+    # death no ability is attached to.
     tally: Counter[tuple[int, str]] = Counter(
-        (death.killing_blow_id, death.killing_blow) for death in deaths
+        (death.killing_blow_id, death.killing_blow)
+        for death in deaths
+        if death.killing_blow_id
     )
+    if not tally:
+        return []
     phrase, sample_label, evidence_line, reference_confidence = _reference_deaths(sample.members)
 
     ranked = sorted(tally.items(), key=lambda pair: (-pair[1], pair[0][1]))
@@ -579,9 +590,16 @@ def compare_phase_cost(
                     # badges derived for a landings share. Left unset,
                     # per `FindingFact`'s own rule, would badge them
                     # measured instead.
+                    #
+                    # Named `unmitigated` for the reason `players.damage.*`
+                    # names its own: this is the same quantity, summed off
+                    # the same event stream, printed on the same tab, and a
+                    # figure a reader could take for the mitigated one a
+                    # reference table carries is exactly what ruling 4.5
+                    # refuses.
                     FindingFact(
                         label="Damage taken",
-                        value=f"{amount:,}",
+                        value=f"{amount:,} unmitigated",
                         confidence=Confidence.DERIVED,
                     ),
                     FindingFact(

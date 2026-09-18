@@ -1,5 +1,6 @@
-# ABOUTME: Which named phase an instant of a boss fight fell in.
+# ABOUTME: Which named phase an instant of a boss fight fell in, and where an ability landed.
 # ABOUTME: Reads transitions by time, never by position or by highest id reached.
+# ABOUTME: Our own events only: a reference kill's ability table carries no timestamps.
 
 from collections import Counter
 

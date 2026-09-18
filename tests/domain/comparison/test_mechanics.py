@@ -386,9 +386,38 @@ def test_the_deadliest_ability_is_reported_first() -> None:
 
 
 def test_at_most_five_abilities_are_reported() -> None:
-    deaths = tuple(_death(identifier, f"Ability {identifier}") for identifier in range(9))
+    # Ids from one, not from zero: a zero id means the log recorded no killing
+    # ability, which this comparison drops, and a cap test must not spend one
+    # of its nine on a death that never reaches the tally.
+    deaths = tuple(_death(identifier, f"Ability {identifier}") for identifier in range(1, 10))
 
     assert len(compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))) == 5
+
+
+def test_a_death_the_log_names_no_killing_ability_for_takes_no_slot() -> None:
+    """Three unattributed deaths against one real ability, and the real one leads.
+
+    `ingest._ability_name` spells a missing `killingAbilityGameID` as "Unknown
+    ability 0", which reads on a card like a mechanic with a name. Left in the
+    tally it outranks anything that killed fewer players, takes one of the five
+    slots, and heads a finding that names it in the title.
+    """
+    deaths = (
+        *(_death(0, "Unknown ability 0") for _ in range(3)),
+        _death(11, "Caustic Waves"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert [finding.ability_name for finding in findings] == ["Caustic Waves"]
+    assert all("Unknown ability" not in finding.title for finding in findings)
+
+
+def test_deaths_the_log_names_no_ability_for_at_all_yield_no_finding() -> None:
+    """Not an empty tally rendered as a heading: nothing to say, said as nothing."""
+    deaths = tuple(_death(0, "Unknown ability 0") for _ in range(4))
+
+    assert compare_lethal_abilities(deaths, _sample_losing(0, 1, 2)) == []
 
 
 def test_a_sample_below_the_aggregate_floor_names_one_reference_kill() -> None:
@@ -541,7 +570,7 @@ def test_a_phase_finding_states_its_damage_and_its_share_exactly() -> None:
         "phase named by the API as Stage Two",
     )
     assert [(fact.label, fact.value) for fact in worst.facts] == [
-        ("Damage taken", "750,000"),
+        ("Damage taken", "750,000 unmitigated"),
         ("Share of attempt", "75%"),
     ]
     assert second.title == (
@@ -552,7 +581,7 @@ def test_a_phase_finding_states_its_damage_and_its_share_exactly() -> None:
         "phase named by the API as Stage One",
     )
     assert [(fact.label, fact.value) for fact in second.facts] == [
-        ("Damage taken", "250,000"),
+        ("Damage taken", "250,000 unmitigated"),
         ("Share of attempt", "25%"),
     ]
 
