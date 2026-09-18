@@ -329,6 +329,35 @@ not. Internal comparison only.
 This layer names differences and does not explain them. Where a reader wants the anatomy, the
 finding carries the `wowperf raid --fight N` invocation that renders it.
 
+**"A role still alive that usually is not" was built as `progression.best.survived`, measured
+2026-09-16 against a real night, and cut the same day. The reading is negative, and the reason is
+structural rather than circumstantial.** On report `cW38jmwdnZfbHVL4`, encounter 3492, Heroic, 20
+players, 7 qualifying attempts: the 20 players resolved to **19 distinct specialisation labels**,
+of which **18 died on the deepest attempt**, leaving a candidate set of **one** before any filter
+ran. Every attempt that night logged **19 to 21 roster deaths**, so the finding's own "died in more
+than half the other attempts" test rejected nothing — the single candidate scored 5 of 6 — and the
+finding's output was decided entirely by who happened not to die once, while its title claimed a
+comparison it never performed.
+
+What this rules out is the rule as written, on the nights this command exists for. A raid wiping
+at 16% remaining loses nearly everyone on nearly every attempt, so the candidate set is small **by
+construction** on a progression night; the comparison has almost nothing to discriminate precisely
+where it would be read. A cap on how many specialisations may be named cannot reach this: it
+guards the opposite end of the funnel, and was tried and found inert here.
+
+What would reopen it: **a night whose deepest attempt leaves a real minority dead** — enough
+survivors that the candidate set is a choice rather than an accident, and enough variation in who
+dies across attempts that "usually died" excludes somebody. A relative gate, reading a candidate's
+death rate against the roster's rather than against one half, is the shape such a finding would
+need; it is not written here because it would again be a rule written rather than measured, which
+is what this reading exists to stop. The population behind this is **one report, one night, one
+boss** — it says the rule does not work on the night we have, not that no night could support it.
+
+`progression.best.deaths` — "deaths that did not happen" — is unaffected and ships. It is
+`measured`, it survived the same live run, and correcting its title there ("lost 21 players" on a
+20-player raid, where the figure counts deaths and a battle rez makes one player die twice) is
+what that run was for.
+
 ---
 
 ## 6. Ranking
@@ -490,6 +519,19 @@ was a test that could not have failed, so the fixtures carry the burden.
    the two scales — which is the case `Progression.uses_boss_health` exists to handle.
 4. **Whether a session gap should split a series or merely be declared** (§9.6). The design's
    position is declare; a measurement of real multi-session reports could change it.
+   **Measured 2026-09-16, and the reading is negative: no report this project has cached holds
+   two sessions.** Across 295 cached responses, 4 distinct reports carry raid fights with both a
+   start and an end time, giving 9 series of two or more attempts and 59 within-series gaps
+   measured end-of-one to start-of-the-next. Median 143s, p90 701s, **maximum 6281s (1.74h)**;
+   across a whole report's consecutive raid fights, 71 gaps with a maximum of 10572s (2.94h). An
+   overnight boundary is eight hours or more, and nothing here reaches two. The two largest
+   within-series gaps both sit on one encounter of report `xBDdYAjbRFqWKC8n`, whose cached fights
+   carry no `difficulty` at all, so they may be a difficulty switch inside one evening rather
+   than a break. **So the declaration is cut from plan 3**: a threshold above 2.94h would never
+   fire on any data we have, and one below it would call an ordinary break a second night. The
+   population is small — 4 reports, three of them this project's own probes — so this says no
+   multi-session report is *here* to set a threshold against, not that none exists. One turning
+   up reopens the item.
 5. **The movement threshold** (§5.1). 5.0 points is chosen, not measured, and the first real night
    cleared it by 0.1. Blocks nothing that already ships; blocks any new claim built on
    `progression.movement`.

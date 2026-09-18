@@ -80,6 +80,15 @@ p { margin: 0 0 10px; }
 .block-boss { stroke: var(--ink); stroke-width: 1; }
 .block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
 .block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
+.attempt-bar { fill: var(--ours); }
+.attempt-best { stroke: var(--ink); stroke-width: 2; }
+.attempt-kill { fill: var(--badge-measured); }
+.attempts { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 8px; }
+.attempts th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 4px 0; }
+.attempts td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line);
+  color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.attempts tr.best td { color: var(--ink); font-weight: 600; }
 .death-when { color: var(--ink-dim); font-size: 13px; }
 .recap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px;
   margin: 8px 0 0; }

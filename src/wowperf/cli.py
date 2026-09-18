@@ -25,7 +25,7 @@ from wowperf.adapters.config.toml import (
     load_slot_names,
     load_throughput_cooldowns,
 )
-from wowperf.adapters.render.html import render, render_raid
+from wowperf.adapters.render.html import render, render_progression, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
@@ -79,6 +79,7 @@ from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.domain.report.players import slugs_by_actor
+from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.urls import parse_report_url
 
@@ -1672,8 +1673,12 @@ def progression(
     `--player`, `--all-players` and `--no-compare` do not apply here and are
     not offered.
 
-    Writes no HTML. The report for this command belongs to a later plan; a
-    half-rendered page is worse than none.
+    The page beside the findings carries five tabs -- Summary, Attempts,
+    Repeats, Best attempt, Provenance -- which hold the night's shape: how deep
+    each attempt got, what kept ending it, and what the deepest one did
+    differently. It deliberately redraws no single attempt's anatomy: health
+    curves, death cards and defensive states belong to `wowperf raid --fight
+    N`, and the findings that want one carry that invocation.
     """
     # See the matching comment on `fetch`: Windows gives the process a
     # locale-dependent stdout encoding that cannot hold non-ASCII names.
@@ -1723,6 +1728,35 @@ def progression(
         raise typer.Exit(1) from error
 
     typer.echo(f"{len(findings)} findings written to {written}")
+
+    report_file = out / f"{progression.report_code}-{progression.encounter_id}.progression.html"
+    # A second guard, for the same reason the first one exists and `raid`'s
+    # write phase carries its own: rendering fails differently from fetching,
+    # and it fails after the findings have already been computed and written.
+    try:
+        report_file.write_text(
+            render_progression(
+                build_progression_report(
+                    deep, findings, datetime.now().strftime("%Y-%m-%d %H:%M")
+                ),
+                # No icons, because this command fetches none.
+                # `load_progression_attempts` reads the report's ability
+                # dictionary for its names and drops the icon half, so every
+                # `LoadedEncounter` it builds carries an empty `ability_icons`.
+                # `build_icons` over the deepest of them would hand
+                # `render_progression` a `CdnIcons` that resolves nothing --
+                # the same blank page, dressed as an icon source. The `ability`
+                # macro renders a bare name without one, which is what the
+                # Mythic+ comparison tables drew for months.
+                icons=None,
+            ),
+            encoding="utf-8",
+        )
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"report written to {report_file}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 

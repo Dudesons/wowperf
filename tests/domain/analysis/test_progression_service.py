@@ -328,6 +328,57 @@ def test_three_deepened_attempts_emit_both_layer_one_and_layer_two_findings() ->
     assert "progression.collapse" in found
 
 
+def a_deepened_quartet() -> LoadedProgression:
+    """A deepest attempt and three others, arranged so Layer 3 fires with a gap.
+
+    The deepest attempt takes one roster death against the others' median of
+    two, so `best_deaths` clears `MIN_OTHER_ATTEMPTS` and reports a difference
+    rather than "no difference from the rest" -- a fixture where the two
+    figures matched would still fire, but would not show that the figures
+    reached the finding.
+
+    No attempt sets `last_phase`, so `repeat_phase` stays silent, and none
+    takes any damage, so `repeat_ability` stays silent too -- this fixture
+    exists to isolate Layer 3's wiring, not to re-exercise every Layer 2
+    analyser, which `a_deepened_trio` already does.
+    """
+    players = (
+        Player(actor_id=1, name="Emberkin", class_name="Priest", spec="Holy", item_level=450),
+        Player(
+            actor_id=2, name="Stonewake", class_name="Warrior", spec="Protection", item_level=460
+        ),
+    )
+    deepest = a_loaded_attempt(
+        40, seconds=200.0, remaining=10.0, players=players, deaths_after_ms=(1_000,)
+    )
+    others = [
+        a_loaded_attempt(
+            n, seconds=200.0, remaining=60.0, players=players, deaths_after_ms=(1_000, 2_000)
+        )
+        for n in (41, 42, 43)
+    ]
+    return a_loaded_series(deepest, *others)
+
+
+def test_the_layer_three_finding_is_appended_after_layer_two() -> None:
+    """Asserts the whole list, not membership alone.
+
+    Membership would still pass if `best_deaths` were silently dropped from the
+    service's loop, or if it were spliced in ahead of a Layer 2 id. Pinning the
+    full ordered list is what actually fails in those cases.
+    """
+    found = ids(analyse_progression(a_deepened_quartet()))
+
+    assert found == [
+        "progression.best",
+        "progression.cluster",
+        "progression.movement",
+        "progression.repeat.first_death",
+        "progression.collapse",
+        "progression.best.deaths",
+    ]
+
+
 def test_a_night_where_every_attempt_is_discarded_still_emits_only_layer_one() -> None:
     """The trap this task's brief calls out by name.
 

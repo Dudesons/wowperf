@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Den of Nalorakk +16</title>
+<title>The Hollow Choir Mythic progression</title>
 <style>
 :root {
   --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
@@ -252,15 +252,14 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 <body>
 <main>
 
-<h1>Den of Nalorakk +16</h1>
-<p class="sub">Timed in 30:00 · Affixes 9, 10</p>
+<h1>The Hollow Choir Mythic</h1>
+<p class="sub">No kill in 7 attempts &middot; 7 attempts read, 1 excluded as too short &middot; depth is encounter progress</p>
 
 <nav class="tabs" data-tab-group="main" aria-label="Sections">
   <button type="button" class="tab" data-tab-for="tab-summary">Summary</button>
-  <button type="button" class="tab" data-tab-for="tab-route">Route &amp; tempo</button>
-  <button type="button" class="tab" data-tab-for="tab-deaths">Deaths</button>
-  <button type="button" class="tab" data-tab-for="tab-interrupts">Interrupts</button>
-  <button type="button" class="tab" data-tab-for="tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="tab-best">Best attempt</button>
   <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
 </nav>
 
@@ -268,242 +267,139 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 
 <section class="panel" data-tab-panel="main" id="tab-summary">
 
-
-<h2 id="ledger">Where the time went</h2>
-<p class="sub">Not additive — every figure below can already contain another, so they must
-never be summed.</p>
-<div class="findings">
-<div class="card" id="finding-time.residual">
-  <div class="row-head">
-    <h3>Time outside pulls</h3>
-<span class="cost">5:00</span>    <a class="badge badge-measured" href="#provenance">measured</a>
-  </div>
-  <p class="detail">Travel, waiting and run-backs.</p>
-</div>
-
-</div>
-
-<h2 id="losses">Biggest losses</h2>
-<p class="sub">Each line opens its card. Ranked, not additive.</p>
-<a class="pointer" href="#finding-time.gap.0">
-  <span class="pointer-title">A 41 second gap after pull 0</span>
-  <span class="cost">0:41</span>
-  <span class="badge badge-measured">measured</span>
-</a>
-
-
-<h2 id="timeline">Aligned timeline</h2>
-<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
+and Best attempt holds what the deepest attempt did differently.</p>
 
 <h2 id="observations">Other findings</h2>
-<p class="sub">Nothing else measured.</p>
-
-</section>
-
-<section class="panel" data-tab-panel="main" id="tab-route">
-
-<h2 id="route">Route and tempo</h2>
-<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
-<p class="sub">Not additive — every figure below can already contain another, so they must
-never be summed.</p>
+<p class="sub">Findings no other section claimed.</p>
 <div class="findings">
-<div class="card" id="finding-time.gap.0">
+<div class="card" id="finding-progression.unplaced.example">
   <div class="row-head">
-    <h3>A 41 second gap after pull 0</h3>
-<span class="cost">0:41</span>    <a class="badge badge-measured" href="#provenance">measured</a>
-  </div>
-  <p class="detail">Travel, not combat.</p>
-  <p class="nests">Already counted inside Time outside pulls.</p>
-  <ul class="evidence"><li>next pull begins at Pack 1</li></ul>
-</div>
-
-</div>
-
-</section>
-
-<section class="panel" data-tab-panel="main" id="tab-deaths">
-
-<h2 id="deaths">Deaths</h2>
-<div class="card">
-  <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">Frigid Roar</span></span> — Emberkin</h3>
-    <span class="death-when">0:50, pull 0</span>
-  </div>
-  <p class="detail">Mage</p>
-  <div class="recap">
-    <div class="recap-timeline">
-      <details class="events">
-      <summary>1 event</summary>
-      <table class="timeline">
-        <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
-        <tbody>
-        <tr class="hit" id="death-0-e0" tabindex="0">
-          <td>5.0 s</td>
-          <td><span class="ability" tabindex="0"><span class="ability-name">Snowdrift</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Struck for</span><span class="tip-value">82,410</span></span><span class="tip-line"><span class="tip-label">Mitigated</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">82,410</span></span><span class="tip-note">The log does not attribute what reduced this hit: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure.</span></span></span></td>
-          <td>82,410 to health</td>
-          <td class="hp"></td>
-        </tr>
-        </tbody>
-      </table>
-      </details>
-      <p class="nests">The log carries no health reading for this player before the death, so this card draws no health curve and the health column of its recap is empty.</p>
-      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
-           href="#provenance">measured</a></p>
-    </div>
-    <div class="recap-availability">
-      <div class="avail">
-        <p class="avail-title">Defensives</p>
-        <p class="nests">No data file covers Mage Arcane.</p>
-      </div>
-      <div class="avail">
-        <p class="avail-title">Consumables</p>
-        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
-      </div>
-      <div class="avail">
-        <p class="avail-title">Teammates&#39; externals</p>
-        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
-      </div>
-    </div>
-  </div>
-</div>
-
-<p class="sub">Not additive — every figure below can already contain another, so they must
-never be summed.</p>
-<div class="findings">
-<div class="card" id="finding-defensives.unused.0">
-  <div class="row-head">
-    <h3>Emberkin died with Ice Block available</h3>
+    <h3>The pull timer drifted across the night</h3>
     <a class="badge badge-inferred" href="#provenance">inferred</a>
   </div>
-  <p class="detail">Cast earlier in the run, and its cooldown had elapsed by the killing blow.</p>
+  <p class="detail">No section of this report claims this measurement yet.</p>
 </div>
 
 </div>
 
 </section>
 
-<section class="panel" data-tab-panel="main" id="tab-interrupts">
+<section class="panel" data-tab-panel="main" id="tab-attempts">
 
-<h2 id="interrupts">Interrupts</h2>
-<div class="findings">
-<div class="card" id="finding-interrupts.summary">
-  <div class="row-head">
-    <h3>Emberkin let Death&#39;s Advance &amp; Ice Block go uninterrupted</h3>
-    <a class="badge badge-derived" href="#provenance">derived</a>
-  </div>
-  <p class="detail">Grouped by spell.</p>
-</div>
-
-</div>
-
-</section>
-
-<section class="panel" data-tab-panel="main" id="tab-players">
-
-<h2 id="players">Players</h2>
-<nav class="tabs subtabs" data-tab-group="players" aria-label="Players">
-  <button type="button" class="tab" data-tab-for="player-emberkin-0">Emberkin</button>
-  <button type="button" class="tab" data-tab-for="player-stonewake-1">Stonewake</button>
-  <button type="button" class="tab" data-tab-for="player-briala-2">Bríala</button>
-</nav>
-<div class="card" data-tab-panel="players" id="player-emberkin-0">
-  <div class="player-head">
-    <span class="swatch" style="background: var(--class-mage)"></span>
-    <h3>Emberkin</h3>
-    <span class="sub">Mage Arcane</span>
-  </div>
-  <p class="stats">1 cast in 2:20 of pulls · 1 death · 0 interrupts</p>
-  <div class="timeline-wrap">
-<svg class="player-timeline" viewBox="0 0 680.0 164.0">
-  <title>One player&#39;s run on one elapsed-time axis</title>
-  <line class="tick" x1="150.0" y1="22.0" x2="150.0" y2="136.0"/>
-  <text class="tick-label" x="150.0" y="152.0" text-anchor="middle">0:00</text>
-  <rect class="pull-band" x="150.0" y="28.0"
-        width="151.8" height="108.0"><title>Pull 0 — ran 1:00</title></rect>
-  <rect class="pull-band block-boss" x="453.6" y="28.0"
-        width="202.4" height="108.0"><title>Pack 1 — ran 1:20</title></rect>
-  <text class="pull-name" x="453.6" y="25.0">Pack 1</text>
-  <line class="damage-axis" x1="150.0" y1="44.0"
-        x2="656.0" y2="44.0"/>
-  <text class="tick-label row-label" x="126.0"
-        y="44.0">82,410</text>
-  <rect class="damage-bar" x="263.9" y="44.0" width="12.6" height="32.0"><title>82,410 unmitigated in 5 s, at 0:45, during Pull 0</title></rect>
-  <text class="track-label row-label" x="126.0" y="60.0">Damage taken</text>
+<h2 id="attempts">Attempts</h2>
+<p class="legend">One bar an attempt, in pull order. Height is depth reached (encounter progress): a taller bar got further into the encounter. The outlined bar is the attempt that went deepest.</p>
+<svg width="100%" viewBox="0 0 680.0 220.0">
+  <line class="tick" x1="46.0" y1="186.0"
+        x2="664.0" y2="186.0"></line>
+  <text class="tick-label" x="40.0" y="186.0"
+        text-anchor="end" dominant-baseline="middle">0%</text>
+  <line class="tick" x1="46.0" y1="143.5"
+        x2="664.0" y2="143.5"></line>
+  <text class="tick-label" x="40.0" y="143.5"
+        text-anchor="end" dominant-baseline="middle">25%</text>
+  <line class="tick" x1="46.0" y1="101.0"
+        x2="664.0" y2="101.0"></line>
+  <text class="tick-label" x="40.0" y="101.0"
+        text-anchor="end" dominant-baseline="middle">50%</text>
+  <line class="tick" x1="46.0" y1="58.5"
+        x2="664.0" y2="58.5"></line>
+  <text class="tick-label" x="40.0" y="58.5"
+        text-anchor="end" dominant-baseline="middle">75%</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">100%</text>
+  <rect class="attempt-bar" x="46.0" y="126.17699999999999"
+        width="82.28571428571429" height="59.823"><title>Attempt 1: 64.8% left (encounter progress), 216 seconds</title></rect>
+  <rect class="attempt-bar" x="134.28571428571428" y="161.85999999999999"
+        width="82.28571428571429" height="24.140000000000004"><title>Attempt 2: 85.8% left (encounter progress), 106 seconds</title></rect>
+  <rect class="attempt-bar attempt-best" x="222.57142857142858" y="44.03299999999999"
+        width="82.28571428571429" height="141.967"><title>Attempt 3: 16.5% left (encounter progress), 480 seconds</title></rect>
+  <rect class="attempt-bar" x="310.8571428571429" y="161.18"
+        width="82.28571428571429" height="24.81999999999999"><title>Attempt 4: 85.4% left (encounter progress), 110 seconds</title></rect>
+  <rect class="attempt-bar" x="399.14285714285717" y="165.005"
+        width="82.28571428571429" height="20.99499999999999"><title>Attempt 5: 87.7% left (encounter progress), 88 seconds</title></rect>
+  <rect class="attempt-bar" x="487.42857142857144" y="106.61"
+        width="82.28571428571429" height="79.39"><title>Attempt 6: 53.3% left (encounter progress), 279 seconds</title></rect>
+  <rect class="attempt-bar" x="575.7142857142858" y="110.605"
+        width="82.28571428571429" height="75.395"><title>Attempt 7: 55.6% left (encounter progress), 227 seconds</title></rect>
 </svg>
-</div>
-<p class="sub">Tallest bar: 82,410 unmitigated damage in 5 seconds. Each bar is a 5-second bucket, and the axis runs from nothing to this player&#39;s own tallest, never the group&#39;s.</p><p class="sub withheld">No damage done is drawn: the run&#39;s graph carried none for this player inside the window this axis draws. A flat track would read as a run of empty buckets, which is a claim nobody measured.</p><p class="state-key"><span class="state-swatch press"></span>a press · <span class="state-swatch cover"></span>the buff up · <span class="state-swatch on-cooldown"></span>on cooldown · <span class="state-swatch not-judged"></span>not judged</p>
-<p class="legend">A mark is a cast the log recorded. The stretch after it is the ability&#39;s cooldown, computed from its base length: talents shorten cooldowns and the log records no reset, so this shows an ability as unavailable at least as often as it truly was. The pale stretch at the start is not judged at all — a press before the timer began is invisible to a log fetched per fight. An open tick marks the earliest the ability could have come back, computed from that same base length: talents may have freed it sooner, and the log never says.</p>
-<p class="legend"><a class="badge badge-measured" href="#provenance">measured</a> — the damage taken bars.</p>
 
-  <div class="findings">
-  <div class="card" id="finding-compare.talents.emberkin-0">
+<table class="attempts">
+<thead>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td><td>64.8%</td><td>3:36</td><td>The Gathering</td><td>1</td></tr>
+<tr>
+<td>2</td><td>85.8%</td><td>1:46</td><td>The Gathering</td><td>—</td></tr>
+<tr class="best">
+<td>3</td><td>16.5%</td><td>8:00</td><td>The Drowning</td><td>2</td></tr>
+<tr>
+<td>4</td><td>85.4%</td><td>1:50</td><td>The Gathering</td><td>—</td></tr>
+<tr>
+<td>5</td><td>87.7%</td><td>1:28</td><td>The Gathering</td><td>—</td></tr>
+<tr>
+<td>6</td><td>53.3%</td><td>4:39</td><td>Intermission: Tide</td><td>0</td></tr>
+<tr>
+<td>7</td><td>55.6%</td><td>3:47</td><td>Intermission: Tide</td><td>—</td></tr>
+</tbody>
+</table>
+
+<div class="findings">
+<div class="card" id="finding-progression.cluster">
   <div class="row-head">
-    <h3>Emberkin&#39;s talents differ from the top parse&#39;s in two nodes</h3>
+    <h3>The attempts split into a short cluster and a long one</h3>
     <a class="badge badge-derived" href="#provenance">derived</a>
   </div>
-  <p class="detail">Both differences sit in the class tree.</p>
+  <p class="detail">Four ran under two minutes; three ran past three and a half.</p>
 </div>
 
-  <div class="card" id="finding-compare.spells.missing.0.emberkin-0">
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-repeats">
+
+<h2 id="repeats">Repeats</h2>
+<div class="findings">
+<div class="card" id="finding-progression.repeat.phase">
   <div class="row-head">
-    <h3>Emberkin cast no Combustion on the boss</h3>
+    <h3>Most wipes ended in the same phase</h3>
     <a class="badge badge-measured" href="#provenance">measured</a>
   </div>
-  <p class="detail">The reference cast it twice on the same pull.</p>
+  <p class="detail">Four of the seven kept attempts never left the opening phase.</p>
 </div>
 
-  </div>
 </div>
-<div class="card" data-tab-panel="players" id="player-stonewake-1">
-  <div class="player-head">
-    <span class="swatch" style="background: var(--class-deathknight)"></span>
-    <h3>Stonewake</h3>
-    <span class="sub">DeathKnight Blood</span>
-  </div>
-  <p class="stats">0 casts in 2:20 of pulls · 0 deaths · 0 interrupts</p>
-  <p class="withheld">This player cast none of the cooldowns tracked for their specialisation, and neither the log nor the run&#39;s graph carried any damage for them inside the window this chart draws, so there is nothing to draw.</p>
 
-  <div class="findings">
-  <div class="card" id="finding-compare.talents.stonewake-1">
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-best">
+
+<h2 id="best">Best attempt</h2>
+<div class="findings">
+<div class="card" id="finding-progression.best.deaths">
   <div class="row-head">
-    <h3>Stonewake&#39;s talents differ from the top parse&#39;s in one node</h3>
-    <a class="badge badge-derived" href="#provenance">derived</a>
-  </div>
-  <p class="detail">The difference sits in the specialisation tree.</p>
-</div>
-
-  <div class="card" id="finding-compare.spells.missing.0.stonewake-1">
-  <div class="row-head">
-    <h3>Stonewake cast no Dancing Rune Weapon on the boss</h3>
+    <h3>The deepest attempt took more roster deaths than the rest of the night</h3>
     <a class="badge badge-measured" href="#provenance">measured</a>
   </div>
-  <p class="detail">The reference cast it once on the same pull.</p>
+  <p class="detail">Two roster deaths, against zero and one on the other attempts read.</p>
 </div>
 
-  </div>
 </div>
-<div class="card" data-tab-panel="players" id="player-briala-2">
-  <div class="player-head">
-    <span class="swatch" style="background: var(--class-priest)"></span>
-    <h3>Bríala</h3>
-    <span class="sub">Priest Discipline</span>
-  </div>
-  <p class="stats">0 casts in 2:20 of pulls · 0 deaths · 0 interrupts</p>
-  <p class="withheld">This player cast none of the cooldowns tracked for their specialisation, and neither the log nor the run&#39;s graph carried any damage for them inside the window this chart draws, so there is nothing to draw.</p>
-
-  <p class="withheld">No parse comparison was requested for this player. Name them with --player, or pass --all-players, to compare them against top parses of their specialisation.</p>
-</div>
-
 
 </section>
 
 <section class="panel" data-tab-panel="main" id="tab-provenance">
 
 <h2 id="provenance">Provenance</h2>
-<p class="sub">Report abc123, fight 36,
-fetched 2026-09-05 14:02.</p>
-<p class="withheld">Aligned timeline: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
-<p class="withheld">Route and tempo: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="sub">Report abc123, encounter 3492, 7 attempts read and 3 deepened, fetched 2026-09-16 08:14.</p>
+<p class="sub">No reference run of any kind was fetched: this page compares a night against itself.</p>
+<p class="sub">Every percentage on this page is the same scale, chosen once for the whole series: boss health where every qualifying attempt carried one, and the encounter&#39;s own progress otherwise. Both count down -- a kill reads about 0.01 and an instant wipe reads 100 -- and the header names which scale this night is on.</p>
+<p class="sub">This page draws the night, never one attempt&#39;s internals. The health curves, what hit whom and what each player still had are `wowperf raid --fight N`&#39;s work, and the findings that want them carry the invocation.</p>
 <p class="legend">
 <span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
 <span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
