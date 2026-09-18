@@ -932,6 +932,31 @@ never been passed: `difficulty: 4` hardcoded into a fixture the first time, and 
 made at `difficulty: 5` the second. **The question that finds this class is which argument values
 the live runs have actually taken**, not whether a live run happened.
 
+**A row's `deaths` counts death events, not the players behind them. Measured 2026-09-18.**
+Twelve rows of encounter 3492's `default` board at `difficulty: 4, partition: 1`, each joined to
+its own fully paginated `events(dataType: Deaths)` stream for the report and fight the row names.
+**Four of the twelve had at least one player die more than once, and those four are the only ones
+that can tell the two readings apart**: on all four the row's `deaths` equalled the death-event
+count and differed from the count of distinct `targetID`s -- claimed 6 against 6 events and 5
+players, claimed 5 against 5 and 3, claimed 5 against 5 and 4, claimed 4 against 4 and 3. On the
+remaining eight nobody died twice, so both counts agreed and neither reading is excluded by them.
+Across all twelve, `claimed == events` held 12 of 12 and `claimed == distinct players` held 8 of
+12. The whole probe cost 35.6 points of 3600.
+
+So anything set beside this field has to be an event count. `attempt_shape.classify_attempt`
+compared a count of distinct players against a median of it until this was measured, and
+`compare_lethal_abilities` counted events correctly while wording them as players; both are
+corrected.
+
+**The board to take this reading on is not encounter 3470's.** The 2026-09-14 note above records
+`default` and `speed` there "with deaths ranging 0 to 20"; measured again 2026-09-18, the same
+board at the same difficulty and partition read `{0: 40, 1: 9, 2: 1}` -- a maximum of 2 over 50
+rows, which cannot separate an event from a player at all. Encounter 3492's board at the same
+difficulty read `{0: 7, 1: 15, 2: 9, 3: 8, 4: 6, 5: 2, 6: 3}`. Whether the 0-to-20 reading was of
+a different board or the board has simply moved in four days is not established, and the older
+line is left standing rather than overwritten: what is recorded here is that a range deep enough
+for this measurement has to be looked for rather than assumed.
+
 ## A difficulty's name lives on its zone, not on the fight or the encounter
 
 Introspected 2026-09-15, looking for something `raid_frame.py`'s header could print instead of
@@ -1357,6 +1382,49 @@ phases.
 transition on 7 of the 8, but encounter 3470 reports `lastPhase: 2` against transitions ending in
 3. Unexplained, and recorded rather than guessed at: **read `lastPhase`, never
 `phaseTransitions[-1].id`.**
+
+## No boss health curve is on offer, and `separatesWipes` is not a phase gate
+
+Measured 2026-09-18 against report `DJfap6RcYKhPGHXZ` fight 13, a Mythic Nek'zali kill, by schema
+introspection and by running each query. The whole probe spent under 5 points.
+
+**The four enums, read verbatim from introspection.** `GraphDataType` and `TableDataType` carry
+the same fourteen values: `Summary`, `Buffs`, `Casts`, `DamageDone`, `DamageTaken`, `Deaths`,
+`Debuffs`, `Dispels`, `Healing`, `Interrupts`, `Resources`, `Summons`, `Survivability`, `Threat`.
+They differ from `EventDataType`, recorded above, in both directions: graphs and tables add
+`Summary` and `Survivability`, and lack `All` and `CombatantInfo`. `HostilityType` is exactly
+`Friendlies` and `Enemies`.
+
+**`graph(dataType: Resources, hostilityType: Enemies)` returns zero series.** One call, one fight,
+`series: []` inside the usual `startTime`/`endTime` envelope. Cost 1.00 point. **So there is no
+enemy health curve to read**, and a boss's health over time cannot be fetched the way a player's
+resources can.
+
+**`graph(dataType: Summary, hostilityType: Enemies)` returns three series of 42 points each** --
+`Damage Done`, `Damage Taken`, `Healing Done` -- and priced at **0.00 points**. Whether those
+points are per-bucket rates or running totals was not established, so nothing should read them as
+a depletion curve without settling that first.
+
+**The endpoint remains the reliable reading.** `ReportFight.fightPercentage` states the boss
+health a fight ended on, is already selected by `FIGHTS_QUERY`, and costs nothing.
+
+**`events(..., includeResources: true)` surfaced no boss-sized pool.** On a
+`DamageTaken`/`Friendlies` stream, 313 of 401 events carried `hitPoints` and `maxHitPoints` across
+9 distinct source ids, every maximum between 812560 and 927660 -- pools far too small for a Mythic
+raid boss. Which actors those are was not identified, and is recorded as a raw reading rather than
+guessed at. The 2026-09-06 note above reached the same conclusion from a smaller window.
+
+**`separatesWipes` is false on encounters that plainly have phases.** Read off the cache the same
+day across 8 encounters carrying a `Report.phases` entry: 5 true, 3 false, and **all 8 carry 2 to
+4 named phases**. Encounter 3445 reads false while naming `Stage One: Entombed Sentinels` and
+`Intermission: Vitriolic Stasis`. Encounters 3497, 12813 and 12859 name bosses rather than stages,
+which is what a council encounter's phases are.
+
+So the flag answers "is phase a meaningful way to group this encounter's **attempts**", which is a
+progression question. **It does not answer whether a single attempt can be sliced by phase**, and
+gating an in-fight phase label on it would silently drop 3 encounters in 8 that have named phases
+and transitions. Gate attempt-grouping on `separatesWipes`; gate an in-fight phase label on the
+encounter having phases at all.
 
 ## What a whole day of this investigation cost
 

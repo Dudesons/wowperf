@@ -18,7 +18,7 @@ from wowperf.domain.events import (
     Resurrection,
 )
 from wowperf.domain.model import DamageDoneSeries, Player
-from wowperf.domain.phases import PhaseTransition
+from wowperf.domain.phases import Phase, PhaseTransition
 
 
 class Encounter(Frozen):
@@ -51,6 +51,11 @@ class Encounter(Frozen):
     last_phase: int | None = None
     last_phase_is_intermission: bool = False
     phase_transitions: tuple[PhaseTransition, ...] = ()
+    # The encounter's named phases, from `Report.phases`. Empty where the API
+    # names none, which is a fact about the boss rather than a missing reading.
+    # `phase_transitions` says when each began; this says what each is called,
+    # and a phase claim needs both.
+    phases: tuple[Phase, ...] = ()
     start_ms: int
     end_ms: int
     owner_name: str | None = None

@@ -1,11 +1,14 @@
 # ABOUTME: The per-ability landing profile of one fight, and how two of them compare.
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
+# ABOUTME: Also holds compare_lethal_abilities and compare_phase_cost: deaths, damage, from events.
 
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.findings import (
     Confidence,
     Finding,
@@ -13,6 +16,8 @@ from wowperf.domain.findings import (
     quantifier_for,
     quantity,
 )
+from wowperf.domain.phase_windows import PhaseShare, phase_at
+from wowperf.domain.phases import Phase, PhaseTransition
 
 
 class AbilityTakenRow(Frozen):
@@ -136,6 +141,22 @@ The same threshold `players.damage.*` uses against a group median, for the same
 reason: below it, sample noise and a real difference are indistinguishable.
 """
 
+LETHAL_MULTIPLE = 1.5
+"""How far past the reference death median one ability must reach to be worth saying.
+
+Lower than `MECHANIC_MULTIPLE` because the two sides of the lethal comparison
+are not symmetrical: ours is one ability's deaths and theirs is every death
+from every source, so a ratio of 1.0 already means one of our abilities killed
+as many as everything did in a reference kill. What it excludes is the
+equality case -- an ability that killed one where the references also lost one
+-- which is noise at these counts and which a clean kill produced four of on
+2026-09-18.
+
+Death counts are small integers, so against a median of 1 or 2 this bar and a
+bare "more than the median" agree; they part company from a median of 3, where
+this one asks for 5 rather than 4.
+"""
+
 MAX_MECHANICS_REPORTED = 5
 """At most this many abilities, worst gap first, matching `MAX_OUTLIERS_REPORTED`."""
 
@@ -158,13 +179,17 @@ def _landings_by_ability(member: MechanicsMember) -> dict[int, AbilityTakenRow]:
     return {row.ability_id: row for row in hostile_rows(member.abilities)}
 
 
-def _worth_reporting(our_rate: float, their_rate: float) -> bool:
-    """Whether the gap between two landing rates clears the bar for a finding.
+def _worth_reporting(ours: float, theirs: float, multiple: float = MECHANIC_MULTIPLE) -> bool:
+    """Whether the gap between our figure and the reference's clears the bar.
 
     A ratio against zero is not computed. Where the reference side took none
     and we took some, the gap is the whole finding and the evidence says so.
+
+    Serves landing rates at `MECHANIC_MULTIPLE` and death counts at
+    `LETHAL_MULTIPLE`; the arithmetic is the same and only the bar moves, so
+    the zero rule is stated once rather than in each family.
     """
-    return their_rate <= 0 or our_rate / their_rate >= MECHANIC_MULTIPLE
+    return theirs <= 0 or ours / theirs >= multiple
 
 
 def _ranked(candidates: list[tuple[float, Finding]]) -> list[Finding]:
@@ -180,12 +205,38 @@ def _ranked(candidates: list[tuple[float, Finding]]) -> list[Finding]:
     ]
 
 
+def _phase_fact(
+    shares: Mapping[int, PhaseShare] | None, ability_id: int
+) -> tuple[tuple[FindingFact, ...], tuple[str, ...]]:
+    """One ability's phase label, as a fact and an evidence line, or nothing.
+
+    Deliberately returns no reference figure of any kind. A reference kill's
+    ability table carries no timestamps, so there is no reference phase to
+    compare against and a fact implying one would be unfalsifiable -- design
+    section 9.
+    """
+    share = (shares or {}).get(ability_id)
+    if share is None:
+        return (), ()
+    return (
+        (
+            FindingFact(
+                label="Mostly in",
+                value=share.phase.name,
+                confidence=Confidence.DERIVED,
+            ),
+        ),
+        (f"{share.landings} of {share.total} landings fell in {share.phase.name}",),
+    )
+
+
 def compare_mechanics(
     ours: tuple[AbilityTakenRow, ...],
     our_seconds: float,
     sample: MechanicsSample,
     *,
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Abilities this raid took far more often than kills of the same boss did.
 
@@ -217,8 +268,10 @@ def compare_mechanics(
     if len(members) < MIN_SAMPLE_FOR_AGGREGATE:
         # Reuses the sample module's own wording rather than inventing a second
         # way to say the same thing.
-        return too_few(_against_one(ours, our_seconds, members[0], scope), len(members))
-    return _against_sample(ours, our_seconds, members, scope)
+        return too_few(
+            _against_one(ours, our_seconds, members[0], scope, phase_shares), len(members)
+        )
+    return _against_sample(ours, our_seconds, members, scope, phase_shares)
 
 
 def _against_one(
@@ -226,6 +279,7 @@ def _against_one(
     our_seconds: float,
     member: MechanicsMember,
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Our landing rates against one reference kill's own, that kill named.
 
@@ -255,6 +309,7 @@ def _against_one(
         if not _worth_reporting(our_rate, their_rate):
             continue
 
+        phase_facts, phase_evidence = _phase_fact(phase_shares, our_row.ability_id)
         candidates.append(
             (
                 our_rate - their_rate,
@@ -276,7 +331,8 @@ def _against_one(
                         f"ours {our_rate:.1f} a minute over {our_seconds:.0f}s",
                         f"the reference {their_rate:.1f} a minute over {their_seconds:.0f}s",
                         f"reference kill {member.row.report_code} fight {member.row.fight_id}",
-                    ),
+                    )
+                    + phase_evidence,
                     facts=(
                         FindingFact(
                             label="This raid",
@@ -294,7 +350,8 @@ def _against_one(
                         # printing either label would claim a sample nobody drew.
                         FindingFact(label="Sample", value="1 reference kill"),
                         FindingFact(label="Landings", value=f"{our_row.landings}"),
-                    ),
+                    )
+                    + phase_facts,
                     ability_id=our_row.ability_id,
                     ability_name=our_row.ability_name,
                 ),
@@ -309,6 +366,7 @@ def _against_sample(
     our_seconds: float,
     members: Sequence[MechanicsMember],
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Our landing rates against the median of the sample's own, with its spread."""
     their_rows = [_landings_by_ability(member) for member in members]
@@ -338,6 +396,7 @@ def _against_sample(
         if not _worth_reporting(our_rate, their_median):
             continue
 
+        phase_facts, phase_evidence = _phase_fact(phase_shares, our_row.ability_id)
         candidates.append(
             (
                 our_rate - their_median,
@@ -361,7 +420,8 @@ def _against_sample(
                         f"range {low:.1f} to {high:.1f} across "
                         f"{quantity(total, 'reference kill', 'reference kills')}",
                         f"{count_phrase(carrying, total)} references took it at all",
-                    ),
+                    )
+                    + phase_evidence,
                     facts=(
                         FindingFact(
                             label="This raid",
@@ -375,7 +435,8 @@ def _against_sample(
                         ),
                         FindingFact(label="Range", value=f"{low:.1f} to {high:.1f}"),
                         FindingFact(label="Landings", value=f"{our_row.landings}"),
-                    ),
+                    )
+                    + phase_facts,
                     ability_id=our_row.ability_id,
                     ability_name=our_row.ability_name,
                     quantifier=quantifier_for(carrying, total),
@@ -384,3 +445,214 @@ def _against_sample(
         )
 
     return _ranked(candidates)
+
+
+def _reference_deaths(
+    members: tuple[MechanicsMember, ...],
+) -> tuple[float, str, str, str, Confidence | None]:
+    """What the reference kills lost: the figure, then its title phrase, fact, line and badge.
+
+    The figure leads because the gate reads it. It is the same number the
+    phrase spells, returned unrounded so the comparison is made on what was
+    measured rather than on what is printed.
+
+    Below `MIN_SAMPLE_FOR_AGGREGATE` members this names a single reference kill
+    rather than a median, exactly as `compare_mechanics` does one function
+    above: a median of two is a mean of two, and the sample label must not
+    claim an aggregate nobody drew.
+
+    The confidence returned alongside the phrase is not the same in both
+    branches. A median is a figure this function computed from the sample, so
+    it is `derived`, the same badge `_phase_fact` gives its own computed
+    figure. A single reference kill's death count is read straight off its
+    row with no computation in between, so it is measured -- `None`, per
+    `FindingFact`'s own rule that an unset confidence means exactly that.
+    """
+    counts = [float(member.row.deaths) for member in members]
+    if len(counts) >= MIN_SAMPLE_FOR_AGGREGATE:
+        low, high = observed_range(counts)
+        middle = median(counts)
+        return (
+            middle,
+            f"a median of {middle:.0f}",
+            f"{len(counts)} reference kills",
+            f"reference kills lost {low:.0f} to {high:.0f} deaths, median {middle:.0f}",
+            Confidence.DERIVED,
+        )
+    return (
+        counts[0],
+        f"{counts[0]:.0f}",
+        "1 reference kill",
+        f"one reference kill lost {counts[0]:.0f} deaths in total",
+        None,
+    )
+
+
+def compare_lethal_abilities(
+    deaths: tuple[Death, ...],
+    sample: MechanicsSample,
+) -> list[Finding]:
+    """Abilities that killed our raid, against what the reference kills lost in total.
+
+    This is the one comparison in this area that judges rather than describes.
+    Master design 5.5 refuses to call a hit avoidable, because a damage-taken
+    table cannot tell a careless player from one soaking on purpose. A death is
+    different: nobody dies to a mechanic deliberately, so a death count needs no
+    claim about intent to mean something.
+
+    The two sides are deliberately not symmetrical, and the wording says so:
+    ours is one ability's kills, theirs is everything that killed anyone. A
+    per-ability reference death count would need each reference kill's own
+    death stream, which is a query per candidate.
+
+    Both sides count **death events**, not the players behind them.
+    `ReferenceKillRow.deaths` was measured on 2026-09-18 against twelve
+    reference fights: on the four where somebody died twice, the row matched
+    the event count and not the count of distinct players. The tally below
+    counts one entry per `Death`, which is the same unit, so no line here may
+    word either side as a number of players.
+    """
+    if not deaths or not sample.members:
+        return []
+
+    # A death the log records no killing ability for carries id 0, which
+    # `ingest._ability_name` spells "Unknown ability 0" -- a phrase that reads
+    # as a mechanic, can take one of the five slots from an ability that really
+    # killed somebody, and would head a card naming it. `analyse_deaths` guards
+    # the same 0 for its icon; here the death is left out of the tally
+    # altogether, because an ability comparison has nothing to say about a
+    # death no ability is attached to.
+    tally: Counter[tuple[int, str]] = Counter(
+        (death.killing_blow_id, death.killing_blow)
+        for death in deaths
+        if death.killing_blow_id
+    )
+    if not tally:
+        return []
+    figure, phrase, sample_label, evidence_line, reference_confidence = _reference_deaths(
+        sample.members
+    )
+
+    # Gated like every sibling family in this module, at a bar of its own:
+    # without one, a clean kill prints a card for each ability that killed
+    # somebody, however ordinary that toll was against the references.
+    ranked = [
+        pair
+        for pair in sorted(tally.items(), key=lambda pair: (-pair[1], pair[0][1]))
+        if _worth_reporting(float(pair[1]), figure, LETHAL_MULTIPLE)
+    ]
+    findings = []
+    for rank, ((ability_id, ability_name), killed) in enumerate(ranked[:MAX_MECHANICS_REPORTED]):
+        findings.append(
+            Finding(
+                id=f"mechanics.lethal.{rank}",
+                title=(
+                    f"{ability_name} caused {quantity(killed, 'death', 'deaths')}, "
+                    f"where the reference kills lost {phrase} to everything combined"
+                ),
+                detail=(
+                    f"{killed} of this raid's deaths came from {ability_name}. The "
+                    "reference figure counts every death in those kills, from any "
+                    "source: it is an upper bound covering every source, not a "
+                    "per-ability figure."
+                ),
+                confidence=Confidence.DERIVED,
+                evidence=(
+                    f"{ability_name} caused {quantity(killed, 'death', 'deaths')}",
+                    evidence_line,
+                ),
+                facts=(
+                    FindingFact(label="Deaths from this", value=f"{killed}"),
+                    FindingFact(
+                        label="Reference deaths, all sources",
+                        value=phrase,
+                        confidence=reference_confidence,
+                    ),
+                    FindingFact(label="Sample", value=sample_label),
+                ),
+                ability_id=ability_id,
+                ability_name=ability_name,
+            )
+        )
+    return findings
+
+
+def compare_phase_cost(
+    events: tuple[DamageTakenEvent, ...],
+    phases: tuple[Phase, ...],
+    transitions: tuple[PhaseTransition, ...],
+) -> list[Finding]:
+    """Which named phases cost this raid the most damage taken.
+
+    **This compares nothing across raids.** It lives beside the other
+    `mechanics.*` families so one prefix reaches one tab, but a reference
+    kill's ability table carries no timestamps, so there is no reference phase
+    to compare against and the design forbids implying one. Every figure here
+    is our own.
+
+    Damage rather than landings, because a phase is a stretch of time and the
+    question is what it cost: three chip hits do not outweigh one that nearly
+    killed someone.
+    """
+    if not phases or not transitions:
+        return []
+
+    totals: Counter[int] = Counter()
+    for event in events:
+        placed = phase_at(phases, transitions, event.timestamp_ms)
+        if placed is not None:
+            totals[placed.id] += event.amount
+    if not totals:
+        return []
+
+    by_id = {phase.id: phase for phase in phases}
+    overall = sum(totals.values())
+    ranked = sorted(totals.items(), key=lambda pair: (-pair[1], pair[0]))
+    findings = []
+    for rank, (phase_id, amount) in enumerate(ranked[:MAX_MECHANICS_REPORTED]):
+        phase = by_id[phase_id]
+        findings.append(
+            Finding(
+                id=f"mechanics.phase.{rank}",
+                title=(
+                    f"{phase.name} cost this raid {amount:,} damage taken, "
+                    f"{amount / overall * 100:.0f}% of the attempt's total"
+                ),
+                detail=(
+                    f"Damage taken inside {phase.name}, summed over every player. "
+                    "This states where the attempt's damage fell, not that any of "
+                    "it could have been avoided."
+                ),
+                confidence=Confidence.DERIVED,
+                evidence=(
+                    f"{amount:,} of {overall:,} damage taken",
+                    f"phase named by the API as {phase.name}",
+                ),
+                facts=(
+                    # Neither figure is read off a single event: both are
+                    # summed across every event a phase window's join
+                    # placed there, the same reconstruction `_phase_fact`
+                    # badges derived for a landings share. Left unset,
+                    # per `FindingFact`'s own rule, would badge them
+                    # measured instead.
+                    #
+                    # Named `unmitigated` for the reason `players.damage.*`
+                    # names its own: this is the same quantity, summed off
+                    # the same event stream, printed on the same tab, and a
+                    # figure a reader could take for the mitigated one a
+                    # reference table carries is exactly what ruling 4.5
+                    # refuses.
+                    FindingFact(
+                        label="Damage taken",
+                        value=f"{amount:,} unmitigated",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(
+                        label="Share of attempt",
+                        value=f"{amount / overall * 100:.0f}%",
+                        confidence=Confidence.DERIVED,
+                    ),
+                ),
+            )
+        )
+    return findings

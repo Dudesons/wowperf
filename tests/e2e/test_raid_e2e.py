@@ -78,6 +78,24 @@ WIPE = os.environ.get("WOWPERF_E2E_RAID_WIPE", "")
 KEYSTONE_SHAPED = ("time.", "trash.", "compare.route", "compare.downtime")
 
 
+def in_family(finding_id: str, family: str) -> bool:
+    """Whether one id belongs to `family`, slug and all.
+
+    `encounter_service._for_raider` re-mints every `compare.*` id as
+    `<family>.<slug>`, one per raider, so on a raid page the bare id never
+    occurs. Its own docstring says every consumer matches by prefix; these
+    tests did not, and asserted ids that cannot exist from the commit that
+    introduced the slug until 2026-09-19, unnoticed because the gate runs the
+    offline suite only and no file recorded which report to run these against.
+    """
+    return finding_id == family or finding_id.startswith(f"{family}.")
+
+
+def has_family(ids: Sequence[str], family: str) -> bool:
+    """Whether any finding on the page belongs to `family`."""
+    return any(in_family(one, family) for one in ids)
+
+
 def assert_mechanics_output_is_well_formed(
     findings: Sequence[Finding],
     mechanics_sample: MechanicsSample,
@@ -109,6 +127,74 @@ def assert_mechanics_output_is_well_formed(
         assert finding.ability_name in finding.title, finding.title
         assert finding.evidence, finding.id
         assert finding.seconds_lost is None, "a landing rate is not priced in seconds"
+
+
+def assert_the_wipe_analysis_fired(
+    loaded: LoadedEncounter,
+    mechanics_sample: MechanicsSample,
+    findings: Sequence[Finding],
+) -> None:
+    """The three families the wipe analysis added, against a real wiped attempt.
+
+    Offline every one of these reads a fixture that decided its own phases, its
+    own deaths and its own reference sample. This is the only place all three
+    arrive from the API at once, and the only place the ability-id join behind
+    a phase label meets the two API surfaces it spans: a `viewBy: Ability`
+    table carrying no timestamps, and a damage-taken stream carrying no landing
+    counts. Nothing offline can tell whether those two number their abilities
+    the same way.
+    """
+    encounter = loaded.encounter
+    ids = [finding.id for finding in findings]
+
+    # Both sides have to have arrived, so this is stated both ways: with no
+    # deaths carrying a killing ability, or no reference sample, a lethal
+    # finding would be the comparison inventing a side it never drew.
+    attributable = [death for death in loaded.deaths if death.killing_blow_id]
+    lethal = [one for one in ids if one.startswith("mechanics.lethal.")]
+    if attributable and mechanics_sample.members:
+        assert lethal, "a wipe with deaths and a reference sample named no lethal ability"
+    else:
+        assert not lethal, "a lethal finding with no deaths to read or no sample to compare"
+    for finding in findings:
+        if finding.id.startswith("mechanics.lethal."):
+            assert finding.ability_id, f"{finding.id} names no ability id at all"
+
+    # Phase names come from the API and never from a table of ours, so every
+    # phase a finding names has to be one this encounter supplied. Transitions
+    # tile the fight -- measured across 104 fights, every first transition sat
+    # at its fight's start -- so an encounter with phases and damage events
+    # places them, and a silent phase family means the gate broke.
+    named = {phase.name for phase in encounter.phases}
+    phase_findings = [f for f in findings if f.id.startswith("mechanics.phase.")]
+    if encounter.phases and encounter.phase_transitions and loaded.damage_taken:
+        assert phase_findings, "an encounter carrying named phases reported none of them"
+    else:
+        assert not phase_findings, "a phase finding on an encounter that names no phases"
+    for finding in phase_findings:
+        assert any(name in finding.title for name in named), finding.title
+
+    # The label a whole-fight comparison picks up from our own event stream.
+    for finding in findings:
+        for fact in finding.facts:
+            if fact.label == "Mostly in":
+                assert fact.value in named, f"{finding.id} named a phase this fight has not"
+
+    # The verdict. Its two preconditions are asserted first, so an attempt the
+    # API reports no boss health for, or one nothing comparable was drawn for,
+    # fails by name rather than looking like a verdict that went missing.
+    assert encounter.boss_percentage is not None, (
+        "the report gives this attempt no boss health, so no verdict could be reached"
+    )
+    assert mechanics_sample.members, "no reference kills drawn, so the verdict has no duration"
+    verdicts = [f for f in findings if f.id == "wipe.cause"]
+    assert verdicts, (
+        "a real wipe reached no verdict. Design 8.3's fourth outcome is to withhold on "
+        "conflicting signals, so read this attempt's own alive count, boss health and "
+        "duration before relaxing this"
+    )
+    assert verdicts[0].confidence is Confidence.INFERRED
+    assert len(verdicts[0].evidence) == 4, "the verdict states its reasoning, not its conclusion"
 
 
 def draw_parse_subjects(
@@ -203,10 +289,10 @@ def test_a_real_boss_kill_is_measured_against_the_world(tmp_path: Path) -> None:
     )
     ids = [finding.id for finding in findings]
 
-    assert "compare.damage.total" in ids
-    assert "compare.damage.targets" in ids
-    assert "compare.rank" in ids
-    assert "compare.parse.unavailable" not in ids, "the frame was withheld from a kill"
+    assert has_family(ids, "compare.damage.total")
+    assert has_family(ids, "compare.damage.targets")
+    assert has_family(ids, "compare.rank")
+    assert not has_family(ids, "compare.parse.unavailable"), "the frame was withheld from a kill"
 
     external = [f for f in findings if f.id.startswith("compare.")]
     for finding in external:
@@ -217,7 +303,7 @@ def test_a_real_boss_kill_is_measured_against_the_world(tmp_path: Path) -> None:
     # F9, live: both sides of the damage comparison are per-second rates, and a
     # raid boss total runs to hundreds of millions. A nine-digit figure here
     # means a total reached a sentence that says "per second".
-    [damage] = [f for f in findings if f.id == "compare.damage.total"]
+    [damage] = [f for f in findings if in_family(f.id, "compare.damage.total")]
     for fact in damage.facts:
         for number in fact.value.replace(",", " ").split():
             digits = number.split(".")[0]
@@ -264,11 +350,14 @@ def test_a_real_wipe_withholds_the_external_frame_and_pays_for_none_of_it(
     )
     ids = [finding.id for finding in findings]
 
-    assert "compare.parse.unavailable" in ids
-    assert [one for one in ids if one.startswith("compare.")] == ["compare.parse.unavailable"]
-    [withheld] = [f for f in findings if f.id == "compare.parse.unavailable"]
-    assert "did not kill" in withheld.detail
-    assert findings != [withheld], "the internal frame went with the external one"
+    withheld = [f for f in findings if in_family(f.id, "compare.parse.unavailable")]
+    assert withheld, "the wipe withheld the external frame without saying why"
+    # The withheld notice is the only `compare.*` family a wipe may carry: any
+    # other means a measure read a rankings row this attempt does not have.
+    assert [one for one in ids if one.startswith("compare.")] == [f.id for f in withheld]
+    for notice in withheld:
+        assert "did not kill" in notice.detail
+    assert findings != withheld, "the internal frame went with the external one"
 
 
 @pytest.mark.e2e
@@ -319,6 +408,12 @@ def test_a_real_boss_kill_produces_ranked_findings(tmp_path: Path) -> None:
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
+
+    # The verdict withholds on a kill, whatever else it reads: there is no
+    # failure to explain. Asserted here because the wipe test asserts the
+    # opposite, and one of the two without the other would pass on an analyser
+    # that answered the same thing every time.
+    assert "wipe.cause" not in {finding.id for finding in findings}
 
     # The streams the analysers depend on must have actually arrived, or every
     # assertion above holds over an empty list and proves nothing.
@@ -372,6 +467,7 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
+    assert_the_wipe_analysis_fired(loaded, mechanics_sample, findings)
 
 
 @pytest.mark.e2e

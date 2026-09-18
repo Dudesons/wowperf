@@ -34,7 +34,7 @@ RAID_FAMILIES = (
     "defensives.never.emberkin.0", "defensives.ceiling.emberkin.0",
     "defensives.unused.emberkin", "consumables.never.emberkin",
     "consumables.unused.emberkin", "interrupts.summary", "interrupts.ability.0",
-    "mechanics.ability.0", "players.damage.0",
+    "mechanics.ability.0", "mechanics.lethal.0", "players.damage.0",
     "compare.damage.total.emberkin-0", "compare.damage.targets.emberkin-0",
     "compare.rank.emberkin-0", "compare.parse.unavailable.emberkin-0",
     "compare.spells.missing.0.emberkin-0", "compare.spells.rate.0.emberkin-0",
@@ -42,7 +42,11 @@ RAID_FAMILIES = (
     "compare.talents.emberkin-0", "compare.uptime.self.0.emberkin-0",
     "compare.uptime.unjudged.emberkin-0",
 )
-"""Every family `analyse_encounter` can emit, as it is emitted after Task 2.
+"""Every family `analyse_encounter` can emit from a kill without phases.
+
+`mechanics.phase.*` and `wipe.cause` are absent because this fixture is a
+kill and names no phases, not because their routing is unchecked: both are
+pinned directly against `_raid_field_for` beside the tests that use this.
 
 Enumerated rather than generated: a family this list forgets is a row that
 falls silently through to `observations`, which is a tab a reader does not
@@ -63,6 +67,7 @@ _FAMILY_PREFIXES = (
     "interrupts.summary",
     "interrupts.ability.",
     "mechanics.ability.",
+    "mechanics.lethal.",
     "players.damage.",
     "compare.damage.total.",
     "compare.damage.targets.",
@@ -292,7 +297,7 @@ OUR_ABILITIES_TAKEN = (
 
 
 def a_rich_encounter() -> list[Finding]:
-    """Every family `analyse_encounter` can emit, from one fight.
+    """Every family `analyse_encounter` can emit from one kill without phases.
 
     A kill, four raiders, five deaths shaped into a single, a chain and a
     repeat, one outlier hit, one landed enemy cast, a defensive and a
@@ -326,28 +331,33 @@ def a_rich_encounter() -> list[Finding]:
                   timestamp_ms=5_000),
         *OUR_SPELL_CASTS,
     )
+    # Every killing blow carries its ability id as a real log's does. Without
+    # one the id defaults to zero, which is how the log records a death it
+    # names no killing ability for -- `compare_lethal_abilities` leaves those
+    # out, so a fixture omitting the ids would stop emitting the family
+    # altogether. The ids are the ones the damage events below already use.
     deaths = (
         # Isolated in time: a single, and the first of Emberkin's two deaths.
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=61_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=5.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=5.0, pull_index=None),
         # Five seconds apart: one chain of two.
         Death(actor_id=13, player_name="Bríala", timestamp_ms=150_000,
-              killing_blow="Venomous Bite", seconds_until_next_action=2.0,
-              pull_index=None),
+              killing_blow="Venomous Bite", killing_blow_id=401,
+              seconds_until_next_action=2.0, pull_index=None),
         Death(actor_id=14, player_name="Кириллица", timestamp_ms=155_000,
-              killing_blow="Venomous Bite", seconds_until_next_action=2.0,
-              pull_index=None),
+              killing_blow="Venomous Bite", killing_blow_id=401,
+              seconds_until_next_action=2.0, pull_index=None),
         # Isolated, far past her one Prismatic Barrier cast: a single, a
         # defensives.ceiling and a defensives.unused all at once.
         Death(actor_id=12, player_name="Stonewake", timestamp_ms=300_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=4.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=4.0, pull_index=None),
         # Isolated, far past her one Health Potion: Emberkin's second death,
         # her repeat, and a consumables.unused.
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=450_000,
-              killing_blow="Ravenous Feast", seconds_until_next_action=5.0,
-              pull_index=None),
+              killing_blow="Ravenous Feast", killing_blow_id=400,
+              seconds_until_next_action=5.0, pull_index=None),
     )
     damage_taken = (
         # Emberkin takes four times the other three's Ravenous Feast: an
@@ -396,6 +406,31 @@ def a_rich_encounter() -> list[Finding]:
         mechanics=MECHANICS_SAMPLE, our_abilities=OUR_ABILITIES_TAKEN,
         parse_subjects=parse_subjects,
     )
+
+
+def test_the_new_mechanics_families_land_where_the_old_one_does() -> None:
+    """`RAID_PLACEMENTS` carries a bare `mechanics.` prefix, so both new
+    families route themselves. This test fails if someone narrows it.
+
+    Written against `_raid_field_for` rather than a new `_tab_for` wrapper:
+    the module already exposes exactly this lookup under that name, and a
+    second helper wrapping it would duplicate the thing this test is meant
+    to hold against drift.
+    """
+    assert (
+        _raid_field_for("mechanics.lethal.0")
+        == _raid_field_for("mechanics.ability.0")
+        == "mechanics_rows"
+    )
+    assert _raid_field_for("mechanics.phase.0") == "mechanics_rows"
+
+
+def test_a_verdict_is_claimed_by_no_tab_prefix() -> None:
+    """`wipe.cause` matches no prefix and falls through to Summary's unclaimed
+    observations, which is where Layer 1 wants it. Layer 2 promotes it to a
+    headline; until then this asserts it is not silently swallowed elsewhere.
+    """
+    assert _raid_field_for("wipe.cause") is None
 
 
 def test_the_family_list_matches_what_the_service_emits() -> None:

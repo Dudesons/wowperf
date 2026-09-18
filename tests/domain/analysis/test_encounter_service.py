@@ -17,9 +17,10 @@ from wowperf.domain.comparison.raid_reference import (
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, Resurrection
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
+from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.season import Consumables, DefensiveAbility, Defensives, Roles
 
@@ -512,3 +513,185 @@ def test_two_raiders_whose_names_reduce_to_one_slug_stay_apart() -> None:
     ids = [f.id for f in compared]
     assert len(ids) == len(set(ids))
     assert len({f.player_slug for f in compared}) == 2
+
+
+def _mechanics_sample() -> MechanicsSample:
+    """One reference kill, below `MIN_SAMPLE_FOR_AGGREGATE`, matching the shape
+    `test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds` above
+    already builds inline -- named here because the two tests below need it
+    twice. `deaths=1` is what `classify_attempt` reads back as the reference
+    median death count.
+    """
+    return MechanicsSample(
+        members=(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="ref", fight_id=1, size=20,
+                    duration_ms=120_000, deaths=1,
+                ),
+                abilities=(),
+            ),
+        )
+    )
+
+
+def _loaded_wipe_with(deaths: int, resurrected: int = 0) -> LoadedEncounter:
+    """A wipe with `deaths` of a 20-player raid dead, `resurrected` of them back up.
+
+    At 14, that clears `classify_attempt`'s own `DISMANTLED_SHARE` of one
+    half, so a verdict fires. `boss_percentage` is set outright rather than
+    left at its `None` default: `classify_attempt` withholds a verdict
+    whenever it reads `None`, and a wipe fixture must not do that by omission.
+
+    Every resurrection lands after every death this builds, so `resurrected`
+    raiders are standing when the attempt ends.
+    """
+    death_events = tuple(
+        Death(
+            actor_id=index,
+            player_name=RAID[index % len(RAID)].name,
+            timestamp_ms=60_000 + (index - 1) * 30_000,
+            killing_blow="Ravenous Feast",
+            killing_blow_id=400,
+        )
+        for index in range(1, deaths + 1)
+    )
+    back_up = tuple(
+        Resurrection(
+            actor_id=index,
+            caster_id=19,
+            ability_id=20484,
+            ability_name="Rebirth",
+            timestamp_ms=60_000 + deaths * 30_000,
+        )
+        for index in range(1, resurrected + 1)
+    )
+    encounter = Encounter(
+        report_code="wipe1", fight_id=5, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=False, boss_percentage=60.0, start_ms=1_000, end_ms=500_000,
+        players=(),
+    )
+    return LoadedEncounter(encounter=encounter, deaths=death_events, resurrections=back_up)
+
+
+PHASED_ABILITY = 400
+
+PHASED_ABILITIES_TAKEN = (
+    AbilityTakenRow(
+        ability_id=PHASED_ABILITY, ability_name="Ravenous Feast", hit_count=4,
+        source_types=("Boss",),
+    ),
+)
+"""Our own `viewBy: Ability` row for the ability the fixture's events carry.
+
+The id is the join the phase label depends on, and the two sides of it come
+from two different API surfaces: this table has no timestamps, the event stream
+has no landing count. Spelled from one constant so the fixture cannot pass by
+comparing an ability against itself under two different ids -- and `hit_count`
+matches the number of events below, so the landings the comparison states and
+the landings the phase share is drawn from are the same four.
+"""
+
+
+def _loaded_wipe_with_phases() -> LoadedEncounter:
+    """A fight whose encounter carries named phases and a transition list.
+
+    Gates `compare_phase_cost` on `Encounter.phases` rather than on
+    `separatesWipes` -- the global constraint measured 2026-09-18 across 8
+    encounters, 3 of which read `separatesWipes` false while still naming
+    phases.
+
+    Its damage events fall in both phases, three of four in Stage Two, so the
+    dominant phase is a choice a wrong join could get wrong rather than the
+    only phase on offer.
+    """
+    phases = (
+        Phase(id=1, name="Stage One: Something"),
+        Phase(id=2, name="Stage Two: Something Else"),
+    )
+    transitions = (
+        PhaseTransition(id=1, start_ms=1_000),
+        PhaseTransition(id=2, start_ms=61_000),
+    )
+    encounter = Encounter(
+        report_code="wipe2", fight_id=6, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=False, boss_percentage=60.0, start_ms=1_000, end_ms=121_000,
+        phases=phases, phase_transitions=transitions,
+        players=(),
+    )
+    damage_taken = tuple(
+        DamageTakenEvent(actor_id=1, ability_id=PHASED_ABILITY, ability_name="Ravenous Feast",
+                         amount=500, timestamp_ms=when)
+        for when in (30_000, 70_000, 80_000, 90_000)
+    )
+    return LoadedEncounter(encounter=encounter, damage_taken=damage_taken)
+
+
+def test_a_wipe_reaches_a_lethal_finding_and_a_verdict() -> None:
+    loaded = _loaded_wipe_with(deaths=14)
+
+    ids = {finding.id for finding in analyse_encounter(loaded, DEFENSIVES, Consumables(),
+                                                       mechanics=_mechanics_sample())}
+
+    assert any(one.startswith("mechanics.lethal.") for one in ids)
+    assert "wipe.cause" in ids
+
+
+def test_the_resurrection_stream_reaches_the_verdict() -> None:
+    """Two runs of one fixture, differing only in who came back.
+
+    Five of twenty died. With four of them rezzed, nineteen were standing when
+    the attempt ended, which is over `INTACT_SHARE` where fifteen is under it,
+    so the verdict fires here and is withheld there. A call site that dropped
+    `resurrections` would leave both runs silent, and silence is also what a
+    fight with no verdict to give produces -- so only the pair can see it.
+    """
+    without = analyse_encounter(
+        _loaded_wipe_with(deaths=5), DEFENSIVES, Consumables(), mechanics=_mechanics_sample()
+    )
+    with_rezzes = analyse_encounter(
+        _loaded_wipe_with(deaths=5, resurrected=4), DEFENSIVES, Consumables(),
+        mechanics=_mechanics_sample(),
+    )
+
+    assert "wipe.cause" not in {finding.id for finding in without}
+    [verdict] = [finding for finding in with_rezzes if finding.id == "wipe.cause"]
+    assert "19 of 20 were still alive" in verdict.detail, verdict.detail
+
+
+def test_a_fight_with_phases_reaches_a_phase_finding() -> None:
+    loaded = _loaded_wipe_with_phases()
+
+    ids = {finding.id for finding in analyse_encounter(loaded, DEFENSIVES, Consumables(),
+                                                       mechanics=_mechanics_sample())}
+
+    assert any(one.startswith("mechanics.phase.") for one in ids)
+
+
+def test_a_compared_ability_carries_the_phase_its_landings_fell_in() -> None:
+    """The half of the phase work no fixture used to reach: the label on a comparison.
+
+    Every fixture passing `our_abilities` carried no phases, and the one fixture
+    with phases passed no `our_abilities`, so the two halves never met and
+    `dominant_phase_by_ability` could be stubbed out of the service with the
+    whole suite green. This is the only test that joins them, and the join it
+    covers is a real one: the landing count comes from a `viewBy: Ability`
+    table with no timestamps, the phase from an event stream with no landing
+    count, and the ability id is all that holds them together.
+    """
+    loaded = _loaded_wipe_with_phases()
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(),
+        mechanics=_mechanics_sample(), our_abilities=PHASED_ABILITIES_TAKEN,
+    )
+
+    [compared] = [one for one in findings if one.id.startswith("mechanics.ability.")]
+    [label] = [fact for fact in compared.facts if fact.label == "Mostly in"]
+    assert label.value == "Stage Two: Something Else", label.value
+    assert label.confidence is Confidence.DERIVED
+    assert "3 of 4 landings fell in Stage Two: Something Else" in compared.evidence, (
+        compared.evidence
+    )

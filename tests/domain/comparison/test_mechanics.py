@@ -6,11 +6,25 @@ from wowperf.domain.comparison.mechanics import (
     MechanicsMember,
     MechanicsSample,
     ReferenceKillRow,
+    compare_lethal_abilities,
     compare_mechanics,
+    compare_phase_cost,
     hostile_rows,
     select_reference_kills,
 )
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
+from wowperf.domain.events import DamageTakenEvent, Death
+from wowperf.domain.findings import Confidence, Finding, FindingFact
+from wowperf.domain.phase_windows import PhaseShare
+from wowperf.domain.phases import Phase, PhaseTransition
+
+# Local to this module rather than imported from tests/domain/test_phase_windows.py:
+# those constants belong to a different test module, and importing fixtures
+# across test files couples two otherwise-unrelated tests for three lines saved.
+STAGE_ONE = Phase(id=1, name="Stage One")
+STAGE_TWO = Phase(id=2, name="Stage Two", is_intermission=True)
+PHASES = (STAGE_ONE, STAGE_TWO)
+TRANSITIONS = (PhaseTransition(id=1, start_ms=0), PhaseTransition(id=2, start_ms=5000))
 
 
 def kill(code: str, size: int) -> ReferenceKillRow:
@@ -273,3 +287,491 @@ def test_at_the_aggregate_floor_the_finding_states_a_median_and_carries_no_note(
 def test_an_empty_sample_states_nothing_rather_than_everything() -> None:
     ours = (ability(400, "Ravenous Feast", 12, ("Boss",)),)
     assert compare_mechanics(ours, 120.0, MechanicsSample(), scope="the raid") == []
+
+
+def test_a_mechanics_finding_names_the_phase_its_landings_fell_in() -> None:
+    shares = {
+        11: PhaseShare(phase=Phase(id=2, name="Stage Two"), landings=19, total=27),
+    }
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid", phase_shares=shares)
+
+    assert any("Stage Two" in fact.value for fact in findings[0].facts)
+    assert any("19 of 27" in line for line in findings[0].evidence)
+
+
+def test_a_mechanics_finding_without_a_phase_share_names_no_phase() -> None:
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid")
+
+    assert all(fact.label != "Mostly in" for fact in findings[0].facts)
+
+
+def test_a_phase_finding_states_no_reference_figure_in_the_same_fact() -> None:
+    """The reference table carries no timestamps, so a phase fact may never
+    carry a reference number beside it. Design section 9."""
+    shares = {11: PhaseShare(phase=Phase(id=2, name="Stage Two"), landings=19, total=27)}
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid", phase_shares=shares)
+
+    phase_facts = [fact for fact in findings[0].facts if fact.label == "Mostly in"]
+    assert phase_facts
+    assert all("reference" not in fact.value.lower() for fact in phase_facts)
+
+
+def _death(ability_id: int, name: str) -> Death:
+    return Death(
+        player_name="Emberkin",
+        actor_id=1,
+        timestamp_ms=1000,
+        killing_blow=name,
+        killing_blow_id=ability_id,
+    )
+
+
+def _sample_losing(*counts: int) -> MechanicsSample:
+    return MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="AbCdEf",
+                    fight_id=index,
+                    size=20,
+                    duration_ms=300_000,
+                    deaths=count,
+                ),
+                abilities=(),
+            )
+            for index, count in enumerate(counts)
+        )
+    )
+
+
+def test_an_ability_that_killed_more_than_the_references_lost_in_total() -> None:
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(4))
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2, 3, 1))
+
+    assert findings[0].id == "mechanics.lethal.0"
+    assert findings[0].confidence is Confidence.DERIVED
+    assert "Caustic Waves" in findings[0].title
+    assert findings[0].ability_id == 11
+    assert any("0 to 3" in line for line in findings[0].evidence)
+
+
+def test_the_deadliest_ability_is_reported_first() -> None:
+    # Two deaths for the quieter ability, not one: against this sample's median
+    # of one, a single death does not clear `LETHAL_MULTIPLE` and the ordering
+    # would be pinned over a list with only one entry in it.
+    deaths = (
+        _death(11, "Caustic Waves"),
+        _death(11, "Caustic Waves"),
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings[0].ability_name == "Purge"
+    assert findings[1].ability_name == "Caustic Waves"
+
+
+def test_at_most_five_abilities_are_reported() -> None:
+    # Ids from one, not from zero: a zero id means the log recorded no killing
+    # ability, which this comparison drops, and a cap test must not spend one
+    # of its nine on a death that never reaches the tally.
+    deaths = tuple(_death(identifier, f"Ability {identifier}") for identifier in range(1, 10))
+
+    # Deathless references, so `LETHAL_MULTIPLE` lets every one of the nine
+    # through and the cap is the only thing left that can hold the list to five.
+    assert len(compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))) == 5
+
+
+def test_a_death_the_log_names_no_killing_ability_for_takes_no_slot() -> None:
+    """Three unattributed deaths against one real ability, and the real one leads.
+
+    `ingest._ability_name` spells a missing `killingAbilityGameID` as "Unknown
+    ability 0", which reads on a card like a mechanic with a name. Left in the
+    tally it outranks anything that killed fewer players, takes one of the five
+    slots, and heads a finding that names it in the title.
+    """
+    deaths = (
+        *(_death(0, "Unknown ability 0") for _ in range(3)),
+        _death(11, "Caustic Waves"),
+    )
+
+    # Deathless references, so the one real ability clears `LETHAL_MULTIPLE` on
+    # a single death and the assertion below is about the tally, not the bar.
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))
+
+    assert [finding.ability_name for finding in findings] == ["Caustic Waves"]
+    assert all("Unknown ability" not in finding.title for finding in findings)
+
+
+def test_deaths_the_log_names_no_ability_for_at_all_yield_no_finding() -> None:
+    """Not an empty tally rendered as a heading: nothing to say, said as nothing."""
+    deaths = tuple(_death(0, "Unknown ability 0") for _ in range(4))
+
+    assert compare_lethal_abilities(deaths, _sample_losing(0, 1, 2)) == []
+
+
+def test_a_sample_below_the_aggregate_floor_names_one_reference_kill() -> None:
+    # Three deaths against the one reference kill's two: 1.5, which is
+    # `LETHAL_MULTIPLE` exactly, so the finding this test reads into exists.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(3))
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(2, 3))
+
+    assert any("1 reference kill" in fact.value for fact in findings[0].facts)
+    assert all("median" not in line for line in findings[0].evidence)
+
+
+def test_no_sample_yields_no_finding() -> None:
+    assert compare_lethal_abilities((_death(11, "Caustic Waves"),), MechanicsSample()) == []
+
+
+def test_no_deaths_yields_no_finding() -> None:
+    assert compare_lethal_abilities((), _sample_losing(0, 1, 2)) == []
+
+
+def _reference_deaths_fact(findings: list[Finding]) -> FindingFact:
+    return next(fact for fact in findings[0].facts if fact.label == "Reference deaths, all sources")
+
+
+def test_the_reference_deaths_fact_is_derived_at_the_aggregate_floor() -> None:
+    # Three members clears MIN_SAMPLE_FOR_AGGREGATE, so the phrase is a median
+    # this function computed over the sample -- derived, not read off one row.
+    # Two deaths against that median of one clears `LETHAL_MULTIPLE`.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(2))
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert _reference_deaths_fact(findings).confidence is Confidence.DERIVED
+
+
+def test_the_reference_deaths_fact_is_unbadged_below_the_aggregate_floor() -> None:
+    # One member is below the floor: the phrase is that one row's own death
+    # count with no computation in between, so it is measured -- None, per
+    # FindingFact's own rule that an unset confidence means exactly that.
+    # Three deaths against that row's two clears `LETHAL_MULTIPLE`.
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(3))
+    findings = compare_lethal_abilities(deaths, _sample_losing(2))
+
+    assert _reference_deaths_fact(findings).confidence is None
+
+
+def test_a_tie_in_kill_count_breaks_by_ability_name() -> None:
+    # Both abilities killed twice: the ranking key's first term ties, so only
+    # its second term -- ascending ability name -- decides. "Caustic Waves"
+    # sorts before "Purge", and the fixture lists Purge's deaths first, so an
+    # insertion-order tiebreak (or none at all) would rank Purge first instead.
+    deaths = (
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+        _death(11, "Caustic Waves"),
+        _death(11, "Caustic Waves"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings[0].ability_name == "Caustic Waves"
+    assert findings[1].ability_name == "Purge"
+
+
+def test_no_finding_from_compare_lethal_abilities_claims_intent() -> None:
+    """Mirrors the guard on compare_mechanics's own findings, above.
+
+    compare_lethal_abilities is the one function in this module licensed to
+    judge -- deaths, never damage -- and that license runs only as far as
+    "killed". Checked over the title, the detail, every fact's label and
+    value, and every evidence line: five places this function's own wording
+    can appear, and a single word slipping past one of them is exactly how
+    "avoidable" would ship past a check that only tried "missed".
+    """
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(4)) + tuple(
+        _death(22, "Purge") for _ in range(2)
+    )
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2, 3, 1))
+    assert findings, "the guard needs at least one finding to check"
+
+    for finding in findings:
+        for word in ("missed", "avoidable", "should have", "failed"):
+            assert word not in finding.title.lower(), finding.title
+            assert word not in finding.detail.lower(), finding.detail
+            for fact in finding.facts:
+                assert word not in fact.label.lower(), fact.label
+                assert word not in fact.value.lower(), fact.value
+            for line in finding.evidence:
+                assert word not in line.lower(), line
+
+
+def _death_of(actor_id: int, ability_id: int, name: str) -> Death:
+    """A death of a named raider, where `_death` always speaks for actor 1.
+
+    Every other fixture in this file reuses one actor, so a tally of death
+    events and a tally of distinct players agree on all of them and neither
+    can be told from the other.
+    """
+    return Death(
+        player_name=f"Raider {actor_id}",
+        actor_id=actor_id,
+        timestamp_ms=1000 * actor_id,
+        killing_blow=name,
+        killing_blow_id=ability_id,
+    )
+
+
+def test_an_ability_that_killed_one_player_twice_does_not_claim_two_players() -> None:
+    """The tally counts death events, so the sentence must not say "players".
+
+    `ReferenceKillRow.deaths` counts death events -- measured 2026-09-18 --
+    and this side is counted the same way so that the two are comparable. What
+    shipped was an event count worded as a count of players, which reports a
+    battle-rezzed raider dying twice as two raiders dying once.
+    """
+    deaths = (
+        _death_of(1, 11, "Caustic Waves"),
+        _death_of(1, 11, "Caustic Waves"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings, "one ability killed somebody twice, so there is something to report"
+    assert "2 players" not in findings[0].title, findings[0].title
+    assert "2 deaths" in findings[0].title, findings[0].title
+
+
+def test_the_reference_death_figure_is_not_worded_as_a_count_of_players() -> None:
+    """`ReferenceKillRow.deaths` counts events, so no line may call them players.
+
+    Checked on both branches of `_reference_deaths`: the median it draws from
+    a full sample, and the single kill it falls back to below
+    `MIN_SAMPLE_FOR_AGGREGATE`. A reference kill that battle-rezzed somebody
+    contributes two to that figure and one player to the raid it was drawn
+    from, so "players" states something the row cannot support.
+    """
+    # Three deaths clears `LETHAL_MULTIPLE` on both samples: 3 against the
+    # median branch's 1, and 3 against the single branch's 2.
+    deaths = tuple(_death_of(actor, 11, "Caustic Waves") for actor in range(3))
+
+    for sample, branch in ((_sample_losing(0, 1, 2), "median"), (_sample_losing(2), "single")):
+        [finding] = compare_lethal_abilities(deaths, sample)
+        for line in finding.evidence:
+            assert "players" not in line, f"{branch} branch: {line}"
+        for fact in finding.facts:
+            assert "players" not in fact.value, f"{branch} branch: {fact.value}"
+
+
+def test_an_ability_matching_the_reference_death_median_says_nothing() -> None:
+    """A clean kill must not produce cards, and this is the shape it produced them in.
+
+    One ability killed one player where the reference kills lost one death
+    between them from every source combined. That is not a gap, and the live
+    kill of 2026-09-18 printed four such cards.
+    """
+    deaths = (_death_of(1, 11, "Caustic Waves"),)
+
+    assert compare_lethal_abilities(deaths, _sample_losing(0, 1, 2)) == []
+
+
+def test_an_ability_half_again_over_the_reference_median_is_reported() -> None:
+    """The bar is `LETHAL_MULTIPLE`, and clearing it is what earns a card.
+
+    Three deaths against a reference median of two: 1.5 exactly, so this pins
+    the boundary from the reporting side. The two sides are not symmetrical --
+    ours is one ability and theirs is every source -- which is why the bar sits
+    below the 2.0 its sibling families use.
+    """
+    deaths = tuple(_death_of(actor, 11, "Caustic Waves") for actor in range(3))
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(1, 2, 3))
+
+    assert findings, "three deaths against a median of two clears the bar"
+    assert findings[0].ability_name == "Caustic Waves"
+
+
+def test_a_deathless_reference_sample_reports_any_death_of_ours() -> None:
+    """No ratio is computed against zero; the gap is the whole finding.
+
+    `_worth_reporting`'s own rule, which this family now shares: reference
+    kills that lost nobody make a single death of ours worth naming.
+    """
+    deaths = (_death_of(1, 11, "Caustic Waves"),)
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 0, 0))
+
+    assert findings, "the references lost nobody at all"
+
+
+def _taken(ability_id: int, timestamp_ms: int, amount: int) -> DamageTakenEvent:
+    return DamageTakenEvent(
+        actor_id=1,
+        ability_id=ability_id,
+        ability_name="Caustic Waves",
+        amount=amount,
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def test_the_phase_taking_the_most_damage_is_reported_first() -> None:
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=50),
+        _taken(ability_id=11, timestamp_ms=6000, amount=400),
+        _taken(ability_id=11, timestamp_ms=7000, amount=300),
+    )
+
+    findings = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert findings[0].id == "mechanics.phase.0"
+    assert "Stage Two" in findings[0].title
+    assert findings[0].confidence is Confidence.DERIVED
+
+
+def test_a_phase_finding_carries_no_reference_figure() -> None:
+    """Design section 9: the reference table has no timestamps, so no phase
+    finding may imply a reference side."""
+    events = (_taken(ability_id=11, timestamp_ms=6000, amount=400),)
+
+    finding = compare_phase_cost(events, PHASES, TRANSITIONS)[0]
+
+    assert all(
+        "reference" not in text.lower()
+        for text in (finding.title, finding.detail, *finding.evidence)
+    )
+    assert all(fact.label != "Reference" for fact in finding.facts)
+
+
+def test_a_phase_finding_states_its_damage_and_its_share_exactly() -> None:
+    """Every figure this family prints, pinned as the reader meets it.
+
+    Its other tests read ids, phase names, the badge, emptiness, ordering and
+    the cap -- not one of them touches a number, so swapping the phase's own
+    total for the attempt's in the title, or dropping the hundred that turns a
+    fraction into a percentage, left the whole suite green. Both mutations
+    were run against this test and both fail it.
+
+    The amounts are six figures so the thousands separators are asserted too,
+    and they are unequal so the share is a real division rather than a number
+    that reads the same whichever of the two it divided.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=250_000),
+        _taken(ability_id=11, timestamp_ms=6000, amount=500_000),
+        _taken(ability_id=11, timestamp_ms=7000, amount=250_000),
+    )
+
+    worst, second = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert worst.title == (
+        "Stage Two cost this raid 750,000 damage taken, 75% of the attempt's total"
+    )
+    assert worst.evidence == (
+        "750,000 of 1,000,000 damage taken",
+        "phase named by the API as Stage Two",
+    )
+    assert [(fact.label, fact.value) for fact in worst.facts] == [
+        ("Damage taken", "750,000 unmitigated"),
+        ("Share of attempt", "75%"),
+    ]
+    assert second.title == (
+        "Stage One cost this raid 250,000 damage taken, 25% of the attempt's total"
+    )
+    assert second.evidence == (
+        "250,000 of 1,000,000 damage taken",
+        "phase named by the API as Stage One",
+    )
+    assert [(fact.label, fact.value) for fact in second.facts] == [
+        ("Damage taken", "250,000 unmitigated"),
+        ("Share of attempt", "25%"),
+    ]
+
+
+def test_an_encounter_with_no_phases_reports_nothing() -> None:
+    events = (_taken(ability_id=11, timestamp_ms=100, amount=50),)
+
+    assert compare_phase_cost(events, (), TRANSITIONS) == []
+
+
+def test_the_share_is_of_damage_not_of_landings() -> None:
+    """One huge hit in Stage Two must outrank three small ones in Stage One.
+
+    An implementation counting events passes every test above and fails this.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=10),
+        _taken(ability_id=11, timestamp_ms=200, amount=10),
+        _taken(ability_id=11, timestamp_ms=300, amount=10),
+        _taken(ability_id=11, timestamp_ms=6000, amount=900),
+    )
+
+    assert "Stage Two" in compare_phase_cost(events, PHASES, TRANSITIONS)[0].title
+
+
+def test_no_events_placed_in_any_phase_reports_nothing() -> None:
+    """A distinct empty-result path from having no phases at all: phases and
+    transitions are both present, but every event predates the first
+    transition, so `phase_at` places none of them and the totals stay empty."""
+    late_transitions = (PhaseTransition(id=1, start_ms=5000), PhaseTransition(id=2, start_ms=9000))
+    events = (_taken(ability_id=11, timestamp_ms=100, amount=50),)
+
+    assert compare_phase_cost(events, PHASES, late_transitions) == []
+
+
+def test_a_tie_in_phase_damage_breaks_by_phase_id() -> None:
+    """Stage One and Stage Two take equal damage, so only the ranking key's
+    second term -- ascending phase id -- can decide the order.
+
+    The Stage Two event is listed first on purpose: `totals` is a `Counter`,
+    which reports its `.items()` in insertion order, so its Stage Two key
+    would come first were the tie-break term deleted and the sort left stable
+    on the (also tied) damage term alone. Only the ascending-id tie-break
+    corrects that back to Stage One first.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=6000, amount=100),
+        _taken(ability_id=11, timestamp_ms=100, amount=100),
+    )
+
+    findings = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert findings[0].id == "mechanics.phase.0"
+    assert "Stage One" in findings[0].title
+    assert findings[1].id == "mechanics.phase.1"
+    assert "Stage Two" in findings[1].title
+
+
+def test_at_most_five_phases_are_reported() -> None:
+    """Mirrors compare_lethal_abilities's own cap test, one function above.
+
+    An encounter can genuinely carry more than five named phases once stages
+    and intermissions are counted, so six distinct phases here is not a
+    hypothetical input -- and each is given a distinct damage total so the
+    ranking has only one correct answer to check against.
+    """
+    phases = tuple(Phase(id=n, name=f"Stage {n}") for n in range(1, 7))
+    transitions = tuple(PhaseTransition(id=n, start_ms=n * 1000) for n in range(1, 7))
+    # Descending by phase number: Stage 1 costs the most, Stage 6 the least.
+    events = tuple(
+        _taken(ability_id=11, timestamp_ms=n * 1000, amount=(7 - n) * 100) for n in range(1, 7)
+    )
+
+    findings = compare_phase_cost(events, phases, transitions)
+
+    assert len(findings) == 5
+    titles = [finding.title for finding in findings]
+    # Not just a count of five: the five highest-cost phases, in cost order,
+    # with the cheapest -- Stage 6 -- the one left out.
+    assert all(f"Stage {n}" in titles[n - 1] for n in range(1, 6)), titles
+    assert not any("Stage 6" in title for title in titles), titles

@@ -16,6 +16,7 @@ from wowperf.adapters.wcl.ingest import (
     select_raid_fight,
 )
 from wowperf.adapters.wcl.queries import talents_query
+from wowperf.domain.encounter import Encounter
 from wowperf.domain.loadout import Loadout, StatBlock
 
 FIXTURE = Path(__file__).parent / "fixtures" / "report_fights.json"
@@ -475,3 +476,44 @@ def test_a_boss_fights_casts_carry_no_pull_index() -> None:
         {900: "Venom Bolt"},
     )
     assert casts[0].pull_index is None
+
+
+def _build_encounter_for(report: dict[str, Any], *, encounter_id: int) -> Encounter:
+    """A raid encounter built from `report`, with an empty roster and no player fixture needed.
+
+    `report` is passed through unchanged, and only `fight["encounterID"]` is set from
+    `encounter_id` -- what `build_phases` reads to find that encounter's phase names.
+    """
+    fight = a_raid_fight(
+        encounterID=encounter_id, friendlyPlayers=[], friendlySpecs=[], friendlyItemLevels=[]
+    )
+    return build_encounter(report, fight, partition=1)
+
+
+def test_an_encounter_carries_the_names_of_its_phases() -> None:
+    report = {
+        "code": "AbCdEf",
+        "phases": [
+            {
+                "encounterID": 3492,
+                "separatesWipes": True,
+                "phases": [
+                    {"id": 1, "name": "Stage One: Fury", "isIntermission": False},
+                    {"id": 2, "name": "Intermission: The Shattering", "isIntermission": True},
+                ],
+            }
+        ],
+    }
+    encounter = _build_encounter_for(report, encounter_id=3492)
+
+    assert [phase.name for phase in encounter.phases] == [
+        "Stage One: Fury",
+        "Intermission: The Shattering",
+    ]
+    assert [phase.is_intermission for phase in encounter.phases] == [False, True]
+
+
+def test_an_encounter_the_report_names_no_phases_for_carries_none() -> None:
+    report = {"code": "AbCdEf", "phases": [{"encounterID": 9999, "phases": []}]}
+
+    assert _build_encounter_for(report, encounter_id=3492).phases == ()
