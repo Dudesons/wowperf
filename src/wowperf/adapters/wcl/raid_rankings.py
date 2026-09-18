@@ -23,7 +23,6 @@ def build_raid_parse_rows(rows: list[dict[str, Any]]) -> tuple[RaidParseRow, ...
                 class_name=row["class"],
                 spec=row["spec"],
                 amount=row["amount"],
-                size=row["size"],
             )
         )
     return tuple(built)

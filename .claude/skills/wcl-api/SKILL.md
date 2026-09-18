@@ -910,6 +910,28 @@ has had that filter removed rather than back-filled, since `reference_kills` alr
 own difficulty as the query argument -- every row the API returns is at that difficulty already,
 so the per-row check could never have failed in production.
 
+**A row carries `size` only where the difficulty lets raid size vary. Measured 2026-09-18.**
+The key set above was taken at `difficulty: 4` on both encounters, and it does not hold at
+`difficulty: 5`. On report `DJfap6RcYKhPGHXZ`, whose two raid encounters differ in little else:
+encounter 3492 at difficulty 4 carried `size` on all 50 rows, and encounter 3470 at difficulty 5
+carried it on none of its 50. Each board returned exactly one distinct row key set, so `size` is
+absent from the Mythic board altogether rather than optional on it. The reading is consistent
+with the API omitting a field that cannot vary -- Mythic raid size is fixed at 20, and every
+difficulty below it is flexible -- but the mechanism is inferred and only these two difficulties
+were read.
+
+`build_reference_kill_rows` read `row["size"]` bare, so `wowperf raid` died with `KeyError` on
+every Mythic boss fight ever passed to it. **The role counts are the substitute, and they are
+measured rather than assumed:** on the difficulty-4 board, where both are present,
+`tanks + healers + melee + ranged` equalled `size` on 50 of 50 rows with no disagreements. The
+row's own `size` is still preferred wherever the board states one.
+
+This is the second defect on this board found by a row shape that did not occur offline, and the
+paragraph above names the first. Both times the fixtures were right and an argument had simply
+never been passed: `difficulty: 4` hardcoded into a fixture the first time, and no live run ever
+made at `difficulty: 5` the second. **The question that finds this class is which argument values
+the live runs have actually taken**, not whether a live run happened.
+
 ## A difficulty's name lives on its zone, not on the fight or the encounter
 
 Introspected 2026-09-15, looking for something `raid_frame.py`'s header could print instead of
@@ -1050,6 +1072,19 @@ specialisation, one metric (`dps` -- the `bossdps` board above draws a different
 and rows, and was not checked). Whether `duration` still matches the fight's own length on a
 different encounter, a different difficulty, or under `bossdps` is unmeasured, and so is every
 raid board beyond this one specialisation on this one day.
+
+**This board omits `size` at difficulty 5 too, and offers nothing to derive one from. Measured
+2026-09-18** against encounter 3470 at `difficulty: 5, partition: 1`, one specialisation, `dps`,
+100 rows: none carried `size`, and none carried the role counts `fightRankings` falls back on --
+so unlike the execution board, no substitute exists in the response. Three distinct key sets
+appeared across the 100 rows: 87 as listed above minus `size`, 12 of those without `guild`, and
+one without `guild` or `server` but carrying `hidden`. **`guild` and `server` are therefore
+optional on this board**, which the thirteen-key list above does not say.
+
+`RaidParseRow` no longer carries a size at all. Nothing read one -- the parse boards are
+deliberately not filtered by raid size, for the reason the paragraph above gives -- and
+`build_raid_parse_rows` read `row["size"]` bare, which crashed `wowperf raid` on every Mythic
+boss fight one board further along than `build_reference_kill_rows` did.
 
 ## A damage-done table split by target names the boss itself
 

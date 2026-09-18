@@ -40,6 +40,13 @@ class RaidParseRow(Frozen):
     carry it under any name. `amount` is a per-second rate, not a total --
     dividing it by `duration_ms` would be the count-against-rate mistake the
     field table warns against.
+
+    It carries no raid size either. Nothing reads one -- the parse boards are
+    deliberately not filtered by size, because our own raid's references ran 11
+    to 30 and filtering would empty most samples -- and measured 2026-09-18, the
+    board does not always supply one: none of the 100 rows of encounter 3470 at
+    difficulty 5 carried `size`, where the difficulty-4 board carries it on
+    every row.
     """
 
     report_code: str
@@ -49,7 +56,6 @@ class RaidParseRow(Frozen):
     class_name: str
     spec: str
     amount: float
-    size: int
 
     @property
     def duration_seconds(self) -> float:

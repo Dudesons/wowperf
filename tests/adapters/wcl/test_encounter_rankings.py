@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
@@ -13,6 +14,7 @@ from wowperf.adapters.wcl.encounter_rankings import (
     WclEncounterRankingRepository,
     build_reference_kill_rows,
 )
+from wowperf.adapters.wcl.errors import WclError
 
 TOKEN = {"access_token": "t", "expires_in": 86400}
 
@@ -143,4 +145,102 @@ def test_top_parses_sends_its_own_arguments_and_returns_built_rows(tmp_path: Pat
     assert rows[0].fight_id == 5
     assert rows[0].character_name == "Emberkin"
     assert rows[0].amount == 247358.15773571
-    assert rows[0].size == 29
+
+
+def test_a_mythic_row_without_size_takes_it_from_the_composition() -> None:
+    """The execution board omits `size` on a difficulty whose raid size is fixed.
+
+    Measured 2026-09-16 against encounter 3470 at difficulty 5: all 50 rows
+    carried the four composition counts and none carried `size`, while the same
+    board for encounter 3492 at difficulty 4 carried `size` on all 50. Reading
+    `row["size"]` therefore crashed with `KeyError` on every Mythic boss fight
+    ever passed to `wowperf raid`, before anything was written.
+
+    The row below is that measured shape, with the composition of a real Mythic
+    roster. It is the whole of the regression: against the previous code it does
+    not fail an assertion, it raises `KeyError` inside the builder.
+    """
+    rows = build_reference_kill_rows(
+        [
+            {
+                "report": {"code": "abc123", "fightID": 13},
+                "duration": 533000,
+                "deaths": 0,
+                "tanks": 2,
+                "healers": 4,
+                "melee": 5,
+                "ranged": 9,
+            }
+        ]
+    )
+    assert len(rows) == 1
+    assert rows[0].size == 20
+
+
+def test_the_composition_is_summed_rather_than_assumed_to_be_twenty() -> None:
+    """Pins the arithmetic, not the constant.
+
+    Every Mythic row observed sums to 20, because Mythic raid size is fixed at
+    20 -- so a fallback hardcoded to 20 passes the test above and is wrong for
+    the reason that matters: it would not be reading the API's answer. This row
+    sums to 25 instead. No board has been observed omitting `size` at a flexible
+    difficulty, so this shape is chosen to discriminate between summing and
+    guessing rather than to claim the API emits it.
+
+    That `tanks + healers + melee + ranged` is the raid size is measured, not
+    assumed: on the difficulty-4 board, where both are present, the sum equalled
+    `size` on 50 of 50 rows with no disagreements.
+    """
+    rows = build_reference_kill_rows(
+        [
+            {
+                "report": {"code": "abc123", "fightID": 13},
+                "duration": 533000,
+                "tanks": 2,
+                "healers": 5,
+                "melee": 8,
+                "ranged": 10,
+            }
+        ]
+    )
+    assert rows[0].size == 25
+
+
+def test_size_on_the_row_wins_over_a_composition_that_disagrees() -> None:
+    """The API's own figure is the source; the composition is only a fallback.
+
+    No row has been observed where the two disagree -- the 50 measured above all
+    agreed -- so this fixture exists to say which one is authoritative rather
+    than to describe a shape the board emits. Swap the preference and the
+    assertion reads 25.
+    """
+    rows = build_reference_kill_rows(
+        [
+            {
+                "report": {"code": "abc123", "fightID": 13},
+                "size": 20,
+                "duration": 533000,
+                "tanks": 2,
+                "healers": 5,
+                "melee": 8,
+                "ranged": 10,
+            }
+        ]
+    )
+    assert rows[0].size == 20
+
+
+def test_a_row_missing_a_required_field_names_it() -> None:
+    """A field this builder cannot do without is reported, not raised raw.
+
+    `build_ability_taken_rows` in the neighbouring module already answers a
+    malformed response with a `WclError` naming what was absent. This builder
+    read `row["duration"]` bare, so a missing one escaped the command as a
+    `KeyError` traceback -- which is how the `size` bug above presented, and why
+    diagnosing it took a probe rather than reading one line of stderr.
+    """
+    with pytest.raises(WclError) as raised:
+        build_reference_kill_rows(
+            [{"report": {"code": "abc123", "fightID": 13}, "size": 20}]
+        )
+    assert "duration" in str(raised.value)
