@@ -11,6 +11,8 @@ from wowperf.domain.comparison.mechanics import (
     select_reference_kills,
 )
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
+from wowperf.domain.phase_windows import PhaseShare
+from wowperf.domain.phases import Phase
 
 
 def kill(code: str, size: int) -> ReferenceKillRow:
@@ -273,3 +275,45 @@ def test_at_the_aggregate_floor_the_finding_states_a_median_and_carries_no_note(
 def test_an_empty_sample_states_nothing_rather_than_everything() -> None:
     ours = (ability(400, "Ravenous Feast", 12, ("Boss",)),)
     assert compare_mechanics(ours, 120.0, MechanicsSample(), scope="the raid") == []
+
+
+def test_a_mechanics_finding_names_the_phase_its_landings_fell_in() -> None:
+    shares = {
+        11: PhaseShare(phase=Phase(id=2, name="Stage Two"), landings=19, total=27),
+    }
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid", phase_shares=shares)
+
+    assert any("Stage Two" in fact.value for fact in findings[0].facts)
+    assert any("19 of 27" in line for line in findings[0].evidence)
+
+
+def test_a_mechanics_finding_without_a_phase_share_names_no_phase() -> None:
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid")
+
+    assert all(fact.label != "Mostly in" for fact in findings[0].facts)
+
+
+def test_a_phase_finding_states_no_reference_figure_in_the_same_fact() -> None:
+    """The reference table carries no timestamps, so a phase fact may never
+    carry a reference number beside it. Design section 9."""
+    shares = {11: PhaseShare(phase=Phase(id=2, name="Stage Two"), landings=19, total=27)}
+    ours = (ability(11, "Ravenous Feast", 27, ("Boss",)),)
+    sample = MechanicsSample(
+        members=(member("only", (ability(11, "Ravenous Feast", 2, ("Boss",)),), seconds=300.0),)
+    )
+
+    findings = compare_mechanics(ours, 300.0, sample, scope="the raid", phase_shares=shares)
+
+    phase_facts = [fact for fact in findings[0].facts if fact.label == "Mostly in"]
+    assert phase_facts
+    assert all("reference" not in fact.value.lower() for fact in phase_facts)

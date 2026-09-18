@@ -1,7 +1,7 @@
 # ABOUTME: The per-ability landing profile of one fight, and how two of them compare.
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
@@ -13,6 +13,7 @@ from wowperf.domain.findings import (
     quantifier_for,
     quantity,
 )
+from wowperf.domain.phase_windows import PhaseShare
 
 
 class AbilityTakenRow(Frozen):
@@ -180,12 +181,38 @@ def _ranked(candidates: list[tuple[float, Finding]]) -> list[Finding]:
     ]
 
 
+def _phase_fact(
+    shares: Mapping[int, PhaseShare] | None, ability_id: int
+) -> tuple[tuple[FindingFact, ...], tuple[str, ...]]:
+    """One ability's phase label, as a fact and an evidence line, or nothing.
+
+    Deliberately returns no reference figure of any kind. A reference kill's
+    ability table carries no timestamps, so there is no reference phase to
+    compare against and a fact implying one would be unfalsifiable -- design
+    section 9.
+    """
+    share = (shares or {}).get(ability_id)
+    if share is None:
+        return (), ()
+    return (
+        (
+            FindingFact(
+                label="Mostly in",
+                value=share.phase.name,
+                confidence=Confidence.DERIVED,
+            ),
+        ),
+        (f"{share.landings} of {share.total} landings fell in {share.phase.name}",),
+    )
+
+
 def compare_mechanics(
     ours: tuple[AbilityTakenRow, ...],
     our_seconds: float,
     sample: MechanicsSample,
     *,
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Abilities this raid took far more often than kills of the same boss did.
 
@@ -217,8 +244,10 @@ def compare_mechanics(
     if len(members) < MIN_SAMPLE_FOR_AGGREGATE:
         # Reuses the sample module's own wording rather than inventing a second
         # way to say the same thing.
-        return too_few(_against_one(ours, our_seconds, members[0], scope), len(members))
-    return _against_sample(ours, our_seconds, members, scope)
+        return too_few(
+            _against_one(ours, our_seconds, members[0], scope, phase_shares), len(members)
+        )
+    return _against_sample(ours, our_seconds, members, scope, phase_shares)
 
 
 def _against_one(
@@ -226,6 +255,7 @@ def _against_one(
     our_seconds: float,
     member: MechanicsMember,
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Our landing rates against one reference kill's own, that kill named.
 
@@ -255,6 +285,7 @@ def _against_one(
         if not _worth_reporting(our_rate, their_rate):
             continue
 
+        phase_facts, phase_evidence = _phase_fact(phase_shares, our_row.ability_id)
         candidates.append(
             (
                 our_rate - their_rate,
@@ -276,7 +307,8 @@ def _against_one(
                         f"ours {our_rate:.1f} a minute over {our_seconds:.0f}s",
                         f"the reference {their_rate:.1f} a minute over {their_seconds:.0f}s",
                         f"reference kill {member.row.report_code} fight {member.row.fight_id}",
-                    ),
+                    )
+                    + phase_evidence,
                     facts=(
                         FindingFact(
                             label="This raid",
@@ -294,7 +326,8 @@ def _against_one(
                         # printing either label would claim a sample nobody drew.
                         FindingFact(label="Sample", value="1 reference kill"),
                         FindingFact(label="Landings", value=f"{our_row.landings}"),
-                    ),
+                    )
+                    + phase_facts,
                     ability_id=our_row.ability_id,
                     ability_name=our_row.ability_name,
                 ),
@@ -309,6 +342,7 @@ def _against_sample(
     our_seconds: float,
     members: Sequence[MechanicsMember],
     scope: str,
+    phase_shares: Mapping[int, PhaseShare] | None = None,
 ) -> list[Finding]:
     """Our landing rates against the median of the sample's own, with its spread."""
     their_rows = [_landings_by_ability(member) for member in members]
@@ -338,6 +372,7 @@ def _against_sample(
         if not _worth_reporting(our_rate, their_median):
             continue
 
+        phase_facts, phase_evidence = _phase_fact(phase_shares, our_row.ability_id)
         candidates.append(
             (
                 our_rate - their_median,
@@ -361,7 +396,8 @@ def _against_sample(
                         f"range {low:.1f} to {high:.1f} across "
                         f"{quantity(total, 'reference kill', 'reference kills')}",
                         f"{count_phrase(carrying, total)} references took it at all",
-                    ),
+                    )
+                    + phase_evidence,
                     facts=(
                         FindingFact(
                             label="This raid",
@@ -375,7 +411,8 @@ def _against_sample(
                         ),
                         FindingFact(label="Range", value=f"{low:.1f} to {high:.1f}"),
                         FindingFact(label="Landings", value=f"{our_row.landings}"),
-                    ),
+                    )
+                    + phase_facts,
                     ability_id=our_row.ability_id,
                     ability_name=our_row.ability_name,
                     quantifier=quantifier_for(carrying, total),
