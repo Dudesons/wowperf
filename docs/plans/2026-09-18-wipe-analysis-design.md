@@ -289,11 +289,19 @@ Withholding is this project's existing habit and this design does not break it f
 ### 8.4 The chart
 
 A wipe is a race between two health bars. Players alive over time is a step function from the
-deaths and resurrect streams — free and certain. Boss health is the unverified half.
+deaths and resurrect streams — free and certain.
 
-**Build the chart on the certain series, annotating boss health at the end point.** Add the curve
-only if section 13's measurement says it is available and cheap. One real series beats waiting on
-a field nobody has confirmed.
+**There is no boss health curve, and this is now settled rather than assumed.** Measured
+2026-09-18 against a Mythic kill: `graph(dataType: Resources, hostilityType: Enemies)` returns
+zero series, and `events(..., includeResources: true)` surfaces no boss-sized health pool. The
+reading is recorded in `.claude/skills/wcl-api/SKILL.md`.
+
+**So the chart draws one series: players alive over time, with boss health annotated at the end
+point** from `ReportFight.fightPercentage`, which is already selected and costs nothing. A
+`graph(dataType: Summary, hostilityType: Enemies)` returns a 42-point enemy damage-taken series
+for 0.00 points, from which a depletion curve might be derived — but whether its points are rates
+or running totals was not established, and reading them wrongly would draw a confident, wrong
+curve. **That is a separate design question and this plan does not open it.**
 
 ---
 
@@ -306,7 +314,7 @@ fell in, where the encounter has phases. And one new family rolls that up:
 
 **`mechanics.phase.<rank>`** — where in the fight the cost concentrated. States a phase by its
 API-supplied name and what it cost us. Badge `derived`. Built beside `compare_mechanics`, and
-withheld entirely when `separatesWipes` reads false or the encounter has no phases.
+withheld entirely when the encounter has no phases — `lastPhase: 0` and no transitions.
 
 **There is no cross-raid phase comparison, and there cannot be a cheap one.** The reference side
 is an `AbilityTakenRow` table — a whole-fight aggregate carrying no timestamps. Knowing when a
@@ -315,8 +323,15 @@ Splitting them would need each reference kill's own event stream, which is both 
 step toward the corpus RPGLogs §5d forbids. **Phase attribution therefore describes our attempt
 only.** A phase finding says where our cost fell; it never says the reference kills differed.
 
-**Gate every phase claim on `separatesWipes`.** Warcraft Logs states whether phase is a meaningful
-way to group an encounter's attempts, and where it says no, the page groups by nothing.
+**Gate an in-fight phase label on the encounter having phases, not on `separatesWipes`.** Measured
+2026-09-18 across 8 encounters in the cache: 5 read `separatesWipes: true` and 3 read false, but
+**all 8 carry 2 to 4 named phases**. Encounter 3445 reads false while naming `Stage One: Entombed
+Sentinels` and `Intermission: Vitriolic Stasis`.
+
+The flag answers "is phase a meaningful way to group this encounter's **attempts**" — a
+progression question, and the progression page is right to gate on it. It does not answer whether
+one attempt can be sliced by phase. Gating this design's phase strip on it would silently drop
+three encounters in eight that have named phases and transitions.
 
 Three properties are documented in `.claude/skills/wcl-api/SKILL.md` and each is a trap:
 
@@ -383,9 +398,13 @@ withheld case needs a test that fails if the verdict starts firing on conflictin
 
 ### 12.2 Phases are not a ladder
 
-Required fixtures: non-monotonic transitions (`1, 2, 1, 2, 1`); `lastPhase: 0`;
-`separatesWipes: false`; and an encounter whose `lastPhase` disagrees with its last transition, so
-a test fails if someone reaches for `phaseTransitions[-1].id`.
+Required fixtures: non-monotonic transitions (`1, 2, 1, 2, 1`); `lastPhase: 0` withholding the
+phase strip; and an encounter whose `lastPhase` disagrees with its last transition, so a test
+fails if someone reaches for `phaseTransitions[-1].id`.
+
+One more, because it guards a defect this design nearly shipped: **an encounter reading
+`separatesWipes: false` that carries named phases must still get its phase strip.** Encounter 3445
+is the real case. A test asserting that fails if someone reintroduces the flag as a gate.
 
 ### 12.3 The enum axis
 
@@ -427,17 +446,18 @@ regression net, not a nuisance.
 
 ---
 
-## 13. Open measurements
+## 13. Measurements taken
 
-Both are cheap, and both are taken before the plan is written rather than during implementation.
+Both were taken before this plan was written, for under 5 points, and both changed the design.
+Recorded with their dates and populations in `.claude/skills/wcl-api/SKILL.md`.
 
-1. **Is a continuous boss-health series available, and what does it cost?** The end point is
-   certain from `fightPercentage`. If the curve costs a query per fight, weigh it against drawing
-   the certain series alone. Record the reading in `.claude/skills/wcl-api/SKILL.md` with its date
-   and population, whichever way it goes.
-2. **Does `separatesWipes` vary across the current tier's encounters?** Section 9 gates every
-   phase claim on it, and if it reads `false` widely the phase strip serves fewer bosses than this
-   design assumes.
+1. **Is a continuous boss-health series available?** **No.**
+   `graph(dataType: Resources, hostilityType: Enemies)` returns zero series, and
+   `includeResources` surfaces no boss-sized pool. Section 8.4 now draws one certain series and
+   annotates the end point, rather than waiting on a field that does not exist.
+2. **Does `separatesWipes` gate phases usefully?** **No, and gating on it would have been a
+   defect.** Five of eight encounters read true, three read false, and all eight carry named
+   phases. Section 9 now gates on the encounter having phases at all.
 
 ---
 

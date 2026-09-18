@@ -1358,6 +1358,49 @@ transition on 7 of the 8, but encounter 3470 reports `lastPhase: 2` against tran
 3. Unexplained, and recorded rather than guessed at: **read `lastPhase`, never
 `phaseTransitions[-1].id`.**
 
+## No boss health curve is on offer, and `separatesWipes` is not a phase gate
+
+Measured 2026-09-18 against report `DJfap6RcYKhPGHXZ` fight 13, a Mythic Nek'zali kill, by schema
+introspection and by running each query. The whole probe spent under 5 points.
+
+**The four enums, read verbatim from introspection.** `GraphDataType` and `TableDataType` carry
+the same fourteen values: `Summary`, `Buffs`, `Casts`, `DamageDone`, `DamageTaken`, `Deaths`,
+`Debuffs`, `Dispels`, `Healing`, `Interrupts`, `Resources`, `Summons`, `Survivability`, `Threat`.
+They differ from `EventDataType`, recorded above, in both directions: graphs and tables add
+`Summary` and `Survivability`, and lack `All` and `CombatantInfo`. `HostilityType` is exactly
+`Friendlies` and `Enemies`.
+
+**`graph(dataType: Resources, hostilityType: Enemies)` returns zero series.** One call, one fight,
+`series: []` inside the usual `startTime`/`endTime` envelope. Cost 1.00 point. **So there is no
+enemy health curve to read**, and a boss's health over time cannot be fetched the way a player's
+resources can.
+
+**`graph(dataType: Summary, hostilityType: Enemies)` returns three series of 42 points each** --
+`Damage Done`, `Damage Taken`, `Healing Done` -- and priced at **0.00 points**. Whether those
+points are per-bucket rates or running totals was not established, so nothing should read them as
+a depletion curve without settling that first.
+
+**The endpoint remains the reliable reading.** `ReportFight.fightPercentage` states the boss
+health a fight ended on, is already selected by `FIGHTS_QUERY`, and costs nothing.
+
+**`events(..., includeResources: true)` surfaced no boss-sized pool.** On a
+`DamageTaken`/`Friendlies` stream, 313 of 401 events carried `hitPoints` and `maxHitPoints` across
+9 distinct source ids, every maximum between 812560 and 927660 -- pools far too small for a Mythic
+raid boss. Which actors those are was not identified, and is recorded as a raw reading rather than
+guessed at. The 2026-09-06 note above reached the same conclusion from a smaller window.
+
+**`separatesWipes` is false on encounters that plainly have phases.** Read off the cache the same
+day across 8 encounters carrying a `Report.phases` entry: 5 true, 3 false, and **all 8 carry 2 to
+4 named phases**. Encounter 3445 reads false while naming `Stage One: Entombed Sentinels` and
+`Intermission: Vitriolic Stasis`. Encounters 3497, 12813 and 12859 name bosses rather than stages,
+which is what a council encounter's phases are.
+
+So the flag answers "is phase a meaningful way to group this encounter's **attempts**", which is a
+progression question. **It does not answer whether a single attempt can be sliced by phase**, and
+gating an in-fight phase label on it would silently drop 3 encounters in 8 that have named phases
+and transitions. Gate attempt-grouping on `separatesWipes`; gate an in-fight phase label on the
+encounter having phases at all.
+
 ## What a whole day of this investigation cost
 
 **14.04 points of 3600** (2026-09-16), covering four schema introspections, a report-wide `fights`
