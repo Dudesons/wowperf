@@ -40,6 +40,7 @@ def test_an_unknown_family_sorts_last_rather_than_first() -> None:
 @pytest.mark.parametrize(
     "family",
     [
+        "wipe",
         "deaths",
         "progression",
         "mechanics",
@@ -56,6 +57,18 @@ def test_every_family_the_raid_path_emits_has_a_severity(family: str) -> None:
     # the analysers, so a new analyser's family would rank on UNKNOWN_SEVERITY
     # with this green. If you add an analyser, add its family in both places.
     assert family in SEVERITY_BY_FAMILY
+
+
+def test_the_verdict_outranks_every_other_family() -> None:
+    """`wipe.cause` leads, and a death carrying a time cost is what it has to beat.
+
+    Membership in the table above is not the claim: a `wipe` entry sitting
+    anywhere in it would satisfy that test while the verdict still rendered
+    last. Deaths are the family it has to outrank, and the one with a
+    `seconds_lost` to sort on, so this pair fails on any rank but the first.
+    """
+    ranked = rank_raid_findings([finding("deaths.total", 180.0), finding("wipe.cause")])
+    assert [item.id for item in ranked] == ["wipe.cause", "deaths.total"]
 
 
 def test_family_of_reads_the_first_segment() -> None:

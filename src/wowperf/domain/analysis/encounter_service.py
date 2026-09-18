@@ -136,7 +136,9 @@ def analyse_encounter(
     findings += compare_phase_cost(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
-    verdict = classify_attempt(encounter, loaded.deaths, mechanics)
+    verdict = classify_attempt(
+        encounter, loaded.deaths, mechanics, resurrections=loaded.resurrections
+    )
     if verdict is not None:
         findings.append(verdict)
     for subject in parse_subjects:

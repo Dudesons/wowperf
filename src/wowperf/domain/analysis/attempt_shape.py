@@ -4,7 +4,7 @@
 from wowperf.domain.comparison.mechanics import MechanicsSample
 from wowperf.domain.comparison.statistics import median
 from wowperf.domain.encounter import Encounter
-from wowperf.domain.events import Death
+from wowperf.domain.events import Death, Resurrection
 from wowperf.domain.findings import Confidence, Finding, FindingFact
 
 DISMANTLED_SHARE = 0.5
@@ -31,6 +31,46 @@ which the deaths straddle the midpoint rather than concentrate before or after
 it; inside it the ordering clause is withheld, the same habit the comparison
 axes keep when their samples are too thin.
 """
+
+
+def _alive_at_the_end(
+    size: int, deaths: tuple[Death, ...], resurrections: tuple[Resurrection, ...]
+) -> int:
+    """How many of the raid were standing when the attempt ended.
+
+    Design section 8.2's first evidence item, read as it is written. A player
+    brought back after their last death is standing again, so counting everyone
+    who ever died as dead under-counts the living on any attempt a
+    battle-resurrection landed in. `progression_best.best_deaths` records the
+    same fact from the other side: a rezzed player dies twice, and one measured
+    night logged 21 deaths across twenty players.
+
+    One assumption survives, which is why the fact this feeds is badged
+    `derived` rather than measured: a player who released and ran back leaves no
+    record at all -- `Resurrection`'s own docstring -- so this is a floor on the
+    living rather than a reading of them. It errs in the same direction the
+    unreconstructed count did, and by far less.
+
+    `died` stays a count of players who died at any point, and `DISMANTLED_SHARE`
+    stays measured against it: a raid that lost ten people and rezzed eight of
+    them was still taken apart, which is exactly what that constant's own
+    docstring says it is reading.
+    """
+    last_death: dict[int, int] = {}
+    for death in deaths:
+        last_death[death.actor_id] = max(last_death.get(death.actor_id, 0), death.timestamp_ms)
+
+    last_back_up: dict[int, int] = {}
+    for one in resurrections:
+        last_back_up[one.actor_id] = max(last_back_up.get(one.actor_id, 0), one.timestamp_ms)
+
+    # A resurrection at the same instant as a death leaves the player down: a
+    # rez cannot land on somebody who has not died yet, so the equal case is a
+    # second death landing on somebody who had just been brought back.
+    still_down = sum(
+        1 for actor_id, when in last_death.items() if last_back_up.get(actor_id, -1) <= when
+    )
+    return max(size - still_down, 0)
 
 
 def _ordering_clause(encounter: Encounter, deaths: tuple[Death, ...]) -> str:
@@ -71,6 +111,8 @@ def classify_attempt(
     encounter: Encounter,
     deaths: tuple[Death, ...],
     sample: MechanicsSample,
+    *,
+    resurrections: tuple[Resurrection, ...] = (),
 ) -> Finding | None:
     """Why this attempt ended, when the log supports saying.
 
@@ -98,7 +140,7 @@ def classify_attempt(
         return None
 
     died = len({death.actor_id for death in deaths})
-    alive = max(size - died, 0)
+    alive = _alive_at_the_end(size, deaths, resurrections)
     reference_seconds = median([member.row.duration_seconds for member in sample.members])
     reference_deaths = median([float(member.row.deaths) for member in sample.members])
 
@@ -154,10 +196,19 @@ def classify_attempt(
             f"{encounter.boss_percentage:.1f}% boss health remaining",
             f"{encounter.duration_seconds:.0f}s against a reference median of "
             f"{reference_seconds:.0f}s",
-            f"{died} deaths against a reference median of {reference_deaths:.0f}",
+            # Our side counts players who died at any point; the reference side
+            # counts death events, which is what `ReferenceKillRow.deaths`
+            # carries and what a battle-rezzed player contributes twice to. The
+            # line names both units rather than letting one word cover both.
+            f"{died} of our players died, against a reference median of "
+            f"{reference_deaths:.0f} deaths",
         ),
         facts=(
-            FindingFact(label="Alive at the end", value=f"{alive} of {size}"),
+            FindingFact(
+                label="Alive at the end",
+                value=f"{alive} of {size}",
+                confidence=Confidence.DERIVED,
+            ),
             FindingFact(label="Boss health left", value=f"{encounter.boss_percentage:.1f}%"),
             FindingFact(
                 label="Our duration",

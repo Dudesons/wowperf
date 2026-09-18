@@ -17,7 +17,7 @@ from wowperf.domain.comparison.raid_reference import (
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, Resurrection
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase, PhaseTransition
@@ -535,13 +535,16 @@ def _mechanics_sample() -> MechanicsSample:
     )
 
 
-def _loaded_wipe_with(deaths: int) -> LoadedEncounter:
-    """A wipe with `deaths` of a 20-player raid dead.
+def _loaded_wipe_with(deaths: int, resurrected: int = 0) -> LoadedEncounter:
+    """A wipe with `deaths` of a 20-player raid dead, `resurrected` of them back up.
 
     At 14, that clears `classify_attempt`'s own `DISMANTLED_SHARE` of one
     half, so a verdict fires. `boss_percentage` is set outright rather than
     left at its `None` default: `classify_attempt` withholds a verdict
     whenever it reads `None`, and a wipe fixture must not do that by omission.
+
+    Every resurrection lands after every death this builds, so `resurrected`
+    raiders are standing when the attempt ends.
     """
     death_events = tuple(
         Death(
@@ -553,13 +556,23 @@ def _loaded_wipe_with(deaths: int) -> LoadedEncounter:
         )
         for index in range(1, deaths + 1)
     )
+    back_up = tuple(
+        Resurrection(
+            actor_id=index,
+            caster_id=19,
+            ability_id=20484,
+            ability_name="Rebirth",
+            timestamp_ms=60_000 + deaths * 30_000,
+        )
+        for index in range(1, resurrected + 1)
+    )
     encounter = Encounter(
         report_code="wipe1", fight_id=5, encounter_id=3421,
         boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
         kill=False, boss_percentage=60.0, start_ms=1_000, end_ms=500_000,
         players=(),
     )
-    return LoadedEncounter(encounter=encounter, deaths=death_events)
+    return LoadedEncounter(encounter=encounter, deaths=death_events, resurrections=back_up)
 
 
 def _loaded_wipe_with_phases() -> LoadedEncounter:
@@ -600,6 +613,28 @@ def test_a_wipe_reaches_a_lethal_finding_and_a_verdict() -> None:
 
     assert any(one.startswith("mechanics.lethal.") for one in ids)
     assert "wipe.cause" in ids
+
+
+def test_the_resurrection_stream_reaches_the_verdict() -> None:
+    """Two runs of one fixture, differing only in who came back.
+
+    Five of twenty died. With four of them rezzed, nineteen were standing when
+    the attempt ended, which is over `INTACT_SHARE` where fifteen is under it,
+    so the verdict fires here and is withheld there. A call site that dropped
+    `resurrections` would leave both runs silent, and silence is also what a
+    fight with no verdict to give produces -- so only the pair can see it.
+    """
+    without = analyse_encounter(
+        _loaded_wipe_with(deaths=5), DEFENSIVES, Consumables(), mechanics=_mechanics_sample()
+    )
+    with_rezzes = analyse_encounter(
+        _loaded_wipe_with(deaths=5, resurrected=4), DEFENSIVES, Consumables(),
+        mechanics=_mechanics_sample(),
+    )
+
+    assert "wipe.cause" not in {finding.id for finding in without}
+    [verdict] = [finding for finding in with_rezzes if finding.id == "wipe.cause"]
+    assert "19 of 20 were still alive" in verdict.detail, verdict.detail
 
 
 def test_a_fight_with_phases_reaches_a_phase_finding() -> None:

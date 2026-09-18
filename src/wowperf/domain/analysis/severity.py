@@ -6,14 +6,15 @@ from collections.abc import Iterable
 from wowperf.domain.findings import Finding
 
 SEVERITY_BY_FAMILY = {
-    "deaths": 0,
-    "progression": 1,
-    "mechanics": 2,
-    "players": 3,
-    "defensives": 4,
-    "consumables": 5,
-    "interrupts": 6,
-    "compare": 7,
+    "wipe": 0,
+    "deaths": 1,
+    "progression": 2,
+    "mechanics": 3,
+    "players": 4,
+    "defensives": 5,
+    "consumables": 6,
+    "interrupts": 7,
+    "compare": 8,
 }
 """How much each finding family is worth reading first, lowest first.
 
@@ -29,9 +30,16 @@ analyser emitting a new family ranks on `UNKNOWN_SEVERITY` with the whole suite
 green. Closing that direction needs a fixture that fires every analyser, which
 nothing here has.
 
-Deaths first because a death ends a player's contribution outright. Mechanics
-next because it is the one finding that says what to do differently. `compare`
-last because a confound explains the others rather than standing beside them.
+`wipe` first because it is the only finding that frames the others: whether the
+attempt ended on execution or on throughput decides which of the rows under it
+is worth reading, and wipe design section 11 makes it the Summary's headline for
+that reason. It leads despite being the one `inferred` finding here -- the badge
+says how far to trust it, and ranking is about what to read first.
+
+Deaths next because a death ends a player's contribution outright. Mechanics
+after that because it is the one finding that says what to do differently.
+`compare` last because a confound explains the others rather than standing
+beside them.
 """
 
 UNKNOWN_SEVERITY = max(SEVERITY_BY_FAMILY.values()) + 1

@@ -1,7 +1,7 @@
 from wowperf.domain.analysis.attempt_shape import classify_attempt
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter
-from wowperf.domain.events import Death
+from wowperf.domain.events import Death, Resurrection
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 
@@ -51,6 +51,24 @@ def _deaths(count: int, *, first_ms: int = 0, step_ms: int = 1000) -> tuple[Deat
             timestamp_ms=first_ms + step_ms * index,
             killing_blow="Caustic Waves",
             killing_blow_id=11,
+        )
+        for index in range(count)
+    )
+
+
+def _resurrections(count: int, *, at_ms: int) -> tuple[Resurrection, ...]:
+    """The first `count` raiders brought back at `at_ms`, by a teammate.
+
+    `caster_id` is another raider rather than the actor's own id: a
+    self-resurrection is a different thing, and nothing here reads the caster.
+    """
+    return tuple(
+        Resurrection(
+            actor_id=index,
+            caster_id=19,
+            ability_id=20484,
+            ability_name="Rebirth",
+            timestamp_ms=at_ms,
         )
         for index in range(count)
     )
@@ -266,6 +284,60 @@ def test_a_raid_that_is_neither_dismantled_nor_intact_is_withheld() -> None:
             _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
             _deaths(5),
             _sample(seconds=300.0, deaths=1),
+        )
+        is None
+    )
+
+
+def test_players_brought_back_count_among_the_living() -> None:
+    """The fixture above, with four of the five dead resurrected.
+
+    Everything else is identical, so only the resurrection stream can move the
+    verdict -- and it moves it across `INTACT_SHARE`, from withheld to
+    throughput. "Alive at the end" is the design's first evidence item, and
+    subtracting everyone who ever died answers a different question.
+    """
+    finding = classify_attempt(
+        _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+        _deaths(5),
+        _sample(seconds=300.0, deaths=1),
+        resurrections=_resurrections(4, at_ms=10_000),
+    )
+
+    assert finding is not None
+    assert "throughput" in finding.title.lower()
+    assert "19 of 20 were still alive" in finding.detail, finding.detail
+    assert "19 of 20 alive at the end" in finding.evidence, finding.evidence
+    # Still five players who died, and the evidence says so beside the living.
+    assert any("5 of our players died" in line for line in finding.evidence), finding.evidence
+
+
+def test_a_player_who_died_again_after_being_brought_back_is_not_among_the_living() -> None:
+    """A resurrection counts only where it is the last thing that happened to a player.
+
+    The same five raiders and the same four resurrections as the test above,
+    except that all four rezzed players were killed again afterwards. Reading
+    "was ever resurrected" rather than "was resurrected after their last death"
+    would put all four back on their feet and reach a throughput verdict on a
+    raid that ended with five of twenty on the floor.
+    """
+    deaths = _deaths(5) + tuple(
+        Death(
+            player_name=f"Raider {index}",
+            actor_id=index,
+            timestamp_ms=50_000 + 1_000 * index,
+            killing_blow="Caustic Waves",
+            killing_blow_id=11,
+        )
+        for index in range(4)
+    )
+
+    assert (
+        classify_attempt(
+            _encounter(kill=False, boss_percentage=45.0, seconds=400.0),
+            deaths,
+            _sample(seconds=300.0, deaths=1),
+            resurrections=_resurrections(4, at_ms=10_000),
         )
         is None
     )
