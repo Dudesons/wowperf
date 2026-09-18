@@ -182,7 +182,7 @@ rule that gets broken.
 | Reference kills' death counts | `ReferenceKillRow.deaths`, already on the row, **read by nothing today** | none |
 | Reference kills' durations | `ReferenceKillRow.duration_ms` | none |
 | Our deaths and resurrects | streams already fetched for the Deaths tab | none |
-| Boss health remaining | `ReportFight.fightPercentage`, verified 2026-09-14 | none |
+| Boss health remaining | `Encounter.boss_percentage`, already ingested | none |
 | Phase names and transitions | `Report.phases`, `phaseTransitions`, already in `FIGHTS_QUERY` | none |
 | Continuous boss-health curve | **unverified — see section 14** | unknown |
 
@@ -271,7 +271,10 @@ only judgement. It states its reasoning, never only its conclusion. It withholds
 Four measured facts:
 
 1. Players alive when the attempt ended, against raid size.
-2. Boss health remaining, from `fightPercentage`.
+2. Boss health remaining, from **`Encounter.boss_percentage`** — not `fight_percentage`. The two
+   are different quantities and diverge sharply: one measured attempt read `fight_percentage`
+   51.12 against `boss_percentage` 3.76. `fight_percentage` is the encounter's progress; the
+   verdict wants the boss's health. Every figure printed names which one it is.
 3. Our duration against the five reference kills' median duration.
 4. Our death count against theirs, from `ReferenceKillRow.deaths`.
 
@@ -297,7 +300,7 @@ zero series, and `events(..., includeResources: true)` surfaces no boss-sized he
 reading is recorded in `.claude/skills/wcl-api/SKILL.md`.
 
 **So the chart draws one series: players alive over time, with boss health annotated at the end
-point** from `ReportFight.fightPercentage`, which is already selected and costs nothing. A
+point** from `Encounter.boss_percentage`, which is already ingested and costs nothing. A
 `graph(dataType: Summary, hostilityType: Enemies)` returns a 42-point enemy damage-taken series
 for 0.00 points, from which a depletion curve might be derived — but whether its points are rates
 or running totals was not established, and reading them wrongly would draw a confident, wrong
