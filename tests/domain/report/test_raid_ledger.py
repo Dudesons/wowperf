@@ -42,7 +42,12 @@ RAID_FAMILIES = (
     "compare.talents.emberkin-0", "compare.uptime.self.0.emberkin-0",
     "compare.uptime.unjudged.emberkin-0",
 )
-"""Every family `analyse_encounter` can emit, as it is emitted after Task 2.
+"""Every family `analyse_encounter` can emit from a kill without phases.
+
+`mechanics.phase.*` and `wipe.cause` are absent because this fixture is a
+kill and names no phases, not because their routing is unchecked: both are
+pinned directly against `_raid_field_for` beside the tests that use this.
+
 
 Enumerated rather than generated: a family this list forgets is a row that
 falls silently through to `observations`, which is a tab a reader does not
@@ -293,7 +298,7 @@ OUR_ABILITIES_TAKEN = (
 
 
 def a_rich_encounter() -> list[Finding]:
-    """Every family `analyse_encounter` can emit, from one fight.
+    """Every family `analyse_encounter` can emit from one kill without phases.
 
     A kill, four raiders, five deaths shaped into a single, a chain and a
     repeat, one outlier hit, one landed enemy cast, a defensive and a

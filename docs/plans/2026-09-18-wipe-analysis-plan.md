@@ -1489,7 +1489,8 @@ def classify_attempt(
         headline = "execution: the raid was taken apart"
         story = (
             f"{died} of {size} died, against a median of {reference_deaths:.0f} across "
-            f"the reference kills. Drilling the mechanics that killed them is the lever."
+            "the reference kills. This attempt ended before the damage question could "
+            "be asked."
         )
     elif stalled and alive / size >= INTACT_SHARE:
         headline = "throughput: the raid held and the damage was not enough"
