@@ -113,7 +113,7 @@ def board(*amounts: float) -> tuple[RaidParseRow, ...]:
         RaidParseRow(
             report_code=f"code{i:012d}", fight_id=i, duration_ms=300_000 + i * 1000,
             character_name="Stonewake", class_name="Evoker", spec="Devastation",
-            amount=amount, size=25 + i,
+            amount=amount,
         )
         for i, amount in enumerate(amounts)
     )

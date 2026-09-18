@@ -220,7 +220,6 @@ def a_board(amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
             class_name="Mage",
             spec="Arcane",
             amount=amount,
-            size=20,
         )
         for one, amount in enumerate(amounts)
     )

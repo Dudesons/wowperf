@@ -254,7 +254,7 @@ def a_board(amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
         RaidParseRow(
             report_code=f"BOARD{one}", fight_id=one + 1, duration_ms=240_000,
             character_name="Stonewake", class_name="Mage", spec="Arcane",
-            amount=amount, size=20,
+            amount=amount,
         )
         for one, amount in enumerate(amounts)
     )

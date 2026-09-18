@@ -1037,7 +1037,7 @@ def a_board(spec: str, amounts: tuple[float, ...]) -> tuple[RaidParseRow, ...]:
             report_code=f"BOARD{one}", fight_id=one + 1, duration_ms=240_000,
             character_name="Кириллица",
             class_name="Mage" if spec == "Arcane" else "DeathKnight",
-            spec=spec, amount=amount, size=20,
+            spec=spec, amount=amount,
         )
         for one, amount in enumerate(amounts)
     )
