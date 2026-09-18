@@ -6,11 +6,14 @@ from wowperf.domain.comparison.mechanics import (
     MechanicsMember,
     MechanicsSample,
     ReferenceKillRow,
+    compare_lethal_abilities,
     compare_mechanics,
     hostile_rows,
     select_reference_kills,
 )
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
+from wowperf.domain.events import Death
+from wowperf.domain.findings import Confidence, Finding, FindingFact
 from wowperf.domain.phase_windows import PhaseShare
 from wowperf.domain.phases import Phase
 
@@ -317,3 +320,146 @@ def test_a_phase_finding_states_no_reference_figure_in_the_same_fact() -> None:
     phase_facts = [fact for fact in findings[0].facts if fact.label == "Mostly in"]
     assert phase_facts
     assert all("reference" not in fact.value.lower() for fact in phase_facts)
+
+
+def _death(ability_id: int, name: str) -> Death:
+    return Death(
+        player_name="Emberkin",
+        actor_id=1,
+        timestamp_ms=1000,
+        killing_blow=name,
+        killing_blow_id=ability_id,
+    )
+
+
+def _sample_losing(*counts: int) -> MechanicsSample:
+    return MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="AbCdEf",
+                    fight_id=index,
+                    size=20,
+                    duration_ms=300_000,
+                    deaths=count,
+                ),
+                abilities=(),
+            )
+            for index, count in enumerate(counts)
+        )
+    )
+
+
+def test_an_ability_that_killed_more_than_the_references_lost_in_total() -> None:
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(4))
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2, 3, 1))
+
+    assert findings[0].id == "mechanics.lethal.0"
+    assert findings[0].confidence is Confidence.DERIVED
+    assert "Caustic Waves" in findings[0].title
+    assert findings[0].ability_id == 11
+    assert any("0 to 3" in line for line in findings[0].evidence)
+
+
+def test_the_deadliest_ability_is_reported_first() -> None:
+    deaths = (
+        _death(11, "Caustic Waves"),
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings[0].ability_name == "Purge"
+    assert findings[1].ability_name == "Caustic Waves"
+
+
+def test_at_most_five_abilities_are_reported() -> None:
+    deaths = tuple(_death(identifier, f"Ability {identifier}") for identifier in range(9))
+
+    assert len(compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))) == 5
+
+
+def test_a_sample_below_the_aggregate_floor_names_one_reference_kill() -> None:
+    deaths = (_death(11, "Caustic Waves"),)
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(2, 3))
+
+    assert any("1 reference kill" in fact.value for fact in findings[0].facts)
+    assert all("median" not in line for line in findings[0].evidence)
+
+
+def test_no_sample_yields_no_finding() -> None:
+    assert compare_lethal_abilities((_death(11, "Caustic Waves"),), MechanicsSample()) == []
+
+
+def test_no_deaths_yields_no_finding() -> None:
+    assert compare_lethal_abilities((), _sample_losing(0, 1, 2)) == []
+
+
+def _reference_deaths_fact(findings: list[Finding]) -> FindingFact:
+    return next(fact for fact in findings[0].facts if fact.label == "Reference deaths, all sources")
+
+
+def test_the_reference_deaths_fact_is_derived_at_the_aggregate_floor() -> None:
+    # Three members clears MIN_SAMPLE_FOR_AGGREGATE, so the phrase is a median
+    # this function computed over the sample -- derived, not read off one row.
+    findings = compare_lethal_abilities((_death(11, "Caustic Waves"),), _sample_losing(0, 1, 2))
+
+    assert _reference_deaths_fact(findings).confidence is Confidence.DERIVED
+
+
+def test_the_reference_deaths_fact_is_unbadged_below_the_aggregate_floor() -> None:
+    # One member is below the floor: the phrase is that one row's own death
+    # count with no computation in between, so it is measured -- None, per
+    # FindingFact's own rule that an unset confidence means exactly that.
+    findings = compare_lethal_abilities((_death(11, "Caustic Waves"),), _sample_losing(2))
+
+    assert _reference_deaths_fact(findings).confidence is None
+
+
+def test_a_tie_in_kill_count_breaks_by_ability_name() -> None:
+    # Both abilities killed twice: the ranking key's first term ties, so only
+    # its second term -- ascending ability name -- decides. "Caustic Waves"
+    # sorts before "Purge", and the fixture lists Purge's deaths first, so an
+    # insertion-order tiebreak (or none at all) would rank Purge first instead.
+    deaths = (
+        _death(22, "Purge"),
+        _death(22, "Purge"),
+        _death(11, "Caustic Waves"),
+        _death(11, "Caustic Waves"),
+    )
+
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2))
+
+    assert findings[0].ability_name == "Caustic Waves"
+    assert findings[1].ability_name == "Purge"
+
+
+def test_no_finding_from_compare_lethal_abilities_claims_intent() -> None:
+    """Mirrors the guard on compare_mechanics's own findings, above.
+
+    compare_lethal_abilities is the one function in this module licensed to
+    judge -- deaths, never damage -- and that license runs only as far as
+    "killed". Checked over the title, the detail, every fact's label and
+    value, and every evidence line: five places this function's own wording
+    can appear, and a single word slipping past one of them is exactly how
+    "avoidable" would ship past a check that only tried "missed".
+    """
+    deaths = tuple(_death(11, "Caustic Waves") for _ in range(4)) + tuple(
+        _death(22, "Purge") for _ in range(2)
+    )
+    findings = compare_lethal_abilities(deaths, _sample_losing(0, 1, 2, 3, 1))
+    assert findings, "the guard needs at least one finding to check"
+
+    for finding in findings:
+        for word in ("missed", "avoidable", "should have", "failed"):
+            assert word not in finding.title.lower(), finding.title
+            assert word not in finding.detail.lower(), finding.detail
+            for fact in finding.facts:
+                assert word not in fact.label.lower(), fact.label
+                assert word not in fact.value.lower(), fact.value
+            for line in finding.evidence:
+                assert word not in line.lower(), line

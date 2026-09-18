@@ -1,11 +1,14 @@
 # ABOUTME: The per-ability landing profile of one fight, and how two of them compare.
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
+# ABOUTME: Also holds compare_lethal_abilities: a death count, read straight off the event stream.
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.events import Death
 from wowperf.domain.findings import (
     Confidence,
     Finding,
@@ -421,3 +424,97 @@ def _against_sample(
         )
 
     return _ranked(candidates)
+
+
+def _reference_deaths(
+    members: tuple[MechanicsMember, ...],
+) -> tuple[str, str, str, Confidence | None]:
+    """What the reference kills lost, as a title phrase, a fact, an evidence line and its badge.
+
+    Below `MIN_SAMPLE_FOR_AGGREGATE` members this names a single reference kill
+    rather than a median, exactly as `compare_mechanics` does one function
+    above: a median of two is a mean of two, and the sample label must not
+    claim an aggregate nobody drew.
+
+    The confidence returned alongside the phrase is not the same in both
+    branches. A median is a figure this function computed from the sample, so
+    it is `derived`, the same badge `_phase_fact` gives its own computed
+    figure. A single reference kill's death count is read straight off its
+    row with no computation in between, so it is measured -- `None`, per
+    `FindingFact`'s own rule that an unset confidence means exactly that.
+    """
+    counts = [float(member.row.deaths) for member in members]
+    if len(counts) >= MIN_SAMPLE_FOR_AGGREGATE:
+        low, high = observed_range(counts)
+        middle = median(counts)
+        return (
+            f"a median of {middle:.0f}",
+            f"{len(counts)} reference kills",
+            f"reference kills lost {low:.0f} to {high:.0f} players, median {middle:.0f}",
+            Confidence.DERIVED,
+        )
+    return (
+        f"{counts[0]:.0f}",
+        "1 reference kill",
+        f"one reference kill lost {counts[0]:.0f} players in total",
+        None,
+    )
+
+
+def compare_lethal_abilities(
+    deaths: tuple[Death, ...],
+    sample: MechanicsSample,
+) -> list[Finding]:
+    """Abilities that killed our raid, against what the reference kills lost in total.
+
+    This is the one comparison in this area that judges rather than describes.
+    Master design 5.5 refuses to call a hit avoidable, because a damage-taken
+    table cannot tell a careless player from one soaking on purpose. A death is
+    different: nobody dies to a mechanic deliberately, so a death count needs no
+    claim about intent to mean something.
+
+    The two sides are deliberately not symmetrical, and the wording says so:
+    ours is one ability's kills, theirs is everything that killed anyone. A
+    per-ability reference death count would need each reference kill's own
+    death stream, which is a query per candidate.
+    """
+    if not deaths or not sample.members:
+        return []
+
+    tally: Counter[tuple[int, str]] = Counter(
+        (death.killing_blow_id, death.killing_blow) for death in deaths
+    )
+    phrase, sample_label, evidence_line, reference_confidence = _reference_deaths(sample.members)
+
+    ranked = sorted(tally.items(), key=lambda pair: (-pair[1], pair[0][1]))
+    findings = []
+    for rank, ((ability_id, ability_name), killed) in enumerate(ranked[:MAX_MECHANICS_REPORTED]):
+        findings.append(
+            Finding(
+                id=f"mechanics.lethal.{rank}",
+                title=(
+                    f"{ability_name} killed {quantity(killed, 'player', 'players')}, "
+                    f"where the reference kills lost {phrase} to everything combined"
+                ),
+                detail=(
+                    f"{killed} of this raid's deaths came from {ability_name}. The "
+                    "reference figure counts every death in those kills, from any "
+                    "source: it is an upper bound covering every source, not a "
+                    "per-ability figure."
+                ),
+                confidence=Confidence.DERIVED,
+                evidence=(f"{ability_name} killed {killed}", evidence_line),
+                facts=(
+                    FindingFact(label="Killed by this", value=f"{killed}"),
+                    FindingFact(
+                        label="Reference deaths, all sources",
+                        value=phrase,
+                        confidence=reference_confidence,
+                    ),
+                    FindingFact(label="Sample", value=sample_label),
+                ),
+                ability_id=ability_id,
+                ability_name=ability_name,
+            )
+        )
+    return findings
