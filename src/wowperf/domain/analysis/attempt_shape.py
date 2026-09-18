@@ -21,6 +21,51 @@ INTACT_SHARE = 0.8
 WALL_HEALTH = 20.0
 """Boss health above this at the end is a boss that was never close to dying."""
 
+ORDERING_MARGIN = 0.1
+"""How far off the attempt's midpoint the deaths' median must sit to settle the order.
+
+A median a millisecond either side of the midpoint settles nothing, and printing
+"the deaths came first" off it would be the confident guess the confidence
+badges exist to prevent. A tenth of the attempt on each side is the band inside
+which the deaths straddle the midpoint rather than concentrate before or after
+it; inside it the ordering clause is withheld, the same habit the comparison
+axes keep when their samples are too thin.
+"""
+
+
+def _ordering_clause(encounter: Encounter, deaths: tuple[Death, ...]) -> str:
+    """Which of the two failures came first, where the deaths' own timing settles it.
+
+    Design section 8.3 asks a both-verdict to say which came first, and when the
+    deaths fell is the only reading of order the log supports. Their median is
+    measured against the attempt's own midpoint: concentrated in the first half,
+    the raid came apart before the damage question could be settled;
+    concentrated in the second, the attempt was already long while the raid
+    still stood. An enrage wipe -- everyone dead in the last seconds of a long
+    attempt -- is the second shape, and a constant sentence naming the deaths
+    first had it exactly backwards there.
+
+    Deaths straddling the midpoint settle neither, and the clause is then
+    omitted rather than guessed at.
+    """
+    span = encounter.end_ms - encounter.start_ms
+    if not deaths or span <= 0:
+        return ""
+
+    middle = median([float(death.timestamp_ms) for death in deaths])
+    share = (middle - encounter.start_ms) / span
+    if share <= 0.5 - ORDERING_MARGIN:
+        return (
+            " The deaths came first: their median fell in the attempt's first half, "
+            "and a raid this far down cannot make the damage."
+        )
+    if share >= 0.5 + ORDERING_MARGIN:
+        return (
+            " The damage came up short before the raid did: the deaths' median fell "
+            "in the attempt's second half."
+        )
+    return ""
+
 
 def classify_attempt(
     encounter: Encounter,
@@ -37,7 +82,9 @@ def classify_attempt(
     It withholds rather than guesses. A wipe where the raid mostly stood and
     the boss was nearly dead is neither an execution failure nor a wall, and
     the honest answer is to say nothing -- the same habit the comparison axes
-    keep when their samples are too thin.
+    keep when their samples are too thin. The both-verdict's ordering clause
+    keeps the same habit one level down: it is measured from when the deaths
+    fell, and omitted where that does not settle the question.
 
     Boss health is `boss_percentage`, never `fight_percentage`. The two are
     different quantities and diverged 51.12 against 3.76 on one measured
@@ -67,8 +114,8 @@ def classify_attempt(
             f"{died} of {size} died, and the attempt still ran "
             f"{encounter.duration_seconds:.0f}s against the reference kills' "
             f"{reference_seconds:.0f}s with {encounter.boss_percentage:.1f}% boss health "
-            "left. The deaths came first: a raid this far down cannot make the damage."
-        )
+            "left."
+        ) + _ordering_clause(encounter, deaths)
     elif dismantled:
         headline = "execution: the raid was taken apart"
         story = (
@@ -78,11 +125,21 @@ def classify_attempt(
         )
     elif stalled and alive / size >= INTACT_SHARE:
         headline = "throughput: the raid held and the damage was not enough"
+        # This branch admits a raid that lost up to a fifth of itself, so the
+        # design's own sentence for it -- "nobody died and it still was not
+        # enough" -- is true of the branch's cleanest case and false of the
+        # rest. It is kept where it holds and replaced where it does not,
+        # rather than stated over the whole branch: `mechanics.lethal.*` names
+        # the abilities that killed those players on the same page.
         story = (
             f"{alive} of {size} were still alive, and the boss finished on "
             f"{encounter.boss_percentage:.1f}% health after "
             f"{encounter.duration_seconds:.0f}s against the reference kills' "
-            f"{reference_seconds:.0f}s. Nobody died and it still was not enough."
+            f"{reference_seconds:.0f}s. "
+        ) + (
+            "Nobody died and it still was not enough."
+            if died == 0
+            else "The raid held together and it still was not enough."
         )
     else:
         return None
