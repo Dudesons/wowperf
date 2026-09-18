@@ -284,10 +284,13 @@ def build_encounter(
             f"Fight {fight.get('id')} is a boss fight but carries no difficulty"
         )
 
+    encounter_id = _required(fight, "encounterID")
+    phases, _separates_wipes = build_phases(report, encounter_id)
+
     return Encounter(
         report_code=report["code"],
         fight_id=fight["id"],
-        encounter_id=_required(fight, "encounterID"),
+        encounter_id=encounter_id,
         boss_name=fight["name"],
         difficulty=int(difficulty),
         partition=partition,
@@ -306,6 +309,7 @@ def build_encounter(
             PhaseTransition(id=int(t["id"]), start_ms=int(t["startTime"]))
             for t in fight.get("phaseTransitions") or ()
         ),
+        phases=phases,
         start_ms=int(fight["startTime"]),
         end_ms=int(fight["endTime"]),
         owner_name=(report.get("owner") or {}).get("name"),
