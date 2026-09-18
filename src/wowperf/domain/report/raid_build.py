@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -98,6 +99,17 @@ def build_raid_report(
     tell.
     """
     _check_unique_finding_ids(findings)
+
+    # The attempt verdict's withheld notice is disclosed in Provenance and
+    # nowhere else, so it is taken out before anything below can place it.
+    # `severity.SEVERITY_BY_FAMILY` ranks the `wipe` family first, because a
+    # verdict frames every row under it; a notice saying there is no verdict
+    # inherits that rank, and would take the Summary's headline to say
+    # nothing. Matched on the whole id rather than a prefix: `wipe.cause` is
+    # the verdict itself and belongs on the page.
+    verdict_notices = [one for one in findings if one.id == WITHHELD_ID]
+    findings = [one for one in findings if one.id != WITHHELD_ID]
+
     titles_by_id = {finding.id: finding.title for finding in findings}
     # Built once, here, because this is where `loaded`, the per-actor aura
     # tables and the defensives data file are all already in hand. Every row
@@ -124,6 +136,8 @@ def build_raid_report(
     damage = _damage_section(findings, placed_rows["damage_rows"])
 
     withheld: list[str] = []
+    for notice in verdict_notices:
+        withheld.append(f"Why this attempt ended: {notice.detail}")
     if damage.state is SectionState.WITHHELD:
         withheld.append(f"Damage against other kills: {damage.reason}")
 

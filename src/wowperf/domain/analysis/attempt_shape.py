@@ -7,6 +7,42 @@ from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import Death, Resurrection
 from wowperf.domain.findings import Confidence, Finding, FindingFact
 
+WITHHELD_ID = "wipe.cause.withheld"
+"""The verdict declined to judge, and this says which of its reasons applied.
+
+`classify_attempt` returned a bare `None` for five different situations until
+2026-09-19, and `analyse_encounter` dropped it, so a reader saw no verdict and
+could not tell a comparison that was refused from one nobody asked for. Design
+section 8.3 wants the withheld case recorded rather than dropped, and this is
+the finding that records it. Modelled on `compare.parse.unavailable`, which is
+the same shape one layer out: measured, because the absence itself is a fact
+about the report rather than a reading of it.
+
+A kill is the one case that still returns nothing, because a kill has no wipe
+to explain and a line saying so would be noise on every successful page.
+"""
+
+NO_REFERENCE_SAMPLE = (
+    "No reference kills were drawn for this boss, so this attempt's duration and "
+    "death toll have nothing to be read against. A run made with --no-compare "
+    "reaches this, and so does a boss whose leaderboard returned nothing."
+)
+
+NO_BOSS_HEALTH = (
+    "This report records no boss health for this attempt, so how close it came is "
+    "unknown and neither reading can be reached."
+)
+
+NO_ROSTER = (
+    "This report records no raid roster for this attempt, so the share of it that "
+    "died cannot be worked out."
+)
+
+NEITHER_SHAPE = (
+    "This attempt matched neither shape: the raid was neither taken apart nor left "
+    "intact against a boss that held. Naming one of the two here would be a guess."
+)
+
 DISMANTLED_SHARE = 0.5
 """Half the raid dead or more is a raid that was taken apart, not one that slipped.
 
@@ -31,6 +67,26 @@ which the deaths straddle the midpoint rather than concentrate before or after
 it; inside it the ordering clause is withheld, the same habit the comparison
 axes keep when their samples are too thin.
 """
+
+
+def _withheld(detail: str, evidence: str) -> Finding:
+    """One reason the verdict declined to judge, as a finding a page can print.
+
+    `Confidence.MEASURED` because every one of these is a fact about what the
+    report carried, not a reading of the fight: either a field is absent or a
+    sample was never drawn, and both are checked rather than inferred. The one
+    case that is a judgement -- an attempt matching neither shape -- is still
+    measured in the same sense, because what is being stated is that the two
+    thresholds were evaluated and neither was met.
+    """
+    return Finding(
+        id=WITHHELD_ID,
+        title="No verdict on why this attempt ended",
+        detail=detail,
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=(evidence,),
+    )
 
 
 def _alive_at_the_end(
@@ -132,12 +188,16 @@ def classify_attempt(
     different quantities and diverged 51.12 against 3.76 on one measured
     attempt.
     """
-    if encounter.kill or not sample.members or encounter.boss_percentage is None:
+    if encounter.kill:
         return None
+    if not sample.members:
+        return _withheld(NO_REFERENCE_SAMPLE, "no reference kills were drawn")
+    if encounter.boss_percentage is None:
+        return _withheld(NO_BOSS_HEALTH, "the report carried no boss health")
 
     size = encounter.size or len(encounter.players)
     if size <= 0:
-        return None
+        return _withheld(NO_ROSTER, "the report carried no roster")
 
     died = len({death.actor_id for death in deaths})
     # `ReferenceKillRow.deaths` counts death events, measured 2026-09-18 against
@@ -200,7 +260,7 @@ def classify_attempt(
             else "The raid held together and it still was not enough."
         )
     else:
-        return None
+        return _withheld(NEITHER_SHAPE, "neither shape fit this attempt")
 
     return Finding(
         id="wipe.cause",
