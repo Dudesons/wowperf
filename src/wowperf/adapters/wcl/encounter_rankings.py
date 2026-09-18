@@ -5,6 +5,7 @@ from typing import Any
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.queries import (
     ENCOUNTER_KILL_RANKINGS_QUERY,
     RAID_CHARACTER_RANKINGS_QUERY,
@@ -13,6 +14,37 @@ from wowperf.adapters.wcl.raid_rankings import build_raid_parse_rows
 from wowperf.adapters.wcl.rankings import rankings_block, report_of
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
 from wowperf.domain.comparison.raid_reference import RaidParseRow
+
+ROLE_COUNTS = ("tanks", "healers", "melee", "ranged")
+
+
+def _required(row: dict[str, Any], field: str) -> Any:
+    """One field the row cannot be read without, named when it is absent.
+
+    `build_ability_taken_rows` answers a malformed response the same way. A
+    bare subscript here escapes the command as a `KeyError` traceback, which
+    says which key was missing but not which response carried it.
+    """
+    try:
+        return row[field]
+    except KeyError:
+        raise WclError(f"An execution leaderboard row carried no `{field}`") from None
+
+
+def _raid_size(row: dict[str, Any]) -> int:
+    """The row's own `size`, or the roster composition standing in for it.
+
+    The board omits `size` at a difficulty whose raid size cannot vary.
+    Measured 2026-09-16: present on all 50 rows of encounter 3492 at difficulty
+    4, absent from all 50 of encounter 3470 at difficulty 5, where the four role
+    counts summed to 20 -- Mythic's fixed size -- every time. Where both are
+    present the composition sums to `size` on 50 of 50 rows with no
+    disagreements, so this is a derivation of the same figure and not a guess at
+    it; `size` is still preferred wherever the board states it.
+    """
+    if "size" in row:
+        return int(row["size"])
+    return sum(int(row.get(role) or 0) for role in ROLE_COUNTS)
 
 
 def build_reference_kill_rows(rows: list[dict[str, Any]]) -> tuple[ReferenceKillRow, ...]:
@@ -26,8 +58,8 @@ def build_reference_kill_rows(rows: list[dict[str, Any]]) -> tuple[ReferenceKill
             ReferenceKillRow(
                 report_code=report["code"],
                 fight_id=report["fightID"],
-                size=row["size"],
-                duration_ms=row["duration"],
+                size=_raid_size(row),
+                duration_ms=_required(row, "duration"),
                 deaths=row.get("deaths") or 0,
             )
         )
