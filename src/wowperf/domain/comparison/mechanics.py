@@ -1,6 +1,6 @@
 # ABOUTME: The per-ability landing profile of one fight, and how two of them compare.
 # ABOUTME: Landings only -- the table's damage is mitigated and cannot meet the event stream's.
-# ABOUTME: Also holds compare_lethal_abilities: a death count, read straight off the event stream.
+# ABOUTME: Also holds compare_lethal_abilities and compare_phase_cost: deaths, damage, from events.
 
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, SAMPLE_SIZE, too_few
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
-from wowperf.domain.events import Death
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.findings import (
     Confidence,
     Finding,
@@ -16,7 +16,8 @@ from wowperf.domain.findings import (
     quantifier_for,
     quantity,
 )
-from wowperf.domain.phase_windows import PhaseShare
+from wowperf.domain.phase_windows import PhaseShare, phase_at
+from wowperf.domain.phases import Phase, PhaseTransition
 
 
 class AbilityTakenRow(Frozen):
@@ -515,6 +516,80 @@ def compare_lethal_abilities(
                 ),
                 ability_id=ability_id,
                 ability_name=ability_name,
+            )
+        )
+    return findings
+
+
+def compare_phase_cost(
+    events: tuple[DamageTakenEvent, ...],
+    phases: tuple[Phase, ...],
+    transitions: tuple[PhaseTransition, ...],
+) -> list[Finding]:
+    """Which named phases cost this raid the most damage taken.
+
+    **This compares nothing across raids.** It lives beside the other
+    `mechanics.*` families so one prefix reaches one tab, but a reference
+    kill's ability table carries no timestamps, so there is no reference phase
+    to compare against and the design forbids implying one. Every figure here
+    is our own.
+
+    Damage rather than landings, because a phase is a stretch of time and the
+    question is what it cost: three chip hits do not outweigh one that nearly
+    killed someone.
+    """
+    if not phases or not transitions:
+        return []
+
+    totals: Counter[int] = Counter()
+    for event in events:
+        placed = phase_at(phases, transitions, event.timestamp_ms)
+        if placed is not None:
+            totals[placed.id] += event.amount
+    if not totals:
+        return []
+
+    by_id = {phase.id: phase for phase in phases}
+    overall = sum(totals.values())
+    ranked = sorted(totals.items(), key=lambda pair: (-pair[1], pair[0]))
+    findings = []
+    for rank, (phase_id, amount) in enumerate(ranked[:MAX_MECHANICS_REPORTED]):
+        phase = by_id[phase_id]
+        findings.append(
+            Finding(
+                id=f"mechanics.phase.{rank}",
+                title=(
+                    f"{phase.name} cost this raid {amount:,} damage taken, "
+                    f"{amount / overall * 100:.0f}% of the attempt's total"
+                ),
+                detail=(
+                    f"Damage taken inside {phase.name}, summed over every player. "
+                    "This states where the attempt's damage fell, not that any of "
+                    "it could have been avoided."
+                ),
+                confidence=Confidence.DERIVED,
+                evidence=(
+                    f"{amount:,} of {overall:,} damage taken",
+                    f"phase named by the API as {phase.name}",
+                ),
+                facts=(
+                    # Neither figure is read off a single event: both are
+                    # summed across every event a phase window's join
+                    # placed there, the same reconstruction `_phase_fact`
+                    # badges derived for a landings share. Left unset,
+                    # per `FindingFact`'s own rule, would badge them
+                    # measured instead.
+                    FindingFact(
+                        label="Damage taken",
+                        value=f"{amount:,}",
+                        confidence=Confidence.DERIVED,
+                    ),
+                    FindingFact(
+                        label="Share of attempt",
+                        value=f"{amount / overall * 100:.0f}%",
+                        confidence=Confidence.DERIVED,
+                    ),
+                ),
             )
         )
     return findings

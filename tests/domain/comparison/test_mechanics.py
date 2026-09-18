@@ -8,14 +8,23 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
     compare_lethal_abilities,
     compare_mechanics,
+    compare_phase_cost,
     hostile_rows,
     select_reference_kills,
 )
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
-from wowperf.domain.events import Death
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence, Finding, FindingFact
 from wowperf.domain.phase_windows import PhaseShare
-from wowperf.domain.phases import Phase
+from wowperf.domain.phases import Phase, PhaseTransition
+
+# Local to this module rather than imported from tests/domain/test_phase_windows.py:
+# those constants belong to a different test module, and importing fixtures
+# across test files couples two otherwise-unrelated tests for three lines saved.
+STAGE_ONE = Phase(id=1, name="Stage One")
+STAGE_TWO = Phase(id=2, name="Stage Two", is_intermission=True)
+PHASES = (STAGE_ONE, STAGE_TWO)
+TRANSITIONS = (PhaseTransition(id=1, start_ms=0), PhaseTransition(id=2, start_ms=5000))
 
 
 def kill(code: str, size: int) -> ReferenceKillRow:
@@ -463,3 +472,120 @@ def test_no_finding_from_compare_lethal_abilities_claims_intent() -> None:
                 assert word not in fact.value.lower(), fact.value
             for line in finding.evidence:
                 assert word not in line.lower(), line
+
+
+def _taken(ability_id: int, timestamp_ms: int, amount: int) -> DamageTakenEvent:
+    return DamageTakenEvent(
+        actor_id=1,
+        ability_id=ability_id,
+        ability_name="Caustic Waves",
+        amount=amount,
+        timestamp_ms=timestamp_ms,
+    )
+
+
+def test_the_phase_taking_the_most_damage_is_reported_first() -> None:
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=50),
+        _taken(ability_id=11, timestamp_ms=6000, amount=400),
+        _taken(ability_id=11, timestamp_ms=7000, amount=300),
+    )
+
+    findings = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert findings[0].id == "mechanics.phase.0"
+    assert "Stage Two" in findings[0].title
+    assert findings[0].confidence is Confidence.DERIVED
+
+
+def test_a_phase_finding_carries_no_reference_figure() -> None:
+    """Design section 9: the reference table has no timestamps, so no phase
+    finding may imply a reference side."""
+    events = (_taken(ability_id=11, timestamp_ms=6000, amount=400),)
+
+    finding = compare_phase_cost(events, PHASES, TRANSITIONS)[0]
+
+    assert all(
+        "reference" not in text.lower()
+        for text in (finding.title, finding.detail, *finding.evidence)
+    )
+    assert all(fact.label != "Reference" for fact in finding.facts)
+
+
+def test_an_encounter_with_no_phases_reports_nothing() -> None:
+    events = (_taken(ability_id=11, timestamp_ms=100, amount=50),)
+
+    assert compare_phase_cost(events, (), TRANSITIONS) == []
+
+
+def test_the_share_is_of_damage_not_of_landings() -> None:
+    """One huge hit in Stage Two must outrank three small ones in Stage One.
+
+    An implementation counting events passes every test above and fails this.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=100, amount=10),
+        _taken(ability_id=11, timestamp_ms=200, amount=10),
+        _taken(ability_id=11, timestamp_ms=300, amount=10),
+        _taken(ability_id=11, timestamp_ms=6000, amount=900),
+    )
+
+    assert "Stage Two" in compare_phase_cost(events, PHASES, TRANSITIONS)[0].title
+
+
+def test_no_events_placed_in_any_phase_reports_nothing() -> None:
+    """A distinct empty-result path from having no phases at all: phases and
+    transitions are both present, but every event predates the first
+    transition, so `phase_at` places none of them and the totals stay empty."""
+    late_transitions = (PhaseTransition(id=1, start_ms=5000), PhaseTransition(id=2, start_ms=9000))
+    events = (_taken(ability_id=11, timestamp_ms=100, amount=50),)
+
+    assert compare_phase_cost(events, PHASES, late_transitions) == []
+
+
+def test_a_tie_in_phase_damage_breaks_by_phase_id() -> None:
+    """Stage One and Stage Two take equal damage, so only the ranking key's
+    second term -- ascending phase id -- can decide the order.
+
+    The Stage Two event is listed first on purpose: `totals` is a `Counter`,
+    which reports its `.items()` in insertion order, so its Stage Two key
+    would come first were the tie-break term deleted and the sort left stable
+    on the (also tied) damage term alone. Only the ascending-id tie-break
+    corrects that back to Stage One first.
+    """
+    events = (
+        _taken(ability_id=11, timestamp_ms=6000, amount=100),
+        _taken(ability_id=11, timestamp_ms=100, amount=100),
+    )
+
+    findings = compare_phase_cost(events, PHASES, TRANSITIONS)
+
+    assert findings[0].id == "mechanics.phase.0"
+    assert "Stage One" in findings[0].title
+    assert findings[1].id == "mechanics.phase.1"
+    assert "Stage Two" in findings[1].title
+
+
+def test_at_most_five_phases_are_reported() -> None:
+    """Mirrors compare_lethal_abilities's own cap test, one function above.
+
+    An encounter can genuinely carry more than five named phases once stages
+    and intermissions are counted, so six distinct phases here is not a
+    hypothetical input -- and each is given a distinct damage total so the
+    ranking has only one correct answer to check against.
+    """
+    phases = tuple(Phase(id=n, name=f"Stage {n}") for n in range(1, 7))
+    transitions = tuple(PhaseTransition(id=n, start_ms=n * 1000) for n in range(1, 7))
+    # Descending by phase number: Stage 1 costs the most, Stage 6 the least.
+    events = tuple(
+        _taken(ability_id=11, timestamp_ms=n * 1000, amount=(7 - n) * 100) for n in range(1, 7)
+    )
+
+    findings = compare_phase_cost(events, phases, transitions)
+
+    assert len(findings) == 5
+    titles = [finding.title for finding in findings]
+    # Not just a count of five: the five highest-cost phases, in cost order,
+    # with the cheapest -- Stage 6 -- the one left out.
+    assert all(f"Stage {n}" in titles[n - 1] for n in range(1, 6)), titles
+    assert not any("Stage 6" in title for title in titles), titles
