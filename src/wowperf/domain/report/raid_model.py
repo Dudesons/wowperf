@@ -60,6 +60,40 @@ class RaidGrid(Frozen):
     caption: str
 
 
+class AliveStep(Frozen):
+    """One corner of the step function, in viewBox units."""
+
+    x: float
+    y: float
+
+
+class AliveChart(Frozen):
+    """How many of the raid were standing, across the attempt.
+
+    Every coordinate the SVG needs lives here so the template computes none,
+    exactly as `AttemptsChart` does for the progression page.
+
+    One series, not two. There is no boss health curve to draw beside it:
+    measured 2026-09-18, `graph(dataType: Resources, hostilityType: Enemies)`
+    returns zero series. What the boss did is one note at the end point.
+
+    The series is a floor on the living rather than a reading of them -- a
+    player who releases and runs back leaves no record -- so it is badged
+    `derived` wherever it is stated.
+    """
+
+    points: tuple[AliveStep, ...]
+    ticks: tuple[tuple[float, str], ...]
+    legend: str
+    boss_note: str
+    width: float
+    height: float
+    tick_x1: float
+    tick_x2: float
+    tick_label_x: float
+    baseline_y: float
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     # Figures that contain others, heading the Summary.
@@ -87,6 +121,8 @@ class RaidReport(Frozen):
     # whitelist of its own. See `build_observations`.
     observations: tuple[LedgerRow, ...]
     provenance: Provenance
+    # The players-alive step chart. None where the attempt carries no duration.
+    alive_chart: AliveChart | None = None
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:

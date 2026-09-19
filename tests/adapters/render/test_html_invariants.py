@@ -58,7 +58,7 @@ from wowperf.domain.report.model import (
     all_ledger_rows,
 )
 from wowperf.domain.report.raid_frame import RaidHeader
-from wowperf.domain.report.raid_model import GridCell, GridColumn
+from wowperf.domain.report.raid_model import AliveChart, AliveStep, GridCell, GridColumn
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -1033,6 +1033,18 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (PlayerTimeline, "label_x"),
     (PlayerTimeline, "row_height"),
     (PlayerTimeline, "press_width"),
+    # The players-alive chart's geometry. Every one of these is a viewBox
+    # coordinate computed in `alive_chart.py`: a position on a fixed axis
+    # rather than a quantity, so a column of them summed would mean nothing a
+    # reader could misread as a total.
+    (AliveStep, "x"),
+    (AliveStep, "y"),
+    (AliveChart, "width"),
+    (AliveChart, "height"),
+    (AliveChart, "tick_x1"),
+    (AliveChart, "tick_x2"),
+    (AliveChart, "tick_label_x"),
+    (AliveChart, "baseline_y"),
 }
 
 
