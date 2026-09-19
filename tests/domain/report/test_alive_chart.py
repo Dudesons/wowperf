@@ -53,6 +53,29 @@ def test_a_resurrection_steps_the_line_back_up() -> None:
     assert chart.points[-1].y < chart.points[-2].y
 
 
+def test_the_line_turns_a_corner_at_each_event() -> None:
+    """Doubled points, not sloped: a step function, never a diagonal.
+
+    `alive_over_time` reports the headcount only at the instants it changed.
+    A polyline drawn straight through those points alone would slope steadily
+    between two deaths, say, forty seconds apart -- a claim that the raid was
+    losing people continuously across that stretch, which the data does not
+    support. Doubling every point after the first -- once at the previous
+    count, once at its own -- turns that slope into a right angle instead.
+    """
+    chart = build_alive_chart(20, _deaths(3), (), duration_ms=100_000, boss_percentage=40.0)
+
+    assert chart is not None
+    # 1 initial point + 3 deaths = 4 points in the series; every point after
+    # the first doubles, so the drawn shape carries 1 + 2 * 3 = 7 steps.
+    assert len(chart.points) == 7
+    # The first death's pair: same x, the old count carried forward and then
+    # the new one -- the corner a sloped polyline segment would erase.
+    assert chart.points[1].x == chart.points[2].x
+    assert chart.points[1].y != chart.points[2].y
+    assert chart.points[1].y == chart.points[0].y
+
+
 def test_the_boss_note_states_where_the_boss_finished() -> None:
     chart = build_alive_chart(20, _deaths(5), (), duration_ms=100_000, boss_percentage=16.49)
 
