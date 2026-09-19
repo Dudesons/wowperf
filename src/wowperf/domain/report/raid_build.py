@@ -26,10 +26,11 @@ from wowperf.domain.report.model import (
     SectionState,
 )
 from wowperf.domain.report.raid_frame import build_raid_header
+from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
 from wowperf.domain.report.raid_model import RaidReport
 from wowperf.domain.report.raid_players import build_raid_players
-from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
+from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
 
 
 def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) -> Section:
@@ -72,6 +73,7 @@ def build_raid_report(
     fetched_at: str,
     defensives: Defensives,
     consumables: Consumables,
+    roles: Roles = Roles(),
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
     reference_records: tuple[ReferenceRecord, ...] = (),
@@ -81,11 +83,12 @@ def build_raid_report(
     `build_report`'s shape with the keystone half absent. `fetched_at` is a
     parameter rather than a clock read, because the domain performs no I/O and
     the same inputs must render the same report; `defensives`, `consumables`,
-    `externals` and `self_resurrections` are data files an adapter loads for
-    the same reason. `subject` is the raider who was asked about and decides
-    which card the Players tab opens on, nothing else: which card a comparison
-    row reaches is decided by the slug the finding carries. `compared_slugs` is
-    who a comparison was asked for, and `None` means none was asked for at all.
+    `roles`, `externals` and `self_resurrections` are data files an adapter
+    loads for the same reason. `subject` is the raider who was asked about and
+    decides which card the Players tab opens on, nothing else: which card a
+    comparison row reaches is decided by the slug the finding carries.
+    `compared_slugs` is who a comparison was asked for, and `None` means none
+    was asked for at all.
 
     Four of `build_report`'s parameters are deliberately absent, and each
     absence is a fact about a raid rather than an omission. There is no
@@ -118,6 +121,7 @@ def build_raid_report(
     players = build_raid_players(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips
     )
+    grid = build_raid_grid(loaded.players, loaded.damage_taken, roles, findings)
 
     ledger_decomposition = tuple(
         ledger_row(finding, titles_by_id, tooltips)
@@ -192,6 +196,7 @@ def build_raid_report(
         damage_rows=placed_rows["damage_rows"],
         damage=damage,
         mechanics_rows=placed_rows["mechanics_rows"],
+        grid=grid,
         deaths=deaths,
         death_rows=placed_rows["death_rows"],
         interrupts=placed_rows["interrupts"],

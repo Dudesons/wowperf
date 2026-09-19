@@ -1536,3 +1536,30 @@ def test_the_rendered_raid_page_matches_the_golden_file(pytestconfig: pytest.Con
         "The rendered raid report changed. Read the diff, then regenerate with "
         "`uv run pytest tests/adapters/render/test_raid_html_invariants.py --golden-update`."
     )
+
+
+def test_the_mechanics_panel_draws_the_damage_grid() -> None:
+    """The brief for this task quoted design 7.3 as "It does not mean a mistake" --
+    but that literal sentence never reached `raid_grid.CAPTION`. Task 3's own
+    caption test, `test_the_caption_refuses_to_call_a_tint_a_mistake`, bans the
+    word "mistake" from the caption outright, so a caption stating that sentence
+    verbatim could never have passed. The phrase below is the wording Task 3
+    settled on instead, and it carries the same fact: a tint means "took far
+    more than their raid did", stated on the page rather than only in the
+    design document.
+    """
+    html = golden_raid_html()
+
+    assert 'class="damage-grid"' in html
+    assert "A highlighted cell means that player took far more of it than their raid did" in html
+
+
+def test_a_grid_tint_is_a_class_not_a_colour_word() -> None:
+    """A reader who cannot separate two tints, or who printed the page, needs the number.
+
+    The same rule `ComparisonRow` already follows: a tint carries no meaning
+    alone.
+    """
+    html = golden_raid_html()
+
+    assert 'class="cell tinted"' in html

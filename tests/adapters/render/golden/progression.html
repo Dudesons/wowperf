@@ -247,6 +247,16 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
 .compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
 .compared-rows tr.v-unjudged td { color: var(--ink-faint); }
+.damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
+.damage-grid th[scope="row"] { text-align: left; font-weight: normal; }
+/* No dedicated warning background exists in this file, so the tint reuses
+   `--hit`, the colour this same report already uses for damage a player took
+   (`.damage-bar` on the player timeline) -- a tint here states the same fact,
+   not a new one, and `color` follows it for contrast the same way `.badge`
+   pairs a tint with the text sitting on it. */
+.damage-grid .cell.tinted { background: var(--hit); color: var(--page); font-weight: 600; }
+.damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
 </style>
 </head>
 <body>
