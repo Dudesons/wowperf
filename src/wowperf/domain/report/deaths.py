@@ -6,7 +6,9 @@ from wowperf.domain.analysis.recap import (
     ABSORB,
     CAST,
     COOLDOWN,
+    FADED,
     HEAL,
+    HELD,
     HIT,
     PRESSED,
     READY,
@@ -239,7 +241,11 @@ def _availability_tooltips(
 def _availability_row(
     state: AbilityState, names: dict[int, str], tooltips: dict[tuple[int | None, int], Tooltip],
 ) -> AvailabilityRow:
-    if state.state == PRESSED:
+    if state.state == HELD:
+        detail = f"{state.seconds:.1f} s before death, still up"
+    elif state.state == FADED:
+        detail = f"{state.seconds:.1f} s before death, over by then"
+    elif state.state == PRESSED:
         detail = f"{state.seconds:.1f} s before death"
     elif state.state == COOLDOWN:
         detail = f"at most {state.seconds:.0f} s left"
@@ -351,6 +357,7 @@ def build_deaths(
         at = availability_at(
             loaded.players, loaded.casts, death, defensives, consumables, externals,
             visible_from_ms=start_ms,
+            auras=auras, window=loaded.window_ms,
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
         came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)

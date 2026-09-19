@@ -59,6 +59,7 @@ from wowperf.domain.report.raid_model import (
     RaidReport,
     all_raid_ledger_rows,
 )
+from wowperf.domain.season import DefensiveAbility, Defensives
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -1699,3 +1700,86 @@ def test_a_report_with_no_alive_chart_draws_none_of_it() -> None:
     assert 'class="alive-chart"' not in html
     assert "Players still standing" not in html
     assert "How the attempt went" not in html
+
+
+def a_death_page_where(
+    pressed_at_ms: int, band: tuple[int, int], death_at_ms: int, ability: str
+) -> str:
+    """Render a raid page with one death: the dying player pressed their own
+    defensive once, and the aura table gives it exactly one band.
+
+    Goes through the real pipeline -- `build_raid_report` down through
+    `build_deaths` and `render_raid` -- rather than hand-building an
+    `AbilityState`, so a wiring mistake at the `availability_at` call site
+    shows up here, not only in `state_of`'s own tests.
+
+    `pressed_at_ms`, `band` and `death_at_ms` share
+    `test_recap_availability.py`'s clock -- a fight window of `(0, 10_000)` --
+    so the two levels agree on what "held" and "faded" mean for the same
+    numbers.
+    """
+    ability_id = 22812  # Barkskin's id; only the id has to match, not the name.
+    player = Player(
+        actor_id=1, name="Кириллица",
+        class_name="Druid", spec="Guardian", item_level=680,
+    )
+    defensives = Defensives(
+        entries=(
+            (
+                "Druid/Guardian",
+                (DefensiveAbility(ability_id=ability_id, name=ability, cooldown_seconds=45.0),),
+            ),
+        ),
+    )
+    auras = PlayerAuras(
+        actor_id=1,
+        on_self=(
+            Aura(
+                ability_id=ability_id, name=ability, total_uptime_ms=band[1] - band[0], uses=1,
+                bands=(AuraBand(start_ms=band[0], end_ms=band[1]),),
+            ),
+        ),
+    )
+    loaded = LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs", players=(player,), kill=False,
+            fight_percentage=12.4, start_ms=0, end_ms=10_000,
+        ),
+        deaths=(
+            Death(
+                actor_id=1, player_name=player.name, timestamp_ms=death_at_ms,
+                killing_blow="Ravenous Feast",
+            ),
+        ),
+        casts=(
+            CastEvent(
+                actor_id=1, ability_id=ability_id, ability_name=ability,
+                timestamp_ms=pressed_at_ms,
+            ),
+        ),
+        auras=(auras,),
+    )
+    report = build_raid_report(
+        loaded, (), player, None, FETCHED, defensives, NO_CONSUMABLES, NO_ROLES,
+    )
+    return render_raid(report)
+
+
+def test_a_defensive_that_lapsed_says_so_on_the_card() -> None:
+    """The overstatement this branch exists to correct, as a reader meets it."""
+    html = a_death_page_where(
+        pressed_at_ms=2000, band=(1000, 3000), death_at_ms=5000, ability="Barkskin"
+    )
+
+    assert "over by then" in html
+    assert '<li class="faded">' in html
+
+
+def test_a_defensive_still_covering_says_that_instead() -> None:
+    html = a_death_page_where(
+        pressed_at_ms=2000, band=(1000, 9000), death_at_ms=5000, ability="Barkskin"
+    )
+
+    assert '<span class="avail-detail">3.0 s before death, still up</span>' in html
+    assert "over by then" not in html
+    assert '<li class="held">' in html
