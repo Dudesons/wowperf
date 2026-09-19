@@ -34,6 +34,7 @@ from wowperf.cli import (
     _samples,
     app,
     build_icons,
+    load_encounter_with_auras,
     load_run_with_auras,
 )
 from wowperf.domain.analysis.roster import display_names
@@ -43,6 +44,7 @@ from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stre
 from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
@@ -1023,12 +1025,19 @@ def test_raid_on_a_wipe_still_answers_with_the_internal_frame(tmp_path: Path) ->
 
 
 def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
-    """Withholding the frame on a wipe is a saving, not only a sentence.
+    """Withholding the *comparison* frame on a wipe is a saving, not only a sentence.
 
     Every external comparison reads either this report's own rankings row or a
     sample drawn against it, and a wipe has no row -- so a leaderboard query, a
     reference report and a target table would each be paid for and then thrown
     away.
+
+    The roster's own aura table is not part of that comparison frame:
+    `load_encounter_with_auras` runs right after the encounter loads, before the
+    `if not no_compare` gate, because the held-or-faded split it feeds needs
+    every player's bands whether or not this attempt has anything to compare
+    against. So it still fires here, same as `load_run_with_auras` already does
+    for a `--no-compare` run on the Mythic+ side.
     """
     calls: list[str] = []
     result = run_raid(tmp_path, fight_id=RAID_WIPE_FIGHT_ID, calls=calls)
@@ -1036,7 +1045,7 @@ def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert "RaidCharacterRankings" not in calls
     assert "DamageDoneTargets" not in calls
-    assert "AuraTable" not in calls
+    assert "AuraTable" in calls
     # The internal frame still paid for its own streams, so this is a narrowing
     # of what was fetched rather than a run that fetched nothing.
     assert "Casts" in calls
@@ -4550,3 +4559,62 @@ def test_progression_reports_zero_deepened_attempts_when_every_attempt_is_discar
     assert payload["attempts_deepened"] == 0
     finding_ids = [f["id"] for f in payload["findings"]]
     assert finding_ids == ["progression.attempts.discarded"]
+
+
+def a_loaded_encounter(players: int) -> LoadedEncounter:
+    """A `LoadedEncounter` whose roster holds `players` members, actor ids 1..players,
+    named from the sanctioned test-name set. Report code "ABC", fight id 1 -- the
+    literals `load_encounter_with_auras` is called with below."""
+    names = ("Emberkin", "Stonewake", "Bríala")
+    roster = tuple(
+        Player(
+            actor_id=index + 1, name=names[index], class_name="Mage", spec="Arcane",
+            item_level=300,
+        )
+        for index in range(players)
+    )
+    encounter = Encounter(
+        report_code="ABC",
+        fight_id=1,
+        encounter_id=1,
+        boss_name="Test Boss",
+        difficulty=4,
+        partition=1,
+        size=players,
+        kill=True,
+        start_ms=0,
+        end_ms=1_000,
+        players=roster,
+    )
+    return LoadedEncounter(encounter=encounter)
+
+
+def a_repository_returning_auras_for_every_actor(tmp_path: Path) -> WclRunRepository:
+    """A `WclRunRepository` whose `AuraTable` query succeeds for every actor asked."""
+    return _aura_repository(tmp_path, "every-actor", [])
+
+
+def a_repository_failing_auras_for(tmp_path: Path, actor_id: int) -> WclRunRepository:
+    """A `WclRunRepository` whose `AuraTable` query fails for `actor_id` only."""
+    return _aura_repository(tmp_path, "failing-actor", [], failing_actor_ids=frozenset({actor_id}))
+
+
+def test_every_roster_player_gets_their_aura_table(tmp_path: Path) -> None:
+    """One table per player, or the split below is silent for nineteen in twenty."""
+    loaded = a_loaded_encounter(players=3)
+    runs = a_repository_returning_auras_for_every_actor(tmp_path)
+
+    with_auras = load_encounter_with_auras(runs, "ABC", 1, loaded)
+
+    assert len(with_auras.auras) == 3
+    assert {one.actor_id for one in with_auras.auras} == {1, 2, 3}
+
+
+def test_one_failed_aura_fetch_does_not_cost_the_others(tmp_path: Path) -> None:
+    """A report already paid for is never discarded over one player's table."""
+    loaded = a_loaded_encounter(players=3)
+    runs = a_repository_failing_auras_for(tmp_path, actor_id=2)
+
+    with_auras = load_encounter_with_auras(runs, "ABC", 1, loaded)
+
+    assert {one.actor_id for one in with_auras.auras} == {1, 3}
