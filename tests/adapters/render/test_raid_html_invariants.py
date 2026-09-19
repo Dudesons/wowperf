@@ -409,6 +409,24 @@ def a_wiped_raid_page() -> str:
     return render_raid(a_built_raid_report(kill=False, findings=a_wipes_findings()))
 
 
+A_VERDICT_FINDING = Finding(
+    id="wipe.cause",
+    title="This attempt failed on execution: the raid was taken apart",
+    detail="12 of 20 died against a reference median.",
+    confidence=Confidence.INFERRED,
+)
+"""The smallest real verdict `classify_attempt` could hand back, id and shape
+both -- `a_wipes_findings` alone carries no `wipe.cause`, so nothing else in
+this file already renders the block `_raid_summary.html.j2` guards on
+`report.verdict`."""
+
+
+def a_wiped_raid_page_with_a_verdict() -> str:
+    return render_raid(
+        a_built_raid_report(kill=False, findings=(*a_wipes_findings(), A_VERDICT_FINDING))
+    )
+
+
 MARKUP = re.compile(r"<[^>]*>")
 
 FINDING_HEADING = re.compile(
@@ -737,6 +755,24 @@ def test_a_deathless_kill_opens_the_summary_with_no_bare_decomposition_heading()
     panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
     assert "Figures that contain others" not in panel
     assert "Not additive" not in panel
+
+
+def test_a_wipe_with_a_verdict_draws_it_as_the_summary_headline() -> None:
+    """Design section 6's testing requirement, held at the render layer.
+
+    `test_raid_build.py`'s verdict tests check `RaidReport.verdict` itself and
+    never the HTML `_raid_summary.html.j2` draws from it, so a typo in
+    `report.verdict`, a `ledger_row` call built with the wrong argument, or the
+    `{% if report.verdict %}` guard being deleted outright would all still
+    leave the whole suite green. `a_wiped_raid_page()` cannot stand in for this:
+    `a_wipes_findings()` carries no `wipe.cause`, so its page never exercises
+    the guard either -- see `a_wiped_raid_page_with_a_verdict` above.
+    """
+    html = a_wiped_raid_page_with_a_verdict()
+    panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    assert "Why this attempt ended" in panel
+    assert str(escape(A_VERDICT_FINDING.title)) in panel
 
 
 def a_full_roster(size: int) -> tuple[Player, ...]:
