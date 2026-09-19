@@ -51,7 +51,14 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.report.raid_frame import RaidHeader
-from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
+from wowperf.domain.report.raid_model import (
+    GridCell,
+    GridColumn,
+    GridRow,
+    RaidGrid,
+    RaidReport,
+    all_raid_ledger_rows,
+)
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -1563,3 +1570,59 @@ def test_a_grid_tint_is_a_class_not_a_colour_word() -> None:
     html = golden_raid_html()
 
     assert 'class="cell tinted"' in html
+
+
+def test_a_grid_column_whose_ability_id_appears_nowhere_else_still_draws_its_icon() -> None:
+    """`_icon_addresses` must walk the grid on its own, not lean on a ledger row.
+
+    `ledger_row` only copies `ability_id` onto a `LedgerRow` when
+    `_split_title` can cut the finding's title at its own ability name --
+    exactly once, no more, no fewer (`ledger.py::_split_title`). `_columns` in
+    `raid_grid.py` carries no such gate: it reads `Finding.ability_id`
+    unconditionally. So a `mechanics.ability.*` finding whose title does not
+    name its ability exactly once still earns a grid column, while its
+    `LedgerRow.ability_id` is `None` everywhere `all_raid_ledger_rows` walks.
+
+    Proved here with a grid built directly, holding an ability id nowhere else
+    on the report -- `all_raid_ledger_rows` cannot see it at all, so a page
+    that still draws its icon proves the grid itself was walked, not a row
+    that happened to carry the same id.
+    """
+    ability_id = 54321
+    grid = RaidGrid(
+        columns=(GridColumn(ability_id=ability_id, ability_name="Caustic Waves"),),
+        rows=(
+            GridRow(
+                player_name="Emberkin",
+                cells=(
+                    GridCell(ability_id=ability_id, amount="1,000", multiple="", tinted=False),
+                ),
+            ),
+        ),
+        caption="test caption",
+    )
+    report = a_minimal_raid_report(grid=grid)
+
+    html = render_raid(report, CdnIcons({ability_id: "spell_holy_divineshield.jpg"}))
+
+    assert f".i-{ability_id}" in html
+
+
+def test_a_report_with_no_grid_draws_none_of_it() -> None:
+    """A `None` grid renders nothing at all, not an empty table with headings.
+
+    Checks all three pieces the `{% if report.grid %}` guard wraps -- the
+    heading, the caption and the table -- so an edit that moved the
+    `{% endif %}` to cover only the `<table>`, leaving the heading and caption
+    printed unconditionally, would still be caught here.
+    """
+    report = a_golden_raid_report().model_copy(update={"grid": None})
+
+    html = render_raid(report)
+
+    assert 'id="grid"' not in html
+    assert 'class="damage-grid"' not in html
+    assert (
+        "A highlighted cell means that player took far more of it than their raid did"
+        not in html
+    )

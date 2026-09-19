@@ -12,7 +12,7 @@ from wowperf.domain.report.progression_model import (
     ProgressionReport,
     all_progression_ledger_rows,
 )
-from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
+from wowperf.domain.report.raid_model import GridColumn, RaidReport, all_raid_ledger_rows
 
 TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "report.html.j2"
@@ -43,22 +43,33 @@ def _icon_addresses(
     rows: Iterable[LedgerRow],
     players: Sequence[PlayerCard],
     icons: CdnIcons,
+    grid_columns: Sequence[GridColumn] = (),
 ) -> dict[int, str]:
     """Every ability the page can draw, resolved once each, in the order it is met.
 
     Only the adapter can build this: which ids resolve is a question about a CDN,
     and the builder that made the report is forbidden from asking it.
 
-    Shared by `render` and `render_raid`, which is why it takes the three
-    collections it walks rather than a whole `Report`: `deaths` and `players`
-    are fields both view models carry verbatim (`DeathCard` and `PlayerCard`
-    are reused whole), and `rows` is already the finished walk -- `render`
-    passes `all_ledger_rows(report)`, `render_raid` passes
+    Shared by `render` and `render_raid`, which is why it takes the collections
+    it walks rather than a whole `Report`: `deaths` and `players` are fields
+    both view models carry verbatim (`DeathCard` and `PlayerCard` are reused
+    whole), and `rows` is already the finished walk -- `render` passes
+    `all_ledger_rows(report)`, `render_raid` passes
     `all_raid_ledger_rows(report)` -- so this function need not know which
     report shape it was given. Nothing here skips a raid player's timeline on
     purpose: `PlayerCard.timeline` is `None` on every card `build_raid_players`
     builds, so the loop below that walks a card's cooldowns is already a
     no-op for a raid page, exactly as if it had never been called.
+
+    `grid_columns` defaults to empty because only the raid page has a grid at
+    all -- `render` never passes it. It cannot be folded into `rows`:
+    `_columns()` in `raid_grid.py` reads `Finding.ability_id` unconditionally,
+    while `ledger_row()` only copies `ability_id` onto a row when
+    `_split_title` can cut the finding's title at its own ability name exactly
+    once. A `mechanics.ability.*` finding whose title cannot be cut that way
+    still earns a grid column with an id `all_raid_ledger_rows` never carries,
+    so the grid has to be walked on its own rather than trusted to arrive
+    through a row that may have dropped it.
 
     Comparison tables are walked last. They were once left out, because every
     icon was embedded as base64 and these tables run to dozens of rows per
@@ -113,6 +124,13 @@ def _icon_addresses(
                 address = icons.url(compared.ability_id)
                 if address is not None:
                     resolved[compared.ability_id] = address
+    for column in grid_columns:
+        if column.ability_id in asked:
+            continue
+        asked.add(column.ability_id)
+        address = icons.url(column.ability_id)
+        if address is not None:
+            resolved[column.ability_id] = address
     return resolved
 
 
@@ -139,12 +157,21 @@ def render_raid(report: RaidReport, icons: CdnIcons | None = None) -> str:
 
     Without an `icons` source the page draws exactly as `render` does without
     one: every ability id on the view model is inert until something can
-    address it.
+    address it. `grid_columns` is passed separately from `report.grid` rather
+    than left for `_icon_addresses` to find on its own -- see that function's
+    docstring for why a grid column cannot be trusted to reach the resolver
+    through a ledger row.
     """
     addresses = (
         {}
         if icons is None
-        else _icon_addresses(report.deaths, all_raid_ledger_rows(report), report.players, icons)
+        else _icon_addresses(
+            report.deaths,
+            all_raid_ledger_rows(report),
+            report.players,
+            icons,
+            grid_columns=report.grid.columns if report.grid else (),
+        )
     )
     return _environment().get_template(RAID_TEMPLATE_NAME).render(
         report=report, icons_by_id=addresses
