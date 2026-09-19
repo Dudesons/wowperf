@@ -3,7 +3,11 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.analysis.damage_outliers import damage_matrix, damage_outliers
+from wowperf.domain.analysis.damage_outliers import (
+    MAX_OUTLIERS_REPORTED,
+    damage_matrix,
+    damage_outliers,
+)
 from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -70,7 +74,8 @@ def build_raid_grid(
 
     matrix = damage_matrix(players, damage_taken, roles)
     outliers = {
-        (one.actor_id, one.ability_id) for one in damage_outliers(players, damage_taken, roles)
+        (one.actor_id, one.ability_id)
+        for one in damage_outliers(players, damage_taken, roles)[:MAX_OUTLIERS_REPORTED]
     }
     tank_ids = {
         player.actor_id

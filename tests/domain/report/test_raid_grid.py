@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for the per-player damage grid: what it shows and what it may claim.
 # ABOUTME: A tint is a finding's existence, never a threshold this table recomputed.
 
-from wowperf.domain.analysis.damage_outliers import damage_outliers
+from wowperf.domain.analysis.damage_outliers import MAX_OUTLIERS_REPORTED, damage_outliers
 from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -57,18 +57,83 @@ RANKED = [_ranked(11, "Caustic Waves")]
 
 
 def test_a_tinted_cell_always_has_a_finding_behind_it() -> None:
-    """The grid may state nothing the page does not already say outright."""
+    """The grid may state nothing the page does not already say outright.
+
+    Compared against the capped list, matching `MAX_OUTLIERS_REPORTED` findings
+    actually minted by `analyse_damage_outliers` -- the same set the reader's
+    Players tab draws its cards from. This fixture has one outlier, well under
+    the cap, so it cannot by itself catch a tint that outran the cap; that is
+    `test_an_outlier_past_the_cap_is_not_tinted`'s job.
+    """
     grid = build_raid_grid(ROSTER, HITS, Roles(), RANKED)
     assert grid is not None
 
     outliers = {
-        (one.actor_id, one.ability_id) for one in damage_outliers(ROSTER, HITS, Roles())
+        (one.actor_id, one.ability_id)
+        for one in damage_outliers(ROSTER, HITS, Roles())[:MAX_OUTLIERS_REPORTED]
     }
     for row, player in zip(grid.rows, ROSTER, strict=True):
         for cell in row.cells:
             assert cell.tinted == ((player.actor_id, cell.ability_id) in outliers), (
                 f"{row.player_name} / {cell.ability_id}"
             )
+
+
+def test_an_outlier_past_the_cap_is_not_tinted() -> None:
+    """A tint the page cannot explain must not exist.
+
+    Thirteen players take one ability: seven at a low baseline and six far
+    above it, so the median sits at the baseline and all six high takers
+    clear the outlier threshold -- one more than `MAX_OUTLIERS_REPORTED`.
+    `analyse_damage_outliers` only mints cards for the top five, so the
+    sixth-worst taker has no card on the Players tab. The grid must not tint
+    that player's cell: every tint must point at a finding that actually
+    exists, not at a threshold recomputed here.
+    """
+    ability_id = 99
+    ability_name = "Overwhelming Blast"
+    low_actor_ids = range(1, 8)
+    high_actor_ids = range(8, 14)
+    high_amounts = (1_000, 900, 800, 700, 600, 500)  # strictly decreasing: a clean rank order
+
+    roster = tuple(_player(actor_id) for actor_id in low_actor_ids) + tuple(
+        _player(actor_id) for actor_id in high_actor_ids
+    )
+    hits = tuple(
+        _hit(actor_id=actor_id, ability_id=ability_id, amount=10, name=ability_name)
+        for actor_id in low_actor_ids
+    ) + tuple(
+        _hit(actor_id=actor_id, ability_id=ability_id, amount=amount, name=ability_name)
+        for actor_id, amount in zip(high_actor_ids, high_amounts, strict=True)
+    )
+    findings = [_ranked(ability_id, ability_name)]
+
+    outliers = damage_outliers(roster, hits, Roles())
+    assert len(outliers) > MAX_OUTLIERS_REPORTED, "fixture must exceed the cap to exercise it"
+
+    capped = {(one.actor_id, one.ability_id) for one in outliers[:MAX_OUTLIERS_REPORTED]}
+    sixth_worst = outliers[MAX_OUTLIERS_REPORTED]
+    assert (sixth_worst.actor_id, sixth_worst.ability_id) not in capped, (
+        "fixture's sixth-worst outlier must fall outside the capped set to be a useful probe"
+    )
+
+    grid = build_raid_grid(roster, hits, Roles(), findings)
+    assert grid is not None
+
+    sixth_worst_row = [
+        row for row in grid.rows if row.player_name == f"Raider {sixth_worst.actor_id}"
+    ][0]
+    sixth_worst_cell = [
+        cell for cell in sixth_worst_row.cells if cell.ability_id == sixth_worst.ability_id
+    ][0]
+    assert sixth_worst_cell.tinted is False
+
+    for row, player in zip(grid.rows, roster, strict=True):
+        for cell in row.cells:
+            if cell.tinted:
+                assert (player.actor_id, cell.ability_id) in capped, (
+                    f"{row.player_name} / {cell.ability_id} is tinted with no finding behind it"
+                )
 
 
 def test_a_tank_row_is_present_and_never_tinted() -> None:
