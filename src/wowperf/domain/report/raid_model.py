@@ -14,6 +14,52 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.raid_frame import RaidHeader
 
 
+class GridColumn(Frozen):
+    """One ability's column heading. `ability_id` draws the icon."""
+
+    ability_id: int
+    ability_name: str
+
+
+class GridCell(Frozen):
+    """One player's total from one ability, formatted.
+
+    `multiple` is "" where no ratio exists: a tank, who is outside the median
+    by design, and a player who took none of the ability, where there is
+    nothing to divide. Both still print an `amount`, and a player who took
+    none prints "0" -- a reading, not a gap.
+
+    `tinted` is set from the finding's own existence, never from a threshold
+    recomputed here. See `build_raid_grid`.
+    """
+
+    ability_id: int
+    amount: str
+    multiple: str
+    tinted: bool
+
+
+class GridRow(Frozen):
+    """One player's row, one cell per column, in column order."""
+
+    player_name: str
+    cells: tuple[GridCell, ...]
+
+
+class RaidGrid(Frozen):
+    """Who took what, as a table. A view model, never findings.
+
+    Twenty players by five abilities is a hundred cells; as findings that is
+    the report's cap problem five times over. The caption carries design 7.3's
+    sentence, because a tint means "took far more of this than their raid did"
+    and never that somebody made a mistake.
+    """
+
+    columns: tuple[GridColumn, ...]
+    rows: tuple[GridRow, ...]
+    caption: str
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     # Figures that contain others, heading the Summary.
@@ -28,6 +74,10 @@ class RaidReport(Frozen):
     damage: Section
     # What hit the raid, and who took more of it than the rest. Sections 6.8 and 6.9.
     mechanics_rows: tuple[LedgerRow, ...] = ()
+    # The per-player damage grid: one row per player, one column per ability
+    # that earned a `mechanics.ability.*` or `mechanics.lethal.*` finding.
+    # None where no ability qualified.
+    grid: RaidGrid | None = None
     deaths: tuple[DeathCard, ...]
     death_rows: tuple[LedgerRow, ...] = ()
     interrupts: tuple[LedgerRow, ...]
