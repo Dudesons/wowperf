@@ -1044,7 +1044,6 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (AliveChart, "tick_x1"),
     (AliveChart, "tick_x2"),
     (AliveChart, "tick_label_x"),
-    (AliveChart, "baseline_y"),
 }
 
 

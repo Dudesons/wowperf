@@ -19,11 +19,13 @@ def player(actor_id: int, name: str, class_name: str, spec: str) -> Player:
     )
 
 
-def hit(actor_id: int, amount: int) -> DamageTakenEvent:
+def hit(
+    actor_id: int, amount: int, *, ability_id: int = 400, ability_name: str = "Ravenous Feast"
+) -> DamageTakenEvent:
     return DamageTakenEvent(
         actor_id=actor_id,
-        ability_id=400,
-        ability_name="Ravenous Feast",
+        ability_id=ability_id,
+        ability_name=ability_name,
         amount=amount,
         timestamp_ms=1000,
     )
@@ -83,10 +85,10 @@ def test_the_matrix_keeps_tank_totals_that_the_median_excludes() -> None:
         ),
     )
     hits = (
-        _hit(actor_id=1, ability_id=11, amount=100),
-        _hit(actor_id=2, ability_id=11, amount=100),
-        _hit(actor_id=3, ability_id=11, amount=100),
-        _hit(actor_id=4, ability_id=11, amount=9000),
+        hit(actor_id=1, ability_id=11, amount=100),
+        hit(actor_id=2, ability_id=11, amount=100),
+        hit(actor_id=3, ability_id=11, amount=100),
+        hit(actor_id=4, ability_id=11, amount=9000),
     )
 
     # Roles() alone leaves every class/spec classified as "damage" -- pinned by
@@ -107,8 +109,8 @@ def test_the_matrix_withholds_a_median_below_the_floor() -> None:
         Player(actor_id=2, name="Raider 2", class_name="Mage", spec="Frost", item_level=690),
     )
     hits = (
-        _hit(actor_id=1, ability_id=11, amount=100),
-        _hit(actor_id=2, ability_id=11, amount=100),
+        hit(actor_id=1, ability_id=11, amount=100),
+        hit(actor_id=2, ability_id=11, amount=100),
     )
 
     assert damage_matrix(players, hits, Roles()).by_ability[11].median_amount is None
@@ -127,10 +129,10 @@ def test_damage_outliers_reports_exactly_what_it_did_before() -> None:
         for index in range(1, 5)
     )
     hits = (
-        _hit(actor_id=1, ability_id=11, amount=100),
-        _hit(actor_id=2, ability_id=11, amount=100),
-        _hit(actor_id=3, ability_id=11, amount=100),
-        _hit(actor_id=4, ability_id=11, amount=400),
+        hit(actor_id=1, ability_id=11, amount=100),
+        hit(actor_id=2, ability_id=11, amount=100),
+        hit(actor_id=3, ability_id=11, amount=100),
+        hit(actor_id=4, ability_id=11, amount=400),
     )
 
     [outlier] = damage_outliers(players, hits, Roles())
@@ -140,13 +142,3 @@ def test_damage_outliers_reports_exactly_what_it_did_before() -> None:
     assert outlier.amount == 400
     assert outlier.median_amount == 100
     assert outlier.took_count == 4
-
-
-def _hit(*, actor_id: int, ability_id: int, amount: int) -> DamageTakenEvent:
-    return DamageTakenEvent(
-        actor_id=actor_id,
-        ability_id=ability_id,
-        ability_name="Caustic Waves",
-        amount=amount,
-        timestamp_ms=1000,
-    )

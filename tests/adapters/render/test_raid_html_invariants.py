@@ -14,7 +14,7 @@ from tests.adapters.render.test_html_invariants import (
     is_a_bare_number,
 )
 from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
-from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES
+from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, NO_ROLES
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
 from wowperf.adapters.render.html import render_raid
@@ -384,6 +384,7 @@ def a_built_raid_report(
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
         reference_records=(A_REFERENCE,),
     )
 
@@ -838,6 +839,7 @@ def a_raid_report_with(raiders: int, compared: int) -> RaidReport:
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
     )
 
 
@@ -1381,6 +1383,7 @@ def a_golden_raid_report() -> RaidReport:
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
         reference_records=GOLDEN_REFERENCES,
     )
 

@@ -1,7 +1,11 @@
 # ABOUTME: Behaviour tests for the per-player damage grid: what it shows and what it may claim.
 # ABOUTME: A tint is a finding's existence, never a threshold this table recomputed.
 
-from wowperf.domain.analysis.damage_outliers import MAX_OUTLIERS_REPORTED, damage_outliers
+from wowperf.domain.analysis.damage_outliers import (
+    MAX_OUTLIERS_REPORTED,
+    analyse_damage_outliers,
+    damage_outliers,
+)
 from wowperf.domain.events import DamageTakenEvent
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -59,19 +63,32 @@ RANKED = [_ranked(11, "Caustic Waves")]
 def test_a_tinted_cell_always_has_a_finding_behind_it() -> None:
     """The grid may state nothing the page does not already say outright.
 
-    Compared against the capped list, matching `MAX_OUTLIERS_REPORTED` findings
-    actually minted by `analyse_damage_outliers` -- the same set the reader's
-    Players tab draws its cards from. This fixture has one outlier, well under
-    the cap, so it cannot by itself catch a tint that outran the cap; that is
+    Compared against the findings `analyse_damage_outliers` actually mints --
+    the same set the reader's Players tab draws its cards from -- rather than
+    a second slice of `damage_outliers` built here to match its cap. A finding
+    carries `ability_id` but not `actor_id`, so the actor is recovered from
+    the ranked list at the finding's own rank: `analyse_damage_outliers` mints
+    id `players.damage.{rank}` for `damage_outliers(...)[rank]`, so reading
+    the same index back out of the same ranked list names the same player.
+    If the two caps drifted apart -- `analyse_damage_outliers` capping at a
+    different number than the grid does -- the set built here would shrink or
+    grow with it, and a tint with no finding behind it would be caught.
+
+    This fixture has one outlier, well under the cap, so it cannot by itself
+    catch a tint that outran the cap; that is
     `test_an_outlier_past_the_cap_is_not_tinted`'s job.
     """
     grid = build_raid_grid(ROSTER, HITS, Roles(), RANKED)
     assert grid is not None
 
-    outliers = {
-        (one.actor_id, one.ability_id)
-        for one in damage_outliers(ROSTER, HITS, Roles())[:MAX_OUTLIERS_REPORTED]
-    }
+    ranked = damage_outliers(ROSTER, HITS, Roles())
+    outliers = set()
+    for finding in analyse_damage_outliers(ROSTER, HITS, Roles()):
+        rank = int(finding.id.rsplit(".", 1)[1])
+        outlier = ranked[rank]
+        assert outlier.ability_id == finding.ability_id
+        outliers.add((outlier.actor_id, finding.ability_id))
+
     for row, player in zip(grid.rows, ROSTER, strict=True):
         for cell in row.cells:
             assert cell.tinted == ((player.actor_id, cell.ability_id) in outliers), (

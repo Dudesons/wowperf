@@ -1,3 +1,6 @@
+# ABOUTME: Behaviour tests for whether an attempt was taken apart or ran out of damage.
+# ABOUTME: Also covers `alive_over_time`, the step function the chart and the verdict share.
+
 from wowperf.domain.analysis.attempt_shape import alive_over_time, classify_attempt
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter

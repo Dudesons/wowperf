@@ -2,7 +2,12 @@
 # ABOUTME: Its last point is the verdict's own figure, and the two may never disagree.
 
 from wowperf.domain.events import Death, Resurrection
-from wowperf.domain.report.alive_chart import CHART_HEIGHT, CHART_WIDTH, build_alive_chart
+from wowperf.domain.report.alive_chart import (
+    CHART_HEIGHT,
+    CHART_WIDTH,
+    PLOT_TOP,
+    build_alive_chart,
+)
 
 
 def _deaths(count: int) -> tuple[Death, ...]:
@@ -22,8 +27,7 @@ def test_a_full_raid_starts_at_the_top_of_the_plot() -> None:
     chart = build_alive_chart(20, (), (), duration_ms=100_000, boss_percentage=40.0)
 
     assert chart is not None
-    assert chart.points[0].x == 0.0 or chart.points[0].x > 0.0
-    assert chart.points[0].y == min(point.y for point in chart.points)
+    assert chart.points[0].y == PLOT_TOP
 
 
 def test_the_series_steps_down_and_never_leaves_the_plot() -> None:
