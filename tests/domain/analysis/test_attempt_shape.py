@@ -1,4 +1,7 @@
-from wowperf.domain.analysis.attempt_shape import classify_attempt
+# ABOUTME: Behaviour tests for whether an attempt was taken apart or ran out of damage.
+# ABOUTME: Also covers `alive_over_time`, the step function the chart and the verdict share.
+
+from wowperf.domain.analysis.attempt_shape import alive_over_time, classify_attempt
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import Death, Resurrection
@@ -561,3 +564,99 @@ def test_the_four_withheld_reasons_are_all_different() -> None:
     }
 
     assert len(reasons) == 3, reasons
+
+
+def test_the_alive_series_starts_with_the_whole_raid_standing() -> None:
+    [first, *_] = alive_over_time(20, (), ())
+
+    assert first.timestamp_ms == 0
+    assert first.alive == 20
+
+
+def test_the_alive_series_steps_down_on_each_death() -> None:
+    series = alive_over_time(20, _deaths(3), ())
+
+    assert [point.alive for point in series] == [20, 19, 18, 17]
+
+
+def test_the_alive_series_steps_back_up_on_a_resurrection() -> None:
+    """A rez is a step up, and the series has to show it as one."""
+    series = alive_over_time(20, _deaths(2), _resurrections(1, at_ms=5_000))
+
+    assert [point.alive for point in series] == [20, 19, 18, 19]
+    assert series[-1].timestamp_ms == 5_000
+
+
+def test_a_resurrection_at_the_instant_of_a_death_leaves_the_player_down() -> None:
+    """The rule `_alive_at_the_end` already applies, carried into the series.
+
+    A rez cannot land on somebody who has not died yet, so the equal case is a
+    second death landing on somebody just brought back.
+    """
+    deaths = (
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=5_000,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+    )
+
+    series = alive_over_time(20, deaths, _resurrections(1, at_ms=5_000))
+
+    assert series[-1].alive == 19
+
+
+def test_the_series_ends_where_the_verdict_says_it_does() -> None:
+    """The point of this extraction: two places on one page cannot disagree.
+
+    The verdict's first evidence line prints "N of 20 alive at the end". A
+    chart computing its own step function would eventually end on a different
+    number, in two places a reader sees at once.
+    """
+    deaths = _deaths(5) + (
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=60_000,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+    )
+    resurrections = _resurrections(4, at_ms=10_000)
+
+    # boss_percentage=40.0/seconds=200.0 is the pairing the dismantled-branch
+    # tests above use, but only five of twenty died here -- below
+    # DISMANTLED_SHARE. seconds=400.0 is what every throughput/both fixture in
+    # this file pairs with a 300.0s reference: below it the attempt reads as
+    # neither shape, withheld, and a withheld finding has no "alive at the
+    # end" line for this test to check.
+    finding = classify_attempt(
+        _encounter(kill=False, boss_percentage=40.0, seconds=400.0),
+        deaths,
+        _sample(seconds=300.0, deaths=3),
+        resurrections=resurrections,
+    )
+    series = alive_over_time(20, deaths, resurrections)
+
+    assert finding is not None
+    assert f"{series[-1].alive} of 20 alive at the end" in finding.evidence
+
+
+def test_a_player_who_dies_twice_with_no_resurrection_between_counts_as_one_down() -> None:
+    """A release-and-run-back leaves no `Resurrection` event at all.
+
+    Two `Death` events for the same actor, with nothing logged in between, is
+    what that looks like on the wire. It must still take only one player off
+    the count -- the actor was never brought back by anyone's action, but they
+    are also not two different players.
+    """
+    deaths = (
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=0,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=60_000,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+    )
+
+    series = alive_over_time(20, deaths, ())
+
+    assert series[-1].alive == 19

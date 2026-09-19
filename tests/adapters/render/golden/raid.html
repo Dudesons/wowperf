@@ -247,6 +247,20 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
 .compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
 .compared-rows tr.v-unjudged td { color: var(--ink-faint); }
+.damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
+.damage-grid th[scope="row"] { text-align: left; font-weight: normal; }
+/* The tint reuses `--hit`, the colour this report already gives damage a
+   player took (`.damage-bar`, and `.timeline tr.hit` for the hit that mattered
+   toward a death), because a tint here states that same fact and not a new one.
+   It marks the figure rather than filling the cell, matching how the timeline
+   uses this colour: a filled block among a hundred plain numbers reads as an
+   alert, and design 7.3 is explicit that a tint is not a mistake -- taking a
+   tankbuster is correct, and soaking is doing the job. One signal is enough to
+   tie the cell to the card that explains it. */
+.damage-grid .cell.tinted { color: var(--hit); font-weight: 600; }
+.damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
+.alive-chart .alive-line { stroke: var(--ours); stroke-width: 2; }
 </style>
 </head>
 <body>
@@ -268,6 +282,26 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 
 
 <section class="panel" data-tab-panel="main" id="tab-summary">
+
+<h2 id="alive">How the attempt went
+  <a class="badge badge-derived" href="#provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 355.0,16.0 355.0,23.700000000000017 "></polyline>
+</svg>
 
 <h2 id="ledger">Figures that contain others</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
@@ -381,6 +415,27 @@ never be summed.</p>
 </div>
 
 </div>
+
+<h2 id="grid">Who took what</h2>
+<p class="sub">Each cell is what one player took from one ability, against the median of the players who took it. A highlighted cell means that player took far more of it than their raid did -- taking a tankbuster is correct, and soaking is doing the job. Tanks are shown but never highlighted, because taking more than the raid is the tank&#39;s role.</p>
+<table class="damage-grid">
+<thead>
+<tr><th>Player</th>
+<th><span class="ability"><span class="ability-name">Ravenous Feast</span></span></th>
+</tr>
+</thead>
+<tbody>
+<tr><th scope="row">Emberkin</th>
+<td class="cell tinted">420,000<span class="multiple">3.8x</span></td>
+</tr>
+<tr><th scope="row">Stonewake</th>
+<td class="cell">110,000<span class="multiple">1.0x</span></td>
+</tr>
+<tr><th scope="row">Bríala</th>
+<td class="cell">105,000<span class="multiple">1.0x</span></td>
+</tr>
+</tbody>
+</table>
 
 </section>
 

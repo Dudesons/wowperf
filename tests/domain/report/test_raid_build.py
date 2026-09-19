@@ -7,21 +7,24 @@ import pytest
 
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
-from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID
+from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
+from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
+from wowperf.domain.report.alive_chart import BASELINE_Y, PLOT_TOP, PLOT_X0, PLOT_X1
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
-from wowperf.domain.season import Consumables, Defensives
+from wowperf.domain.season import Consumables, Defensives, Roles
 
 FETCHED = "2026-09-15T08:00:00Z"
 NO_DEFENSIVES = Defensives()
 NO_CONSUMABLES = Consumables()
+NO_ROLES = Roles()
 
 EMBERKIN = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=700)
 STONEWAKE = Player(
@@ -40,12 +43,18 @@ DEATH_MS = 1_150_000
 FIGHT_END_MS = 1_300_000
 
 
-def a_raid_fixture(kill: bool = True) -> tuple[LoadedEncounter, Player]:
+def a_raid_fixture(
+    kill: bool = True, boss_percentage: float | None = None
+) -> tuple[LoadedEncounter, Player]:
     """Two raiders, one death, and a log that begins well after the report's zero.
 
     The start is not zero on purpose: a death's elapsed time and a fight's
     window are both measured from it, and a fixture starting at zero cannot
     tell a reading of the fight's own start apart from a raw timestamp.
+
+    `boss_percentage` stays `None` by default, which is what every caller but
+    one wants: `classify_attempt` withholds a verdict without it, and most of
+    this file's fixtures are not the verdict's own tests.
     """
     loaded = LoadedEncounter(
         encounter=an_encounter(
@@ -53,6 +62,7 @@ def a_raid_fixture(kill: bool = True) -> tuple[LoadedEncounter, Player]:
             players=(EMBERKIN, STONEWAKE),
             kill=kill,
             fight_percentage=0.0 if kill else 12.4,
+            boss_percentage=boss_percentage,
             start_ms=FIGHT_START_MS,
             end_ms=FIGHT_END_MS,
         ),
@@ -188,7 +198,9 @@ def test_the_builder_refuses_two_findings_that_share_an_id() -> None:
     ]
 
     with pytest.raises(ValueError, match=f"compare.talents.{EMBERKIN_SLUG}"):
-        build_raid_report(loaded, twice, subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES)
+        build_raid_report(
+            loaded, twice, subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES
+        )
 
 
 def test_every_finding_reaches_exactly_one_field() -> None:
@@ -203,7 +215,7 @@ def test_every_finding_reaches_exactly_one_field() -> None:
 
     report = build_raid_report(
         loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     placed = placements(report)
@@ -231,7 +243,7 @@ def test_a_family_nobody_placed_is_caught_rather_than_dropped() -> None:
 
     report = build_raid_report(
         loaded, one_of_every_raid_family(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [row.finding_id for row in report.observations] == [AN_UNPLACED_FAMILY]
@@ -247,7 +259,7 @@ def test_the_only_raid_decomposition_heads_the_summary_and_is_not_drawn_twice() 
 
     report = build_raid_report(
         loaded, one_of_every_raid_family(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [row.finding_id for row in report.ledger_decomposition] == ["deaths.total"]
@@ -262,7 +274,7 @@ def test_a_wipe_withholds_the_damage_tab_and_says_why() -> None:
 
     report = build_raid_report(
         loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert report.damage_rows == ()
@@ -277,7 +289,7 @@ def test_a_kill_with_a_sample_opens_the_damage_tab() -> None:
 
     report = build_raid_report(
         loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert report.damage.state is SectionState.PRESENT
@@ -299,7 +311,7 @@ def test_a_kill_one_raider_had_no_leaderboard_for_still_opens_the_damage_tab() -
 
     report = build_raid_report(
         loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert report.damage_rows, "the compared raider's own damage rows went missing"
@@ -316,7 +328,7 @@ def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
 
     report = build_raid_report(
         loaded, (a_finding("deaths.total", seconds=42.0),), subject, None, FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert report.damage.state is SectionState.WITHHELD
@@ -334,7 +346,7 @@ def test_the_withheld_damage_tab_is_named_in_the_provenance() -> None:
 
     report = build_raid_report(
         loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     withheld = report.provenance.withheld
@@ -360,7 +372,7 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
 
     report = build_raid_report(
         loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     withheld = report.provenance.withheld
@@ -409,7 +421,7 @@ def test_a_raiders_own_reason_is_never_suppressed_with_the_attempts() -> None:
 
     report = build_raid_report(
         loaded, (shared, own), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     withheld = report.provenance.withheld
@@ -424,7 +436,7 @@ def test_the_report_names_the_fight_and_the_moment_it_was_fetched() -> None:
     loaded, subject = a_raid_fixture(kill=True)
 
     report = build_raid_report(
-        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert report.header.boss == "The Twin Fangs"
@@ -434,12 +446,89 @@ def test_the_report_names_the_fight_and_the_moment_it_was_fetched() -> None:
     assert report.provenance.fetched_at == FETCHED
 
 
+def test_the_alive_chart_measures_deaths_from_the_fights_own_start() -> None:
+    """`Death.timestamp_ms` sits on the report's clock, not the fight's.
+
+    `a_raid_fixture` starts its fight well after the report's own zero for
+    exactly this reason -- the same one `deaths.py::_when` subtracts
+    `start_ms` for. `build_alive_chart`'s x axis expects an elapsed clock
+    starting at zero, the clock its own tests are written against, so a
+    builder that forwarded `Death.timestamp_ms` unconverted would push every
+    death past the axis's own end and flatten it against `PLOT_X1`,
+    regardless of when in the fight it actually happened.
+    """
+    loaded, subject = a_raid_fixture()
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.alive_chart is not None
+    elapsed_ms = DEATH_MS - FIGHT_START_MS
+    duration_ms = FIGHT_END_MS - FIGHT_START_MS
+    expected_x = PLOT_X0 + (elapsed_ms / duration_ms) * (PLOT_X1 - PLOT_X0)
+
+    # One death makes three points by the step doubling: the start, then the
+    # death's own pair. The pair's x is what proves the timestamp was read as
+    # elapsed from the fight's start rather than passed straight through.
+    assert len(report.alive_chart.points) == 3
+    assert report.alive_chart.points[1].x == pytest.approx(expected_x)
+    assert report.alive_chart.points[2].x == pytest.approx(expected_x)
+    assert report.alive_chart.points[1].x != PLOT_X1
+
+
+def test_the_alive_chart_endpoint_matches_the_verdicts_own_count() -> None:
+    """The chart's last point and the verdict's "N of 20 alive at the end" must agree.
+
+    `test_the_series_ends_where_the_verdict_says_it_does` in
+    `test_attempt_shape.py` pins `alive_over_time` against `classify_attempt`
+    with no shift in between the two. `build_raid_report` puts a shift between
+    them -- `loaded.deaths` and `loaded.resurrections` are moved onto an
+    elapsed clock before `build_alive_chart` ever sees them -- and nothing
+    below that layer would notice a wiring change that broke the shift, or
+    dropped one of the two tuples on the way through. Shifting every
+    timestamp by the same constant cannot change who is left standing, so the
+    verdict (built from the unshifted events) and the chart (built from the
+    shifted ones) have to end on the same headcount if the wiring is right.
+    """
+    loaded, subject = a_raid_fixture(kill=False, boss_percentage=40.0)
+    sample = MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code="ZzZzZz", fight_id=index, size=20,
+                    duration_ms=200_000, deaths=1,
+                ),
+                abilities=(),
+            )
+            for index in range(5)
+        )
+    )
+    verdict_finding = classify_attempt(
+        loaded.encounter, loaded.deaths, sample, resurrections=loaded.resurrections
+    )
+    assert verdict_finding is not None, "fixture must reach a verdict to test its evidence line"
+
+    report = build_raid_report(
+        loaded, (verdict_finding,), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.verdict is not None
+    assert report.alive_chart is not None
+    alive_text, size_text = report.verdict.evidence[0].split(" of ")
+    alive = int(alive_text)
+    size = int(size_text.removesuffix(" alive at the end"))
+    expected_y = BASELINE_Y - (alive / size) * (BASELINE_Y - PLOT_TOP)
+    assert report.alive_chart.points[-1].y == pytest.approx(expected_y)
+
+
 def test_the_fights_deaths_each_get_a_recap_card() -> None:
     """The recap reaches the raid page: `build_deaths` reads a fight, not a run."""
     loaded, subject = a_raid_fixture(kill=False)
 
     report = build_raid_report(
-        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [card.player for card in report.deaths] == ["Stonewake"]
@@ -450,7 +539,7 @@ def test_the_subjects_card_opens_the_players_tab() -> None:
     loaded, _ = a_raid_fixture()
 
     report = build_raid_report(
-        loaded, (), STONEWAKE, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        loaded, (), STONEWAKE, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [card.name for card in report.players] == ["Stonewake", "Emberkin"]
@@ -480,7 +569,7 @@ def test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance() -> None:
     report = build_raid_report(
         loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
         frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [
@@ -500,8 +589,88 @@ def test_a_withheld_attempt_verdict_never_heads_the_summary() -> None:
     report = build_raid_report(
         loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
         frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
-        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     placed = [row.finding_id for row in all_raid_ledger_rows(report)]
     assert WITHHELD_ID not in placed, placed
+
+
+def test_a_wipe_with_a_verdict_heads_the_summary_with_it() -> None:
+    loaded, subject = a_raid_fixture(kill=False)
+    verdict = Finding(
+        id="wipe.cause",
+        title="This attempt failed on execution: the raid was taken apart",
+        detail="12 of 20 died.",
+        confidence=Confidence.INFERRED,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), verdict), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.verdict is not None
+    assert report.verdict.finding_id == "wipe.cause"
+
+
+def test_a_kill_has_no_verdict_to_head_the_summary_with() -> None:
+    """A kill produces no verdict at all, and the slot is absent rather than empty.
+
+    `a_kills_findings` is this file's own kill-shaped fixture -- the brief for
+    this task named a fixture `a_raids_findings`, which exists only in
+    `test_raid_html_invariants.py`, and that module already imports from this
+    one (`FETCHED`, `NO_CONSUMABLES`, `NO_DEFENSIVES`), so importing it back
+    here would be a circular import.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.verdict is None
+
+
+def test_a_withheld_verdict_does_not_head_the_summary() -> None:
+    """Its reason is already in Provenance. A landing tab whose first line says
+    nothing was concluded is the complaint section 11 exists to fix."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.verdict is None
+
+
+def test_the_verdict_appears_once_on_the_page() -> None:
+    """`build_observations`'s catch-all would place `wipe.cause` a second time,
+    beneath "Other findings", if nothing excluded it: `report.verdict` is
+    built from the same finding rather than from a field `all_raid_ledger_rows`
+    walks, so the only way this could fail today is exactly that leak. A bound
+    of `<= 1` would pass whether or not the leak was fixed, since the finding
+    reaches the page at most once from `build_observations` alone; `== 0` is
+    what actually pins that `all_raid_ledger_rows` -- which never walks
+    `report.verdict` -- carries no second copy.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    verdict = Finding(
+        id="wipe.cause",
+        title="This attempt failed on execution: the raid was taken apart",
+        detail="12 of 20 died.",
+        confidence=Confidence.INFERRED,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), verdict), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    elsewhere = [row.finding_id for row in all_raid_ledger_rows(report)]
+    assert elsewhere.count("wipe.cause") == 0, elsewhere

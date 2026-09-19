@@ -20,6 +20,69 @@ MIN_PLAYERS_FOR_MEDIAN = 3
 MAX_OUTLIERS_REPORTED = 5
 
 
+class AbilityTotals(Frozen):
+    """One ability's damage across the raid, and the baseline it is read against.
+
+    `amounts` includes tanks, because the grid shows a tank's row. The median
+    does not, because a tank taking ten times what the raid took is the job and
+    not a finding -- the same exclusion `damage_outliers` has always applied,
+    now stated once here and read by both consumers.
+
+    `median_amount` is None below `MIN_PLAYERS_FOR_MEDIAN`, where a median is
+    not a group baseline. None rather than 0.0: a zero baseline would divide.
+    """
+
+    ability_id: int
+    ability_name: str
+    amounts: dict[int, int]
+    median_amount: float | None
+    took_count: int
+
+
+class DamageMatrix(Frozen):
+    """Every ability that hit the raid, keyed by id."""
+
+    by_ability: dict[int, AbilityTotals]
+
+
+def damage_matrix(
+    players: tuple[Player, ...], damage_taken: tuple[DamageTakenEvent, ...], roles: Roles
+) -> DamageMatrix:
+    """Per-ability, per-player totals with each ability's non-tank median.
+
+    One walk over the hits, serving both the outlier findings and the report's
+    per-player grid. Keyed by actor id throughout, never by display name, so
+    two players sharing a name are never conflated.
+    """
+    tank_ids = {
+        player.actor_id
+        for player in players
+        if roles.role_of(player.class_name, player.spec) == "tank"
+    }
+
+    amounts: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
+    ability_names: dict[int, str] = {}
+    for hit in damage_taken:
+        amounts[hit.ability_id][hit.actor_id] += hit.amount
+        ability_names[hit.ability_id] = hit.ability_name
+
+    by_ability: dict[int, AbilityTotals] = {}
+    for ability_id, per_player in amounts.items():
+        took = [
+            amount
+            for actor_id, amount in per_player.items()
+            if amount > 0 and actor_id not in tank_ids
+        ]
+        by_ability[ability_id] = AbilityTotals(
+            ability_id=ability_id,
+            ability_name=ability_names[ability_id],
+            amounts=dict(per_player),
+            median_amount=median(took) if len(took) >= MIN_PLAYERS_FOR_MEDIAN else None,
+            took_count=len(took),
+        )
+    return DamageMatrix(by_ability=by_ability)
+
+
 class DamageOutlier(Frozen):
     """One player's total from one ability, against the median of those who took it.
 
@@ -61,35 +124,26 @@ def damage_outliers(
         for player in players
         if roles.role_of(player.class_name, player.spec) == "tank"
     }
-    totals: dict[tuple[int, int], int] = defaultdict(int)
-    ability_names: dict[int, str] = {}
-    for hit in damage_taken:
-        if hit.actor_id in tank_ids:
-            continue
-        totals[(hit.ability_id, hit.actor_id)] += hit.amount
-        ability_names[hit.ability_id] = hit.ability_name
-
-    by_ability: dict[int, dict[int, int]] = defaultdict(dict)
-    for (ability_id, actor_id), amount in totals.items():
-        by_ability[ability_id][actor_id] = amount
+    matrix = damage_matrix(players, damage_taken, roles)
 
     outliers = []
-    for ability_id, per_player in by_ability.items():
-        took = [amount for amount in per_player.values() if amount > 0]
-        if len(took) < MIN_PLAYERS_FOR_MEDIAN:
+    for totals in matrix.by_ability.values():
+        if totals.median_amount is None:
             continue
-        baseline = median(took)
-        for actor_id, amount in per_player.items():
-            if amount / baseline >= MEDIAN_MULTIPLE:
+        for actor_id, amount in totals.amounts.items():
+            # Tanks are outside the baseline, so they are outside the finding.
+            if actor_id in tank_ids:
+                continue
+            if amount / totals.median_amount >= MEDIAN_MULTIPLE:
                 outliers.append(
                     DamageOutlier(
                         actor_id=actor_id,
-                        ability_id=ability_id,
+                        ability_id=totals.ability_id,
                         player_name=names.get(actor_id, f"Actor {actor_id}"),
-                        ability_name=ability_names[ability_id],
+                        ability_name=totals.ability_name,
                         amount=amount,
-                        median_amount=baseline,
-                        took_count=len(took),
+                        median_amount=totals.median_amount,
+                        took_count=totals.took_count,
                     )
                 )
     return sorted(outliers, key=lambda row: -row.multiple)

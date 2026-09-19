@@ -7,6 +7,7 @@ from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
+from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
@@ -26,10 +27,20 @@ from wowperf.domain.report.model import (
     SectionState,
 )
 from wowperf.domain.report.raid_frame import build_raid_header
+from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
 from wowperf.domain.report.raid_model import RaidReport
 from wowperf.domain.report.raid_players import build_raid_players
-from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
+from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
+
+VERDICT_ID = "wipe.cause"
+"""`classify_attempt`'s id for the verdict it reaches, when it reaches one.
+
+Matched on the whole id, like `WITHHELD_ID` beside it: `wipe.cause` is never
+re-minted per raider, so a prefix match would buy nothing a whole-id match
+does not already have, and would silently widen to any future `wipe.cause.*`
+sibling that is not the verdict itself.
+"""
 
 
 def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) -> Section:
@@ -72,6 +83,7 @@ def build_raid_report(
     fetched_at: str,
     defensives: Defensives,
     consumables: Consumables,
+    roles: Roles,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
     reference_records: tuple[ReferenceRecord, ...] = (),
@@ -81,11 +93,12 @@ def build_raid_report(
     `build_report`'s shape with the keystone half absent. `fetched_at` is a
     parameter rather than a clock read, because the domain performs no I/O and
     the same inputs must render the same report; `defensives`, `consumables`,
-    `externals` and `self_resurrections` are data files an adapter loads for
-    the same reason. `subject` is the raider who was asked about and decides
-    which card the Players tab opens on, nothing else: which card a comparison
-    row reaches is decided by the slug the finding carries. `compared_slugs` is
-    who a comparison was asked for, and `None` means none was asked for at all.
+    `roles`, `externals` and `self_resurrections` are data files an adapter
+    loads for the same reason. `subject` is the raider who was asked about and
+    decides which card the Players tab opens on, nothing else: which card a
+    comparison row reaches is decided by the slug the finding carries.
+    `compared_slugs` is who a comparison was asked for, and `None` means none
+    was asked for at all.
 
     Four of `build_report`'s parameters are deliberately absent, and each
     absence is a fact about a raid rather than an omission. There is no
@@ -106,8 +119,12 @@ def build_raid_report(
     # verdict frames every row under it; a notice saying there is no verdict
     # inherits that rank, and would take the Summary's headline to say
     # nothing. Matched on the whole id rather than a prefix: `wipe.cause` is
-    # the verdict itself and belongs on the page.
+    # the verdict itself and belongs on the page. It is read out here rather
+    # than stripped, so it can still reach `titles_by_id` and `tooltips`
+    # below; `placed_ids`, further down, keeps it from also falling through
+    # `build_observations`'s catch-all once `report.verdict` has claimed it.
     verdict_notices = [one for one in findings if one.id == WITHHELD_ID]
+    verdict_finding = next((one for one in findings if one.id == VERDICT_ID), None)
     findings = [one for one in findings if one.id != WITHHELD_ID]
 
     titles_by_id = {finding.id: finding.title for finding in findings}
@@ -115,8 +132,35 @@ def build_raid_report(
     # tables and the defensives data file are all already in hand. Every row
     # builder below looks a panel up and none of them computes one.
     tooltips = tooltips_by_finding_id(findings, loaded, defensives)
+    verdict = (
+        ledger_row(verdict_finding, titles_by_id, tooltips) if verdict_finding else None
+    )
     players = build_raid_players(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips
+    )
+    grid = build_raid_grid(loaded.players, loaded.damage_taken, roles, findings)
+    # `Death.timestamp_ms` and `Resurrection.timestamp_ms` sit on the report's
+    # own clock -- the one `Encounter.start_ms` sits on too, per
+    # `deaths.py::_when`'s identical subtraction -- while `build_alive_chart`'s
+    # x axis expects an elapsed clock starting at zero, the clock its own
+    # tests are written against. Passing the raw timestamps through would
+    # collapse every event onto the chart's right edge on any fight that does
+    # not start at report time zero, which no real fight does.
+    fight_start_ms = loaded.encounter.start_ms
+    alive_chart = build_alive_chart(
+        loaded.encounter.size or len(loaded.players),
+        tuple(
+            death.model_copy(
+                update={"timestamp_ms": max(death.timestamp_ms - fight_start_ms, 0)}
+            )
+            for death in loaded.deaths
+        ),
+        tuple(
+            rez.model_copy(update={"timestamp_ms": max(rez.timestamp_ms - fight_start_ms, 0)})
+            for rez in loaded.resurrections
+        ),
+        duration_ms=loaded.encounter.end_ms - fight_start_ms,
+        boss_percentage=loaded.encounter.boss_percentage,
     )
 
     ledger_decomposition = tuple(
@@ -132,6 +176,13 @@ def build_raid_report(
         findings, titles_by_id, decomposition_ids, tooltips
     )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
+    # `report.verdict` claims `wipe.cause` on its own, outside every field
+    # `placed_finding_ids` reads back from -- no `RAID_PLACEMENTS` prefix
+    # matches it, and it is left in `findings` rather than stripped, so
+    # without this it would still fall through to `build_observations`'s
+    # catch-all and draw the same finding a second time under "Other findings".
+    if verdict_finding:
+        placed_ids.add(verdict_finding.id)
 
     damage = _damage_section(findings, placed_rows["damage_rows"])
 
@@ -187,11 +238,13 @@ def build_raid_report(
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
+        verdict=verdict,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
         damage_rows=placed_rows["damage_rows"],
         damage=damage,
         mechanics_rows=placed_rows["mechanics_rows"],
+        grid=grid,
         deaths=deaths,
         death_rows=placed_rows["death_rows"],
         interrupts=placed_rows["interrupts"],
@@ -206,4 +259,5 @@ def build_raid_report(
             withheld=tuple(withheld),
             methods=methods,
         ),
+        alive_chart=alive_chart,
     )

@@ -1,6 +1,7 @@
 # ABOUTME: Whether an attempt failed because the raid died or because it ran out of damage.
 # ABOUTME: An inferred reading of our own attempt, never a comparison of one raid against another.
 
+from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.mechanics import MechanicsSample
 from wowperf.domain.comparison.statistics import median
 from wowperf.domain.encounter import Encounter
@@ -89,6 +90,56 @@ def _withheld(detail: str, evidence: str) -> Finding:
     )
 
 
+class AlivePoint(Frozen):
+    """How many were standing, from this moment until the next point."""
+
+    timestamp_ms: int
+    alive: int
+
+
+def alive_over_time(
+    size: int, deaths: tuple[Death, ...], resurrections: tuple[Resurrection, ...]
+) -> tuple[AlivePoint, ...]:
+    """The raid's headcount as a step function, deaths down and rezzes up.
+
+    One computation behind both the chart and the verdict's own "N of 20 alive
+    at the end": two implementations of a rule involving battle resurrections
+    would eventually end on different numbers, in two places on one page a
+    reader sees at once.
+
+    A resurrection sharing a death's timestamp is ordered before it, so a rez
+    landing at the same instant as a death is a no-op and the death is what
+    takes effect -- a rez cannot land on somebody who has not died yet, which
+    is the rule `_alive_at_the_end` already applies.
+
+    The count tracked is *players*, not *events*: a player who releases and
+    runs back leaves no `Resurrection` behind -- `Resurrection`'s own
+    docstring -- so a second `Death` for someone already down is not a second
+    player going down, it is the same one, still down. `classify_attempt`'s
+    own `died` makes the identical distinction the identical way, over the
+    same events. This is a floor on the living, not a reading of them: every
+    figure drawn from it carries a `derived` badge.
+    """
+    steps = [(one.timestamp_ms, 0, one.actor_id) for one in resurrections]
+    steps += [(death.timestamp_ms, 1, death.actor_id) for death in deaths]
+    steps.sort()
+
+    points = [AlivePoint(timestamp_ms=0, alive=size)]
+    down: set[int] = set()
+    for timestamp_ms, kind, actor_id in steps:
+        if kind == 1:  # a death
+            down.add(actor_id)
+        else:  # a resurrection
+            down.discard(actor_id)
+        # `down` cannot hold more entries than there are distinct actors, but
+        # nothing here guarantees `size` accounts for every one of them, so
+        # the floor stays -- the same guard `_alive_at_the_end` carried before
+        # this was a series. No ceiling is needed: `len(down)` cannot go
+        # negative, so `size - len(down)` cannot exceed `size`.
+        points.append(AlivePoint(timestamp_ms=timestamp_ms, alive=max(0, size - len(down))))
+    return tuple(points)
+
+
 def _alive_at_the_end(
     size: int, deaths: tuple[Death, ...], resurrections: tuple[Resurrection, ...]
 ) -> int:
@@ -112,21 +163,7 @@ def _alive_at_the_end(
     them was still taken apart, which is exactly what that constant's own
     docstring says it is reading.
     """
-    last_death: dict[int, int] = {}
-    for death in deaths:
-        last_death[death.actor_id] = max(last_death.get(death.actor_id, 0), death.timestamp_ms)
-
-    last_back_up: dict[int, int] = {}
-    for one in resurrections:
-        last_back_up[one.actor_id] = max(last_back_up.get(one.actor_id, 0), one.timestamp_ms)
-
-    # A resurrection at the same instant as a death leaves the player down: a
-    # rez cannot land on somebody who has not died yet, so the equal case is a
-    # second death landing on somebody who had just been brought back.
-    still_down = sum(
-        1 for actor_id, when in last_death.items() if last_back_up.get(actor_id, -1) <= when
-    )
-    return max(size - still_down, 0)
+    return alive_over_time(size, deaths, resurrections)[-1].alive
 
 
 def _ordering_clause(encounter: Encounter, deaths: tuple[Death, ...]) -> str:

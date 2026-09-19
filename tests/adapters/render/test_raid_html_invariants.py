@@ -14,7 +14,7 @@ from tests.adapters.render.test_html_invariants import (
     is_a_bare_number,
 )
 from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
-from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES
+from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, NO_ROLES
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
 from wowperf.adapters.render.html import render_raid
@@ -51,7 +51,14 @@ from wowperf.domain.report.model import (
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.report.raid_frame import RaidHeader
-from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
+from wowperf.domain.report.raid_model import (
+    GridCell,
+    GridColumn,
+    GridRow,
+    RaidGrid,
+    RaidReport,
+    all_raid_ledger_rows,
+)
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -377,6 +384,7 @@ def a_built_raid_report(
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
         reference_records=(A_REFERENCE,),
     )
 
@@ -400,6 +408,24 @@ def a_raid_page_with_an_icon() -> str:
 
 def a_wiped_raid_page() -> str:
     return render_raid(a_built_raid_report(kill=False, findings=a_wipes_findings()))
+
+
+A_VERDICT_FINDING = Finding(
+    id="wipe.cause",
+    title="This attempt failed on execution: the raid was taken apart",
+    detail="12 of 20 died against a reference median.",
+    confidence=Confidence.INFERRED,
+)
+"""The smallest real verdict `classify_attempt` could hand back, id and shape
+both -- `a_wipes_findings` alone carries no `wipe.cause`, so nothing else in
+this file already renders the block `_raid_summary.html.j2` guards on
+`report.verdict`."""
+
+
+def a_wiped_raid_page_with_a_verdict() -> str:
+    return render_raid(
+        a_built_raid_report(kill=False, findings=(*a_wipes_findings(), A_VERDICT_FINDING))
+    )
 
 
 MARKUP = re.compile(r"<[^>]*>")
@@ -732,6 +758,24 @@ def test_a_deathless_kill_opens_the_summary_with_no_bare_decomposition_heading()
     assert "Not additive" not in panel
 
 
+def test_a_wipe_with_a_verdict_draws_it_as_the_summary_headline() -> None:
+    """Design section 6's testing requirement, held at the render layer.
+
+    `test_raid_build.py`'s verdict tests check `RaidReport.verdict` itself and
+    never the HTML `_raid_summary.html.j2` draws from it, so a typo in
+    `report.verdict`, a `ledger_row` call built with the wrong argument, or the
+    `{% if report.verdict %}` guard being deleted outright would all still
+    leave the whole suite green. `a_wiped_raid_page()` cannot stand in for this:
+    `a_wipes_findings()` carries no `wipe.cause`, so its page never exercises
+    the guard either -- see `a_wiped_raid_page_with_a_verdict` above.
+    """
+    html = a_wiped_raid_page_with_a_verdict()
+    panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    assert "Why this attempt ended" in panel
+    assert str(escape(A_VERDICT_FINDING.title)) in panel
+
+
 def a_full_roster(size: int) -> tuple[Player, ...]:
     """A roster of `size` raiders, two of whom reduce to one slug on their own.
 
@@ -795,6 +839,7 @@ def a_raid_report_with(raiders: int, compared: int) -> RaidReport:
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
     )
 
 
@@ -1338,6 +1383,7 @@ def a_golden_raid_report() -> RaidReport:
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
+        NO_ROLES,
         reference_records=GOLDEN_REFERENCES,
     )
 
@@ -1536,3 +1582,120 @@ def test_the_rendered_raid_page_matches_the_golden_file(pytestconfig: pytest.Con
         "The rendered raid report changed. Read the diff, then regenerate with "
         "`uv run pytest tests/adapters/render/test_raid_html_invariants.py --golden-update`."
     )
+
+
+def test_the_mechanics_panel_draws_the_damage_grid() -> None:
+    """The brief for this task quoted design 7.3 as "It does not mean a mistake" --
+    but that literal sentence never reached `raid_grid.CAPTION`. Task 3's own
+    caption test, `test_the_caption_refuses_to_call_a_tint_a_mistake`, bans the
+    word "mistake" from the caption outright, so a caption stating that sentence
+    verbatim could never have passed. The phrase below is the wording Task 3
+    settled on instead, and it carries the same fact: a tint means "took far
+    more than their raid did", stated on the page rather than only in the
+    design document.
+    """
+    html = golden_raid_html()
+
+    assert 'class="damage-grid"' in html
+    assert "A highlighted cell means that player took far more of it than their raid did" in html
+
+
+def test_a_grid_tint_is_a_class_not_a_colour_word() -> None:
+    """A reader who cannot separate two tints, or who printed the page, needs the number.
+
+    The same rule `ComparisonRow` already follows: a tint carries no meaning
+    alone.
+    """
+    html = golden_raid_html()
+
+    assert 'class="cell tinted"' in html
+
+
+def test_a_grid_column_whose_ability_id_appears_nowhere_else_still_draws_its_icon() -> None:
+    """`_icon_addresses` must walk the grid on its own, not lean on a ledger row.
+
+    `ledger_row` only copies `ability_id` onto a `LedgerRow` when
+    `_split_title` can cut the finding's title at its own ability name --
+    exactly once, no more, no fewer (`ledger.py::_split_title`). `_columns` in
+    `raid_grid.py` carries no such gate: it reads `Finding.ability_id`
+    unconditionally. So a `mechanics.ability.*` finding whose title does not
+    name its ability exactly once still earns a grid column, while its
+    `LedgerRow.ability_id` is `None` everywhere `all_raid_ledger_rows` walks.
+
+    Proved here with a grid built directly, holding an ability id nowhere else
+    on the report -- `all_raid_ledger_rows` cannot see it at all, so a page
+    that still draws its icon proves the grid itself was walked, not a row
+    that happened to carry the same id.
+    """
+    ability_id = 54321
+    grid = RaidGrid(
+        columns=(GridColumn(ability_id=ability_id, ability_name="Caustic Waves"),),
+        rows=(
+            GridRow(
+                player_name="Emberkin",
+                cells=(
+                    GridCell(ability_id=ability_id, amount="1,000", multiple="", tinted=False),
+                ),
+            ),
+        ),
+        caption="test caption",
+    )
+    report = a_minimal_raid_report(grid=grid)
+
+    html = render_raid(report, CdnIcons({ability_id: "spell_holy_divineshield.jpg"}))
+
+    assert f".i-{ability_id}" in html
+
+
+def test_a_report_with_no_grid_draws_none_of_it() -> None:
+    """A `None` grid renders nothing at all, not an empty table with headings.
+
+    Checks all three pieces the `{% if report.grid %}` guard wraps -- the
+    heading, the caption and the table -- so an edit that moved the
+    `{% endif %}` to cover only the `<table>`, leaving the heading and caption
+    printed unconditionally, would still be caught here.
+    """
+    report = a_golden_raid_report().model_copy(update={"grid": None})
+
+    html = render_raid(report)
+
+    assert 'id="grid"' not in html
+    assert 'class="damage-grid"' not in html
+    assert (
+        "A highlighted cell means that player took far more of it than their raid did"
+        not in html
+    )
+
+
+def test_the_summary_draws_the_alive_chart() -> None:
+    html = golden_raid_html()
+
+    assert 'class="alive-chart"' in html
+    assert "Players still standing" in html
+
+
+def test_the_alive_chart_is_inline_svg_and_fetches_nothing() -> None:
+    """The report is one file. The only outbound addresses are ability icons."""
+    html = golden_raid_html()
+
+    start = html.index('class="alive-chart"')
+    chart = html[start : html.index("</svg>", start)]
+    for forbidden in ("<image", "href=", "url("):
+        assert forbidden not in chart, f"the chart reaches outside the page: {forbidden}"
+
+
+def test_a_report_with_no_alive_chart_draws_none_of_it() -> None:
+    """A `None` alive_chart renders nothing at all, not an empty SVG frame with axes.
+
+    Mirrors `test_a_report_with_no_grid_draws_none_of_it`: the guard is
+    `{% if report.alive_chart %}` around the heading, the legend and the SVG
+    together, and only a fixture that actually flips the field to `None` can
+    catch an edit that narrowed the guard to cover only one of the three.
+    """
+    report = a_golden_raid_report().model_copy(update={"alive_chart": None})
+
+    html = render_raid(report)
+
+    assert 'class="alive-chart"' not in html
+    assert "Players still standing" not in html
+    assert "How the attempt went" not in html

@@ -207,6 +207,17 @@ One approximation and three measurements:
   all. `tests/e2e/test_progression_e2e.py` runs the equivalent query directly, without its own
   `RateLimit` calls, so its own marginal network cost is the `Fights` line alone: 2.01 points
   cold, every run, since it uses a fresh `tmp_path` cache each time.
+- **`wowperf raid` on the canonical wipe, cache warm for everything the fixture already had:
+  5.18 points of 3600** (2026-09-19, report `cW38jmwdnZfbHVL4`, fight 30, live verification of
+  `docs/plans/2026-09-19-wipe-analysis-layer-2-design.md`). Composed as the command printed it:
+  `AbilityTakenTable` 2 calls for 3.17, `EncounterKillRankings` 1 call for 1.01, `RateLimit` 2
+  calls for 1.00. `AbilityTakenTable` (§3.1's `damage_matrix`, feeding the grid) and
+  `EncounterKillRankings` (the mechanics comparison's execution leaderboard) were the only two
+  operations this cache had never priced: `Fights`, `Actors`, `Deaths`, `DamageTaken`,
+  `Resurrects` and the rest of the wipe's own data were already on disk from earlier work in this
+  worktree. This reading therefore prices what Layer 2 adds on top of an otherwise-warm cache, not
+  a cold run of the whole command -- the 45.25-point wipe reading above, from before `damage_matrix`
+  existed, remains the figure for a genuinely cold fetch of this shape.
 
 ## Every query reports its own cost
 

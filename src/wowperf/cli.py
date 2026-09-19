@@ -1487,6 +1487,7 @@ def raid(
         # this command already paid for.
         defensives = load_defensives()
         consumables = load_consumables()
+        roles = load_roles()
 
         encounter = loaded.encounter
         # The roster's own spelling, computed once and read by everything that
@@ -1535,7 +1536,7 @@ def raid(
             loaded,
             defensives,
             consumables,
-            roles=load_roles(),
+            roles=roles,
             mechanics=mechanics_sample,
             our_abilities=our_abilities,
             parse_subjects=parse_subjects,
@@ -1629,6 +1630,7 @@ def raid(
                     datetime.now().strftime("%Y-%m-%d %H:%M"),
                     defensives,
                     consumables,
+                    roles=roles,
                     externals=load_externals(),
                     self_resurrections=load_self_resurrections(),
                     reference_records=reference_records,

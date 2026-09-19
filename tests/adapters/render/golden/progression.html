@@ -247,6 +247,20 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
 .compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
 .compared-rows tr.v-unjudged td { color: var(--ink-faint); }
+.damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
+.damage-grid th[scope="row"] { text-align: left; font-weight: normal; }
+/* The tint reuses `--hit`, the colour this report already gives damage a
+   player took (`.damage-bar`, and `.timeline tr.hit` for the hit that mattered
+   toward a death), because a tint here states that same fact and not a new one.
+   It marks the figure rather than filling the cell, matching how the timeline
+   uses this colour: a filled block among a hundred plain numbers reads as an
+   alert, and design 7.3 is explicit that a tint is not a mistake -- taking a
+   tankbuster is correct, and soaking is doing the job. One signal is enough to
+   tie the cell to the card that explains it. */
+.damage-grid .cell.tinted { color: var(--hit); font-weight: 600; }
+.damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
+.alive-chart .alive-line { stroke: var(--ours); stroke-width: 2; }
 </style>
 </head>
 <body>

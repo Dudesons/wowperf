@@ -1,0 +1,92 @@
+# ABOUTME: Behaviour tests for the players-alive chart: a step function in viewBox units.
+# ABOUTME: Its last point is the verdict's own figure, and the two may never disagree.
+
+from wowperf.domain.events import Death, Resurrection
+from wowperf.domain.report.alive_chart import (
+    CHART_HEIGHT,
+    CHART_WIDTH,
+    PLOT_TOP,
+    build_alive_chart,
+)
+
+
+def _deaths(count: int) -> tuple[Death, ...]:
+    return tuple(
+        Death(
+            player_name=f"Raider {index}",
+            actor_id=index,
+            timestamp_ms=10_000 * (index + 1),
+            killing_blow="Caustic Waves",
+            killing_blow_id=11,
+        )
+        for index in range(count)
+    )
+
+
+def test_a_full_raid_starts_at_the_top_of_the_plot() -> None:
+    chart = build_alive_chart(20, (), (), duration_ms=100_000, boss_percentage=40.0)
+
+    assert chart is not None
+    assert chart.points[0].y == PLOT_TOP
+
+
+def test_the_series_steps_down_and_never_leaves_the_plot() -> None:
+    chart = build_alive_chart(20, _deaths(5), (), duration_ms=100_000, boss_percentage=40.0)
+
+    assert chart is not None
+    assert len(chart.points) >= 6
+    for point in chart.points:
+        assert 0.0 <= point.x <= CHART_WIDTH
+        assert 0.0 <= point.y <= CHART_HEIGHT
+
+
+def test_a_resurrection_steps_the_line_back_up() -> None:
+    """Up on the page means up in the count, so y decreases."""
+    resurrections = (
+        Resurrection(
+            actor_id=0, caster_id=19, ability_id=20484,
+            ability_name="Rebirth", timestamp_ms=50_000,
+        ),
+    )
+
+    chart = build_alive_chart(
+        20, _deaths(2), resurrections, duration_ms=100_000, boss_percentage=40.0
+    )
+
+    assert chart is not None
+    assert chart.points[-1].y < chart.points[-2].y
+
+
+def test_the_line_turns_a_corner_at_each_event() -> None:
+    """Doubled points, not sloped: a step function, never a diagonal.
+
+    `alive_over_time` reports the headcount only at the instants it changed.
+    A polyline drawn straight through those points alone would slope steadily
+    between two deaths, say, forty seconds apart -- a claim that the raid was
+    losing people continuously across that stretch, which the data does not
+    support. Doubling every point after the first -- once at the previous
+    count, once at its own -- turns that slope into a right angle instead.
+    """
+    chart = build_alive_chart(20, _deaths(3), (), duration_ms=100_000, boss_percentage=40.0)
+
+    assert chart is not None
+    # 1 initial point + 3 deaths = 4 points in the series; every point after
+    # the first doubles, so the drawn shape carries 1 + 2 * 3 = 7 steps.
+    assert len(chart.points) == 7
+    # The first death's pair: same x, the old count carried forward and then
+    # the new one -- the corner a sloped polyline segment would erase.
+    assert chart.points[1].x == chart.points[2].x
+    assert chart.points[1].y != chart.points[2].y
+    assert chart.points[1].y == chart.points[0].y
+
+
+def test_the_boss_note_states_where_the_boss_finished() -> None:
+    chart = build_alive_chart(20, _deaths(5), (), duration_ms=100_000, boss_percentage=16.49)
+
+    assert chart is not None
+    assert "16.5%" in chart.boss_note
+
+
+def test_an_attempt_with_no_duration_draws_nothing() -> None:
+    """An axis with no length draws a line at a single x, which reads as a bug."""
+    assert build_alive_chart(20, (), (), duration_ms=0, boss_percentage=40.0) is None

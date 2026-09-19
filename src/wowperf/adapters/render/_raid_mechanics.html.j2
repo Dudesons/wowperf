@@ -1,6 +1,6 @@
 {# ABOUTME: The raid Mechanics panel: what hit the raid, and who took more of it than the rest. #}
 {# ABOUTME: Design sections 6.8 and 6.9 -- mechanics that hit the raid, and damage taken against the median. #}
-{% from "_macros.html.j2" import ledger_row with context %}
+{% from "_macros.html.j2" import ability, ledger_row with context %}
 <section class="panel" data-tab-panel="main" id="tab-mechanics">
 
 <h2 id="mechanics">Mechanics</h2>
@@ -12,6 +12,30 @@
 </div>
 {% else %}
 <p class="sub">Nothing to report.</p>
+{% endif %}
+
+{% if report.grid %}
+<h2 id="grid">Who took what</h2>
+<p class="sub">{{ report.grid.caption }}</p>
+<table class="damage-grid">
+<thead>
+<tr><th>Player</th>
+{% for column in report.grid.columns %}
+<th>{{ ability(column.ability_id, column.ability_name) }}</th>
+{% endfor %}
+</tr>
+</thead>
+<tbody>
+{% for row in report.grid.rows %}
+<tr><th scope="row">{{ row.player_name }}</th>
+{% for cell in row.cells %}
+<td class="cell{% if cell.tinted %} tinted{% endif %}">{{ cell.amount }}{% if cell.multiple %}
+<span class="multiple">{{ cell.multiple }}</span>{% endif %}</td>
+{% endfor %}
+</tr>
+{% endfor %}
+</tbody>
+</table>
 {% endif %}
 
 </section>
