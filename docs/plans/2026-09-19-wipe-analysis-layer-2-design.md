@@ -62,8 +62,16 @@ tank taking ten times the median is the job, not a finding — but their totals 
 the grid can show them. No median moves, so no existing finding changes. §12 requires this to be
 asserted rather than assumed.
 
-**The amount is `hit.amount`, which excludes absorbs.** Inherited from §5.5's measure unchanged,
-and named here because a grid invites the reading that a cell is everything that hit the player.
+**The amount is `hit.amount`, the unmitigated figure.** `DamageTakenEvent` carries three numbers
+and they answer different questions: `amount` is how hard the hit landed before mitigation and
+absorption, `health_damage` is what reached the player's health, and `absorbed` is what a shield
+soaked. `damage_outliers` reads `amount`, which is the honest answer to "how hard did this hit",
+and the grid inherits that measure unchanged.
+
+Named here because a grid invites the reading that a cell is what the player *suffered*. It is
+not: a fully absorbed hit still shows its full size, which is correct for a table about what the
+encounter threw at people and wrong for one about what it cost them. Nothing here converts between
+the three.
 
 ### 3.2 `alive_over_time`
 
