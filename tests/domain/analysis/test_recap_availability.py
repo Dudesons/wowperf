@@ -29,6 +29,7 @@ from wowperf.domain.season import (
 DEATH_MS = 60_000
 ICEBOUND = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0)
 RUNE_TAP = DefensiveAbility(ability_id=194679, name="Rune Tap", cooldown_seconds=25.0, charges=2)
+BARKSKIN = DefensiveAbility(ability_id=22812, name="Barkskin", cooldown_seconds=45.0)
 IRONBARK = ExternalAbility(ability_id=102342, name="Ironbark", cooldown_seconds=90.0)
 STONE = ConsumableCategory(name="healthstone", cooldown_seconds=60.0, ability_ids=(6262,))
 TREE = Player(actor_id=2, name="Leafy", class_name="Druid", spec="Restoration", item_level=680)
@@ -334,3 +335,35 @@ def test_the_dying_player_is_not_their_own_teammate() -> None:
         Externals(entries=(("Druid/Restoration", (IRONBARK,)),)), visible_from_ms=0,
     )
     assert at.externals == ()
+
+
+def test_the_dying_players_own_defensives_are_judged_against_their_bands() -> None:
+    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=0, end_ms=3000)
+
+    at = availability_at(
+        (DUDE,), _presses(22812, at_ms=2000), a_death(at_ms=5000),
+        Defensives(entries=(("DeathKnight/Blood", (BARKSKIN,)),)), Consumables(), Externals(),
+        visible_from_ms=0, auras=auras, window=(0, 10_000),
+    )
+
+    assert at.own is not None
+    assert [one.state for one in at.own if one.name == "Barkskin"] == [FADED]
+
+
+def test_externals_keep_pressed_even_when_a_matching_aura_band_would_flip_them() -> None:
+    # If auras/window leaked into the externals loop, this band -- coincidentally
+    # keyed to Ironbark's own ability id, on the dying player's own aura table --
+    # would read FADED, because it lapsed five seconds before the death. An
+    # external's aura sits on the dying player but is resolved against the
+    # caster's ability id, and `auras` here (scoped to actor_id=1, the dying
+    # player) cannot answer that, so externals must stay PRESSED regardless.
+    auras = _auras_with_band(ability_id=102342, name="Ironbark", start_ms=190_000, end_ms=195_000)
+    casts = (press(102342, 195_000, actor_id=2, target_id=1),)
+
+    at = availability_at(
+        (DUDE, TREE), casts, a_death(at_ms=200_000), Defensives(), Consumables(),
+        Externals(entries=(("Druid/Restoration", (IRONBARK,)),)),
+        visible_from_ms=0, auras=auras, window=(190_000, 210_000),
+    )
+
+    assert [(s.name, s.state) for s in at.externals] == [("Ironbark", PRESSED)]

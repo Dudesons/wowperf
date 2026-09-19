@@ -380,6 +380,9 @@ def availability_at(
     consumables: Consumables,
     externals: Externals,
     visible_from_ms: int,
+    *,
+    auras: PlayerAuras | None = None,
+    window: tuple[int, int] | None = None,
 ) -> AvailabilityAt:
     """The player's own defensives, the consumables, and every teammate's externals.
 
@@ -392,6 +395,13 @@ def availability_at(
     fight (`visible_from_ms`), the rule `consumables_up_at` applies: a potion
     drunk before the timer started is invisible. Externals come in roster
     order, each carrying its owner.
+
+    `auras` and `window` reach only the dying player's own defensives, refining
+    a press to HELD or FADED by whether its aura still had a band over the
+    death (`state_of`). Externals stay PRESSED regardless: an external's aura
+    sits on the dying player but is resolved against the *caster's* ability id,
+    and `resolve_aura` is scoped to one player's own `on_self` list, so a
+    teammate's cooldown is not answerable this way without a second table.
     """
     by_actor = {player.actor_id: player for player in players}
     player = by_actor.get(death.actor_id)
@@ -413,6 +423,7 @@ def availability_at(
                     presses_of(death.actor_id, (ability.ability_id,)),
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
                     ability_id=ability.ability_id,
+                    auras=auras, window=window,
                 )
                 for ability in known
             )
