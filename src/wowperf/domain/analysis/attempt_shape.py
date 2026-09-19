@@ -112,19 +112,31 @@ def alive_over_time(
     takes effect -- a rez cannot land on somebody who has not died yet, which
     is the rule `_alive_at_the_end` already applies.
 
-    This is a floor on the living, not a reading of them. A player who
-    releases and runs back leaves no record at all, so every figure drawn from
-    it carries a `derived` badge.
+    The count tracked is *players*, not *events*: a player who releases and
+    runs back leaves no `Resurrection` behind -- `Resurrection`'s own
+    docstring -- so a second `Death` for someone already down is not a second
+    player going down, it is the same one, still down. `classify_attempt`'s
+    own `died` makes the identical distinction the identical way, over the
+    same events. This is a floor on the living, not a reading of them: every
+    figure drawn from it carries a `derived` badge.
     """
-    steps = [(one.timestamp_ms, 0, +1) for one in resurrections]
-    steps += [(death.timestamp_ms, 1, -1) for death in deaths]
+    steps = [(one.timestamp_ms, 0, one.actor_id) for one in resurrections]
+    steps += [(death.timestamp_ms, 1, death.actor_id) for death in deaths]
     steps.sort()
 
     points = [AlivePoint(timestamp_ms=0, alive=size)]
-    alive = size
-    for timestamp_ms, _, delta in steps:
-        alive = max(0, min(size, alive + delta))
-        points.append(AlivePoint(timestamp_ms=timestamp_ms, alive=alive))
+    down: set[int] = set()
+    for timestamp_ms, kind, actor_id in steps:
+        if kind == 1:  # a death
+            down.add(actor_id)
+        else:  # a resurrection
+            down.discard(actor_id)
+        # `down` cannot hold more entries than there are distinct actors, but
+        # nothing here guarantees `size` accounts for every one of them, so
+        # the floor stays -- the same guard `_alive_at_the_end` carried before
+        # this was a series. No ceiling is needed: `len(down)` cannot go
+        # negative, so `size - len(down)` cannot exceed `size`.
+        points.append(AlivePoint(timestamp_ms=timestamp_ms, alive=max(0, size - len(down))))
     return tuple(points)
 
 

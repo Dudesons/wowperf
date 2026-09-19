@@ -633,3 +633,27 @@ def test_the_series_ends_where_the_verdict_says_it_does() -> None:
 
     assert finding is not None
     assert f"{series[-1].alive} of 20 alive at the end" in finding.evidence
+
+
+def test_a_player_who_dies_twice_with_no_resurrection_between_counts_as_one_down() -> None:
+    """A release-and-run-back leaves no `Resurrection` event at all.
+
+    Two `Death` events for the same actor, with nothing logged in between, is
+    what that looks like on the wire. It must still take only one player off
+    the count -- the actor was never brought back by anyone's action, but they
+    are also not two different players.
+    """
+    deaths = (
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=0,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+        Death(
+            player_name="Raider 0", actor_id=0, timestamp_ms=60_000,
+            killing_blow="Caustic Waves", killing_blow_id=11,
+        ),
+    )
+
+    series = alive_over_time(20, deaths, ())
+
+    assert series[-1].alive == 19
