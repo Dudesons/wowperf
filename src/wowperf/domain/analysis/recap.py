@@ -5,6 +5,7 @@ import math
 
 from wowperf.domain.analysis.consumables import consumable_window_start
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
+from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import CastEvent, Death, HealthSample, Resurrection
 from wowperf.domain.fight import LoadedFight
@@ -202,16 +203,21 @@ PRESSED = "pressed"
 READY = "ready"
 COOLDOWN = "cooldown"
 UNSEEN = "unseen"
+HELD = "held"
+FADED = "faded"
 
 
 class AbilityState(Frozen):
     """One saving tool at the moment of death.
 
-    `seconds` means one thing per state. PRESSED: how many seconds before the
-    death its owner cast it. COOLDOWN: the upper bound left, in whole seconds.
-    READY: how long it had been ready when that fell inside the run-up, a lower
-    bound, else None. UNSEEN: always None. `owner_id` is None for the dying
-    player's own abilities and a teammate's actor id for an external.
+    `seconds` means one thing per state. PRESSED, HELD and FADED: how many
+    seconds before the death its owner cast it -- the three share one meaning
+    because HELD and FADED are PRESSED refined by whether the aura was still
+    up, not a different moment. COOLDOWN: the upper bound left, in whole
+    seconds. READY: how long it had been ready when that fell inside the
+    run-up, a lower bound, else None. UNSEEN: always None. `owner_id` is None
+    for the dying player's own abilities and a teammate's actor id for an
+    external.
 
     `ability_id` is the game id this state was judged from, and None for a
     consumable: a category is a cooldown group holding several ids, and no one
@@ -239,6 +245,35 @@ class AvailabilityAt(Frozen):
     externals: tuple[AbilityState, ...] = ()
 
 
+def _press_state(
+    auras: PlayerAuras | None,
+    window: tuple[int, int] | None,
+    ability_id: int | None,
+    name: str,
+    death_ms: int,
+) -> str:
+    """Whether a press was still up when the blow landed, or PRESSED if unknowable.
+
+    Three ways to be unknowable, and each one says `pressed` rather than
+    guessing: no aura table for this player, no window to clip bands to, and an
+    ability whose aura cannot be resolved -- which covers both an id the table
+    does not carry under any name and an ability that raises no aura at all.
+    The damage stream cannot tell those two apart; neither can this, and neither
+    needs to, because both answer the same way.
+
+    A resolved aura with no band over the death is FADED. That is a reading and
+    not an absence: the table lists every interval the aura was up, so a death
+    outside all of them is the table saying it was down.
+    """
+    if auras is None or window is None or ability_id is None:
+        return PRESSED
+    aura = resolve_aura(auras, ability_id, name)
+    if aura is None:
+        return PRESSED
+    start_ms, end_ms = window
+    return HELD if band_holding(aura, start_ms, end_ms, death_ms) else FADED
+
+
 def state_of(
     presses: tuple[CastEvent, ...],
     name: str,
@@ -249,18 +284,23 @@ def state_of(
     owner_id: int | None = None,
     on_target: int | None = None,
     ability_id: int | None = None,
+    auras: PlayerAuras | None = None,
+    window: tuple[int, int] | None = None,
 ) -> AbilityState:
-    """Which of the four states one ability was in at the death.
+    """Which of the six states one ability was in at the death.
 
     Never pressed in the fight is UNSEEN: a talent not taken looks exactly like
     a button never pressed, so it is listed and not judged. A press inside the
     run-up is PRESSED — for an external, only a press on the dying player
     (`on_target`) or with no target at all, since an untargeted cast covers an
     area or the whole group rather than aiming at one player, while a cast on
-    someone else was a use, not a save. With
-    `charges` or more presses inside one base cooldown before the death the
-    ability is on COOLDOWN, and the bound is when the oldest of those presses
-    frees its charge, rounded up. Otherwise READY.
+    someone else was a use, not a save. When `auras` and `window` are both
+    given, a press is refined to HELD or FADED by whether the ability's own
+    aura still had a band over the death; PRESSED is what a press reads as
+    when that refinement cannot be made, the explicit unknown rather than a
+    guess. With `charges` or more presses inside one base cooldown before the
+    death the ability is on COOLDOWN, and the bound is when the oldest of
+    those presses frees its charge, rounded up. Otherwise READY.
 
     Every figure is bounded the safe way: the log records no cooldown reset,
     charge refresh or talent reduction, so the true remaining time is at most
@@ -280,7 +320,9 @@ def state_of(
     ]
     if in_run_up:
         return AbilityState(
-            name=name, state=PRESSED, owner_id=owner_id, ability_id=ability_id,
+            name=name,
+            state=_press_state(auras, window, ability_id, name, death_ms),
+            owner_id=owner_id, ability_id=ability_id,
             seconds=(death_ms - max(in_run_up)) / 1000,
         )
     cooldown_ms = cooldown_seconds * 1000

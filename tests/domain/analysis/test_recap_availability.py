@@ -5,6 +5,8 @@ from tests.domain.analysis.test_recap_timeline import DUDE, a_death
 from wowperf.adapters.config.toml import load_consumables
 from wowperf.domain.analysis.recap import (
     COOLDOWN,
+    FADED,
+    HELD,
     PRESSED,
     READY,
     UNSEEN,
@@ -12,6 +14,7 @@ from wowperf.domain.analysis.recap import (
     consumable_state,
     state_of,
 )
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.events import CastEvent
 from wowperf.domain.model import Player
 from wowperf.domain.season import (
@@ -38,6 +41,18 @@ def press(
                      timestamp_ms=at_ms, target_id=target_id)
 
 
+def _presses(ability_id: int, at_ms: int) -> tuple[CastEvent, ...]:
+    return (press(ability_id, at_ms),)
+
+
+def _auras_with_band(ability_id: int, name: str, start_ms: int, end_ms: int) -> PlayerAuras:
+    aura = Aura(
+        ability_id=ability_id, name=name, total_uptime_ms=end_ms - start_ms, uses=1,
+        bands=(AuraBand(start_ms=start_ms, end_ms=end_ms),),
+    )
+    return PlayerAuras(actor_id=1, on_self=(aura,))
+
+
 def test_an_ability_never_pressed_is_unseen_not_judged() -> None:
     assert state_of((), "Icebound Fortitude", 120.0, 1, DEATH_MS).state == UNSEEN
 
@@ -45,6 +60,64 @@ def test_an_ability_never_pressed_is_unseen_not_judged() -> None:
 def test_a_press_inside_the_run_up_is_pressed_with_the_seconds_before_death() -> None:
     state = state_of((press(48792, 1_000), press(48792, 56_600)), "IBF", 120.0, 1, DEATH_MS)
     assert (state.state, state.seconds) == (PRESSED, 3.4)
+
+
+def test_a_defensive_still_up_at_the_death_reads_held() -> None:
+    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=1000, end_ms=9000)
+
+    state = state_of(
+        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
+        ability_id=22812, auras=auras, window=(0, 10_000),
+    )
+
+    assert state.state == HELD
+
+
+def test_a_defensive_that_lapsed_before_the_blow_reads_faded() -> None:
+    """The overstatement this exists to correct: pressed, and gone by then."""
+    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=1000, end_ms=3000)
+
+    state = state_of(
+        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
+        ability_id=22812, auras=auras, window=(0, 10_000),
+    )
+
+    assert state.state == FADED
+
+
+def test_an_ability_with_no_aura_of_its_own_stays_pressed() -> None:
+    """Silence, never an accusation: an unresolved ability is not faded."""
+    auras = _auras_with_band(ability_id=99999, name="Something Else", start_ms=0, end_ms=9000)
+
+    state = state_of(
+        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
+        ability_id=22812, auras=auras, window=(0, 10_000),
+    )
+
+    assert state.state == PRESSED
+
+
+def test_a_player_with_no_aura_table_stays_pressed() -> None:
+    state = state_of(
+        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
+        ability_id=22812, auras=None, window=(0, 10_000),
+    )
+
+    assert state.state == PRESSED
+
+
+def test_the_name_fallback_resolves_a_buff_whose_id_differs_from_its_cast() -> None:
+    """Greater Invisibility casts as 110959 and buffs as 110960."""
+    auras = _auras_with_band(
+        ability_id=110960, name="Greater Invisibility", start_ms=1000, end_ms=9000
+    )
+
+    state = state_of(
+        _presses(110959, at_ms=2000), "Greater Invisibility", 90.0, 1, death_ms=5000,
+        ability_id=110959, auras=auras, window=(0, 10_000),
+    )
+
+    assert state.state == HELD
 
 
 def test_a_press_inside_one_cooldown_leaves_an_upper_bound_in_whole_seconds() -> None:
