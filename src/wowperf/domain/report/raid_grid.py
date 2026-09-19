@@ -46,7 +46,7 @@ def _columns(findings: Sequence[Finding]) -> tuple[GridColumn, ...]:
         for finding in findings:
             if not finding.id.startswith(prefix):
                 continue
-            if finding.ability_id and finding.ability_id not in seen:
+            if finding.ability_id is not None and finding.ability_id not in seen:
                 seen[finding.ability_id] = finding.ability_name
     return tuple(
         GridColumn(ability_id=ability_id, ability_name=name)

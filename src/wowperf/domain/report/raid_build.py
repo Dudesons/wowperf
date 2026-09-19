@@ -83,7 +83,7 @@ def build_raid_report(
     fetched_at: str,
     defensives: Defensives,
     consumables: Consumables,
-    roles: Roles = Roles(),
+    roles: Roles,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
     reference_records: tuple[ReferenceRecord, ...] = (),

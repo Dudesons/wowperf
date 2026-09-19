@@ -3,6 +3,8 @@
 
 from wowperf.domain.analysis.attempt_shape import alive_over_time
 from wowperf.domain.events import Death, Resurrection
+from wowperf.domain.findings import Confidence
+from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.raid_model import AliveChart, AliveStep
 
 CHART_WIDTH = 680.0
@@ -20,7 +22,11 @@ BASELINE_Y = 170.0
 
 TICK_LABEL_X = 40.0
 
-LEGEND = "Players still standing, across the attempt. A battle resurrection steps the line back up."
+LEGEND = (
+    "Players still standing, across the attempt. A battle resurrection steps the line "
+    "back up. A player who released and ran back leaves no record, so this can only "
+    "undercount how many were actually up."
+)
 
 
 def _ticks(size: int) -> tuple[tuple[float, str], ...]:
@@ -91,10 +97,10 @@ def build_alive_chart(
         ticks=_ticks(size),
         legend=LEGEND,
         boss_note=boss_note,
+        badge=badge_for(Confidence.DERIVED),
         width=CHART_WIDTH,
         height=CHART_HEIGHT,
         tick_x1=PLOT_X0,
         tick_x2=PLOT_X1,
         tick_label_x=TICK_LABEL_X,
-        baseline_y=BASELINE_Y,
     )

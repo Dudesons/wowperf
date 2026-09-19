@@ -5,6 +5,7 @@ from collections.abc import Iterator
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.report.model import (
+    Badge,
     DeathCard,
     LedgerRow,
     PlayerCard,
@@ -50,9 +51,9 @@ class RaidGrid(Frozen):
     """Who took what, as a table. A view model, never findings.
 
     Twenty players by five abilities is a hundred cells; as findings that is
-    the report's cap problem five times over. The caption carries design 7.3's
-    sentence, because a tint means "took far more of this than their raid did"
-    and never that somebody made a mistake.
+    the report's cap problem five times over. The caption paraphrases design
+    7.3's meaning, because a tint means "took far more of this than their raid
+    did" and never that somebody made a mistake.
     """
 
     columns: tuple[GridColumn, ...]
@@ -79,19 +80,20 @@ class AliveChart(Frozen):
 
     The series is a floor on the living rather than a reading of them -- a
     player who releases and runs back leaves no record -- so it is badged
-    `derived` wherever it is stated.
+    `derived` wherever it is stated. `badge` carries that mark to the heading
+    beside the chart, matching `ledger_row`'s own badge markup.
     """
 
     points: tuple[AliveStep, ...]
     ticks: tuple[tuple[float, str], ...]
     legend: str
     boss_note: str
+    badge: Badge
     width: float
     height: float
     tick_x1: float
     tick_x2: float
     tick_label_x: float
-    baseline_y: float
 
 
 class RaidReport(Frozen):
