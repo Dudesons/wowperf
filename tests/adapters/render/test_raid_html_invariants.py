@@ -1626,3 +1626,37 @@ def test_a_report_with_no_grid_draws_none_of_it() -> None:
         "A highlighted cell means that player took far more of it than their raid did"
         not in html
     )
+
+
+def test_the_summary_draws_the_alive_chart() -> None:
+    html = golden_raid_html()
+
+    assert 'class="alive-chart"' in html
+    assert "Players still standing" in html
+
+
+def test_the_alive_chart_is_inline_svg_and_fetches_nothing() -> None:
+    """The report is one file. The only outbound addresses are ability icons."""
+    html = golden_raid_html()
+
+    start = html.index('class="alive-chart"')
+    chart = html[start : html.index("</svg>", start)]
+    for forbidden in ("<image", "href=", "url("):
+        assert forbidden not in chart, f"the chart reaches outside the page: {forbidden}"
+
+
+def test_a_report_with_no_alive_chart_draws_none_of_it() -> None:
+    """A `None` alive_chart renders nothing at all, not an empty SVG frame with axes.
+
+    Mirrors `test_a_report_with_no_grid_draws_none_of_it`: the guard is
+    `{% if report.alive_chart %}` around the heading, the legend and the SVG
+    together, and only a fixture that actually flips the field to `None` can
+    catch an edit that narrowed the guard to cover only one of the three.
+    """
+    report = a_golden_raid_report().model_copy(update={"alive_chart": None})
+
+    html = render_raid(report)
+
+    assert 'class="alive-chart"' not in html
+    assert "Players still standing" not in html
+    assert "How the attempt went" not in html

@@ -3,6 +3,23 @@
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="main" id="tab-summary">
 
+{% if report.alive_chart %}
+<h2 id="alive">How the attempt went</h2>
+<p class="legend">{{ report.alive_chart.legend }} {{ report.alive_chart.boss_note }}</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 {{ report.alive_chart.width }} {{ report.alive_chart.height }}">
+  {% for y, label in report.alive_chart.ticks %}
+  <line class="tick" x1="{{ report.alive_chart.tick_x1 }}" y1="{{ y }}"
+        x2="{{ report.alive_chart.tick_x2 }}" y2="{{ y }}"></line>
+  <text class="tick-label" x="{{ report.alive_chart.tick_label_x }}" y="{{ y }}"
+        text-anchor="end" dominant-baseline="middle">{{ label }}</text>
+  {% endfor %}
+  <polyline class="alive-line" fill="none" points="
+    {%- for point in report.alive_chart.points %}{{ point.x }},{{ point.y }} {% endfor -%}
+  "></polyline>
+</svg>
+{% endif %}
+
 {% if report.ledger_decomposition %}
 <h2 id="ledger">Figures that contain others</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must

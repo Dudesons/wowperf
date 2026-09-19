@@ -7,6 +7,7 @@ from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
+from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
@@ -122,6 +123,29 @@ def build_raid_report(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips
     )
     grid = build_raid_grid(loaded.players, loaded.damage_taken, roles, findings)
+    # `Death.timestamp_ms` and `Resurrection.timestamp_ms` sit on the report's
+    # own clock -- the one `Encounter.start_ms` sits on too, per
+    # `deaths.py::_when`'s identical subtraction -- while `build_alive_chart`'s
+    # x axis expects an elapsed clock starting at zero, the clock its own
+    # tests are written against. Passing the raw timestamps through would
+    # collapse every event onto the chart's right edge on any fight that does
+    # not start at report time zero, which no real fight does.
+    fight_start_ms = loaded.encounter.start_ms
+    alive_chart = build_alive_chart(
+        loaded.encounter.size or len(loaded.players),
+        tuple(
+            death.model_copy(
+                update={"timestamp_ms": max(death.timestamp_ms - fight_start_ms, 0)}
+            )
+            for death in loaded.deaths
+        ),
+        tuple(
+            rez.model_copy(update={"timestamp_ms": max(rez.timestamp_ms - fight_start_ms, 0)})
+            for rez in loaded.resurrections
+        ),
+        duration_ms=loaded.encounter.end_ms - fight_start_ms,
+        boss_percentage=loaded.encounter.boss_percentage,
+    )
 
     ledger_decomposition = tuple(
         ledger_row(finding, titles_by_id, tooltips)
@@ -211,4 +235,5 @@ def build_raid_report(
             withheld=tuple(withheld),
             methods=methods,
         ),
+        alive_chart=alive_chart,
     )

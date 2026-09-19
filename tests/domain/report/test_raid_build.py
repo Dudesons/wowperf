@@ -13,6 +13,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
+from wowperf.domain.report.alive_chart import PLOT_X0, PLOT_X1
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
@@ -432,6 +433,37 @@ def test_the_report_names_the_fight_and_the_moment_it_was_fetched() -> None:
     assert report.provenance.report_code == "abc123"
     assert report.provenance.fight_id == 2
     assert report.provenance.fetched_at == FETCHED
+
+
+def test_the_alive_chart_measures_deaths_from_the_fights_own_start() -> None:
+    """`Death.timestamp_ms` sits on the report's clock, not the fight's.
+
+    `a_raid_fixture` starts its fight well after the report's own zero for
+    exactly this reason -- the same one `deaths.py::_when` subtracts
+    `start_ms` for. `build_alive_chart`'s x axis expects an elapsed clock
+    starting at zero, the clock its own tests are written against, so a
+    builder that forwarded `Death.timestamp_ms` unconverted would push every
+    death past the axis's own end and flatten it against `PLOT_X1`,
+    regardless of when in the fight it actually happened.
+    """
+    loaded, subject = a_raid_fixture()
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert report.alive_chart is not None
+    elapsed_ms = DEATH_MS - FIGHT_START_MS
+    duration_ms = FIGHT_END_MS - FIGHT_START_MS
+    expected_x = PLOT_X0 + (elapsed_ms / duration_ms) * (PLOT_X1 - PLOT_X0)
+
+    # One death makes three points by the step doubling: the start, then the
+    # death's own pair. The pair's x is what proves the timestamp was read as
+    # elapsed from the fight's start rather than passed straight through.
+    assert len(report.alive_chart.points) == 3
+    assert report.alive_chart.points[1].x == pytest.approx(expected_x)
+    assert report.alive_chart.points[2].x == pytest.approx(expected_x)
+    assert report.alive_chart.points[1].x != PLOT_X1
 
 
 def test_the_fights_deaths_each_get_a_recap_card() -> None:

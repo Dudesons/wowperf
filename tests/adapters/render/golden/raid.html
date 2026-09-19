@@ -257,6 +257,7 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    pairs a tint with the text sitting on it. */
 .damage-grid .cell.tinted { background: var(--hit); color: var(--page); font-weight: 600; }
 .damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
+.alive-chart .alive-line { stroke: var(--ours); stroke-width: 2; }
 </style>
 </head>
 <body>
@@ -278,6 +279,25 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 
 
 <section class="panel" data-tab-panel="main" id="tab-summary">
+
+<h2 id="alive">How the attempt went</h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 355.0,16.0 355.0,23.700000000000017 "></polyline>
+</svg>
 
 <h2 id="ledger">Figures that contain others</h2>
 <p class="sub">Not additive — every figure below can already contain another, so they must
