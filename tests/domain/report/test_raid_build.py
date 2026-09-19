@@ -537,3 +537,83 @@ def test_a_withheld_attempt_verdict_never_heads_the_summary() -> None:
 
     placed = [row.finding_id for row in all_raid_ledger_rows(report)]
     assert WITHHELD_ID not in placed, placed
+
+
+def test_a_wipe_with_a_verdict_heads_the_summary_with_it() -> None:
+    loaded, subject = a_raid_fixture(kill=False)
+    verdict = Finding(
+        id="wipe.cause",
+        title="This attempt failed on execution: the raid was taken apart",
+        detail="12 of 20 died.",
+        confidence=Confidence.INFERRED,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), verdict), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert report.verdict is not None
+    assert report.verdict.finding_id == "wipe.cause"
+
+
+def test_a_kill_has_no_verdict_to_head_the_summary_with() -> None:
+    """A kill produces no verdict at all, and the slot is absent rather than empty.
+
+    `a_kills_findings` is this file's own kill-shaped fixture -- the brief for
+    this task named a fixture `a_raids_findings`, which exists only in
+    `test_raid_html_invariants.py`, and that module already imports from this
+    one (`FETCHED`, `NO_CONSUMABLES`, `NO_DEFENSIVES`), so importing it back
+    here would be a circular import.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert report.verdict is None
+
+
+def test_a_withheld_verdict_does_not_head_the_summary() -> None:
+    """Its reason is already in Provenance. A landing tab whose first line says
+    nothing was concluded is the complaint section 11 exists to fix."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), _a_withheld_verdict()), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    assert report.verdict is None
+
+
+def test_the_verdict_appears_once_on_the_page() -> None:
+    """`build_observations`'s catch-all would place `wipe.cause` a second time,
+    beneath "Other findings", if nothing excluded it: `report.verdict` is
+    built from the same finding rather than from a field `all_raid_ledger_rows`
+    walks, so the only way this could fail today is exactly that leak. A bound
+    of `<= 1` would pass whether or not the leak was fixed, since the finding
+    reaches the page at most once from `build_observations` alone; `== 0` is
+    what actually pins that `all_raid_ledger_rows` -- which never walks
+    `report.verdict` -- carries no second copy.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    verdict = Finding(
+        id="wipe.cause",
+        title="This attempt failed on execution: the raid was taken apart",
+        detail="12 of 20 died.",
+        confidence=Confidence.INFERRED,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_wipes_findings(), verdict), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    elsewhere = [row.finding_id for row in all_raid_ledger_rows(report)]
+    assert elsewhere.count("wipe.cause") == 0, elsewhere

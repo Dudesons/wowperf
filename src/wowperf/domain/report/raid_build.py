@@ -33,6 +33,15 @@ from wowperf.domain.report.raid_model import RaidReport
 from wowperf.domain.report.raid_players import build_raid_players
 from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
 
+VERDICT_ID = "wipe.cause"
+"""`classify_attempt`'s id for the verdict it reaches, when it reaches one.
+
+Matched on the whole id, like `WITHHELD_ID` beside it: `wipe.cause` is never
+re-minted per raider, so a prefix match would buy nothing a whole-id match
+does not already have, and would silently widen to any future `wipe.cause.*`
+sibling that is not the verdict itself.
+"""
+
 
 def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) -> Section:
     """The Damage tab: present when it has rows, withheld with the comparison's own reason.
@@ -110,8 +119,12 @@ def build_raid_report(
     # verdict frames every row under it; a notice saying there is no verdict
     # inherits that rank, and would take the Summary's headline to say
     # nothing. Matched on the whole id rather than a prefix: `wipe.cause` is
-    # the verdict itself and belongs on the page.
+    # the verdict itself and belongs on the page. It is read out here rather
+    # than stripped, so it can still reach `titles_by_id` and `tooltips`
+    # below; `placed_ids`, further down, keeps it from also falling through
+    # `build_observations`'s catch-all once `report.verdict` has claimed it.
     verdict_notices = [one for one in findings if one.id == WITHHELD_ID]
+    verdict_finding = next((one for one in findings if one.id == VERDICT_ID), None)
     findings = [one for one in findings if one.id != WITHHELD_ID]
 
     titles_by_id = {finding.id: finding.title for finding in findings}
@@ -119,6 +132,9 @@ def build_raid_report(
     # tables and the defensives data file are all already in hand. Every row
     # builder below looks a panel up and none of them computes one.
     tooltips = tooltips_by_finding_id(findings, loaded, defensives)
+    verdict = (
+        ledger_row(verdict_finding, titles_by_id, tooltips) if verdict_finding else None
+    )
     players = build_raid_players(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips
     )
@@ -160,6 +176,13 @@ def build_raid_report(
         findings, titles_by_id, decomposition_ids, tooltips
     )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
+    # `report.verdict` claims `wipe.cause` on its own, outside every field
+    # `placed_finding_ids` reads back from -- no `RAID_PLACEMENTS` prefix
+    # matches it, and it is left in `findings` rather than stripped, so
+    # without this it would still fall through to `build_observations`'s
+    # catch-all and draw the same finding a second time under "Other findings".
+    if verdict_finding:
+        placed_ids.add(verdict_finding.id)
 
     damage = _damage_section(findings, placed_rows["damage_rows"])
 
@@ -215,6 +238,7 @@ def build_raid_report(
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
+        verdict=verdict,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
         damage_rows=placed_rows["damage_rows"],

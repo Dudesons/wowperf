@@ -96,6 +96,11 @@ class AliveChart(Frozen):
 
 class RaidReport(Frozen):
     header: RaidHeader
+    verdict: LedgerRow | None = None
+    """The wipe verdict, heading Summary. None on a kill, which produces none,
+    and on a withheld wipe, whose reason is disclosed in Provenance instead:
+    a landing tab whose first line announces that nothing was concluded is the
+    complaint design section 11 exists to fix."""
     # Figures that contain others, heading the Summary.
     ledger_decomposition: tuple[LedgerRow, ...]
     # The biggest findings, in ranked order. Each equals its card on another
@@ -137,6 +142,15 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     for the Mythic+ report -- a raider's per-card comparison rows (design
     section 6, `RAID_COMPARISON_PREFIXES`) land on `spell_and_talent_rows`,
     and are icons the resolver would otherwise never see.
+
+    `report.verdict` is the one deliberate exception: it heads Summary as its
+    own headline rather than sitting in a tab's list, and `build_raid_report`
+    already keeps its finding from also reaching `observations` -- walking it
+    here too would count the same row twice for every caller of this
+    function, including the once-only checks in the render invariants.
+    `classify_attempt` never puts an ability on the verdict finding, so
+    today's icon resolver loses nothing by not seeing it; a future verdict
+    that named one would need its own arm in `_icon_addresses` instead.
     """
     yield from report.ledger_decomposition
     yield from report.summary_pointers

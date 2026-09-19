@@ -2,6 +2,12 @@
 {# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="main" id="tab-summary">
+{% if report.verdict %}
+<h2 id="verdict">Why this attempt ended</h2>
+<div class="findings verdict">
+{{ ledger_row(report.verdict) }}
+</div>
+{% endif %}
 
 {% if report.alive_chart %}
 <h2 id="alive">How the attempt went</h2>
