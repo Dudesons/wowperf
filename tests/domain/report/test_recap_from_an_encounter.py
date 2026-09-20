@@ -203,6 +203,75 @@ def test_a_boss_death_whose_blow_is_not_in_the_stream_says_only_that_it_was_pres
     assert [(row.state, row.detail) for row in own.rows] == [("pressed", "5.0 s before death")]
 
 
+# --- what the roster-wide aura fetch restores ---------------------------------
+#
+# Design section 4 argues the raid path's roster-wide fetch from one consequence:
+# the held-or-faded split would go silent for nineteen players in twenty. It
+# restores a second thing the design did not name. `deaths._press_band` returns
+# None where the dying player has no aura table, and `build_deaths` drops a CAST
+# row from the timeline outright when it does -- so before the fetch, nineteen
+# raid death cards in twenty drew no press at all and no cover rectangle beside
+# the health curve. The Mythic+ side of that rule has a test
+# (`test_build_deaths.py::test_a_press_with_no_band_in_the_log_draws_no_cover_window`);
+# the raid side had none, and a roster the fetch widened is exactly where it
+# would matter.
+
+NOT_THE_SUBJECT = Player(
+    actor_id=2, name="Bríala", class_name="Druid", spec="Guardian", item_level=678
+)
+
+
+def a_fight_where_a_non_subject_pressed_a_defensive(*, table: bool) -> LoadedEncounter:
+    """One press by a raider the report is not about, with or without their aura table.
+
+    `table=False` is what every raid player except the comparable parse subject
+    had before the roster-wide fetch: on this path the absence is the whole
+    difference between the two tests below, which is why they share a fixture.
+    """
+    return LoadedEncounter(
+        encounter=an_encounter(
+            players=(STONEWAKE, NOT_THE_SUBJECT),
+            start_ms=FIGHT_START_MS, end_ms=FIGHT_END_MS,
+        ),
+        deaths=(
+            Death(player_name="Bríala", actor_id=2, timestamp_ms=1_300_000,
+                  killing_blow="Frigid Roar"),
+        ),
+        casts=(
+            CastEvent(actor_id=2, ability_id=48792, ability_name="Icebound Fortitude",
+                      timestamp_ms=1_295_000),
+        ),
+        auras=(
+            PlayerAuras(actor_id=2, on_self=(
+                Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=8_000, uses=1,
+                     bands=(AuraBand(start_ms=1_295_000, end_ms=1_303_000),)),
+            )),
+        ) if table else (),
+    )
+
+
+def test_a_non_subjects_death_card_draws_its_press_from_the_roster_wide_table() -> None:
+    fight = a_fight_where_a_non_subject_pressed_a_defensive(table=True)
+
+    card = build_deaths(fight, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+    presses = [row for row in card.timeline if row.kind == "cast"]
+    assert [row.ability for row in presses] == ["Icebound Fortitude"]
+    # The rectangle the row exists to carry: the band clipped to the run-up.
+    assert presses[0].cover_x is not None
+    assert presses[0].cover_width is not None and presses[0].cover_width > 0
+
+
+def test_the_same_press_reaches_no_row_at_all_without_that_table() -> None:
+    # Identical but for the table, so what this proves is the table's doing and
+    # not the press falling outside the window or the roster.
+    fight = a_fight_where_a_non_subject_pressed_a_defensive(table=False)
+
+    card = build_deaths(fight, NO_DEFENSIVES, NO_CONSUMABLES)[0]
+
+    assert [row for row in card.timeline if row.kind == "cast"] == []
+
+
 def _a_ceiling_finding() -> Finding:
     return Finding(
         id=CEILING_ID, title="x", detail="detail", confidence=Confidence.INFERRED,

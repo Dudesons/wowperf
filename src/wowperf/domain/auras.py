@@ -156,7 +156,7 @@ def band_holding(aura: Aura, start_ms: int, end_ms: int, at_ms: int) -> tuple[in
     **The interval is closed at both ends, and callers depend on it.** A death
     strips the auras the player was carrying, and Warcraft Logs timestamps that
     strip at the millisecond the killing blow landed -- measured on report
-    cW38jmwdnZfbHVL4 fight 30, all 23 player deaths -- so a defensive that was
+    cW38jmwdnZfbHVL4 fight 30, all 21 player deaths -- so a defensive that was
     genuinely up sits exactly on its band's *upper* boundary and nowhere else
     (`analysis/recap.py::_press_state`, design section 8). A press sits exactly
     on the *lower* boundary of the band it opened, which is what lets

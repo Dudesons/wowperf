@@ -132,6 +132,21 @@ So the raid path gains the analogue of `load_run_with_auras`. The domain is alre
 it — `LoadedEncounter.auras` exists and is simply never filled — so this is a fetch change, not a
 model change.
 
+**It restores more than the split, and that was unremarked until the whole-branch review found
+it.** `LoadedEncounter.auras` is read by three other things besides §3: `deaths._press_band`,
+`deaths._availability_tooltips`, and `finding_tooltip.tooltips_by_finding_id`. The first of those
+matters most, because `build_deaths` **drops a cast row from a death's timeline outright** when
+the press resolves to no band — so with one table for twenty players, nineteen raid death cards
+in twenty drew no press at all, and no cover rectangle beside the health curve, and their
+defensive findings carried no aura tooltip. The live page after the fetch carries **45
+`<tr class="cast">` rows and 45 `class="hp-cover"` rectangles**, where before it carried the
+subject's alone. This is accepted as an improvement rather than a regression, and it is recorded
+because it was a real behaviour change that no test, golden, commit body or design section named
+at the time: the goldens cannot catch it, since none of them carries a single availability row and
+none is built through the CLI's fetch. `_press_band`'s drop rule is now pinned on the raid path by
+`tests/domain/report/test_recap_from_an_encounter.py`, against a roster player who is not the
+comparable parse subject — the case the fetch exists for.
+
 **Cost: about 21 points for a twenty-player fight**, against an hourly budget of 3600, and
 nothing for a player whose table is already cached. A failed fetch for one player leaves that
 player with no bands and their states at `pressed`, exactly as `_auras` already does on the
