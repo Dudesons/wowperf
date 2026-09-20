@@ -245,6 +245,37 @@ One approximation and three measurements:
   `load_encounter` already fetches for every friendly across the whole fight, so moving the
   instant added no query to the shape priced above. A design change that reads a stream already on
   disk does not show up in this budget at all.
+- **A second and third fight of an already-fetched raid report, `--no-compare`, cache warm for the
+  report and cold for each fight's own streams: 48.20 and 53.20 points of 3600** (2026-09-20,
+  report `cW38jmwdnZfbHVL4`, fights 26 and 8, the widened measurement in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` §8.3). Composed as the commands printed
+  them: `AuraTable` 20 calls for 20.00 on each, `Healing` 16 and 20 calls for 16.00 and 20.00,
+  `ReportRankings` 2 calls for 4.00, `Talents` 1 call for 2.20, then `Casts`, `DamageDoneGraph`,
+  `EnemyCasts`, `Interrupts`, `Resurrects` and, on fight 8 only, `Deaths`, at 1.00 each, and
+  `RateLimit` 2 calls for 1.00. **A warm report does not make a new fight of it warm**: every
+  event stream is keyed by the fight's own window, so each additional fight pays its own aura
+  tables and its own streams. About 50 points a fight is the figure to plan with.
+- **A cold twenty-player raid fight on an unfetched report, `--no-compare`: 61.22 points of 3600**
+  (2026-09-20, report `DJfap6RcYKhPGHXZ`, fight 7, same measurement). `Healing` 23 calls for
+  23.00, `AuraTable` 20 calls for 20.00, `ReportRankings` 2 calls for 4.00, `DamageTaken` 3 calls
+  for 3.02, `Talents` 1 call for 2.20, `Casts` 2 calls for 2.00, then `Abilities`,
+  `DamageDoneGraph`, `Deaths`, `EnemyCasts`, `Interrupts` and `Resurrects` at 1.00 each, and
+  `RateLimit` 2 calls for 1.00. The 9-minute pull paginated `DamageTaken` into 3 calls and `Casts`
+  into 2; the 45.25-point cold reading further above was a shorter fight that paginated neither.
+- **`wowperf analyze` re-run on a Mythic+ report analysed on an earlier day, `--no-compare`: 3.01
+  or 5.01 points of 3600** (2026-09-20, seven reports, same measurement). 3.01 where only `Fights`
+  (2.01) and `RateLimit` (1.00) ran, 5.01 where `PlayerDetails` (2.00) had also expired out of the
+  24-hour tier. **Everything the held-or-faded split reads was already on disk**, aura tables
+  included: `load_run_with_auras` has fetched one table per roster player since before that
+  feature existed, so measuring the keystone path across seven runs cost 32.07 points in total.
+- **A command that fails on its subject still spends**: `analyze` on a report whose owner is not in
+  the fight's roster spent **6.01 points** before printing the roster and exiting (2026-09-20, two
+  such runs). The `Fights` and `PlayerDetails` queries that establish the roster run before the
+  name is checked, so an aborted run is not a free run.
+- **Reading the cache back through the domain is free.** Eleven fights re-loaded through
+  `load_encounter` / `load` plus `load_*_with_auras`, several times each, spent nothing beyond the
+  `RateLimit` read taken to confirm it: the hour's total closed at 219.72 points of 3600 against
+  218.72 accounted for by the commands. An analysis script that walks cached fights costs no quota.
 
 ## Every query reports its own cost
 

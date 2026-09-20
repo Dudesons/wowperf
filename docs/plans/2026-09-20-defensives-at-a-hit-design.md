@@ -405,7 +405,9 @@ so they are as much a repair of this branch's own damage as a new insight. **The
 that the feature is now correct and its value is unproven.** A second fight, and preferably a
 Mythic+ run through the same shared `build_deaths`, is the cheapest thing that would move this
 either way; the aura fetch it rides on costs about 20 points of 3600 for a twenty-player fight and
-nothing at all on a warm cache.
+nothing at all on a warm cache. **That was done. §8.3 carries the answer, and it moves the verdict:
+the premise holds and the correction is not complete.** Read §8.3 rather than this paragraph's
+"unproven", which describes a one-fight denominator that no longer stands.
 
 **Nothing here argues for reverting.** The split is cheap, its states are honest, and §8's five
 false accusations are gone. But the design asked whether it was worth building, and on one fight
@@ -425,3 +427,178 @@ the colour is one confidence tier away from claiming it.
 **Quota: 1.00 point of 3600, fully warm cache** — the two `RateLimit` reads and nothing else. The
 reading is in `.claude/skills/wcl-api/SKILL.md`. Reading the blow adds no query: `DamageTaken` is
 already fetched for every friendly across the whole fight, so §8.1's correction is free.
+
+### 8.3 Widened to eleven fights, and the premise answered (2026-09-20)
+
+§8.2 asked for a second fight and a Mythic+ run before the split's value could be called either
+way. Eleven fights were measured instead: four twenty-player raid fights across two rosters, and
+seven Mythic+ runs across five parties. **105 deaths, 1212 availability rows.**
+
+**The instrument, stated before its readings.** Counted over `<li class="...">`, which occurs in
+exactly one place in the whole template set (`_deaths.html.j2:112`). The pattern was built from a
+row read out of a rendered page first — `          <li class="ready">` — and is written
+`<li class=.([a-z]+).>`, with `.` in place of each quote, because a double-quoted grep pattern
+returns zero here on files that demonstrably contain the string. It was verified against fight 30
+before it was trusted anywhere else: 252 rows, 124/73/48/1/1/5, which is §8.2's recorded reading
+exactly. Death cards were counted the same way over `<div class="recap-availability">`, one per
+card, and gave 21 on fight 30. Every state count below was then reproduced a second time from the
+domain, by re-running `availability_at` over the cached fight, and the two instruments agree row
+for row on all eleven fights.
+
+| report | fight | path | deaths | blow resolved | rows | `held` | `faded` | `pressed` | `cooldown` | `ready` | `unseen` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `cW38jmwdnZfbHVL4` | 30 | raid | 21 | 21 | 252 | 5 | 1 | 1 | 124 | 73 | 48 |
+| `cW38jmwdnZfbHVL4` | 26 | raid | 16 | **6** | 184 | 1 | 1 | 1 | 48 | 48 | 85 |
+| `cW38jmwdnZfbHVL4` | 8 | raid | 20 | 20 | 221 | 1 | 3 | 6 | 41 | 4 | 166 |
+| `DJfap6RcYKhPGHXZ` | 7 | raid | 23 | 23 | 398 | 2 | 3 | 8 | 169 | 46 | 170 |
+| `6Kx1P9GbNXrcLdHa` | 36 | M+ | 4 | 4 | 23 | 0 | 1 | 0 | 5 | 12 | 5 |
+| `jZVQmxCaqbdKtRN8` | 2 | M+ | 5 | 5 | 30 | 0 | 0 | 2 | 11 | 8 | 9 |
+| `HpYwCAvmPFDtz1Jj` | 1 | M+ | 4 | 4 | 30 | 0 | 0 | 0 | 8 | 13 | 9 |
+| `VCGkLQtPwNRA8HhD` | 1 | M+ | 3 | 3 | 20 | 0 | 1 | 0 | 9 | 8 | 2 |
+| `G7MBJZfNakrcPvAx` | 3 | M+ | 1 | 1 | 6 | 0 | 0 | 0 | 4 | 2 | 0 |
+| `BN91L2DXKAR38mpd` | 1 | M+ | 6 | 6 | 34 | 0 | 2 | 0 | 9 | 18 | 5 |
+| `wqd4MaK6JZpztV21` | 12 | M+ | 2 | 2 | 14 | 1 | 1 | 0 | 3 | 9 | 0 |
+| **total** | | | **105** | **95** | **1212** | **10** | **13** | **18** | **431** | **241** | **499** |
+
+**Only 25 of those rows were ever refinable, and the denominator is 25, not 1212.**
+`availability_at` passes `auras`, `window` and `blow_ms` to the dying player's **own** defensives
+and to nothing else. An external's aura sits on the dying player but is keyed to the caster's
+ability id, and `resolve_aura` is scoped to one player's own `on_self` list, so externals stay
+`pressed` by construction; a consumable's `ability_id` is `None` by construction. Of the 18
+rendered `pressed` rows, **12 are externals and 4 are consumables** — outside the question
+entirely, not failures to answer it. The refinable denominator is `held` 10 + `faded` 13 + the two
+own-defensive rows that fell to the unknown = **25 presses in a death's run-up**.
+
+**The two unknowns are the two the design named, one each.** On `cW38jmwdnZfbHVL4` fight 26 a
+Protection Warrior's Shield Block reads `pressed` because that death names no killing ability at
+all, so `killing_blow_ms` had nothing to match — §8.1's softened dependency on the damage stream,
+reached for the first time. On `DJfap6RcYKhPGHXZ` fight 7 a Devastation Evoker's Verdant Embrace
+reads `pressed` because `resolve_aura` returns `None` for it: a heal that raises no self-buff is
+an ability with no aura to read, which is §3.1's other explicit unknown. Neither is a guess and
+neither is a `faded`.
+
+#### The strip can land *before* the blow, and two `faded` rows are false
+
+§8.1 asserted, from 21 deaths on one fight, that "the killing blow lands **exactly on** the strip
+timestamp". Across 105 deaths it does not always. Every `held` and `faded` row was re-checked by
+§8's own test — do several independent auras of that player end at the same instant, which is the
+death stripping them rather than each one expiring? — and the answer separates cleanly, with 7 to
+21 co-ending bands on one side and 0 or 1 on the other. Nothing sat in between.
+
+| report | fight | who | ability | says | co-ending bands | strip vs blow | true state |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `cW38jmwdnZfbHVL4` | 26 | Devastation Evoker | Obsidian Scales | `faded` | 9 | 3 ms **before** | **still up** |
+| `DJfap6RcYKhPGHXZ` | 7 | Shadow Priest | Fade | `faded` | 10 | 1 ms **before** | **still up** |
+
+Both are false accusations about real players, of exactly the class §6 puts first, arriving by the
+same mechanism §8 recorded and surviving §8.1's correction. On both, ten or so of that player's
+auras — including raid buffs hundreds of seconds long — end within 6 and 11 ms of the death, and
+the killing blow lands 1 to 3 ms *after* that instant rather than on it. `band_holding`'s closed
+interval, which §8.1 called load-bearing, is exactly one millisecond wide against a miss of one.
+
+**All 10 `held` rows are correct**: every one sits on a strip instant with the blow inside the
+band, 7 to 21 co-ending auras confirming it. **11 of the 13 `faded` rows are correct**: their
+bands end 200 ms to 4.4 s before the blow with no co-ending neighbour, and their lengths match the
+abilities' own durations or, for the absorbs, a shield eaten early. So the honest reading of the
+25 is **`held` 12, `faded` 11, unknown 2** — and the page today prints 10, 13 and 2, with two rows
+on the wrong side.
+
+**This is recorded, not fixed.** Moving the instant again is a §3.1 decision, as §8 said the first
+time, and the same objection applies to the obvious patch: a tolerance constant would need a
+number no measurement here justifies. What the residual now has is a size — 2 in 25 presses, on
+2 of 105 deaths — rather than an argument.
+
+#### The no-blow case, reached once
+
+Ten deaths in 105 resolved no killing blow, **all ten on one fight** (`cW38jmwdnZfbHVL4` 26), and
+all ten because the log itself carries `killingAbilityGameID: null` and `killerID: null` — read
+back out of the cached `Deaths` page, not inferred. They are the last ten deaths of a wipe, inside
+the final 16 s of the pull, two of them after the last damage event in the fight. The ingest is
+right and the tool is right: those deaths have no blow to read, and the one press among them says
+`pressed`. Every other fight resolved every death: 95 of 105 overall, 25 of 25 on the keystone
+path.
+
+#### `overkill` on the Mythic+ path, and why it is not the fix
+
+§8.1 named `DamageTakenEvent.overkill` as the second handle that would close the matching rule's
+residual without a magic number, and §8.2 priced it on one raid fight as exact. Measured on the
+keystone path, which §8.2 could not reach:
+
+- **25 of 25 Mythic+ deaths resolved a blow; 24 of the 25 chosen hits carry a non-zero
+  `overkill`, and in every one of those 24 it is the only overkill-carrying candidate.**
+- **The 25th is a fall death.** The blow is `Falling` (ability id 3), picked 1 ms before the
+  death and plainly right; none of the three `Falling` hits in that run carries `overkill` at all.
+  An `overkill`-keyed rule would have returned the unknown for a death the present rule resolves
+  correctly.
+- **One `overkill` value sits on a hit that killed nobody.** On `6Kx1P9GbNXrcLdHa` fight 36 a tick
+  carries `overkill` 4974 against a player whose only death was 106 s earlier, and whose health
+  readings either side of it are 7% before and 18% after. An `overkill`-keyed rule could take a
+  survived hit for a lethal one. The mechanism is not established here and is recorded as an
+  observation, not explained.
+- **The long reach the keystone path was expected to suffer from did not bite.** Its damage stream
+  spans a whole run, and the rule was asked to choose among as many as 94 candidate hits of the
+  named ability for one death — yet the worst blow-to-death gap across all 25 was **57 ms**, and
+  no pick was stale by more than 200 ms.
+- **The stale pick appeared on the raid path instead.** On `cW38jmwdnZfbHVL4` fight 26 one death
+  names an ability the player took exactly once in the fight, **2989 ms** before dying and
+  survived — 29.4M unmitigated, 19.9M of it absorbed — so the bands for that card were read at an
+  instant three seconds adrift. That card happens to carry no press, so nothing visible was
+  misstated, but §8.1's stale-hit residual is now observed rather than theoretical. Its chosen hit
+  carries no `overkill`, so `overkill` would have caught this one.
+
+**Net: `overkill` would have closed one residual and opened two.** It is a better *cross-check*
+than the rule and a worse *rule* than the rule. §8.1's suggestion that switching to it "would
+change nothing observable" held on one raid fight and does not hold here; the code should be left
+alone, and this is now a measured reason rather than an aesthetic one.
+
+#### The falsifier, answered
+
+§7: *if essentially none come back `faded`, the overstatement this design exists to correct does
+not occur in practice, and the design was not worth building.*
+
+**Eleven of 25 presses in a death's run-up had genuinely ended when the blow landed — 44%.** The
+falsifier does not fire. It is not close to firing.
+
+- **Rate against count, which §8.2 left unresolved, resolves in favour of the rate.** 13 `faded`
+  rows in 1212 is 1.1% and reads as "essentially none"; 13 in 25 presses is 52%. §8.2 could say
+  only that the two readings disagreed at 1/252 against 1/7. At 25 presses the press-rate reading
+  is no longer a small-sample artefact, and it is the one §7 was asking about: §7's "come back
+  `faded`" is a statement about presses, not about rows, because a `cooldown` or `unseen` row was
+  never a candidate for either answer. **The count reading is answering a different question.**
+- **`held` counts too, and it counts 12 times.** Every `held` row is a press this page used to
+  report as a bare `pressed` and now reports as covered. Unlike §8.2's five, these are not mostly
+  repairs of this branch's own damage: 5 of the 12 are fight 30's, already counted there, and
+  **7 are new**, on three fights and two rosters that §8's defect never touched.
+- **Independence is much better than §8.2's, and still not good.** The 25 presses come from **six
+  separate groups** — two twenty-player raid rosters and four Mythic+ parties — and from **12
+  distinct killing-blow abilities** plus one death with none, against fight 30's single mechanic.
+  Up to 18 distinct players are involved. But the clustering is real and should not be smoothed
+  over, and one of those 12 abilities is `Melee`, which is a generic rather than a mechanic: **10
+  of the 25 presses sit on just two raid-wide hits**, one on fight 30 and one on fight 8, each of
+  which killed 14 or 15 people with 10 or 11 of them inside 25 ms. `DJfap6RcYKhPGHXZ` fight 7 is
+  better behaved — 23 deaths, no two within 25 ms of each other — and `cW38jmwdnZfbHVL4` fight 26
+  better still. The six keystone presses are the most independent
+  observations in the set — six distinct abilities, four parties, runs 9 to 30 minutes long — and
+  **five of those six had genuinely faded**.
+- **The two paths disagree, and the shape of the disagreement is interesting.** Raid deaths in a
+  wipe cluster on one mechanic, and the defensive was usually pressed 2 to 7 s earlier and was
+  still up: 11 `held` against 6 genuinely `faded` across four fights. Keystone deaths are spread
+  across a run, and the press was usually 8 to 9 s earlier against a 5 to 8 s button: 1 `held`
+  against 5 `faded`. **The path nobody had looked at is the path where the split earns the most.**
+
+**The verdict: the premise holds.** A press credited as if it held when it had ended is not the
+rare case §8.2's one fight suggested — it is a little under half of all presses in a death's
+run-up, and on the keystone path it is the usual case. §1's claim is supported and §7's falsifier
+is answered in the negative. **Two things temper it and neither reverses it**: the denominator is
+25, which is small for a 44% figure, and the feature still prints two of those 25 on the wrong
+side, so the split is worth having *and* is not yet finished. §8.2's "the feature is now correct
+and its value is unproven" is superseded on both halves: the value is shown, and the correctness
+is not complete.
+
+**Quota: 219.72 points of 3600 across the hour, for all eleven fights.** Two fresh fights of the
+already-fetched raid report at 48.20 and 53.20 with the report warm and each fight's own streams
+cold; one cold fight of a new raid report at 61.22; seven keystone runs at 3.01 or 5.01 each,
+32.07 in total, because `load_run_with_auras` had already fetched every aura table they read; two
+aborted runs at 6.01 each, which spend the roster queries before they check the subject's name;
+and 4.01 for a fight-list probe. Re-reading the cache through the domain, which every check in
+this section rests on, cost nothing. The readings are in `.claude/skills/wcl-api/SKILL.md`.
