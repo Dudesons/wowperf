@@ -166,8 +166,9 @@ player has no aura table at all.
 > Siege, two 91-second raid buffs, ending 4 ms before a strip — a genuine death removal split across
 > a gap, on the leading side. **No defensive lands in a leading fragment anywhere in the cache**,
 > exactly as none lands in a trailing tail. The residual is recorded, not closed: at one or two
-> trailing abilities the count would answer `faded` too, so the two readings only diverge at three,
-> which the cache has never shown.
+> **leading** abilities the count would answer `faded` too, so position and count only diverge at
+> three, which the cache has never shown. (The sides are not mirrors, which is this paragraph's
+> whole point — the trailing side's own sizes are the paragraph above.)
 >
 > **One further behaviour change, named rather than implied.** A band ending after the strip was
 > `faded` on position before and now reaches the count, so it can answer `pressed` at 2 to 6

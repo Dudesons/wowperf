@@ -199,8 +199,13 @@ actually see. The third is deliberately left out, so the same page also carries
 a card in the not-requested state, which is the page's other `withheld` shape.
 """
 
-KILLING_BLOW_ID = 1214628
+KILLING_BLOW_ID = 1_290_516
 """The one ability id the fixture puts on the page, on the death's killing blow.
+
+Ravenous Feast, the id the cached ability dictionaries carry for the name
+this fixture gives it -- the same ability `RAVENOUS_FEAST_ID` names further
+down. It read 1214628 until 2026-09-20, which names nothing in any cached
+dictionary; the value is inert here, which is how it drifted.
 
 An id is what makes an icon resolvable at all, and `DeathCard.killing_blow_id`
 is the first thing `_icon_addresses` walks -- so the icon rules below are proved
