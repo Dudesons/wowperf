@@ -142,11 +142,10 @@ the same tree definition.
 | `src/wowperf/domain/analysis/deaths.py:202` | comment naming `analyse_defensives` follows the rename |
 | `src/wowperf/domain/report/finding_tooltip.py` | `DEFENSIVE_FAMILIES` becomes `("defensives.ceiling.",)`; docstring stops saying "two families" |
 | `src/wowperf/domain/report/ledger.py`, `raid_ledger.py` | comments stop naming `defensives.never.`; `test_raid_ledger.py:323`'s comment follows the rename |
-| `tests/domain/analysis/test_defensives.py` | `:91`, `:106` and `:381` go outright |
-| `tests/domain/analysis/test_defensives.py:316` | **rewritten, not deleted** — see below |
+| `tests/domain/analysis/test_defensives.py` | 16 of its 27 tests are touched — see §5.2 |
 | `tests/domain/analysis/test_encounter_service.py:62` | **rewritten, not deleted** — see below |
 | `tests/domain/report/test_build_observations.py`, `test_build_placement.py`, `test_ledger.py`, `test_finding_tooltip.py` | their `never` cases go |
-| `tests/adapters/render/golden/raid.html` | regenerates |
+| `tests/adapters/render/golden/*` | **unchanged** — see §5.3 |
 | `docs/how-it-works.md` | the `defensives.py` row drops "never cast" |
 | `.claude/skills/mplus-analysis/SKILL.md` | stops advertising the claim |
 
@@ -166,6 +165,42 @@ claim the fixture still supports rather than removed for convenience.
 
 **The rule for the whole task: a test may be deleted only when the behaviour it pins is the
 behaviour being removed.** A test that merely mentions `never` is not evidence of that.
+
+### 5.2 The test impact is 16 of 27, not 4
+
+Counted while writing the implementation plan, after this section first claimed four.
+
+`analyse_defensives` is the only entry point `tests/domain/analysis/test_defensives.py` has,
+and the never-cast branch is what makes it return anything for the file's Mage fixture. That
+fixture is a 100-second run, where Prismatic Barrier's ceiling is 4.0 and a single press
+clears the 0.2 fraction: **it produces no ceiling finding for any input.** Four comments in
+the file assert the opposite and are wrong.
+
+So nine tests use the retired branch as a *vehicle* while pinning something else — id
+slugging, actor disambiguation, ASCII safety, per-player independence — and six of those call
+the analyser with no casts at all.
+
+**Four of them would pass vacuously rather than fail** once the branch goes: `all(...)` over
+an empty list is `True`, and `len([]) == len(set([]))` is `0 == 0`. They would go green while
+pinning nothing.
+
+The plan therefore re-anchors them onto `defensives.ceiling.` **before** the removal, against
+a 1800-second fixture where both ceilings (72.0 and 7.5) sit far above one press. That pass is
+green-to-green and changes no production code, so the re-anchored assertions are proved
+against a tree where they can still fail.
+
+Five tests are deleted, because the behaviour they pin is the behaviour being removed. Two are
+rewritten because they assert the ceiling as well.
+
+### 5.3 No golden file changes
+
+`tests/adapters/render/golden/raid.html` carries no `defensives` content at all. Checked with
+a positive control — `grep -c 'div'` returns 118 and all seven tab ids are present on the same
+file — because a bare zero from `grep` is not trustworthy on this machine, and a zero that
+reads as a measurement is how two false statements reached a previous branch.
+
+Do not run `--golden-update` during this work. A failing golden test means something
+unplanned happened.
 
 `SKILL.md`'s "never cast it" at line 277 is the **comparison** finding, a different family.
 It is not touched.
