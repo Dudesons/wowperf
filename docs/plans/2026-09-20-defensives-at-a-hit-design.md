@@ -589,6 +589,11 @@ death stripping them rather than each one expiring? — and the answer separates
 | `cW38jmwdnZfbHVL4` | 26 | Devastation Evoker | Obsidian Scales | `faded` | 9 | 3 ms **before** | **still up** |
 | `DJfap6RcYKhPGHXZ` | 7 | Shadow Priest | Fade | `faded` | 10 | 1 ms **before** | **still up** |
 
+**Both were live on the page when this was written, and both are fixed.** §8.4 re-ran all eleven
+fights against the strip rule below and read them off the rendered pages: each now reads `held`,
+"still up", and nothing else on the eleven moved. The two rows below are the record of what the
+defect was, not of what the tool says today.
+
 Both are false accusations about real players, of exactly the class §6 puts first, arriving by the
 same mechanism §8 recorded and surviving §8.1's correction. On both, ten or so of that player's
 auras — including raid buffs hundreds of seconds long — end within 6 and 11 ms of the death, and
@@ -599,8 +604,9 @@ interval, which §8.1 called load-bearing, is exactly one millisecond wide again
 band, 7 to 21 co-ending auras confirming it. **11 of the 13 `faded` rows are correct**: their
 bands end 200 ms to 4.4 s before the blow with no co-ending neighbour, and their lengths match the
 abilities' own durations or, for the absorbs, a shield eaten early. So the honest reading of the
-25 is **`held` 12, `faded` 11, unknown 2** — and the page today prints 10, 13 and 2, with two rows
-on the wrong side.
+25 is **`held` 12, `faded` 11, unknown 2** — and the page at the time of this reading printed 10,
+13 and 2, with two rows on the wrong side. **The page now prints 12, 11 and 2**, measured live in
+§8.4.
 
 **This was recorded, not fixed.** Moving the instant again is a §3.1 decision, as §8 said the first
 time, and the same objection applies to the obvious patch: a tolerance constant would need a
@@ -687,7 +693,8 @@ Verified against the cached aura tables before the next live run, at no quota: t
 Obsidian Scales reads `held` where the blow alone reads `faded`; fight 30's Feint — one of the 11
 genuinely expired rows, on a table that does carry a real strip instant at that player's own blow —
 still reads `faded`; and fight 30's Fade, a correct `held`, is unmoved. **Re-running the eleven
-fights is the next task and this is not a substitute for it.**
+fights is the next task and this is not a substitute for it.** That was done: **§8.4 carries the
+live reading, and it matches this prediction exactly.**
 
 #### The no-blow case, reached once
 
@@ -771,14 +778,16 @@ falsifier does not fire. It is not close to firing.
 rare case §8.2's one fight suggested — it is a little under half of all presses in a death's
 run-up, and on the keystone path it is the usual case. §1's claim is supported and §7's falsifier
 is answered in the negative. **Two things temper it and neither reverses it**: the denominator is
-25, which is small for a 44% figure, and the feature still prints two of those 25 on the wrong
-side, so the split is worth having *and* is not yet finished. §8.2's "the feature is now correct
+25, which is small for a 44% figure, and the feature at the time of this reading still printed two
+of those 25 on the wrong side, so the split is worth having *and* was not yet finished. (The second
+is closed: §8.4 measured 0 wrong of 23 resolved. The first stands.) §8.2's "the feature is now correct
 and its value is unproven" is superseded on both halves: the value is shown, and the correctness
 is not complete.
 
 > **The second of those two is now addressed in code** — see "Fixed, by the discriminator this
-> section measured" above — and remains unconfirmed on a live run until the eleven fights are
-> measured again. The first stands: the denominator is still 25.
+> section measured" above — and **§8.4 confirms it on a live re-run of all eleven fights**: the
+> page prints `held` 12, `faded` 11, `pressed` 2, and every one of the 23 resolved rows is correct.
+> The first stands: the denominator is still 25.
 
 **Quota: 219.72 points of 3600 across the hour, for all eleven fights.** Two fresh fights of the
 already-fetched raid report at 48.20 and 53.20 with the report warm and each fight's own streams
@@ -787,3 +796,149 @@ cold; one cold fight of a new raid report at 61.22; seven keystone runs at 3.01 
 aborted runs at 6.01 each, which spend the roster queries before they check the subject's name;
 and 4.01 for a fight-list probe. Re-reading the cache through the domain, which every check in
 this section rests on, cost nothing. The readings are in `.claude/skills/wcl-api/SKILL.md`.
+
+### 8.4 The strip rule confirmed against the eleven fights (2026-09-20)
+
+§8.3 fixed the two false `faded` rows in code and verified the fix against the cached aura tables
+only, closing with *"re-running the eleven fights is the next task and this is not a substitute for
+it"*. This is that run. Same eleven fights, same commands, `--no-compare` throughout, cache fully
+warm.
+
+**The instrument, again stated before its readings.** Counted over `<li class=.[a-z]*.>` — `.` in
+place of each quote, because a double-quoted grep pattern returns zero here on files that
+demonstrably contain the string — built from a row read out of the freshly rendered fight 30 page
+first, `          <li class="ready">`, and confirmed against the same file through a second grep
+engine that is unaffected by the quoting defect. Both agree. Fight 30 read 252 rows,
+124/73/48/1/1/5, which is §8.2's recorded reading to the row, so the instrument was checked against
+a known answer before it was trusted on the other ten. Death cards were counted over
+`<div class=.recap-availability.>`. **Every count below was then reproduced a second time from the
+domain**, by re-running `availability_at` over each cached fight with the same `killing_blow_ms`
+the report builder passes, and the two instruments agree row for row on all eleven fights and on
+all six states.
+
+| report | fight | path | deaths | blow resolved | rows | `held` | `faded` | `pressed` | `cooldown` | `ready` | `unseen` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `cW38jmwdnZfbHVL4` | 30 | raid | 21 | 21 | 252 | 5 | 1 | 1 | 124 | 73 | 48 |
+| `cW38jmwdnZfbHVL4` | 26 | raid | 16 | 6 | 184 | **2** | **0** | 1 | 48 | 48 | 85 |
+| `cW38jmwdnZfbHVL4` | 8 | raid | 20 | 20 | 221 | 1 | 3 | 6 | 41 | 4 | 166 |
+| `DJfap6RcYKhPGHXZ` | 7 | raid | 23 | 23 | 398 | **3** | **2** | 8 | 169 | 46 | 170 |
+| `6Kx1P9GbNXrcLdHa` | 36 | M+ | 4 | 4 | 23 | 0 | 1 | 0 | 5 | 12 | 5 |
+| `jZVQmxCaqbdKtRN8` | 2 | M+ | 5 | 5 | 30 | 0 | 0 | 2 | 11 | 8 | 9 |
+| `HpYwCAvmPFDtz1Jj` | 1 | M+ | 4 | 4 | 30 | 0 | 0 | 0 | 8 | 13 | 9 |
+| `VCGkLQtPwNRA8HhD` | 1 | M+ | 3 | 3 | 20 | 0 | 1 | 0 | 9 | 8 | 2 |
+| `G7MBJZfNakrcPvAx` | 3 | M+ | 1 | 1 | 6 | 0 | 0 | 0 | 4 | 2 | 0 |
+| `BN91L2DXKAR38mpd` | 1 | M+ | 6 | 6 | 34 | 0 | 2 | 0 | 9 | 18 | 5 |
+| `wqd4MaK6JZpztV21` | 12 | M+ | 2 | 2 | 14 | 1 | 1 | 0 | 3 | 9 | 0 |
+| **total** | | | **105** | **95** | **1212** | **12** | **11** | **18** | **431** | **241** | **499** |
+
+**The predicted fixed point is hit exactly: `held` 12, `faded` 11, `pressed` 2 of the 25 refinable
+presses.** Two rows moved and nothing else did. Every other cell in the table — 105 deaths, 95
+blows, 1212 rows, and the `pressed`, `cooldown`, `ready` and `unseen` columns entire — is identical
+to §8.3's, which is the stronger half of the result: a rule that reaches back through a player's
+whole aura table could have moved a great deal and moved two rows.
+
+| report | fight | who | ability | §8.3 said | says now | the page's words |
+| --- | --- | --- | --- | --- | --- | --- |
+| `cW38jmwdnZfbHVL4` | 26 | Devastation Evoker | Obsidian Scales | `faded`, false | **`held`** | "6.1 s before death, still up" |
+| `DJfap6RcYKhPGHXZ` | 7 | Shadow Priest | Fade | `faded`, false | **`held`** | "8.8 s before death, still up" |
+
+Both reach `held` by the new route and not by the old one: their bands end 1 and 2 ms *before* the
+blow, inside a strip instant holding 10 and 11 of that player's abilities. `band_holding` still
+answers `None` for both, exactly as §8.3 measured. The two false accusations §8.3 left live are
+withdrawn.
+
+#### The audit: 23 of 23 resolved rows are right, and 0 are false in either direction
+
+Every `held` and every `faded` row was re-checked by §8.3's own discriminator — do several
+*independent* auras of that player end at the same instant, which is the death stripping them, or
+does the band end alone at a length that matches the ability's own duration?
+
+**All 12 `held` rows are correct.** Ten are answered by `band_holding`: the blow lands exactly on
+the band's upper boundary, so the aura table itself says the aura was up, with no inference at all.
+Two are answered by the strip. Co-ending abilities at the band's end, across all twelve: **8, 9, 10,
+10, 10, 10, 11, 11, 12, 12, 18, 22** — every one inside the stripped cluster, none near its edge
+from below except the 8, which is a keystone death whose blow `band_holding` answered anyway.
+
+**All 11 `faded` rows are correct.** Their bands end **200 ms to 4437 ms** before the blow, and the
+co-ending count at each band's end is **0 eight times and 1 three times** — the expired cluster
+exactly, with nothing in between, which is §8.3's separation reproduced on a second reading. The
+band lengths are the abilities' own: Divine Shield 8005 and 8010, Divine Protection 8009, Spell
+Reflection 4995, 4998 and 5014, Dark Pact 3988, Feint 6013, Ice Barrier 2411, Prismatic Barrier
+18984, and one Feint band of 11512 ms where two casts touch. Nine of the eleven are settled on
+position — their band ended before the death's strip — and two on the count, on deaths that produced
+no qualifying strip at all.
+
+**The two `pressed` rows are the same two unknowns §8.3 named**, unchanged and neither a guess: a
+Protection Warrior's Shield Block on `cW38jmwdnZfbHVL4` fight 26, where the log carries
+`killingAbilityGameID: null` so there is no blow to read; and a Devastation Evoker's Verdant Embrace
+on `DJfap6RcYKhPGHXZ` fight 7, a heal that raises no self-buff, so `resolve_aura` returns `None`.
+
+**Genuinely false rows: 0 of 23 resolved, in either direction.** No false `faded`, which is §6's
+first failure mode, and no false `held`, which is its second.
+
+#### The four residuals, hunted in the wild
+
+All four were left on record by §8.3 and none had been seen live. Two have now been seen in their
+*shape* and neither has produced a wrong row.
+
+- **The unbounded reach-back: its precondition fired five times, and it cost nothing.** On 5 of the
+  105 deaths the death's own removal did not qualify and `strip_instant` walked back to an older
+  pile-up: 64 s, 77 s, 81 s, 348 s and **1777 s** — nearly half an hour — before the death. This is
+  the shape §8.3 searched the cache for and did not find, and it is real. **It misstated nothing,
+  because none of those five death cards carries a press in its run-up at all**, so no band was
+  read against a reached-back instant. The residual is now *observed* rather than theoretical, and
+  its price on these eleven fights is still zero. It should not be read as harmless; it was
+  unexercised.
+- **A strip split across more than 1 ms with a short tail: the shape occurred 6 times, and no
+  defensive was in a tail.** Six deaths show a qualifying run followed within 60 ms by a further
+  band end, every one of them a tail of exactly **1** ability (gaps of 2, 3, 7, 11, 11 and 21 ms).
+  No `held` or `faded` row's band ends in one of those tails — every faded band ended before its
+  death's strip and every held band inside it — so the false `faded` this residual describes did not
+  occur. Strip widths themselves: 38 instants 0 ms wide, 32 one, 3 two, 1 four.
+- **The `faded`→`pressed` class did not fire.** No rendered row reached the co-ending count with a
+  value above the expired edge. The 0.87% measured over the cached tables was not visible on any of
+  the 105 death cards.
+- **The 2-to-6 no-man's land did not fire either, and came within one row of it.** No row answered
+  `pressed` by that route. The near miss is the fight 26 Shield Block above: its band ends 24 ms
+  before the death with **6** co-enders, squarely in the no-man's land — but the death names no
+  killing ability, so the row answers `pressed` at the first guard for a different reason, and the
+  fifth route was not the one that spoke. The route remains fixture-only.
+
+**A fifth thing this run measured, which §8.3 did not, and which matters more than any of the four.**
+`strip_instant` found no qualifying instant on **31 of the 105 deaths**, and the latest instant on
+those 31 held **1, 2, 5, 6 or 7** abilities — **eleven of them exactly 7**, one short of the
+`STRIPPED_CO_ENDING_ABILITIES` edge, and most of them 1 to 30 ms before the death, which is a
+death strip's timing exactly. So the edge that §8.3 took from the bottom of its measured cluster
+declines to call roughly a third of these deaths' removals a strip. Nothing here says the edge is
+wrong — §8.3's expired cluster tops out at 1 co-ender, and a 7-ability instant is not that either,
+which is why a defensive ending inside one answers `pressed` rather than `faded`. The two `faded`
+rows that sit on such deaths are both correct, their bands having ended a full second earlier with
+0 co-enders. But the honest statement is that **the rule is silent on a third of these deaths rather
+than right about them**, and the three deaths whose latest instant holds only 2 abilities are the
+shape that would read `faded` if a defensive ended there. None did.
+
+**`overkill` and the stale pick are unchanged.** 95 of 105 blows resolved, the ten unresolved all on
+`cW38jmwdnZfbHVL4` fight 26 and all `killingAbilityGameID: null`, exactly as §8.3 recorded. The
+blow-to-death gap ran **0 to 57 ms on 94 of the 95**, and 2989 ms on the one stale pick §8.3 already
+names — a Blood Death Knight on fight 26 whose death names an ability taken once, three seconds
+earlier, and survived. That card still carries no press, so §8.1's stale-hit residual still
+misstates nothing.
+
+#### What this settles and what it does not
+
+**Settles**: the strip rule is correct on every row it answered across eleven fights, two paths, six
+groups and 105 deaths; the two false accusations are withdrawn; and the rule moved exactly the two
+rows it was predicted to move and no others.
+
+**Does not settle**: the denominator is still 25 presses, which §8.3's concern already stated and
+this run does not improve; the reach-back has now been seen reaching 1777 s and has simply not been
+asked a question yet; and the `>= 8` edge is silent on 31 of 105 deaths, eleven of them by one
+ability. None of these is a reason to add the tolerance constant this design has refused four times.
+They are the size of what is left.
+
+**Quota: 1.00 point per run as each command priced it, 22.00 of 3600 across the hour for all
+eleven, on a fully warm cache.** Every run printed `RateLimit` 2 calls for 1.00 and no other line —
+four `raid` commands and seven `analyze` commands, all `--no-compare`. The two figures differ
+because the closing quota read is unpriced: the balance fell by exactly 2.00 per run, 3600 to 3578.
+Re-reading the eleven cached fights through the domain for the audit and the residual scan, several
+times each, cost nothing. The readings are in `.claude/skills/wcl-api/SKILL.md`.

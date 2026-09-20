@@ -276,6 +276,19 @@ One approximation and three measurements:
   `load_encounter` / `load` plus `load_*_with_auras`, several times each, spent nothing beyond the
   `RateLimit` read taken to confirm it: the hour's total closed at 219.72 points of 3600 against
   218.72 accounted for by the commands. An analysis script that walks cached fights costs no quota.
+- **The same eleven fights re-run the next hour against a fully warm cache: 1.00 point each as the
+  command prices it, 2.00 each as the hour counts it, 22.00 of 3600 for all eleven** (2026-09-20,
+  reports `cW38jmwdnZfbHVL4` fights 30, 26 and 8, `DJfap6RcYKhPGHXZ` fight 7, and the seven
+  keystone runs, the confirmation run in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` section 8.4). Every run printed
+  `RateLimit` 2 calls for 1.00 and **no other line at all** -- four raid commands and seven
+  `analyze` commands alike, all `--no-compare`. **The two figures differ because the closing quota
+  read is unpriced**: a query's cost is known only once the next one runs, so each command reports
+  its opening read and not its closing one, while the remaining balance fell by exactly 2.00 per
+  run (3600 to 3578 across the eleven). Quote the 2.00 when planning an hour and the 1.00 when
+  reading a command's own output. Nothing had expired: the 24-hour tier entries fetched earlier the
+  same day were still inside their day, so a same-day re-run of a twenty-player raid fight still
+  costs the quota reads and nothing more, twenty aura tables included.
 
 ## Every query reports its own cost
 
