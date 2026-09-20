@@ -218,6 +218,21 @@ One approximation and three measurements:
   worktree. This reading therefore prices what Layer 2 adds on top of an otherwise-warm cache, not
   a cold run of the whole command -- the 45.25-point wipe reading above, from before `damage_matrix`
   existed, remains the figure for a genuinely cold fetch of this shape.
+- **`wowperf raid` on the canonical wipe with the roster aura fetch, one subject, cache warm for
+  the fight's own data and cold for everything the 24-hour tier had let expire: 56.66 points of
+  3600** (2026-09-20, report `cW38jmwdnZfbHVL4`, fight 30, live verification of
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md`). Composed as the command printed it:
+  `Healing` 21 calls for 21.00, `AuraTable` 20 calls for 20.00, `ReportRankings` 2 calls for 4.00,
+  `AbilityTakenTable` 2 calls for 2.45, `Talents` 1 call for 2.20, `EncounterKillRankings` 1 call
+  for 1.01, then `Casts`, `DamageDoneGraph`, `EnemyCasts`, `Interrupts` and `Resurrects` at 1.00
+  each, and `RateLimit` 2 calls for 1.00. **The `AuraTable` line is what this design adds: one
+  table per roster player, twenty players, 1.00 point each** -- the plan had estimated 1.06 each,
+  so the measured cost is slightly below the estimate and about 20 points for a twenty-player
+  fight. The other lines are not this design's doing: the 2026-09-19 reading above priced the same
+  fight at 5.18 with the same fixture, and the difference is the day-tier entries expiring
+  overnight, not new work. **Re-run immediately against the now-warm cache: 1.00 point** -- the
+  two `RateLimit` reads and nothing else, which is the warm one-subject raid figure already
+  recorded above, unchanged by the twenty extra tables now on disk.
 
 ## Every query reports its own cost
 

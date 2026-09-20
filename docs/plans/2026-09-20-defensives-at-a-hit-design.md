@@ -192,3 +192,60 @@ could: of the presses the card labels `pressed` today, how many are `held` and h
 The falsifier is stated here so it cannot be rationalised later: **if essentially none come back
 `faded`, the overstatement this design exists to correct does not occur in practice, and the
 design was not worth building.** That result is to be recorded, not explained away.
+
+---
+
+## 8. What the live run found (2026-09-20)
+
+Measured on the canonical wipe, report `cW38jmwdnZfbHVL4` fight 30, twenty players and
+twenty-one deaths. Counted over the rendered page's availability rows, `<li class="...">`:
+
+| state | rows |
+| --- | --- |
+| `cooldown` | 124 |
+| `ready` | 73 |
+| `unseen` | 48 |
+| `faded` | 6 |
+| `pressed` | 1 |
+| `held` | **0** |
+
+**The falsifier did not fire, but the result does not vindicate the build either, because five of
+the six `faded` rows are false.** Checked press by press against the bands they were judged from:
+
+| ability | cast before death | its band ran | band ended before the death | true state |
+| --- | --- | --- | --- | --- |
+| Ice Barrier | 2149 ms | 2115 ms | 34 ms | still up |
+| Astral Shift | 3321 ms | 3273 ms | 48 ms | still up |
+| Fade | 8399 ms | 8344 ms | 55 ms | still up |
+| Shield Block | 7030 ms | 7015 ms | 15 ms | still up |
+| Shield Wall | 2803 ms | 2788 ms | 15 ms | still up |
+| Feint | 9609 ms | 6013 ms | 3596 ms | **genuinely faded** |
+
+**Root cause: an aura band is truncated by the death that ends it.** A buff a player is carrying
+when they die is stripped by the death, and Warcraft Logs timestamps that strip 15-55 ms *before*
+the death event's own timestamp. §3.1 asks `band_holding` whether a band covers `death_ms`
+exactly, so for any defensive that was in fact up at the moment of death the answer is
+structurally `None`. The Protection Warrior settles it: Shield Wall and Shield Block, two
+independent auras, both end at the identical timestamp `9997398` against a death at `9997413`,
+and that Shield Wall band is 2788 ms long against an eight-second ability. It did not expire; it
+was cut off.
+
+So `held` is very nearly unreachable for the dying player's own defensives, and the page prints
+"over by then" over a Shield Wall the same page's tooltip credits with mitigating 85% of what
+arrived while it was up. This is §6's first failure mode — *"An unresolved ability reading as
+`faded`. A false accusation, which is the thing this analyser most has to avoid"* — arriving by a
+route §6 did not anticipate: not an unresolved ability, but a resolved one whose band the death
+itself foreshortened.
+
+**On the premise.** Corrected for the defect, exactly **one** of the six resolvable presses had
+genuinely faded when the blow landed. The overstatement this design exists to correct is
+therefore real but uncommon — one press in six on this fight, not the routine case §1 implies.
+That is a thinner mandate than the design assumed, and a second fight should be measured before
+concluding the split earns its cost. The `pressed` row is a consumable, whose `ability_id` is
+`None` by construction, so it is the designed unknown behaving correctly.
+
+**Status: not fit to ship as built.** The fix is not a tolerance constant. The design's own title
+and §6 speak of *the blow*, and `_press_state` should ask whether the band covered the killing
+blow rather than the death event that strips it — an instant that lands inside the band for all
+five misjudged presses and outside it for Feint, with no magic number. That changes which instant
+§3.1 names, so it is a design decision and is recorded here rather than taken unilaterally.
