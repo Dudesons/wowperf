@@ -1,8 +1,14 @@
 # ABOUTME: Behaviour tests for clipping one aura's bands to a drawing's window.
 # ABOUTME: Every edge a band can take against a window: before, after, straddling, touching.
 
-from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
-from wowperf.domain.report.cover import band_holding, clipped_bands, resolve_aura
+from wowperf.domain.auras import (
+    Aura,
+    AuraBand,
+    PlayerAuras,
+    band_holding,
+    clipped_bands,
+    resolve_aura,
+)
 
 
 def test_a_band_is_clipped_to_the_window_rather_than_counted_whole() -> None:

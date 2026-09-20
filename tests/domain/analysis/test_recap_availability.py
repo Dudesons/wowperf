@@ -63,7 +63,7 @@ def _auras_with_band(ability_id: int, name: str, start_ms: int, end_ms: int) -> 
 # player was carrying timestamped at that same 9997398. That 15 ms is the whole
 # subject -- a band that ends before the death and at or after the blow.
 
-BLOW_ID = 1_214_063
+BLOW_ID = 1_309_919  # Frigid Roar, the id the ability dictionaries carry
 OTHER_ID = 999_999
 BLOW_MS = 9_997_398
 DEATH_MS_AT_THE_BLOW = 9_997_413
@@ -499,6 +499,105 @@ def test_a_second_press_after_the_strip_does_not_throw_the_strip_away() -> None:
     assert state.state == HELD
     # `seconds` still counts from the latest press, which is untouched by this.
     assert state.seconds == 0.004
+
+
+def test_an_instant_straddling_the_first_press_cannot_claim_a_band_before_it() -> None:
+    """The clamp's only shape, and the reason it is a clamp and not a wider search.
+
+    `strip_instant` breaks at instant granularity, so an instant that *starts*
+    before the earliest run-up press survives the floor -- the whole instant
+    does, not the part of it after the press. Here it spans 6987475 to 6987478,
+    four milliseconds, the widest any instant in the cached tables has ever
+    been; the press is at 6987477 and the band ends at 6987476, one millisecond
+    before it. Matching on the instant's first millisecond would credit a band
+    that provably predates its press, which is the 1777-second defect at a
+    millisecond's scale.
+
+    **It answers `pressed`, not `faded`.** The instant qualifies, so the count
+    it falls to is the whole instant's -- ten co-enders, far above the expired
+    cluster -- and the row goes silent rather than accusing. That is the trade
+    the clamp makes in both directions: a genuine strip straddling the first
+    press is silenced too, and neither error can print "over by then".
+    """
+    straddling = (*STRIPPED_BANDS, (381749, "Blessing of the Bronze", 6_987_478, 218_242))
+    table = a_table(*straddling)
+
+    state = state_of(
+        _presses(SCALES, at_ms=6_987_477), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == PRESSED
+
+
+def test_a_band_ending_just_before_the_strip_is_condemned_on_position() -> None:
+    """The leading side, which is deliberately not the mirror of the trailing one.
+
+    A band ending after the strip falls to the count and can answer `pressed`;
+    a band ending *before* it is `faded` on position, with the count never
+    consulted. That asymmetry is a decision, not an oversight, and this pins it:
+    without the position branch the three co-enders here would answer `pressed`.
+
+    Measured over the 133 cached tables, the leading side is as real as the
+    trailing one: **13 qualifying strips are preceded by a band end 2 to 60 ms
+    earlier, 5 of them within 15 ms** -- counting runs of seven abilities or
+    more, the population section 3.1 uses throughout; at the qualifying floor of
+    eight it is 11 and 3. Every one of those fragments holds a single ability
+    except one, which holds two. **This fixture holds three**, one more than the
+    cache has ever shown, because at one or two the count answers `faded` as
+    well and the two readings cannot be told apart. Making the sides symmetric
+    would need a width in milliseconds, which is the tolerance refused four
+    times over.
+    """
+    leading = tuple(
+        (ability_id + 1, name, 6_987_471, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:2]
+    )
+    table = a_table(
+        *_without_the_defensive(), *leading,
+        (SCALES, "Obsidian Scales", 6_987_471, SCALES_LENGTH),
+    )
+
+    state = state_of(
+        _presses(SCALES, at_ms=6_987_471 - SCALES_LENGTH), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == FADED
+
+
+def test_a_band_before_an_ancient_strip_is_not_condemned_by_it() -> None:
+    """The floor's other half: without it an ancient instant can accuse, not just credit.
+
+    `test_an_ancient_strip_cannot_claim_a_press_from_the_run_up` covers a band
+    ending *inside* a reached-back instant, and the clamp happens to catch that
+    one too. This covers a band ending *before* it, which only the floor
+    catches: unbounded, the search selects the ancient instant, the band ends
+    before it, and the position branch answers `faded` -- an accusation sourced
+    from an instant half an hour away. Bounded, no instant is in reach and the
+    band's own two co-enders put it in the no-man's land, where it belongs.
+    """
+    ancient_ms = EVOKER_DEATH_MS - 1_777_000
+    older_ms = EVOKER_DEATH_MS - 1_800_000
+    ancient = tuple(
+        (ability_id + 1, name, ancient_ms, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    beside = tuple(
+        (ability_id + 2, name, older_ms, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:2]
+    )
+    table = a_table(*ancient, *beside, (SCALES, "Obsidian Scales", older_ms, SCALES_LENGTH))
+
+    state = state_of(
+        _presses(SCALES, at_ms=EVOKER_DEATH_MS - 5_000), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == PRESSED
 
 
 def test_a_death_whose_blow_never_reached_the_stream_stays_pressed() -> None:

@@ -146,7 +146,7 @@ def test_the_ability_panel_clips_its_cover_at_the_fights_end() -> None:
 
 # --- the blow, on the raid path -----------------------------------------------
 
-FRIGID_ROAR_ID = 1_214_063
+FRIGID_ROAR_ID = 1_309_919
 RAID_DEATH_MS = 1_300_000
 RAID_BLOW_MS = 1_299_985
 

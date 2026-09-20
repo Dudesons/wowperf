@@ -68,7 +68,10 @@ a defensive active, so most presses the card credits today did not hold.
 
 ### 3.1 The aura table, which already knows
 
-Two functions in `report/cover.py` answer this between them, and both already exist:
+Two functions answer this between them, and both already exist. They were written in
+`report/cover.py`; they live in `domain/auras.py`, beside the models they read, because
+`analysis` importing `report` inverts the layering. The re-export shim left behind at the move is
+gone, so that import path cannot come back by habit.
 
 - **`resolve_aura(auras, ability_id, ability_name)`** finds the player's own aura for a cast, by
   id first and by name second. The aura table is keyed by the id of the *buff*, while
@@ -147,6 +150,24 @@ player has no aura table at all.
 > not found: across all 133 cached tables and all 163 qualifying instants, **no defensive band spans
 > a qualifying strip and ends after it**, at window widths of 60 ms, 1 s and 5 s. The region is empty
 > in real data, which is why the fixed point did not move when this changed.
+>
+> **The leading side is the same shape and the worse residual, and only the trailing side was
+> measured until now.** A band ending *before* the strip is `faded` on position, with the count never
+> consulted — the asymmetry is deliberate, because letting it fall to the count needs a width in
+> milliseconds and that is the refused tolerance. But a genuine removal logged across a gap has a
+> leading fragment as readily as a trailing tail, and a defensive in one would print "over by then":
+> **§6's first failure mode, and with no route to the honest unknown, where the trailing case has
+> one.**
+>
+> Measured backward over the same 133 tables: **13 qualifying strips are preceded by a band end 2 to
+> 60 ms earlier, 5 of them within 15 ms** — counting runs of seven abilities or more, the population
+> used above; at the qualifying floor of eight it is 11 and 3. The fragments hold **one ability 12
+> times and two abilities once**, and that two-ability case is Blessing of the Bronze and Unrelenting
+> Siege, two 91-second raid buffs, ending 4 ms before a strip — a genuine death removal split across
+> a gap, on the leading side. **No defensive lands in a leading fragment anywhere in the cache**,
+> exactly as none lands in a trailing tail. The residual is recorded, not closed: at one or two
+> trailing abilities the count would answer `faded` too, so the two readings only diverge at three,
+> which the cache has never shown.
 >
 > **One further behaviour change, named rather than implied.** A band ending after the strip was
 > `faded` on position before and now reaches the count, so it can answer `pressed` at 2 to 6
@@ -301,6 +322,20 @@ nothing downstream changes shape.
 `held` and `faded` are **measured**, read off the aura table's own bands. Worth stating because
 the neighbouring `ready` and `cooldown` states are inferred, and the card now carries both kinds
 at once.
+
+> **Amended by §3.1's strip rule (2026-09-20). This paragraph was written before that rule existed
+> and it is no longer true of every row.** A `held` or `faded` read from a band that covers the
+> killing blow outright is measured, and most are. A `held` read from a band that *ends at the
+> instant the death stripped the player's auras* is **inferred**: the band does not cover the blow,
+> and what supplies the rest is a count of co-ending abilities against a threshold, with a
+> documented false-credit mode when an older mass removal inside the run-up is taken for the
+> death's. **Two of the twelve `held` rows §8.4 measured live are of that second kind** — the two
+> this branch corrected — and they are inferences, not readings.
+>
+> The distinction matters here more than most places, because this repository treats
+> measured/derived/inferred as an invariant and a finding without an honest badge is a bug. The
+> badge the page prints is out of this design's scope to change; what §5 must not do is call the
+> whole state measured when part of it is not. §8.3 and §8.4 carry the detail.
 
 **No change to `data/defensives.toml`.** §3.1's name fallback is what makes that true, and it is
 worth saying out loud because the first draft of this design specified two new columns and ten

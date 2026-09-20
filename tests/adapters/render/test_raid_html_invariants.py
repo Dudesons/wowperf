@@ -1702,7 +1702,7 @@ def test_a_report_with_no_alive_chart_draws_none_of_it() -> None:
     assert "How the attempt went" not in html
 
 
-RAVENOUS_FEAST_ID = 1_214_063
+RAVENOUS_FEAST_ID = 1_290_516
 """The ability the deaths below name as their killing blow."""
 
 

@@ -26,11 +26,10 @@ from wowperf.domain.analysis.recap import (
     window_start,
 )
 from wowperf.domain.analysis.roster import display_names
-from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
 from wowperf.domain.events import Death
 from wowperf.domain.fight import LoadedFight
 from wowperf.domain.findings import Confidence
-from wowperf.domain.report.cover import band_holding, resolve_aura
 from wowperf.domain.report.frame import badge_for, format_seconds, plural
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (

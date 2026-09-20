@@ -742,7 +742,7 @@ def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_win
 # has always filled `auras` for every roster player, so a keystone run's death
 # cards carry the same judgement a raid's do and the same defect they carried.
 
-FRIGID_ROAR_ID = 1_214_063
+FRIGID_ROAR_ID = 1_309_919
 MPLUS_DEATH_MS = 60_000
 MPLUS_BLOW_MS = 59_985
 
