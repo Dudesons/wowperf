@@ -2,6 +2,7 @@
 # ABOUTME: with an upper bound, or never seen. Each doubt resolves toward saying less.
 
 from tests.domain.analysis.test_recap_timeline import DUDE, a_death
+from tests.domain.test_auras import STRIPPED_BANDS, a_table
 from wowperf.adapters.config.toml import load_consumables
 from wowperf.domain.analysis.recap import (
     COOLDOWN,
@@ -171,6 +172,264 @@ def test_a_defensive_that_lapsed_before_the_blow_reads_faded() -> None:
     )
 
     assert state.state == FADED
+
+
+# --- the strip that lands before the blow -------------------------------------
+#
+# Design section 8.3's worked example, report cW38jmwdnZfbHVL4 fight 26. The
+# death is at 6987482 and the killing blow at 6987479, but the strip of ten of
+# that player's auras is timestamped 6987475 to 6987477 -- two to three
+# milliseconds BEFORE the blow rather than on it, as section 8.1 had asserted
+# from one fight. The defensive's band therefore ends before the blow, asking
+# `band_holding` about the blow alone answers None, and the card printed "over
+# by then" over an ability that was up when the blow landed.
+
+EVOKER_BLOW_MS = 6_987_479
+EVOKER_DEATH_MS = 6_987_482
+EVOKER_WINDOW = (6_900_000, 7_000_000)
+SCALES = 363916
+SCALES_LENGTH = 6_130
+# The band's own start is the press: 6987476 - 6130.
+SCALES_PRESSED_MS = 6_981_346
+
+
+def _without_the_defensive() -> tuple[tuple[int, str, int, int], ...]:
+    return tuple(row for row in STRIPPED_BANDS if row[0] != SCALES)
+
+
+def test_a_defensive_stripped_before_the_blow_reads_held() -> None:
+    """The two false accusations this change exists to withdraw.
+
+    Nine of this player's other auras end in the same two milliseconds, two of
+    them raid buffs over 218 seconds long, which cannot all have expired
+    naturally together. That instant is the death removing them, so the
+    ability was up when the blow landed three milliseconds later.
+    """
+    state = state_of(
+        _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*STRIPPED_BANDS),
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == HELD
+    # Untouched: still how long before the *death* the button was pressed.
+    assert state.seconds == 6.136
+
+
+def test_a_defensive_that_lapsed_before_the_strip_still_reads_faded() -> None:
+    """The strip is not an amnesty, and this is the shape that proves it.
+
+    The same death, the same nine co-enders at the same strip, but this
+    defensive's band ended 200 ms before the blow -- the closest any genuinely
+    expired band came to a blow across section 8.3's eleven fights. Counting
+    co-enders anywhere between the band's end and the blow would find all nine
+    of them and call this held; so would widening `band_holding` by enough
+    milliseconds to cover the real strip. Both answers are false accusations
+    in the other direction.
+    """
+    lapsed = (*_without_the_defensive(),
+              (SCALES, "Obsidian Scales", EVOKER_BLOW_MS - 200, SCALES_LENGTH))
+
+    state = state_of(
+        _presses(SCALES, at_ms=EVOKER_BLOW_MS - 200 - SCALES_LENGTH), "Obsidian Scales",
+        30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*lapsed),
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == FADED
+
+
+def test_a_count_between_the_two_clusters_answers_pressed() -> None:
+    """The honest unknown, and the one row that tells this rule from a tolerance.
+
+    Four of this player's abilities end together at the real strip -- the same
+    four rows `test_auras.py` reads, at the same real death and blow -- which
+    is three beside Obsidian Scales. Three is above the expired cluster's 1 and
+    below the stripped cluster's 7, so nothing measured here says whether the
+    death removed the aura or it ran out, and §5's explicit unknown is the
+    answer. A few-millisecond tolerance on the interval would say `held`, since
+    the band ends 3 ms before the blow; the measured rule refuses to guess.
+    """
+    state = state_of(
+        _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*STRIPPED_BANDS[:4]),
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == PRESSED
+
+
+def test_the_top_of_the_expired_cluster_still_reads_faded() -> None:
+    """One ability ending beside it is an expiry measured, not a doubt.
+
+    Re-derived in the unit the code counts: the rows section 8.3 calls
+    genuinely expired, matched in the cached tables by the band lengths it
+    records, carry 0 co-ending abilities 15 times and 1 co-ending ability 20
+    times, and never more. One neighbour is still inside that cluster, so the
+    aura table's own reading stands rather than being replaced by a doubt.
+    """
+    table = a_table(
+        (1287771, "Rune of Masterful Cunning", 6_987_476, 30_758),
+        (SCALES, "Obsidian Scales", 6_987_476, SCALES_LENGTH),
+    )
+
+    state = state_of(
+        _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == FADED
+
+
+def test_an_older_pile_up_of_endings_is_not_this_deaths_strip() -> None:
+    """Auras end together for reasons besides dying, and only the last instant answers.
+
+    A keystone party leaving combat drops a dozen procs at once. Here a dozen
+    of this player's auras end four seconds before the death with the
+    defensive's band among them, and the death strips what was left three
+    milliseconds before the blow. The ability was down for those four seconds
+    and the page must keep saying so.
+    """
+    pile_up_ms = EVOKER_DEATH_MS - 4_000
+    older = tuple(
+        (ability_id + 1, name, pile_up_ms, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    table = a_table(
+        *_without_the_defensive(), *older,
+        (SCALES, "Obsidian Scales", pile_up_ms, 3_000),
+    )
+
+    state = state_of(
+        _presses(SCALES, at_ms=pile_up_ms - 3_000), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == FADED
+
+
+def test_a_reach_back_past_a_small_death_credits_the_older_strip() -> None:
+    """The rule's recorded residual, pinned rather than left to be discovered.
+
+    The anchor is the latest instant that *is* a strip. When the death's own
+    removal is too small to qualify -- three abilities here, against a player
+    who normally carries a dozen -- the search keeps walking back, and an older
+    pile-up four seconds earlier answers in its place. The defensive ends at
+    that pile-up, so it reads `held` for an instant that was not this death's.
+
+    **That is a false `held`, and it is the answer the measurement gives.** The
+    discriminator reads shape, and a pull-end proc drop has a death strip's
+    shape exactly; only position could tell them apart, and position can only
+    rule an older instant out when a later one qualifies. Distinguishing them
+    otherwise needs a look-back bound in milliseconds, which is the unjustified
+    constant this design has refused three times. Searched for in the cache and
+    not found: across 163 qualifying instants in 113 of the 133 tables, none
+    falls inside any of the 35 identifiable genuinely expired bands.
+    """
+    pile_up_ms = EVOKER_DEATH_MS - 4_000
+    older = tuple(
+        (ability_id + 1, name, pile_up_ms, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    small_death = tuple(
+        (ability_id + 2, name, 6_987_476, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:3]
+    )
+    table = a_table(*older, (SCALES, "Obsidian Scales", pile_up_ms, 3_000), *small_death)
+
+    state = state_of(
+        _presses(SCALES, at_ms=pile_up_ms - 3_000), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == HELD
+
+
+def test_a_band_spanning_a_strip_but_ending_before_the_blow_is_not_held() -> None:
+    """Ending at the strip is the claim; running through it is not.
+
+    The defensive was pressed before an older pile-up, was still up when those
+    ten auras dropped, and ran out a second later -- a second before the blow.
+    Asking whether the band *covers* the strip instant answers `held`, which
+    asserts the aura was up when the blow landed while its own band says it had
+    ended. The strip branch is only reached when no band covers the blow, so a
+    band covering the strip and not the blow always ended between the two.
+
+    It reads as its own last instant says, which is what the count is for: the
+    band ends alone here, inside the expired cluster, so `faded`.
+
+    **`held` stays reachable, but rows that read `held` before do move**, and
+    that is the fix rather than a side effect. A band ending after the latest
+    qualifying instant ends in an instant that does not qualify -- if it did,
+    it would itself be the latest qualifying one and the band would have ended
+    *at* a strip -- so `held` was never on offer for this band. Over the cached
+    tables 1430 rows move from `held` to `faded` this way and 77 to `pressed`.
+    """
+    pile_up_ms = EVOKER_DEATH_MS - 4_000
+    older = tuple(
+        (ability_id + 1, name, pile_up_ms, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    small_death = tuple(
+        (ability_id + 2, name, 6_987_476, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:3]
+    )
+    # Runs from before the pile-up to a second before the blow: it spans the
+    # strip instant without ending in it.
+    spanning = (SCALES, "Obsidian Scales", EVOKER_DEATH_MS - 1_000, SCALES_LENGTH)
+    table = a_table(*older, spanning, *small_death)
+
+    state = state_of(
+        _presses(SCALES, at_ms=EVOKER_DEATH_MS - 1_000 - SCALES_LENGTH), "Obsidian Scales",
+        30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == FADED
+
+
+def test_a_band_trailing_the_strip_among_others_answers_pressed_not_faded() -> None:
+    """Ending after the strip is read by the count, not condemned on position.
+
+    Nine auras end at 6987475 and the defensive ends at 6987478 with three
+    others, three milliseconds past the strip and one before the blow. Two
+    explanations fit and the log does not choose between them: the aura
+    outlived the removal and ran out, or the removal was logged across a gap
+    wider than a millisecond and this is its tail. A four-ability instant is
+    inside the no-man's land, so the answer is silence.
+
+    **This is the shape that separates the three readings**, and it is the one
+    the cascade was argued over: asking whether the band *covers* the strip
+    answers `held`, condemning it on position alone answers `faded`, and
+    reading its own instant answers `pressed`. It is a constructed shape -- no
+    band in the cached tables spans a qualifying strip and ends after it -- so
+    it pins the decision rather than a measurement.
+
+    The silence is narrow and worth stating plainly: with one or two abilities
+    trailing instead of three the count lands in the expired cluster and the
+    answer is `faded` again. A lone defensive trailing the run is the commonest
+    split shape there is, so this buys silence only for tails of three to seven.
+    """
+    strip = tuple(
+        (ability_id + 1, name, 6_987_475, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    trailing = tuple(
+        (ability_id + 2, name, 6_987_478, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:3]
+    )
+    table = a_table(*strip, *trailing, (SCALES, "Obsidian Scales", 6_987_478, SCALES_LENGTH))
+
+    state = state_of(
+        _presses(SCALES, at_ms=6_987_478 - SCALES_LENGTH), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == PRESSED
 
 
 def test_a_death_whose_blow_never_reached_the_stream_stays_pressed() -> None:

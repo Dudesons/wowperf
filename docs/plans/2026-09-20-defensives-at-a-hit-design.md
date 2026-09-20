@@ -89,6 +89,105 @@ player has no aura table at all.
 > and a death whose killing blow is not in the fetched stream reads `pressed`. The rest of this
 > section stands.
 
+> **Amended again by §8.3 (2026-09-20).** The instant is still the killing blow's, and **a band
+> ending at the instant the death stripped that player's auras counts as covering it.** §8.1
+> asserted from 21 deaths on one fight that the strip lands exactly on the blow; across 105 deaths
+> it lands 1 to 3 ms *before* it on two, and those two printed `faded` over defensives that were up.
+>
+> **Several of one player's independent auras ending at the same instant is the death stripping
+> them, not each expiring.** On the worked example two raid buffs over 218 seconds long and a
+> 30.8-second rune end within 2 ms of each other, which no natural expiry explains. §8.3 measured
+> the discriminator across the eleven fights: **7 to 21 of the player's other bands co-end when the
+> ability was stripped, 0 or 1 when it expired, and nothing in between.** A tolerance constant on
+> `band_holding` was refused instead, because no measurement here justifies its width.
+>
+> **The reading is three-way, and its two numbers are the measured clusters' own edges rather than
+> a cut between them.** A single cut would decide cases the data does not decide, which is what §5
+> exists to prevent:
+>
+> | co-ending abilities | reading |
+> | --- | --- |
+> | at or below `EXPIRED_CO_ENDING_ABILITIES` (1) | not a strip; the blow's own answer stands |
+> | at or above `STRIPPED_CO_ENDING_ABILITIES` (7) | a strip; the aura was up when the blow landed |
+> | between them (2 to 6) | `pressed`, the honest unknown |
+>
+> **This table is not the whole rule, and reading it alone would mislead.** It is reached in exactly
+> two situations: when no instant at or before the death is a strip outright, and when one is but the
+> band ended **after** it. The case it is *not* reached in is the one that would otherwise surprise a
+> reader — a band ending **before** the strip. There the aura was already gone when the death took
+> the rest, and **position settles it as `faded` with the count never consulted**, so a band with 3
+> co-enders reads `faded` there rather than `pressed`. §8.3's "Fixed" subsection carries the
+> consequence: it is why the 11 correct `faded` rows never reach the no-man's land.
+>
+> **A band counts as stripped only when it *ends inside* the instant, never when it merely runs
+> through it.** The strip is read only after the blow has already answered `None`, so a band
+> spanning the strip instant without covering the blow ended between the two: it outlived the
+> removal and then ran out, and crediting it would assert the aura was up when the blow landed while
+> its own band says it had ended. Such a band falls to the count instead of being condemned on
+> position. This matters most where the reach-back below fires, since the further back the anchor
+> reaches the more room a band has to span an instant without ending in it.
+>
+> **What that costs, stated exactly, because the loose version of it is tempting.** `held` remains
+> *reachable* — a band ending after the latest qualifying instant ends in one that does not qualify,
+> or it would itself be the latest, so `held` was never on offer for that band. But rows that
+> previously read `held` do change, and that is the point of the fix: measured over the cached
+> tables, 1430 become `faded` and 77 become `pressed`. Reading the count rather than condemning on
+> position changes the answer only for a tail of **three to seven** abilities behind the strip, which
+> answers `pressed` instead of `faded`; at one or two it is `faded` either way, and at eight or more
+> the tail is itself a strip and answers `held`.
+>
+> **The residual, which is real and belongs here rather than in a report.** Where a death's removal
+> was genuinely logged across a gap wider than a millisecond, the tail *is* the strip and its members
+> were up when the blow landed — yet below an eight-ability tail they read `faded` or `pressed`. A
+> small split tail is therefore a false `faded`, §6's first failure mode. Nothing measured separates
+> it from an ordinary expiry: both are a band ending with little beside it, and the width that would
+> join a tail to the run before it is the tolerance this design has refused throughout. **A lone
+> trailing band is the commonest such shape** — 14 of the 188 qualifying runs are followed by another
+> band end within 60 ms — though none of those is a defensive spanning the strip. Searched for and
+> not found: across all 133 cached tables and all 163 qualifying instants, **no defensive band spans
+> a qualifying strip and ends after it**, at window widths of 60 ms, 1 s and 5 s. The region is empty
+> in real data, which is why the fixed point did not move when this changed.
+>
+> **One further behaviour change, named rather than implied.** A band ending after the strip was
+> `faded` on position before and now reaches the count, so it can answer `pressed` at 2 to 6
+> co-enders — a `faded`→`pressed` move that did not exist as a class before. Exposure: **24 of the
+> 2760 defensive band ends in the cached tables, 0.87%.**
+>
+> **Both edges are re-derived in the unit the code counts, which is distinct abilities, not bands.**
+> They do not transfer by assumption. Of the 140,366 runs of adjacent band ends in the 133 cached
+> aura tables, only 195 carry one ability twice and the largest of those holds 6 bands — so no run
+> of seven ends or more counts an ability twice, and over the range that matters the two units
+> coincide exactly, putting the stripped edge at 7 in both. The expired edge was measured directly
+> in ability units over the rows this section calls genuinely expired, matched by the band lengths
+> it records: **0 co-ending abilities 15 times, 1 co-ending ability 20 times, and never more.**
+>
+> Two further properties keep it from over-correcting, and both are measured rather than chosen.
+> The instant read is **the latest one that is a strip**, not the instant holding the player's
+> latest band end: an unrelated aura ending between the strip and the death would otherwise be
+> anchored on, its instant would hold one ability, and every defensive just stripped would fall back
+> to `faded`. That shape is real — of the 188 runs of seven abilities or more in the cached tables,
+> **14 are followed by another band end 2 to 60 ms later and 7 of those within 15 ms**, against a
+> blow-to-death window of 15 to 55 ms on fight 30. An older pile-up — a keystone party leaving
+> combat drops a dozen procs together — is passed over for any strip after it.
+>
+> **Where no strip is found after it, the search reaches back to that older pile-up, and that is the
+> rule's residual.** It arises when the death's own removal does not qualify — a player carrying
+> fewer than eight auras when they died — and a defensive ending at the older instant then reads
+> `held` for an instant that was not the death's, which is §6's second failure mode. It is left
+> unbounded deliberately: the discriminator reads shape, a pull-end proc drop has a death strip's
+> shape exactly, and separating them needs a look-back tolerance in milliseconds that no measurement
+> justifies. **Searched for and not found** — across 163 qualifying instants in 113 of the 133 cached
+> tables, none falls inside any of the 35 identifiable genuinely expired bands. It is pinned by a
+> test rather than left to be discovered.
+>
+> And bands ending on **consecutive milliseconds** are one instant, because one millisecond is the
+> finest gap the log can express, so the width is the clock's own resolution rather than a number
+> chosen to fit. It is load-bearing even so, and calling it "not a tolerance" would overstate it:
+> grouping only exact-equal milliseconds splits the worked example's strip into instants of one,
+> four and five abilities, none of them a strip. What bounds the risk the other way is that
+> adjacency does not chain — of those 140,366 runs, 138,031 are a single millisecond wide and the
+> widest is 4 ms.
+
 `availability_at` keeps its stated input discipline — "who was there, and what they pressed,
 rather than the fight that carries them" — and gains one parameter:
 
@@ -503,10 +602,92 @@ abilities' own durations or, for the absorbs, a shield eaten early. So the hones
 25 is **`held` 12, `faded` 11, unknown 2** — and the page today prints 10, 13 and 2, with two rows
 on the wrong side.
 
-**This is recorded, not fixed.** Moving the instant again is a §3.1 decision, as §8 said the first
+**This was recorded, not fixed.** Moving the instant again is a §3.1 decision, as §8 said the first
 time, and the same objection applies to the obvious patch: a tolerance constant would need a
-number no measurement here justifies. What the residual now has is a size — 2 in 25 presses, on
+number no measurement here justifies. What the residual then had was a size — 2 in 25 presses, on
 2 of 105 deaths — rather than an argument.
+
+#### Fixed, by the discriminator this section measured (2026-09-20)
+
+§3.1 now reads a band ending at the death's strip instant as covering the blow, and the
+discriminator is the one measured above rather than a tolerance: **several of one player's
+independent auras ending at the same instant is the death stripping them.**
+
+**The two numbers it carries are this section's own cluster edges, not a cut between them**, and
+both were re-derived in the unit the code counts — distinct abilities, not bands. At or below **1**
+co-ending ability the band ended as an expiry ends and the blow's reading stands; at or above **7**
+the death stripped it; between them the answer is `pressed`. The stripped edge transfers from the
+7-to-21 band figure because no run of seven ends or more in the 133 cached tables counts an ability
+twice (195 of 140,366 runs do, and the largest holds 6 bands). The expired edge was measured
+directly in ability units over the genuinely expired rows named above: **0 co-enders 15 times, 1 co-
+ender 20 times, never more.** §3.1 carries the table.
+
+`auras.strip_instant` anchors on **the latest instant that is a strip**, not on the instant holding
+the player's latest band end: a single unrelated aura ending between the strip and the death would
+otherwise hide it, and of the 188 runs of seven abilities or more in the cached tables, 14 are
+followed by another band end 2 to 60 ms later — 7 within 15 ms, against a blow-to-death window of
+15 to 55 ms on fight 30. It groups band ends on **consecutive milliseconds**, the log's own
+resolution rather than a width chosen to fit, though not a free choice either: grouping only
+exact-equal milliseconds splits the worked example's strip into instants of one, four and five
+abilities and loses it.
+
+**The anchor's reach-back is unbounded and is the rule's known residual.** When the death's own
+removal holds fewer than eight abilities it does not qualify, the search walks further back, and an
+older pile-up answers in its place — a defensive ending there reads `held` for an instant that was
+not this death's. Bounding it needs a look-back tolerance no measurement justifies, so it is
+recorded rather than patched, exactly as §8.1's stale-hit residual was. It was searched for in the
+cache and not found: **163 qualifying instants across 113 of the 133 tables, none inside any of the
+35 identifiable genuinely expired bands.** §3.1 carries it and a test pins what the shape answers.
+
+**What the reach-back does *not* widen, because it was closed here:** a band that merely spans the
+instant the anchor reached back to. The rule now asks whether the band **ends inside** the strip,
+which is what §3.1 always said and what the code did not do — it asked whether the band *covered*
+it, and so credited a defensive that was up when an older pile-up dropped and ran out long before
+the blow. That was a false `held` whose width grew with the reach-back. A band ending after the
+latest qualifying instant ends in an instant that does not qualify — or it would itself be the
+latest — so it falls to the count, where `held` was never on offer. **That is not the same as
+costing nothing**, and §3.1 states the price: 1430 rows move from `held` to `faded` and 77 to
+`pressed` over the cached tables, which is the fix working, and a genuine split-strip tail below
+eight abilities now reads `faded` or `pressed` where it was up, which is the residual §3.1 records.
+
+**The corrected counts are the honest reading this section already stated: `held` 12, `faded` 11,
+`pressed` 2 of the 25 refinable presses.** The two rows in the table above become `held` and
+nothing else moves. The 10 rows that already read `held` are untouched, because a band covering the
+blow is answered before the strip is consulted at all. The two unknowns stay `pressed` — a death
+that named no killing ability, and a heal that raises no self buff — and neither is a case this
+change reaches.
+
+**The 11 correct `faded` rows keep their reading by either path, which is what makes the
+three-way rule safe to add.** Their bands end 200 ms to 4.4 s before the blow, so they cover no
+strip instant. Where their player's death produces a strip, their band ended *before* it — the
+anchor does not reach back past them, because the death's own removal is what it lands on — so
+position settles it and the count is not consulted. Where it produces none, the count is the 0 or 1
+that sits inside the expired cluster. Neither road reaches the no-man's land. (Position settles it
+only for a band ending *before* the strip; one ending after it does reach the count, which is the
+case §3.1 describes and none of these 11 is.) An earlier draft of this fix
+argued that a three-way rule would silence those rows; that argument was against an *unbounded*
+three-way rule and does not hold against one bounded by the measured edges.
+
+**The ambiguous case answers `pressed`, and there are two different cases here — do not read one
+for the other.**
+
+- **The co-ending no-man's land**, between the measured clusters' edges: an ability whose band ends
+  with **2 to 6** of the player's others. Too many to be the expiry the 0-or-1 cluster describes,
+  too few to be the strip the 7-to-21 cluster describes. **This answers `pressed`, and it is a new
+  fifth route to that state**, added by this fix. It is why the reading is three-way rather than a
+  single cut: a cut would decide what the measurement does not.
+- **The four routes §3.1 already named** — no aura table, no window, an unresolved ability, no
+  killing blow in the stream — are untouched and still answer `pressed`.
+
+At or below the expired edge the answer is `faded`, not `pressed`: that is a reading off the aura
+table and softening it would silence the 11 correct `faded` rows counted above. An unresolved
+ability is never `faded`, and it is never `held`.
+
+Verified against the cached aura tables before the next live run, at no quota: the worked example's
+Obsidian Scales reads `held` where the blow alone reads `faded`; fight 30's Feint — one of the 11
+genuinely expired rows, on a table that does carry a real strip instant at that player's own blow —
+still reads `faded`; and fight 30's Fade, a correct `held`, is unmoved. **Re-running the eleven
+fights is the next task and this is not a substitute for it.**
 
 #### The no-blow case, reached once
 
@@ -594,6 +775,10 @@ is answered in the negative. **Two things temper it and neither reverses it**: t
 side, so the split is worth having *and* is not yet finished. §8.2's "the feature is now correct
 and its value is unproven" is superseded on both halves: the value is shown, and the correctness
 is not complete.
+
+> **The second of those two is now addressed in code** — see "Fixed, by the discriminator this
+> section measured" above — and remains unconfirmed on a live run until the eleven fights are
+> measured again. The first stands: the denominator is still 25.
 
 **Quota: 219.72 points of 3600 across the hour, for all eleven fights.** Two fresh fights of the
 already-fetched raid report at 48.20 and 53.20 with the report warm and each fight's own streams

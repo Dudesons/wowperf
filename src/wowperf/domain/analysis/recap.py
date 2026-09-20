@@ -5,7 +5,15 @@ import math
 
 from wowperf.domain.analysis.consumables import consumable_window_start
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
-from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
+from wowperf.domain.auras import (
+    EXPIRED_CO_ENDING_ABILITIES,
+    PlayerAuras,
+    band_holding,
+    co_ending_abilities,
+    last_band_end,
+    resolve_aura,
+    strip_instant,
+)
 from wowperf.domain.base import Frozen
 from wowperf.domain.events import (
     CastEvent,
@@ -286,6 +294,7 @@ def _press_state(
     ability_id: int | None,
     name: str,
     blow_ms: int | None,
+    death_ms: int,
 ) -> str:
     """Whether a press was still up when the blow landed, or PRESSED if unknowable.
 
@@ -296,10 +305,65 @@ def _press_state(
     aura a death removes -- which is every active defensive in
     `data/defensives.toml`. Asked about the death, report cW38jmwdnZfbHVL4
     fight 30 returned HELD for none of its 252 rows and FADED falsely for five
-    of six. Asked about the blow, which lands exactly on the strip, the bands
-    answer. Design section 8 records the measurement.
+    of six. Design section 8 records that measurement.
 
-    Four ways to be unknowable, and each one says `pressed` rather than
+    **The strip does not always land on the blow either.** Section 8.1 asserted
+    it did, from 21 deaths on one fight; section 8.3 measured 105 deaths across
+    eleven and found the strip landing 1 to 3 ms *before* the blow on two of
+    them. The band then ends before the blow and the closed interval misses by
+    a millisecond, which printed "over by then" over two defensives that were
+    up. So a band ending at the instant the death stripped this player's auras
+    counts as covering the blow: `auras.strip_instant` finds that instant and
+    says why several independent auras ending together cannot be coincidence.
+    The death's own moment is what anchors it, because the strip is the
+    death's, and it is read after the blow rather than instead of it -- a band
+    that covers the blow is HELD whatever the strip did.
+
+    **The band must end *inside* the strip, not merely run through it.** This
+    branch is reached only when no band covers the blow, so a band that spans
+    the strip instant and does not cover the blow ended somewhere between the
+    two: it outlived the removal and then ran out, which is the opposite of
+    being stripped, and crediting it would assert the aura was up when its own
+    band says it had ended. Such a band is read by its own last instant
+    instead, rather than being condemned on position: a tail of three to seven
+    abilities behind the strip answers PRESSED, where condemning it would
+    answer FADED. Below three it answers FADED either way, so the silence this
+    buys is narrow, and **a lone defensive trailing the run is the commonest
+    split shape there is** -- `auras.strip_instant` measures that shape at 14 of
+    188 runs. The residual is named under the strip states below.
+
+    No state *becomes* unreachable this way: a band ending after the latest
+    qualifying instant ends in one that does not qualify, or it would itself be
+    the latest, so HELD was never available to it. Rows that used to read HELD
+    do change, which is the point. Where the band ended *before* the strip the
+    aura was already gone when the death took the rest, and that is FADED on
+    position alone.
+
+    **Where the strip does not settle it, the reading is three-way**, bounded
+    by the edges of the two clusters section 8.3 measured rather than by a cut
+    between them. At or below `auras.EXPIRED_CO_ENDING_ABILITIES` the band
+    ended the way an expiry ends and FADED is a reading; at or above
+    `auras.STRIPPED_CO_ENDING_ABILITIES` it ended the way a strip ends. Between
+    them nothing measured decides, and the answer is PRESSED -- the same
+    explicit unknown, reached by a fifth route. A band that was FADED on
+    position under the previous reading and ends after the strip now reaches
+    this count and can answer PRESSED: 24 of the 2760 defensive band ends in
+    the cached tables, 0.87%.
+
+    **The residual this leaves.** Where a death's removal really was logged
+    across a gap wider than a millisecond, the tail is a strip and its members
+    were up when the blow landed. Read here they answer FADED below two
+    trailing abilities and PRESSED from three to seven, and only a tail of
+    eight or more reads HELD -- by becoming the latest qualifying instant in
+    its own right. So a small split tail is a false FADED, of the class section
+    6 puts first. Nothing measured separates it from an ordinary expiry: both
+    are a band ending with nothing much beside it, and the width that would
+    join a tail to the run before it is the tolerance this design has refused
+    throughout. Not observed in the cache -- no band there spans a qualifying
+    strip and ends after it, at any window width up to 5 s -- and design
+    section 3.1 records it.
+
+    The four routes that were always there each say `pressed` rather than
     guessing: no aura table for this player, no window to clip bands to, an
     ability whose aura cannot be resolved -- which covers both an id the table
     does not carry under any name and an ability that raises no aura at all --
@@ -307,9 +371,11 @@ def _press_state(
     stream cannot tell the unresolved cases apart; neither can this, and neither
     needs to, because they answer the same way.
 
-    A resolved aura with no band over the blow is FADED. That is a reading and
-    not an absence: the table lists every interval the aura was up, so a blow
-    outside all of them is the table saying it was down.
+    A resolved aura whose band covers neither the blow nor a strip, and ended
+    as an expiry ends, is FADED. That is a reading and not an absence: the table
+    lists every interval the aura was up, so a blow outside all of them is the
+    table saying it was down, and softening that into a doubt would silence the
+    11 correct `faded` rows section 8.3 counted.
     """
     if auras is None or window is None or ability_id is None or blow_ms is None:
         return PRESSED
@@ -317,7 +383,21 @@ def _press_state(
     if aura is None:
         return PRESSED
     start_ms, end_ms = window
-    return HELD if band_holding(aura, start_ms, end_ms, blow_ms) else FADED
+    if band_holding(aura, start_ms, end_ms, blow_ms):
+        return HELD
+    strip = strip_instant(auras, death_ms)
+    ended_ms = last_band_end(aura, death_ms)
+    if strip is not None and ended_ms is not None:
+        first_ms, last_ms = strip
+        if first_ms <= ended_ms <= last_ms:
+            return HELD
+        if ended_ms < first_ms:
+            # The death's strip came after this band ended, so the aura was
+            # already gone when it landed -- and the blow landed with it.
+            return FADED
+    if co_ending_abilities(auras, aura, death_ms) <= EXPIRED_CO_ENDING_ABILITIES:
+        return FADED
+    return PRESSED
 
 
 def state_of(
@@ -343,10 +423,11 @@ def state_of(
     area or the whole group rather than aiming at one player, while a cast on
     someone else was a use, not a save. When `auras`, `window` and `blow_ms`
     are all given, a press is refined to HELD or FADED by whether the ability's
-    own aura still had a band over the killing blow; PRESSED is what a press
-    reads as when that refinement cannot be made, the explicit unknown rather
-    than a guess. `death_ms` is not a substitute for a missing `blow_ms`: the
-    death strips the very bands being read, and `_press_state` says why. With
+    own aura still had a band over the killing blow, or over the instant the
+    death stripped that player's auras; PRESSED is what a press reads as when
+    that refinement cannot be made, the explicit unknown rather than a guess.
+    `death_ms` is not a substitute for a missing `blow_ms`: it locates the
+    strip, and it does not answer for the blow. `_press_state` says why. With
     `charges` or more presses inside one base cooldown before the death the
     ability is on COOLDOWN, and the bound is when the oldest of those presses
     frees its charge, rounded up. Otherwise READY.
@@ -370,7 +451,7 @@ def state_of(
     if in_run_up:
         return AbilityState(
             name=name,
-            state=_press_state(auras, window, ability_id, name, blow_ms),
+            state=_press_state(auras, window, ability_id, name, blow_ms, death_ms),
             owner_id=owner_id, ability_id=ability_id,
             seconds=(death_ms - max(in_run_up)) / 1000,
         )
@@ -448,7 +529,8 @@ def availability_at(
 
     `auras`, `window` and `blow_ms` reach only the dying player's own
     defensives, refining a press to HELD or FADED by whether its aura still had
-    a band over the killing blow (`state_of`). Externals stay PRESSED
+    a band over the killing blow, or over the instant the death stripped that
+    player's auras (`state_of`). Externals stay PRESSED
     regardless: an external's aura sits on the dying player but is resolved
     against the *caster's* ability id, and `resolve_aura` is scoped to one
     player's own `on_self` list, so a teammate's cooldown is not answerable
