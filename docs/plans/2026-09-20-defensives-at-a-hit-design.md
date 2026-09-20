@@ -203,16 +203,21 @@ design was not worth building.** That result is to be recorded, not explained aw
 ## 8. What the live run found (2026-09-20)
 
 Measured on the canonical wipe, report `cW38jmwdnZfbHVL4` fight 30, twenty players and
-twenty-one deaths. Counted over the rendered page's availability rows, `<li class="...">`:
+twenty-one deaths. Counted over the rendered page's availability rows, `<li class="...">`, twice:
+once against the death event as §3.1 originally specified, and again after §8.1 moved the question
+to the killing blow. Both readings are kept, because the first is the evidence for the correction
+and the second is what the feature says today. 252 rows either way, the same rows.
 
-| state | rows |
-| --- | --- |
-| `cooldown` | 124 |
-| `ready` | 73 |
-| `unseen` | 48 |
-| `faded` | 6 |
-| `pressed` | 1 |
-| `held` | **0** |
+| state | at the death event | at the killing blow |
+| --- | --- | --- |
+| `cooldown` | 124 | 124 |
+| `ready` | 73 | 73 |
+| `unseen` | 48 | 48 |
+| `faded` | 6 | **1** |
+| `pressed` | 1 | 1 |
+| `held` | **0** | **5** |
+
+The rest of this section reads the first column; §8.2 reads the second.
 
 **The falsifier did not fire, but the result does not vindicate the build either, because five of
 the six `faded` rows are false.** Checked press by press against the bands they were judged from:
@@ -267,9 +272,10 @@ whose answer was fixed before the log was read.
 
 **The instant is the killing blow.** §1 already said so — "the aura was on the player when **the
 blow landed**" — and §6 speaks of the blow throughout. Only §3.1 named a different moment, and it
-is §3.1 that is corrected. For all 23 player deaths on the canonical wipe the killing blow lands
+is §3.1 that is corrected. For all 21 player deaths on the canonical wipe the killing blow lands
 **exactly on** the strip timestamp, so the same bands that answered `None` for every death answer
-for every blow. The blow's moment is read from the damage stream by `killing_blow_id` — the hit on
+for every blow. (This paragraph first said 23; the encounter carries 21 deaths and the page 21
+cards, re-counted from the domain on 2026-09-20. The figure was wrong, not the claim.) The blow's moment is read from the damage stream by `killing_blow_id` — the hit on
 the dying player whose ability is the one the death names, latest at or before the death — and
 never as "the last damage event before the death", which is a different claim that a stray tick in
 the final milliseconds gets wrong.
@@ -294,8 +300,9 @@ other side if Warcraft Logs ever timestamps a lethal hit *after* the death event
 looks only at or before it. Both were left open deliberately: closing them needs a staleness
 tolerance of at least 55 ms with nothing to justify the number, and this design has refused
 magic numbers throughout. `DamageTakenEvent.overkill`, which the log carries only on a lethal
-blow, is a second and independent handle on the same hit and would close both without a constant;
-it is unmeasured and is the obvious next thing to check against a live run.
+blow, is a second and independent handle on the same hit and would close both without a constant.
+**It is no longer unmeasured — §8.2 prices it, and on this fight it is exact.** Neither residual
+occurred here, so the measurement bounds the risk rather than removing it.
 
 **`band_holding`'s closed interval is now load-bearing.** Every correct `held` sits *exactly* on a
 band's upper boundary, because the strip and the blow share a millisecond. Narrowing the
@@ -308,3 +315,98 @@ in the function's own docstring and pinned by a test built from the real timesta
 so every keystone death card has been judging presses against the death since this feature
 shipped. §4 discusses the raid path's aura coverage and says nothing about this, because nobody
 looked. Both paths now read the blow, and both are covered.
+
+### 8.2 Re-measured at the blow, and the premise answered (2026-09-20)
+
+Same command, same report, same fight, with §8.1's instant in place: `wowperf raid` on
+`cW38jmwdnZfbHVL4` fight 30. 252 availability rows, counted over `<li class="...">`, which occurs
+in exactly one place in the template set. The second column of §8's table is this reading.
+
+**Every row §8 got wrong is now right, and the one it got right is unchanged.** The five presses
+§8 proved were still up read `held`; the one press that had genuinely ended reads `faded`; the
+consumable, whose `ability_id` is `None` by construction, stays at the designed unknown.
+
+| ability | says now | §8's reading | §8's verdict on that reading |
+| --- | --- | --- | --- |
+| Ice Barrier | `held`, 2.1 s before death, still up | `faded` | false |
+| Astral Shift | `held`, 3.3 s | `faded` | false |
+| Fade | `held`, 8.4 s | `faded` | false |
+| Shield Block | `held`, 7.0 s | `faded` | false |
+| Shield Wall | `held`, 2.8 s | `faded` | false |
+| Feint | `faded`, 9.6 s before death, over by then | `faded` | genuine |
+| a health potion | `pressed`, 4.6 s | `pressed` | the designed unknown |
+
+The §8 contradiction is gone with it: the Protection Warrior's Shield Wall row now says "still up"
+beside its own tooltip crediting that ability with mitigating 85% of what arrived inside its cover.
+The two halves of that row agreed on nothing before and agree now.
+
+**The unknown was never reached. 21 of 21 deaths resolved a killing blow; none fell back to
+`pressed` for want of one.** Read from the domain, not from the page: the cached encounter loaded
+and `killing_blow_ms` called per death. No death named a `killing_blow_id` of zero. The
+blow-to-death gap ran 1 to 55 ms across all 21, which widens §8's observed 15-55 ms at the low end
+and does not disturb the mechanism. So §8.1's softened dependency on the damage stream cost
+nothing at all on this fight — the single rendered `pressed` row is the consumable, not a missing
+blow.
+
+**`overkill` agrees with the matching rule exactly, in both directions.** §8.1 left it unmeasured
+as the thing that would close the rule's residual without a magic number. Measured here:
+
+- 15,798 damage-taken events in the fight carry **21** non-zero `overkill` values, against **21**
+  deaths, and every one pairs to a death by `(actor, ability)`. No overkill hit is left over.
+- For each of the 21 deaths, **exactly one** hit of the ability the death names carries
+  `overkill`, and it is **exactly the hit `killing_blow_ms` picked** — 21 of 21, no disagreement.
+- No overkill hit of a death's named ability lands *after* that death, so the second half of the
+  residual — a lethal hit timestamped after the death event — did not occur here.
+
+That last point matters more than the agreement does. The rule takes the *latest* matching hit at
+or before the death with no staleness bound, and on this fight it was asked to choose among as many
+as **474** candidate hits of the named ability for one death; it still landed on the
+overkill-carrying one every time. The stale-hit residual is real in principle and was not exercised
+in practice. **This is one fight, and it does not license removing the residual from the record.**
+It does say that switching the rule to `overkill` would change nothing observable here, which is an
+argument for leaving the code alone rather than for rewriting it.
+
+**On the falsifier.** §7 wrote it down before any of this ran: *if essentially none come back
+`faded`, the overstatement this design exists to correct does not occur in practice, and the design
+was not worth building.*
+
+One row in 252 comes back `faded`. Read literally, **that is the falsifier firing.**
+
+It is not the whole answer, for one reason that counts and one that does not:
+
+- **It counts that `held` is now reachable, five times.** Every `held` row is a press the page used
+  to report as a bare `pressed` and now reports as covered. That is the same overstatement being
+  corrected in the other direction, and §1's table always claimed both halves. Six of the seven
+  presses in the run-up across twenty players now carry an answer the page could not give before.
+- **It does not count that the numbers are flattering.** Six resolvable presses is a denominator
+  in single figures. One fight, one composition, one wipe.
+
+**The verdict, stated as weakly as the evidence deserves: the premise is not confirmed, and the
+design is not vindicated by this run.** What the design set out to correct — a press credited as
+if it held when it had ended — happened **once** in six presses on this fight. What it corrects
+in the other direction — a press now shown to have held — happened five times, but that half was
+never the case §1 argued from, and five of those five are also the rows §8's defect had libelled,
+so they are as much a repair of this branch's own damage as a new insight. **The honest reading is
+that the feature is now correct and its value is unproven.** A second fight, and preferably a
+Mythic+ run through the same shared `build_deaths`, is the cheapest thing that would move this
+either way; the aura fetch it rides on costs about 20 points of 3600 for a twenty-player fight and
+nothing at all on a warm cache.
+
+**Nothing here argues for reverting.** The split is cheap, its states are honest, and §8's five
+false accusations are gone. But the design asked whether it was worth building, and on one fight
+the answer is *not demonstrated*, which is what §7 required to be recorded rather than explained
+away.
+
+**The page was read, and all six states occur.** Served over `python -m http.server` and opened in
+a fresh tab, Deaths tab selected, plus the rendered HTML read directly. `held` renders
+"2.8 s before death, still up" in the measured green, `faded` renders "9.6 s before death, over by
+then" in the same amber as `cooldown` — not an alarm colour — and `pressed` renders
+"4.6 s before death" with no judgement at all. The wording is timing, not blame, and "still up"
+asserts that the aura was up and stops there, as §6 requires. One observation for the record:
+`held` shares its green with `pressed` (`--badge-measured`), so a reader scanning colour alone sees
+a success tint on a row that belongs to a player who died. The prose does not claim sufficiency;
+the colour is one confidence tier away from claiming it.
+
+**Quota: 1.00 point of 3600, fully warm cache** — the two `RateLimit` reads and nothing else. The
+reading is in `.claude/skills/wcl-api/SKILL.md`. Reading the blow adds no query: `DamageTaken` is
+already fetched for every friendly across the whole fight, so §8.1's correction is free.

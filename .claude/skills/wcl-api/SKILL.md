@@ -233,6 +233,18 @@ One approximation and three measurements:
   overnight, not new work. **Re-run immediately against the now-warm cache: 1.00 point** -- the
   two `RateLimit` reads and nothing else, which is the warm one-subject raid figure already
   recorded above, unchanged by the twenty extra tables now on disk.
+- **The same command six hours later, cache fully warm, after the held-or-faded answer moved from
+  the death event to the killing blow: 1.00 point of 3600** (2026-09-20, report
+  `cW38jmwdnZfbHVL4`, fight 30, the re-measurement in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` §8.2). `RateLimit` 2 calls for 1.00 and no
+  other line at all. This is the warm counterpart to the 56.66-point cold reading directly above,
+  and it carries two readings rather than one. **Nothing had expired**: the 24-hour tier entries
+  fetched at 02:14 were still inside their day at 08:15, so a same-day re-run of a twenty-player
+  raid fight costs the quota read and nothing more, twenty aura tables included. **And reading the
+  killing blow is free**: the blow's moment comes from `DamageTaken`, which
+  `load_encounter` already fetches for every friendly across the whole fight, so moving the
+  instant added no query to the shape priced above. A design change that reads a stream already on
+  disk does not show up in this budget at all.
 
 ## Every query reports its own cost
 
