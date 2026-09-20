@@ -1,5 +1,5 @@
 # ABOUTME: One death's recap: the last seconds as a timeline with a reconstructed health column,
-# ABOUTME: the state of every saving tool at the death, and how the player came back. Pure.
+# ABOUTME: the state of every saving tool at the killing blow, and how the player came back. Pure.
 
 import math
 
@@ -7,7 +7,13 @@ from wowperf.domain.analysis.consumables import consumable_window_start
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
 from wowperf.domain.base import Frozen
-from wowperf.domain.events import CastEvent, Death, HealthSample, Resurrection
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    HealthSample,
+    Resurrection,
+)
 from wowperf.domain.fight import LoadedFight
 from wowperf.domain.model import Player
 from wowperf.domain.season import (
@@ -212,8 +218,9 @@ class AbilityState(Frozen):
 
     `seconds` means one thing per state. PRESSED, HELD and FADED: how many
     seconds before the death its owner cast it -- the three share one meaning
-    because HELD and FADED are PRESSED refined by whether the aura was still
-    up, not a different moment. COOLDOWN: the upper bound left, in whole
+    because HELD and FADED are PRESSED refined by whether the aura was still up
+    when the blow landed, which is a reading of the same press and not a
+    different moment to count from. COOLDOWN: the upper bound left, in whole
     seconds. READY: how long it had been ready when that fell inside the
     run-up, a lower bound, else None. UNSEEN: always None. `owner_id` is None
     for the dying player's own abilities and a teammate's actor id for an
@@ -229,6 +236,34 @@ class AbilityState(Frozen):
     owner_id: int | None = None
     ability_id: int | None = None
     seconds: float | None = None
+
+
+def killing_blow_ms(damage_taken: tuple[DamageTakenEvent, ...], death: Death) -> int | None:
+    """When the blow this death names landed, or None where the stream does not carry it.
+
+    Matched by the death's own `killing_blow_id` against the hits on the dying
+    player, taking the latest at or before the death. Deliberately not "the
+    last damage event before the death": a tick of something else routinely
+    lands in the milliseconds between the lethal hit and the death event, and
+    the two readings are different claims about which hit killed the player.
+
+    Takes the stream it reads rather than the fight that carries it, as every
+    other helper here does. None means the fetched stream holds no such hit,
+    and it is an honest unknown rather than a moment to substitute for: a
+    `killing_blow_id` of zero is the log naming no ability at all, and it
+    matches nothing here rather than pairing the death with whatever hit the
+    log also left unnamed.
+    """
+    if not death.killing_blow_id:
+        return None
+    moments = [
+        hit.timestamp_ms
+        for hit in damage_taken
+        if hit.actor_id == death.actor_id
+        and hit.ability_id == death.killing_blow_id
+        and hit.timestamp_ms <= death.timestamp_ms
+    ]
+    return max(moments) if moments else None
 
 
 class AvailabilityAt(Frozen):
@@ -250,28 +285,39 @@ def _press_state(
     window: tuple[int, int] | None,
     ability_id: int | None,
     name: str,
-    death_ms: int,
+    blow_ms: int | None,
 ) -> str:
     """Whether a press was still up when the blow landed, or PRESSED if unknowable.
 
-    Three ways to be unknowable, and each one says `pressed` rather than
-    guessing: no aura table for this player, no window to clip bands to, and an
-    ability whose aura cannot be resolved -- which covers both an id the table
-    does not carry under any name and an ability that raises no aura at all.
-    The damage stream cannot tell those two apart; neither can this, and neither
-    needs to, because both answer the same way.
+    The moment asked about is the killing blow's, never the death's. A buff a
+    player is carrying when they die is stripped *by* the death, and Warcraft
+    Logs timestamps that strip 15 to 55 ms *before* the death event's own
+    timestamp, so a band covering the death is structurally impossible for any
+    aura a death removes -- which is every active defensive in
+    `data/defensives.toml`. Asked about the death, report cW38jmwdnZfbHVL4
+    fight 30 returned HELD for none of its 252 rows and FADED falsely for five
+    of six. Asked about the blow, which lands exactly on the strip, the bands
+    answer. Design section 8 records the measurement.
 
-    A resolved aura with no band over the death is FADED. That is a reading and
-    not an absence: the table lists every interval the aura was up, so a death
+    Four ways to be unknowable, and each one says `pressed` rather than
+    guessing: no aura table for this player, no window to clip bands to, an
+    ability whose aura cannot be resolved -- which covers both an id the table
+    does not carry under any name and an ability that raises no aura at all --
+    and a death whose killing blow never reached the fetched stream. The damage
+    stream cannot tell the unresolved cases apart; neither can this, and neither
+    needs to, because they answer the same way.
+
+    A resolved aura with no band over the blow is FADED. That is a reading and
+    not an absence: the table lists every interval the aura was up, so a blow
     outside all of them is the table saying it was down.
     """
-    if auras is None or window is None or ability_id is None:
+    if auras is None or window is None or ability_id is None or blow_ms is None:
         return PRESSED
     aura = resolve_aura(auras, ability_id, name)
     if aura is None:
         return PRESSED
     start_ms, end_ms = window
-    return HELD if band_holding(aura, start_ms, end_ms, death_ms) else FADED
+    return HELD if band_holding(aura, start_ms, end_ms, blow_ms) else FADED
 
 
 def state_of(
@@ -286,6 +332,7 @@ def state_of(
     ability_id: int | None = None,
     auras: PlayerAuras | None = None,
     window: tuple[int, int] | None = None,
+    blow_ms: int | None = None,
 ) -> AbilityState:
     """Which of the six states one ability was in at the death.
 
@@ -294,13 +341,15 @@ def state_of(
     run-up is PRESSED — for an external, only a press on the dying player
     (`on_target`) or with no target at all, since an untargeted cast covers an
     area or the whole group rather than aiming at one player, while a cast on
-    someone else was a use, not a save. When `auras` and `window` are both
-    given, a press is refined to HELD or FADED by whether the ability's own
-    aura still had a band over the death; PRESSED is what a press reads as
-    when that refinement cannot be made, the explicit unknown rather than a
-    guess. With `charges` or more presses inside one base cooldown before the
-    death the ability is on COOLDOWN, and the bound is when the oldest of
-    those presses frees its charge, rounded up. Otherwise READY.
+    someone else was a use, not a save. When `auras`, `window` and `blow_ms`
+    are all given, a press is refined to HELD or FADED by whether the ability's
+    own aura still had a band over the killing blow; PRESSED is what a press
+    reads as when that refinement cannot be made, the explicit unknown rather
+    than a guess. `death_ms` is not a substitute for a missing `blow_ms`: the
+    death strips the very bands being read, and `_press_state` says why. With
+    `charges` or more presses inside one base cooldown before the death the
+    ability is on COOLDOWN, and the bound is when the oldest of those presses
+    frees its charge, rounded up. Otherwise READY.
 
     Every figure is bounded the safe way: the log records no cooldown reset,
     charge refresh or talent reduction, so the true remaining time is at most
@@ -321,7 +370,7 @@ def state_of(
     if in_run_up:
         return AbilityState(
             name=name,
-            state=_press_state(auras, window, ability_id, name, death_ms),
+            state=_press_state(auras, window, ability_id, name, blow_ms),
             owner_id=owner_id, ability_id=ability_id,
             seconds=(death_ms - max(in_run_up)) / 1000,
         )
@@ -383,6 +432,7 @@ def availability_at(
     *,
     auras: PlayerAuras | None = None,
     window: tuple[int, int] | None = None,
+    blow_ms: int | None = None,
 ) -> AvailabilityAt:
     """The player's own defensives, the consumables, and every teammate's externals.
 
@@ -396,12 +446,19 @@ def availability_at(
     drunk before the timer started is invisible. Externals come in roster
     order, each carrying its owner.
 
-    `auras` and `window` reach only the dying player's own defensives, refining
-    a press to HELD or FADED by whether its aura still had a band over the
-    death (`state_of`). Externals stay PRESSED regardless: an external's aura
-    sits on the dying player but is resolved against the *caster's* ability id,
-    and `resolve_aura` is scoped to one player's own `on_self` list, so a
-    teammate's cooldown is not answerable this way without a second table.
+    `auras`, `window` and `blow_ms` reach only the dying player's own
+    defensives, refining a press to HELD or FADED by whether its aura still had
+    a band over the killing blow (`state_of`). Externals stay PRESSED
+    regardless: an external's aura sits on the dying player but is resolved
+    against the *caster's* ability id, and `resolve_aura` is scoped to one
+    player's own `on_self` list, so a teammate's cooldown is not answerable
+    this way without a second table.
+
+    `blow_ms` is the moment `killing_blow_ms` read off the damage stream, and
+    None where it found none. It is threaded in rather than derived here for
+    the same reason the roster and the casts are: this rule is about who was
+    there and what they pressed, and the stream that says which hit was lethal
+    is a third thing its caller already holds.
     """
     by_actor = {player.actor_id: player for player in players}
     player = by_actor.get(death.actor_id)
@@ -423,7 +480,7 @@ def availability_at(
                     presses_of(death.actor_id, (ability.ability_id,)),
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
                     ability_id=ability.ability_id,
-                    auras=auras, window=window,
+                    auras=auras, window=window, blow_ms=blow_ms,
                 )
                 for ability in known
             )

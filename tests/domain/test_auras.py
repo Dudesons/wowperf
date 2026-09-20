@@ -1,7 +1,13 @@
 # ABOUTME: Behaviour tests for aura bands and the window intersection uptime rests on.
 # ABOUTME: The interesting cases are a band straddling a window edge and a band outside it.
 
-from wowperf.domain.auras import Aura, AuraBand, PlayerAuras, uptime_seconds_in
+from wowperf.domain.auras import (
+    Aura,
+    AuraBand,
+    PlayerAuras,
+    band_holding,
+    uptime_seconds_in,
+)
 
 
 def an_aura(*bands: tuple[int, int]) -> Aura:
@@ -69,3 +75,29 @@ def test_a_band_spanning_two_overlapping_windows_counts_the_union() -> None:
 
 def test_a_band_with_end_before_start_contributes_nothing() -> None:
     assert uptime_seconds_in(an_aura((5000, 1000)), ((0, 10000),)) == 0.0
+
+
+# --- the closed interval, which other code now depends on ---------------------
+
+FIGHT = (9_990_000, 10_000_000)
+
+
+def test_a_band_holds_both_of_its_own_boundaries_and_nothing_past_them() -> None:
+    """The closed interval, pinned from the numbers that made it load-bearing.
+
+    Report cW38jmwdnZfbHVL4 fight 30: a player died at 9997413 carrying a
+    defensive, the death stripped it, and the log timestamps that strip at
+    9997398 -- which is exactly where the killing blow landed. So every
+    correct `held` sits on the band's *upper* boundary, and the press that
+    opened the band sits on its *lower* one, which is how `_press_band` draws
+    a cover window at all. Narrow either end to a half-open interval and both
+    answers vanish: every `held` turns back into a false `faded`, and every
+    press loses its rectangle. The moment after the strip -- the death event
+    itself -- is outside, and that is the whole reason the judgement moved off
+    it.
+    """
+    aura = an_aura((9_994_610, 9_997_398))
+
+    assert band_holding(aura, *FIGHT, 9_994_610) == (9_994_610, 9_997_398)
+    assert band_holding(aura, *FIGHT, 9_997_398) == (9_994_610, 9_997_398)
+    assert band_holding(aura, *FIGHT, 9_997_413) is None

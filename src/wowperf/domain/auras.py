@@ -152,6 +152,19 @@ def band_holding(aura: Aura, start_ms: int, end_ms: int, at_ms: int) -> tuple[in
     that starts latest is the one that press began, so ties -- two touching
     or overlapping bands both containing `at_ms` -- resolve to the last match
     in ascending order, never the first.
+
+    **The interval is closed at both ends, and callers depend on it.** A death
+    strips the auras the player was carrying, and Warcraft Logs timestamps that
+    strip at the millisecond the killing blow landed -- measured on report
+    cW38jmwdnZfbHVL4 fight 30, all 23 player deaths -- so a defensive that was
+    genuinely up sits exactly on its band's *upper* boundary and nowhere else
+    (`analysis/recap.py::_press_state`, design section 8). A press sits exactly
+    on the *lower* boundary of the band it opened, which is what lets
+    `report/deaths.py::_press_band` draw a cover window at all. Narrowing
+    either end to a half-open interval would turn every correct `held` into a
+    false accusation and leave every press without its rectangle, silently.
+    `tests/domain/test_auras.py` pins both boundaries against the real
+    timestamps that made this load-bearing.
     """
     clipped = _clip_to_window(aura, start_ms, end_ms)
     holding = [(low, high) for low, high in clipped if low <= at_ms <= high]

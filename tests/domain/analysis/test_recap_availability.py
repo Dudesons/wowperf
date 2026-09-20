@@ -12,10 +12,11 @@ from wowperf.domain.analysis.recap import (
     UNSEEN,
     availability_at,
     consumable_state,
+    killing_blow_ms,
     state_of,
 )
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
-from wowperf.domain.events import CastEvent
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.model import Player
 from wowperf.domain.season import (
     ConsumableCategory,
@@ -54,6 +55,68 @@ def _auras_with_band(ability_id: int, name: str, start_ms: int, end_ms: int) -> 
     return PlayerAuras(actor_id=1, on_self=(aura,))
 
 
+# --- the blow's own moment ----------------------------------------------------
+#
+# Every number below comes from report cW38jmwdnZfbHVL4 fight 30: a death at
+# 9997413 whose killing blow landed at 9997398, and the strip of every aura the
+# player was carrying timestamped at that same 9997398. That 15 ms is the whole
+# subject -- a band that ends before the death and at or after the blow.
+
+BLOW_ID = 1_214_063
+OTHER_ID = 999_999
+BLOW_MS = 9_997_398
+DEATH_MS_AT_THE_BLOW = 9_997_413
+FIGHT_WINDOW = (9_900_000, 10_000_000)
+
+
+def a_hit(at_ms: int, ability_id: int, actor_id: int = 1) -> DamageTakenEvent:
+    return DamageTakenEvent(actor_id=actor_id, ability_id=ability_id, ability_name="x",
+                            amount=1, health_damage=1, timestamp_ms=at_ms)
+
+
+def a_death_by(ability_id: int, at_ms: int = DEATH_MS_AT_THE_BLOW) -> Death:
+    return Death(player_name="Stonewake", actor_id=1, timestamp_ms=at_ms,
+                 killing_blow="Frigid Roar", killing_blow_id=ability_id)
+
+
+def test_the_blows_moment_is_the_hit_the_death_names_not_the_last_hit_before_it() -> None:
+    """Two different claims, and only one of them is the killing blow.
+
+    A tick of something else lands between the blow and the death event, so
+    "the last damage event before the death" picks the wrong row here.
+    """
+    stream = (a_hit(BLOW_MS, BLOW_ID), a_hit(9_997_405, OTHER_ID))
+
+    assert killing_blow_ms(stream, a_death_by(BLOW_ID)) == BLOW_MS
+
+
+def test_the_blows_moment_is_the_latest_matching_hit_at_or_before_the_death() -> None:
+    # The same ability hit this player three times: eight seconds earlier, at
+    # the blow, and again after the death -- the latter belonging to whoever
+    # died next, never to this death.
+    stream = (a_hit(9_989_000, BLOW_ID), a_hit(BLOW_MS, BLOW_ID), a_hit(9_999_000, BLOW_ID))
+
+    assert killing_blow_ms(stream, a_death_by(BLOW_ID)) == BLOW_MS
+
+
+def test_the_same_ability_hitting_a_teammate_is_not_this_players_blow() -> None:
+    # An area ability hits the raid; the nearer row belongs to someone else.
+    stream = (a_hit(BLOW_MS, BLOW_ID, actor_id=1), a_hit(9_997_410, BLOW_ID, actor_id=2))
+
+    assert killing_blow_ms(stream, a_death_by(BLOW_ID)) == BLOW_MS
+
+
+def test_a_killing_blow_absent_from_the_fetched_stream_has_no_moment() -> None:
+    """The honest unknown: pagination need not have reached the lethal hit."""
+    assert killing_blow_ms((a_hit(BLOW_MS, OTHER_ID),), a_death_by(BLOW_ID)) is None
+
+
+def test_a_death_naming_no_ability_at_all_has_no_moment() -> None:
+    # `killing_blow_id` defaults to zero, meaning the log named no ability.
+    # Matching on it would pair the death with any hit the log left unnamed.
+    assert killing_blow_ms((a_hit(BLOW_MS, 0),), a_death_by(0)) is None
+
+
 def test_an_ability_never_pressed_is_unseen_not_judged() -> None:
     assert state_of((), "Icebound Fortitude", 120.0, 1, DEATH_MS).state == UNSEEN
 
@@ -63,36 +126,83 @@ def test_a_press_inside_the_run_up_is_pressed_with_the_seconds_before_death() ->
     assert (state.state, state.seconds) == (PRESSED, 3.4)
 
 
-def test_a_defensive_still_up_at_the_death_reads_held() -> None:
-    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=1000, end_ms=9000)
+def test_a_defensive_the_death_stripped_still_reads_held_at_the_blow() -> None:
+    """The case the whole judgement turns on.
+
+    The timings are the Protection Warrior's Shield Wall on the canonical
+    wipe, carried by this module's Barkskin fixture: pressed 2803 ms before
+    the death, on a band that ends 15 ms before the death -- not because it
+    expired, but because the death stripped it, and the log timestamps that
+    strip at the very millisecond the killing blow landed. Asked about the
+    death the answer is structurally `faded`, a false accusation about a buff
+    the same page's tooltip credits with mitigation. Asked about the blow it is
+    `held`.
+    """
+    auras = _auras_with_band(
+        ability_id=22812, name="Barkskin", start_ms=9_994_610, end_ms=BLOW_MS
+    )
 
     state = state_of(
-        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=auras, window=(0, 10_000),
+        _presses(22812, at_ms=9_994_610), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
+        ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=BLOW_MS,
     )
 
     assert state.state == HELD
+    # `seconds` was never falsified and does not move: it is still how long
+    # before the *death* the button was pressed, which is what the card says.
+    assert state.seconds == 2.803
 
 
 def test_a_defensive_that_lapsed_before_the_blow_reads_faded() -> None:
-    """The overstatement this exists to correct: pressed, and gone by then."""
-    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=1000, end_ms=3000)
+    """The overstatement this exists to correct, from the one press that really had faded.
+
+    The timings are the Rogue's Feint on the canonical wipe: pressed 9609 ms
+    before the death on a band 6013 ms long, so it was over 3596 ms before the
+    blow -- far outside anything a strip could explain, and the one row of the
+    six the live run judged that was judged rightly.
+    """
+    auras = _auras_with_band(
+        ability_id=22812, name="Barkskin", start_ms=9_987_804, end_ms=9_993_817
+    )
 
     state = state_of(
-        _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=auras, window=(0, 10_000),
+        _presses(22812, at_ms=9_987_804), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
+        ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=BLOW_MS,
     )
 
     assert state.state == FADED
 
 
+def test_a_death_whose_blow_never_reached_the_stream_stays_pressed() -> None:
+    """The fixture that reads `faded` with a blow reads `pressed` without one.
+
+    Falling back to the death's own timestamp would answer `faded` here and
+    look right, while quietly reinstating the judgement this change removes.
+    The honest answer to "which hit killed them" being unfetched is silence.
+    """
+    auras = _auras_with_band(
+        ability_id=22812, name="Barkskin", start_ms=9_987_804, end_ms=9_993_817
+    )
+
+    state = state_of(
+        _presses(22812, at_ms=9_987_804), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
+        ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=None,
+    )
+
+    assert state.state == PRESSED
+
+
 def test_an_ability_with_no_aura_of_its_own_stays_pressed() -> None:
-    """Silence, never an accusation: an unresolved ability is not faded."""
+    """Silence, never an accusation: an unresolved ability is not faded.
+
+    The blow is given, so the `pressed` here is the unresolved ability's and
+    not a missing blow's.
+    """
     auras = _auras_with_band(ability_id=99999, name="Something Else", start_ms=0, end_ms=9000)
 
     state = state_of(
         _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=auras, window=(0, 10_000),
+        ability_id=22812, auras=auras, window=(0, 10_000), blow_ms=4900,
     )
 
     assert state.state == PRESSED
@@ -101,7 +211,7 @@ def test_an_ability_with_no_aura_of_its_own_stays_pressed() -> None:
 def test_a_player_with_no_aura_table_stays_pressed() -> None:
     state = state_of(
         _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=None, window=(0, 10_000),
+        ability_id=22812, auras=None, window=(0, 10_000), blow_ms=4900,
     )
 
     assert state.state == PRESSED
@@ -115,7 +225,7 @@ def test_the_name_fallback_resolves_a_buff_whose_id_differs_from_its_cast() -> N
 
     state = state_of(
         _presses(110959, at_ms=2000), "Greater Invisibility", 90.0, 1, death_ms=5000,
-        ability_id=110959, auras=auras, window=(0, 10_000),
+        ability_id=110959, auras=auras, window=(0, 10_000), blow_ms=4900,
     )
 
     assert state.state == HELD
@@ -343,11 +453,44 @@ def test_the_dying_players_own_defensives_are_judged_against_their_bands() -> No
     at = availability_at(
         (DUDE,), _presses(22812, at_ms=2000), a_death(at_ms=5000),
         Defensives(entries=(("DeathKnight/Blood", (BARKSKIN,)),)), Consumables(), Externals(),
-        visible_from_ms=0, auras=auras, window=(0, 10_000),
+        visible_from_ms=0, auras=auras, window=(0, 10_000), blow_ms=4900,
     )
 
     assert at.own is not None
     assert [one.state for one in at.own if one.name == "Barkskin"] == [FADED]
+
+
+def test_the_dying_players_own_defensives_are_judged_at_the_blow_not_the_death() -> None:
+    # The band ends 15 ms before the death because the death stripped it, and
+    # exactly where the blow landed. Judged at the death this reads FADED; the
+    # whole point of threading the blow through is that it does not.
+    auras = _auras_with_band(
+        ability_id=22812, name="Barkskin", start_ms=9_994_610, end_ms=BLOW_MS
+    )
+
+    at = availability_at(
+        (DUDE,), _presses(22812, at_ms=9_994_610), a_death(at_ms=DEATH_MS_AT_THE_BLOW),
+        Defensives(entries=(("DeathKnight/Blood", (BARKSKIN,)),)), Consumables(), Externals(),
+        visible_from_ms=0, auras=auras, window=FIGHT_WINDOW, blow_ms=BLOW_MS,
+    )
+
+    assert at.own is not None
+    assert [one.state for one in at.own if one.name == "Barkskin"] == [HELD]
+
+
+def test_a_defensive_stays_pressed_when_no_blow_reached_the_stream() -> None:
+    # Same band as the FADED case above, and no blow: the answer is the
+    # explicit unknown, never the death's own timestamp standing in for one.
+    auras = _auras_with_band(ability_id=22812, name="Barkskin", start_ms=0, end_ms=3000)
+
+    at = availability_at(
+        (DUDE,), _presses(22812, at_ms=2000), a_death(at_ms=5000),
+        Defensives(entries=(("DeathKnight/Blood", (BARKSKIN,)),)), Consumables(), Externals(),
+        visible_from_ms=0, auras=auras, window=(0, 10_000), blow_ms=None,
+    )
+
+    assert at.own is not None
+    assert [one.state for one in at.own if one.name == "Barkskin"] == [PRESSED]
 
 
 def test_externals_keep_pressed_even_when_a_matching_aura_band_would_flip_them() -> None:
@@ -363,7 +506,7 @@ def test_externals_keep_pressed_even_when_a_matching_aura_band_would_flip_them()
     at = availability_at(
         (DUDE, TREE), casts, a_death(at_ms=200_000), Defensives(), Consumables(),
         Externals(entries=(("Druid/Restoration", (IRONBARK,)),)),
-        visible_from_ms=0, auras=auras, window=(190_000, 210_000),
+        visible_from_ms=0, auras=auras, window=(190_000, 210_000), blow_ms=199_900,
     )
 
     assert [(s.name, s.state) for s in at.externals] == [("Ironbark", PRESSED)]

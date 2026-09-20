@@ -84,6 +84,11 @@ So the rule is: resolve the ability to an aura, ask whether a band holds the dea
 `held` when one does, `faded` when none does, `pressed` when the aura cannot be resolved or the
 player has no aura table at all.
 
+> **Amended by §8.1 (2026-09-20).** "The death's timestamp" is the mis-specification the live run
+> falsified: a death strips the bands being read. The moment asked about is the **killing blow's**,
+> and a death whose killing blow is not in the fetched stream reads `pressed`. The rest of this
+> section stands.
+
 `availability_at` keeps its stated input discipline — "who was there, and what they pressed,
 rather than the fight that carries them" — and gains one parameter:
 
@@ -249,3 +254,57 @@ and §6 speak of *the blow*, and `_press_state` should ask whether the band cove
 blow rather than the death event that strips it — an instant that lands inside the band for all
 five misjudged presses and outside it for Feint, with no magic number. That changes which instant
 §3.1 names, so it is a design decision and is recorded here rather than taken unilaterally.
+
+### 8.1 The instant, corrected
+
+**§3.1's instant was the death event, and it was wrong.** It said "ask whether a band holds the
+death's timestamp", and §8 measured what that produces: `held` on **0 of 252** rows, and **five of
+six** `faded` rows false accusations about named players. The mechanism is not a tolerance
+question. A death strips the auras the player was carrying, and Warcraft Logs timestamps that
+strip 15 to 55 ms *before* the death event, so no aura a death removes — which is every active
+defensive in `data/defensives.toml` — can have a band covering the death. §3.1 asked a question
+whose answer was fixed before the log was read.
+
+**The instant is the killing blow.** §1 already said so — "the aura was on the player when **the
+blow landed**" — and §6 speaks of the blow throughout. Only §3.1 named a different moment, and it
+is §3.1 that is corrected. For all 23 player deaths on the canonical wipe the killing blow lands
+**exactly on** the strip timestamp, so the same bands that answered `None` for every death answer
+for every blow. The blow's moment is read from the damage stream by `killing_blow_id` — the hit on
+the dying player whose ability is the one the death names, latest at or before the death — and
+never as "the last damage event before the death", which is a different claim that a stray tick in
+the final milliseconds gets wrong.
+
+**This reintroduces the dependency §3.2 rejected, in a softer form, and that is accepted
+knowingly.** §3.2 dismissed the `buff_ids` route partly because "a death whose killing blow was
+never fetched has no answer"; judging bands against the blow makes that true again. The softening
+is that only the *refinement* depends on the blow, not the row: a death with **no hit of that
+ability at all** in the fetched stream reads **`pressed`**, the design's explicit unknown, and the
+press is still named and still timed. Falling back to the death's own timestamp would look like an
+answer and be the defect above, so there is no fallback. The mapping half of §3.2's rejection is
+untouched: `resolve_aura`'s name fallback still does the work `buff_ids` could not.
+
+**The matching rule carries a residual, and it is not the unknown.** The moment is the *latest*
+hit of that ability at or before the death, with no staleness bound. So the unknown is reached
+only when the stream holds no such hit whatever; where the true lethal hit is missing but an
+**earlier** hit of the same ability is present, that earlier hit is taken as the blow, and the
+bands are read at an instant with nothing to do with the death. A defensive pressed after that
+stale hit then reads `faded` — a false accusation from a *resolved* ability, which is the failure
+class this whole section exists to record, arriving by a third route. The same gap opens from the
+other side if Warcraft Logs ever timestamps a lethal hit *after* the death event, since the rule
+looks only at or before it. Both were left open deliberately: closing them needs a staleness
+tolerance of at least 55 ms with nothing to justify the number, and this design has refused
+magic numbers throughout. `DamageTakenEvent.overkill`, which the log carries only on a lethal
+blow, is a second and independent handle on the same hit and would close both without a constant;
+it is unmeasured and is the obvious next thing to check against a live run.
+
+**`band_holding`'s closed interval is now load-bearing.** Every correct `held` sits *exactly* on a
+band's upper boundary, because the strip and the blow share a millisecond. Narrowing the
+comparison to a half-open interval, or a Warcraft Logs change putting the strip 1 ms before the
+blow, would flip every `held` row back to `faded` and reproduce §8 in full. The contract is stated
+in the function's own docstring and pinned by a test built from the real timestamps.
+
+**The Mythic+ path carried the same defect and was never measured.** `build_deaths` is shared by
+`analyze` and `raid`, and `load_run_with_auras` has always filled `auras` for every roster player,
+so every keystone death card has been judging presses against the death since this feature
+shipped. §4 discusses the raid path's aura coverage and says nothing about this, because nobody
+looked. Both paths now read the blow, and both are covered.

@@ -19,6 +19,7 @@ from wowperf.domain.analysis.recap import (
     AbilityState,
     RecapEvent,
     availability_at,
+    killing_blow_ms,
     readings_in_window,
     recap_timeline,
     return_of,
@@ -358,6 +359,12 @@ def build_deaths(
             loaded.players, loaded.casts, death, defensives, consumables, externals,
             visible_from_ms=start_ms,
             auras=auras, window=loaded.window_ms,
+            # The instant a defensive's band is read against. Not the death's
+            # own timestamp: the death strips the bands, 15 to 55 ms before it
+            # is logged, so every held defensive would read as faded. None
+            # where the fetched stream carries no such hit, which leaves the
+            # press at `pressed`.
+            blow_ms=killing_blow_ms(loaded.damage_taken, death),
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
         came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)

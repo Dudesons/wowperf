@@ -144,6 +144,65 @@ def test_the_ability_panel_clips_its_cover_at_the_fights_end() -> None:
     assert cover == ["10.0 s"]
 
 
+# --- the blow, on the raid path -----------------------------------------------
+
+FRIGID_ROAR_ID = 1_214_063
+RAID_DEATH_MS = 1_300_000
+RAID_BLOW_MS = 1_299_985
+
+
+def a_fight_where_the_death_stripped_the_buff(*, blow_in_stream: bool = True) -> LoadedEncounter:
+    """A press still up when the blow landed, stripped 15 ms later by the death.
+
+    The band ends at the blow rather than at the death, which is what Warcraft
+    Logs records for every aura a death removes and what made `held`
+    unreachable on the live wipe this feature was measured against.
+    """
+    blow = DamageTakenEvent(
+        actor_id=1, ability_id=FRIGID_ROAR_ID, ability_name="Frigid Roar", amount=90_000,
+        health_damage=90_000, timestamp_ms=RAID_BLOW_MS,
+    )
+    death = Death(
+        player_name="Stonewake", actor_id=1, timestamp_ms=RAID_DEATH_MS,
+        killing_blow="Frigid Roar", killing_blow_id=FRIGID_ROAR_ID,
+    )
+    return a_loaded_fight(
+        deaths=(death,),
+        damage_taken=(blow,) if blow_in_stream else (),
+        casts=(
+            CastEvent(actor_id=1, ability_id=48792, ability_name="Icebound Fortitude",
+                      timestamp_ms=1_295_000),
+        ),
+        auras=(
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=4_985, uses=1,
+                     bands=(AuraBand(start_ms=1_295_000, end_ms=RAID_BLOW_MS),)),
+            )),
+        ),
+    )
+
+
+def test_a_boss_death_card_reads_its_defensive_at_the_blow_not_at_the_death() -> None:
+    card = build_deaths(a_fight_where_the_death_stripped_the_buff(), BLOOD, NO_CONSUMABLES)[0]
+
+    own = card.availability[0]
+    assert [(row.state, row.detail) for row in own.rows] == [
+        ("held", "5.0 s before death, still up")
+    ]
+
+
+def test_a_boss_death_whose_blow_is_not_in_the_stream_says_only_that_it_was_pressed() -> None:
+    # The lethal hit was never fetched. The band still ends before the death,
+    # so anything falling back to the death's timestamp would print "over by
+    # then" over a buff that was up -- the accusation this change removes.
+    card = build_deaths(
+        a_fight_where_the_death_stripped_the_buff(blow_in_stream=False), BLOOD, NO_CONSUMABLES
+    )[0]
+
+    own = card.availability[0]
+    assert [(row.state, row.detail) for row in own.rows] == [("pressed", "5.0 s before death")]
+
+
 def _a_ceiling_finding() -> Finding:
     return Finding(
         id=CEILING_ID, title="x", detail="detail", confidence=Confidence.INFERRED,

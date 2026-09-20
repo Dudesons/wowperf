@@ -1204,9 +1204,13 @@ def a_page_with(cast: CastEvent) -> str:
     )
 
 
-AVAILABILITY_ROW = r'<li class="(pressed|ready|cooldown|unseen)">'
+AVAILABILITY_ROW = r'<li class="(pressed|held|faded|ready|cooldown|unseen)">'
 """One row of an availability group. An evidence bullet is also an `<li>` and carries no
-class, so matching on the class is what tells a judged tool from a finding's evidence."""
+class, so matching on the class is what tells a judged tool from a finding's evidence.
+
+Every state a judged tool can carry, because the assertions below read "this section shows no
+judged tool at all". A state left out of the alternation would let one through and the
+assertion would keep passing while meaning something narrower."""
 
 
 def test_a_death_card_names_the_defensives_it_judged() -> None:
