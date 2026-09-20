@@ -403,6 +403,10 @@ lines are unreliable, so the code is the record.
   containing any digit, before fetching anything.
 - **Every finding carries a confidence badge** — `measured`, `derived`, or `inferred`. A
   finding without one is a bug. This is what keeps the tool from confidently lying.
+- **A new judgement is not done until a live run has exercised it.** Run it against a real
+  log and report how often each state it can reach actually occurred. A state that never
+  occurs is a defect, not a quiet success: `held` rendered zero times in 252 rows with the
+  whole offline suite green, and only the distribution said so.
 - **Never accumulate a corpus of other players' logs.** RPGLogs terms §5d prohibit it.
   Reference runs are fetched for one comparison and cached locally, never warehoused.
 - **No hardcoded season data.** Zone, encounter, and affix IDs resolve from `worldData` and
