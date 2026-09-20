@@ -6,7 +6,9 @@ from wowperf.domain.analysis.recap import (
     ABSORB,
     CAST,
     COOLDOWN,
+    FADED,
     HEAL,
+    HELD,
     HIT,
     PRESSED,
     READY,
@@ -17,17 +19,17 @@ from wowperf.domain.analysis.recap import (
     AbilityState,
     RecapEvent,
     availability_at,
+    killing_blow_ms,
     readings_in_window,
     recap_timeline,
     return_of,
     window_start,
 )
 from wowperf.domain.analysis.roster import display_names
-from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
 from wowperf.domain.events import Death
 from wowperf.domain.fight import LoadedFight
 from wowperf.domain.findings import Confidence
-from wowperf.domain.report.cover import band_holding, resolve_aura
 from wowperf.domain.report.frame import badge_for, format_seconds, plural
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
@@ -239,7 +241,11 @@ def _availability_tooltips(
 def _availability_row(
     state: AbilityState, names: dict[int, str], tooltips: dict[tuple[int | None, int], Tooltip],
 ) -> AvailabilityRow:
-    if state.state == PRESSED:
+    if state.state == HELD:
+        detail = f"{state.seconds:.1f} s before death, still up"
+    elif state.state == FADED:
+        detail = f"{state.seconds:.1f} s before death, over by then"
+    elif state.state == PRESSED:
         detail = f"{state.seconds:.1f} s before death"
     elif state.state == COOLDOWN:
         detail = f"at most {state.seconds:.0f} s left"
@@ -351,6 +357,13 @@ def build_deaths(
         at = availability_at(
             loaded.players, loaded.casts, death, defensives, consumables, externals,
             visible_from_ms=start_ms,
+            auras=auras, window=loaded.window_ms,
+            # The instant a defensive's band is read against. Not the death's
+            # own timestamp: the death strips the bands, 15 to 55 ms before it
+            # is logged, so every held defensive would read as faded. None
+            # where the fetched stream carries no such hit, which leaves the
+            # press at `pressed`.
+            blow_ms=killing_blow_ms(loaded.damage_taken, death),
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
         came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)

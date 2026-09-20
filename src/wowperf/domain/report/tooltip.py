@@ -2,10 +2,9 @@
 # ABOUTME: Reports the fields of a single event and apportions none of them between causes.
 
 from wowperf.domain.analysis.recap import HIT, RecapEvent
-from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.auras import PlayerAuras, clipped_bands, resolve_aura
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
-from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for
 from wowperf.domain.report.model import Tooltip, TooltipLine
 

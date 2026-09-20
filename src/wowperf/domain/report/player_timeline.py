@@ -4,11 +4,10 @@
 from collections import defaultdict
 from collections.abc import Iterable
 
-from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.auras import PlayerAuras, clipped_bands, resolve_aura
 from wowperf.domain.events import CastEvent, DamageTakenEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import DamageDoneSeries, LoadedRun, Pull, Run
-from wowperf.domain.report.cover import clipped_bands, resolve_aura
 from wowperf.domain.report.frame import badge_for, format_seconds, run_seconds, run_start_ms
 from wowperf.domain.report.model import (
     CooldownRow,

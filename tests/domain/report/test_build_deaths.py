@@ -736,6 +736,67 @@ def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_win
     assert row.cover_width > 0
 
 
+# --- the blow, on the Mythic+ path --------------------------------------------
+#
+# `build_deaths` is shared by `analyze` and `raid`, and `load_run_with_auras`
+# has always filled `auras` for every roster player, so a keystone run's death
+# cards carry the same judgement a raid's do and the same defect they carried.
+
+FRIGID_ROAR_ID = 1_309_919
+MPLUS_DEATH_MS = 60_000
+MPLUS_BLOW_MS = 59_985
+
+
+def a_death_the_log_names_a_blow_for(at_ms: int) -> Death:
+    return Death(player_name="Stonewake", actor_id=1, timestamp_ms=at_ms,
+                 killing_blow="Frigid Roar", killing_blow_id=FRIGID_ROAR_ID, pull_index=0)
+
+
+def a_run_where_the_death_stripped_the_buff(*, blow_in_stream: bool = True) -> LoadedRun:
+    """A press still up when the blow landed, and stripped 15 ms later by the death.
+
+    The band ends at the blow, not at the death: that gap is what a Warcraft
+    Logs strip looks like, and no fixture in this repository modelled it until
+    a live run found `held` unreachable in production.
+    """
+    blow = DamageTakenEvent(
+        actor_id=1, ability_id=FRIGID_ROAR_ID, ability_name="Frigid Roar", amount=90_000,
+        health_damage=90_000, timestamp_ms=MPLUS_BLOW_MS, pull_index=0,
+    )
+    return a_loaded_with(
+        (a_death_the_log_names_a_blow_for(MPLUS_DEATH_MS),), (blow,) if blow_in_stream else (),
+    ).model_copy(update={
+        "casts": owns_icebound(55_000),
+        "auras": (
+            PlayerAuras(actor_id=1, on_self=(
+                Aura(ability_id=48792, name="Icebound Fortitude", total_uptime_ms=4_985, uses=1,
+                     bands=(AuraBand(start_ms=55_000, end_ms=MPLUS_BLOW_MS),)),
+            )),
+        ),
+    })
+
+
+def test_a_keystone_death_card_reads_its_defensive_at_the_blow_not_at_the_death() -> None:
+    card = build_deaths(a_run_where_the_death_stripped_the_buff(), BLOOD, NO_CONSUMABLES)[0]
+
+    own = card.availability[0]
+    assert [(row.state, row.detail) for row in own.rows] == [
+        ("held", "5.0 s before death, still up")
+    ]
+
+
+def test_a_keystone_death_whose_blow_is_not_in_the_stream_says_only_that_it_was_pressed() -> None:
+    # The same run with the lethal hit unfetched. Nothing here may answer
+    # `faded`: the band ends before the death, so a fallback to the death's own
+    # timestamp would accuse this press, which is the defect being removed.
+    card = build_deaths(
+        a_run_where_the_death_stripped_the_buff(blow_in_stream=False), BLOOD, NO_CONSUMABLES
+    )[0]
+
+    own = card.availability[0]
+    assert [(row.state, row.detail) for row in own.rows] == [("pressed", "5.0 s before death")]
+
+
 def test_a_defensive_row_carries_a_measured_tooltip_when_its_aura_is_known() -> None:
     # Of the inside hit's 900, only 350 was mitigated -- the other 250 that
     # never reached health (900 - 300 - 350) was a shield's absorb, which the

@@ -218,6 +218,77 @@ One approximation and three measurements:
   worktree. This reading therefore prices what Layer 2 adds on top of an otherwise-warm cache, not
   a cold run of the whole command -- the 45.25-point wipe reading above, from before `damage_matrix`
   existed, remains the figure for a genuinely cold fetch of this shape.
+- **`wowperf raid` on the canonical wipe with the roster aura fetch, one subject, cache warm for
+  the fight's own data and cold for everything the 24-hour tier had let expire: 56.66 points of
+  3600** (2026-09-20, report `cW38jmwdnZfbHVL4`, fight 30, live verification of
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md`). Composed as the command printed it:
+  `Healing` 21 calls for 21.00, `AuraTable` 20 calls for 20.00, `ReportRankings` 2 calls for 4.00,
+  `AbilityTakenTable` 2 calls for 2.45, `Talents` 1 call for 2.20, `EncounterKillRankings` 1 call
+  for 1.01, then `Casts`, `DamageDoneGraph`, `EnemyCasts`, `Interrupts` and `Resurrects` at 1.00
+  each, and `RateLimit` 2 calls for 1.00. **The `AuraTable` line is what this design adds: one
+  table per roster player, twenty players, 1.00 point each** -- the plan had estimated 1.06 each,
+  so the measured cost is slightly below the estimate and about 20 points for a twenty-player
+  fight. The other lines are not this design's doing: the 2026-09-19 reading above priced the same
+  fight at 5.18 with the same fixture, and the difference is the day-tier entries expiring
+  overnight, not new work. **Re-run immediately against the now-warm cache: 1.00 point** -- the
+  two `RateLimit` reads and nothing else, which is the warm one-subject raid figure already
+  recorded above, unchanged by the twenty extra tables now on disk.
+- **The same command six hours later, cache fully warm, after the held-or-faded answer moved from
+  the death event to the killing blow: 1.00 point of 3600** (2026-09-20, report
+  `cW38jmwdnZfbHVL4`, fight 30, the re-measurement in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` §8.2). `RateLimit` 2 calls for 1.00 and no
+  other line at all. This is the warm counterpart to the 56.66-point cold reading directly above,
+  and it carries two readings rather than one. **Nothing had expired**: the 24-hour tier entries
+  fetched at 02:14 were still inside their day at 08:15, so a same-day re-run of a twenty-player
+  raid fight costs the quota read and nothing more, twenty aura tables included. **And reading the
+  killing blow is free**: the blow's moment comes from `DamageTaken`, which
+  `load_encounter` already fetches for every friendly across the whole fight, so moving the
+  instant added no query to the shape priced above. A design change that reads a stream already on
+  disk does not show up in this budget at all.
+- **A second and third fight of an already-fetched raid report, `--no-compare`, cache warm for the
+  report and cold for each fight's own streams: 48.20 and 53.20 points of 3600** (2026-09-20,
+  report `cW38jmwdnZfbHVL4`, fights 26 and 8, the widened measurement in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` §8.3). Composed as the commands printed
+  them: `AuraTable` 20 calls for 20.00 on each, `Healing` 16 and 20 calls for 16.00 and 20.00,
+  `ReportRankings` 2 calls for 4.00, `Talents` 1 call for 2.20, then `Casts`, `DamageDoneGraph`,
+  `EnemyCasts`, `Interrupts`, `Resurrects` and, on fight 8 only, `Deaths`, at 1.00 each, and
+  `RateLimit` 2 calls for 1.00. **A warm report does not make a new fight of it warm**: every
+  event stream is keyed by the fight's own window, so each additional fight pays its own aura
+  tables and its own streams. About 50 points a fight is the figure to plan with.
+- **A cold twenty-player raid fight on an unfetched report, `--no-compare`: 61.22 points of 3600**
+  (2026-09-20, report `DJfap6RcYKhPGHXZ`, fight 7, same measurement). `Healing` 23 calls for
+  23.00, `AuraTable` 20 calls for 20.00, `ReportRankings` 2 calls for 4.00, `DamageTaken` 3 calls
+  for 3.02, `Talents` 1 call for 2.20, `Casts` 2 calls for 2.00, then `Abilities`,
+  `DamageDoneGraph`, `Deaths`, `EnemyCasts`, `Interrupts` and `Resurrects` at 1.00 each, and
+  `RateLimit` 2 calls for 1.00. The 9-minute pull paginated `DamageTaken` into 3 calls and `Casts`
+  into 2; the 45.25-point cold reading further above was a shorter fight that paginated neither.
+- **`wowperf analyze` re-run on a Mythic+ report analysed on an earlier day, `--no-compare`: 3.01
+  or 5.01 points of 3600** (2026-09-20, seven reports, same measurement). 3.01 where only `Fights`
+  (2.01) and `RateLimit` (1.00) ran, 5.01 where `PlayerDetails` (2.00) had also expired out of the
+  24-hour tier. **Everything the held-or-faded split reads was already on disk**, aura tables
+  included: `load_run_with_auras` has fetched one table per roster player since before that
+  feature existed, so measuring the keystone path across seven runs cost 32.07 points in total.
+- **A command that fails on its subject still spends**: `analyze` on a report whose owner is not in
+  the fight's roster spent **6.01 points** before printing the roster and exiting (2026-09-20, two
+  such runs). The `Fights` and `PlayerDetails` queries that establish the roster run before the
+  name is checked, so an aborted run is not a free run.
+- **Reading the cache back through the domain is free.** Eleven fights re-loaded through
+  `load_encounter` / `load` plus `load_*_with_auras`, several times each, spent nothing beyond the
+  `RateLimit` read taken to confirm it: the hour's total closed at 219.72 points of 3600 against
+  218.72 accounted for by the commands. An analysis script that walks cached fights costs no quota.
+- **The same eleven fights re-run the next hour against a fully warm cache: 1.00 point each as the
+  command prices it, 2.00 each as the hour counts it, 22.00 of 3600 for all eleven** (2026-09-20,
+  reports `cW38jmwdnZfbHVL4` fights 30, 26 and 8, `DJfap6RcYKhPGHXZ` fight 7, and the seven
+  keystone runs, the confirmation run in
+  `docs/plans/2026-09-20-defensives-at-a-hit-design.md` section 8.4). Every run printed
+  `RateLimit` 2 calls for 1.00 and **no other line at all** -- four raid commands and seven
+  `analyze` commands alike, all `--no-compare`. **The two figures differ because the closing quota
+  read is unpriced**: a query's cost is known only once the next one runs, so each command reports
+  its opening read and not its closing one, while the remaining balance fell by exactly 2.00 per
+  run (3600 to 3578 across the eleven). Quote the 2.00 when planning an hour and the 1.00 when
+  reading a command's own output. Nothing had expired: the 24-hour tier entries fetched earlier the
+  same day were still inside their day, so a same-day re-run of a twenty-player raid fight still
+  costs the quota reads and nothing more, twenty aura tables included.
 
 ## Every query reports its own cost
 

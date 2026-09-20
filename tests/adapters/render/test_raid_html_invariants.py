@@ -59,6 +59,7 @@ from wowperf.domain.report.raid_model import (
     RaidReport,
     all_raid_ledger_rows,
 )
+from wowperf.domain.season import DefensiveAbility, Defensives
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -198,8 +199,13 @@ actually see. The third is deliberately left out, so the same page also carries
 a card in the not-requested state, which is the page's other `withheld` shape.
 """
 
-KILLING_BLOW_ID = 1214628
+KILLING_BLOW_ID = 1_290_516
 """The one ability id the fixture puts on the page, on the death's killing blow.
+
+Ravenous Feast, the id the cached ability dictionaries carry for the name
+this fixture gives it -- the same ability `RAVENOUS_FEAST_ID` names further
+down. It read 1214628 until 2026-09-20, which names nothing in any cached
+dictionary; the value is inert here, which is how it drifted.
 
 An id is what makes an icon resolvable at all, and `DeathCard.killing_blow_id`
 is the first thing `_icon_addresses` walks -- so the icon rules below are proved
@@ -1699,3 +1705,123 @@ def test_a_report_with_no_alive_chart_draws_none_of_it() -> None:
     assert 'class="alive-chart"' not in html
     assert "Players still standing" not in html
     assert "How the attempt went" not in html
+
+
+RAVENOUS_FEAST_ID = 1_290_516
+"""The ability the deaths below name as their killing blow."""
+
+
+def a_death_page_where(
+    pressed_at_ms: int, band: tuple[int, int], death_at_ms: int, ability: str,
+    blow_at_ms: int | None,
+) -> str:
+    """Render a raid page with one death: the dying player pressed their own
+    defensive once, and the aura table gives it exactly one band.
+
+    Goes through the real pipeline -- `build_raid_report` down through
+    `build_deaths` and `render_raid` -- rather than hand-building an
+    `AbilityState`, so a wiring mistake at the `availability_at` call site
+    shows up here, not only in `state_of`'s own tests.
+
+    `pressed_at_ms`, `band`, `blow_at_ms` and `death_at_ms` share
+    `test_recap_availability.py`'s clock -- a fight window of `(0, 10_000)` --
+    so the two levels agree on what "held" and "faded" mean for the same
+    numbers.
+
+    `blow_at_ms` is when the killing blow landed, and the fight's damage stream
+    carries exactly that hit. None puts no such hit in the stream, which is the
+    death whose lethal hit pagination never reached.
+    """
+    ability_id = 22812  # Barkskin's id; only the id has to match, not the name.
+    player = Player(
+        actor_id=1, name="Кириллица",
+        class_name="Druid", spec="Guardian", item_level=680,
+    )
+    defensives = Defensives(
+        entries=(
+            (
+                "Druid/Guardian",
+                (DefensiveAbility(ability_id=ability_id, name=ability, cooldown_seconds=45.0),),
+            ),
+        ),
+    )
+    auras = PlayerAuras(
+        actor_id=1,
+        on_self=(
+            Aura(
+                ability_id=ability_id, name=ability, total_uptime_ms=band[1] - band[0], uses=1,
+                bands=(AuraBand(start_ms=band[0], end_ms=band[1]),),
+            ),
+        ),
+    )
+    loaded = LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs", players=(player,), kill=False,
+            fight_percentage=12.4, start_ms=0, end_ms=10_000,
+        ),
+        deaths=(
+            Death(
+                actor_id=1, player_name=player.name, timestamp_ms=death_at_ms,
+                killing_blow="Ravenous Feast", killing_blow_id=RAVENOUS_FEAST_ID,
+            ),
+        ),
+        damage_taken=() if blow_at_ms is None else (
+            DamageTakenEvent(
+                actor_id=1, ability_id=RAVENOUS_FEAST_ID, ability_name="Ravenous Feast",
+                amount=90_000, health_damage=90_000, timestamp_ms=blow_at_ms,
+            ),
+        ),
+        casts=(
+            CastEvent(
+                actor_id=1, ability_id=ability_id, ability_name=ability,
+                timestamp_ms=pressed_at_ms,
+            ),
+        ),
+        auras=(auras,),
+    )
+    report = build_raid_report(
+        loaded, (), player, None, FETCHED, defensives, NO_CONSUMABLES, NO_ROLES,
+    )
+    return render_raid(report)
+
+
+def test_a_defensive_that_lapsed_says_so_on_the_card() -> None:
+    """The overstatement this branch exists to correct, as a reader meets it."""
+    html = a_death_page_where(
+        pressed_at_ms=2000, band=(1000, 3000), death_at_ms=5000, ability="Barkskin",
+        blow_at_ms=4985,
+    )
+
+    assert "over by then" in html
+    assert '<li class="faded">' in html
+
+
+def test_a_defensive_still_covering_says_that_instead() -> None:
+    # The band ends 15 ms before the death and exactly at the blow, because the
+    # death stripped it: the shape every held defensive has in a real log. Read
+    # against the death this page said "over by then" about a buff that was up.
+    html = a_death_page_where(
+        pressed_at_ms=2000, band=(2000, 4985), death_at_ms=5000, ability="Barkskin",
+        blow_at_ms=4985,
+    )
+
+    assert '<span class="avail-detail">3.0 s before death, still up</span>' in html
+    assert "over by then" not in html
+    assert '<li class="held">' in html
+
+
+def test_a_death_whose_killing_blow_was_never_fetched_claims_neither() -> None:
+    # Same band as the faded page, and no lethal hit in the stream. The page
+    # must fall back to the plain press, never to the death's own timestamp:
+    # that band ends before the death, so the fallback would print an
+    # accusation and look exactly like a measurement.
+    html = a_death_page_where(
+        pressed_at_ms=2000, band=(1000, 3000), death_at_ms=5000, ability="Barkskin",
+        blow_at_ms=None,
+    )
+
+    assert '<span class="avail-detail">3.0 s before death</span>' in html
+    assert "over by then" not in html
+    assert '<li class="faded">' not in html
+    assert '<li class="held">' not in html
+    assert '<li class="pressed">' in html

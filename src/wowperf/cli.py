@@ -1105,6 +1105,32 @@ def load_run_with_auras(
     return loaded.model_copy(update={"auras": fetched})
 
 
+def load_encounter_with_auras(
+    runs: WclRunRepository, code: str, fight_id: int, loaded: LoadedEncounter
+) -> LoadedEncounter:
+    """The fight, with every roster player's buff bands attached.
+
+    One `AuraTable` query per player, about 1.06 points each, so about 21 for a
+    twenty-player fight against an hourly budget of 3600. The raid path fetched
+    these only for comparable parse subjects, which measured at one table for a
+    twenty-player report -- and a held-or-faded answer drawn from bands is
+    silent for every player without one.
+
+    A player whose fetch fails simply has no bands, and the states that read
+    them say `pressed` rather than guessing. `_auras` already swallows the
+    failure for the same reason on the Mythic+ side: a report that has been
+    fetched and paid for is not discarded over one player's table.
+    """
+    fetched = tuple(
+        one
+        for one in (
+            _auras(runs, code, fight_id, player.actor_id) for player in loaded.players
+        )
+        if one is not None
+    )
+    return loaded.model_copy(update={"auras": fetched})
+
+
 def _fetch_parse_auras(
     sample: ParseSample,
     ours: WclRunRepository,
@@ -1481,6 +1507,11 @@ def raid(
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
         loaded = repository.load_encounter(code, fight if fight is not None else fight_from_url)
+        # Fetched here, once, so every consumer below sees the same
+        # LoadedEncounter -- a held-or-faded answer drawn from bands is silent
+        # for a player whose table was never fetched, and the parse-subject
+        # loop below only ever fetched one for a comparable subject.
+        loaded = load_encounter_with_auras(repository, code, loaded.encounter.fight_id, loaded)
         # Loaded once and shared, exactly as `analyze` shares them between its
         # analysers and its report builder -- there is no report builder here
         # yet, but a later plan that adds one must still read the same data

@@ -234,9 +234,13 @@ def test_the_rendered_geometry_matches_what_build_timeline_computed() -> None:
     assert f'y="{timeline.ours.baseline_y}"' in html
 
 
+AVAILABILITY_STATES = ("pressed", "held", "faded", "ready", "cooldown", "unseen")
+"""Every state an availability row can carry, which is what this test's name claims to cover."""
+
+
 def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class() -> None:
     # The template maps a kind and a state to a class and to nothing else, so
-    # the eight names below are the whole of what tells the rows apart on screen.
+    # the ten names below are the whole of what tells the rows apart on screen.
     card = DeathCard(
         player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
         killing_blow="Frigid Roar",
@@ -247,7 +251,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
         availability=(
             AvailabilityGroup(title="Defensives", rows=tuple(
                 AvailabilityRow(ability=state.title(), state=state)
-                for state in ("pressed", "ready", "cooldown", "unseen")
+                for state in AVAILABILITY_STATES
             )),
         ),
     )
@@ -256,7 +260,7 @@ def test_every_row_kind_and_every_availability_state_reaches_the_page_as_a_class
 
     assert [kind for kind in ("hit", "absorb", "heal", "cast")
             if f'<tr class="{kind}">' not in html] == []
-    assert [state for state in ("pressed", "ready", "cooldown", "unseen")
+    assert [state for state in AVAILABILITY_STATES
             if f'<li class="{state}">' not in html] == []
 
 
