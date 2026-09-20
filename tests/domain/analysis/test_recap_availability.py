@@ -321,12 +321,15 @@ def test_a_reach_back_past_a_small_death_credits_the_older_strip() -> None:
 
     **That is a false `held`, and it is the answer the measurement gives.** The
     discriminator reads shape, and a pull-end proc drop has a death strip's
-    shape exactly; only position could tell them apart, and position can only
-    rule an older instant out when a later one qualifies. Distinguishing them
-    otherwise needs a look-back bound in milliseconds, which is the unjustified
-    constant this design has refused three times. Searched for in the cache and
-    not found: across 163 qualifying instants in 113 of the 133 tables, none
-    falls inside any of the 35 identifiable genuinely expired bands.
+    shape exactly. Position rules an older instant out when a later one
+    qualifies, and the search's floor rules out everything before the run-up's
+    first press -- but between those two, inside the run-up, nothing measured
+    separates them. Doing so needs a look-back bound in milliseconds, the
+    unjustified constant this design has refused four times.
+
+    The pile-up here is four seconds before the death and so inside the run-up,
+    which is what the bound leaves reachable; design section 3.1 records that
+    this is the residual's whole remaining size.
     """
     pile_up_ms = EVOKER_DEATH_MS - 4_000
     older = tuple(
@@ -430,6 +433,72 @@ def test_a_band_trailing_the_strip_among_others_answers_pressed_not_faded() -> N
     )
 
     assert state.state == PRESSED
+
+
+def test_an_ancient_strip_cannot_claim_a_press_from_the_run_up() -> None:
+    """The reach-back is bounded below by the run-up's first press, which no band can predate.
+
+    Task 10 saw the search reach back 1777 seconds on a real death. The tempting
+    argument is that it cannot matter: the refinement only runs for a press
+    inside the run-up, and the band of that press cannot end before the press
+    began, so an instant half an hour earlier can never hold it. **That
+    argument is sound about the press's own band and the code does not require
+    it.** `last_band_end` reads the whole resolved aura, not the band this press
+    opened, so where a run-up press has no band of its own -- a cast the log
+    recorded and the aura table did not -- the aura's previous use answers
+    instead, and an ancient instant claims it.
+
+    Here the press is five seconds before the death and the only band this aura
+    carries ended 1777 seconds earlier, inside a ten-ability instant. Unbounded,
+    that reads `held`: a defensive credited as up at the blow on the strength of
+    a band that ended half an hour before. Bounded at the press, no instant in
+    reach qualifies, and the count answers the honest unknown.
+    """
+    ancient_ms = EVOKER_DEATH_MS - 1_777_000
+    ancient = tuple(
+        (ability_id + 1, name, ancient_ms, length)
+        for ability_id, name, _, length in _without_the_defensive()
+    )
+    small_death = tuple(
+        (ability_id + 2, name, 6_987_476, length)
+        for ability_id, name, _, length in STRIPPED_BANDS[:3]
+    )
+    table = a_table(
+        *ancient, (SCALES, "Obsidian Scales", ancient_ms, SCALES_LENGTH), *small_death
+    )
+
+    state = state_of(
+        _presses(SCALES, at_ms=EVOKER_DEATH_MS - 5_000), "Obsidian Scales", 30.0, 1,
+        EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == PRESSED
+
+
+def test_a_second_press_after_the_strip_does_not_throw_the_strip_away() -> None:
+    """The bound is the *earliest* press in the run-up, not the latest.
+
+    The same conflation the bound exists to fix, mirrored: `last_band_end` may
+    be answering for an earlier press while the latest one landed after the
+    band ended. Here the ability is pressed six seconds before the death and
+    again at 6987478, in the 15-to-55 ms gap between the strip and the death.
+    The band ends at 6987476, **inside the death's own strip** -- a correct
+    `held` -- and bounding at the later press would cut that strip off and
+    answer the unknown instead. Nothing a press opened can end before the
+    earliest press, so that is where the search stops.
+    """
+    table = a_table(*STRIPPED_BANDS)
+    presses = (press(SCALES, SCALES_PRESSED_MS), press(SCALES, 6_987_478))
+
+    state = state_of(
+        presses, "Obsidian Scales", 30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES,
+        auras=table, window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+    )
+
+    assert state.state == HELD
+    # `seconds` still counts from the latest press, which is untouched by this.
+    assert state.seconds == 0.004
 
 
 def test_a_death_whose_blow_never_reached_the_stream_stays_pressed() -> None:

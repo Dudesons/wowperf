@@ -132,6 +132,10 @@ DEATH_MS = 6_987_482
 # The strip is a span, not a point: the log spread this one over three
 # milliseconds. A band counts as stripped only when it ends inside it.
 STRIP = (6_987_475, 6_987_477)
+# The search is bounded below by the press it is about: a band cannot end before
+# the press that opened it, and the refinement only ever runs for a press inside
+# the run-up. Ten seconds is `RUN_UP_SECONDS`, the widest that bound can be.
+SINCE_MS = DEATH_MS - 10_000
 
 
 def a_table(*rows: tuple[int, str, int, int]) -> PlayerAuras:
@@ -150,7 +154,7 @@ def a_table(*rows: tuple[int, str, int, int]) -> PlayerAuras:
 
 def test_several_independent_auras_ending_together_are_a_strip() -> None:
     """The instant the death removed them, read back as the span the log spread it over."""
-    assert strip_instant(a_table(*STRIPPED_BANDS), DEATH_MS) == STRIP
+    assert strip_instant(a_table(*STRIPPED_BANDS), SINCE_MS, DEATH_MS) == STRIP
 
 
 def test_one_aura_ending_alone_is_an_expiry_and_marks_no_strip() -> None:
@@ -165,7 +169,7 @@ def test_one_aura_ending_alone_is_an_expiry_and_marks_no_strip() -> None:
         (370901, "Leaping Flames", 6_987_476, 3_416),
     )
 
-    assert strip_instant(table, DEATH_MS) is None
+    assert strip_instant(table, SINCE_MS, DEATH_MS) is None
 
 
 def test_the_strip_instant_is_bounded_by_the_measured_stripped_cluster() -> None:
@@ -182,8 +186,8 @@ def test_the_strip_instant_is_bounded_by_the_measured_stripped_cluster() -> None
     seven = STRIPPED_BANDS[:7]
     eight = STRIPPED_BANDS[:8]
 
-    assert strip_instant(a_table(*seven), DEATH_MS) is None
-    assert strip_instant(a_table(*eight), DEATH_MS) == STRIP
+    assert strip_instant(a_table(*seven), SINCE_MS, DEATH_MS) is None
+    assert strip_instant(a_table(*eight), SINCE_MS, DEATH_MS) == STRIP
 
 
 # A real Holy Paladin's strip, from a cached aura table: nine of their auras end
@@ -213,7 +217,7 @@ def test_a_lone_ending_after_the_strip_does_not_hide_it() -> None:
     of the 188 runs of seven abilities or more are followed by another band end
     2 to 60 ms later, and 7 of those within 15 ms.
     """
-    assert strip_instant(a_table(*PALADIN_STRIP), 9_993_390) == (9_993_378, 9_993_379)
+    assert strip_instant(a_table(*PALADIN_STRIP), 9_983_390, 9_993_390) == (9_993_378, 9_993_379)
 
 
 def test_co_ending_abilities_counts_the_others_at_this_ones_last_instant() -> None:
@@ -241,8 +245,10 @@ def test_the_strip_is_the_last_one_before_the_moment_asked_about() -> None:
     )
     table = a_table(*earlier, *STRIPPED_BANDS)
 
-    assert strip_instant(table, DEATH_MS - 29_000) == (STRIP[0] - 30_000, STRIP[1] - 30_000)
-    assert strip_instant(table, DEATH_MS) == STRIP
+    older = (STRIP[0] - 30_000, STRIP[1] - 30_000)
+
+    assert strip_instant(table, DEATH_MS - 39_000, DEATH_MS - 29_000) == older
+    assert strip_instant(table, SINCE_MS, DEATH_MS) == STRIP
 
 
 def test_a_millisecond_with_nothing_ending_in_it_closes_the_run() -> None:
@@ -258,7 +264,7 @@ def test_a_millisecond_with_nothing_ending_in_it_closes_the_run() -> None:
         (48792, "Icebound Fortitude", STRIP_MS - 2, 8_000),
     )
 
-    assert strip_instant(table, DEATH_MS) == STRIP
+    assert strip_instant(table, SINCE_MS, DEATH_MS) == STRIP
 
 
 def test_bands_ending_after_the_moment_asked_about_are_not_part_of_it() -> None:
@@ -283,9 +289,37 @@ def test_bands_ending_after_the_moment_asked_about_are_not_part_of_it() -> None:
         *later_death,
     )
 
-    assert strip_instant(table, DEATH_MS) == STRIP
-    assert strip_instant(table, 6_990_600) == (6_990_500, 6_990_500)
+    assert strip_instant(table, SINCE_MS, DEATH_MS) == STRIP
+    assert strip_instant(table, 6_980_600, 6_990_600) == (6_990_500, 6_990_500)
+
+
+def test_the_search_stops_at_the_press_it_is_about() -> None:
+    """A band cannot end before the press that opened it, so nothing earlier is its strip.
+
+    Task 10 measured the unbounded search on live data: no qualifying instant
+    at all on 31 of 105 deaths, and on 5 of those it reached an older one --
+    once by 1777 seconds. The bound is the log's own, not a look-back tolerance:
+    whatever the press could have raised began at the press. Its caller passes
+    the *earliest* press of the run-up, and `test_recap_availability.py` pins
+    why that and not the latest.
+
+    The second reading is a control rather than a case: `since_ms` that old is
+    not a value the caller can produce, and it is here to show the ancient
+    instant really is there to be found, so the first reading cannot pass
+    because nothing was.
+    """
+    ancient = tuple(
+        (ability_id + 1, name, DEATH_MS - 1_777_000, length)
+        for ability_id, name, _, length in STRIPPED_BANDS
+    )
+    table = a_table(*ancient)
+
+    assert strip_instant(table, SINCE_MS, DEATH_MS) is None
+    # And it is found when the press is old enough to reach it.
+    assert strip_instant(table, DEATH_MS - 1_800_000, DEATH_MS) == (
+        DEATH_MS - 1_777_000, DEATH_MS - 1_777_000
+    )
 
 
 def test_a_player_with_no_bands_at_all_marks_no_strip() -> None:
-    assert strip_instant(PlayerAuras(actor_id=1), DEATH_MS) is None
+    assert strip_instant(PlayerAuras(actor_id=1), SINCE_MS, DEATH_MS) is None

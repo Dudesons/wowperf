@@ -170,15 +170,48 @@ player has no aura table at all.
 > blow-to-death window of 15 to 55 ms on fight 30. An older pile-up — a keystone party leaving
 > combat drops a dozen procs together — is passed over for any strip after it.
 >
-> **Where no strip is found after it, the search reaches back to that older pile-up, and that is the
-> rule's residual.** It arises when the death's own removal does not qualify — a player carrying
-> fewer than eight auras when they died — and a defensive ending at the older instant then reads
-> `held` for an instant that was not the death's, which is §6's second failure mode. It is left
-> unbounded deliberately: the discriminator reads shape, a pull-end proc drop has a death strip's
-> shape exactly, and separating them needs a look-back tolerance in milliseconds that no measurement
-> justifies. **Searched for and not found** — across 163 qualifying instants in 113 of the 133 cached
-> tables, none falls inside any of the 35 identifiable genuinely expired bands. It is pinned by a
-> test rather than left to be discovered.
+> **Where no strip is found after it, the search reaches back to that older pile-up. It stops at the
+> press.** The refinement only ever runs for a press inside the run-up, and **a band cannot end
+> before the press that opened it**, so no instant earlier than the **earliest** of those presses
+> can be the strip of a band they opened. It is a bound the log itself gives — a timestamp read off
+> the row's own presses — and not a look-back tolerance in milliseconds, which is the constant this
+> design has refused throughout.
+>
+> **The earliest press and not the latest**, because the same conflation lurks on this side too:
+> what is read is the aura's latest band end at or before the death, which may belong to an earlier
+> press while a later one landed after that band ended — a second press inside the 15-to-55 ms gap
+> between the strip and the death is enough. Bounding at the later press throws the death's own
+> strip away and answers `pressed` where the band ended inside it. `seconds` still counts from the
+> latest press; only the search's floor moves.
+>
+> **What the bound does and does not claim.** It does *not* exclude nothing that could have been
+> right: the band read may belong to a press older than the run-up entirely. What is exact is that a
+> death's own strip sits within milliseconds of the death, so no bound inside the run-up can exclude
+> one; what is cut off is the older instants the residual describes. And while `since_ms` is
+> different in kind from the tolerance refused here — a per-row timestamp read out of the log,
+> justified causally rather than calibrated — the honest qualifier is that the worst-case reach is
+> now `RUN_UP_SECONDS` = 10.0, which *is* a chosen constant. It is pre-existing and justified
+> elsewhere, but it is not nothing.
+>
+> **The bound was earned, not precautionary.** §8.4 measured the unbounded search on live data: no
+> qualifying instant at all on 31 of 105 deaths, and on 5 of those the search reached an older one,
+> once by **1777 seconds**. The tempting argument is that this cannot do harm, because an instant
+> half an hour early cannot hold a band a run-up press opened. That is true of the band the press
+> opened and **false of what the code reads**, which is the aura's latest band end at or before the
+> death — and that falls back to a *previous* use when the press left no band of its own. A test
+> built on the observed 1777 s answered `held` on a band that stale before the bound went in.
+>
+> **What remains is bounded, not gone.** An older pile-up *inside the run-up* can still answer for a
+> death whose own removal is too small — a keystone party leaving combat drops a dozen procs
+> together — and a defensive ending there reads `held` for an instant that was not the death's, §6's
+> second failure mode. Separating those two needs the tolerance above, so the residual stays
+> recorded rather than patched, now at the size of a run-up rather than of a whole fight. It is
+> pinned by a test rather than left to be discovered.
+>
+> **How close the edge of 7 sits to real data, since the same measurement says so.** Of those 31
+> deaths with no qualifying instant, **11 were exactly one ability short of the edge**. Those rows
+> fall to the count, which is silence and not error, but the figure belongs beside the edge's
+> justification: the separation is clean where it was measured, and real deaths sit against it.
 >
 > And bands ending on **consecutive milliseconds** are one instant, because one millisecond is the
 > finest gap the log can express, so the width is the clock's own resolution rather than a number
@@ -637,13 +670,19 @@ resolution rather than a width chosen to fit, though not a free choice either: g
 exact-equal milliseconds splits the worked example's strip into instants of one, four and five
 abilities and loses it.
 
-**The anchor's reach-back is unbounded and is the rule's known residual.** When the death's own
-removal holds fewer than eight abilities it does not qualify, the search walks further back, and an
-older pile-up answers in its place — a defensive ending there reads `held` for an instant that was
-not this death's. Bounding it needs a look-back tolerance no measurement justifies, so it is
-recorded rather than patched, exactly as §8.1's stale-hit residual was. It was searched for in the
-cache and not found: **163 qualifying instants across 113 of the 133 tables, none inside any of the
-35 identifiable genuinely expired bands.** §3.1 carries it and a test pins what the shape answers.
+**The anchor's reach-back is bounded at the press, and what is left of it is the rule's known
+residual.** When the death's own removal holds fewer than eight abilities it does not qualify and
+the search walks further back, but no earlier than the **earliest** press in the row's run-up: a
+band cannot end before the press that opened it. Inside that span an older pile-up can still answer
+in the death's place, and a defensive ending there reads `held` for an instant that was not this
+death's.
+Separating the two needs a look-back tolerance no measurement justifies, so that much is recorded
+rather than patched, exactly as §8.1's stale-hit residual was.
+
+**The bound itself was earned by measurement, not caution.** §8.4 saw the unbounded search reach
+1777 s on a real death, and the argument that an ancient instant cannot hold a run-up press's band
+turned out to be true of the band the press opened and false of the band the code reads. §3.1
+carries both halves and two tests pin them.
 
 **What the reach-back does *not* widen, because it was closed here:** a band that merely spans the
 instant the anchor reached back to. The rule now asks whether the band **ends inside** the strip,
@@ -935,6 +974,24 @@ this run does not improve; the reach-back has now been seen reaching 1777 s and 
 asked a question yet; and the `>= 8` edge is silent on 31 of 105 deaths, eleven of them by one
 ability. None of these is a reason to add the tolerance constant this design has refused four times.
 They are the size of what is left.
+
+> **The reach-back was settled after this section was written, and not the way it was expected to
+> be.** The argument put to the question was that it could never do harm: the refinement runs only
+> for a press inside the run-up, and an instant half an hour early cannot hold a band that press
+> opened. **That argument is sound about the band the press opened and false about what the code
+> reads** — the aura's *latest band end at or before the death*, which falls back to a previous use
+> when the press left no band of its own. A test built on the 1777 s reach observed above answered
+> `held` on a band that stale. So it was reachable, not merely unexercised, and "it misstated
+> nothing on these eleven fights" was the right way to have recorded it.
+>
+> It is now bounded at **the earliest press in the row's run-up**: a band cannot end before the
+> press that opened it, so nothing earlier can be the strip of a band those presses opened. The
+> earliest and not the latest, because a second press landing after the band ended would otherwise
+> cut off the death's own strip. The bound is the log's own and not the look-back tolerance this
+> design has refused — with the qualifier that its worst-case reach is `RUN_UP_SECONDS` = 10.0,
+> which is a chosen constant, pre-existing and justified elsewhere. What survives is an older
+> pile-up *inside the run-up* answering for a death whose own removal is too small — the same
+> residual at the size of a run-up rather than of a fight. §3.1 carries it and three tests pin it.
 
 **Quota: 1.00 point per run as each command priced it, 22.00 of 3600 across the hour for all
 eleven, on a fully warm cache.** Every run printed `RateLimit` 2 calls for 1.00 and no other line —

@@ -250,7 +250,7 @@ def last_band_end(aura: Aura, at_ms: int) -> int | None:
     return max(ends) if ends else None
 
 
-def strip_instant(auras: PlayerAuras, at_ms: int) -> tuple[int, int] | None:
+def strip_instant(auras: PlayerAuras, since_ms: int, at_ms: int) -> tuple[int, int] | None:
     """The last instant at or before `at_ms` where a death unmistakably stripped this player.
 
     A death strips what the player was carrying, and Warcraft Logs timestamps
@@ -281,21 +281,46 @@ def strip_instant(auras: PlayerAuras, at_ms: int) -> tuple[int, int] | None:
     through the instant and ends later was not removed by it, and reading it as
     though it were is a false credit that grows with the reach-back below.
 
-    **The reach-back is unbounded, and that is this rule's residual.** Where the
-    death's own removal does *not* qualify -- a player carrying fewer than eight
-    auras when they died -- the search keeps walking back, and an older pile-up
-    inside the fight answers in its place. A defensive ending at that pile-up
-    then reads `held` for an instant that was not the death's, which is the
-    false credit design section 6 puts second. Nothing bounds it, deliberately:
-    the discriminator reads *shape*, a pull-end proc drop has a death strip's
-    shape exactly, and telling them apart otherwise needs a look-back tolerance
-    in milliseconds that no measurement justifies -- the constant this design
-    has refused three times. **Searched for and not found:** across 163
-    qualifying instants in 113 of the 133 cached aura tables, none falls inside
-    any of the 35 identifiable genuinely expired bands.
-    `analysis/recap.py` pins what the shape answers.
+    **`since_ms` is what stops the reach-back running away, and it is the
+    press's own moment.** Where the death's removal does not qualify -- a player
+    carrying fewer than eight auras when they died -- the search keeps walking
+    back. Task 10 measured that on live data: no qualifying instant on 31 of 105
+    deaths, and on 5 of them the search reached an older one, once by **1777
+    seconds**. A band cannot end before the press that opened it, so no instant
+    before the **earliest** press in the run-up can be the strip of a band
+    those presses opened. `analysis/recap.py::state_of` passes the earliest and
+    not the latest for exactly that reason. It is a bound the log itself
+    provides, not a look-back tolerance in milliseconds -- the constant this
+    design has refused throughout.
+
+    **It is a cut rather than a proof in one direction, and saying otherwise
+    would overstate it.** What is read is the aura's latest band end at or
+    before the death, which can belong to a press older than the run-up, so
+    "excludes nothing that could have been right" is not true as stated. What
+    *is* exact: a death's own strip sits within milliseconds of the death, so no
+    bound inside the run-up can exclude one. What the bound excludes is older
+    instants -- the residual below -- and its worst-case reach is now
+    `RUN_UP_SECONDS`, itself a chosen constant, pre-existing and justified
+    elsewhere.
+
+    **It was reachable, not merely untidy.** The tempting argument is that an
+    ancient instant can never hold a run-up press's band, and that is true of
+    the band *this press opened*. It is not true of what is read: the aura's
+    latest band end at or before the death, which falls back to a previous use
+    when the press has no band of its own. `tests/domain/analysis/` carries the
+    death that answered `held` on a band 1777 seconds stale before this bound.
+
+    **What remains is bounded, not gone.** An older pile-up *inside* the run-up
+    can still answer for a death whose own removal is too small -- a keystone
+    party leaving combat drops a dozen procs together -- and a defensive ending
+    there reads `held` for an instant that was not the death's, which is the
+    false credit design section 6 puts second. Separating those needs the
+    tolerance above, so the residual is recorded rather than patched, now at the
+    size of a run-up rather than of a fight. `analysis/recap.py` pins it.
     """
     for first_ms, last_ms, abilities in reversed(_instants(auras, at_ms)):
+        if last_ms < since_ms:
+            break
         if len(abilities) > STRIPPED_CO_ENDING_ABILITIES:
             return first_ms, last_ms
     return None

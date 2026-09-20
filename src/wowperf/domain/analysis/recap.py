@@ -295,6 +295,7 @@ def _press_state(
     name: str,
     blow_ms: int | None,
     death_ms: int,
+    pressed_ms: int,
 ) -> str:
     """Whether a press was still up when the blow landed, or PRESSED if unknowable.
 
@@ -318,6 +319,29 @@ def _press_state(
     The death's own moment is what anchors it, because the strip is the
     death's, and it is read after the blow rather than instead of it -- a band
     that covers the blow is HELD whatever the strip did.
+
+    **The strip is looked for no earlier than `pressed_ms`, the *earliest*
+    press in the run-up.** A band cannot end before the press that opened it,
+    so no instant before that press can be the strip of a band those presses
+    opened. Without the bound the search reaches back through the whole fight
+    whenever the death's own removal is too small to qualify -- 1777 seconds on
+    one of Task 10's 105 deaths -- and an aura whose run-up press left no band
+    of its own answers from a previous use, which reads HELD on a band half an
+    hour stale. That is not hypothetical: the test below fails without it.
+
+    **The earliest press, not the latest, and the difference is the same
+    conflation.** `last_band_end` may be answering for an earlier press while a
+    later one landed after that band ended -- a second press inside the 15-to-55
+    ms gap between the strip and the death is enough. Bounding at the later
+    press would throw away the death's own strip and answer PRESSED where the
+    band ended inside it, correctly HELD. `seconds` still counts from the latest
+    press; only the search's floor moves.
+
+    What the bound cannot claim is that it excludes nothing that could have been
+    right: the band read may belong to a press older than the run-up. What it
+    does claim exactly is that a death's own strip is within milliseconds of the
+    death and so is never excluded, and that what is cut off is the older
+    instants the residual describes.
 
     **The band must end *inside* the strip, not merely run through it.** This
     branch is reached only when no band covers the blow, so a band that spans
@@ -385,11 +409,16 @@ def _press_state(
     start_ms, end_ms = window
     if band_holding(aura, start_ms, end_ms, blow_ms):
         return HELD
-    strip = strip_instant(auras, death_ms)
+    strip = strip_instant(auras, pressed_ms, death_ms)
     ended_ms = last_band_end(aura, death_ms)
     if strip is not None and ended_ms is not None:
         first_ms, last_ms = strip
-        if first_ms <= ended_ms <= last_ms:
+        # An instant that *starts* before the press survives the search's break,
+        # which stops at instant granularity. Clamping here keeps a band that
+        # provably predates the press from being claimed by its first
+        # millisecond -- at most the 4 ms an instant has ever spanned, but the
+        # whole bound is the claim that such a band cannot be this strip's.
+        if max(first_ms, pressed_ms) <= ended_ms <= last_ms:
             return HELD
         if ended_ms < first_ms:
             # The death's strip came after this band ended, so the aura was
@@ -451,7 +480,9 @@ def state_of(
     if in_run_up:
         return AbilityState(
             name=name,
-            state=_press_state(auras, window, ability_id, name, blow_ms, death_ms),
+            state=_press_state(
+                auras, window, ability_id, name, blow_ms, death_ms, min(in_run_up)
+            ),
             owner_id=owner_id, ability_id=ability_id,
             seconds=(death_ms - max(in_run_up)) / 1000,
         )
