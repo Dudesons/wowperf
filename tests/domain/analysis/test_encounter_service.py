@@ -79,9 +79,12 @@ def test_a_death_is_reported_and_located_against_the_fight() -> None:
                                  Consumables())
 
     assert findings, "a death must produce a finding"
-    # deaths.total carries a seconds_lost and the defensives families do not,
-    # so rank_findings' (None-last) key puts it first deterministically, not by
-    # insertion luck.
+    # This fixture presses nothing and both defensives analysers gate on a cast,
+    # so the only findings here are deaths.total and deaths.single.0 -- one
+    # family, both carrying the same 3.0s, which rank_raid_findings scores
+    # identically. Nothing in the ranking separates them; the order is the one
+    # analyse_deaths emitted, held by a stable sort, and it builds the total
+    # before appending the singles.
     assert findings[0].id == "deaths.total"
     assert any("The Twin Fangs" in line for line in findings[0].evidence)
     assert not any("pull" in line for f in findings for line in f.evidence)

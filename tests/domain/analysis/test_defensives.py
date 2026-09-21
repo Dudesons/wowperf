@@ -342,8 +342,12 @@ def test_a_death_with_unmeasured_cost_disables_every_ceiling_for_that_player() -
     # the run was dying, so there is no honest dead-time figure for them and
     # therefore no honest alive-time figure either. That must withhold every
     # ceiling finding for this player, not just the one for the ability they
-    # actually pressed -- which is why the fixture lists two defensives and
+    # actually pressed — which is why the fixture lists two defensives and
     # presses one.
+    #
+    # Paired against the same call without that death, so the emptiness below
+    # is the unmeasured death doing the suppressing and not the analyser having
+    # failed wholesale.
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     defensives = Defensives(
         entries=(
@@ -361,6 +365,11 @@ def test_a_death_with_unmeasured_cost_disables_every_ceiling_for_that_player() -
         )
     )
     casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    measured = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, defensives, ()
+    )
+    assert findings_by_prefix(measured, "defensives.ceiling.") != []
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, defensives, (a_death(1, None),)

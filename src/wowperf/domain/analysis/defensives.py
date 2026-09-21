@@ -249,7 +249,7 @@ def analyse_defensive_ceiling(
 
     `inferred`. The log emits no cooldown-reset or reduction events, so the
     claim cannot be measured, and a defensive is pressed into damage rather
-    than on cooldown -- the ceiling bounds what was possible, not what was
+    than on cooldown — the ceiling bounds what was possible, not what was
     right.
 
     An ability the player never pressed produces nothing here. It has no
