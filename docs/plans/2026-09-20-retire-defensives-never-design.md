@@ -254,9 +254,15 @@ raid fights are in, including the one where the family ran to 52 of 87 findings 
 the page**, along with seven Mythic+ runs across both commands. Between them they carry
 **183 of the corpus's 198 `never` findings**. Regeneration cost 1.00 point per command,
 11.00 in total, and every one of those points was the quota reading itself: no report data
-left the cache.
+left the cache. This does not contradict §7's "costs no quota": that promise is about report
+data, which the warm cache supplied without a live fetch, not about the rate-limit reading
+every command prints regardless of what it fetches. The quota counter itself moved twice as
+far as the priced total, 3600 to 3578: each command's own closing rate-limit read is unpriced,
+and the points it spends are not reflected until the next command's reading, so the 22-point
+movement is the same eleven commands' cost landing one command later, not a second charge.
 
-**The remaining four cannot be verified by this method at all, at any price.** They were
+**The remaining four -- `43HaCNQwPrKqtYgn-2`, `x28HXBpzkjcTtCYA-1`, `xBDdYAjbRFqWKC8n-59` and
+`CmzA8dnZyaD4Wkw1-1` -- cannot be verified by this method at all, at any price.** They were
 built with the comparison axis live, and that axis draws a fresh sample of five references
 each time it runs. The reference cache expires after a day and its entries are older than
 that, so regenerating would refetch and draw a *different* sample: their `compare` counts
@@ -276,10 +282,19 @@ it joins the findings list; none of them can see an analysis finding. And nothin
 `domain/comparison/` reads the retired analyser. The comparison family is structurally
 insulated from this change.
 
-**The `unseen` counts are identical on all eleven**, checked against a positive control that
-counts all four availability states. The control earned its place: two files in the directory
-matched no availability row in any state, both predating the current death-card markup, and
-their zeros are not measurements. Neither was among the eleven.
+**The `unseen` counts are identical on all eleven**, checked against a positive control. That
+control counts four of the six availability states -- `pressed`, `ready`, `cooldown` and
+`unseen` -- and does not count `held` or `faded`; section 2.2 counts all six. Confirmed by
+direct count on `out/cW38jmwdnZfbHVL4-8.html`: 221 `<li>` rows span the six states (166
+`unseen`, 41 `cooldown`, 6 `pressed`, 4 `ready`, 3 `faded`, 1 `held`), against the recorded
+control of 217 -- exactly the four states the script counted. The omission cannot have
+produced a false clean reading: a file the control judged non-empty had real rows under the
+four states it did count, regardless of what `held` and `faded` held. The only risk ran the
+other way -- a file holding rows under `held` or `faded` alone would have read as empty. Both
+files the control flagged were checked against all six states directly rather than four, and
+both are still empty: `CmzA8dnZyaD4Wkw1-1.html` and `preview.html` carry no
+`recap-availability` section at all, so there is nowhere for a row of any state to appear.
+Neither was among the eleven.
 
 **Two counts of one family, and how they reconcile.** §2.2 and §2.3 count 203; this section
 counts 198. Both are right, and they measure slightly different things. 203 is the count by
