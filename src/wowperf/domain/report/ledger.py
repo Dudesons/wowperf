@@ -59,8 +59,8 @@ PLACEMENTS: tuple[tuple[str, str], ...] = (
 """Which tab's rows a finding family lands in: the first prefix that matches wins.
 
 Unlike `NESTS_INSIDE`, the entries here overlap on purpose — `defensives.unused.`
-is a death-shaped claim, while `defensives.ceiling.` and `defensives.never.` are
-claims about the whole run and fall through to the bare `defensives.` — so order
+is a death-shaped claim, while `defensives.ceiling.` is a claim about the whole
+run and falls through to the bare `defensives.` — so order
 is the rule and the narrow families come first. Every defensives id names its
 claim in that second segment for this reason: a player slugged `unused` would
 otherwise mint an id this table files on the wrong tab. A finding no prefix matches is not

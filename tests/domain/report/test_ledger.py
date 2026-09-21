@@ -27,12 +27,12 @@ def a_finding(**changes: object) -> Finding:
 
 def test_a_title_is_cut_at_the_ability_it_names() -> None:
     row = ledger_row(
-        a_finding(title="Emberkin never cast Ice Block",
+        a_finding(title="Emberkin used Ice Block 1 of a possible 7 times",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
     assert (row.title_before, row.title_ability, row.title_after) == (
-        "Emberkin never cast ", "Ice Block", ""
+        "Emberkin used ", "Ice Block", " 1 of a possible 7 times"
     )
     assert row.ability_id == 45438
 
@@ -53,7 +53,7 @@ def test_a_title_naming_its_ability_twice_is_left_whole() -> None:
     # Two occurrences and no way to say which one the reader means, so the row
     # keeps its whole title and draws no icon.
     row = ledger_row(
-        a_finding(title="Ice Block was ready; Emberkin never cast Ice Block",
+        a_finding(title="Ice Block was ready; Emberkin used Ice Block 1 of a possible 7 times",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
@@ -78,7 +78,8 @@ def a_full_report() -> Report:
     findings = (
         Finding(id="time.residual", title="Time spent outside pulls", detail="d",
                 confidence=Confidence.MEASURED, seconds_lost=300.0),
-        Finding(id="deaths.single.0", title="Stonewake never cast Ice Block", detail="d",
+        Finding(id="deaths.single.0", title="Stonewake used Ice Block 1 of a possible 7 times",
+                detail="d",
                 confidence=Confidence.MEASURED, seconds_lost=12.0,
                 ability_id=45438, ability_name="Ice Block"),
         Finding(id="interrupts.missed.0", title="Emberkin missed an interrupt", detail="d",

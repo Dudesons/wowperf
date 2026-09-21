@@ -1,5 +1,5 @@
-# ABOUTME: Defensive claims a combat log can support: never cast at all, cast far below
-# ABOUTME: the cooldown ceiling, or off cooldown at a death. All three are inferred.
+# ABOUTME: Defensive claims a combat log can support: cast far below the cooldown ceiling,
+# ABOUTME: or off cooldown at a death. Both are inferred.
 
 from collections import defaultdict
 from collections.abc import Callable
@@ -52,9 +52,9 @@ def defensives_up_at(
     entries in the data file are talent-gated, and a player who did not take the
     talent casts it nowhere — which looks exactly like having it and never
     pressing it. Reporting silence as availability would accuse someone of not
-    pressing a button they do not own. An ability never cast at all is the other
-    analyser's subject, and that one says outright that a missing talent explains
-    it just as well.
+    pressing a button they do not own. An ability never cast at all is the death
+    card's subject, where it reads as `unseen` beside the three other states a
+    reader needs to weigh it against.
 
     **And they must have cast it at no point in `[death - (cooldown + run-up),
     death]`.** That one window does two jobs: it excludes an ability still on
@@ -106,7 +106,8 @@ def analyse_defensives_at_death(
 
     Only abilities the player cast somewhere in the run are considered, so a
     talent they never took cannot be held against them. That leaves the never-cast
-    case entirely to `analyse_defensives`, which discloses the ambiguity.
+    case entirely to the death card, which shows it as `unseen` alongside the
+    other states an ability can be in at a death.
 
     A spec absent from the data file produces nothing, which is not the same
     claim as a spec that had nothing available. The caller must keep those apart.
@@ -211,7 +212,7 @@ def defensive_base_ids(
 ) -> dict[tuple[int, int], str]:
     """The id fragment every `defensives.*` finding carries, by (actor, ability).
 
-    Minted here rather than inside `analyse_defensives` so that anything
+    Minted here rather than inside `analyse_defensive_ceiling` so that anything
     needing to find a defensives finding again can generate the same id
     instead of taking one apart. These findings carry no `player_slug`: the
     owner lives only in this fragment, and a reader parsing it back would be
@@ -237,18 +238,24 @@ def defensive_base_ids(
     return ids
 
 
-def analyse_defensives(
+def analyse_defensive_ceiling(
     players: tuple[Player, ...],
     combat_seconds: float,
     casts: tuple[CastEvent, ...],
     defensives: Defensives,
     deaths: tuple[Death, ...],
 ) -> list[Finding]:
-    """Defensives never pressed (§5.6), and defensives pressed far below their ceiling (§5.7).
+    """Defensives pressed far below their cooldown ceiling (§5.7).
 
-    Both are `inferred`. The log emits no cooldown-reset or reduction events, so
-    neither claim can be measured, and a defensive is pressed into damage rather
-    than on cooldown — the ceiling bounds what was possible, not what was right.
+    `inferred`. The log emits no cooldown-reset or reduction events, so the
+    claim cannot be measured, and a defensive is pressed into damage rather
+    than on cooldown -- the ceiling bounds what was possible, not what was
+    right.
+
+    An ability the player never pressed produces nothing here. It has no
+    ceiling to be judged against, and the claim that they never pressed it is
+    the death card's, where it sits beside the three other states a reader
+    needs to weigh it.
     """
     cast_counts: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
     for cast in casts:
@@ -262,62 +269,35 @@ def analyse_defensives(
         for ability in known:
             base_id = base_ids[(player.actor_id, ability.ability_id)]
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
-
-            if uses:
-                alive = alive_combat_seconds(combat_seconds, deaths, player.actor_id)
-                if alive is None:
-                    continue
-                ceiling = cooldown_ceiling(alive, ability)
-                if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
-                    continue
-                findings.append(
-                    Finding(
-                        id=f"defensives.ceiling.{base_id}",
-                        title=(
-                            f"{player.name} used {ability.name} {uses} "
-                            f"of a possible {ceiling:.0f} times"
-                        ),
-                        detail=(
-                            f"{ability.name} has a {ability.cooldown_seconds:.0f}s cooldown, "
-                            f"which fits {ceiling:.0f} times into the {alive:.0f}s this player "
-                            "spent alive and in combat. That is a ceiling, not a target: a "
-                            "defensive is pressed into incoming damage, not on cooldown, so a "
-                            "gap here is a question to ask rather than a mistake to fix."
-                        ),
-                        confidence=Confidence.INFERRED,
-                        seconds_lost=None,
-                        evidence=(
-                            f"{player.class_name} {player.spec}",
-                            f"ability {ability.ability_id}",
-                            f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
-                        ),
-                        ability_id=ability.ability_id,
-                        ability_name=ability.name,
-                    )
-                )
+            if not uses:
                 continue
 
+            alive = alive_combat_seconds(combat_seconds, deaths, player.actor_id)
+            if alive is None:
+                continue
+            ceiling = cooldown_ceiling(alive, ability)
+            if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
+                continue
             findings.append(
                 Finding(
-                    # `never` rather than the bare family, so that every
-                    # defensives id reads `defensives.<claim>.<player>` and a
-                    # player never occupies the segment a claim is read from.
-                    # Without it a player slugged `unused` would mint
-                    # `defensives.unused.<ability>`, which `PLACEMENTS` routes
-                    # to the Deaths tab by prefix.
-                    id=f"defensives.never.{base_id}",
-                    title=f"{player.name} never cast {ability.name}",
+                    id=f"defensives.ceiling.{base_id}",
+                    title=(
+                        f"{player.name} used {ability.name} {uses} "
+                        f"of a possible {ceiling:.0f} times"
+                    ),
                     detail=(
-                        f"{ability.name} was not cast at any point in the run. This is "
-                        "inferred, not measured: the log records no cooldown state, so it "
-                        "may have been unavailable, or the talent may not be taken."
+                        f"{ability.name} has a {ability.cooldown_seconds:.0f}s cooldown, "
+                        f"which fits {ceiling:.0f} times into the {alive:.0f}s this player "
+                        "spent alive and in combat. That is a ceiling, not a target: a "
+                        "defensive is pressed into incoming damage, not on cooldown, so a "
+                        "gap here is a question to ask rather than a mistake to fix."
                     ),
                     confidence=Confidence.INFERRED,
                     seconds_lost=None,
                     evidence=(
                         f"{player.class_name} {player.spec}",
                         f"ability {ability.ability_id}",
-                        "zero casts in the whole run",
+                        f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
                     ),
                     ability_id=ability.ability_id,
                     ability_name=ability.name,

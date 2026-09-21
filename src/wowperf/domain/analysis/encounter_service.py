@@ -11,7 +11,7 @@ from wowperf.domain.analysis.consumables import (
 from wowperf.domain.analysis.damage_outliers import analyse_damage_outliers
 from wowperf.domain.analysis.deaths import analyse_deaths, fight_offset
 from wowperf.domain.analysis.defensives import (
-    analyse_defensives,
+    analyse_defensive_ceiling,
     analyse_defensives_at_death,
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
@@ -106,7 +106,7 @@ def analyse_encounter(
         cost_detail_suffix="",
     )
     findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
-    findings += analyse_defensives(
+    findings += analyse_defensive_ceiling(
         encounter.players, encounter.duration_seconds, loaded.casts, defensives,
         loaded.deaths,
     )

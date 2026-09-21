@@ -33,8 +33,8 @@ RAID_PLACEMENTS: tuple[tuple[str, str], ...] = (
 
 Order is the rule, and the narrow families come first, exactly as in the
 Mythic+ table beside this one: `defensives.unused.` is a death-shaped claim
-while `defensives.ceiling.` and `defensives.never.` are claims about the whole
-fight and fall through to the bare `defensives.`.
+while `defensives.ceiling.` is a claim about the whole fight and falls through
+to the bare `defensives.`.
 
 `players.damage.` sits on the mechanics tab rather than a player card, unlike
 Mythic+: design section 6.9 measures it per ability against the group median,

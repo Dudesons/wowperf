@@ -17,7 +17,6 @@ STONEWAKE = Player(actor_id=1, name="Stonewake", class_name="DeathKnight", spec=
                    item_level=680)
 ICEBOUND = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0)
 CEILING_ID = "defensives.ceiling.stonewake.48792"
-NEVER_ID = "defensives.never.stonewake.48792"
 
 
 def a_defensives_file() -> Defensives:
@@ -66,13 +65,6 @@ def test_the_panel_counts_the_presses_the_run_actually_holds() -> None:
     tooltips = tooltips_by_finding_id((a_ceiling_finding(),), a_loaded_run(), a_defensives_file())
     values = {line.label: line.value for line in tooltips[CEILING_ID].lines}
     assert values["Presses"] == "2"
-
-
-def test_a_never_cast_defensive_gets_the_same_panel_as_a_ceiling_one() -> None:
-    # Both families name one ability of one player measured over one run, so
-    # both take the builder the death card already uses. Two rules, not five.
-    never = a_finding(NEVER_ID, ability_id=48792, ability_name="Icebound Fortitude")
-    assert NEVER_ID in tooltips_by_finding_id((never,), a_loaded_run(), a_defensives_file())
 
 
 def test_a_finding_with_facts_gets_a_panel_built_from_them() -> None:

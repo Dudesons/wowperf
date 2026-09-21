@@ -56,23 +56,17 @@ def a_loaded_encounter(**overrides: object) -> LoadedEncounter:
     return LoadedEncounter(**fields)  # type: ignore[arg-type]
 
 
-def test_a_fight_with_nothing_in_it_produces_only_never_cast_defensives() -> None:
-    """An empty fight invents nothing it lacks data for -- but that is not `[]`.
+def test_a_fight_with_nothing_in_it_produces_nothing() -> None:
+    """An empty fight invents nothing it lacks data for.
 
-    `analyse_defensives` states, once, that Prismatic Barrier was never cast --
-    a real claim this fixture's zero casts support (`analyse_defensives`' never-
-    cast branch emits it for every ability in a player's spec the player never
-    pressed). What must stay absent is anything needing data an empty fight has
-    none of: a death, a landed or kicked enemy cast, a consumable, or a
-    ceiling computed from an actual cast.
+    Every claim this service can make needs evidence an empty fight has none
+    of: a death, a landed or kicked enemy cast, a consumable, or a ceiling
+    computed from an actual cast. With no casts there is no ceiling to judge
+    and nothing else to report, so the honest answer is silence.
     """
     findings = analyse_encounter(a_loaded_encounter(), DEFENSIVES, Consumables())
 
-    assert findings, "an uncast defensive is a real, reportable claim, not silence"
-    assert all(f.id.startswith("defensives.never.") for f in findings)
-    forbidden = ("deaths.", "interrupts.", "consumables.", "defensives.ceiling.")
-    leaked = [f.id for f in findings if f.id.startswith(forbidden)]
-    assert leaked == [], f"needs data an empty fight does not have: {leaked}"
+    assert findings == [], f"an empty fight has no evidence for: {[f.id for f in findings]}"
 
 
 def test_a_death_is_reported_and_located_against_the_fight() -> None:
@@ -85,9 +79,9 @@ def test_a_death_is_reported_and_located_against_the_fight() -> None:
                                  Consumables())
 
     assert findings, "a death must produce a finding"
-    # deaths.total and defensives.never.* both reach rank_findings; deaths.total
-    # carries a seconds_lost and defensives.never.* does not, so rank_findings'
-    # (None-last) key puts it first deterministically, not by insertion luck.
+    # deaths.total carries a seconds_lost and the defensives families do not,
+    # so rank_findings' (None-last) key puts it first deterministically, not by
+    # insertion luck.
     assert findings[0].id == "deaths.total"
     assert any("The Twin Fangs" in line for line in findings[0].evidence)
     assert not any("pull" in line for f in findings for line in f.evidence)
@@ -183,7 +177,27 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
     stable and defensives come first. Deaths would have been the wrong pair to
     test with: a raid death does carry seconds, so `rank_findings` already
     sorts it above a mechanic and the assertion could not have failed.
+
+    The defensive half brings its own `Defensives` rather than the module's.
+    A ceiling finding fires only below `CEILING_USE_FRACTION` of what the
+    cooldown allowed, and this 120s fight fits the module's 30s cooldown four
+    times: one press against a ceiling of 4 reads as ordinary play, and no
+    press count clears the fraction at a ceiling that small. At 20s the
+    ceiling is 6, and the single press below is 1 of 6.
     """
+    defensives = Defensives(
+        entries=(
+            (
+                "Mage/Arcane",
+                (DefensiveAbility(ability_id=235450, name="Prismatic Barrier",
+                                  cooldown_seconds=20.0),),
+            ),
+        )
+    )
+    casts = (
+        CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                  timestamp_ms=10_000),
+    )
     sample = MechanicsSample(
         members=(
             MechanicsMember(
@@ -202,8 +216,8 @@ def test_a_mechanic_outranks_a_defensive_though_neither_costs_seconds() -> None:
         ),
     )
     findings = analyse_encounter(
-        a_loaded_encounter(encounter=a_raid_encounter()),
-        DEFENSIVES, Consumables(), roles=ROLES,
+        a_loaded_encounter(encounter=a_raid_encounter(), casts=casts),
+        defensives, Consumables(), roles=ROLES,
         mechanics=sample, our_abilities=ours,
     )
     families = [finding.id.split(".", 1)[0] for finding in findings]
