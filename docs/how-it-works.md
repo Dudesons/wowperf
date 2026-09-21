@@ -87,11 +87,10 @@ Three words, defined once as a `StrEnum` in `src/wowperf/domain/findings.py`:
 | `derived` | Reconstructed by a documented rule, or computed with a modelling choice that could be wrong. | "works out to", "on this reckoning" |
 | `inferred` | Requires an assumption the log cannot confirm. | "suggests", "looks like" — never a flat claim |
 
-A real run produces **46 findings: 22 `measured`, 17 `derived`, 7 `inferred`**. The badge is a
-required field on a frozen model with no default, so a finding constructed without one raises a
-validation error. One function builds every badge, deriving both the visible word and the CSS
-class from the enum member, so label and colour cannot drift apart. And every badge on the page is
-a link to the Provenance tab that explains it.
+Every finding carries one. The badge is a required field on a frozen model with no default, so a
+finding constructed without one raises a validation error. One function builds every badge,
+deriving both the visible word and the CSS class from the enum member, so label and colour cannot
+drift apart. And every badge on the page is a link to the Provenance tab that explains it.
 
 The point is not tidiness. Both defensive-cooldown findings are `inferred`, because both
 reconstruct an availability the log never states — off cooldown when a death began, or pressed
