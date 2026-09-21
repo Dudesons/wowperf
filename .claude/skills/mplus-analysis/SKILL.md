@@ -78,16 +78,17 @@ player cast somewhere in the run — a talent they never took can never appear. 
 question rather than a verdict: a defensive held for a worse moment thirty seconds later is
 ordinary play. Say "had it available", never "should have pressed it".
 
-The log emits no cooldown-reset events, so `defensives.unused.*` and the death card's `unseen`
-state both work around the same gap. `defensives.unused.*` reconstructs "off cooldown" from cast
-timestamps and a base cooldown rather than reading it off the log, and `unseen` — an ability with
-no cast anywhere in the run — says only "not seen this run": the same gap means silence cannot be
-told apart from an ability that was unavailable the whole time.
+`defensives.unused.*` reconstructs "off cooldown" from cast timestamps and a base cooldown
+rather than reading it off the log, because the log records no cooldown state to check it
+against. The death card's `unseen` state runs into a different version of that same absence: an
+ability with no cast anywhere in the run reads exactly like a talent the player never took, so it
+says only "not seen this run" — the log cannot tell a talent not chosen from one chosen and never
+pressed, or from one that was genuinely unavailable the whole time.
 
-Silence from either means one of two things, and they are not the same: the player's
-spec is absent from `data/defensives.toml`, which covers every specialisation, or it checked and
-found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
-check that came back empty, and no line at all is a spec nobody has entered. The findings file
+Silence from either defensives finding means one of two things, and they are not the same:
+the player's spec is absent from `data/defensives.toml`, which covers every specialisation, or it
+checked and found nothing to say. The death cards distinguish them — "Defensives off cooldown: none"
+is a check that came back empty, and no line at all is a spec nobody has entered. The findings file
 cannot distinguish them, so do not read a missing `defensives.*` finding as a clean run.
 
 ## Throughput cooldowns ask about placement, not rate

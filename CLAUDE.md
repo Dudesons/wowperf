@@ -347,11 +347,11 @@ it cost from the API's own quota reading, so every command that touches the netw
 by printing where the run's points went, dearest operation first.
 
 The analysers under `src/wowperf/domain/analysis/` produce the findings: time decomposition,
-deaths and what each one cost, missed interrupts, trash efficiency, per-player facts,
-defensives pressed far below what their cooldown allowed, healing consumables, throughput
-cooldowns spent away from the pulls worth spending them on, and the recap behind each death
-card. The class data they read — cooldowns, teammates' externals, self-resurrections, roles —
-is hand-maintained under `data/`.
+deaths and what each one cost, missed interrupts, trash efficiency, per-player facts, defensives
+off cooldown at a death and defensives pressed far below what their cooldown allowed, healing
+consumables, throughput cooldowns spent away from the pulls worth spending them on, and the
+recap behind each death card. The class data they read — cooldowns, teammates' externals,
+self-resurrections, roles — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
 same dungeon, and top parses of the analysed player's specialisation. Each axis draws a

@@ -93,11 +93,12 @@ validation error. One function builds every badge, deriving both the visible wor
 class from the enum member, so label and colour cannot drift apart. And every badge on the page is
 a link to the Provenance tab that explains it.
 
-The point is not tidiness. Both defensive-cooldown findings are `inferred`, because the log can
-show that an ability was available — off cooldown when a death began, or pressed far fewer times
-than its cooldown allowed — and never shows that pressing it, or pressing it more, would have
-helped. The badge is what turns *"you should have pressed Barkskin"* into *"you had Barkskin
-available"* — the second is true, the first is a guess wearing the clothes of a measurement.
+The point is not tidiness. Both defensive-cooldown findings are `inferred`, because both
+reconstruct an availability the log never states — off cooldown when a death began, or pressed
+far fewer times than its cooldown allowed — and neither shows that pressing it, or pressing it
+more, would have helped. The badge is what turns *"you should have pressed Barkskin"* into *"you
+had Barkskin available"* — the second is true, the first is a guess wearing the clothes of a
+measurement.
 
 ### 2. The digit ban
 
