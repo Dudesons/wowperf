@@ -242,6 +242,54 @@ falsifier firing.
 be identical before and after. Nothing in this work touches `recap.py`, so a change there is
 an accident.
 
+### 7.1 What the regeneration measured, 2026-09-21
+
+Eleven of the fifteen cached reports regenerate offline, and all eleven came back clean:
+**532 findings before, 349 after, the difference exactly the 183 `defensives.never` claims
+they carried**. Every other family held count for count — no family moved by one in either
+direction.
+
+What the eleven cover is the part of the corpus this retirement bears on hardest. **All four
+raid fights are in, including the one where the family ran to 52 of 87 findings — 59.8% of
+the page**, along with seven Mythic+ runs across both commands. Between them they carry
+**183 of the corpus's 198 `never` findings**. Regeneration cost 1.00 point per command,
+11.00 in total, and every one of those points was the quota reading itself: no report data
+left the cache.
+
+**The remaining four cannot be verified by this method at all, at any price.** They were
+built with the comparison axis live, and that axis draws a fresh sample of five references
+each time it runs. The reference cache expires after a day and its entries are older than
+that, so regenerating would refetch and draw a *different* sample: their `compare` counts
+would then differ for reasons having nothing to do with this change, and a moved family
+would be uninterpretable rather than informative. Spending quota here would not buy a
+verification, it would buy a noisier one. The oldest of the four also predates the current
+finding-id scheme. Their 133 `compare` findings therefore sit outside the measurement.
+
+That gap is closed by reading the code rather than by measuring it, and is recorded here as
+reasoned, not measured. `compare()` is handed the run, the speed sample and the subjects,
+never the findings list. `rank_findings` is a pure `sorted()` with no cap or truncation, so
+removing a finding cannot admit another — which is also what the eleven show empirically,
+every total landing on exactly `total - never`. The caps that do exist under
+`domain/comparison/` — `MAX_PACKS_REPORTED`, `MAX_AURAS_REPORTED`, `MAX_SPELLS_REPORTED` —
+each slice a comparison-internal collection of packs, auras or candidate rows before any of
+it joins the findings list; none of them can see an analysis finding. And nothing under
+`domain/comparison/` reads the retired analyser. The comparison family is structurally
+insulated from this change.
+
+**The `unseen` counts are identical on all eleven**, checked against a positive control that
+counts all four availability states. The control earned its place: two files in the directory
+matched no availability row in any state, both predating the current death-card markup, and
+their zeros are not measurements. Neither was among the eleven.
+
+**Two counts of one family, and how they reconcile.** §2.2 and §2.3 count 203; this section
+counts 198. Both are right, and they measure slightly different things. 203 is the count by
+title — every finding making the claim, however its id is spelled. 198 is the count by id
+prefix, `defensives.never.*`. The five-finding gap is the oldest report in the corpus, whose
+ids predate the family naming and take the form `defensives.<slug>.<ability>`: they make the
+same claim under a spelling the prefix test does not catch. **198 + 5 = 203.** Neither figure
+supersedes the other, and §2.2's "158 of 203" stands as written; a reader comparing the two
+numbers is looking at two ways of counting the same family, not at a correction.
+
 ---
 
 ## 8. Recorded, not fixed
@@ -255,3 +303,7 @@ an accident.
 - **`defensives.ceiling` fires 15 times across the same fifteen reports** and is untouched
   here. Its `CEILING_USE_FRACTION` was measured once, on one 28-minute dungeon; whether it
   holds on a raid fight has not been asked. Its own piece of work.
+- **`out/` is left in a mixed state.** Eleven reports there are post-retirement; the four of
+  §7.1 are not, and their pages still render a claim the tool no longer makes. Nothing in the
+  repository reads `out/`, and regenerating those four would spend live reference fetches to
+  tidy a directory that is not an input to anything. Left as it is, deliberately.
