@@ -11,9 +11,9 @@ A keystone is a race. The unit that makes findings comparable is time, so every 
 express a loss in seconds does, and `seconds_lost` is what `rank_findings` orders the file by.
 
 A finding with `seconds_lost: null` is not a small finding. It is one where no honest figure
-exists — a defensive never pressed, a talent the top parse takes and you do not, a completion time
-withheld across a keystone-level gap. Ranking puts them last; that is a sort key, not a verdict.
-Never treat `null` as zero, and never sort it as though it were.
+exists — a talent the top parse takes and you do not, a completion time withheld across a
+keystone-level gap. Ranking puts them last; that is a sort key, not a verdict. Never treat
+`null` as zero, and never sort it as though it were.
 
 A death's cost (`deaths.total` and its nested findings) is measured to the player's first cast at
 another actor, because a respawned player casts self-only spells while running back.
@@ -65,21 +65,26 @@ argued with.
 | `inferred` | requires an assumption the log cannot confirm | "suggests", "looks like", never a flat claim |
 
 Asserting an `inferred` finding as fact is the fastest way to lose a reader who knows the game
-better than the tool does. Every defensives finding is `inferred`, in three different ways. The
-log emits no cooldown-reset events, so a defensive that was never pressed may genuinely have been
-unavailable. `defensives.ceiling.*` infers something else: a use count set against what the
-cooldown allowed over the seconds the player spent alive and in combat. That arithmetic is exact,
-but a defensive is pressed into incoming damage rather than on cooldown, so the ceiling is a
-ceiling and not a target — the finding says so itself, and the interpretation must keep saying it.
+better than the tool does. Every defensives finding is `inferred`, in two different ways.
+`defensives.ceiling.*` infers one: a use count set against what the cooldown allowed over the
+seconds the player spent alive and in combat. That arithmetic is exact, but a defensive is
+pressed into incoming damage rather than on cooldown, so the ceiling is a ceiling and not a
+target — the finding says so itself, and the interpretation must keep saying it.
 
-`defensives.unused.*` is the third: the player died while an ability was, as far as cast
-timestamps and a base cooldown can tell, off cooldown. It is the strongest of the three, because
+`defensives.unused.*` is the second: the player died while an ability was, as far as cast
+timestamps and a base cooldown can tell, off cooldown. It is the stronger of the two, because
 it is anchored to a moment rather than to a whole run and because it only names abilities the
 player cast somewhere in the run — a talent they never took can never appear. It is still a
 question rather than a verdict: a defensive held for a worse moment thirty seconds later is
 ordinary play. Say "had it available", never "should have pressed it".
 
-Silence from any of the three means one of two things, and they are not the same: the player's
+The log emits no cooldown-reset events, so `defensives.unused.*` and the death card's `unseen`
+state both work around the same gap. `defensives.unused.*` reconstructs "off cooldown" from cast
+timestamps and a base cooldown rather than reading it off the log, and `unseen` — an ability with
+no cast anywhere in the run — says only "not seen this run": the same gap means silence cannot be
+told apart from an ability that was unavailable the whole time.
+
+Silence from either means one of two things, and they are not the same: the player's
 spec is absent from `data/defensives.toml`, which covers every specialisation, or it checked and
 found nothing to say. The death cards distinguish them — "Defensives off cooldown: none" is a
 check that came back empty, and no line at all is a spec nobody has entered. The findings file

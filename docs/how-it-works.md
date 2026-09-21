@@ -93,10 +93,11 @@ validation error. One function builds every badge, deriving both the visible wor
 class from the enum member, so label and colour cannot drift apart. And every badge on the page is
 a link to the Provenance tab that explains it.
 
-The point is not tidiness. All three defensive-cooldown findings are `inferred`, because the log
-records that an ability was off cooldown and never records that pressing it would have helped. The
-badge is what turns *"you should have pressed Barkskin"* into *"you had Barkskin available"* — the
-second is true, the first is a guess wearing the clothes of a measurement.
+The point is not tidiness. Both defensive-cooldown findings are `inferred`, because the log can
+show that an ability was available — off cooldown when a death began, or pressed far fewer times
+than its cooldown allowed — and never shows that pressing it, or pressing it more, would have
+helped. The badge is what turns *"you should have pressed Barkskin"* into *"you had Barkskin
+available"* — the second is true, the first is a guess wearing the clothes of a measurement.
 
 ### 2. The digit ban
 
@@ -195,7 +196,7 @@ quota cost and the subject of the page.
 
 **`mplus-analysis`** governs what may honestly be said. It is deliberately separate from the
 workflow so it can answer "why doesn't this rank damage?" with nothing running. It holds the badge
-table above, the full nesting list, the worked example of the three inferred defensive findings,
+table above, the full nesting list, the worked example of the two inferred defensive findings,
 and the section on confounds the comparison *declares rather than corrects* — "because adjusting
 would invent a number".
 
@@ -459,7 +460,7 @@ off the page and writing it back in words, which is the exact thing the digit ba
 | `timeline.py` | splits keystone time into pull time, death penalties, and a residual |
 | `deaths.py` | what each death cost in seconds not played, and which caused others |
 | `interrupts.py` | reconstructs enemy casts as kicked / landed / unknowable, and prices the landings |
-| `defensives.py` | never cast, cast far below the cooldown ceiling, or off cooldown at a death |
+| `defensives.py` | cast far below the cooldown ceiling, or off cooldown at a death |
 | `consumables.py` | healing consumables available at a death, and ones never used at all |
 | `throughput.py` | did burst cooldowns land on the pulls worth spending them on |
 | `trash.py` | enemy forces killed against required, and which packs paid worst |
