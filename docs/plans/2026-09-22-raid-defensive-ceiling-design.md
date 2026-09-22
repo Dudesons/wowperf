@@ -272,9 +272,16 @@ abilities.
 ## 11. Open items
 
 - The four stale reports in `out/` predate current behaviour and should be regenerated once
-  this lands. `CmzA8dnZyaD4Wkw1-1` predates the current finding-id scheme and carries real
+  this lands. They are `CmzA8dnZyaD4Wkw1-1` (2026-09-06), `x28HXBpzkjcTtCYA-1` and
+  `xBDdYAjbRFqWKC8n-59` (both 2026-09-13) and `43HaCNQwPrKqtYgn-2` (2026-09-14); the other
+  eleven files in `out/` were all rewritten on 2026-09-21, which is what identifies these
+  four. `CmzA8dnZyaD4Wkw1-1` predates the current finding-id scheme and carries real
   character names inside its finding ids, so anything classifying findings by id prefix must
-  not be pointed at it.
+  not be pointed at it. All four are keystones. Regenerating is neither free nor offline:
+  section 12.4 records that `CmzA8dnZyaD4Wkw1-1` and `43HaCNQwPrKqtYgn-2` are no longer in
+  `cache/` at all, and the day-tier reference entries behind all four expired long ago, so
+  each costs something near a cold compared keystone analysis -- 83 points on the one cold
+  reading `.claude/skills/wcl-api/SKILL.md` records for that shape.
 - `analyse_cooldown_alignment` (`throughput.py:101`) still drops a player entirely when any of
   their deaths has `seconds_until_next_action is None`, while `alive_combat_seconds` no longer
   does. Its docstring's reason is true and the code is right as it stands: excluding a pull
