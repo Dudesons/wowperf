@@ -612,11 +612,12 @@ def test_the_withheld_notice_accounts_for_a_players_charges() -> None:
     # clear the threshold: 180s / 2 charges / 0.2 = 450s, not the 900s a
     # single-charge ability of the same cooldown needs. Pinning this figure
     # guards the `/ ability.charges` term the withheld notice reports.
+    cooldown_seconds = 180.0
     two_charges = Defensives(
         entries=(
             ("DeathKnight/Blood", (
                 DefensiveAbility(ability_id=48792, name="Icebound Fortitude",
-                                  cooldown_seconds=180.0, charges=2),
+                                  cooldown_seconds=cooldown_seconds, charges=2),
             )),
         )
     )
@@ -630,13 +631,12 @@ def test_the_withheld_notice_accounts_for_a_players_charges() -> None:
 
     withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
     assert "Icebound Fortitude would need 450s of combat" in withheld.evidence
-    # The evidence line above already divides by charges; the detail must not
-    # tell a different story beside it. A detail that frames the threshold as
-    # some number of an ability's bare cooldowns, with no mention of charges,
-    # reads to a reader as 900s for this ability -- double the evidence's
-    # 450s -- because it left out the one variable that changes it.
-    if "cooldown" in withheld.detail.lower():
-        assert "charge" in withheld.detail.lower(), withheld.detail
+    # Unconditional, and tied to the fixture rather than to any wording: a
+    # charge-blind reading of "five cooldowns" lands on this figure for this
+    # ability, and the detail must never state it beside a 450s evidence line
+    # -- one finding cannot carry two different thresholds for the same press.
+    charge_blind_figure = f"{cooldown_seconds * 5:.0f}"
+    assert charge_blind_figure not in withheld.detail, withheld.detail
 
 
 def test_two_specs_whose_same_named_ability_differs_both_get_their_own_line() -> None:
@@ -680,3 +680,8 @@ def test_two_specs_whose_same_named_ability_differs_both_get_their_own_line() ->
     withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
     assert "Barkskin would need 225s of combat" in withheld.evidence
     assert "Barkskin would need 300s of combat" in withheld.evidence
+    # One ability, in two specs' variants -- a reader counting named
+    # defensives sees one, and the title and detail must agree with them
+    # rather than counting the two lines the evidence carries for it.
+    assert withheld.title == "This fight was too short to judge 1 pressed defensive"
+    assert "1 of the defensives" in withheld.detail, withheld.detail

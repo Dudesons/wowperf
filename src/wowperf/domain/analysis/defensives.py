@@ -282,8 +282,14 @@ def _ceiling_withheld(combat_seconds: float, needs: set[tuple[str, float]]) -> F
     than a bare name, because a name alone cannot say how long an ability
     needs: charges divide that figure, so two players carrying the same-named
     ability under different specs can genuinely need different combat lengths.
+
+    The title and detail still count distinct ability *names*, not `needs`'
+    pairs: a raid holding two specs of the same ability is one defensive a
+    reader would recognise by name, not two, even though its two variants
+    need different combat lengths. Only the evidence -- where the two figures
+    belong -- carries one line per variant.
     """
-    count = len(needs)
+    count = len({name for name, _ in needs})
     return Finding(
         id=CEILING_WITHHELD_ID,
         title=(
