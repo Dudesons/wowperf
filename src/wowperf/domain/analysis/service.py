@@ -64,7 +64,7 @@ def analyse(
     )
     findings += analyse_defensive_ceiling(
         loaded.run.players, loaded.run.total_pull_seconds, loaded.casts, defensives,
-        loaded.deaths,
+        loaded.deaths, combat_end_ms=loaded.run.window_ms[1],
     )
     findings += analyse_defensives_at_death(
         loaded.run.players,

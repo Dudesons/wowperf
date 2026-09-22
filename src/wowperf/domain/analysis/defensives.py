@@ -177,8 +177,12 @@ def analyse_defensives_at_death(
 
 
 def alive_combat_seconds(
-    combat_seconds: float, deaths: tuple[Death, ...], actor_id: int
-) -> float | None:
+    combat_seconds: float,
+    deaths: tuple[Death, ...],
+    actor_id: int,
+    *,
+    combat_end_ms: int,
+) -> float:
     """Combat time this player could actually have pressed a button in.
 
     `combat_seconds` is the denominator the caller's aggregate defines: summed
@@ -186,22 +190,29 @@ def alive_combat_seconds(
     rather than the aggregate is what lets both ask this question; taking a
     `Run` meant a raid fight silently supplied zero.
 
-    Returns `None` when any of this player's deaths has `seconds_until_next_action`
-    of `None` -- that death's cost cannot be measured because the player's last
-    recorded action was dying, so nothing follows it to measure to. There is no
-    honest dead-time figure to subtract, so there is no honest alive-time figure
-    either; the caller must report no ceiling finding for this player rather
-    than treat the unmeasured death as zero seconds dead.
+    A death's dead time is `seconds_until_next_action` where the log recorded
+    one. Where it did not, the player was never seen to act on another actor
+    again, and they count as dead from that death until `combat_end_ms`. On a
+    wipe that is exact: the fight ended, so they provably never returned. For a
+    player resurrected who then only ever casts on themselves it understates
+    their alive time, which lowers their ceiling and weakens the claim -- the
+    same direction every other approximation here leans, because understating
+    cannot produce a false accusation.
 
-    Otherwise approximate on purpose, and one of the reasons the finding is
+    Approximate on purpose either way, and one of the reasons the finding is
     `inferred`: a run-back can extend past the pull it started in, so the
-    subtraction can overshoot. Overshooting lowers the ceiling, which makes the
-    claim weaker rather than louder.
+    subtraction can overshoot.
     """
-    theirs = [death for death in deaths if death.actor_id == actor_id]
-    if any(death.seconds_until_next_action is None for death in theirs):
-        return None
-    dead = sum(death.seconds_until_next_action or 0.0 for death in theirs)
+    dead = 0.0
+    for death in deaths:
+        if death.actor_id != actor_id:
+            continue
+        if death.seconds_until_next_action is None:
+            # Clamped because a death can sit a millisecond past the window a
+            # keystone computes for itself; see `Run.window_ms`.
+            dead += max(combat_end_ms - death.timestamp_ms, 0) / 1000
+        else:
+            dead += death.seconds_until_next_action
     return max(combat_seconds - dead, 0.0)
 
 
@@ -247,6 +258,8 @@ def analyse_defensive_ceiling(
     casts: tuple[CastEvent, ...],
     defensives: Defensives,
     deaths: tuple[Death, ...],
+    *,
+    combat_end_ms: int,
 ) -> list[Finding]:
     """Defensives pressed far below their cooldown ceiling (§5.7).
 
@@ -275,9 +288,9 @@ def analyse_defensive_ceiling(
             if not uses:
                 continue
 
-            alive = alive_combat_seconds(combat_seconds, deaths, player.actor_id)
-            if alive is None:
-                continue
+            alive = alive_combat_seconds(
+                combat_seconds, deaths, player.actor_id, combat_end_ms=combat_end_ms
+            )
             ceiling = cooldown_ceiling(alive, ability)
             if uses >= ceiling * CEILING_USE_FRACTION:
                 continue

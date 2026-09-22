@@ -127,7 +127,7 @@ def test_a_spec_absent_from_the_list_produces_nothing() -> None:
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds,
         (cast(11, 235450), cast(11, 45438), cast(12, 235450), cast(12, 45438)),
-        DEFENSIVES, ()
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1]
     )
     assert ceiling_ids(findings)
     assert all("Sublime" not in finding.title for finding in findings)
@@ -142,7 +142,8 @@ def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
                              timestamp_ms=1_000, pull_index=None)
     run = a_long_run()
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, (cast(11, 235450), outside_pull), DEFENSIVES, ()
+        run.players, run.total_pull_seconds, (cast(11, 235450), outside_pull), DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
     assert "defensives.ceiling.emberkin.45438" in ceiling_ids(findings)
 
@@ -155,7 +156,10 @@ def test_two_players_of_the_same_spec_are_reported_independently() -> None:
                         item_level=300)
     run = run.model_copy(update={"players": run.players + (other_mage,)})
     casts = (cast(11, 235450), cast(11, 45438), cast(13, 235450), cast(13, 45438))
-    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
 
     assert ceiling_ids(findings) == [
         "defensives.ceiling.emberkin.235450",
@@ -171,7 +175,10 @@ def test_same_named_players_get_distinct_finding_ids() -> None:
                   item_level=300)
     run = run.model_copy(update={"players": run.players + (twin,)})
     casts = (cast(11, 235450), cast(11, 45438), cast(99, 235450), cast(99, 45438))
-    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
     ids = ceiling_ids(findings)
     # Counted, not just deduplicated: `len(ids) == len(set(ids))` holds for an
     # empty list, so it cannot tell a working disambiguation from no findings.
@@ -185,10 +192,12 @@ def test_defensives_with_no_entries_produces_nothing() -> None:
     run = a_long_run()
     casts = (cast(11, 235450), cast(11, 45438))
     assert ceiling_ids(analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, DEFENSIVES, ()
+        run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     ))
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, Defensives(entries=()), ()
+        run.players, run.total_pull_seconds, casts, Defensives(entries=()), (),
+        combat_end_ms=run.window_ms[1],
     )
     assert findings == []
 
@@ -208,15 +217,43 @@ def test_alive_seconds_subtracts_dead_time_from_the_combat_denominator() -> None
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=50_000,
               killing_blow="Melee", seconds_until_next_action=12.0, pull_index=0),
     )
-    assert alive_combat_seconds(100.0, deaths, 11) == 88.0
+    assert alive_combat_seconds(100.0, deaths, 11, combat_end_ms=100_000) == 88.0
 
 
-def test_alive_seconds_is_unknown_when_a_death_was_never_followed_by_an_action() -> None:
+def test_a_death_with_no_following_action_no_longer_makes_alive_time_unknown() -> None:
     deaths = (
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=50_000,
               killing_blow="Melee", seconds_until_next_action=None, pull_index=0),
     )
-    assert alive_combat_seconds(100.0, deaths, 11) is None
+    assert alive_combat_seconds(100.0, deaths, 11, combat_end_ms=100_000) == 50.0
+
+
+def test_a_death_never_followed_by_an_action_counts_as_dead_until_combat_ended() -> None:
+    # Combat ran to 300_000ms. This player died at 200_000 and never acted on
+    # another actor again, so the fight ended with them dead: they were alive
+    # for 200s of the 300s and dead for the last 100. Exact, not estimated --
+    # a fight that ended at that death is a fight they provably never rejoined.
+    deaths = (
+        Death(actor_id=11, player_name="Emberkin", timestamp_ms=200_000,
+              killing_blow="Something", seconds_until_next_action=None),
+    )
+
+    assert alive_combat_seconds(300.0, deaths, 11, combat_end_ms=300_000) == 200.0
+
+
+def test_a_player_who_only_self_buffed_after_dying_has_their_alive_time_understated() -> None:
+    # `seconds_until_next_action` is None for a resurrected player whose only
+    # later casts are on themselves -- ingest counts a cast at another actor and
+    # nothing else. Treating them as dead to the end understates how long they
+    # were alive, which lowers their ceiling and makes the claim weaker. That is
+    # the direction this module leans everywhere, and this pins it: 300s of
+    # combat, dead at 100_000ms, credited with 100s alive rather than more.
+    deaths = (
+        Death(actor_id=11, player_name="Emberkin", timestamp_ms=100_000,
+              killing_blow="Something", seconds_until_next_action=None),
+    )
+
+    assert alive_combat_seconds(300.0, deaths, 11, combat_end_ms=300_000) == 100.0
 
 
 def test_alive_seconds_never_goes_negative() -> None:
@@ -224,7 +261,7 @@ def test_alive_seconds_never_goes_negative() -> None:
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=50_000,
               killing_blow="Melee", seconds_until_next_action=500.0, pull_index=0),
     )
-    assert alive_combat_seconds(100.0, deaths, 11) == 0.0
+    assert alive_combat_seconds(100.0, deaths, 11, combat_end_ms=100_000) == 0.0
 
 
 def test_a_fight_with_no_pulls_still_has_a_ceiling_denominator() -> None:
@@ -233,7 +270,7 @@ def test_a_fight_with_no_pulls_still_has_a_ceiling_denominator() -> None:
     Passing `run.total_pull_seconds` for a raid fight passes zero, and every
     ceiling finding disappears without a word. Passing fight duration does not.
     """
-    assert alive_combat_seconds(374.0, (), 11) == 374.0
+    assert alive_combat_seconds(374.0, (), 11, combat_end_ms=374_000) == 374.0
 
 
 def test_a_defensive_pressed_far_below_its_ceiling_is_reported() -> None:
@@ -241,7 +278,8 @@ def test_a_defensive_pressed_far_below_its_ceiling_is_reported() -> None:
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -259,12 +297,13 @@ def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
 
     pressed = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
-        BLOOD_DEFENSIVES, ()
+        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1],
     )
     assert findings_by_prefix(pressed, "defensives.ceiling.") != []
 
     unpressed = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, ()
+        run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
     assert findings_by_prefix(unpressed, "defensives.ceiling.") == []
 
@@ -279,7 +318,8 @@ def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> N
     casts = tuple(a_cast(actor_id=1, ability_id=48792) for _ in range(4))
 
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
@@ -291,7 +331,8 @@ def test_a_defensive_pressed_close_to_its_ceiling_is_not_reported() -> None:
     casts = tuple(a_cast(actor_id=1, ability_id=48792) for _ in range(8))
 
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
@@ -311,7 +352,7 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     at_the_floor = a_run_with_one_blood_death_knight(pull_seconds=900.0)
     silent = analyse_defensive_ceiling(
         at_the_floor.players, at_the_floor.total_pull_seconds, casts,
-        BLOOD_DEFENSIVES, ()
+        BLOOD_DEFENSIVES, (), combat_end_ms=at_the_floor.window_ms[1],
     )
     assert findings_by_prefix(silent, "defensives.ceiling.") == []
 
@@ -319,7 +360,7 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     above_the_floor = a_run_with_one_blood_death_knight(pull_seconds=1080.0)
     reported = analyse_defensive_ceiling(
         above_the_floor.players, above_the_floor.total_pull_seconds, casts,
-        BLOOD_DEFENSIVES, ()
+        BLOOD_DEFENSIVES, (), combat_end_ms=above_the_floor.window_ms[1],
     )
     assert findings_by_prefix(reported, "defensives.ceiling.") != []
 
@@ -330,7 +371,8 @@ def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:
     # 720s of the 1800s were spent dead, so the ceiling falls from 10 to 6; one
     # press against a ceiling of 6 still clears the 0.2 threshold (1 < 1.2).
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (a_death(1, 720.0),)
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (a_death(1, 720.0),),
+        combat_end_ms=run.window_ms[1],
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -344,7 +386,8 @@ def test_the_ceiling_detail_says_defensives_are_situational() -> None:
 
     finding = findings_by_prefix(
         analyse_defensive_ceiling(
-            run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+            run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+            combat_end_ms=run.window_ms[1],
         ),
         "defensives.ceiling.",
     )[0]
@@ -382,12 +425,14 @@ def test_a_death_with_unmeasured_cost_disables_every_ceiling_for_that_player() -
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
     measured = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, defensives, ()
+        run.players, run.total_pull_seconds, casts, defensives, (),
+        combat_end_ms=run.window_ms[1],
     )
     assert findings_by_prefix(measured, "defensives.ceiling.") != []
 
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, defensives, (a_death(1, None),)
+        run.players, run.total_pull_seconds, casts, defensives, (a_death(1, None),),
+        combat_end_ms=run.window_ms[1],
     )
 
     assert findings == []
@@ -404,7 +449,8 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
     )
 
     findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -419,7 +465,7 @@ def test_a_ceiling_finding_names_the_defensive_it_judged() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
-        BLOOD_DEFENSIVES, ()
+        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1],
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")[0]
     assert ceiling.ability_id == 48792
@@ -449,7 +495,7 @@ def test_a_defensive_finding_id_carries_no_character_outside_the_ascii_set() -> 
     )
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
-        DEFENSIVES, ()
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1],
     )
 
     ids = ceiling_ids(findings)
@@ -478,7 +524,10 @@ def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids()
     })
     casts = (cast(11, 235450), cast(11, 45438), cast(12, 235450), cast(12, 45438))
 
-    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
 
     ids = ceiling_ids(findings)
     assert len(ids) == 4, ids
@@ -496,7 +545,7 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
     run = a_long_run()
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
-        DEFENSIVES, ()
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1],
     )
 
     assert set(ceiling_ids(findings)) == {

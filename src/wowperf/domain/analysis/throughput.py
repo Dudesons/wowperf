@@ -239,9 +239,10 @@ def analyse_cooldown_ceiling(
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
             if not uses:
                 continue
-            alive = alive_combat_seconds(run.total_pull_seconds, deaths, player.actor_id)
-            if alive is None:
-                continue
+            alive = alive_combat_seconds(
+                run.total_pull_seconds, deaths, player.actor_id,
+                combat_end_ms=run.window_ms[1],
+            )
             ceiling = cooldown_ceiling(alive, ability)
             if uses >= ceiling * CEILING_USE_FRACTION:
                 continue

@@ -119,6 +119,38 @@ def test_the_defensive_ceiling_uses_fight_duration_and_therefore_fires() -> None
     assert ceiling[0].confidence is Confidence.INFERRED
 
 
+def test_a_wipe_where_nobody_acted_again_still_judges_the_ceiling() -> None:
+    """The defect this task repairs, at the level a reader would meet it.
+
+    On a wipe every player who died has no cast at another actor afterwards,
+    so `seconds_until_next_action` is None for all of them. The old rule read
+    that as "this player cannot be measured" and dropped them, which silenced
+    the ceiling for the entire raid on exactly the fights a reader most wants
+    it. Dying at 361_000 of a fight that ended at 375_000 leaves 360s alive,
+    which fits Prismatic Barrier's 30s cooldown twelve times.
+    """
+    casts = (
+        CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                  timestamp_ms=10_000, pull_index=None),
+    )
+    deaths = (
+        Death(actor_id=11, player_name="Emberkin", timestamp_ms=361_000,
+              killing_blow="Something", seconds_until_next_action=None),
+    )
+
+    findings = analyse_encounter(
+        a_loaded_encounter(casts=casts, deaths=deaths), DEFENSIVES, Consumables()
+    )
+
+    ceiling = [f for f in findings if f.id.startswith("defensives.ceiling.")]
+    assert ceiling, "a player who died on a wipe still had time alive to judge"
+    # Pinned to the 360s figure the docstring claims, not just the finding's
+    # existence: crediting the player with the full 374s fight instead of the
+    # 360s they were actually alive for still clears the ceiling fraction here,
+    # so an emptiness check alone cannot tell dead time was ever subtracted.
+    assert "360s" in ceiling[0].detail, ceiling[0].detail
+
+
 def test_no_keystone_shaped_finding_reaches_a_raid_report() -> None:
     deaths = (
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=61_000,
