@@ -7,7 +7,7 @@ from wowperf.domain.analysis.consumables import (
 )
 from wowperf.domain.analysis.deaths import analyse_deaths, pull_offset
 from wowperf.domain.analysis.defensives import (
-    analyse_defensives,
+    analyse_defensive_ceiling,
     analyse_defensives_at_death,
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
@@ -62,7 +62,7 @@ def analyse(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken,
         roles=roles,
     )
-    findings += analyse_defensives(
+    findings += analyse_defensive_ceiling(
         loaded.run.players, loaded.run.total_pull_seconds, loaded.casts, defensives,
         loaded.deaths,
     )

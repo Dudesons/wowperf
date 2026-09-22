@@ -31,7 +31,7 @@ from wowperf.domain.season import ConsumableCategory, Consumables, DefensiveAbil
 
 RAID_FAMILIES = (
     "deaths.total", "deaths.single.0", "deaths.chain.0", "deaths.repeat.emberkin",
-    "defensives.never.emberkin.0", "defensives.ceiling.emberkin.0",
+    "defensives.ceiling.emberkin.0",
     "defensives.unused.emberkin", "consumables.never.emberkin",
     "consumables.unused.emberkin", "interrupts.summary", "interrupts.ability.0",
     "mechanics.ability.0", "mechanics.lethal.0", "players.damage.0",
@@ -59,7 +59,6 @@ _FAMILY_PREFIXES = (
     "deaths.single.",
     "deaths.chain.",
     "deaths.repeat.",
-    "defensives.never.",
     "defensives.ceiling.",
     "defensives.unused.",
     "consumables.never.",
@@ -320,7 +319,7 @@ def a_rich_encounter() -> list[Finding]:
     )
     casts = (
         # Stonewake's one press of a 30s cooldown, long before her death: below
-        # the ceiling `analyse_defensives` computes, and off cooldown again by
+        # the ceiling `analyse_defensive_ceiling` computes, and off cooldown again by
         # the time `analyse_defensives_at_death` looks.
         CastEvent(actor_id=12, ability_id=235450, ability_name="Prismatic Barrier",
                   timestamp_ms=10_000),

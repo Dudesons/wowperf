@@ -1,7 +1,7 @@
 # ABOUTME: Behaviour tests for the defensive claims a combat log can support.
-# ABOUTME: Never cast at all is a fact; pressed far below the cooldown ceiling is a caveated one.
+# ABOUTME: Pressed far below the cooldown ceiling is a caveated claim; the ceiling is a bound.
 
-from wowperf.domain.analysis.defensives import alive_combat_seconds, analyse_defensives
+from wowperf.domain.analysis.defensives import alive_combat_seconds, analyse_defensive_ceiling
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -56,6 +56,33 @@ def a_run() -> Run:
     )
 
 
+def a_long_run() -> Run:
+    """`a_run()` stretched to 1800s, which is what makes a ceiling finding possible.
+
+    At `a_run()`'s 100 seconds Prismatic Barrier's ceiling is 4.0 and a single
+    press clears the 0.2 fraction, so no ceiling finding fires for any input.
+    At 1800 seconds the two ceilings are 72.0 and 7.5, and one press of each
+    sits far below both. Tests that pin id shape, slugging or independence use
+    this fixture so that what they assert about is a claim the analyser can
+    actually make.
+    """
+    base = a_run()
+    return base.model_copy(
+        update={"pulls": (base.pulls[0].model_copy(update={"end_ms": 1_800_000}),)}
+    )
+
+
+def ceiling_ids(findings: list[Finding]) -> list[str]:
+    """Ids of the ceiling findings only, sorted.
+
+    Scoped rather than taking every finding, so that an assertion about the
+    ceiling family cannot be satisfied — or broken — by a neighbouring family.
+    """
+    return sorted(
+        finding.id for finding in findings if finding.id.startswith("defensives.ceiling.")
+    )
+
+
 def cast(actor_id: int, ability_id: int) -> CastEvent:
     return CastEvent(actor_id=actor_id, ability_id=ability_id, ability_name="x",
                      timestamp_ms=1_000, pull_index=0)
@@ -88,102 +115,80 @@ def findings_by_prefix(findings: list[Finding], prefix: str) -> list[Finding]:
     return [finding for finding in findings if finding.id.startswith(prefix)]
 
 
-def test_a_defensive_never_cast_is_reported_as_inferred() -> None:
-    # Prismatic Barrier's 25s cooldown fits four times into this 100s pull, so a
-    # single press of it now also qualifies for a ceiling finding (§5.7); scope
-    # this assertion to the never-cast claim it was written to check.
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds, (cast(11, 235450),), DEFENSIVES, ()
-    )
-    never_cast = [f for f in findings if not f.id.startswith("defensives.ceiling.")]
-    assert len(never_cast) == 1
-    assert "Ice Block" in never_cast[0].title
-    assert never_cast[0].confidence is Confidence.INFERRED
-    assert never_cast[0].seconds_lost is None
-
-
-def test_a_defensive_cast_once_is_not_reported_as_never_cast() -> None:
-    # Both abilities are cast here, so neither qualifies for the never-cast claim;
-    # Prismatic Barrier's single press also qualifies for a ceiling finding (§5.7),
-    # so this assertion is scoped to the never-cast claim it was written to check.
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds,
-        (cast(11, 235450), cast(11, 45438)), DEFENSIVES, ()
-    )
-    never_cast = [f for f in findings if not f.id.startswith("defensives.ceiling.")]
-    assert never_cast == []
-
-
-def test_the_finding_admits_the_ability_may_have_been_unavailable() -> None:
-    run = a_run()
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
-    assert any("cooldown" in f.detail.lower() for f in findings)
-
-
 def test_a_spec_absent_from_the_list_produces_nothing() -> None:
     # Sublime is an Elemental Shaman and the fixture only knows Arcane Mages.
-    run = a_run()
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
+    # Anchored on casts that do produce findings for the Mage, so the Shaman's
+    # absence is this analyser declining to judge an unlisted spec rather than
+    # the call having produced nothing for anybody. Sublime presses the Mage's
+    # two abilities as well, because the ceiling branch needs at least one cast
+    # to reach a title: without them a `for_spec` that wrongly matched an
+    # unlisted spec would still mint no Shaman row and the assertion would hold.
+    run = a_long_run()
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds,
+        (cast(11, 235450), cast(11, 45438), cast(12, 235450), cast(12, 45438)),
+        DEFENSIVES, ()
+    )
+    assert ceiling_ids(findings)
     assert all("Sublime" not in finding.title for finding in findings)
 
 
-def test_another_players_cast_does_not_excuse_this_player() -> None:
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds, (cast(12, 45438),), DEFENSIVES, ()
-    )
-    assert any("Ice Block" in finding.title for finding in findings)
-
-
 def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
-    # pull_index=None means the cast landed outside any pull window (e.g. between
-    # packs). The player still pressed the button, so it is not "never cast".
-    # Prismatic Barrier's single press here also qualifies for a ceiling finding
-    # (§5.7); scope this assertion to the never-cast claim it was written to check.
+    # pull_index=None means the cast landed outside any pull window (e.g.
+    # between packs). The player still pressed the button, so it counts towards
+    # the ceiling: a ceiling finding for Ice Block can only exist if the press
+    # was counted, because an ability with zero uses reaches no ceiling at all.
     outside_pull = CastEvent(actor_id=11, ability_id=45438, ability_name="Ice Block",
-                              timestamp_ms=1_000, pull_index=None)
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds,
-        (cast(11, 235450), outside_pull), DEFENSIVES, ()
+                             timestamp_ms=1_000, pull_index=None)
+    run = a_long_run()
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (cast(11, 235450), outside_pull), DEFENSIVES, ()
     )
-    never_cast = [f for f in findings if not f.id.startswith("defensives.ceiling.")]
-    assert never_cast == []
+    assert "defensives.ceiling.emberkin.45438" in ceiling_ids(findings)
 
 
 def test_two_players_of_the_same_spec_are_reported_independently() -> None:
-    # Emberkin's Prismatic Barrier press also qualifies for a ceiling finding
-    # (§5.7); scope this assertion to the never-cast claims it was written to
-    # check, both of which belong to Othermage, who cast nothing at all.
-    run = a_run()
+    # Two Arcane mages, each pressing both listed defensives once. Each must get
+    # their own pair of rows: one player's presses must not answer for the other.
+    run = a_long_run()
     other_mage = Player(actor_id=13, name="Othermage", class_name="Mage", spec="Arcane",
-                         item_level=300)
+                        item_level=300)
     run = run.model_copy(update={"players": run.players + (other_mage,)})
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds,
-        (cast(11, 235450), cast(11, 45438)), DEFENSIVES, ()
-    )
-    never_cast = [f for f in findings if not f.id.startswith("defensives.ceiling.")]
-    assert len(never_cast) == 2
-    assert all("Othermage" in finding.title for finding in never_cast)
+    casts = (cast(11, 235450), cast(11, 45438), cast(13, 235450), cast(13, 45438))
+    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
+
+    assert ceiling_ids(findings) == [
+        "defensives.ceiling.emberkin.235450",
+        "defensives.ceiling.emberkin.45438",
+        "defensives.ceiling.othermage.235450",
+        "defensives.ceiling.othermage.45438",
+    ]
 
 
 def test_same_named_players_get_distinct_finding_ids() -> None:
-    run = a_run()
+    run = a_long_run()
     twin = Player(actor_id=99, name="Emberkin", class_name="Mage", spec="Arcane",
                   item_level=300)
     run = run.model_copy(update={"players": run.players + (twin,)})
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
-    ids = [finding.id for finding in findings]
-    assert len(ids) == len(set(ids))
+    casts = (cast(11, 235450), cast(11, 45438), cast(99, 235450), cast(99, 45438))
+    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
+    ids = ceiling_ids(findings)
+    # Counted, not just deduplicated: `len(ids) == len(set(ids))` holds for an
+    # empty list, so it cannot tell a working disambiguation from no findings.
+    assert len(ids) == 4, ids
+    assert len(set(ids)) == len(ids), ids
 
 
 def test_defensives_with_no_entries_produces_nothing() -> None:
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds, (), Defensives(entries=()), ()
+    # Cast the abilities the populated file lists, so that emptiness here is
+    # caused by the empty defensives file and not by an input nobody pressed.
+    run = a_long_run()
+    casts = (cast(11, 235450), cast(11, 45438))
+    assert ceiling_ids(analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, DEFENSIVES, ()
+    ))
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, Defensives(entries=()), ()
     )
     assert findings == []
 
@@ -235,7 +240,9 @@ def test_a_defensive_pressed_far_below_its_ceiling_is_reported() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
     assert len(ceiling) == 1
@@ -245,12 +252,21 @@ def test_a_defensive_pressed_far_below_its_ceiling_is_reported() -> None:
 
 
 def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
+    # Paired against the pressed case on purpose. With no casts at all the
+    # result is empty for every reason at once, so an emptiness assertion on
+    # its own would still pass if the ceiling branch stopped working entirely.
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, ())
+    pressed = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
+        BLOOD_DEFENSIVES, ()
+    )
+    assert findings_by_prefix(pressed, "defensives.ceiling.") != []
 
-    assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    assert findings_by_prefix(findings, "defensives.never.tank.") != []
+    unpressed = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, ()
+    )
+    assert findings_by_prefix(unpressed, "defensives.ceiling.") == []
 
 
 def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> None:
@@ -262,7 +278,9 @@ def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> N
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     casts = tuple(a_cast(actor_id=1, ability_id=48792) for _ in range(4))
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
 
@@ -272,7 +290,9 @@ def test_a_defensive_pressed_close_to_its_ceiling_is_not_reported() -> None:
     # 1800s / 180s = a ceiling of 10; eight presses is not a story.
     casts = tuple(a_cast(actor_id=1, ability_id=48792) for _ in range(8))
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
 
@@ -282,7 +302,9 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=300.0)
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
 
@@ -292,7 +314,7 @@ def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:
     casts = (a_cast(actor_id=1, ability_id=48792),)
     # 720s of the 1800s were spent dead, so the ceiling falls from 10 to 6; one
     # press against a ceiling of 6 still clears the 0.2 threshold (1 < 1.2).
-    findings = analyse_defensives(
+    findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (a_death(1, 720.0),)
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
@@ -306,20 +328,26 @@ def test_the_ceiling_detail_says_defensives_are_situational() -> None:
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
     finding = findings_by_prefix(
-        analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()),
+        analyse_defensive_ceiling(
+            run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+        ),
         "defensives.ceiling.",
     )[0]
 
     assert "incoming damage" in finding.detail
 
 
-def test_a_death_with_unmeasured_cost_disables_the_ceiling_but_not_never_cast() -> None:
+def test_a_death_with_unmeasured_cost_disables_every_ceiling_for_that_player() -> None:
     # seconds_until_next_action=None means the player's last recorded action in
     # the run was dying, so there is no honest dead-time figure for them and
     # therefore no honest alive-time figure either. That must withhold every
     # ceiling finding for this player, not just the one for the ability they
-    # actually pressed — but the never-cast finding for an untouched ability is
-    # unaffected and must still fire.
+    # actually pressed — which is why the fixture lists two defensives and
+    # presses one.
+    #
+    # Paired against the same call without that death, so the emptiness below
+    # is the unmeasured death doing the suppressing and not the analyser having
+    # failed wholesale.
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     defensives = Defensives(
         entries=(
@@ -338,13 +366,16 @@ def test_a_death_with_unmeasured_cost_disables_the_ceiling_but_not_never_cast() 
     )
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
-    findings = analyse_defensives(
+    measured = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, defensives, ()
+    )
+    assert findings_by_prefix(measured, "defensives.ceiling.") != []
+
+    findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, defensives, (a_death(1, None),)
     )
 
-    assert findings_by_prefix(findings, "defensives.ceiling.") == []
-    never_cast = findings_by_prefix(findings, "defensives.never.tank.")
-    assert any("Rune Tap" in finding.title for finding in never_cast)
+    assert findings == []
 
 
 def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
@@ -357,7 +388,9 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
         a_cast(actor_id=2, ability_id=48792),
     )
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
     assert len(ceiling) == 2
@@ -369,24 +402,14 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
 
 def test_a_ceiling_finding_names_the_defensive_it_judged() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
-    findings = analyse_defensives(run.players, run.total_pull_seconds,
-                                  (a_cast(actor_id=1, ability_id=48792),),
-                                  BLOOD_DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
+        BLOOD_DEFENSIVES, ()
+    )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")[0]
     assert ceiling.ability_id == 48792
     assert ceiling.ability_name == "Icebound Fortitude"
     assert ceiling.ability_name in ceiling.title
-
-
-def test_a_never_cast_finding_names_the_defensive_it_is_about() -> None:
-    run = a_run()
-    findings = analyse_defensives(
-        run.players, run.total_pull_seconds, (cast(11, 235450),), DEFENSIVES, ()
-    )
-    never = next(f for f in findings if "never cast" in f.title)
-    assert never.ability_id == 45438
-    assert never.ability_name == "Ice Block"
-    assert never.ability_name in never.title
 
 
 def a_run_named(name: str) -> Run:
@@ -406,12 +429,17 @@ def test_a_defensive_finding_id_carries_no_character_outside_the_ascii_set() -> 
     element ids.
     """
     run = a_run_named("Кириллица")
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
+    run = run.model_copy(
+        update={"pulls": (run.pulls[0].model_copy(update={"end_ms": 1_800_000}),)}
+    )
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
+        DEFENSIVES, ()
+    )
 
-    ids = [finding.id for finding in findings]
-    # Anchored: this spec has two listed defensives and casts neither, so the
-    # never-cast branch must produce rows for the absences below to mean
-    # anything.
+    ids = ceiling_ids(findings)
+    # Anchored: this player presses both listed defensives well below their
+    # ceilings, so rows must exist for the assertion below to mean anything.
     assert ids
     for finding_id in ids:
         assert finding_id.isascii(), finding_id
@@ -425,7 +453,7 @@ def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids()
     do not, so that guard never fires -- the disambiguation has to key on what
     the id actually carries, which after this change is the slug.
     """
-    base = a_run()
+    base = a_long_run()
     mage = base.players[0]
     run = base.model_copy(update={
         "players": (
@@ -433,10 +461,11 @@ def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids()
             mage.model_copy(update={"actor_id": 12, "name": "Briala"}),
         ),
     })
+    casts = (cast(11, 235450), cast(11, 45438), cast(12, 235450), cast(12, 45438))
 
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
+    findings = analyse_defensive_ceiling(run.players, run.total_pull_seconds, casts, DEFENSIVES, ())
 
-    ids = [finding.id for finding in findings]
+    ids = ceiling_ids(findings)
     assert len(ids) == 4, ids
     assert len(set(ids)) == len(ids), ids
 
@@ -444,14 +473,18 @@ def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids()
 def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None:
     """The actor id is the disambiguator, and it appears only when needed.
 
-    Pinned exactly rather than by prefix: `defensives.emberkin.45438` and
-    `defensives.emberkin.11.45438` share a prefix, so a prefix assertion
-    cannot tell a working disambiguation from one that fires for everybody.
+    Pinned exactly rather than by prefix: `defensives.ceiling.emberkin.45438`
+    and `defensives.ceiling.emberkin.11.45438` share a prefix, so a prefix
+    assertion cannot tell a working disambiguation from one that fires for
+    everybody.
     """
-    run = a_run()
-    findings = analyse_defensives(run.players, run.total_pull_seconds, (), DEFENSIVES, ())
+    run = a_long_run()
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
+        DEFENSIVES, ()
+    )
 
-    assert {finding.id for finding in findings} == {
-        "defensives.never.emberkin.235450",
-        "defensives.never.emberkin.45438",
+    assert set(ceiling_ids(findings)) == {
+        "defensives.ceiling.emberkin.235450",
+        "defensives.ceiling.emberkin.45438",
     }

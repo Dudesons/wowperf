@@ -199,7 +199,7 @@ def analyse_deaths(
     # between actors who both appear in this death list. A namesake who never
     # dies therefore never disambiguates anyone: they hold no entry in `by_actor`
     # and so are never counted, even though `analyse_consumables_never_used` and
-    # `analyse_defensives`, which still count off the full roster, do count them.
+    # `analyse_defensive_ceiling`, which still count off the full roster, do count them.
     # A player can end up in this run's findings under two id shapes -- pinned in
     # `test_service.test_a_never_dying_namesake_leaves_the_death_id_unsuffixed`.
     by_actor: dict[int, list[Death]] = defaultdict(list)

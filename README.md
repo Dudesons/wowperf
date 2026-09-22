@@ -9,9 +9,9 @@ writes is refused outright if it contains so much as a digit. The result is a co
 invent a number at you.
 
 It all runs on your machine. Point it at a log, and it fetches the run, works out where the time
-went, what each death cost, which interrupts were missed and which defensives were never pressed,
-compares all of it against fast completions of the same dungeon, and writes one self-contained
-HTML file you open from disk.
+went, what each death cost, which interrupts were missed, which defensives sat off cooldown at a
+death and which were pressed far below what their cooldown allowed, compares all of it against
+fast completions of the same dungeon, and writes one self-contained HTML file you open from disk.
 
 Every finding is labelled `measured`, `derived` or `inferred`, so you can always tell what the
 tool saw from what it worked out.

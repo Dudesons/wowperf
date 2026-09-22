@@ -11,10 +11,10 @@ from wowperf.domain.report.model import Tooltip, TooltipLine
 from wowperf.domain.report.tooltip import run_ability_tooltip
 from wowperf.domain.season import Defensives
 
-DEFENSIVE_FAMILIES = ("defensives.ceiling.", "defensives.never.")
-"""The two families whose panel is measured here rather than carried on the finding.
+DEFENSIVE_FAMILIES = ("defensives.ceiling.",)
+"""The family whose panel is measured here rather than carried on the finding.
 
-Both name one ability of one player over one run, which is what
+It names one ability of one player over one run, which is what
 `run_ability_tooltip` already answers for a death card. A ledger card differs
 only in passing the whole run instead of a run-up.
 """
