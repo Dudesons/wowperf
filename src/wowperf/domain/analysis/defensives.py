@@ -20,12 +20,15 @@ escaping that finding would take 34 presses in one dungeon. Using a defensive
 at close to half its theoretical maximum is ordinary play, not neglect; 0.2
 fires only on genuine near-neglect instead of on almost everything pressed.
 
+The fraction carries its own floor, which is why no separate minimum sits
+beside it. A press count is a positive integer, so `uses < ceiling * fraction`
+cannot hold until the ceiling passes `1 / fraction` -- five, at 0.2. A ceiling
+too small to argue from is therefore already silent, and a constant saying so
+could only restate that arithmetic or contradict it.
+
 The throughput ceiling borrows this fraction rather than having measured its
 own. That is one of the reasons that claim is asked for rather than given.
 """
-
-MIN_CEILING_USES = 3.0
-"""Below this the ceiling itself is too small to argue from."""
 
 RUN_UP_SECONDS = 10.0
 """How much of the run-up to a death counts as the damage that killed the player.
@@ -276,7 +279,7 @@ def analyse_defensive_ceiling(
             if alive is None:
                 continue
             ceiling = cooldown_ceiling(alive, ability)
-            if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
+            if uses >= ceiling * CEILING_USE_FRACTION:
                 continue
             findings.append(
                 Finding(

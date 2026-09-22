@@ -298,15 +298,30 @@ def test_a_defensive_pressed_close_to_its_ceiling_is_not_reported() -> None:
 
 
 def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
-    # 300s / 180s = a ceiling of 1.67, below MIN_CEILING_USES.
-    run = a_run_with_one_blood_death_knight(pull_seconds=300.0)
+    # The floor is the fraction's own arithmetic. A press count is a positive
+    # integer, so `uses < ceiling * CEILING_USE_FRACTION` cannot hold until the
+    # ceiling clears 1 / 0.2 = 5, whatever the press count.
+    #
+    # Anchored at both sides of that boundary on purpose: an emptiness
+    # assertion alone would still pass if the ceiling branch stopped working
+    # entirely, which is how a floor test comes to be incapable of failing.
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
-    findings = analyse_defensive_ceiling(
-        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, ()
+    # 900s / 180s = a ceiling of exactly 5, so the press needs 1 < 1.0.
+    at_the_floor = a_run_with_one_blood_death_knight(pull_seconds=900.0)
+    silent = analyse_defensive_ceiling(
+        at_the_floor.players, at_the_floor.total_pull_seconds, casts,
+        BLOOD_DEFENSIVES, ()
     )
+    assert findings_by_prefix(silent, "defensives.ceiling.") == []
 
-    assert findings_by_prefix(findings, "defensives.ceiling.") == []
+    # 1080s / 180s = a ceiling of 6, and the same single press needs 1 < 1.2.
+    above_the_floor = a_run_with_one_blood_death_knight(pull_seconds=1080.0)
+    reported = analyse_defensive_ceiling(
+        above_the_floor.players, above_the_floor.total_pull_seconds, casts,
+        BLOOD_DEFENSIVES, ()
+    )
+    assert findings_by_prefix(reported, "defensives.ceiling.") != []
 
 
 def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:

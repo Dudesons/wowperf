@@ -5,7 +5,6 @@ from collections import defaultdict
 
 from wowperf.domain.analysis.defensives import (
     CEILING_USE_FRACTION,
-    MIN_CEILING_USES,
     alive_combat_seconds,
     cooldown_ceiling,
 )
@@ -244,7 +243,7 @@ def analyse_cooldown_ceiling(
             if alive is None:
                 continue
             ceiling = cooldown_ceiling(alive, ability)
-            if ceiling < MIN_CEILING_USES or uses >= ceiling * CEILING_USE_FRACTION:
+            if uses >= ceiling * CEILING_USE_FRACTION:
                 continue
             base_id = (
                 f"{player.name}.{ability.ability_id}"
