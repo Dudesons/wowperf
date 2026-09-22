@@ -1,17 +1,20 @@
 # wowperf
 
-Two halves. A command-line tool that reads a Mythic+ run from Warcraft Logs and computes what
-happened, and a set of Claude skills that read those numbers back and tell you what they mean.
+Two halves. A command-line tool that reads a Mythic+ run, a raid boss fight, or a whole night of
+attempts at one boss from Warcraft Logs and computes what happened, and a set of Claude skills
+that read those numbers back and tell you what they mean.
 
 The line between them is the whole design: **Python produces facts, Claude produces meaning.**
 Every figure comes from tested code. The model never does arithmetic — the interpretation it
 writes is refused outright if it contains so much as a digit. The result is a coach that cannot
 invent a number at you.
 
-It all runs on your machine. Point it at a log, and it fetches the run, works out where the time
-went, what each death cost, which interrupts were missed, which defensives sat off cooldown at a
-death and which were pressed far below what their cooldown allowed, compares all of it against
-fast completions of the same dungeon, and writes one self-contained HTML file you open from disk.
+It all runs on your machine. Point it at a key, and it works out where the time went, what each
+death cost, which interrupts were missed, which defensives sat off cooldown at a death and which
+were pressed far below what their cooldown allowed, and compares all of it against fast
+completions of the same dungeon. Point it at a boss fight, and it says what ended the attempt, who
+took far more of something than the rest of the raid, and how the pull reads against kills of the
+same boss. Either way, out comes one HTML file you open from disk.
 
 Every finding is labelled `measured`, `derived` or `inferred`, so you can always tell what the
 tool saw from what it worked out.
@@ -63,6 +66,30 @@ The flags worth knowing:
 `uv run wowperf fetch <url>` prints the raw run as JSON without analysing it, which is
 occasionally useful when something looks wrong.
 
+## Analysing a raid
+
+```bash
+uv run wowperf raid https://www.warcraftlogs.com/reports/YOURCODE --fight 12
+```
+
+A sibling of `analyze`, not a mode of it: one boss fight, kill or wipe, written as the same two
+files. It takes `--fight`, `--player`, `--all-players`, `--no-compare` and `--out`, and nothing
+else — a boss has no route and no pulls, so the flags that read those are not offered.
+
+A kill is compared against kills of the same boss. A wipe is told what ended it and where the
+raid's damage went, and every comparison that needs a completed kill is withheld and says so:
+Warcraft Logs ranks kills alone.
+
+```bash
+uv run wowperf progression https://www.warcraftlogs.com/reports/YOURCODE --boss 3492
+```
+
+reads every attempt at one boss in one report and writes the night rather than the pull — how
+deep each attempt got, what kept ending them, and what the best one did differently. `--boss` is
+required once a report holds more than one boss. It draws no outside reference at all, a night's
+attempts being judged against each other, which is why it is the cheapest of the three by an
+order of magnitude.
+
 ## Asking Claude to coach you
 
 The tool gives you a report. The skills give you someone to read it with.
@@ -70,12 +97,14 @@ The tool gives you a report. The skills give you someone to read it with.
 `.claude/skills/` ships with the repo, so a clone already has them. Open Claude Code in the
 folder and paste a log URL — *"have a look at this run"* is enough.
 
-- **`analyzing-a-run`** takes it from there: fetches the run, reads the findings, writes the
-  interpretation in plain language, feeds it back through `--narrative`, and hands you a finished
-  report with the reasoning already in it.
+- **`analyzing-a-run`** takes it from there: fetches the fight, reads the findings, writes the
+  interpretation in plain language, and hands you a finished report. On a key it feeds that
+  interpretation back through `--narrative`, so the reasoning lands inside the page; a raid page
+  carries no narrative, and the reading comes back in the conversation instead.
 - **`mplus-analysis`** governs what may be said about those findings — which comparisons are
   sound, which must be withheld, what each confidence badge does and does not licence. It is the
-  half that stops coaching from turning into confident invention.
+  half that stops coaching from turning into confident invention. It covers the Mythic+ families;
+  the raid ones have no counterpart yet.
 
 You can also just ask: *why did we lose the key? Was the third death avoidable? What should I
 press earlier next week?* It answers from the findings file — never from the HTML, and never from
@@ -85,11 +114,15 @@ Without Claude Code, everything above still works. You read the report yourself.
 
 ## What the report holds
 
-Six tabs — Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. Each death gets a
-recap: a health curve, a timeline of what hit you, how you came back, and every defensive,
-consumable and teammate external placed in one of six states at the moment you died — pressed,
-ready, on cooldown, or never seen all run, and one of your own defensives you pressed refined to
-held or faded by whether its aura was still up when the killing blow landed.
+A key gets six tabs — Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. A boss
+fight gets seven: Route & tempo gives way to Damage and Mechanics, the two axes a boss has in its
+place. A night of attempts gets five — Summary, Attempts, Repeats, Best attempt, Provenance — the
+night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work.
+
+Each death gets a recap: a health curve, a timeline of what hit you, how you came back, and every
+defensive, consumable and teammate external placed in one of six states at the moment you died —
+pressed, ready, on cooldown, or never seen all run, and one of your own defensives you pressed
+refined to held or faded by whether its aura was still up when the killing blow landed.
 
 The Provenance tab is the one to read when a number looks wrong. It says where each figure came
 from.
@@ -109,9 +142,23 @@ Being clear about this matters more than the features:
 
 ## Quota
 
-Warcraft Logs gives each client 3600 points an hour. A full run costs roughly six, so you will
-not run out. Every response is cached under `cache/`, and both commands close by printing what
-the run spent, dearest operation first.
+Warcraft Logs gives each client 3600 points an hour, and every response is cached under `cache/`,
+so a second look at a fight you have already read costs a single point. What a first look costs
+depends on the command and on how wide you cast it. Measured, against a cold cache:
+
+| Command | Points |
+| --- | --- |
+| `progression`, a whole night | 3 |
+| `raid`, one player | 63 |
+| `analyze`, one player | 83 |
+| `analyze --all-players` | 190 |
+| `raid --all-players` | 878 |
+
+Each is one reading of one report on one day rather than a budget; the dates and the conditions
+behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
+goes. Only the last row is worth a thought before you run it — naming every raider draws a
+reference sample for each of the twenty, and four such runs would spend the hour. Every command
+closes by printing what it spent, dearest operation first.
 
 ## Roadmap
 
@@ -120,10 +167,14 @@ findings format, report renderer and skills layer, and adds analysers on top.
 
 | Slice | Status | What it covers |
 | --- | --- | --- |
-| 1. Mythic+ post-mortem | **Shipped** | Everything described above |
-| 2. Single-player raid analysis | Planned | Your own performance on a raid encounter |
-| 3. Raid wipe analysis | Planned | What went wrong for the group rather than the individual |
+| 1. Mythic+ post-mortem | **Shipped** | `analyze` — everything described above |
+| 2. Single-player raid analysis | **Shipped** | `raid` — your own fight, read against kills of the same boss |
+| 3. Raid wipe analysis | **Mostly shipped** | `raid` on a wipe, and `progression` across a night of them |
 | 4. Healer analysis | Planned | Healing asks different questions and fails in different ways |
+
+Slice 3 still owes the one claim it is deliberately slow about: that one raider's action caused
+another's death. Today the tool measures what happened alongside what, badges it `inferred`, and
+uses no causal verb. Nothing is designed yet that would earn one.
 
 Deliberately out of scope: personal run history across weeks, and raw combat-log ingestion.
 Everything arrives through the Warcraft Logs API.
@@ -145,5 +196,6 @@ That covers this code and nothing else. The combat log data belongs to Warcraft 
 use of it is governed by the RPGLogs API Terms of Service — §2c forbids holding several API
 clients to multiply your hourly budget, and §5d forbids building a standing collection of other
 people's logs. Fetching a run on demand and caching it locally is ordinary use; warehousing is
-not. Ability icons are Blizzard's artwork, fetched from their CDN and embedded so that a report
-stays readable offline.
+not. Ability icons are Blizzard's artwork, addressed on their CDN and fetched by your browser when
+you open a report, so the page carries no image bytes of its own — and names every ability in text
+when you open it without a connection.
