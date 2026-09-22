@@ -9,7 +9,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
-from wowperf.domain.report.build import _check_unique_finding_ids
+from wowperf.domain.report.build import _check_unique_finding_ids, ceiling_withheld_line
 from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
 from wowperf.domain.report.frame import NO_COMPARISON_RAN, PARSE_UNAVAILABLE_ID
@@ -199,7 +199,7 @@ def build_raid_report(
     for notice in verdict_notices:
         withheld.append(f"Why this attempt ended: {notice.detail}")
     for notice in ceiling_notices:
-        withheld.append(f"Defensive ceiling: {notice.detail}")
+        withheld.append(ceiling_withheld_line(notice))
     if damage.state is SectionState.WITHHELD:
         withheld.append(f"Damage against other kills: {damage.reason}")
 

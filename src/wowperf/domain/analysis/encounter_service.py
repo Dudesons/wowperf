@@ -109,6 +109,8 @@ def analyse_encounter(
     findings += analyse_defensive_ceiling(
         encounter.players, encounter.duration_seconds, loaded.casts, defensives,
         loaded.deaths, combat_end_ms=encounter.end_ms,
+        shape="fight",
+        combat_description=f"This fight ran {encounter.duration_seconds:.0f}s",
     )
     findings += analyse_defensives_at_death(
         encounter.players, loaded.casts, defensives, loaded.deaths,

@@ -54,6 +54,25 @@ def _check_unique_finding_ids(findings: Sequence[Finding]) -> None:
         raise ValueError(f"duplicate finding ids reached the report builder: {duplicates}")
 
 
+def ceiling_withheld_line(notice: Finding) -> str:
+    """One Provenance entry for a defensive-ceiling withheld notice: detail, then evidence.
+
+    `notice.detail` ends on a sentence that introduces the per-ability lines
+    rather than pointing at a section the page does not have -- see
+    `defensives._ceiling_withheld`'s own docstring, which this function is the
+    other half of. Without the evidence appended here, the detail promised a
+    breakdown the page never rendered: a reader could see that some pressed
+    defensive was too short to judge, but never which one, which is exactly
+    the question the withheld notice exists to stop the page from ducking.
+
+    One entry, not one `<p>` per ability: `evidence` is joined into the same
+    paragraph the detail ends, because seventeen separate lines on a raid page
+    would be the wall `_ceiling_withheld`'s own docstring already declined to
+    print once per ability.
+    """
+    return f"Defensive ceiling: {notice.detail} " + "; ".join(notice.evidence) + "."
+
+
 def build_report(
     loaded: LoadedRun,
     findings: Sequence[Finding],
@@ -120,7 +139,7 @@ def build_report(
 
     withheld: list[str] = []
     for notice in ceiling_notices:
-        withheld.append(f"Defensive ceiling: {notice.detail}")
+        withheld.append(ceiling_withheld_line(notice))
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 

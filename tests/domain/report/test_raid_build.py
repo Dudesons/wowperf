@@ -8,6 +8,7 @@ import pytest
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
+from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
@@ -15,6 +16,7 @@ from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import BASELINE_Y, PLOT_TOP, PLOT_X0, PLOT_X1
+from wowperf.domain.report.build import ceiling_withheld_line
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
@@ -650,24 +652,23 @@ def test_a_withheld_verdict_does_not_head_the_summary() -> None:
 
 def _a_withheld_ceiling() -> Finding:
     """What `analyse_defensive_ceiling` returns when a fight ran too short to judge a
-    defensive somebody pressed (Task 2).
+    defensive somebody pressed (Task 2), built through the real minting function
+    so this fixture's title, detail and evidence can never drift from what
+    production actually emits -- a hand-written stand-in is what let the
+    "stated per ability below" wording ship without anyone noticing the page
+    had no such section.
 
-    The id is spelled out rather than built from the production module's
+    The id is checked against a literal rather than the production module's own
     `CEILING_WITHHELD_ID`: a test that constructs its expected value from the
     same constant the code under test reads proves nothing about whether the
     two agree.
     """
-    return Finding(
-        id="defensives.ceiling.withheld",
-        title="This fight was too short to judge 1 pressed defensive",
-        detail=(
-            "Ice Block would need more combat time than this fight ran to "
-            "clear the five uses a ceiling claim needs."
-        ),
-        confidence=Confidence.MEASURED,
-        seconds_lost=None,
-        evidence=("Ice Block would need 1200s of combat",),
+    finding = _ceiling_withheld(
+        {("Ice Block", 1200.0)}, shape="fight",
+        combat_description="This fight ran 300s",
     )
+    assert finding.id == "defensives.ceiling.withheld"
+    return finding
 
 
 def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
@@ -675,6 +676,10 @@ def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
 
     Mirrors `test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance`
     above, for the sibling notice Task 2 added.
+
+    Whole-branch review Critical 1: the disclosure is the per-ability evidence,
+    not the detail sentence alone, so both must reach the page in the same
+    Provenance entry or a reader can never tell which ability was withheld.
     """
     loaded, subject = a_raid_fixture()
     notice = _a_withheld_ceiling()
@@ -684,9 +689,10 @@ def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
     )
 
     withheld = report.provenance.withheld
-    assert [line for line in withheld if notice.detail in line] == [
-        f"Defensive ceiling: {notice.detail}"
+    assert [line for line in withheld if "Defensive ceiling" in line] == [
+        ceiling_withheld_line(notice)
     ]
+    assert "Ice Block would need more than 1200s of combat" in withheld[0]
 
 
 def test_a_withheld_defensive_ceiling_never_reaches_group_rows() -> None:

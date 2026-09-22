@@ -65,7 +65,8 @@ argued with.
 | `inferred` | requires an assumption the log cannot confirm | "suggests", "looks like", never a flat claim |
 
 Asserting an `inferred` finding as fact is the fastest way to lose a reader who knows the game
-better than the tool does. Every defensives finding is `inferred`, in two different ways.
+better than the tool does. Every judgement a defensives finding makes is `inferred`, in two
+different ways, and a third finding beside them discloses where no judgement was possible at all.
 `defensives.ceiling.*` infers one: a use count set against what the cooldown allowed over the
 seconds the player spent alive and in combat. That arithmetic is exact, but a defensive is
 pressed into incoming damage rather than on cooldown, so the ceiling is a ceiling and not a
@@ -77,6 +78,16 @@ it is anchored to a moment rather than to a whole run and because it only names 
 player cast somewhere in the run — a talent they never took can never appear. It is still a
 question rather than a verdict: a defensive held for a worse moment thirty seconds later is
 ordinary play. Say "had it available", never "should have pressed it".
+
+`defensives.ceiling.withheld` is the third, and it is `measured`, not `inferred` — do not soften
+it with "suggests" or read it as a ceiling claim about anyone's play. A press count is a positive
+integer, so the ceiling claim above cannot fire until an ability's cooldown, divided by its
+charges, fits more than five uses into the run; below that the analyser is structurally unable to
+judge a defensive someone actually pressed, and saying nothing would read on the page exactly like
+having used it enough. This finding is the disclosure of that silence, named per ability in its
+own evidence, not a verdict on any of the abilities it names. Read it as "the run was too short to
+judge this", never as "this was used enough" or "this was used too little" — both of those are the
+`defensives.ceiling.*` claim this finding explicitly declined to make.
 
 `defensives.unused.*` reconstructs "off cooldown" from cast timestamps and a base cooldown
 rather than reading it off the log, because the log records no cooldown state to check it

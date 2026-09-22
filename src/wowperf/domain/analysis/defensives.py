@@ -205,11 +205,16 @@ def alive_combat_seconds(
     A death's dead time is `seconds_until_next_action` where the log recorded
     one. Where it did not, the player was never seen to act on another actor
     again, and they count as dead from that death until `combat_end_ms`. On a
-    wipe that is exact: the fight ended, so they provably never returned. For a
-    player resurrected who then only ever casts on themselves it understates
-    their alive time, which lowers their ceiling and weakens the claim -- the
-    same direction every other approximation here leans, because understating
-    cannot produce a false accusation.
+    raid wipe that is exact: the fight ended, so they provably never returned,
+    and `combat_end_ms` and `combat_seconds` share the same wall clock. On a
+    keystone it is not: `combat_end_ms` is `run.window_ms[1]`, wall-clock time,
+    while `combat_seconds` sums pull time only, so a death near the run's end
+    still charges the player for whatever between-pull downtime followed it --
+    another understatement rather than an exact one, leaning the same safe
+    direction as every other approximation here. For a player resurrected who
+    then only ever casts on themselves it understates their alive time the
+    same way, which lowers their ceiling and weakens the claim -- because
+    understating cannot produce a false accusation.
 
     Approximate on purpose either way, and one of the reasons the finding is
     `inferred`: a run-back can extend past the pull it started in, so the
@@ -264,7 +269,9 @@ def defensive_base_ids(
     return ids
 
 
-def _ceiling_withheld(combat_seconds: float, needs: set[tuple[str, float]]) -> Finding:
+def _ceiling_withheld(
+    needs: set[tuple[str, float]], *, shape: str, combat_description: str
+) -> Finding:
     """The abilities this fight was too short to judge, said out loud.
 
     `measured`, on the same reasoning `attempt_shape._withheld` gives: what is
@@ -288,29 +295,44 @@ def _ceiling_withheld(combat_seconds: float, needs: set[tuple[str, float]]) -> F
     reader would recognise by name, not two, even though its two variants
     need different combat lengths. Only the evidence -- where the two figures
     belong -- carries one line per variant.
+
+    `shape` and `combat_description` are the caller's words, not this
+    module's: a keystone report says "run" throughout and a raid page says
+    "fight", and what `combat_seconds` honestly measures differs the same
+    way -- summed pull time on a keystone, wall-clock duration on a raid.
+    Hard-coding either here would put raid wording on a dungeon page, or
+    state a keystone's summed pull time as if it were elapsed time.
+
+    The detail names no ability itself: it ends on the sentence that
+    introduces the evidence lines rather than restating them, because the
+    two are printed as one paragraph -- `report/build.py` and
+    `report/raid_build.py` both append this finding's `evidence` straight
+    onto its `detail` for the single Provenance entry a reader sees, so the
+    detail's closing colon must lead into lines that immediately follow it
+    rather than into a section that does not exist on the page.
     """
     count = len({name for name, _ in needs})
     return Finding(
         id=CEILING_WITHHELD_ID,
         title=(
-            f"This fight was too short to judge {count} "
+            f"This {shape} was too short to judge {count} "
             f"pressed defensive{'s' if count != 1 else ''}"
         ),
         detail=(
             "A ceiling claim needs an ability to fit more than five uses into "
-            "the fight, charges included: below that, a single press already "
-            "clears the threshold, so no press count could ever be low enough "
-            f"to report. This fight ran {combat_seconds:.0f}s, short of what "
-            f"{count} of the defensives someone pressed would need -- charges "
-            "change that figure from one defensive to the next, so it is "
-            "stated per ability below rather than as one number here. Nothing "
-            "is being said about how those were used -- this is the analyser "
-            "declining to judge them, not a clean bill of health."
+            f"the {shape}, charges included: below that, a single press "
+            "already clears the threshold, so no press count could ever be "
+            "low enough to report. Nothing is being said about how those "
+            "were used -- this is the analyser declining to judge them, not "
+            f"a clean bill of health. {combat_description}, short of what "
+            f"{count} of the defensives someone pressed would need -- "
+            "charges change that figure from one defensive to the next, so "
+            "each is named here:"
         ),
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=tuple(
-            f"{name} would need {seconds:.0f}s of combat"
+            f"{name} would need more than {seconds:.0f}s of combat"
             for name, seconds in sorted(needs)
         ),
     )
@@ -324,6 +346,8 @@ def analyse_defensive_ceiling(
     deaths: tuple[Death, ...],
     *,
     combat_end_ms: int,
+    shape: str,
+    combat_description: str,
 ) -> list[Finding]:
     """Defensives pressed far below their cooldown ceiling (§5.7).
 
@@ -336,6 +360,12 @@ def analyse_defensive_ceiling(
     ceiling to be judged against, and the claim that they never pressed it is
     the death card's, where it sits beside the three other states a reader
     needs to weigh it.
+
+    `shape` and `combat_description` feed only the withheld notice's own
+    wording -- see `_ceiling_withheld` -- and are required rather than
+    defaulted for the same reason `combat_end_ms` is: a caller who forgets
+    one should fail loudly rather than ship raid words on a keystone page, or
+    a keystone's summed pull time stated as if it had elapsed.
     """
     cast_counts: dict[int, dict[int, int]] = defaultdict(lambda: defaultdict(int))
     for cast in casts:
@@ -400,6 +430,14 @@ def analyse_defensive_ceiling(
                     ability_name=ability.name,
                 )
             )
-    if too_short:
-        findings.append(_ceiling_withheld(combat_seconds, too_short))
+    # `combat_seconds` is zero for a keystone with no pulls at all --
+    # `Run.window_ms` and `total_pull_seconds` both collapse to zero, so
+    # `cooldown_ceiling(0, ability) == 0` clears the `<= 5` test for any
+    # ability pressed outside every pull window. Minting the notice there
+    # would blame the fight's length for a silence that is actually the log
+    # carrying no pulls to time it by, which is a different and false claim.
+    if too_short and combat_seconds > 0:
+        findings.append(
+            _ceiling_withheld(too_short, shape=shape, combat_description=combat_description)
+        )
     return findings

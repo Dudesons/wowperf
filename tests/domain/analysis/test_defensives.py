@@ -1,7 +1,11 @@
 # ABOUTME: Behaviour tests for the defensive claims a combat log can support.
 # ABOUTME: Pressed far below the cooldown ceiling is a caveated claim; the ceiling is a bound.
 
-from wowperf.domain.analysis.defensives import alive_combat_seconds, analyse_defensive_ceiling
+from wowperf.domain.analysis.defensives import (
+    _ceiling_withheld,
+    alive_combat_seconds,
+    analyse_defensive_ceiling,
+)
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -35,6 +39,19 @@ BLOOD_DEFENSIVES = Defensives(
         ),
     )
 )
+
+SHAPE = "run"
+"""Every fixture here models a Mythic+ run, the noun `service.py` passes in production."""
+
+
+def run_combat_description(seconds: float) -> str:
+    """The phrase `service.py` builds for the withheld notice, reproduced for these fixtures.
+
+    `analyse_defensive_ceiling` takes this as a caller-supplied string precisely
+    so the analyser itself never decides how to phrase `combat_seconds` --
+    see its own docstring and `_ceiling_withheld`'s.
+    """
+    return f"This run's pulls summed to {seconds:.0f}s of combat"
 
 
 def a_run() -> Run:
@@ -127,7 +144,8 @@ def test_a_spec_absent_from_the_list_produces_nothing() -> None:
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds,
         (cast(11, 235450), cast(11, 45438), cast(12, 235450), cast(12, 45438)),
-        DEFENSIVES, (), combat_end_ms=run.window_ms[1]
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert ceiling_ids(findings)
     assert all("Sublime" not in finding.title for finding in findings)
@@ -143,7 +161,8 @@ def test_a_cast_outside_every_pull_still_counts_as_used() -> None:
     run = a_long_run()
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (cast(11, 235450), outside_pull), DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert "defensives.ceiling.emberkin.45438" in ceiling_ids(findings)
 
@@ -158,7 +177,8 @@ def test_two_players_of_the_same_spec_are_reported_independently() -> None:
     casts = (cast(11, 235450), cast(11, 45438), cast(13, 235450), cast(13, 45438))
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert ceiling_ids(findings) == [
@@ -177,7 +197,8 @@ def test_same_named_players_get_distinct_finding_ids() -> None:
     casts = (cast(11, 235450), cast(11, 45438), cast(99, 235450), cast(99, 45438))
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     ids = ceiling_ids(findings)
     # Counted, not just deduplicated: `len(ids) == len(set(ids))` holds for an
@@ -193,11 +214,13 @@ def test_defensives_with_no_entries_produces_nothing() -> None:
     casts = (cast(11, 235450), cast(11, 45438))
     assert ceiling_ids(analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     ))
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, Defensives(entries=()), (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert findings == []
 
@@ -220,7 +243,7 @@ def test_alive_seconds_subtracts_dead_time_from_the_combat_denominator() -> None
     assert alive_combat_seconds(100.0, deaths, 11, combat_end_ms=100_000) == 88.0
 
 
-def test_a_death_with_no_following_action_no_longer_makes_alive_time_unknown() -> None:
+def test_a_death_with_no_following_action_counts_as_dead_until_combat_end() -> None:
     deaths = (
         Death(actor_id=11, player_name="Emberkin", timestamp_ms=50_000,
               killing_blow="Melee", seconds_until_next_action=None, pull_index=0),
@@ -279,7 +302,8 @@ def test_a_defensive_pressed_far_below_its_ceiling_is_reported() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -297,13 +321,15 @@ def test_a_defensive_never_pressed_produces_no_ceiling_finding() -> None:
 
     pressed = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
-        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1],
+        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert findings_by_prefix(pressed, "defensives.ceiling.") != []
 
     unpressed = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert findings_by_prefix(unpressed, "defensives.ceiling.") == []
 
@@ -319,7 +345,8 @@ def test_a_defensive_pressed_at_roughly_half_its_ceiling_is_ordinary_play() -> N
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
@@ -332,7 +359,8 @@ def test_a_defensive_pressed_close_to_its_ceiling_is_not_reported() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert findings_by_prefix(findings, "defensives.ceiling.") == []
@@ -355,7 +383,8 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     at_the_floor = a_run_with_one_blood_death_knight(pull_seconds=900.0)
     silent = analyse_defensive_ceiling(
         at_the_floor.players, at_the_floor.total_pull_seconds, casts,
-        BLOOD_DEFENSIVES, (), combat_end_ms=at_the_floor.window_ms[1],
+        BLOOD_DEFENSIVES, (), combat_end_ms=at_the_floor.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(at_the_floor.total_pull_seconds),
     )
     judged = [f for f in findings_by_prefix(silent, "defensives.ceiling.")
               if f.id != "defensives.ceiling.withheld"]
@@ -365,9 +394,31 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     above_the_floor = a_run_with_one_blood_death_knight(pull_seconds=1080.0)
     reported = analyse_defensive_ceiling(
         above_the_floor.players, above_the_floor.total_pull_seconds, casts,
-        BLOOD_DEFENSIVES, (), combat_end_ms=above_the_floor.window_ms[1],
+        BLOOD_DEFENSIVES, (), combat_end_ms=above_the_floor.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(above_the_floor.total_pull_seconds),
     )
     assert findings_by_prefix(reported, "defensives.ceiling.") != []
+
+
+def test_a_run_with_no_pulls_mints_no_withheld_notice_even_with_a_pressed_defensive() -> None:
+    # `Run.window_ms` and `total_pull_seconds` both collapse to zero with no
+    # pulls at all (`model.py:152`). Without a guard on `combat_seconds > 0`,
+    # `cooldown_ceiling(0, ability) == 0 <= 5` for any ability pressed outside
+    # every pull window, and the withheld notice would mint blaming the run's
+    # length -- false: nothing here says the run was short, only that the log
+    # carried no pulls to time it by.
+    run = a_run_with_one_blood_death_knight(pull_seconds=1800.0).model_copy(
+        update={"pulls": ()}
+    )
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
+    )
+
+    assert findings == []
 
 
 def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:
@@ -377,7 +428,8 @@ def test_time_spent_dead_does_not_count_towards_the_ceiling() -> None:
     # press against a ceiling of 6 still clears the 0.2 threshold (1 < 1.2).
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (a_death(1, 720.0),),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -392,7 +444,8 @@ def test_the_ceiling_detail_says_defensives_are_situational() -> None:
     finding = findings_by_prefix(
         analyse_defensive_ceiling(
             run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-            combat_end_ms=run.window_ms[1],
+            combat_end_ms=run.window_ms[1], shape=SHAPE,
+            combat_description=run_combat_description(run.total_pull_seconds),
         ),
         "defensives.ceiling.",
     )[0]
@@ -404,11 +457,10 @@ def test_a_player_dead_from_the_first_second_has_no_ceiling_to_judge() -> None:
     # a_death(..., None) times this death at 0ms, and seconds_until_next_action
     # of None means the player was never seen to act on another actor again --
     # so they count as dead from timestamp 0 to combat_end_ms, which is the
-    # entire 1800s fight. Alive time clamps to zero, the ceiling is zero, and a
-    # ceiling of zero has nothing to judge a press against, so every ceiling
-    # finding for this player is withheld, not just the one for the ability
-    # they actually pressed — which is why the fixture lists two defensives
-    # and presses one.
+    # entire 1800s fight. Alive time clamps to zero and the ceiling is zero,
+    # and `uses` for a pressed ability is always at least 1, so `1 >= 0 * 0.2`
+    # holds and no per-ability finding fires for it either -- which is why the
+    # fixture only needs to press the one ability it lists.
     #
     # Paired against the same call without that death, so the emptiness below
     # is this death's doing and not the analyser having failed wholesale.
@@ -421,9 +473,6 @@ def test_a_player_dead_from_the_first_second_has_no_ceiling_to_judge() -> None:
                     DefensiveAbility(
                         ability_id=48792, name="Icebound Fortitude", cooldown_seconds=180.0
                     ),
-                    DefensiveAbility(
-                        ability_id=194679, name="Rune Tap", cooldown_seconds=30.0
-                    ),
                 ),
             ),
         )
@@ -432,13 +481,15 @@ def test_a_player_dead_from_the_first_second_has_no_ceiling_to_judge() -> None:
 
     measured = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, defensives, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert findings_by_prefix(measured, "defensives.ceiling.") != []
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, defensives, (a_death(1, None),),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert findings == []
@@ -456,7 +507,8 @@ def test_two_same_named_players_get_distinct_ceiling_finding_ids() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")
 
@@ -471,7 +523,8 @@ def test_a_ceiling_finding_names_the_defensive_it_judged() -> None:
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (a_cast(actor_id=1, ability_id=48792),),
-        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1],
+        BLOOD_DEFENSIVES, (), combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
     ceiling = findings_by_prefix(findings, "defensives.ceiling.")[0]
     assert ceiling.ability_id == 48792
@@ -501,7 +554,8 @@ def test_a_defensive_finding_id_carries_no_character_outside_the_ascii_set() -> 
     )
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
-        DEFENSIVES, (), combat_end_ms=run.window_ms[1],
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     ids = ceiling_ids(findings)
@@ -532,7 +586,8 @@ def test_two_names_that_slug_alike_still_reach_different_defensive_finding_ids()
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     ids = ceiling_ids(findings)
@@ -551,7 +606,8 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
     run = a_long_run()
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (cast(11, 235450), cast(11, 45438)),
-        DEFENSIVES, (), combat_end_ms=run.window_ms[1],
+        DEFENSIVES, (), combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert set(ceiling_ids(findings)) == {
@@ -561,16 +617,19 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
 
 
 def test_a_fight_too_short_for_a_pressed_defensive_says_so() -> None:
-    # Icebound Fortitude's 180s cooldown needs 900s of combat before a single
-    # press could ever clear `uses < ceiling * 0.2`. This run is 600s, so the
-    # analyser cannot judge it -- and silence about it would read exactly like
-    # having pressed it enough.
+    # Icebound Fortitude's 180s cooldown means a single press cannot clear the
+    # withheld notice's own threshold -- escape being flagged as too-short-to-
+    # judge -- until combat exceeds 900s: at exactly 900s the ceiling is 5 and
+    # `uses < ceiling * 0.2` (1 < 1.0) is still true, so the notice still
+    # fires. This run is 600s, so the analyser cannot judge it at all -- and
+    # silence about it would read exactly like having pressed it enough.
     run = a_run_with_one_blood_death_knight(pull_seconds=600.0)
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"]
@@ -587,7 +646,8 @@ def test_an_ability_nobody_pressed_does_not_produce_a_withheld_notice() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert [f for f in findings if f.id == "defensives.ceiling.withheld"] == []
@@ -601,7 +661,8 @@ def test_a_fight_long_enough_for_every_pressed_defensive_says_nothing() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     assert [f for f in findings if f.id == "defensives.ceiling.withheld"] == []
@@ -626,11 +687,12 @@ def test_the_withheld_notice_accounts_for_a_players_charges() -> None:
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, two_charges, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
-    assert "Icebound Fortitude would need 450s of combat" in withheld.evidence
+    assert "Icebound Fortitude would need more than 450s of combat" in withheld.evidence
     # Unconditional, and tied to the fixture rather than to any wording: a
     # charge-blind reading of "five cooldowns" lands on this figure for this
     # ability, and the detail must never state it beside a 450s evidence line
@@ -674,14 +736,63 @@ def test_two_specs_whose_same_named_ability_differs_both_get_their_own_line() ->
 
     findings = analyse_defensive_ceiling(
         run.players, run.total_pull_seconds, casts, two_variants, (),
-        combat_end_ms=run.window_ms[1],
+        combat_end_ms=run.window_ms[1], shape=SHAPE,
+        combat_description=run_combat_description(run.total_pull_seconds),
     )
 
     withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
-    assert "Barkskin would need 225s of combat" in withheld.evidence
-    assert "Barkskin would need 300s of combat" in withheld.evidence
+    assert "Barkskin would need more than 225s of combat" in withheld.evidence
+    assert "Barkskin would need more than 300s of combat" in withheld.evidence
     # One ability, in two specs' variants -- a reader counting named
     # defensives sees one, and the title and detail must agree with them
     # rather than counting the two lines the evidence carries for it.
-    assert withheld.title == "This fight was too short to judge 1 pressed defensive"
+    assert withheld.title == "This run was too short to judge 1 pressed defensive"
     assert "1 of the defensives" in withheld.detail, withheld.detail
+
+
+def test_the_withheld_notice_uses_the_callers_shape_and_combat_description() -> None:
+    # `analyse_defensive_ceiling` no longer hard-codes "fight" or "ran Ns":
+    # a keystone report says "run" throughout and a raid page says "fight",
+    # and what `combat_seconds` honestly measures differs the same way --
+    # summed pull time on a keystone, wall-clock duration on a raid. Both
+    # come from the caller. Deliberately neither production value here --
+    # "expedition" is not a shape this codebase ever passes, and the combat
+    # description names a number `combat_seconds` itself is not (600.0) --
+    # so a regression that silently reverted to hard-coding "fight" and
+    # `f"This fight ran {combat_seconds:.0f}s"` could not satisfy this by
+    # coincidence the way passing the real production words would risk.
+    run = a_run_with_one_blood_death_knight(pull_seconds=600.0)
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1], shape="expedition",
+        combat_description="This expedition logged 12345s on a wholly different clock",
+    )
+
+    withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
+    assert withheld.title == "This expedition was too short to judge 1 pressed defensive"
+    assert "This expedition logged 12345s on a wholly different clock" in withheld.detail
+    assert "into the expedition" in withheld.detail
+    assert "fight" not in withheld.title
+    assert "600" not in withheld.detail
+
+
+def test_the_withheld_detail_and_evidence_read_as_one_paragraph_when_joined() -> None:
+    """Critical 1 of the whole-branch review: the page appends `evidence` straight
+    onto `detail` for the single Provenance entry a reader sees (`build.py`'s
+    `ceiling_withheld_line`), so `detail` must end on a clause that leads into
+    those lines rather than pointing at a section the page never had.
+    """
+    finding = _ceiling_withheld(
+        {("Ice Block", 1200.0)}, shape="run",
+        combat_description="This run's pulls summed to 300s of combat",
+    )
+
+    assert finding.detail.endswith("so each is named here:")
+    joined = f"{finding.detail} " + "; ".join(finding.evidence) + "."
+    assert "Ice Block would need more than 1200s of combat" in joined
+    # The old wording promised a breakdown "stated per ability below" that no
+    # template ever rendered -- nothing on this page is spatially below the
+    # detail, since both live in the same paragraph.
+    assert "per ability below" not in finding.detail

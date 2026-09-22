@@ -277,6 +277,15 @@ abilities.
   not be pointed at it.
 - `.claude/worktrees/` still holds `infallible-fermi-f7d3e4` and `jovial-golick-a5b700` from
   merged branches.
+- `analyse_cooldown_alignment` (`throughput.py:101`) still drops a player entirely when any of
+  their deaths has `seconds_until_next_action is None`, while `alive_combat_seconds` no longer
+  does. Its docstring's reason is true and the code is right as it stands: excluding a pull
+  means testing it against a dead span, and that needs an end as well as a start, which an
+  unmeasured death does not give it on its own. But the two analysers now read that same `None`
+  differently, and `run.window_ms[1]` — or a boss fight's `encounter.end_ms` — would give this
+  analyser the end it lacks, the same end `alive_combat_seconds` was given in section 5. Left
+  here as a recorded divergence rather than fixed: closing it is a change to a different
+  analyser's signature and call sites, outside what this plan's two defects touch.
 
 ## 12. Task 4: what the repaired analyser actually does (2026-09-22)
 
