@@ -1,6 +1,6 @@
 ---
 name: analyzing-a-run
-description: Use when given a Warcraft Logs Mythic+ URL to analyse — runs the tool, interprets the findings, writes the narrative, and hands back a finished report
+description: Use when given a Warcraft Logs URL to analyse — a Mythic+ key, a raid boss fight, or a night of attempts at one boss — runs the tool, interprets the findings, and hands back a finished report
 ---
 
 # Analysing a run
@@ -159,8 +159,9 @@ fight in the report. `--cache-dir` and `--out` move the response cache and the f
 same shapes `analyze` and `raid` offer. `--player`, `--all-players`, `--no-compare` and
 `--narrative` do not apply here and are not offered, because this command draws no comparison
 sample and writes no narrative-bearing page. It writes `<code>-<encounter>.progression.json` and
-no HTML: the report for this command belongs to a later plan, and there is no page to hand over
-yet.
+`<code>-<encounter>.progression.html`, a five-tab page — Summary, Attempts, Repeats, Best attempt,
+Provenance — carrying the night's shape and deliberately not any one attempt's anatomy. A finding
+that wants one names the `wowperf raid --fight N` that renders it.
 
 ## When it goes wrong
 
