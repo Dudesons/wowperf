@@ -152,14 +152,23 @@ One finding per report, `defensives.ceiling.withheld`, following the route `WITH
 `Finding` carrying its reason, lifted out in `report/raid_build.py`, and disclosed on the
 Provenance tab rather than ranked among the findings.
 
-**Minted only when a pressed ability was actually suppressed** — that is, when at least one
-(player, ability) pair had a non-zero press count and a ceiling of 5 or less. It is not minted
-from the cooldown table alone. This keeps it off a 1660-second keystone whose three unreachable
-abilities nobody pressed, and puts it on every fight where a reader would otherwise mistake
-silence for approval.
+**Minted only when a pressed ability was actually suppressed** — that is, when someone pressed
+an ability and `cooldown_ceiling(combat_seconds, ability) <= 5`. It is not minted from the
+cooldown table alone. This keeps it off a 1660-second keystone whose three unreachable abilities
+nobody pressed, and puts it on every fight where a reader would otherwise mistake silence for
+approval.
 
-**Badge: `derived`.** The fight length is measured, but the claim combines it with the
-hand-maintained cooldown table in `data/`, so it is computed rather than observed.
+**The condition is judged against the fight, not against each player's alive time.** A player
+who died early has abilities suppressed by their own short life rather than by a short fight,
+and an evidence line saying the fight was too short would then be false. That per-player case
+is a different statement and is deliberately not made here. The counts in section 9 were
+measured per player and are therefore an **upper bound** on what this condition will produce.
+
+**Badge: `measured`.** On the same reasoning `attempt_shape._withheld` gives for
+`WITHHELD_ID` — "the absence itself is a fact about the report rather than a reading of it".
+What is asserted is that the analyser declined to judge, and why: the press count, the fight
+length and the cooldown are all checked. The ceiling claim being declined is `inferred`; this
+is not that claim.
 
 **Routing work this implies.** `report/raid_ledger.py` routes the bare `defensives.` prefix to
 `group_rows`, which renders on the Players tab, so a new id under `defensives.ceiling.` would
@@ -216,9 +225,12 @@ to compare against.
   on **all five raid fights** (11, 14, 18, 15 and 15 suppressed pairs respectively) and on
   **three of the nine keystones**, each of those on exactly one suppressed ability:
   `G7MBJZfNakrcPvAx-3`, `wqd4MaK6JZpztV21-12` and `xBDdYAjbRFqWKC8n-59`. It therefore
-  discriminates rather than decorating every report, and the condition stands as written. This
-  is a measurement of the current corpus, not a guarantee; it should be re-run after
-  implementation.
+  discriminates rather than decorating every report, and the condition stands as written.
+
+  These counts were taken with a per-player ceiling. Section 6 settles the condition on the
+  fight's own length instead, which is a subset, so the real rate is the same or lower. It must
+  be re-measured after implementation, and a notice that fires on every report or on none is a
+  defect either way.
 - **`max()` on an empty pull tuple** raises where today the code returned zero quietly.
 - **The kill case rests on one fight.** Section 2.1 is strong evidence that D1 is wipe-only,
   not proof.
