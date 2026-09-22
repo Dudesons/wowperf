@@ -617,12 +617,15 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
 
 
 def test_a_fight_too_short_for_a_pressed_defensive_says_so() -> None:
-    # Icebound Fortitude's 180s cooldown means a single press cannot clear the
-    # withheld notice's own threshold -- escape being flagged as too-short-to-
-    # judge -- until combat exceeds 900s: at exactly 900s the ceiling is 5 and
-    # `uses < ceiling * 0.2` (1 < 1.0) is still true, so the notice still
-    # fires. This run is 600s, so the analyser cannot judge it at all -- and
-    # silence about it would read exactly like having pressed it enough.
+    # The withheld notice fires on its own condition -- `cooldown_ceiling`
+    # against `combat_seconds`, `<= 5` -- not the per-ability judgement's
+    # `uses < ceiling * 0.2`, a different check against `alive` seconds.
+    # Icebound Fortitude's 180s cooldown needs combat to exceed 900s before
+    # its ceiling clears 5: at exactly 900s the ceiling is 900 / 180 = 5, so
+    # `5 <= 5` still holds and the notice still fires. This run is 600s, so
+    # the ceiling is 600 / 180 = 3.33 and the analyser cannot judge the
+    # ability at all -- and silence about it would read exactly like having
+    # pressed it enough.
     run = a_run_with_one_blood_death_knight(pull_seconds=600.0)
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
