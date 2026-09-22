@@ -38,6 +38,10 @@ all** — they exit earlier, at `alive is None`. The split is almost entirely by
 On the four cached wipes, 6 per cent of pairs are judged. Three of the four judge two pairs or
 fewer out of roughly seventy.
 
+*Amended 2026-09-22:* "pairs judged"/"pairs dropped" above sums each roster's full kit
+(`defensives.for_spec` regardless of press), not pressed pairs; §12.2 gives the corrected
+pressed/dropped/judged figures, measured against the actual pre-repair code.
+
 ### 2.1 The kill is the control
 
 All four raid fights in `out/` are wipes, so `cW38jmwdnZfbHVL4` fight 2 — the canonical kill
@@ -57,6 +61,10 @@ times a keystone).
 nothing else. This is the most important line in the document: it bounds the change to fights
 that ended with players dead, and it means no kill or keystone report can move except through
 the small residue described in section 9.
+
+*Amended 2026-09-22:* the "judged" columns above (68/68/68/68/70) are each report's roster kit
+size, not a pressed-pair count; §12.2 gives the measured `judged`/`fires` figures against these
+same five fights. `fires today`/`fires proposed` are unaffected and confirmed correct.
 
 ## 3. Defect D1: the denominator discards a number it has
 
@@ -78,6 +86,9 @@ The discarded information is large, because players die late. On `cW38jmwdnZfbHV
 median player was alive for 269 seconds of a 271-second fight.
 
 The defect reaches Mythic+ too, but barely: two pairs across nine keystones.
+
+*Amended 2026-09-22:* "two pairs" does not reproduce; §12.1 re-measures against the actual
+pre-repair code and finds exactly one.
 
 ## 4. Defect D2: silence reads as a clean bill of health
 
@@ -235,6 +246,12 @@ to compare against.
 - **The kill case rests on one fight.** Section 2.1 is strong evidence that D1 is wipe-only,
   not proof.
 
+*Amended 2026-09-22:* both risks above are resolved. §12.1 re-measures "two pairs" at one, under
+the real pre-repair code. §12.3 re-measures the withheld fire rate under the fight-level
+condition this plan shipped (not the per-player one measured here): 3 of 9 keystones -- the same
+three fights named above -- and 4 of 4 raid wipes plus the kill, 7 of 13 overall, still
+discriminating.
+
 ## 10. Considered and rejected
 
 **Passing the `Run` or `Encounter` aggregate to the analyser.** This is what
@@ -322,8 +339,11 @@ never the constant the kit size implies.
 
 The same conflation explains section 2's headline evidence. `151` and `274` (keystones' and
 raid's `judged + dropped` totals there) are the two shapes' summed kit sizes, not summed
-pressed-pair counts -- verified the same way. The true figures, measured with the actual
-pre-repair code run directly against the same cached data, are:
+pressed-pair counts -- verified the same way. The true figures come from the same mechanism as
+section 12.1's "two pairs" recheck: the pre-repair `defensives.py`
+(`git show f271648^:src/wowperf/domain/analysis/defensives.py`, the commit before this plan's
+first) imported by file path and run directly, unmodified, against every cached keystone and raid
+wipe:
 
 | shape | pressed pairs | truly dropped (alive was `None`) | truly judged (old code) |
 | --- | --- | --- | --- |
@@ -352,17 +372,29 @@ section 2.1 says.
 
 - **3 of 9** keystones -- the identical three fights section 9 named from its per-player
   measurement -- each naming exactly one suppressed ability.
-- **4 of 4** loadable raid wipes, and the kill fetched alongside them fires it too (suppressed
-  counts of 12, 17, 13 and 10 on the wipes, 10 on the kill) -- matching section 9's prediction
-  that it would fire on all five raid fights, now confirmed under the fight-level condition this
-  plan shipped rather than the per-player one section 9 measured.
+- **4 of 4** loadable raid wipes, and the kill fetched alongside them fires it too -- matching
+  section 9's prediction that it would fire on all five raid fights, now confirmed under the
+  fight-level condition this plan shipped rather than the per-player one section 9 measured.
 - **7 of 13** overall: neither always nor never, so it discriminates as required.
 
-Count distribution where it fires: `1, 1, 1` on the keystones and `10, 12, 13, 17` on the raid
-wipes, `10` again on the kill. The count is not pinned to `1`: section 9's predicted range for
-raid (11 to 18 suppressed abilities, measured per-player) and the actual fight-level range (10 to
-17) overlap closely; the keystones' `1` is a real fact about those three fights -- each has
-exactly one pressed ability whose ceiling never clears five -- not a placeholder that happened to
+Count distribution where it fires, one row per fight so the length-to-count relationship is
+visible:
+
+| fight | seconds | withheld count |
+| --- | --- | --- |
+| `wqd4MaK6JZpztV21-12` | 1380 | 1 |
+| `G7MBJZfNakrcPvAx-3` | 1400 | 1 |
+| `xBDdYAjbRFqWKC8n-59` | 1491 | 1 |
+| `cW38jmwdnZfbHVL4-8` | 106 | 12 |
+| `cW38jmwdnZfbHVL4-26` | 271 | 17 |
+| `cW38jmwdnZfbHVL4-2` (kill) | 316 | 10 |
+| `cW38jmwdnZfbHVL4-30` | 480 | 13 |
+| `DJfap6RcYKhPGHXZ-7` | 542 | 10 |
+
+The count is not pinned to `1`: section 9's predicted range for raid (11 to 18 suppressed
+abilities, measured per-player) and the actual fight-level range (10 to 17) overlap closely;
+the keystones' `1` is a real fact about those three fights -- each has exactly one pressed
+ability whose ceiling never clears five -- not a placeholder that happened to
 land on the same value three times.
 
 ### 12.4 What this leaves unmeasured
