@@ -87,8 +87,9 @@ Without Claude Code, everything above still works. You read the report yourself.
 
 Six tabs — Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. Each death gets a
 recap: a health curve, a timeline of what hit you, how you came back, and every defensive,
-consumable and teammate external placed in one of four states at the moment you died — pressed,
-ready, on cooldown, or never seen all run.
+consumable and teammate external placed in one of six states at the moment you died — pressed,
+ready, on cooldown, or never seen all run, and one of your own defensives you pressed refined to
+held or faded by whether its aura was still up when the killing blow landed.
 
 The Provenance tab is the one to read when a number looks wrong. It says where each figure came
 from.

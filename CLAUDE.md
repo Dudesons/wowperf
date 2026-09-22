@@ -376,7 +376,10 @@ Summary, Attempts, Repeats, Best attempt, Provenance — the night's shape rathe
 attempt's anatomy, which stays `raid --fight N`'s work. Each death is a recap: a
 health curve reconstructed between the player's own readings, a timeline of what hit them,
 how they came back, and every defensive, consumable and teammate external placed in one of
-four states at the moment of death — pressed, ready, on cooldown, or never seen all run.
+six states at the moment of death — pressed, ready, on cooldown, or never seen all run, and
+a press on the dying player's own defensive refined to held or faded by whether that
+ability's aura was still up when the killing blow landed. `pressed` is what a press reads as
+when that refinement cannot be made, the explicit unknown rather than a guess.
 Ability icons are addressed on Wowhead's CDN and fetched by the reader's browser, so the
 build makes no request for art and the page carries no image bytes of its own.
 
