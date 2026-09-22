@@ -383,6 +383,9 @@ def analyse_defensive_ceiling(
     findings = []
     for player in players:
         known = defensives.for_spec(player.class_name, player.spec)
+        alive = alive_combat_seconds(
+            combat_seconds, deaths, player.actor_id, combat_end_ms=combat_end_ms
+        )
         for ability in known:
             base_id = base_ids[(player.actor_id, ability.ability_id)]
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
@@ -399,9 +402,6 @@ def analyse_defensive_ceiling(
                     ability.cooldown_seconds / ability.charges / CEILING_USE_FRACTION,
                 ))
 
-            alive = alive_combat_seconds(
-                combat_seconds, deaths, player.actor_id, combat_end_ms=combat_end_ms
-            )
             ceiling = cooldown_ceiling(alive, ability)
             if uses >= ceiling * CEILING_USE_FRACTION:
                 continue
