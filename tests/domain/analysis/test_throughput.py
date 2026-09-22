@@ -130,11 +130,19 @@ def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
 def test_the_ceiling_fires_only_on_near_total_neglect() -> None:
     from wowperf.domain.analysis.throughput import analyse_cooldown_ceiling
 
-    # One 60s pull, so the ceiling for a 120s cooldown is well under the floor
-    # below which the ceiling itself is too small to argue from.
-    pulls = (a_pull(0, 0, 60_000),)
+    # The floor is the fraction's own arithmetic: a press count is a positive
+    # integer, so one press cannot clear `uses < ceiling * CEILING_USE_FRACTION`
+    # until the ceiling passes 1 / 0.2 = 5. Both sides of that boundary, because
+    # an emptiness assertion alone would pass even if the branch never ran.
     casts = (a_cast(31884, 10_000),)
-    assert analyse_cooldown_ceiling(a_run(pulls), casts, COOLDOWNS, ()) == []
+
+    # 600s of pulls fits Avenging Wrath's 120s cooldown exactly 5 times.
+    at_the_floor = (a_pull(0, 0, 600_000),)
+    assert analyse_cooldown_ceiling(a_run(at_the_floor), casts, COOLDOWNS, ()) == []
+
+    # 720s fits it 6 times, and the same single press is then a finding.
+    above_the_floor = (a_pull(0, 0, 720_000),)
+    assert analyse_cooldown_ceiling(a_run(above_the_floor), casts, COOLDOWNS, ()) != []
 
 
 def test_a_cooldown_pressed_far_below_its_ceiling_is_a_finding() -> None:

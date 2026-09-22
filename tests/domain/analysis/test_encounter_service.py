@@ -102,9 +102,10 @@ def test_the_defensive_ceiling_uses_fight_duration_and_therefore_fires() -> None
 
     Prismatic Barrier (235450, 30s cooldown -- data/defensives.toml:139) is used
     rather than Ice Block: in a 374s fight Ice Block's 240s cooldown yields a
-    ceiling of 1.56, below `MIN_CEILING_USES = 3.0`, so the finding would be
-    suppressed regardless of fight duration and prove nothing about this
-    regression. Prismatic Barrier's ceiling is 374 / 30 = 12.5.
+    ceiling of 1.56, and a single press clears `uses < ceiling * 0.2` only above
+    a ceiling of 5, so the finding would be suppressed regardless of fight
+    duration and prove nothing about this regression. Prismatic Barrier's
+    ceiling is 374 / 30 = 12.5.
     """
     casts = (
         CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
