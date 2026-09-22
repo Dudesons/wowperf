@@ -260,3 +260,128 @@ abilities.
   not be pointed at it.
 - `.claude/worktrees/` still holds `infallible-fermi-f7d3e4` and `jovial-golick-a5b700` from
   merged branches.
+
+## 12. Task 4: what the repaired analyser actually does (2026-09-22)
+
+Measured through an offline harness against the same thirteen cached reports section 2 used
+(nine keystones, four raid wipes), plus a direct fetch of `cW38jmwdnZfbHVL4` fight 2 -- the kill,
+not in `out/` -- exactly as section 2.1's control was fetched. `43HaCNQwPrKqtYgn-2` and
+`CmzA8dnZyaD4Wkw1-1` are still aged out of cache and were not read; both are keystones, matching
+section 2's own gap. The harness is described at the end of this section.
+
+### 12.1 Did anything move that should not have?
+
+Comparing the repaired analyser's `defensives.ceiling.*` finding ids (excluding
+`defensives.ceiling.withheld`, which this plan introduces and which therefore appears in no
+shipped file) against the shipped `out/*.findings.json` id sets:
+
+- All nine keystones: **identical**, id for id.
+- The kill (`cW38jmwdnZfbHVL4-2`): 7 findings both before and after the repair, run directly with
+  the actual pre-repair code (below) -- confirming section 2.1's claim that the current and
+  proposed rule agree exactly on this fight.
+- The three raid wipes long enough to judge anything (`cW38jmwdnZfbHVL4-26`,
+  `cW38jmwdnZfbHVL4-30`, `DJfap6RcYKhPGHXZ-7`): every difference is an **addition** (+4, +8, +5;
+  nothing removed), the only direction the repair can move a result -- it can only turn an
+  unmeasurable alive time into a real one, never the reverse.
+- `cW38jmwdnZfbHVL4-8` (106s wipe): unchanged, 0 findings before and after -- every pressed
+  ability on this fight is still too short to fire regardless of alive time, so D1 has nothing to
+  move here.
+
+Section 3's "two pairs across nine keystones" was re-checked directly, running the actual
+pre-repair `alive_combat_seconds` (`git show f271648^:src/wowperf/domain/analysis/defensives.py`,
+the commit before this plan's first) against the same nine keystones. Only **one** pressed pair
+was ever affected by D1 there -- one Retribution Paladin's one pressed defensive, in
+`HpYwCAvmPFDtz1Jj-1` -- not two. It did not cross the firing threshold before or after, so this
+does not change the "identical" result above; section 3's count is corrected here to what
+actually reproduces.
+
+### 12.2 What did the repair buy on raid?
+
+Actual `judged` and `fires` from the repaired analyser, against section 2.1's predictions:
+
+| fight | kill | seconds | judged (actual) | fires (actual) | judged proposed | fires proposed |
+| --- | --- | --- | --- | --- | --- | --- |
+| `cW38jmwdnZfbHVL4-2` | yes | 316 | 25 | 7 | 68 | 7 |
+| `cW38jmwdnZfbHVL4-8` | no | 106 | 16 | 0 | 68 | 0 |
+| `cW38jmwdnZfbHVL4-26` | no | 271 | 26 | 4 | 68 | 4 |
+| `cW38jmwdnZfbHVL4-30` | no | 480 | 41 | 8 | 68 | 8 |
+| `DJfap6RcYKhPGHXZ-7` | no | 542 | 39 | 5 | 70 | 5 |
+
+**`fires` matches the prediction exactly on every row.** That is the number that reaches a
+reader, and the implementation produces exactly what the design predicted, no more.
+
+**`judged` does not, on any row, and the table is the error.** `68` and `70` are each report's
+full roster kit size -- every `(player, ability)` pair the roster's specs carry, pressed or not
+(`sum(len(defensives.for_spec(p.class_name, p.spec)) for p in players)`, verified to equal these
+figures exactly, per report). The repair does not change which pairs are judged; it changes what
+happens to a pair that was already pressed (`uses >= 1`) once its player's alive time is asked
+for. A pair nobody pressed still exits at the `if not uses: continue` gate before
+`alive_combat_seconds` is ever called, repaired or not. `judged` (actual) counts pressed pairs,
+and it tracks how much a roster actually cast that fight -- naturally different fight to fight,
+never the constant the kit size implies.
+
+The same conflation explains section 2's headline evidence. `151` and `274` (keystones' and
+raid's `judged + dropped` totals there) are the two shapes' summed kit sizes, not summed
+pressed-pair counts -- verified the same way. The true figures, measured with the actual
+pre-repair code run directly against the same cached data, are:
+
+| shape | pressed pairs | truly dropped (alive was `None`) | truly judged (old code) |
+| --- | --- | --- | --- |
+| nine keystones | 109 | 1 | 108 |
+| four raid wipes | 122 | 113 | 9 |
+
+Section 3's "two pairs" and section 2's "257 dropped" both used the kit-size denominator instead
+of the pressed-pair one; the corrected figures are 1 and 113. Section 2's qualitative story
+stands regardless -- wipes still drop the large majority of what they judge (113 of 122 pressed
+pairs, 93 per cent, against section 2's 257 of 274, 94 per cent) -- but its raw counts, and
+section 2.1's `judged proposed` column, should be read as roster kit sizes rather than as the
+pressed-pair figures their column headers say they are.
+
+One further, smaller discrepancy: section 2.1 gives `cW38jmwdnZfbHVL4-26`'s `judged today` as
+`15`. Run directly, the actual pre-repair code returns `7` on this fight (`26` pressed pairs, `7`
+resolved). `15` fits neither the pressed-pair count nor the kit size, so it is not explained by
+the pattern above. It is recorded here rather than guessed at -- inventing a reason would be
+exactly what `CLAUDE.md` warns against -- and it changes no conclusion: `fires today` for this
+fight (`0`) is independently confirmed against the shipped
+`out/cW38jmwdnZfbHVL4-26.findings.json`, which carries no `defensives.ceiling.*` id, exactly as
+section 2.1 says.
+
+### 12.3 Does the new notice discriminate?
+
+`defensives.ceiling.withheld` fires on:
+
+- **3 of 9** keystones -- the identical three fights section 9 named from its per-player
+  measurement -- each naming exactly one suppressed ability.
+- **4 of 4** loadable raid wipes, and the kill fetched alongside them fires it too (suppressed
+  counts of 12, 17, 13 and 10 on the wipes, 10 on the kill) -- matching section 9's prediction
+  that it would fire on all five raid fights, now confirmed under the fight-level condition this
+  plan shipped rather than the per-player one section 9 measured.
+- **7 of 13** overall: neither always nor never, so it discriminates as required.
+
+Count distribution where it fires: `1, 1, 1` on the keystones and `10, 12, 13, 17` on the raid
+wipes, `10` again on the kill. The count is not pinned to `1`: section 9's predicted range for
+raid (11 to 18 suppressed abilities, measured per-player) and the actual fight-level range (10 to
+17) overlap closely; the keystones' `1` is a real fact about those three fights -- each has
+exactly one pressed ability whose ceiling never clears five -- not a placeholder that happened to
+land on the same value three times.
+
+### 12.4 What this leaves unmeasured
+
+- `43HaCNQwPrKqtYgn-2` and `CmzA8dnZyaD4Wkw1-1` are still aged out of cache and were not read.
+  Both are keystones; neither's shipped `out/` file has been regenerated, so both remain the
+  stale reports section 11 already names.
+- The four stale `out/` reports section 11 names predate behaviour unrelated to this plan and
+  were compared as shipped; nothing measured here depends on their being current.
+- The `cW38jmwdnZfbHVL4-26` "judged today" discrepancy in section 12.2 is recorded, not resolved
+  -- the script that produced section 2.1's numbers no longer exists to re-run.
+- `CEILING_USE_FRACTION` was not touched or re-measured; section 7's 2026-09-22 measurement
+  stands as the last word on it.
+
+**Harness.** An offline script, not part of the repository, built a `WclRunRepository` over
+`DiskCache(Path("cache"))` with a client whose `execute` raises rather than reaching the network,
+read each `out/*.findings.json`'s `(report_code, fight_id)` pair, loaded it through `repo.load`
+or `repo.load_encounter` by the presence of `dungeon_name` versus `boss_name`, and ran
+`analyse_defensive_ceiling` directly with the same arguments `service.py` and
+`encounter_service.py` pass it. `Player.name` and any finding id carrying a player slug were
+loaded like every other field but never printed or written down; every count above is keyed by
+report code, fight id, and -- for the one keystone exception in 12.1 -- class and spec alone.
