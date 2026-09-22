@@ -605,3 +605,78 @@ def test_a_fight_long_enough_for_every_pressed_defensive_says_nothing() -> None:
     )
 
     assert [f for f in findings if f.id == "defensives.ceiling.withheld"] == []
+
+
+def test_the_withheld_notice_accounts_for_a_players_charges() -> None:
+    # Two charges halves how long combat must run before a press could ever
+    # clear the threshold: 180s / 2 charges / 0.2 = 450s, not the 900s a
+    # single-charge ability of the same cooldown needs. Pinning this figure
+    # guards the `/ ability.charges` term the withheld notice reports.
+    two_charges = Defensives(
+        entries=(
+            ("DeathKnight/Blood", (
+                DefensiveAbility(ability_id=48792, name="Icebound Fortitude",
+                                  cooldown_seconds=180.0, charges=2),
+            )),
+        )
+    )
+    run = a_run_with_one_blood_death_knight(pull_seconds=300.0)
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, two_charges, (),
+        combat_end_ms=run.window_ms[1],
+    )
+
+    withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
+    assert "Icebound Fortitude would need 450s of combat" in withheld.evidence
+    # The evidence line above already divides by charges; the detail must not
+    # tell a different story beside it. A detail that frames the threshold as
+    # some number of an ability's bare cooldowns, with no mention of charges,
+    # reads to a reader as 900s for this ability -- double the evidence's
+    # 450s -- because it left out the one variable that changes it.
+    if "cooldown" in withheld.detail.lower():
+        assert "charge" in withheld.detail.lower(), withheld.detail
+
+
+def test_two_specs_whose_same_named_ability_differs_both_get_their_own_line() -> None:
+    # Barkskin's cooldown is 45s for a Guardian and 60s for every other druid
+    # spec (data/defensives.toml). A raid holding both must not have one
+    # player's figure silently stand in for the other's.
+    two_variants = Defensives(
+        entries=(
+            ("Druid/Guardian", (
+                DefensiveAbility(ability_id=22812, name="Barkskin", cooldown_seconds=45.0),
+            )),
+            ("Druid/Balance", (
+                DefensiveAbility(ability_id=22812, name="Barkskin", cooldown_seconds=60.0),
+            )),
+        )
+    )
+    pulls = (
+        Pull(index=0, pull_id=1, name="Trash", encounter_id=0, start_ms=0,
+             end_ms=200_000, killed=True, x=10, y=20,
+             enemies=(EnemyNpc(actor_id=1, game_id=100),)),
+    )
+    run = Run(
+        report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk", encounter_id=12825,
+        keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
+        count_reached=100, count_required=100, npc_counts=(),
+        players=(
+            Player(actor_id=1, name="Guardian", class_name="Druid", spec="Guardian",
+                   item_level=320),
+            Player(actor_id=2, name="Boomkin", class_name="Druid", spec="Balance",
+                   item_level=320),
+        ),
+        pulls=pulls,
+    )
+    casts = (a_cast(actor_id=1, ability_id=22812), a_cast(actor_id=2, ability_id=22812))
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, two_variants, (),
+        combat_end_ms=run.window_ms[1],
+    )
+
+    withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"][0]
+    assert "Barkskin would need 225s of combat" in withheld.evidence
+    assert "Barkskin would need 300s of combat" in withheld.evidence

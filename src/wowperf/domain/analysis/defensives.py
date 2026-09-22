@@ -264,7 +264,7 @@ def defensive_base_ids(
     return ids
 
 
-def _ceiling_withheld(combat_seconds: float, needs: dict[str, float]) -> Finding:
+def _ceiling_withheld(combat_seconds: float, needs: set[tuple[str, float]]) -> Finding:
     """The abilities this fight was too short to judge, said out loud.
 
     `measured`, on the same reasoning `attempt_shape._withheld` gives: what is
@@ -273,9 +273,15 @@ def _ceiling_withheld(combat_seconds: float, needs: dict[str, float]) -> Finding
     is not that claim.
 
     One finding per report rather than per player or per ability. The
-    suppression is a fact about the fight's length, identical for every raider
-    carrying the ability, and twenty players against sixty-five abilities is a
-    wall rather than a disclosure.
+    suppression is a fact about the fight's length and an ability's own
+    cooldown and charges, identical for every raider carrying the same variant
+    of that ability, and twenty players against sixty-five abilities is a wall
+    rather than a disclosure.
+
+    `needs` pairs each name with the seconds *that variant* required, rather
+    than a bare name, because a name alone cannot say how long an ability
+    needs: charges divide that figure, so two players carrying the same-named
+    ability under different specs can genuinely need different combat lengths.
     """
     count = len(needs)
     return Finding(
@@ -285,19 +291,21 @@ def _ceiling_withheld(combat_seconds: float, needs: dict[str, float]) -> Finding
             f"pressed defensive{'s' if count != 1 else ''}"
         ),
         detail=(
-            "A ceiling claim needs combat to have run longer than five of an ability's "
-            "cooldowns: below that, a single press already clears the threshold, so no "
-            f"press count could ever be low enough to report. This fight ran "
-            f"{combat_seconds:.0f}s, which is short of what {count} of the defensives "
-            "someone pressed would need. Nothing is being said about how those were "
-            "used -- this is the analyser declining to judge them, not a clean bill of "
-            "health."
+            "A ceiling claim needs an ability to fit more than five uses into "
+            "the fight, charges included: below that, a single press already "
+            "clears the threshold, so no press count could ever be low enough "
+            f"to report. This fight ran {combat_seconds:.0f}s, short of what "
+            f"{count} of the defensives someone pressed would need -- charges "
+            "change that figure from one defensive to the next, so it is "
+            "stated per ability below rather than as one number here. Nothing "
+            "is being said about how those were used -- this is the analyser "
+            "declining to judge them, not a clean bill of health."
         ),
         confidence=Confidence.MEASURED,
         seconds_lost=None,
         evidence=tuple(
             f"{name} would need {seconds:.0f}s of combat"
-            for name, seconds in sorted(needs.items())
+            for name, seconds in sorted(needs)
         ),
     )
 
@@ -329,8 +337,12 @@ def analyse_defensive_ceiling(
 
     base_ids = defensive_base_ids(players, defensives)
 
-    # Keyed by name so two specs carrying the same ability state it once.
-    too_short: dict[str, float] = {}
+    # Keyed by (name, seconds needed) rather than by name alone: two specs
+    # carrying a genuinely identical ability collapse to one entry, but two
+    # specs whose same-named ability differs in cooldown or charges -- Barkskin
+    # is 45s for a Guardian and 60s for every other druid spec -- each keep
+    # their own figure instead of one overwriting the other.
+    too_short: set[tuple[str, float]] = set()
 
     findings = []
     for player in players:
@@ -346,9 +358,10 @@ def analyse_defensive_ceiling(
             # rather than by a short fight, and a line saying the fight was too
             # short would then be false.
             if cooldown_ceiling(combat_seconds, ability) <= 1 / CEILING_USE_FRACTION:
-                too_short[ability.name] = (
-                    ability.cooldown_seconds / ability.charges / CEILING_USE_FRACTION
-                )
+                too_short.add((
+                    ability.name,
+                    ability.cooldown_seconds / ability.charges / CEILING_USE_FRACTION,
+                ))
 
             alive = alive_combat_seconds(
                 combat_seconds, deaths, player.actor_id, combat_end_ms=combat_end_ms
