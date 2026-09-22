@@ -395,17 +395,18 @@ def test_the_ceiling_detail_says_defensives_are_situational() -> None:
     assert "incoming damage" in finding.detail
 
 
-def test_a_death_with_unmeasured_cost_disables_every_ceiling_for_that_player() -> None:
-    # seconds_until_next_action=None means the player's last recorded action in
-    # the run was dying, so there is no honest dead-time figure for them and
-    # therefore no honest alive-time figure either. That must withhold every
-    # ceiling finding for this player, not just the one for the ability they
-    # actually pressed — which is why the fixture lists two defensives and
-    # presses one.
+def test_a_player_dead_from_the_first_second_has_no_ceiling_to_judge() -> None:
+    # a_death(..., None) times this death at 0ms, and seconds_until_next_action
+    # of None means the player was never seen to act on another actor again --
+    # so they count as dead from timestamp 0 to combat_end_ms, which is the
+    # entire 1800s fight. Alive time clamps to zero, the ceiling is zero, and a
+    # ceiling of zero has nothing to judge a press against, so every ceiling
+    # finding for this player is withheld, not just the one for the ability
+    # they actually pressed — which is why the fixture lists two defensives
+    # and presses one.
     #
     # Paired against the same call without that death, so the emptiness below
-    # is the unmeasured death doing the suppressing and not the analyser having
-    # failed wholesale.
+    # is this death's doing and not the analyser having failed wholesale.
     run = a_run_with_one_blood_death_knight(pull_seconds=1800.0)
     defensives = Defensives(
         entries=(
