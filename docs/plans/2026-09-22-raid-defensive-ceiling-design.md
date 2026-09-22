@@ -275,8 +275,6 @@ abilities.
   this lands. `CmzA8dnZyaD4Wkw1-1` predates the current finding-id scheme and carries real
   character names inside its finding ids, so anything classifying findings by id prefix must
   not be pointed at it.
-- `.claude/worktrees/` still holds `infallible-fermi-f7d3e4` and `jovial-golick-a5b700` from
-  merged branches.
 - `analyse_cooldown_alignment` (`throughput.py:101`) still drops a player entirely when any of
   their deaths has `seconds_until_next_action is None`, while `alive_combat_seconds` no longer
   does. Its docstring's reason is true and the code is right as it stands: excluding a pull
@@ -286,6 +284,21 @@ abilities.
   analyser the end it lacks, the same end `alive_combat_seconds` was given in section 5. Left
   here as a recorded divergence rather than fixed: closing it is a change to a different
   analyser's signature and call sites, outside what this plan's two defects touch.
+
+### 11.1 Closed on 2026-09-23
+
+- `.claude/worktrees/` held `infallible-fermi-f7d3e4` and `jovial-golick-a5b700` from merged
+  branches. Both working trees were clean, both branches are pushed, and `main` carries each
+  one's content -- `jovial-golick-a5b700`'s commit directly, `infallible-fermi-f7d3e4`'s as the
+  squash `e901a2b`. Removing the worktrees therefore lost nothing, and a resumed session checks
+  its branch out again.
+- `alive_combat_seconds` was called once per pressed defensive inside
+  `analyse_defensive_ceiling`'s inner loop and is now called once per player. It reads the
+  player and the fight and never the ability, so the hoist is pure.
+- The six `(Task N)` labels this plan's tasks left in test docstrings now say what they named,
+  as do two more in `test_raid_build.py` that were numbered against
+  `2026-09-15-raid-report-plan.md` -- the same file carried two unrelated Task 2s. Fifteen more
+  remain in twelve files this branch does not touch.
 
 ## 12. Task 4: what the repaired analyser actually does (2026-09-22)
 
