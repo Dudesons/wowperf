@@ -30,6 +30,18 @@ The throughput ceiling borrows this fraction rather than having measured its
 own. That is one of the reasons that claim is asked for rather than given.
 """
 
+CEILING_WITHHELD_ID = "defensives.ceiling.withheld"
+"""The finding that says a fight ran too short to judge some pressed defensive.
+
+A press count is a positive integer, so `uses < ceiling * CEILING_USE_FRACTION`
+cannot hold until the ceiling clears `1 / CEILING_USE_FRACTION` -- five. Below
+that, the analyser is structurally unable to report on an ability regardless of
+how it was used, and saying nothing reads on the page exactly like having used
+it enough. This id names that silence instead of leaving it silent, so a caller
+can lift it out by the id alone rather than by a prefix that would also catch
+the ceiling findings it sits beside.
+"""
+
 RUN_UP_SECONDS = 10.0
 """How much of the run-up to a death counts as the damage that killed the player.
 
@@ -252,6 +264,44 @@ def defensive_base_ids(
     return ids
 
 
+def _ceiling_withheld(combat_seconds: float, needs: dict[str, float]) -> Finding:
+    """The abilities this fight was too short to judge, said out loud.
+
+    `measured`, on the same reasoning `attempt_shape._withheld` gives: what is
+    asserted is that the analyser declined and why, and both halves are checked
+    rather than read. The ceiling claim it declined to make is `inferred`; this
+    is not that claim.
+
+    One finding per report rather than per player or per ability. The
+    suppression is a fact about the fight's length, identical for every raider
+    carrying the ability, and twenty players against sixty-five abilities is a
+    wall rather than a disclosure.
+    """
+    count = len(needs)
+    return Finding(
+        id=CEILING_WITHHELD_ID,
+        title=(
+            f"This fight was too short to judge {count} "
+            f"pressed defensive{'s' if count != 1 else ''}"
+        ),
+        detail=(
+            "A ceiling claim needs combat to have run longer than five of an ability's "
+            "cooldowns: below that, a single press already clears the threshold, so no "
+            f"press count could ever be low enough to report. This fight ran "
+            f"{combat_seconds:.0f}s, which is short of what {count} of the defensives "
+            "someone pressed would need. Nothing is being said about how those were "
+            "used -- this is the analyser declining to judge them, not a clean bill of "
+            "health."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=tuple(
+            f"{name} would need {seconds:.0f}s of combat"
+            for name, seconds in sorted(needs.items())
+        ),
+    )
+
+
 def analyse_defensive_ceiling(
     players: tuple[Player, ...],
     combat_seconds: float,
@@ -279,6 +329,9 @@ def analyse_defensive_ceiling(
 
     base_ids = defensive_base_ids(players, defensives)
 
+    # Keyed by name so two specs carrying the same ability state it once.
+    too_short: dict[str, float] = {}
+
     findings = []
     for player in players:
         known = defensives.for_spec(player.class_name, player.spec)
@@ -287,6 +340,15 @@ def analyse_defensive_ceiling(
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
             if not uses:
                 continue
+
+            # Judged against the fight, not against this player's alive time: a
+            # player who died early has abilities suppressed by their short life
+            # rather than by a short fight, and a line saying the fight was too
+            # short would then be false.
+            if cooldown_ceiling(combat_seconds, ability) <= 1 / CEILING_USE_FRACTION:
+                too_short[ability.name] = (
+                    ability.cooldown_seconds / ability.charges / CEILING_USE_FRACTION
+                )
 
             alive = alive_combat_seconds(
                 combat_seconds, deaths, player.actor_id, combat_end_ms=combat_end_ms
@@ -319,4 +381,6 @@ def analyse_defensive_ceiling(
                     ability_name=ability.name,
                 )
             )
+    if too_short:
+        findings.append(_ceiling_withheld(combat_seconds, too_short))
     return findings

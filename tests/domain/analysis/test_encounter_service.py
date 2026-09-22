@@ -142,7 +142,10 @@ def test_a_wipe_where_nobody_acted_again_still_judges_the_ceiling() -> None:
         a_loaded_encounter(casts=casts, deaths=deaths), DEFENSIVES, Consumables()
     )
 
-    ceiling = [f for f in findings if f.id.startswith("defensives.ceiling.")]
+    ceiling = [
+        f for f in findings
+        if f.id.startswith("defensives.ceiling.") and f.id != "defensives.ceiling.withheld"
+    ]
     assert ceiling, "a player who died on a wipe still had time alive to judge"
     # Pinned to the 360s figure the docstring claims, not just the finding's
     # existence: crediting the player with the full 374s fight instead of the

@@ -348,13 +348,18 @@ def test_a_run_too_short_for_a_meaningful_ceiling_reports_nothing() -> None:
     # entirely, which is how a floor test comes to be incapable of failing.
     casts = (a_cast(actor_id=1, ability_id=48792),)
 
-    # 900s / 180s = a ceiling of exactly 5, so the press needs 1 < 1.0.
+    # 900s / 180s = a ceiling of exactly 5, so the press needs 1 < 1.0. That is
+    # also exactly where a fight is too short to judge at all, so this excludes
+    # the withheld notice: what is asserted here is the per-ability judgment,
+    # which the notice is not.
     at_the_floor = a_run_with_one_blood_death_knight(pull_seconds=900.0)
     silent = analyse_defensive_ceiling(
         at_the_floor.players, at_the_floor.total_pull_seconds, casts,
         BLOOD_DEFENSIVES, (), combat_end_ms=at_the_floor.window_ms[1],
     )
-    assert findings_by_prefix(silent, "defensives.ceiling.") == []
+    judged = [f for f in findings_by_prefix(silent, "defensives.ceiling.")
+              if f.id != "defensives.ceiling.withheld"]
+    assert judged == []
 
     # 1080s / 180s = a ceiling of 6, and the same single press needs 1 < 1.2.
     above_the_floor = a_run_with_one_blood_death_knight(pull_seconds=1080.0)
@@ -553,3 +558,50 @@ def test_a_uniquely_named_player_gets_an_id_with_no_actor_number_in_it() -> None
         "defensives.ceiling.emberkin.235450",
         "defensives.ceiling.emberkin.45438",
     }
+
+
+def test_a_fight_too_short_for_a_pressed_defensive_says_so() -> None:
+    # Icebound Fortitude's 180s cooldown needs 900s of combat before a single
+    # press could ever clear `uses < ceiling * 0.2`. This run is 600s, so the
+    # analyser cannot judge it -- and silence about it would read exactly like
+    # having pressed it enough.
+    run = a_run_with_one_blood_death_knight(pull_seconds=600.0)
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
+
+    withheld = [f for f in findings if f.id == "defensives.ceiling.withheld"]
+    assert len(withheld) == 1, [f.id for f in findings]
+    assert withheld[0].confidence is Confidence.MEASURED
+    assert "Icebound Fortitude" in " ".join(withheld[0].evidence)
+
+
+def test_an_ability_nobody_pressed_does_not_produce_a_withheld_notice() -> None:
+    # Same 600s run, and Icebound Fortitude is still out of reach -- but nobody
+    # pressed it, so there is nothing the analyser declined to judge. Minting a
+    # notice from the cooldown table alone would put a line on every report.
+    run = a_run_with_one_blood_death_knight(pull_seconds=600.0)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, (), BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
+
+    assert [f for f in findings if f.id == "defensives.ceiling.withheld"] == []
+
+
+def test_a_fight_long_enough_for_every_pressed_defensive_says_nothing() -> None:
+    # 1080s fits Icebound Fortitude's 180s cooldown six times, clear of the
+    # floor, so the ability is judgeable and there is nothing to withhold.
+    run = a_run_with_one_blood_death_knight(pull_seconds=1080.0)
+    casts = (a_cast(actor_id=1, ability_id=48792),)
+
+    findings = analyse_defensive_ceiling(
+        run.players, run.total_pull_seconds, casts, BLOOD_DEFENSIVES, (),
+        combat_end_ms=run.window_ms[1],
+    )
+
+    assert [f for f in findings if f.id == "defensives.ceiling.withheld"] == []
