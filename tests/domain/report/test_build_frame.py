@@ -236,9 +236,9 @@ def _a_withheld_ceiling() -> Finding:
 
 
 def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
-    """Task 3: the notice reaches Provenance rather than staying silent, on the
-    keystone page too -- `build_report` does not yet read this notice out of
-    `findings` the way `build_raid_report` already reads `WITHHELD_ID` out.
+    """Task 3: the keystone page discloses this notice in Provenance rather
+    than leaving it silent -- a notice saying the analyser could not judge a
+    defensive must never read as though it judged one.
     """
     notice = _a_withheld_ceiling()
     report = build_report(
