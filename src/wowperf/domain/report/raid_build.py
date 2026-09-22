@@ -4,6 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
+from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -127,6 +128,14 @@ def build_raid_report(
     verdict_finding = next((one for one in findings if one.id == VERDICT_ID), None)
     findings = [one for one in findings if one.id != WITHHELD_ID]
 
+    # The defensive-ceiling withheld notice is disclosed in Provenance and
+    # nowhere else, exactly like the attempt verdict's own withheld notice
+    # above: left among `findings` it would match `RAID_PLACEMENTS`' bare
+    # `defensives.` prefix and rank on the Players tab beside real per-ability
+    # judgements, where "I could not judge this" would read as one of them.
+    ceiling_notices = [one for one in findings if one.id == CEILING_WITHHELD_ID]
+    findings = [one for one in findings if one.id != CEILING_WITHHELD_ID]
+
     titles_by_id = {finding.id: finding.title for finding in findings}
     # Built once, here, because this is where `loaded`, the per-actor aura
     # tables and the defensives data file are all already in hand. Every row
@@ -189,6 +198,8 @@ def build_raid_report(
     withheld: list[str] = []
     for notice in verdict_notices:
         withheld.append(f"Why this attempt ended: {notice.detail}")
+    for notice in ceiling_notices:
+        withheld.append(f"Defensive ceiling: {notice.detail}")
     if damage.state is SectionState.WITHHELD:
         withheld.append(f"Damage against other kills: {damage.reason}")
 

@@ -213,6 +213,67 @@ def test_provenance_names_the_player_whose_comparison_was_withheld() -> None:
     ]
 
 
+def _a_withheld_ceiling() -> Finding:
+    """What `analyse_defensive_ceiling` returns when a run ran too short to judge a
+    defensive somebody pressed (Task 2).
+
+    The id is spelled out rather than built from the production module's
+    `CEILING_WITHHELD_ID`: a test that constructs its expected value from the
+    same constant the code under test reads proves nothing about whether the
+    two agree.
+    """
+    return Finding(
+        id="defensives.ceiling.withheld",
+        title="This run was too short to judge 1 pressed defensive",
+        detail=(
+            "Ice Block would need more combat time than this run had to "
+            "clear the five uses a ceiling claim needs."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=("Ice Block would need 1200s of combat",),
+    )
+
+
+def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
+    """Task 3: the notice reaches Provenance rather than staying silent, on the
+    keystone page too -- `build_report` does not yet read this notice out of
+    `findings` the way `build_raid_report` already reads `WITHHELD_ID` out.
+    """
+    notice = _a_withheld_ceiling()
+    report = build_report(
+        a_loaded(), (notice,), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    withheld = report.provenance.withheld
+    assert [line for line in withheld if notice.detail in line] == [
+        f"Defensive ceiling: {notice.detail}"
+    ]
+
+
+def test_a_withheld_defensive_ceiling_never_reaches_group_rows() -> None:
+    """Left alone, `PLACEMENTS`' bare `defensives.` prefix would file this
+    notice on the Players tab beside real per-ability ceiling judgements,
+    where "I could not judge this" would read as one of them.
+
+    A real ceiling finding rides along so the negative assertion cannot pass
+    for the wrong reason -- an empty tab, or a notice that was never minted at
+    all -- rather than because the builder actually pulled it out.
+    """
+    placed_ceiling = unavailable("defensives.ceiling.stonewake.235450", "a real ceiling detail")
+    notice = _a_withheld_ceiling()
+
+    report = build_report(
+        a_loaded(), (placed_ceiling, notice), None, None, a_player(), None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+
+    group_ids = [row.finding_id for row in report.group_rows]
+    assert placed_ceiling.id in group_ids, "fixture must still place a real ceiling row"
+    assert notice.id not in group_ids
+
+
 def test_no_compare_withholds_the_comparison_once_not_once_per_player() -> None:
     # `--no-compare` fetched no reference at all, so the whole run gets one
     # report-level line. A line per card here would say a comparison for each

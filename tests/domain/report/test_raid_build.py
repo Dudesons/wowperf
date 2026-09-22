@@ -648,6 +648,70 @@ def test_a_withheld_verdict_does_not_head_the_summary() -> None:
     assert report.verdict is None
 
 
+def _a_withheld_ceiling() -> Finding:
+    """What `analyse_defensive_ceiling` returns when a fight ran too short to judge a
+    defensive somebody pressed (Task 2).
+
+    The id is spelled out rather than built from the production module's
+    `CEILING_WITHHELD_ID`: a test that constructs its expected value from the
+    same constant the code under test reads proves nothing about whether the
+    two agree.
+    """
+    return Finding(
+        id="defensives.ceiling.withheld",
+        title="This fight was too short to judge 1 pressed defensive",
+        detail=(
+            "Ice Block would need more combat time than this fight ran to "
+            "clear the five uses a ceiling claim needs."
+        ),
+        confidence=Confidence.MEASURED,
+        seconds_lost=None,
+        evidence=("Ice Block would need 1200s of combat",),
+    )
+
+
+def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
+    """Task 3: the notice reaches Provenance rather than staying silent.
+
+    Mirrors `test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance`
+    above, for the sibling notice Task 2 added.
+    """
+    loaded, subject = a_raid_fixture()
+    notice = _a_withheld_ceiling()
+
+    report = build_raid_report(
+        loaded, (notice,), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    withheld = report.provenance.withheld
+    assert [line for line in withheld if notice.detail in line] == [
+        f"Defensive ceiling: {notice.detail}"
+    ]
+
+
+def test_a_withheld_defensive_ceiling_never_reaches_group_rows() -> None:
+    """Left alone, `RAID_PLACEMENTS`' bare `defensives.` prefix would file this
+    notice on the Players tab beside real per-ability ceiling judgements,
+    where "I could not judge this" would read as one of them.
+
+    A real ceiling finding rides along so the negative assertion cannot pass
+    for the wrong reason -- an empty tab, or a notice that was never minted at
+    all -- rather than because the builder actually pulled it out.
+    """
+    loaded, subject = a_raid_fixture()
+    placed_ceiling = a_finding("defensives.ceiling.emberkin.0")
+    notice = _a_withheld_ceiling()
+
+    report = build_raid_report(
+        loaded, (placed_ceiling, notice), subject, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    group_ids = [row.finding_id for row in report.group_rows]
+    assert placed_ceiling.id in group_ids, "fixture must still place a real ceiling row"
+    assert notice.id not in group_ids
+
+
 def test_the_verdict_appears_once_on_the_page() -> None:
     """`build_observations`'s catch-all would place `wipe.cause` a second time,
     beneath "Other findings", if nothing excluded it: `report.verdict` is

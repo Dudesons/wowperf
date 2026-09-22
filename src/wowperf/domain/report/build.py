@@ -4,6 +4,7 @@
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
+from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.findings import Finding
@@ -99,6 +100,14 @@ def build_report(
     route_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
 
     _check_unique_finding_ids(findings)
+
+    # The defensive-ceiling withheld notice is disclosed in Provenance and
+    # nowhere else: left among `findings` it would match `PLACEMENTS`' bare
+    # `defensives.` prefix and rank on the Players tab beside real per-ability
+    # judgements, where "I could not judge this" would read as one of them.
+    ceiling_notices = [one for one in findings if one.id == CEILING_WITHHELD_ID]
+    findings = [one for one in findings if one.id != CEILING_WITHHELD_ID]
+
     titles_by_id = {finding.id: finding.title for finding in findings}
     # Built once, here, because this is where `loaded`, the per-actor aura
     # tables and the defensives data file are all already in hand. Every row
@@ -110,6 +119,8 @@ def build_report(
     )
 
     withheld: list[str] = []
+    for notice in ceiling_notices:
+        withheld.append(f"Defensive ceiling: {notice.detail}")
     if timeline_section.state is SectionState.WITHHELD:
         withheld.append(f"Aligned timeline: {timeline_section.reason}")
 

@@ -300,7 +300,8 @@ def a_rich_encounter() -> list[Finding]:
 
     A kill, four raiders, five deaths shaped into a single, a chain and a
     repeat, one outlier hit, one landed enemy cast, a defensive and a
-    consumable left off cooldown at a death, a mechanics sample, and two
+    consumable left off cooldown at a death, a defensive whose own ceiling
+    this fight ran too short to judge, a mechanics sample, and two
     compared raiders: Emberkin compared in full against a five-member parse
     sample and Stonewake compared with an empty one, which withholds her parse
     axis rather than running it -- `compare.parse.unavailable` is a real
@@ -323,6 +324,14 @@ def a_rich_encounter() -> list[Finding]:
         # the time `analyse_defensives_at_death` looks.
         CastEvent(actor_id=12, ability_id=235450, ability_name="Prismatic Barrier",
                   timestamp_ms=10_000),
+        # Stonewake's one press of Ice Block, inside the window
+        # `analyse_defensives_at_death` excludes before her own death (at
+        # 300_000): it does not add to what she had off cooldown. Its 240s
+        # cooldown cannot clear five uses across this fight's 499s, so this
+        # press is what mints `defensives.ceiling.withheld` rather than a
+        # per-ability finding of its own.
+        CastEvent(actor_id=12, ability_id=45438, ability_name="Ice Block",
+                  timestamp_ms=200_000),
         # Emberkin's one Health Potion, long before her second death: off
         # cooldown again by then, and never touched by Stonewake, Bríala or
         # Кириллица at all.
@@ -449,3 +458,20 @@ def test_the_family_list_matches_what_the_service_emits() -> None:
         f"missing from RAID_FAMILIES: {sorted(known - emitted)}; "
         f"emitted but not in RAID_FAMILIES: {sorted(emitted - known)}"
     )
+
+
+def test_the_rich_fixture_mints_a_withheld_ceiling_notice() -> None:
+    """The Ice Block press above reaches Task 2's notice for real.
+
+    `_family` reduces `defensives.ceiling.withheld` to the same stem as every
+    per-ability ceiling finding beside it, so
+    `test_the_family_list_matches_what_the_service_emits` cannot by itself
+    tell whether this fixture mints the notice or only the ordinary kind --
+    the family set is identical either way. This asserts the notice directly,
+    by the id `analyse_defensive_ceiling` mints, spelled out rather than
+    imported, and by the ability it names.
+    """
+    findings = a_rich_encounter()
+    notices = [finding for finding in findings if finding.id == "defensives.ceiling.withheld"]
+    assert len(notices) == 1, findings
+    assert "Ice Block" in notices[0].evidence[0]
