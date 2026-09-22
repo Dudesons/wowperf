@@ -461,7 +461,7 @@ def test_the_family_list_matches_what_the_service_emits() -> None:
 
 
 def test_the_rich_fixture_mints_a_withheld_ceiling_notice() -> None:
-    """The Ice Block press above reaches Task 2's notice for real.
+    """The Ice Block press above reaches the withheld-ceiling notice for real.
 
     `_family` reduces `defensives.ceiling.withheld` to the same stem as every
     per-ability ceiling finding beside it, so

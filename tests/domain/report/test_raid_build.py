@@ -81,9 +81,9 @@ def a_raid_fixture(
 def a_finding(finding_id: str, seconds: float | None = None) -> Finding:
     """One finding of the given family, carrying the slug its id ends with.
 
-    Task 2 puts a `player_slug` on every raid comparison finding and appends
-    the same slug to its id, so a fixture that set one without the other would
-    be testing a shape the analysis does not emit.
+    The analysis puts a `player_slug` on every raid comparison finding and
+    appends the same slug to its id, so a fixture that set one without the
+    other would be testing a shape the analysis does not emit.
     """
     slug = next(
         (one for one in (EMBERKIN_SLUG, STONEWAKE_SLUG) if finding_id.endswith(f".{one}")), ""
@@ -187,7 +187,8 @@ def placements(report: RaidReport) -> list[str]:
 
 
 def test_the_builder_refuses_two_findings_that_share_an_id() -> None:
-    """The gate Task 2 exists to get through, asserted rather than assumed.
+    """The gate every per-player comparison id has to get through, asserted
+    rather than assumed.
 
     A duplicate id silently loses a title from `titles_by_id` and sends every
     pointer at it to the wrong row. Raising here is what turned a defect that
@@ -652,7 +653,7 @@ def test_a_withheld_verdict_does_not_head_the_summary() -> None:
 
 def _a_withheld_ceiling() -> Finding:
     """What `analyse_defensive_ceiling` returns when a fight ran too short to judge a
-    defensive somebody pressed (Task 2), built through the real minting function
+    defensive somebody pressed, built through the real minting function
     so this fixture's title, detail and evidence can never drift from what
     production actually emits -- a hand-written stand-in is what let the
     "stated per ability below" wording ship without anyone noticing the page
@@ -672,14 +673,14 @@ def _a_withheld_ceiling() -> Finding:
 
 
 def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
-    """Task 3: the notice reaches Provenance rather than staying silent.
+    """The notice reaches Provenance rather than staying silent.
 
     Mirrors `test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance`
-    above, for the sibling notice Task 2 added.
+    above, for the withheld-ceiling notice that sits beside it.
 
-    Whole-branch review Critical 1: the disclosure is the per-ability evidence,
-    not the detail sentence alone, so both must reach the page in the same
-    Provenance entry or a reader can never tell which ability was withheld.
+    The disclosure is the per-ability evidence, not the detail sentence alone,
+    so both must reach the page in the same Provenance entry or a reader can
+    never tell which ability was withheld.
     """
     loaded, subject = a_raid_fixture()
     notice = _a_withheld_ceiling()

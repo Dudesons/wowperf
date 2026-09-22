@@ -216,7 +216,7 @@ def test_provenance_names_the_player_whose_comparison_was_withheld() -> None:
 
 def _a_withheld_ceiling() -> Finding:
     """What `analyse_defensive_ceiling` returns when a run ran too short to judge a
-    defensive somebody pressed (Task 2), built through the real minting function
+    defensive somebody pressed, built through the real minting function
     so this fixture's title, detail and evidence can never drift from what
     production actually emits -- a hand-written stand-in is what let the
     "stated per ability below" wording ship without anyone noticing the page
@@ -236,15 +236,14 @@ def _a_withheld_ceiling() -> Finding:
 
 
 def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
-    """Task 3: the keystone page discloses this notice in Provenance rather
-    than leaving it silent -- a notice saying the analyser could not judge a
+    """The keystone page discloses this notice in Provenance rather than
+    leaving it silent -- a notice saying the analyser could not judge a
     defensive must never read as though it judged one.
 
-    Whole-branch review Critical 1: the disclosure is the per-ability evidence,
-    not the detail sentence alone -- the detail promises a figure "stated per
-    ability" and only the evidence carries one, so both must reach the page in
-    the same Provenance entry or a reader can never tell which ability was
-    withheld.
+    The disclosure is the per-ability evidence, not the detail sentence alone:
+    the detail promises a figure "stated per ability" and only the evidence
+    carries one, so both must reach the page in the same Provenance entry or a
+    reader can never tell which ability was withheld.
     """
     notice = _a_withheld_ceiling()
     report = build_report(
