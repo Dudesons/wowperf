@@ -118,8 +118,9 @@ def analyse_cooldown_alignment(
 
     A pull the player spent dead is skipped: a corpse presses nothing, and those
     are the pulls where dying is likeliest. Where a death's cost cannot be
-    measured at all the player is not judged, following the same refusal
-    `alive_combat_seconds` makes for the same reason.
+    measured at all the player is not judged: excluding a pull means testing it
+    against a dead span, which needs an end as well as a start, and a death with
+    no following action gives this analyser no end to build one from.
     """
     if not cooldowns.entries:
         return []
