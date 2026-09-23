@@ -148,17 +148,23 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 
 | Command | Points |
 | --- | --- |
-| `progression`, a whole night | 3 |
-| `raid`, one player | 63 |
-| `analyze`, one player | 83 |
+| `progression`, a whole night | 3 to 26 |
+| `raid --all-players`, a wipe | 65 |
+| `raid`, one player, a kill | 63 |
+| `analyze`, one player | 83 to 95 |
 | `analyze --all-players` | 190 |
-| `raid --all-players` | 878 |
+| `raid --all-players`, a kill | 878 |
 
 Each is one reading of one report on one day rather than a budget; the dates and the conditions
 behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
-goes. Only the last row is worth a thought before you run it — naming every raider draws a
-reference sample for each of the twenty, and four such runs would spend the hour. Every command
-closes by printing what it spent, dearest operation first.
+goes.
+
+**Whether the boss died is what moves the raid figures, not how many players you name.**
+Warcraft Logs ranks kills alone, so an attempt that wiped carries no rankings row, and the
+per-player reference sample that dominates the last line is never drawn — `--all-players` on a
+wipe costs about what one player costs. Only that last line is worth a thought before you run
+it: naming every raider on a kill draws a sample for each of the twenty, and four such runs
+would spend the hour. Every command closes by printing what it spent, dearest operation first.
 
 ## Roadmap
 

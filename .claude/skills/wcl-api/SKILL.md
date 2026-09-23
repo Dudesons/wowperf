@@ -272,6 +272,55 @@ One approximation and three measurements:
   the fight's roster spent **6.01 points** before printing the roster and exiting (2026-09-20, two
   such runs). The `Fights` and `PlayerDetails` queries that establish the roster run before the
   name is checked, so an aborted run is not a free run.
+- **A cold compared keystone analysis, one player: 94.69 points of 3600** (2026-09-23, report
+  `nd6Rz47Gj1ZPxFfm` fight 3, a +18 Temple of Sethraliss finished in time, one specialisation
+  compared, five speed references and five parse references loaded). Composed as the command
+  printed it: `Fights` 7 calls for 14.07, `Talents` 6 for 12.30, `PlayerDetails` 6 for 12.00,
+  `AuraTable` 10 for 10.00, `Abilities` 7 for 7.00, then `Casts`, `Deaths`, `EnemyCasts` and
+  `Interrupts` at 6 calls and 6.00 each, `Healing` 4 for 4.00, `DamageTaken` 1 for 3.30,
+  `CharacterRankings` and `FightRankings` 1 each for 1.01, `Actors`, `Affixes`,
+  `DamageDoneGraph`, `EnemyDeaths` and `Resurrects` 1.00 each, `RateLimit` 2 for 1.00. **This
+  widens the recorded spread for one shape to 66 through 94.69** across 2026-09-08, 2026-09-13
+  and today, against the same five-reference sample design. The spread is the API's own pricing
+  under load; none of the three is a budget. **Re-run with `--narrative` against the now-warm
+  cache: 1.00 point**, the two `RateLimit` reads and nothing else.
+- **`wowperf progression` on a night whose attempts are all deepened: 26.30, 8.59 and 13.85
+  points of 3600** (2026-09-23, report `Kw1fCtq4VJ7W8rQA`, a Mythic 20-player night holding
+  three bosses across 20 fights -- encounter 3445 with 12 attempts and no kill, 3470 with 2, and
+  3497 with 5 and one discarded as too short). Each run reported `attempts_deepened` equal to
+  `attempts_counted`, so **these are the first measured readings of a deepened night**, against
+  the 40-to-60-point *projection* the design offered for that shape and the 3.01 recorded above
+  for an undeepened one. The first run carries the report-wide `Fights` query the other two then
+  read from cache. Dividing each total by its attempt count gives roughly 2 points an attempt;
+  that is arithmetic over three totals, not a measured marginal cost, because these readings were
+  taken from the summary line rather than the per-operation breakdown.
+- **`wowperf raid --all-players` on a Mythic 20-player wipe, with the report already deepened by
+  `progression`: 65.19 points of 3600** (2026-09-23, report `Kw1fCtq4VJ7W8rQA` fight 26, the
+  deepest of 12 attempts at `Entombed Sentinels`, 269s, 22 deaths, live verification of
+  `docs/plans/2026-09-22-raid-defensive-ceiling-design.md`). Composed as the command printed it:
+  `Healing` 22 calls for 22.00 -- one per death, the per-death pattern already recorded above --
+  `AuraTable` 20 for 20.00, one per roster player, `AbilityTakenTable` 6 for 9.98, being ours and
+  five mechanics references, `ReportRankings` 2 for 4.00, `Talents` 1 for 2.20,
+  `EncounterKillRankings` 1 for 1.01, then `Casts`, `DamageDoneGraph`, `EnemyCasts`,
+  `Interrupts` and `Resurrects` at 1.00 each and `RateLimit` 2 for 1.00.
+
+  Two things this reading establishes. **`--all-players` costs a wipe nothing**: the findings
+  file recorded `sample_size.parse` as 0 for every one of the twenty and drew a
+  `compare.parse.unavailable.<slug>` for each, so the per-player reference sample that makes the
+  877.74 kill reading expensive was never drawn at all. That is the mechanism the 45.25-point
+  wipe reading above describes, now seen at full roster width -- though no one-subject reading of
+  this same fight was taken, so the claim rests on the sample counts rather than on a measured
+  comparison. **And a deepened `progression` pass pays forward into `raid`**: no `Fights`,
+  `Actors`, `Deaths`, `DamageTaken`, `PlayerDetails` or `Abilities` line appears in this
+  breakdown, because deepening fetched them for every attempt in the report. What deepening does
+  *not* cover is the per-death `Healing` query and the per-player `AuraTable`, which together are
+  42 of this run's 65.19 points. Reading a night with `progression` and then analysing the
+  attempt it names is therefore markedly cheaper than going straight to `raid` on a cold report.
+- **A refusal that has to read the report first still spends.** `raid` on a report holding
+  several boss fights, and `progression` on one holding several bosses, each print the ids and
+  exit without a rate-limit line of their own; the two together accounted for the difference
+  between the 209.62 the commands printed and the 219.63 the hourly counter actually moved over
+  this session. Enumerating a report's fights is cheap, but it is not free.
 - **Reading the cache back through the domain is free.** Eleven fights re-loaded through
   `load_encounter` / `load` plus `load_*_with_auras`, several times each, spent nothing beyond the
   `RateLimit` read taken to confirm it: the hour's total closed at 219.72 points of 3600 against
