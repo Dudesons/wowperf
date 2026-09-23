@@ -57,6 +57,7 @@ from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
+from wowperf.domain.night import Night
 from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
@@ -512,6 +513,50 @@ class WclRunRepository:
             phases=phases,
             separates_wipes=separates_wipes,
         )
+
+    def load_night(self, report_code: str, difficulty: int | None) -> Night:
+        """Every boss in one report, each as a Progression, from one fight list.
+
+        `load_progression` reads this same list and then narrows it to one boss,
+        refusing when nothing picks one out. This reads it and keeps all of
+        them: the report is the subject here, so several bosses is what the
+        command is for rather than an ambiguity to refuse.
+
+        One `Fights` query answers the whole report, exactly as it does for
+        `load_progression` -- the cost of reading a night's shape does not scale
+        with how many bosses it holds. What scales is the deepening, which is
+        `load_night_attempts`' business and priced there.
+        """
+        report = self._report(report_code)
+        boss_fights = [f for f in report.get("fights") or () if f.get("encounterID")]
+        if not boss_fights:
+            return Night(report_code=report_code, bosses=())
+
+        boss_ids: list[int] = []
+        for fight in boss_fights:
+            boss_id = int(fight["encounterID"])
+            if boss_id not in boss_ids:
+                boss_ids.append(boss_id)
+
+        partition = load_raid_partition()
+        encounters = [
+            build_encounter(report, fight, partition=partition) for fight in boss_fights
+        ]
+
+        bosses: list[Progression] = []
+        for boss_id in boss_ids:
+            resolved_id, resolved_difficulty = _pick_boss(boss_fights, boss_id, difficulty)
+            phases, separates_wipes = build_phases(report, resolved_id)
+            bosses.append(
+                build_progression(
+                    encounters,
+                    encounter_id=resolved_id,
+                    difficulty=resolved_difficulty,
+                    phases=phases,
+                    separates_wipes=separates_wipes,
+                )
+            )
+        return Night(report_code=report_code, bosses=tuple(bosses))
 
     def load_progression_attempts(self, progression: Progression) -> LoadedProgression:
         """Deepen every qualifying attempt: deaths and damage taken, nothing else.
