@@ -1,5 +1,5 @@
-# ABOUTME: One report read whole: every boss it holds, each as its own Progression.
-# ABOUTME: A sibling of Progression -- that one is a boss's attempts, this one a report's bosses.
+# ABOUTME: One report read whole -- every boss as its own Progression -- and that read deepened.
+# ABOUTME: Night is the shape, LoadedNight its streams, FailedPull a pull that would not load.
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.progression import LoadedProgression, Progression
@@ -7,6 +7,9 @@ from wowperf.domain.progression import LoadedProgression, Progression
 
 class Night(Frozen):
     """Every boss a report holds, in the order its fight list gave them.
+
+    A sibling of `Progression` -- that one is a boss's attempts, this one a
+    report's bosses.
 
     `progression` refuses a report with several bosses because its subject is
     one boss and picking one would analyse a fight nobody asked for. This type

@@ -675,19 +675,29 @@ class WclRunRepository:
           queries a pull buy a page that tells the truth with the vocabulary it
           already has, against a third abstention that would have to be
           invented.
-        * `death_cards` adds the aura tables, one call a roster player. This is
-          what refines a defensive press into `held` or `faded`; without it all
-          six availability states collapse back to `pressed`, the explicit
-          unknown, and a card drawing six states would only ever reach one.
-        * `deep_fights` adds the casts stream -- which is also the health
-          column, since `build_health_samples` reads it -- and one healing
-          window a death, for the named fights alone.
+        * `death_cards` adds the casts stream and the aura tables, which are
+          one pair and must stay one. A press is read from the cast stream:
+          `availability_at` derives every press from it, and `state_of`
+          answers UNSEEN -- "never seen all run" -- for any ability with no
+          press at all. The aura table is what then refines a press into
+          `held` or `faded`. Send neither and every defensive, consumable and
+          external on every card reads UNSEEN of players who did press them.
+          Send the tables alone and they refine a press that cannot exist;
+          send the casts alone and every press stands at `pressed`, the
+          explicit unknown. The casts stream is also the health column, since
+          `build_health_samples` reads it.
+        * `deep_fights` adds one healing window a death, for the named fights
+          alone. It is the only rung above the cards, because it is the only
+          stream whose absence a card survives.
 
-        The two dear halves, measured on one 65.19-point wipe: the aura tables
-        were 20.00 of it and the healing windows 22.00. A night holds many more
-        pulls than a raid command's one, so paying either on every pull is the
-        difference between a night that fits the hourly budget and one that
-        does not.
+        What the dear rungs cost, from the breakdown in
+        `.claude/skills/wcl-api/SKILL.md` (2026-09-23): on a 20-player Mythic
+        wipe costing 65.19 points, `AuraTable` was 20.00 of it at one call a
+        roster player and `Healing` 22.00 at one call a death, while `Casts`
+        was 1.00 for the whole fight. Those are figures for one `raid` run on
+        one fight, not for this command, which no live run has yet exercised
+        -- so they price the rungs rather than the night, and the first live
+        night should report its own.
 
         `deep_fights` is read once per attempt rather than once for the night:
         a `--deep` that leaked would put every pull at the dearest tier, which
@@ -705,14 +715,16 @@ class WclRunRepository:
                 loaded=tuple(LoadedProgression(progression=boss) for boss in night.bosses),
             )
 
-        hits: list[bool] = []
         # Both halves, where `load_progression_attempts` keeps only the names:
         # a night's death cards and ledger rows draw ability icons, and one
         # query answers the whole report however many pulls read it.
-        ability_names, ability_icons = self._ability_dictionary(night.report_code, hits)
+        ability_names, ability_icons = self._ability_dictionary(night.report_code)
 
+        # No `hits` list threaded through. Nothing here reports whether a night
+        # came from the cache, and a tally nobody reads is a tally that goes
+        # stale without anyone noticing.
         def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
-            return self._query(one_query, variables, hits)
+            return self._query(one_query, variables)
 
         loaded: list[LoadedProgression] = []
         failures: list[FailedPull] = []
@@ -783,11 +795,14 @@ class WclRunRepository:
         # inside or outside a pull.
         no_pulls: tuple[Pull, ...] = ()
 
-        # One stream, two readings: the casts themselves and the health column
-        # `build_health_samples` reads out of them. Below the deep tier
+        # On the cards rung, not the deep one, and inseparable from the aura
+        # tables below: a press is read from this stream, so without it every
+        # ability on every card reads UNSEEN and the tables refine nothing.
+        # One stream, two readings -- the casts themselves and the health
+        # column `build_health_samples` takes out of them. Where it is skipped
         # `build_deaths` gets an empty one, which costs only its reading of how
         # long a death kept the player out.
-        cast_events = fetch_all_events(query, CASTS_QUERY, event_variables) if deep else []
+        cast_events = fetch_all_events(query, CASTS_QUERY, event_variables) if cards else []
         casts = build_casts(cast_events, no_pulls, ability_names)
 
         player_names = {player.actor_id: player.name for player in attempt.players}
@@ -826,20 +841,13 @@ class WclRunRepository:
         # stream, and one response carries a series for every player.
         damage_done = build_damage_done(query(DAMAGE_DONE_GRAPH_QUERY, event_variables))
 
+        # Through `auras` rather than the query directly: the raid path reads
+        # its tables through that method, and one aura fetch with two call
+        # sites is one place for the pair of them to drift apart.
         auras: tuple[PlayerAuras, ...] = ()
         if cards:
             auras = tuple(
-                build_player_auras(
-                    query(
-                        AURA_TABLE_QUERY,
-                        {
-                            "code": attempt.report_code,
-                            "fightId": attempt.fight_id,
-                            "actorId": player.actor_id,
-                        },
-                    ),
-                    player.actor_id,
-                )
+                self.auras(attempt.report_code, attempt.fight_id, player.actor_id)
                 for player in attempt.players
             )
 
@@ -872,6 +880,12 @@ class WclRunRepository:
             resurrections=resurrections,
             auras=auras,
             ability_icons=ability_icons,
+            # `load_night` takes every attempt's partition from
+            # `load_raid_partition()` and sends no rankings query, so the
+            # season file is the source for every pull of a night -- stated
+            # here rather than left empty, which would have the page report no
+            # source for a partition that does have one.
+            partition_source="data/season.toml",
         )
 
     def load_speed_reference(

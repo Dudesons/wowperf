@@ -423,6 +423,17 @@ def _fights_for(calls: list[tuple[str, dict[str, Any]]], operation: str) -> set[
     return {int(variables["fightId"]) for name, variables in calls if name == operation}
 
 
+CARD_TIER = ("Casts", "AuraTable")
+"""The pair the cards rung buys, named as a pair because it must stay one.
+
+A press is read from the cast stream -- `availability_at` derives every press
+from it, and `state_of` answers UNSEEN for an ability with no press -- and the
+aura table is what refines a press into held or faded. A tier holding one
+without the other either refines a press that cannot exist or leaves every
+press at `pressed`. The tests below therefore assert the two together rather
+than side by side, so a later change cannot split them and still pass.
+"""
+
 BASE_TIER = ("Deaths", "DamageTaken", "EnemyCasts", "Interrupts", "Resurrects", "DamageDoneGraph")
 """The streams every tier fetches, whatever else it does or does not.
 
@@ -458,18 +469,20 @@ def test_no_death_cards_sends_the_base_tier_and_neither_aura_table_nor_healing(
     sent = [name for name, _ in calls]
     for stream in BASE_TIER:
         assert sent.count(stream) == 3, f"{stream} is fetched at every tier, once a pull"
-    assert "AuraTable" not in sent
+    assert [stream for stream in CARD_TIER if stream in sent] == [], "the cards rung is not bought"
     assert "Healing" not in sent
-    assert "Casts" not in sent
     assert _fights_for(calls, "Deaths") == set(QUALIFYING), "fight 35 is a reset, never deepened"
 
 
-def test_the_default_tier_sends_the_aura_table_but_no_healing(tmp_path: Path) -> None:
-    """The trimmed tier adds `AuraTable`, one call a roster player, and stops there.
+def test_the_default_tier_sends_the_card_pair_but_no_healing(tmp_path: Path) -> None:
+    """The trimmed tier adds the casts stream and the aura tables, and stops there.
 
-    `AuraTable` is what refines a defensive press into held or faded. Without
-    it every availability state collapses back to `pressed`, so the trimmed
-    card would draw six states and reach one.
+    The two are asserted as one claim. Casts are where a press is read from
+    and the aura table is what refines it into held or faded, so a tier
+    sending one alone draws six availability states and reaches one --
+    `UNSEEN` for every ability without the casts, `pressed` for every press
+    without the tables. Equality between the fights each covers is what a
+    later split would have to break.
     """
     repository, calls = a_repository_recording_calls(tmp_path)
     night = repository.load_night("abc123", None)
@@ -478,12 +491,12 @@ def test_the_default_tier_sends_the_aura_table_but_no_healing(tmp_path: Path) ->
     repository.load_night_attempts(night, deep_fights=frozenset(), death_cards=True)
 
     sent = [name for name, _ in calls]
+    assert _fights_for(calls, "Casts") == _fights_for(calls, "AuraTable") == set(QUALIFYING)
     assert sent.count("AuraTable") == 6, "two roster players over three qualifying attempts"
-    assert _fights_for(calls, "AuraTable") == set(QUALIFYING)
+    assert sent.count("Casts") == 3, "one stream a pull, whatever the roster's size"
     for stream in BASE_TIER:
         assert sent.count(stream) == 3, f"{stream} is fetched at every tier, once a pull"
     assert "Healing" not in sent
-    assert "Casts" not in sent
 
 
 def test_only_the_fight_named_deep_reaches_the_deep_tier(tmp_path: Path) -> None:
@@ -501,20 +514,50 @@ def test_only_the_fight_named_deep_reaches_the_deep_tier(tmp_path: Path) -> None
 
     repository.load_night_attempts(night, deep_fights=frozenset({29}), death_cards=True)
 
+    sent = [name for name, _ in calls]
     assert _fights_for(calls, "Healing") == {29}
-    assert _fights_for(calls, "Casts") == {29}
+    # One window a death, not one a roster player. The fixture has one death
+    # and two players, so the set above reads the same either way and only the
+    # count tells the right fan-out from a doubled one.
+    assert sent.count("Healing") == 1
     # Everything else was still fetched for all three: the named fight is
     # deepened, not substituted for the night.
-    for stream in (*BASE_TIER, "AuraTable"):
+    for stream in (*BASE_TIER, *CARD_TIER):
         assert _fights_for(calls, stream) == set(QUALIFYING), f"{stream} covers every pull"
+
+
+def test_a_fight_named_deep_reaches_the_card_rung_under_no_death_cards(tmp_path: Path) -> None:
+    """The one combination the brief never settles, and the resolution chosen for it.
+
+    `deep_fights={29}` with `death_cards=False` asks two things at once: draw
+    no cards, and draw this pull's whole anatomy. The tiers are a ladder, so
+    the explicitly named pull wins and reaches every rung below the one it
+    named -- the alternative would have the top rung skip the middle one, and
+    a pull drawing six availability states would reach one.
+
+    Without this test `cards = death_cards` leaves the whole suite green while
+    that pull's every defensive reads UNSEEN.
+    """
+    repository, calls = a_repository_recording_calls(tmp_path)
+    night = repository.load_night("abc123", None)
+    calls.clear()
+
+    repository.load_night_attempts(night, deep_fights=frozenset({29}), death_cards=False)
+
+    for stream in CARD_TIER:
+        assert _fights_for(calls, stream) == {29}, f"{stream} reaches the named pull alone"
+    assert _fights_for(calls, "Healing") == {29}
+    # The night-wide "no cards" still governs every pull nobody named.
+    assert _fights_for(calls, "Deaths") == set(QUALIFYING)
 
 
 def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -> None:
     """What came back, beside the tier tests' claim about what was asked for.
 
-    The deep fight carries the health column and the healing its own tier pays
-    for; the trimmed one beside it carries neither, and both carry the streams
-    every tier fetches.
+    The deep fight carries the healing its own rung pays for; the trimmed one
+    beside it carries none. Everything else -- the base streams and the card
+    pair, health column included -- is on both, because only `Healing` is
+    above the cards rung.
     """
     repository, _ = a_repository_recording_calls(tmp_path)
     night = repository.load_night("abc123", None)
@@ -531,6 +574,7 @@ def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -
     assert [row.ability_id for row in named.enemy_cast_rows] == [12345]
     assert [one.actor_id for one in named.interrupts] == [12]
     assert [one.actor_id for one in named.auras] == [11, 12]
+    assert [one.ability_id for one in named.casts] == [12345]
     assert [sample.hit_points for sample in named.health_samples] == [400]
     assert [heal.amount for heal in named.healing] == [500]
     assert [one.actor_id for one in named.resurrections] == [11]
@@ -538,11 +582,18 @@ def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -
     # The report's icons ride on every attempt: a night's death cards and
     # ledger rows draw them, which is why both halves of the dictionary are kept.
     assert named.ability_icons == ((12345, "spell_frost_wave.jpg"),)
+    # A night sends no rankings query, so every pull's partition comes from the
+    # season file. Naming it beats leaving the page to report no source for a
+    # partition that has one.
+    assert named.partition_source == "data/season.toml"
 
     neighbour = by_fight[28]
-    assert neighbour.health_samples == ()
+    # Healing is the only thing the deep rung buys, so it is the only thing
+    # the neighbour goes without. Its casts and health column arrive with the
+    # card pair, which every pull of a default night gets.
     assert neighbour.healing == ()
-    assert neighbour.casts == ()
+    assert [one.ability_id for one in neighbour.casts] == [12345]
+    assert [sample.hit_points for sample in neighbour.health_samples] == [400]
     assert [one.actor_id for one in neighbour.auras] == [11, 12]
     # The base tier reaches the neighbour too: a card that cannot see a
     # resurrection says "released" of a player who was brought back, and an
