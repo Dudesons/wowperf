@@ -165,10 +165,6 @@ def analyse_interrupts(
     kicked = [cast for cast in casts if cast.was_kicked]
     excluded = [cast for cast in casts if not cast.outcome_known]
 
-    # A fight where nobody kicked anything proves nothing about whether anything
-    # could have been kicked: the log carries no interruptible flag. Reporting a
-    # bare zero leaves the reader to supply the missing half, which is the same
-    # mistake `_interruptible` exists to prevent one level down.
     landed_phrase = f"{len(landed)} cast{'s' if len(landed) != 1 else ''} landed"
     summary_evidence = (
         f"{len(landed)} landed",
@@ -179,6 +175,11 @@ def analyse_interrupts(
     findings = [
         Finding(
             id="interrupts.summary",
+            # A fight where nobody kicked anything proves nothing about whether
+            # anything could have been kicked: the log carries no interruptible
+            # flag. Reporting a bare zero leaves the reader to supply the missing
+            # half, which is the same mistake `_interruptible` exists to prevent
+            # one level down.
             title=(
                 f"{landed_phrase}, {len(kicked)} {'was' if len(kicked) == 1 else 'were'} kicked"
                 if kicked
