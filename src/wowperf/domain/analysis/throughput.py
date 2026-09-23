@@ -118,8 +118,9 @@ def analyse_cooldown_alignment(
 
     A pull the player spent dead is skipped: a corpse presses nothing, and those
     are the pulls where dying is likeliest. Where a death's cost cannot be
-    measured at all the player is not judged, following the same refusal
-    `alive_combat_seconds` makes for the same reason.
+    measured at all the player is not judged: excluding a pull means testing it
+    against a dead span, which needs an end as well as a start, and a death with
+    no following action gives this analyser no end to build one from.
     """
     if not cooldowns.entries:
         return []
@@ -239,9 +240,10 @@ def analyse_cooldown_ceiling(
             uses = cast_counts.get(player.actor_id, {}).get(ability.ability_id, 0)
             if not uses:
                 continue
-            alive = alive_combat_seconds(run.total_pull_seconds, deaths, player.actor_id)
-            if alive is None:
-                continue
+            alive = alive_combat_seconds(
+                run.total_pull_seconds, deaths, player.actor_id,
+                combat_end_ms=run.window_ms[1],
+            )
             ceiling = cooldown_ceiling(alive, ability)
             if uses >= ceiling * CEILING_USE_FRACTION:
                 continue

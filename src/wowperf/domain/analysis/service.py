@@ -64,7 +64,15 @@ def analyse(
     )
     findings += analyse_defensive_ceiling(
         loaded.run.players, loaded.run.total_pull_seconds, loaded.casts, defensives,
-        loaded.deaths,
+        loaded.deaths, combat_end_ms=loaded.run.window_ms[1],
+        shape="run",
+        # `total_pull_seconds` sums pull durations rather than reading a wall
+        # clock -- `Run.window_ms`'s own docstring and `frame.py:108` -- so
+        # this says "summed" rather than "ran", the word the raid caller uses
+        # for a duration that really is elapsed time.
+        combat_description=(
+            f"This run's pulls summed to {loaded.run.total_pull_seconds:.0f}s of combat"
+        ),
     )
     findings += analyse_defensives_at_death(
         loaded.run.players,

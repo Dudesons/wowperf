@@ -8,6 +8,7 @@ import pytest
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
+from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
@@ -15,6 +16,7 @@ from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import BASELINE_Y, PLOT_TOP, PLOT_X0, PLOT_X1
+from wowperf.domain.report.build import ceiling_withheld_line
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
@@ -79,9 +81,9 @@ def a_raid_fixture(
 def a_finding(finding_id: str, seconds: float | None = None) -> Finding:
     """One finding of the given family, carrying the slug its id ends with.
 
-    Task 2 puts a `player_slug` on every raid comparison finding and appends
-    the same slug to its id, so a fixture that set one without the other would
-    be testing a shape the analysis does not emit.
+    The analysis puts a `player_slug` on every raid comparison finding and
+    appends the same slug to its id, so a fixture that set one without the
+    other would be testing a shape the analysis does not emit.
     """
     slug = next(
         (one for one in (EMBERKIN_SLUG, STONEWAKE_SLUG) if finding_id.endswith(f".{one}")), ""
@@ -185,7 +187,8 @@ def placements(report: RaidReport) -> list[str]:
 
 
 def test_the_builder_refuses_two_findings_that_share_an_id() -> None:
-    """The gate Task 2 exists to get through, asserted rather than assumed.
+    """The gate every per-player comparison id has to get through, asserted
+    rather than assumed.
 
     A duplicate id silently loses a title from `titles_by_id` and sends every
     pointer at it to the wrong row. Raising here is what turned a defect that
@@ -646,6 +649,74 @@ def test_a_withheld_verdict_does_not_head_the_summary() -> None:
     )
 
     assert report.verdict is None
+
+
+def _a_withheld_ceiling() -> Finding:
+    """What `analyse_defensive_ceiling` returns when a fight ran too short to judge a
+    defensive somebody pressed, built through the real minting function
+    so this fixture's title, detail and evidence can never drift from what
+    production actually emits -- a hand-written stand-in is what let the
+    "stated per ability below" wording ship without anyone noticing the page
+    had no such section.
+
+    The id is checked against a literal rather than the production module's own
+    `CEILING_WITHHELD_ID`: a test that constructs its expected value from the
+    same constant the code under test reads proves nothing about whether the
+    two agree.
+    """
+    finding = _ceiling_withheld(
+        {("Ice Block", 1200.0)}, shape="fight",
+        combat_description="This fight ran 300s",
+    )
+    assert finding.id == "defensives.ceiling.withheld"
+    return finding
+
+
+def test_a_withheld_defensive_ceiling_is_disclosed_in_the_provenance() -> None:
+    """The notice reaches Provenance rather than staying silent.
+
+    Mirrors `test_a_withheld_attempt_verdict_is_disclosed_in_the_provenance`
+    above, for the withheld-ceiling notice that sits beside it.
+
+    The disclosure is the per-ability evidence, not the detail sentence alone,
+    so both must reach the page in the same Provenance entry or a reader can
+    never tell which ability was withheld.
+    """
+    loaded, subject = a_raid_fixture()
+    notice = _a_withheld_ceiling()
+
+    report = build_raid_report(
+        loaded, (notice,), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    withheld = report.provenance.withheld
+    assert [line for line in withheld if "Defensive ceiling" in line] == [
+        ceiling_withheld_line(notice)
+    ]
+    assert "Ice Block would need more than 1200s of combat" in withheld[0]
+
+
+def test_a_withheld_defensive_ceiling_never_reaches_group_rows() -> None:
+    """Left alone, `RAID_PLACEMENTS`' bare `defensives.` prefix would file this
+    notice on the Players tab beside real per-ability ceiling judgements,
+    where "I could not judge this" would read as one of them.
+
+    A real ceiling finding rides along so the negative assertion cannot pass
+    for the wrong reason -- an empty tab, or a notice that was never minted at
+    all -- rather than because the builder actually pulled it out.
+    """
+    loaded, subject = a_raid_fixture()
+    placed_ceiling = a_finding("defensives.ceiling.emberkin.0")
+    notice = _a_withheld_ceiling()
+
+    report = build_raid_report(
+        loaded, (placed_ceiling, notice), subject, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    group_ids = [row.finding_id for row in report.group_rows]
+    assert placed_ceiling.id in group_ids, "fixture must still place a real ceiling row"
+    assert notice.id not in group_ids
 
 
 def test_the_verdict_appears_once_on_the_page() -> None:
