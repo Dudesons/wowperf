@@ -334,10 +334,13 @@ findings, and renders one self-contained HTML report.
 
 The project is cut into four slices, each with its own design, plan, and implementation
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
-analysis, and healer analysis.
+analysis, and healer analysis. Slices 1 and 2 have shipped. Slice 3 has shipped everything but
+one claim — that one raider's action caused another's death — which stays unbuilt and
+undesigned. Slice 4 has not started.
 
-**Current state: a run goes in and a report comes out.** `wowperf fetch` prints a run as
-JSON; `wowperf analyze` writes its findings as JSON and as one HTML file.
+**Current state: a fight goes in and a report comes out.** `wowperf fetch` prints a run as
+JSON; `wowperf analyze`, `wowperf raid` and `wowperf progression` each write their findings as
+JSON and as one HTML file.
 
 Everything that touches the network lives in `src/wowperf/adapters/wcl/`: OAuth client
 credentials, the GraphQL client, event pagination, and the ingest that turns a response into

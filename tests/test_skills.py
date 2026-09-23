@@ -34,14 +34,17 @@ FLAG = re.compile(r"--[a-z][a-z-]+")
 # rather than a moved boundary.
 COMMANDS = ("analyze", "raid", "progression")
 
-# Flags a section names only to say the command does *not* offer them, for
-# contrast with a sibling -- "the same shapes `analyze` offers, minus
-# `--narrative`". A regex can't tell that from an offer, so these are carved
-# out of "does this flag exist" and checked the other way in the same test:
-# that the command's own Options block really doesn't have them.
+# Flags a section names while talking about a sibling command rather than its
+# own -- "the same shapes `analyze` offers, minus `--narrative`", or the
+# `wowperf raid --fight N` that `progression` sends a reader to for one
+# attempt's anatomy. A regex can't tell either from an offer, so these are
+# carved out of "does this flag exist" and checked the other way in the same
+# test: that the command's own Options block really doesn't have them.
 EXPLICITLY_UNSUPPORTED: dict[str, frozenset[str]] = {
     "raid": frozenset({"--throughput-ceiling", "--narrative"}),
-    "progression": frozenset({"--player", "--all-players", "--no-compare", "--narrative"}),
+    "progression": frozenset({
+        "--player", "--all-players", "--no-compare", "--narrative", "--fight",
+    }),
 }
 
 
