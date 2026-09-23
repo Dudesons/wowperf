@@ -526,6 +526,18 @@ class WclRunRepository:
         `load_progression` -- the cost of reading a night's shape does not scale
         with how many bosses it holds. What scales is the deepening, which is
         `load_night_attempts`' business and priced there.
+
+        An explicit `difficulty` narrows the report rather than one boss: a
+        boss fought only at a different difficulty is skipped, never raised
+        on the way `_pick_boss` raises for a single `--boss`/`--difficulty`
+        mismatch. A real raid night routinely clears some bosses at one
+        difficulty and pushes others at another, and skipping never invents a
+        difficulty for the boss it keeps -- mixing difficulties on one page
+        would make the page's own difficulty label meaningless. Only when
+        every boss is skipped this way does it raise, naming the difficulty
+        asked for and the ones the report actually holds: a report with boss
+        fights that simply are not at that difficulty is a different failure,
+        with a different cause, than a report with no boss fights at all.
         """
         report = self._report(report_code)
         boss_fights = [f for f in report.get("fights") or () if f.get("encounterID")]
@@ -537,6 +549,23 @@ class WclRunRepository:
             boss_id = int(fight["encounterID"])
             if boss_id not in boss_ids:
                 boss_ids.append(boss_id)
+
+        if difficulty is not None:
+            boss_ids = [
+                boss_id
+                for boss_id in boss_ids
+                if any(
+                    fight["encounterID"] == boss_id and int(fight["difficulty"]) == difficulty
+                    for fight in boss_fights
+                )
+            ]
+            if not boss_ids:
+                present = sorted({int(fight["difficulty"]) for fight in boss_fights})
+                named = ", ".join(str(one) for one in present)
+                raise ValueError(
+                    f"This report holds no boss fight at difficulty {difficulty}; "
+                    f"it holds difficulty {named}"
+                )
 
         partition = load_raid_partition()
         encounters = [

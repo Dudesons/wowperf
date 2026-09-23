@@ -120,12 +120,16 @@ def test_every_boss_the_report_holds_comes_back_as_its_own_progression(
     assert by_id[3388].difficulty == 4
 
 
-def test_an_explicit_difficulty_applies_to_every_boss(tmp_path: Path) -> None:
-    """`--difficulty` is a report-wide value here, applied to every boss in turn."""
-    two_boss: dict[str, Any] = json.loads(json.dumps(THREE_BOSS_NIGHT))
-    fights = two_boss["reportData"]["report"]["fights"]
-    two_boss["reportData"]["report"]["fights"] = [f for f in fights if f["id"] != 41]
-    repository, _ = a_repository_counting_calls(tmp_path, two_boss)
+def test_a_boss_absent_at_the_requested_difficulty_is_skipped_not_a_refusal(
+    tmp_path: Path,
+) -> None:
+    """The ordinary shape of a real raid night: some bosses cleared on Heroic,
+    others pushed on Mythic. `--difficulty 5` must keep the two bosses
+    THREE_BOSS_NIGHT fought at 5 (3492, 3429) and quietly drop 3388, which it
+    only ever fought at 4 -- not fail the whole night the way `_pick_boss`
+    fails a single `--boss`/`--difficulty` mismatch for `progression`.
+    """
+    repository, _ = a_repository_counting_calls(tmp_path)
 
     night = repository.load_night("abc123", 5)
 
@@ -133,29 +137,55 @@ def test_an_explicit_difficulty_applies_to_every_boss(tmp_path: Path) -> None:
     assert all(boss.difficulty == 5 for boss in night.bosses)
 
 
-def test_an_explicit_difficulty_absent_for_one_boss_says_so(tmp_path: Path) -> None:
-    """`--difficulty` reuses `_pick_boss`'s own check, once per boss.
+def test_the_skip_does_not_leak_into_the_default_difficulty_path(tmp_path: Path) -> None:
+    """With no explicit difficulty, every boss is still present.
 
-    THREE_BOSS_NIGHT only ever fights 3388 at difficulty 4, never 5. An
-    explicit `--difficulty 5` must fail loudly, naming the boss that does not
-    have it, exactly as `load_progression` fails on a boss fought only at a
-    different difficulty than the one asked for.
+    The skip above is conditional on `difficulty is not None`; this pins that
+    the default path -- each boss taking its own first fight's difficulty --
+    is untouched by it.
     """
     repository, _ = a_repository_counting_calls(tmp_path)
+
+    night = repository.load_night("abc123", None)
+
+    assert [boss.encounter_id for boss in night.bosses] == [3492, 3429, 3388]
+
+
+def test_a_difficulty_no_boss_in_the_report_ever_fought_says_so(tmp_path: Path) -> None:
+    """Skipping every boss leaves nothing -- a real mismatch, not an empty report.
+
+    Naming both the difficulty asked for and the ones the report actually
+    holds keeps a reader from being told a false cause: this report does hold
+    boss fights, just none at the difficulty requested.
+
+    Every fight is set to difficulty 7 rather than reusing one of THREE_BOSS_
+    NIGHT's own difficulties (4 or 5): 7 shares no digit with any encounter id
+    in this fixture (3492, 3429, 3388), so the "7 in message" assertion below
+    cannot pass by coincidentally matching a boss id instead of the difficulty
+    the message is actually supposed to name.
+    """
+    all_at_seven: dict[str, Any] = json.loads(json.dumps(THREE_BOSS_NIGHT))
+    for fight in all_at_seven["reportData"]["report"]["fights"]:
+        fight["difficulty"] = 7
+    repository, _ = a_repository_counting_calls(tmp_path, all_at_seven)
 
     with pytest.raises(ValueError) as error:
         repository.load_night("abc123", 5)
 
     message = str(error.value)
-    assert "3388" in message
     assert "5" in message
+    assert "7" in message
 
 
 def test_a_report_with_no_boss_fight_is_an_empty_night_not_an_error(tmp_path: Path) -> None:
+    """A report with no boss fights at all is a different case than one where
+    an explicit difficulty matches none of them (see the test above): this one
+    must stay an empty `Night`, whatever `difficulty` was asked for, rather
+    than tripping the "no boss fight at this difficulty" refusal.
+    """
     empty: dict[str, Any] = json.loads(json.dumps(THREE_BOSS_NIGHT))
     empty["reportData"]["report"]["fights"] = []
     repository, _ = a_repository_counting_calls(tmp_path, empty)
 
-    night = repository.load_night("abc123", None)
-
-    assert night.bosses == ()
+    assert repository.load_night("abc123", None).bosses == ()
+    assert repository.load_night("abc123", 5).bosses == ()
