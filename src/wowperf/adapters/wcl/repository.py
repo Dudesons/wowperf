@@ -4,6 +4,8 @@
 from collections.abc import Sequence
 from typing import Any, Literal, NamedTuple, cast
 
+import httpx
+
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.config.toml import load_raid_partition
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
@@ -29,7 +31,7 @@ from wowperf.adapters.wcl.ingest import (
     select_raid_fight,
 )
 from wowperf.adapters.wcl.loadouts import build_loadouts
-from wowperf.adapters.wcl.pagination import fetch_all_events
+from wowperf.adapters.wcl.pagination import Execute, fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
     ACTORS_QUERY,
@@ -53,11 +55,11 @@ from wowperf.adapters.wcl.report_rankings import build_report_rankings
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.raid_reference import ReportRankings
-from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
-from wowperf.domain.night import Night
+from wowperf.domain.night import FailedPull, LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
@@ -649,6 +651,204 @@ class WclRunRepository:
             )
 
         return LoadedProgression(progression=progression, loaded=tuple(loaded))
+
+    def load_night_attempts(
+        self, night: Night, *, deep_fights: frozenset[int], death_cards: bool
+    ) -> LoadedNight:
+        """Deepen every attempt of every boss, each at the cheapest tier that serves it.
+
+        A night pull renders a whole pull page, so it needs more than the two
+        streams `load_progression_attempts` fetches -- that page draws no death
+        card at all. It needs less than `load_encounter` fetches, though: no
+        parse axis, and no stream a trimmed card leaves undrawn. What it needs
+        is a ladder, consulted per attempt:
+
+        * Every tier fetches deaths, damage taken, enemy casts and interrupts.
+          Nothing below the mechanics and interrupts tabs is optional.
+        * `death_cards` adds the aura tables, one call a roster player. This is
+          what refines a defensive press into `held` or `faded`; without it all
+          six availability states collapse back to `pressed`, the explicit
+          unknown, and a card drawing six states would only ever reach one.
+        * `deep_fights` adds the casts stream -- which is also the health
+          column, since `build_health_samples` reads it -- and one healing
+          window a death, for the named fights alone.
+
+        The two dear halves, measured on one 65.19-point wipe: the aura tables
+        were 20.00 of it and the healing windows 22.00. A night holds many more
+        pulls than a raid command's one, so paying either on every pull is the
+        difference between a night that fits the hourly budget and one that
+        does not.
+
+        `deep_fights` is read once per attempt rather than once for the night:
+        a `--deep` that leaked would put every pull at the dearest tier, which
+        is the whole night at the price the flag exists to charge for one.
+
+        Returns before fetching anything when no boss has a qualifying attempt:
+        an ability dictionary nothing would read is a point spent for no
+        reason. The bosses still come back, each with an empty
+        `LoadedProgression`, because a boss that was only ever reset is still a
+        boss this report holds.
+        """
+        if not any(boss.attempts for boss in night.bosses):
+            return LoadedNight(
+                night=night,
+                loaded=tuple(LoadedProgression(progression=boss) for boss in night.bosses),
+            )
+
+        hits: list[bool] = []
+        # Both halves, where `load_progression_attempts` keeps only the names:
+        # a night's death cards and ledger rows draw ability icons, and one
+        # query answers the whole report however many pulls read it.
+        ability_names, ability_icons = self._ability_dictionary(night.report_code, hits)
+
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables, hits)
+
+        loaded: list[LoadedProgression] = []
+        failures: list[FailedPull] = []
+        for boss in night.bosses:
+            deepened: list[LoadedEncounter] = []
+            for attempt in boss.attempts:
+                try:
+                    deepened.append(
+                        self._deepen_attempt(
+                            attempt,
+                            query,
+                            ability_names,
+                            ability_icons,
+                            deep=attempt.fight_id in deep_fights,
+                            death_cards=death_cards,
+                        )
+                    )
+                except RateLimitExceeded:
+                    # Not this pull's failure but every remaining pull's, so it
+                    # stops the night instead of being recorded once per pull
+                    # under a cause that would be true of none of them.
+                    # `_affix_names` lets it through for the same reason.
+                    raise
+                except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+                    # The tuple the `progression` command treats as a load
+                    # failure, caught per attempt rather than per night: one
+                    # pull that cannot be read shrinks the night, and the
+                    # record below is what keeps the shrinking from being
+                    # silent.
+                    failures.append(FailedPull(fight_id=attempt.fight_id, reason=str(error)))
+            loaded.append(LoadedProgression(progression=boss, loaded=tuple(deepened)))
+
+        return LoadedNight(night=night, loaded=tuple(loaded), failed_pulls=tuple(failures))
+
+    def _deepen_attempt(
+        self,
+        attempt: Encounter,
+        query: Execute,
+        ability_names: dict[int, str],
+        ability_icons: tuple[tuple[int, str], ...],
+        *,
+        deep: bool,
+        death_cards: bool,
+    ) -> LoadedEncounter:
+        """One pull's streams, at the tier `deep` and `death_cards` place it on.
+
+        Every stream this skips leaves an empty tuple behind, which reads the
+        same as "this pull had none" -- the shape `load_speed_reference` and
+        `load_parse_reference` leave behind for the streams their own axes do
+        not read. Nothing may report absence off a trimmed tier without
+        knowing which tier it was fetched at, or it would state as a finding
+        what is only a stream nobody paid for.
+        """
+        # The tiers are a ladder, so the deep one reaches everything the
+        # trimmed one does. A fight named deep is a request for that pull's
+        # whole anatomy, which outranks a night-wide "no cards".
+        cards = death_cards or deep
+
+        event_variables = {
+            "code": attempt.report_code,
+            "fightId": attempt.fight_id,
+            "startTime": float(attempt.start_ms),
+            "endTime": float(attempt.end_ms),
+        }
+        # A boss fight carries no pulls at all, so every builder below indexes
+        # its events against an empty route -- `pull_index_at` answers None
+        # over one, which is the right answer for an event that is never
+        # inside or outside a pull.
+        no_pulls: tuple[Pull, ...] = ()
+
+        # One stream, two readings: the casts themselves and the health column
+        # `build_health_samples` reads out of them. Below the deep tier
+        # `build_deaths` gets an empty one, which costs only its reading of how
+        # long a death kept the player out.
+        cast_events = fetch_all_events(query, CASTS_QUERY, event_variables) if deep else []
+        casts = build_casts(cast_events, no_pulls, ability_names)
+
+        player_names = {player.actor_id: player.name for player in attempt.players}
+        deaths = build_deaths(
+            fetch_all_events(query, DEATHS_QUERY, event_variables),
+            no_pulls,
+            casts,
+            player_names,
+            ability_names,
+        )
+        damage_taken = build_damage_taken(
+            fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables),
+            no_pulls,
+            ability_names,
+        )
+        enemy_cast_rows = build_enemy_cast_rows(
+            fetch_all_events(query, ENEMY_CASTS_QUERY, event_variables),
+            no_pulls,
+            ability_names,
+        )
+        interrupts = build_interrupts(
+            fetch_all_events(query, INTERRUPTS_QUERY, event_variables),
+            no_pulls,
+            player_names,
+        )
+
+        auras: tuple[PlayerAuras, ...] = ()
+        if cards:
+            auras = tuple(
+                build_player_auras(
+                    query(
+                        AURA_TABLE_QUERY,
+                        {
+                            "code": attempt.report_code,
+                            "fightId": attempt.fight_id,
+                            "actorId": player.actor_id,
+                        },
+                    ),
+                    player.actor_id,
+                )
+                for player in attempt.players
+            )
+
+        # One healing window per stretch of run-ups, scoped to the dying
+        # player, exactly as `load_encounter` fetches it.
+        healing: list[HealingEvent] = []
+        if deep:
+            for actor_id, start, end in healing_windows(deaths):
+                scoped = {
+                    "code": attempt.report_code,
+                    "fightId": attempt.fight_id,
+                    "actorId": actor_id,
+                    "startTime": float(start),
+                    "endTime": float(end),
+                }
+                healing.extend(
+                    build_healing(fetch_all_events(query, HEALING_QUERY, scoped), ability_names)
+                )
+
+        return LoadedEncounter(
+            encounter=attempt,
+            casts=casts,
+            deaths=deaths,
+            enemy_cast_rows=enemy_cast_rows,
+            interrupts=interrupts,
+            damage_taken=damage_taken,
+            health_samples=build_health_samples(cast_events),
+            healing=tuple(healing),
+            auras=auras,
+            ability_icons=ability_icons,
+        )
 
     def load_speed_reference(
         self, report_code: str, fight_id: int | None

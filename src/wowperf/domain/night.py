@@ -2,7 +2,7 @@
 # ABOUTME: A sibling of Progression -- that one is a boss's attempts, this one a report's bosses.
 
 from wowperf.domain.base import Frozen
-from wowperf.domain.progression import Progression
+from wowperf.domain.progression import LoadedProgression, Progression
 
 
 class Night(Frozen):
@@ -21,3 +21,35 @@ class Night(Frozen):
 
     report_code: str
     bosses: tuple[Progression, ...] = ()
+
+
+class FailedPull(Frozen):
+    """One pull that could not be deepened, and what stopped it.
+
+    A night is allowed to shrink, never to shrink quietly: a pull whose
+    streams fail is dropped from the boss that holds it and named here
+    instead, so the page can say which pull is missing and why rather than
+    covering fewer pulls than the report it claims to cover.
+
+    `reason` is the failure's own message, not a phrase chosen here. The
+    reader is being told what went wrong, and a canned sentence would say
+    less than the exception already does.
+    """
+
+    fight_id: int
+    reason: str
+
+
+class LoadedNight(Frozen):
+    """A `Night` and the pulls that have been deepened.
+
+    `loaded` runs parallel to `night.bosses`, one `LoadedProgression` each and
+    in the same order, so a boss whose every attempt was a reset -- or whose
+    every attempt failed -- is still present with an empty one. Dropping it
+    would lose the fact that the boss was pulled at all, which the page has to
+    be able to say.
+    """
+
+    night: Night
+    loaded: tuple[LoadedProgression, ...] = ()
+    failed_pulls: tuple[FailedPull, ...] = ()
