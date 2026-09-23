@@ -314,6 +314,32 @@ HEALING_PAYLOAD: dict[str, Any] = _events(
         }
     ]
 )
+RESURRECTS_PAYLOAD: dict[str, Any] = _events(
+    [
+        {
+            "type": "resurrect",
+            "abilityGameID": 12345,
+            "sourceID": 12,
+            "targetID": 11,
+            "timestamp": 6000,
+        }
+    ]
+)
+# One series for one player. `build_damage_done` reads the numbers as a rate,
+# so a point interval of 1000ms makes each amount its own point.
+DAMAGE_DONE_PAYLOAD: dict[str, Any] = {
+    "reportData": {
+        "report": {
+            "graph": {
+                "data": {
+                    "series": [
+                        {"id": 11, "pointStart": 0, "pointInterval": 1000, "data": [100, 200]}
+                    ]
+                }
+            }
+        }
+    }
+}
 AURA_TABLE_PAYLOAD: dict[str, Any] = {
     "reportData": {
         "report": {
@@ -342,6 +368,8 @@ STREAM_PAYLOADS: dict[str, dict[str, Any]] = {
     "DamageTaken": DAMAGE_TAKEN_PAYLOAD,
     "EnemyCasts": ENEMY_CASTS_PAYLOAD,
     "Interrupts": INTERRUPTS_PAYLOAD,
+    "Resurrects": RESURRECTS_PAYLOAD,
+    "DamageDoneGraph": DAMAGE_DONE_PAYLOAD,
     "Casts": CASTS_PAYLOAD,
     "Healing": HEALING_PAYLOAD,
     "AuraTable": AURA_TABLE_PAYLOAD,
@@ -395,8 +423,26 @@ def _fights_for(calls: list[tuple[str, dict[str, Any]]], operation: str) -> set[
     return {int(variables["fightId"]) for name, variables in calls if name == operation}
 
 
-def test_no_death_cards_sends_neither_an_aura_table_nor_healing(tmp_path: Path) -> None:
-    """The cheapest tier: the two streams plus enemy casts and interrupts, and nothing more.
+BASE_TIER = ("Deaths", "DamageTaken", "EnemyCasts", "Interrupts", "Resurrects", "DamageDoneGraph")
+"""The streams every tier fetches, whatever else it does or does not.
+
+`Resurrects` and `DamageDoneGraph` are here rather than on the card rung
+because what reads them is drawn whether or not cards are, and because both
+answer a question the page would otherwise answer falsely. Without
+resurrections every death card on every pull reads "released" -- a confident
+false claim about players who were in fact brought back -- and the alive chart
+draws a raid that never gets up. Without the damage graph the page prints
+`NO_DAMAGE_DONE`, whose sentence names the graph as the cause; on a night page
+the graph was never requested, so that sentence would state a false cause.
+Two cheap queries a pull, inside the settled budget, buy a page that tells the
+truth with the vocabulary it already has.
+"""
+
+
+def test_no_death_cards_sends_the_base_tier_and_neither_aura_table_nor_healing(
+    tmp_path: Path,
+) -> None:
+    """The cheapest tier: every base stream, and nothing the cards would add.
 
     Asserting the operations sent rather than the fields that came back is the
     whole point. `auras` being empty would also be true of a method that
@@ -410,10 +456,8 @@ def test_no_death_cards_sends_neither_an_aura_table_nor_healing(tmp_path: Path) 
     repository.load_night_attempts(night, deep_fights=frozenset(), death_cards=False)
 
     sent = [name for name, _ in calls]
-    assert sent.count("Deaths") == 3
-    assert sent.count("DamageTaken") == 3
-    assert sent.count("EnemyCasts") == 3
-    assert sent.count("Interrupts") == 3
+    for stream in BASE_TIER:
+        assert sent.count(stream) == 3, f"{stream} is fetched at every tier, once a pull"
     assert "AuraTable" not in sent
     assert "Healing" not in sent
     assert "Casts" not in sent
@@ -436,6 +480,8 @@ def test_the_default_tier_sends_the_aura_table_but_no_healing(tmp_path: Path) ->
     sent = [name for name, _ in calls]
     assert sent.count("AuraTable") == 6, "two roster players over three qualifying attempts"
     assert _fights_for(calls, "AuraTable") == set(QUALIFYING)
+    for stream in BASE_TIER:
+        assert sent.count(stream) == 3, f"{stream} is fetched at every tier, once a pull"
     assert "Healing" not in sent
     assert "Casts" not in sent
 
@@ -459,8 +505,8 @@ def test_only_the_fight_named_deep_reaches_the_deep_tier(tmp_path: Path) -> None
     assert _fights_for(calls, "Casts") == {29}
     # Everything else was still fetched for all three: the named fight is
     # deepened, not substituted for the night.
-    assert _fights_for(calls, "Deaths") == set(QUALIFYING)
-    assert _fights_for(calls, "AuraTable") == set(QUALIFYING)
+    for stream in (*BASE_TIER, "AuraTable"):
+        assert _fights_for(calls, stream) == set(QUALIFYING), f"{stream} covers every pull"
 
 
 def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -> None:
@@ -487,6 +533,8 @@ def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -
     assert [one.actor_id for one in named.auras] == [11, 12]
     assert [sample.hit_points for sample in named.health_samples] == [400]
     assert [heal.amount for heal in named.healing] == [500]
+    assert [one.actor_id for one in named.resurrections] == [11]
+    assert [series.actor_id for series in named.damage_done] == [11]
     # The report's icons ride on every attempt: a night's death cards and
     # ledger rows draw them, which is why both halves of the dictionary are kept.
     assert named.ability_icons == ((12345, "spell_frost_wave.jpg"),)
@@ -496,6 +544,11 @@ def test_the_streams_land_on_the_attempt_they_were_fetched_for(tmp_path: Path) -
     assert neighbour.healing == ()
     assert neighbour.casts == ()
     assert [one.actor_id for one in neighbour.auras] == [11, 12]
+    # The base tier reaches the neighbour too: a card that cannot see a
+    # resurrection says "released" of a player who was brought back, and an
+    # empty damage graph makes the page name a cause that never happened.
+    assert [one.actor_id for one in neighbour.resurrections] == [11]
+    assert [series.amounts for series in neighbour.damage_done] == [(100, 200)]
 
 
 def test_the_ability_dictionary_is_read_once_for_the_whole_night(tmp_path: Path) -> None:

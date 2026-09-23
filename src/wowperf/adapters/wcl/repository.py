@@ -663,8 +663,18 @@ class WclRunRepository:
         parse axis, and no stream a trimmed card leaves undrawn. What it needs
         is a ladder, consulted per attempt:
 
-        * Every tier fetches deaths, damage taken, enemy casts and interrupts.
-          Nothing below the mechanics and interrupts tabs is optional.
+        * Every tier fetches deaths, damage taken, enemy casts, interrupts,
+          resurrections and the damage graph. Nothing the seven tabs draw
+          unconditionally is optional, and the last two are on this rung for a
+          second reason: what they leave behind when unfetched is an empty
+          tuple every reader takes for a measurement. No resurrections makes
+          every death card on every pull say "released" of players who were in
+          fact brought back, and makes the alive chart draw a raid that never
+          gets up; no damage graph makes the page print a sentence naming the
+          graph as the cause of a track that was never requested. Two cheap
+          queries a pull buy a page that tells the truth with the vocabulary it
+          already has, against a third abstention that would have to be
+          invented.
         * `death_cards` adds the aura tables, one call a roster player. This is
           what refines a defensive press into `held` or `faded`; without it all
           six availability states collapse back to `pressed`, the explicit
@@ -803,6 +813,18 @@ class WclRunRepository:
             no_pulls,
             player_names,
         )
+        # Both belong to the base tier rather than the card one, because what
+        # reads them is drawn whether or not cards are, and because an empty
+        # one is read as a fact rather than as a gap. Unfetched resurrections
+        # make every card say "released" of players who were brought back, and
+        # an unfetched graph makes the page print a sentence naming the graph
+        # as the cause of a track it never asked for.
+        resurrections = build_resurrections(
+            fetch_all_events(query, RESURRECTS_QUERY, event_variables), ability_names
+        )
+        # Pre-aggregated by the API, so one call rather than a paginated
+        # stream, and one response carries a series for every player.
+        damage_done = build_damage_done(query(DAMAGE_DONE_GRAPH_QUERY, event_variables))
 
         auras: tuple[PlayerAuras, ...] = ()
         if cards:
@@ -844,8 +866,10 @@ class WclRunRepository:
             enemy_cast_rows=enemy_cast_rows,
             interrupts=interrupts,
             damage_taken=damage_taken,
+            damage_done=damage_done,
             health_samples=build_health_samples(cast_events),
             healing=tuple(healing),
+            resurrections=resurrections,
             auras=auras,
             ability_icons=ability_icons,
         )
