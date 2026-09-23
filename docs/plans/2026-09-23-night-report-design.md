@@ -1,6 +1,7 @@
 # One report, every pull: the `night` command
 
-**Status:** approved design, not yet planned or built.
+**Status:** approved design, every open question settled, not yet planned or built. The next
+step is `superpowers:writing-plans`.
 **Slice:** the first of two. This document is spec A — the container. Spec B, the cross-pull
 analysers, is deliberately out of scope here and is named in §12.
 
@@ -37,16 +38,30 @@ The dropdowns are therefore `<select>` elements driving CSS visibility over cont
 already present. Nothing loads on demand. This is why §6 and §7 exist: if everything must be
 pre-rendered, size becomes a first-class design constraint rather than an accident.
 
+**Settled 2026-09-23: one boss `<select>`, and one pull `<select>` per boss.** Choosing a boss
+shows that boss's own pull control and hides the others. The alternative — a single pull
+control holding every pull, with options hidden or disabled as the boss changes — asks the
+script to manipulate `<option>` elements, which browsers handle inconsistently and which sits
+closer to the line the invariant draws than showing and hiding a whole element does. Per-boss
+controls keep the script to exactly what it is allowed to do: show, hide, highlight. Their
+arrangement on the page is still the plan's to decide against a rendered fixture; the mechanism
+is not.
+
 ## 4. The command
 
 ```
-wowperf night <url> [--deep FIGHT]... [--difficulty N] [--cache-dir DIR] [--out DIR]
+wowperf night <url> [--deep FIGHT]... [--no-deaths] [--difficulty N] [--cache-dir DIR] [--out DIR]
 ```
 
 A fourth sibling of `analyze`, `raid` and `progression`, not a mode of any of them.
 
 - **no `--fight`** — it covers every fight in the report; that is the point.
 - **`--deep FIGHT`**, repeatable — promote these pulls to full death anatomies (§7).
+- **`--no-deaths`** — drop death cards entirely, reaching §6's cheapest tier. Named for
+  `--no-compare`, which it matches in shape: both switch off a whole family of work rather
+  than tuning it. Without it §6's first row is priced but unreachable, and every night run
+  pays for `AuraTable` whether or not the reader wants anatomy. `--deep` and `--no-deaths`
+  together is a contradiction and must be refused, naming both.
 - **`--difficulty N`** — as `progression` takes it, defaulting per boss to that boss's own first
   fight in the report.
 - **`--cache-dir` / `--out`** — as the other three take them.
@@ -83,7 +98,28 @@ finding says "This attempt did not kill the boss", which is the wrong reason her
 be reused with a false explanation. A new disclosure finding is needed, stating that this
 command does not draw the axis and naming `wowperf raid --fight N` as what does.
 
-**Open item for the plan:** the id and wording of that finding. Do not invent it here.
+**Settled 2026-09-23.** The finding is `compare.parse.not_drawn`, `measured`, drawn **once for
+the whole page** rather than per player.
+
+Measured, because the absence is a fact about what this command fetched, not a reading of
+anything — the same reasoning `attempt_shape.py` records for modelling itself on
+`compare.parse.unavailable`.
+
+Once, because `compare.parse.unavailable` is per player: on report `cW38jmwdnZfbHVL4`, twenty
+players across nineteen fights would draw it several hundred times to say one thing. A reader
+learns that the axis is absent once and needs it to stay learned.
+
+It must not reuse `UNAVAILABLE_ID` or `WITHHELD_DETAIL` from
+`src/wowperf/domain/comparison/parse_axis.py`. That detail opens "This attempt did not kill the
+boss", which is a true sentence about a wipe and a false explanation here — a night page omits
+the axis on kills too, and for an entirely different reason. Borrowing it would put a wrong
+cause in front of a reader, which is the failure this whole section exists to prevent.
+
+What it must say: that `wowperf night` does not draw the parse axis at all; which families are
+therefore absent — damage against the board, damage by target, casts a minute, talents, buff
+uptime, the percentile — named in one place rather than left as six silences, exactly as
+`WITHHELD_DETAIL` names them; and that `wowperf raid --fight N` is the command that draws them
+for a single pull. The exact prose is the plan's to write against that list.
 
 ## 6. Cost, measured
 
@@ -96,11 +132,14 @@ That breakdown showed `Healing` at 22 calls, one per death, and `AuraTable` at 2
 roster player — together 42 of the run's 65.19 points. Those two queries exist **only** to build
 death recaps, and they split along the tiers in §7:
 
-| per pull | points/pull | 20 pulls |
-| --- | --- | --- |
-| no death cards | ~2 | ~40 |
-| trimmed cards — needs `AuraTable` | ~22 | ~440 |
-| full cards — needs `AuraTable` and `Healing` | ~44 | ~880 |
+| per pull | reached by | points/pull | 20 pulls |
+| --- | --- | --- | --- |
+| no death cards | `--no-deaths` | ~2 | ~40 |
+| trimmed cards — needs `AuraTable` | the default | ~22 | ~440 |
+| full cards — needs `AuraTable` and `Healing` | `--deep FIGHT` | ~44 | ~880 |
+
+Every tier is reachable from the command line. A tier priced in a design and unreachable from
+the CLI is a measurement nobody can act on.
 
 A deepened `progression` pass already fetches `Fights`, `Actors`, `Deaths`, `DamageTaken`,
 `PlayerDetails` and `Abilities` for every attempt, at roughly 2 points an attempt. The night
@@ -128,8 +167,22 @@ A **trimmed card** keeps the killing blow, the time, the class, the six availabi
 consumable lines and the return line. It drops `timeline` and `health_curve`. Both are already
 guarded in `_deaths.html.j2` by `{% if death.timeline %}` and `{% if death.health_curve %}`, and
 `timeline_note` exists for the absent case — so a trimmed card should be a **builder decision,
-not new markup**. The plan must confirm that the absent-timeline path renders a sensible note
-rather than an empty block, and say what that note is.
+not new markup**.
+
+**Settled 2026-09-23: the trimmed card needs its own note, and must not reuse the existing
+one.** `NO_TIMELINE_EVENT` in `src/wowperf/domain/report/deaths.py:107` reads "No event in the
+last seconds." That is a claim about the log: nothing happened. A trimmed card's timeline is
+absent because this command chose not to build it, which is a claim about the run. The two
+look identical on the page and mean opposite things, and a reader who takes the trimmed note
+for the existing one concludes the pull was quiet when it may have been carnage.
+
+So: a second constant beside it, naming `--deep <fight>` as what renders the timeline. Same
+`timeline_note` field, same `{% elif death.timeline_note %}` branch in `_deaths.html.j2:91` —
+no new markup, as above. The exact prose is the plan's.
+
+This is the same mistake as reusing `WITHHELD_DETAIL` in §5, in a second place, and both were
+found by asking the same question: what does the absence actually mean here, and does the
+sentence already on the shelf say that?
 
 A **deep card** is what `raid` renders today, unchanged, for pulls named by `--deep`.
 
@@ -160,7 +213,7 @@ argument. The night command is therefore:
 1. read the report's fights once, and its bosses;
 2. for each boss, run the existing progression path — deepening every attempt;
 3. for each loaded attempt, run the existing raid builder, with the parse axis off and death
-   cards trimmed unless `--deep` names it;
+   cards trimmed unless `--deep` names that pull, or absent entirely under `--no-deaths`;
 4. assemble the per-boss and per-pull view models into one night view model;
 5. render once.
 
@@ -180,23 +233,38 @@ The digit ban and the narrative rules do not apply — this command writes no na
 - A report with no boss fights at all fails with a message saying so, as `progression` does.
 - `--deep` naming a fight id not in the report fails naming the ids that are, matching the shape
   of `raid`'s existing refusal.
+- `--deep` and `--no-deaths` together fails naming both, rather than letting one silently win.
+  They are a contradiction: one asks for a fuller death card on a named pull, the other for no
+  death cards at all.
 - A single pull failing to deepen shrinks the night rather than failing it, and the Provenance
   section names it with the reason — the same rule the comparison already follows for a reference
   that would not load.
 
 ## 11. Testing
 
-- **Builder tests**, pure, one per decision: which pulls trim, which deepen, what the absent-axis
-  disclosure says, how a failed pull is represented.
+- **Builder tests**, pure, one per decision: which pulls trim, which deepen, which drop their
+  cards under `--no-deaths`, what the absent-axis disclosure says, how a failed pull is
+  represented. Each of the three tiers gets a test that fails if a pull lands in the wrong one —
+  a tier is a cost decision, and a page that quietly renders the dearest one is a page that
+  quietly spends eight hundred points.
 - **`test_html_invariants.py` extended** to the night page: one script, one icon host, no
   stylesheet link, no `@import`.
 - **A size-budget regression test.** Size is a design constraint now, so it gets a test: a
   fixture night renders under a stated byte budget. Without one, a future card gains a field and
   nobody notices until a 20 MB file lands.
-- **e2e.** `cW38jmwdnZfbHVL4` fights 2 and 30 are pinned as `WOWPERF_E2E_RAID_KILL` and
-  `WOWPERF_E2E_RAID_WIPE` and are depended on by unrelated tests; a whole-report run touches
-  every fight in that log. The plan must decide whether the night e2e uses that report or another,
-  and must not repoint those two variables.
+- **e2e. Settled 2026-09-23: `cW38jmwdnZfbHVL4`, the whole report.** It is the raid and
+  progression suites' report already, and `tests/e2e/test_progression_e2e.py`'s header records
+  from a verified live read what it holds — eight bosses, nineteen boss fights, and which of
+  them is the eight-attempt no-kill night. A second report would mean a second roster of real
+  people to document under the test-data rule, and a cold cache on every run.
+  `WOWPERF_E2E_RAID_KILL` and `WOWPERF_E2E_RAID_WIPE` stay exactly as they are: a night run
+  reads fights 2 and 30 along with the rest, which is not the same as repointing them, and the
+  plan must not repoint them.
+  **It runs with `--no-deaths`.** At the trimmed default, nineteen fights cost roughly 420
+  points — an eighth of the hourly budget for one test run, which is the kind of price that
+  gets a suite quietly stopped from running. The cheap tier exercises the container, the
+  dropdowns, the per-boss grouping and the absent-axis disclosure, which is what this e2e is
+  for; death-card tiers are already covered by `raid`'s own e2e.
 - **A live run before this is called done.** A new judgement is not done until a live run has
   exercised it: report how often each state and each tier actually occurred, on a real report.
 
@@ -227,13 +295,30 @@ collision. Note that `.claude/skills/` prose is CI-tested by `tests/test_skills.
 each section's flags against that command's real `--help`; a new command means a new section and
 a new entry in that test's expectations.
 
-## 14. Open questions for the plan
+## 14. The questions this design left open, and how they were settled
 
-1. The id and wording of the absent-parse-axis disclosure finding (§5).
-2. What the absent-timeline note on a trimmed card says (§7).
-3. Which report the e2e runs against (§11).
-4. Whether the boss and pull dropdowns are two independent `<select>`s or one nested control —
-   a page-shape question better answered against a rendered fixture than in prose.
+All four were settled with RwlRwlRwlRwl on 2026-09-23, against the code rather than from
+memory. Each is written into the section that owns it; they are listed here so a reader can see
+what was decided and what was deliberately left to the plan.
+
+1. **The absent-parse-axis disclosure (§5).** `compare.parse.not_drawn`, `measured`, once for
+   the page. Must not reuse `WITHHELD_DETAIL`, whose stated cause is false here. Prose is the
+   plan's.
+2. **The absent-timeline note on a trimmed card (§7).** A second constant beside
+   `NO_TIMELINE_EVENT`, naming `--deep`. Must not reuse `NO_TIMELINE_EVENT`, for the same
+   reason as (1). Prose is the plan's.
+3. **The e2e report (§11).** `cW38jmwdnZfbHVL4`, the whole report, run with `--no-deaths`.
+   The two pinned env vars are read, never repointed.
+4. **The dropdown mechanism (§3).** One boss `<select>`, one pull `<select>` per boss, shown
+   and hidden. Their arrangement on the page stays a question for a rendered fixture.
+
+A fifth question surfaced while settling these and is recorded in §4 and §6: the design priced
+a "no death cards" tier that no flag could reach. `--no-deaths` now reaches it, and the e2e is
+its first caller.
+
+**Still deliberately open, for the plan rather than for this design:** the exact prose of the
+two findings above, and the page arrangement in (4). Settling wording here would be writing the
+plan; settling layout here would be describing a page nobody has rendered.
 
 ## 15. What this rests on
 
