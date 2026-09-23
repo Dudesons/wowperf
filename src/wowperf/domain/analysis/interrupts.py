@@ -119,8 +119,8 @@ def _damage_after(cast: EnemyCast, damage_taken: tuple[DamageTakenEvent, ...]) -
     )
 
 
-def _interruptible(kicks: int) -> tuple[str, FindingFact]:
-    """What the run proved about whether this spell can be stopped at all.
+def _interruptible(kicks: int, shape: str) -> tuple[str, FindingFact]:
+    """What the stretch proved about whether this spell can be stopped at all.
 
     The log carries no interruptible flag -- `.claude/skills/wcl-api/SKILL.md`
     lists the verified fields for `dataType: Interrupts` and holds none -- so
@@ -135,28 +135,43 @@ def _interruptible(kicks: int) -> tuple[str, FindingFact]:
     Both facts rest on a kick count read straight from the log, so both are
     measured. The proven one says so; the unproven one leaves the tier unset,
     which is the panel's own default for measured and so says the same thing.
+
+    `shape` is the caller's word for the stretch the count covers, as it is in
+    `analyse_defensive_ceiling`: a keystone report says "run" throughout and a
+    raid page says "fight". Both branches take it, so no card can name the
+    same scope two ways depending on whether anybody kicked the spell.
     """
     if kicks:
-        claim = f"kicked {kicks} time{'s' if kicks != 1 else ''} this run"
+        claim = f"kicked {kicks} time{'s' if kicks != 1 else ''} this {shape}"
         return (
             f"interruptible: {claim}",
             FindingFact(label="Interruptible", value=claim,
                         confidence=Confidence.MEASURED),
         )
     return (
-        "never kicked this run; the log does not say whether it could be",
-        FindingFact(label="Interruptible", value="unknown; never kicked this run"),
+        f"never kicked this {shape}; the log does not say whether it could be",
+        FindingFact(label="Interruptible", value=f"unknown; never kicked this {shape}"),
     )
 
 
 def analyse_interrupts(
     casts: tuple[EnemyCast, ...],
     damage_taken: tuple[DamageTakenEvent, ...],
+    *,
+    shape: str,
 ) -> list[Finding]:
     """Rank the enemy casts that landed by the damage they actually did to this group.
 
     No curated must-kick list: what hurt this group is a fact, and what a
     spreadsheet nominates is an opinion.
+
+    `shape` is the noun every sentence here names the measured stretch with --
+    "run" from `service.py`, "fight" from `encounter_service.py` -- and it
+    reaches the summary and each ability card alike. The tab printed both words
+    before it existed, one card apart, and a reader could reasonably have taken
+    them for two different scopes. Required rather than defaulted, for the
+    reason `analyse_defensive_ceiling` gives: a caller who forgets should fail
+    loudly rather than ship raid words on a keystone page.
     """
     if not casts:
         return []
@@ -197,7 +212,7 @@ def analyse_interrupts(
                 if kicked
                 else (
                     *summary_evidence,
-                    "nothing was kicked this fight; the log does not say whether any of "
+                    f"nothing was kicked this {shape}; the log does not say whether any of "
                     "these could be",
                 )
             ),
@@ -223,7 +238,7 @@ def analyse_interrupts(
     for rank, (ability_id, damage) in enumerate(ranked[:MAX_ABILITIES_REPORTED]):
         if damage <= 0:
             break
-        interruptible, fact = _interruptible(kicks_by_ability[ability_id])
+        interruptible, fact = _interruptible(kicks_by_ability[ability_id], shape)
         findings.append(
             Finding(
                 id=f"interrupts.ability.{rank}",

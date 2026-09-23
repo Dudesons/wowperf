@@ -17,7 +17,13 @@ from wowperf.domain.comparison.raid_reference import (
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, Resurrection
+from wowperf.domain.events import (
+    CastEvent,
+    DamageTakenEvent,
+    Death,
+    EnemyCastRow,
+    Resurrection,
+)
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase, PhaseTransition
@@ -67,6 +73,25 @@ def test_a_fight_with_nothing_in_it_produces_nothing() -> None:
     findings = analyse_encounter(a_loaded_encounter(), DEFENSIVES, Consumables())
 
     assert findings == [], f"an empty fight has no evidence for: {[f.id for f in findings]}"
+
+
+def test_the_interrupt_findings_call_this_stretch_a_fight() -> None:
+    # The other caller of `analyse_interrupts`, which says "fight" where
+    # `service.py` says "run". A boss encounter is not a run, and every ability
+    # card under this summary takes its noun from the same argument, so the two
+    # can no longer name the same scope with two words one card apart.
+    loaded = a_loaded_encounter(
+        enemy_cast_rows=(
+            EnemyCastRow(source_id=1, source_instance=0, ability_id=900,
+                         ability_name="Ravenous Feast", timestamp_ms=10_000, is_start=True),
+            EnemyCastRow(source_id=1, source_instance=0, ability_id=900,
+                         ability_name="Ravenous Feast", timestamp_ms=12_000, is_start=False),
+        ),
+    )
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
+    summary = next(f for f in findings if f.id == "interrupts.summary")
+    assert any("nothing was kicked this fight" in line for line in summary.evidence)
+    assert not any("this run" in line for line in summary.evidence)
 
 
 def test_a_death_is_reported_and_located_against_the_fight() -> None:

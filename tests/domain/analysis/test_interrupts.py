@@ -9,6 +9,9 @@ SPELL = 1241214
 OTHER = 1238440
 THIRD = 1249001
 
+SHAPE = "run"
+"""Every fixture here models a Mythic+ run, the noun `service.py` passes in production."""
+
 
 def row(at: int, is_start: bool, instance: int = 0, ability: int = SPELL) -> EnemyCastRow:
     return EnemyCastRow(source_id=699, source_instance=instance, ability_id=ability,
@@ -136,7 +139,7 @@ def test_landed_casts_are_ranked_by_the_damage_that_followed() -> None:
         (),
     )
     findings = analyse_interrupts(
-        casts, (hit(2100, 50_000), hit(6100, 200_000, ability=OTHER))
+        casts, (hit(2100, 50_000), hit(6100, 200_000, ability=OTHER)), shape=SHAPE
     )
     ranked = [f for f in findings if f.id.startswith("interrupts.ability.")]
     # Thousands-separated, matching the death card's own convention for large amounts.
@@ -146,7 +149,7 @@ def test_landed_casts_are_ranked_by_the_damage_that_followed() -> None:
 def test_the_detail_formats_the_damage_with_thousands_separators() -> None:
     # One landed cast followed by one hit large enough to need a separator.
     casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
-    findings = analyse_interrupts(casts, (hit(2100, 1_234_567),))
+    findings = analyse_interrupts(casts, (hit(2100, 1_234_567),), shape=SHAPE)
     ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
     assert "1,234,567 unmitigated damage" in ability.detail
     assert "1234567" not in ability.detail
@@ -154,7 +157,7 @@ def test_the_detail_formats_the_damage_with_thousands_separators() -> None:
 
 def test_damage_outside_the_follow_window_is_not_attributed() -> None:
     casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
-    findings = analyse_interrupts(casts, (hit(99_000, 500_000),))
+    findings = analyse_interrupts(casts, (hit(99_000, 500_000),), shape=SHAPE)
     ranked = [f for f in findings if f.id.startswith("interrupts.ability.")]
     assert ranked == []
 
@@ -165,7 +168,7 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
          row(9500, False)),
         (kick(5500),),
     )
-    findings = analyse_interrupts(casts, ())
+    findings = analyse_interrupts(casts, (), shape=SHAPE)
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.confidence is Confidence.DERIVED
     assert summary.seconds_lost is None
@@ -183,12 +186,12 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
 
 
 def test_no_casts_produces_no_findings() -> None:
-    assert analyse_interrupts((), ()) == []
+    assert analyse_interrupts((), (), shape=SHAPE) == []
 
 
 def test_the_summary_title_pluralises_a_single_landed_cast_correctly() -> None:
     casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
-    findings = analyse_interrupts(casts, ())
+    findings = analyse_interrupts(casts, (), shape=SHAPE)
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.title == "1 cast landed; the log does not say whether any could be kicked"
 
@@ -201,7 +204,7 @@ def test_the_summary_title_pluralises_more_than_one_kick_correctly() -> None:
         (kick(1500), kick(5500)),
     )
     summary = next(
-        f for f in analyse_interrupts(casts, ()) if f.id == "interrupts.summary"
+        f for f in analyse_interrupts(casts, (), shape=SHAPE) if f.id == "interrupts.summary"
     )
     assert summary.title == "1 cast landed, 2 were kicked"
 
@@ -213,7 +216,7 @@ def test_a_fight_with_no_kicks_says_the_log_cannot_tell_whether_any_could_be() -
     casts = reconstruct_enemy_casts(
         (row(1000, True), row(2000, False), row(5000, True), row(6000, False)), ()
     )
-    findings = analyse_interrupts(casts, ())
+    findings = analyse_interrupts(casts, (), shape="fight")
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.title == "2 casts landed; the log does not say whether any could be kicked"
     assert "0 were kicked" not in summary.title
@@ -232,18 +235,36 @@ def test_a_fight_with_no_kicks_says_the_log_cannot_tell_whether_any_could_be() -
     assert summary.seconds_lost is None
 
 
+def test_the_zero_kick_disclosure_names_the_stretch_the_caller_named() -> None:
+    # The noun is the caller's, the way `analyse_defensive_ceiling` already takes
+    # `shape`: a keystone report says "run" throughout and a raid page says
+    # "fight". "expedition" is a noun this codebase never passes, so a regression
+    # that hard-coded either production word could not satisfy this by coincidence.
+    casts = reconstruct_enemy_casts(
+        (row(1000, True), row(2000, False), row(5000, True), row(6000, False)), ()
+    )
+    findings = analyse_interrupts(casts, (), shape="expedition")
+    summary = next(f for f in findings if f.id == "interrupts.summary")
+    assert (
+        "nothing was kicked this expedition; the log does not say whether any of these could be"
+        in summary.evidence
+    )
+    assert not any("this fight" in line for line in summary.evidence)
+    assert not any("this run" in line for line in summary.evidence)
+
+
 def test_the_summary_title_pluralises_zero_landed_casts_correctly() -> None:
     # `landed` reads 0 when every cast start is unresolved and nothing was kicked --
     # the third value `cast`/`casts` pluralises on, and the one the brief's own
     # Required Behaviour table lists alongside the singular and plural-kicks cases.
     casts = reconstruct_enemy_casts((row(1000, True),), ())
-    findings = analyse_interrupts(casts, ())
+    findings = analyse_interrupts(casts, (), shape=SHAPE)
     summary = next(f for f in findings if f.id == "interrupts.summary")
     assert summary.title == "0 casts landed; the log does not say whether any could be kicked"
 
 
 def a_landed_spell_and(
-    *extra: EnemyCastRow, kicks: tuple[InterruptEvent, ...] = ()
+    *extra: EnemyCastRow, kicks: tuple[InterruptEvent, ...] = (), shape: str = SHAPE
 ) -> list[Finding]:
     """One cast of SPELL that landed and hurt, plus whatever else a test needs.
 
@@ -251,7 +272,7 @@ def a_landed_spell_and(
     finding at all, so every test of that finding has to start from one.
     """
     casts = reconstruct_enemy_casts((row(1_000, True), row(3_000, False)) + extra, kicks)
-    return analyse_interrupts(casts, (hit(3_100, 5_000),))
+    return analyse_interrupts(casts, (hit(3_100, 5_000),), shape=shape)
 
 
 def test_a_spell_kicked_at_least_once_is_reported_interruptible() -> None:
@@ -269,6 +290,32 @@ def test_a_spell_never_kicked_is_reported_unknown_and_not_as_a_miss() -> None:
     ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
     assert "never kicked this run; the log does not say whether it could be" in ability.evidence
     assert not any("missed" in item for item in ability.evidence)
+
+
+def test_a_kicked_spells_interruptible_line_names_the_stretch_the_caller_named() -> None:
+    # The kick count spans everything the caller loaded -- the whole route on a
+    # keystone, one encounter on a raid boss -- so the noun beside it is the
+    # caller's, not this module's. Not a production noun, for the reason the
+    # zero-kick disclosure's own shape test gives.
+    findings = a_landed_spell_and(row(10_000, True), kicks=(kick(10_500),), shape="expedition")
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert "interruptible: kicked 1 time this expedition" in ability.evidence
+    fact = next(f for f in ability.facts if f.label == "Interruptible")
+    assert fact.value == "kicked 1 time this expedition"
+
+
+def test_an_unkicked_spells_interruptible_line_names_the_stretch_the_caller_named() -> None:
+    # The unproven branch says where nobody was seen kicking, so it names the
+    # same stretch the proven one does. A card mixing the two nouns would read
+    # as two scopes, which is the confusion this parameter exists to remove.
+    findings = a_landed_spell_and(shape="expedition")
+    ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
+    assert (
+        "never kicked this expedition; the log does not say whether it could be"
+        in ability.evidence
+    )
+    fact = next(f for f in ability.facts if f.label == "Interruptible")
+    assert fact.value == "unknown; never kicked this expedition"
 
 
 def test_the_interruptible_claim_is_measured_not_derived() -> None:
@@ -309,7 +356,7 @@ def test_an_unkicked_ability_finding_names_the_ability_it_is_about() -> None:
     # An unkicked cast that completed and was followed by damage is what makes
     # an `interrupts.ability.` finding at all.
     casts = reconstruct_enemy_casts((row(1_000, True), row(3_000, False)), ())
-    findings = analyse_interrupts(casts, (hit(3_100, 5_000),))
+    findings = analyse_interrupts(casts, (hit(3_100, 5_000),), shape=SHAPE)
     ability = next(f for f in findings if f.id.startswith("interrupts.ability."))
     assert ability.ability_id == SPELL
     assert ability.ability_name == "Searing Wave"
