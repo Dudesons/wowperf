@@ -177,6 +177,9 @@ def test_the_summary_counts_kicked_missed_and_excluded_separately() -> None:
     assert "2 landed" in joined
     assert "1 kicked" in joined
     assert "0 excluded" in joined or "excluded" in joined
+    # The disclosure belongs only to fights that kicked nothing: here a kick landed,
+    # so the count means what it says and the disclosure would be noise.
+    assert not any("does not say whether" in line for line in summary.evidence)
 
 
 def test_no_casts_produces_no_findings() -> None:
@@ -187,7 +190,26 @@ def test_the_summary_title_pluralises_a_single_landed_cast_correctly() -> None:
     casts = reconstruct_enemy_casts((row(1000, True), row(2000, False)), ())
     findings = analyse_interrupts(casts, ())
     summary = next(f for f in findings if f.id == "interrupts.summary")
-    assert summary.title == "1 cast landed, 0 were kicked"
+    assert summary.title == "1 cast landed; the log does not say whether any could be kicked"
+
+
+def test_a_fight_with_no_kicks_says_the_log_cannot_tell_whether_any_could_be() -> None:
+    # Two casts landed and nobody kicked anything: the ordinary shape of a raid boss
+    # fight, where almost every cast is uninterruptible. A bare "0 were kicked" would
+    # read as an accusation, and the log carries no flag that could support one.
+    casts = reconstruct_enemy_casts(
+        (row(1000, True), row(2000, False), row(5000, True), row(6000, False)), ()
+    )
+    findings = analyse_interrupts(casts, ())
+    summary = next(f for f in findings if f.id == "interrupts.summary")
+    assert summary.title == "2 casts landed; the log does not say whether any could be kicked"
+    assert "0 were kicked" not in summary.title
+    assert (
+        "nothing was kicked this fight; the log does not say whether any of these could be"
+        in summary.evidence
+    )
+    assert summary.confidence is Confidence.DERIVED
+    assert summary.seconds_lost is None
 
 
 def a_landed_spell_and(

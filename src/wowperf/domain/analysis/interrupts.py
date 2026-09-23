@@ -165,12 +165,24 @@ def analyse_interrupts(
     kicked = [cast for cast in casts if cast.was_kicked]
     excluded = [cast for cast in casts if not cast.outcome_known]
 
+    # A fight where nobody kicked anything proves nothing about whether anything
+    # could have been kicked: the log carries no interruptible flag. Reporting a
+    # bare zero leaves the reader to supply the missing half, which is the same
+    # mistake `_interruptible` exists to prevent one level down.
+    landed_phrase = f"{len(landed)} cast{'s' if len(landed) != 1 else ''} landed"
+    summary_evidence = (
+        f"{len(landed)} landed",
+        f"{len(kicked)} kicked",
+        f"{len(excluded)} excluded: caster died, was crowd-controlled, or cancelled",
+    )
+
     findings = [
         Finding(
             id="interrupts.summary",
             title=(
-                f"{len(landed)} cast{'s' if len(landed) != 1 else ''} landed, "
-                f"{len(kicked)} {'was' if len(kicked) == 1 else 'were'} kicked"
+                f"{landed_phrase}, {len(kicked)} {'was' if len(kicked) == 1 else 'were'} kicked"
+                if kicked
+                else f"{landed_phrase}; the log does not say whether any could be kicked"
             ),
             detail=(
                 "Outcomes are reconstructed: the log records no interruptible flag. Casts "
@@ -180,9 +192,13 @@ def analyse_interrupts(
             confidence=Confidence.DERIVED,
             seconds_lost=None,
             evidence=(
-                f"{len(landed)} landed",
-                f"{len(kicked)} kicked",
-                f"{len(excluded)} excluded: caster died, was crowd-controlled, or cancelled",
+                summary_evidence
+                if kicked
+                else (
+                    *summary_evidence,
+                    "nothing was kicked this fight; the log does not say whether any of "
+                    "these could be",
+                )
             ),
         )
     ]
