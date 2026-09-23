@@ -105,7 +105,7 @@ def analyse_encounter(
         f"in {encounter.duration_seconds:.0f}s of {encounter.boss_name}",
         cost_detail_suffix="",
     )
-    findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
+    findings += analyse_interrupts(enemy_casts, loaded.damage_taken, shape="fight")
     findings += analyse_defensive_ceiling(
         encounter.players, encounter.duration_seconds, loaded.casts, defensives,
         loaded.deaths, combat_end_ms=encounter.end_ms,

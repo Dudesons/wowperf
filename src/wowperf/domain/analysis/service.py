@@ -56,7 +56,7 @@ def analyse(
         lambda death: pull_offset(loaded.run.pulls, death),
         f"across {len(loaded.run.pulls)} pulls",
     )
-    findings += analyse_interrupts(enemy_casts, loaded.damage_taken)
+    findings += analyse_interrupts(enemy_casts, loaded.damage_taken, shape="run")
     findings += analyse_trash(loaded.run, loaded.enemy_deaths)
     findings += analyse_players(
         loaded.run, loaded.casts, loaded.deaths, loaded.interrupts, loaded.damage_taken,

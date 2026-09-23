@@ -134,6 +134,18 @@ def test_every_analyser_contributes() -> None:
     } <= ids
 
 
+def test_the_interrupt_findings_call_this_stretch_a_run() -> None:
+    # `analyse_interrupts` takes its noun from the caller, and this is the caller
+    # that says "run": a keystone report uses that word throughout, beside the
+    # defensive ceiling's withheld notice, which takes the same argument. The
+    # fixture's one enemy cast landed unkicked, which is what produces the
+    # disclosure the noun sits in.
+    findings = analyse(a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns())
+    summary = next(f for f in findings if f.id == "interrupts.summary")
+    assert any("nothing was kicked this run" in line for line in summary.evidence)
+    assert not any("this fight" in line for line in summary.evidence)
+
+
 def test_an_empty_run_analyses_without_raising() -> None:
     loaded = a_loaded_run()
     bare = LoadedRun(run=loaded.run)
