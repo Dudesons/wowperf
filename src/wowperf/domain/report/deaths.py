@@ -118,10 +118,19 @@ things, and a reader who takes this one for that concludes the pull was quiet.
 """
 
 NO_CARDS_ASKED = (
-    "No death card was built for this pull, because the run asked for none. This is not a "
-    "claim that nobody died: any death finding below was measured without a card."
+    "No death card was built for this pull, because the run asked for none with "
+    "--no-deaths. This is not a claim that nobody died: any death finding below was "
+    "measured without a card."
 )
 """Why a Deaths tab is empty, when the reason is us rather than the log.
+
+Names the flag, as `TRIMMED_CARD_NOTE` above already names `--deep` from this
+same shared module. The flag it names is the one to drop rather than the one to
+add, because this absence was asked for rather than declined: `--no-deaths` is
+the only route to this tier, so a reader who meets this sentence typed that
+flag or inherited a command line that did. A reader who opens the Deaths tab
+and reads no further is then told what emptied it, without having to find the
+Provenance line that says the same thing about the whole page.
 
 "No deaths." is a reading of the log, and it is the right sentence wherever the
 log is what was read. At this tier it would be a lie: the tab is empty because
