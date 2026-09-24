@@ -6,6 +6,7 @@ import re
 from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON_HOST
+from tests.adapters.render.test_raid_html_invariants import a_minimal_raid_report
 from tests.domain.progression_fixtures import a_loaded_attempt
 from tests.domain.report.test_night_build import (
     BOSS_NAMES,
@@ -17,7 +18,7 @@ from tests.domain.report.test_night_build import (
     ROSTER,
     a_night,
 )
-from wowperf.adapters.render.html import render_night
+from wowperf.adapters.render.html import render_night, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
@@ -25,7 +26,7 @@ from wowperf.domain.events import CastEvent, HealthSample
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.night import LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression
-from wowperf.domain.report.deaths import TRIMMED_CARD_NOTE
+from wowperf.domain.report.deaths import NO_CARDS_ASKED, TRIMMED_CARD_NOTE
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport
 from wowperf.domain.season import DefensiveAbility, Defensives
@@ -267,7 +268,10 @@ scoped is the id rules' question, not this one's."""
 
 
 def a_night_report(
-    loaded: LoadedNight | None = None, *, deep_every_pull: bool = False
+    loaded: LoadedNight | None = None,
+    *,
+    deep_every_pull: bool = False,
+    death_cards: bool = True,
 ) -> NightReport:
     night = a_loaded_night() if loaded is None else loaded
     every = frozenset(
@@ -283,7 +287,7 @@ def a_night_report(
         NO_CONSUMABLES,
         NO_ROLES,
         deep_fights=every if deep_every_pull else frozenset(),
-        death_cards=True,
+        death_cards=death_cards,
     )
 
 
@@ -300,6 +304,16 @@ def a_deep_night_page_with_icons() -> str:
     below would pass over it while never meeting an address.
     """
     return render_night(a_night_report(deep_every_pull=True), CdnIcons(ICON_FILES))
+
+
+def a_night_page_with_no_cards() -> str:
+    """The third tier, which no other fixture here draws.
+
+    `--no-deaths` is the only tier whose Deaths tab is empty on a pull that may
+    well have had deaths, so it is the only one where the tab's own empty-state
+    sentence can be false.
+    """
+    return render_night(a_night_report(death_cards=False))
 
 
 def test_the_fixture_draws_more_than_one_pull_and_more_than_one_boss() -> None:
@@ -622,5 +636,130 @@ def test_a_boss_whose_every_pull_failed_still_gets_a_control_and_says_so() -> No
     assert len(SELECT_TAG.findall(html)) == 1 + len(report.bosses)
     offered = {int(index): body.count("<option") for index, body in PULL_CONTROL.findall(html)}
     assert offered == {0: 2, 1: 1}
+    # Guarded like every other loop here: an empty `withheld` would leave the
+    # lines below asserting over nothing, on the one fixture whose whole point
+    # is that two pulls failed and the page has to say so.
+    assert report.provenance.withheld
     for line in report.provenance.withheld:
         assert line in html
+
+
+BOSS_OPTION = re.compile(r'<select id="night-boss"[^>]*>(.*?)</select>', re.DOTALL)
+OPTION_VALUE = re.compile(r'<option value="([^"]+)"')
+
+
+def test_each_boss_option_names_a_pull_control_that_exists() -> None:
+    """The boss dropdown's other half: what its values are matched against.
+
+    `night.html.j2` writes the option's value and the control's `data-night-for`
+    at two separate sites, from two separate `loop.index0` reads, and the script
+    compares them by string equality. Swapping either for `loop.index` leaves
+    every id unique, every count right and every fragment intact -- and every
+    boss the reader picks showing nothing at all.
+    """
+    html = a_night_page()
+
+    inside = BOSS_OPTION.search(html)
+    assert inside is not None, "the page drew no boss control"
+    chosen = OPTION_VALUE.findall(inside.group(1))
+    controls = re.findall(r'data-night-for="([^"]+)"', html)
+
+    assert len(chosen) == len(PULLS_PER_BOSS)
+    assert chosen == controls
+
+
+def test_each_pull_option_names_a_pull_section_that_exists() -> None:
+    """The pull dropdowns' other half, per boss and in order.
+
+    An option's value and the section's id are written at two separate sites
+    from one shared prefix, with the literal `pull` appended at each. Dropping
+    that literal from either breaks every pull dropdown on the page while
+    leaving all the id, count, fragment and script rules green -- there is no
+    duplicate, nothing miscounted and no link broken, just a `getElementById`
+    that finds nothing.
+
+    Per boss rather than over the page, so a control offering the right number
+    of the wrong boss's pulls is a failure too.
+    """
+    report = a_night_report()
+    html = render_night(report)
+
+    drawn = re.findall(r'<section class="pull"[^>]*\sid="([^"]+)"', html)
+    assert len(drawn) == report.total_pulls
+
+    offered: list[str] = []
+    for index, body in PULL_CONTROL.findall(html):
+        values = OPTION_VALUE.findall(body)
+        assert len(values) == PULLS_PER_BOSS[int(index)], index
+        offered.extend(values)
+
+    # Compared as a list: the sections are drawn in the same boss-then-pull
+    # order the controls are, so an option routed to another boss's pull is a
+    # failure even though both strings are on the page.
+    assert offered == drawn
+
+
+def test_every_pull_names_its_own_fight_and_the_tier_it_was_drawn_at() -> None:
+    """Which pull a reader is looking at, and how deep it was read.
+
+    `night_model.py` argues the tier is what stops a reader comparing a trimmed
+    pull with a deep one as though the difference between them were the raid's
+    rather than the run's. Deleting the whole sub-line would otherwise fail
+    nothing at all.
+
+    Both tiers in one test, from one report each, so a page that printed a
+    constant instead of each pull's own tier fails on the mixed expectation.
+    """
+    for deep in (False, True):
+        report = a_night_report(deep_every_pull=deep)
+        html = render_night(report)
+        blocks = pull_blocks(html)
+        assert len(blocks) == report.total_pulls
+
+        pulls = [pull for boss in report.bosses for pull in boss.pulls]
+        for block, pull in zip(blocks, pulls, strict=True):
+            # Compared escaped: the fixture's boss names carry an apostrophe,
+            # which Jinja's autoescape writes as `&#39;`, so only the escaped
+            # form is ever on the page.
+            heading = block[block.index("<h2>"):block.index("</p>")]
+            assert str(escape(pull.report.header.boss)) in heading
+            assert str(escape(pull.report.header.difficulty)) in heading
+            assert str(escape(pull.report.header.outcome)) in heading
+            assert f"fight {pull.report.provenance.fight_id}" in heading
+            assert f"death cards: {pull.tier}" in heading
+            assert pull.tier == ("deep" if deep else "trimmed")
+
+
+def test_a_pull_drawn_with_no_cards_says_so_rather_than_claiming_no_deaths() -> None:
+    """"No deaths." is a reading of the log. At this tier it would be a lie.
+
+    A pull built with cards off has an empty `deaths` tuple whether or not
+    anybody died, and the death-cost ledger drawn a few lines below it on the
+    same tab may be listing what those very deaths cost -- so the page would
+    contradict itself on one screen. This is the same family as
+    `TRIMMED_CARD_NOTE` and `WITHHELD_DETAIL`: a sentence blaming the log for
+    something the run decided.
+    """
+    report = a_night_report(death_cards=False)
+    html = render_night(report)
+
+    assert all(pull.tier == "none" for boss in report.bosses for pull in boss.pulls)
+    assert all(
+        pull.report.deaths == () for boss in report.bosses for pull in boss.pulls
+    )
+    assert "No deaths." not in html
+    assert html.count(str(escape(NO_CARDS_ASKED))) == report.total_pulls
+
+
+def test_the_raid_page_still_says_no_deaths_when_the_log_reported_none() -> None:
+    """The other half: the sentence is right where it was right, and still drawn.
+
+    `deaths_note` defaults to empty, so a raid page -- and a night pull built
+    with cards on that simply had no death -- keeps the reading of the log it
+    always had. Without this, emptying the branch entirely would pass the rule
+    above.
+    """
+    html = render_raid(a_minimal_raid_report())
+
+    assert "No deaths." in html
+    assert NO_CARDS_ASKED not in html

@@ -117,6 +117,24 @@ run declined to build it. They look the same on the page and mean opposite
 things, and a reader who takes this one for that concludes the pull was quiet.
 """
 
+NO_CARDS_ASKED = (
+    "No death card was built for this pull, because the run asked for none. This is not a "
+    "claim that nobody died: any death finding below was measured without a card."
+)
+"""Why a Deaths tab is empty, when the reason is us rather than the log.
+
+"No deaths." is a reading of the log, and it is the right sentence wherever the
+log is what was read. At this tier it would be a lie: the tab is empty because
+nobody asked for a card, and the death-cost ledger a few lines below it on the
+same tab may be listing what those very deaths cost -- so the page would
+contradict itself on one screen.
+
+The same family as `TRIMMED_CARD_NOTE` above, one level out: that one says the
+run declined to build a card's insides, this one says it declined to build the
+card. Both deny the reading a reader would otherwise take, because the two
+sentences sit in the same place and mean opposite things.
+"""
+
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
 
 NO_CONSUMABLE_DATA = (

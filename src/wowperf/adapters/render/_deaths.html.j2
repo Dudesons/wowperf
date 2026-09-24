@@ -51,7 +51,11 @@
 
 <h2 id="{{ scope }}deaths">Deaths</h2>
 {% if not report.deaths %}
+{% if report.deaths_note %}
+<p class="sub">{{ report.deaths_note }}</p>
+{% else %}
 <p class="sub">No deaths.</p>
+{% endif %}
 {% endif %}
 {% for death in report.deaths %}
 <div class="card">
