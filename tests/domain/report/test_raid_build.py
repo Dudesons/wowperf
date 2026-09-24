@@ -537,6 +537,23 @@ def test_the_fights_deaths_each_get_a_recap_card() -> None:
     assert [card.player for card in report.deaths] == ["Stonewake"]
 
 
+def test_death_cards_false_skips_building_them_entirely() -> None:
+    """The tier with no cards at all: `deaths` comes back empty, not built then discarded."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    without_cards = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES, death_cards=False,
+    )
+    default = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES,
+    )
+
+    assert without_cards.deaths == ()
+    assert default.deaths != ()
+
+
 def test_the_subjects_card_opens_the_players_tab() -> None:
     """`--player` names one raider, and the tab that opens has to be theirs."""
     loaded, _ = a_raid_fixture()
