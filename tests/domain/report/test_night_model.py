@@ -8,6 +8,7 @@ from wowperf.domain.report.model import Badge, LedgerRow, Provenance, Section, S
 from wowperf.domain.report.night_model import (
     BossSection,
     NightHeader,
+    NightProvenance,
     NightReport,
     PullSection,
     all_night_ledger_rows,
@@ -70,7 +71,10 @@ def a_pull(fight_id: int, tier: str = "deep") -> PullSection:
 
 
 def a_night_report(**changes: object) -> NightReport:
-    report = NightReport(header=NightHeader(report_code="abc123"))
+    report = NightReport(
+        header=NightHeader(report_code="abc123"),
+        provenance=NightProvenance(fetched_at="2026-09-23 20:00"),
+    )
     return report.model_copy(update=changes)
 
 
@@ -120,7 +124,9 @@ def test_every_night_view_model_type_is_frozen() -> None:
     # `model_construct` skips required-field validation, so one call covers every
     # type regardless of its fields; a frozen model rejects the assignment before
     # it ever checks whether the field exists or the value is well-typed.
-    model_types: list[type[BaseModel]] = [NightHeader, PullSection, BossSection, NightReport]
+    model_types: list[type[BaseModel]] = [
+        NightHeader, PullSection, BossSection, NightProvenance, NightReport
+    ]
     for model_type in model_types:
         instance = model_type.model_construct()
         with pytest.raises(ValidationError):

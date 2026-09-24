@@ -50,6 +50,29 @@ class BossSection(Frozen):
     pulls: tuple[PullSection, ...] = ()
 
 
+class NightProvenance(Frozen):
+    """When the night was read, and what it could not show.
+
+    `Provenance` is deliberately not reused, for the reason
+    `ProgressionProvenance` already gives: it carries a `fight_id`, and a night
+    is not one fight, and it carries `references`, the external candidates a
+    comparison weighed, which this command never fetches at all. Each pull
+    keeps its own `Provenance` inside its `RaidReport`, where a fight id is a
+    fact rather than a guess.
+
+    `fetched_at` is stated here rather than read off a pull, because a night
+    whose every pull failed to load still has to say when it was read.
+
+    `withheld` is prose built from `NightReport.failed_pulls` and from nothing
+    else. Two independently gathered representations of the same fact drift,
+    and then the page names one set of pulls in a list and another in a
+    paragraph.
+    """
+
+    fetched_at: str
+    withheld: tuple[str, ...] = ()
+
+
 class NightReport(Frozen):
     """Every boss and every pull in one report, as the night page renders it.
 
@@ -74,6 +97,7 @@ class NightReport(Frozen):
     total_pulls: int = 0
     failed_pulls: tuple[FailedPull, ...] = ()
     observations: tuple[LedgerRow, ...] = ()
+    provenance: NightProvenance
 
 
 def all_night_ledger_rows(report: NightReport) -> tuple[LedgerRow, ...]:
