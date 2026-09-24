@@ -11,8 +11,6 @@ from tests.domain.report.test_night_build import (
     BOSS_NAMES,
     FETCHED,
     NO_CONSUMABLES,
-    NO_DEFENSIVES,
-    NO_FINDINGS,
     NO_ROLES,
     OWNER,
     REPORT_CODE,
@@ -21,12 +19,16 @@ from tests.domain.report.test_night_build import (
 )
 from wowperf.adapters.render.html import render_night
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
+from wowperf.domain.events import CastEvent, HealthSample
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.night import LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression
 from wowperf.domain.report.deaths import TRIMMED_CARD_NOTE
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport
+from wowperf.domain.season import DefensiveAbility, Defensives
 
 PULLS_PER_BOSS = (2, 3)
 """Two bosses, and deliberately not the same number of pulls under each.
@@ -55,7 +57,46 @@ the first pull -- or at the first boss -- would resolve one of these and draw
 the rest as bare names. Five ids for five pulls is what makes that visible.
 """
 
-ICON_FILES = {one: f"spell-{one}.jpg" for one in ABILITY_IDS}
+ROW_ABILITY_IDS = (700_101, 700_102, 700_103, 700_104, 700_105)
+"""One ability per pull, named by that pull's finding rather than by its death.
+
+`_icon_addresses` walks ledger rows as well as death cards, and those are two
+different arms of it: a fixture whose icons all arrive through a death card's
+timeline leaves the row arm untested, and dropping it entirely then fails
+nothing. Measured -- that is exactly what survived before these existed. One id
+per pull for the same reason `ABILITY_IDS` has one: a walk that stopped at the
+first pull would resolve one of them and leave four abilities drawn as bare
+names.
+"""
+
+ICON_FILES = {
+    one: f"spell-{one}.jpg" for one in (*ABILITY_IDS, *ROW_ABILITY_IDS)
+}
+"""Every ability the fixture puts on the page, resolvable.
+
+Both arms of the walk: the death card's timeline names one per pull, and
+that pull's own finding names another. An `ICON_FILES` covering only the
+first would leave the row arm resolving nothing and drawing nothing, which
+is indistinguishable from a walk that never reached it.
+"""
+
+SHIELD_ID = 11426
+SHIELD_NAME = "Ice Barrier"
+"""One defensive the dying player pressed inside the run-up, on every pull.
+
+A press with an aura band over it is the only thing that puts a cover
+rectangle on a health curve, and the cover's element id is built from the
+same `marker_id` as the marker beside it -- the same string on every pull.
+Measured: with no press, unscoping the cover id fails nothing.
+"""
+
+A_DEFENSIVE = Defensives(
+    entries=(
+        ("Mage/Arcane", (DefensiveAbility(
+            ability_id=SHIELD_ID, name=SHIELD_NAME, cooldown_seconds=25.0,
+        ),)),
+    )
+)
 
 TRIMMED_ON_THE_PAGE = str(escape(TRIMMED_CARD_NOTE))
 """The trimmed-card note as the page spells it, not as Python holds it.
@@ -74,6 +115,13 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
     satisfy every pull at once. Built here rather than by widening that fixture,
     because the twelve builder tests that use it assert on grouping and tiers
     and would all have to change to buy nothing.
+
+    Each pull also carries two health readings before its death, which is what
+    makes a deep card draw a health curve. The curve is the only thing that
+    puts a marker and a cover on the page -- both keyed on the same
+    `marker_id` that counts from zero inside each card, and so the same string
+    on every pull. Measured: without the readings, unscoping either of those
+    two ids fails nothing at all.
     """
     loaded: list[LoadedProgression] = []
     drawn = 0
@@ -82,15 +130,59 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
         encounter_id = 3490 + index
         pulls = []
         for which in range(count):
+            attempt = a_loaded_attempt(
+                (index + 1) * 10 + which,
+                players=ROSTER,
+                deaths_after_ms=(10_000,),
+                damage_after_ms=((9_000, ABILITY_IDS[drawn], None),),
+                boss_name=boss_name,
+                encounter_id=encounter_id,
+                owner_name=OWNER,
+            )
+            start_ms = attempt.encounter.start_ms
             pulls.append(
-                a_loaded_attempt(
-                    (index + 1) * 10 + which,
-                    players=ROSTER,
-                    deaths_after_ms=(10_000,),
-                    damage_after_ms=((9_000, ABILITY_IDS[drawn], None),),
-                    boss_name=boss_name,
-                    encounter_id=encounter_id,
-                    owner_name=OWNER,
+                attempt.model_copy(
+                    update={
+                        "health_samples": tuple(
+                            HealthSample(
+                                actor_id=ROSTER[0].actor_id,
+                                timestamp_ms=start_ms + offset,
+                                hit_points=points,
+                                max_hit_points=1_000_000,
+                            )
+                            # Two readings, at different health, so the curve is a
+                            # line rather than the single point `build_health_curve`
+                            # refuses to draw.
+                            for offset, points in ((2_000, 1_000_000), (8_000, 400_000))
+                        ),
+                        "casts": (
+                            CastEvent(
+                                actor_id=ROSTER[0].actor_id,
+                                ability_id=SHIELD_ID,
+                                ability_name=SHIELD_NAME,
+                                timestamp_ms=start_ms + 5_000,
+                            ),
+                        ),
+                        "auras": (
+                            PlayerAuras(
+                                actor_id=ROSTER[0].actor_id,
+                                on_self=(
+                                    Aura(
+                                        ability_id=SHIELD_ID,
+                                        name=SHIELD_NAME,
+                                        total_uptime_ms=4_000,
+                                        uses=1,
+                                        bands=(
+                                            AuraBand(
+                                                start_ms=start_ms + 5_000,
+                                                end_ms=start_ms + 9_000,
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    }
                 )
             )
             drawn += 1
@@ -115,6 +207,65 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
     )
 
 
+REPEATED_FINDING_ID = "night.pull.repeated"
+"""One finding id, handed to every pull, because that is the shape a real night has.
+
+`night` runs the same analysers over every pull, so the id a finding carries on
+pull one is the id it carries on pull five -- `all_night_ledger_rows` returns
+duplicates by design. That is what makes the prefix necessary, and a fixture
+that handed each pull no finding at all, or a differently named one, would draw
+no colliding card and leave the whole of `_macros.html.j2`'s scoping untested.
+Measured: with `NO_FINDINGS`, unscoping the finding card id fails nothing.
+
+The id is one no placement family claims, so it lands in the Summary's
+catch-all and is drawn on every pull rather than only on the pulls whose tab
+its family belongs to.
+"""
+
+
+def a_nights_findings(night: LoadedNight) -> dict[int, tuple[Finding, ...]]:
+    """The same finding on every pull, under the one id every pull would mint.
+
+    The id repeats and the ability does not, which is the honest shape: an
+    analyser's id is the same on every pull, and what it found is not.
+    """
+    fights = [
+        attempt.encounter.fight_id
+        for boss in night.loaded
+        for attempt in boss.attempts_with_events
+    ]
+    findings: dict[int, tuple[Finding, ...]] = {}
+    for index, fight_id in enumerate(fights):
+        name = f"Rite {index}"
+        findings[fight_id] = (
+            Finding(
+                id=REPEATED_FINDING_ID,
+                # The ability's name appears exactly once in the title, which is
+                # what `_split_title` needs before it will put the id on the row
+                # and let the card draw an icon beside its heading.
+                title=f"{name} is what this pull earned a word about",
+                ability_id=ROW_ABILITY_IDS[index],
+                ability_name=name,
+                detail="Drawn on every pull, under the id every pull mints.",
+                confidence=Confidence.MEASURED,
+                # A loss, so the Summary draws a pointer at the card as well as
+                # the card itself. The pointer's href is the other place a
+                # finding id becomes a fragment, and a finding with no loss
+                # renders no pointer for it to be wrong in.
+                seconds_lost=12.0,
+            ),
+        )
+    return findings
+
+
+FINDING_CARD = re.compile(r'<div class="card" id="[^"]*finding-' + REPEATED_FINDING_ID + '"')
+POINTER_AT_IT = re.compile(r'<a class="pointer" href="#[^"]*finding-' + REPEATED_FINDING_ID + '"')
+"""The two places one finding id becomes a string in the document: the card's
+own element id, and the Summary pointer's fragment link at it. Matched with the
+prefix left open, so each says only that the shape was drawn -- whether it was
+scoped is the id rules' question, not this one's."""
+
+
 def a_night_report(
     loaded: LoadedNight | None = None, *, deep_every_pull: bool = False
 ) -> NightReport:
@@ -126,9 +277,9 @@ def a_night_report(
     )
     return build_night_report(
         night,
-        NO_FINDINGS,
+        a_nights_findings(night),
         FETCHED,
-        NO_DEFENSIVES,
+        A_DEFENSIVE,
         NO_CONSUMABLES,
         NO_ROLES,
         deep_fights=every if deep_every_pull else frozenset(),
@@ -167,6 +318,24 @@ def test_the_fixture_draws_more_than_one_pull_and_more_than_one_boss() -> None:
     html = a_night_page()
     assert html.count('<section class="panel"') == PANELS_PER_PULL * report.total_pulls
     assert TRIMMED_ON_THE_PAGE in html
+
+    # The shapes the id rules below are about, each drawn once per pull and
+    # each carrying a string that repeats across pulls: a finding card, the
+    # pointer at it, a player slug, and a death card. A page missing any of
+    # them would leave that scoping site untested while the rules stayed green.
+    assert len(re.findall(FINDING_CARD, html)) == report.total_pulls
+    assert len(re.findall(POINTER_AT_IT, html)) == report.total_pulls
+    assert html.count('class="player-head"') == len(ROSTER) * report.total_pulls
+    assert html.count('class="death-when"') == report.total_pulls
+
+    # And the health curve, which is the only thing that draws a marker or a
+    # cover at all: a trimmed card has neither, so the deep page is where those
+    # two scoping sites are exercised. Read off the markup's own class names,
+    # not off the strings "-mark" and "-cover", which `report.js.j2` also
+    # contains -- a guard matching those would pass on the script alone.
+    deep = a_deep_night_page_with_icons()
+    assert deep.count('class="hp-marker"') >= report.total_pulls
+    assert deep.count('class="hp-cover"') >= report.total_pulls
 
 
 def test_the_page_executes_only_its_own_script() -> None:
@@ -259,6 +428,19 @@ def test_every_pull_is_its_own_tab_group() -> None:
     assert len(groups) == PANELS_PER_PULL * report.total_pulls
     assert len(set(groups)) == report.total_pulls
 
+    # Every tab bar on the page, not only the seven-panel one. Each pull draws
+    # two -- its own sections, and the per-player sub-tabs inside its Players
+    # panel -- and a bar whose group name lost its prefix names a group whose
+    # panels are still prefixed, so the script finds no button to highlight and
+    # the sub-tabs silently stop marking which player is open. No id collides,
+    # so the rule above cannot see it. Read off the `<nav>` itself rather than
+    # by a bare attribute search, which `report.js.j2` would also answer: the
+    # script builds that same attribute selector as a string, and a rule
+    # counting those would be counting the script.
+    bars = re.findall(r'<nav class="tabs[^"]*" data-tab-group="([^"]+)"', html)
+    assert len(bars) == 2 * report.total_pulls
+    assert len(set(bars)) == len(bars)
+
 
 def test_no_element_id_appears_twice_across_five_pulls() -> None:
     """Finding ids repeat across pulls by design, and DOM ids may not.
@@ -267,13 +449,18 @@ def test_no_element_id_appears_twice_across_five_pulls() -> None:
     two pulls' reports are the same strings. That is harmless for a map keyed
     by ability id and fatal for an `id=` attribute: a duplicate is invalid HTML
     and sends the page's own links to whichever copy the browser reaches first.
-    """
-    html = a_night_page()
 
-    element_ids = re.findall(r'\sid="([^"]+)"', html)
-    assert element_ids, "a page with no element ids would pass this vacuously"
-    duplicates = {value for value in element_ids if element_ids.count(value) > 1}
-    assert duplicates == set()
+    Both tiers, because they draw different ids. A trimmed card has no run-up
+    timeline and no health curve, so the marker, cover and timeline-row ids come
+    to the page only at the deep tier -- and every one of those is built from a
+    `marker_id` that counts from zero inside each card, which is to say it is
+    the same string on every pull.
+    """
+    for tier, html in (("trimmed", a_night_page()), ("deep", a_deep_night_page_with_icons())):
+        element_ids = re.findall(r'\sid="([^"]+)"', html)
+        assert element_ids, "a page with no element ids would pass this vacuously"
+        duplicates = {value for value in element_ids if element_ids.count(value) > 1}
+        assert duplicates == set(), tier
 
 
 def test_every_fragment_link_lands_on_an_anchor_that_exists() -> None:
@@ -290,6 +477,54 @@ def test_every_fragment_link_lands_on_an_anchor_that_exists() -> None:
     present = set(re.findall(r'\sid="([^"]+)"', html))
     for target in targets:
         assert target in present, target
+
+
+def pull_blocks(html: str) -> list[str]:
+    """The page cut at its pull boundaries: one string per pull, in page order.
+
+    Cut on the opening tags rather than matched as a balanced element, because
+    a pull holds seven `<section>` panels of its own and every one of them
+    closes at column zero exactly as the pull does.
+    """
+    starts = [one.start() for one in re.finditer(r'<section class="pull"', html)]
+    assert starts, "the page drew no pull at all"
+    ends = [*starts[1:], html.index('<section class="night-notes">')]
+    return [html[start:end] for start, end in zip(starts, ends, strict=True)]
+
+
+def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
+    """Resolving somewhere is not the same as resolving to the right pull.
+
+    Every pull carries a Provenance heading, and so does the night itself, so a
+    badge that lost its prefix still points at an anchor that exists -- the
+    rule above passes over it -- while sending a reader from pull five's death
+    card to a provenance block describing something else. The same goes for a
+    Summary pointer, which is a finding id turned into a fragment and would
+    open pull one's card from pull five's tab.
+
+    The deep page, because it draws the badges only a health curve and a
+    timeline put on a card.
+
+    `#icon-<id>` is the one fragment that legitimately leaves the pull: those
+    are the shared SVG symbols in the page's own icon table, defined once for
+    every pull to draw from, which is the whole point of a symbol.
+    """
+    blocks = pull_blocks(a_deep_night_page_with_icons())
+    assert len(blocks) == sum(PULLS_PER_BOSS)
+
+    checked = 0
+    for index, block in enumerate(blocks):
+        inside = set(re.findall(r'\sid="([^"]+)"', block))
+        targets = [
+            href[1:]
+            for href in re.findall(r'href="([^"]*)"', block)
+            if href.startswith("#") and not href.startswith("#icon-")
+        ]
+        assert targets, f"pull {index} drew no fragment link, so it proves nothing"
+        checked += len(targets)
+        for target in targets:
+            assert target in inside, f"pull {index} links out to {target}"
+    assert checked
 
 
 def test_a_trimmed_card_says_it_was_trimmed_instead_of_claiming_no_events() -> None:
@@ -310,14 +545,20 @@ def test_a_trimmed_card_says_it_was_trimmed_instead_of_claiming_no_events() -> N
 def test_every_pull_contributes_its_own_ability_to_the_icon_map() -> None:
     """The address map is gathered over every pull, not over the first one.
 
-    Each pull is hit by its own ability, so a walk that stopped at the first
-    pull, or at the first boss, resolves one or two of these and draws the rest
-    as bare names -- a missing picture on a page that otherwise renders, which
-    is the one icon failure nothing else here would see.
+    Each pull is hit by its own ability and each names another in its own
+    finding, so a walk that stopped at the first pull, or at the first boss,
+    resolves one or two of these and draws the rest as bare names -- a missing
+    picture on a page that otherwise renders, which is the one icon failure
+    nothing else here would see.
+
+    Both arms of `_icon_addresses`, and not one: `ABILITY_IDS` reach it through
+    a death card's timeline and `ROW_ABILITY_IDS` through a ledger row, which
+    are separate loops over separate arguments. Measured -- with only the first,
+    handing the row walk an empty tuple failed nothing at all.
     """
     html = a_deep_night_page_with_icons()
 
-    for ability_id in ABILITY_IDS:
+    for ability_id in (*ABILITY_IDS, *ROW_ABILITY_IDS):
         assert f".i-{ability_id}" in html, ability_id
 
 
