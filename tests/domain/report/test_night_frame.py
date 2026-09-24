@@ -1,5 +1,5 @@
-# ABOUTME: The night page's frame: the one fact above its dropdowns, and each pull's subject.
-# ABOUTME: A roster the page cannot open a card on is refused by name, never by IndexError.
+# ABOUTME: Holds the night frame to two promises: a header without a pull, and a named refusal.
+# ABOUTME: A pull with no roster must fail saying which fight it was, never by bare IndexError.
 
 import pytest
 

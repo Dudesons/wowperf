@@ -12,7 +12,7 @@ from wowperf.domain.night import FailedPull, LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.night_build import build_night_report
-from wowperf.domain.report.night_model import all_night_ledger_rows
+from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.raid_model import all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles
 
@@ -103,8 +103,16 @@ def a_night(
                     size=20,
                     attempts=tuple(one.encounter for one in pulls),
                 ),
+                # Newest first, the reverse of pull order. The streams come back
+                # in whatever order they come back in, and the page's order has
+                # to be the report's: a fixture already sorted the way the page
+                # prints cannot tell `attempts_with_events` apart from a plain
+                # walk of `loaded`, so the fight-id assertions below would pass
+                # against a builder that silently reordered the night.
                 loaded=tuple(
-                    one for one in pulls if one.encounter.fight_id not in failed
+                    reversed(
+                        [one for one in pulls if one.encounter.fight_id not in failed]
+                    )
                 ),
             )
         )
@@ -116,6 +124,16 @@ def a_night(
         loaded=tuple(loaded),
         failed_pulls=tuple(failures),
     )
+
+
+def tier_line(report: NightReport) -> str:
+    """The one Provenance line stating what depth the run asked for.
+
+    A reader who did not type the command cannot otherwise tell a Deaths tab
+    that was suppressed from one that failed, and these pages get shared.
+    """
+    assert len(report.provenance.methods) == 1
+    return report.provenance.methods[0]
 
 
 def a_finding(finding_id: str) -> Finding:
@@ -150,6 +168,8 @@ def test_every_pull_is_built_and_grouped_under_its_own_boss() -> None:
     assert report.header.report_code == REPORT_CODE
     assert report.provenance.fetched_at == FETCHED
     assert report.provenance.withheld == ()
+    assert "trimmed" in tier_line(report)
+    assert "named fight" not in tier_line(report)
 
 
 def test_a_pull_named_by_deep_is_the_only_one_built_deep() -> None:
@@ -177,6 +197,7 @@ def test_a_pull_named_by_deep_is_the_only_one_built_deep() -> None:
 
     pulls = report.bosses[0].pulls
     assert tuple(pull.tier for pull in pulls) == ("trimmed", "deep", "trimmed")
+    assert f"named fight {named}." in tier_line(report)
     assert pulls[1].report.deaths[0].timeline != ()
     assert pulls[0].report.deaths[0].timeline == ()
     assert pulls[2].report.deaths[0].timeline == ()
@@ -196,6 +217,7 @@ def test_no_death_cards_leaves_every_pull_without_one() -> None:
 
     assert all(pull.report.deaths == () for pull in report.bosses[0].pulls)
     assert all(pull.tier == "none" for pull in report.bosses[0].pulls)
+    assert "No death card was drawn" in tier_line(report)
 
 
 def test_the_same_night_does_carry_cards_when_they_are_asked_for() -> None:

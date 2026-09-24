@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
 from wowperf.domain.findings import Finding
 from wowperf.domain.night import FailedPull, LoadedNight
+from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
 from wowperf.domain.report.night_frame import build_night_header, night_subject
 from wowperf.domain.report.night_model import (
@@ -17,15 +18,25 @@ from wowperf.domain.report.night_model import (
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
 
+# The three tiers a pull can be drawn at, in cost order. Named here so the
+# builder cannot spell one of them two ways, and asserted as bare strings in
+# the tests rather than through these names: a test that imported them would
+# agree with a typo instead of catching it.
 NO_CARDS = "none"
 TRIMMED = "trimmed"
 DEEP = "deep"
-"""The three tiers a pull can be drawn at, in cost order.
 
-Named here so the builder cannot spell one of them two ways, and asserted as
-bare strings in the tests rather than through these names: a test that imported
-them would agree with a typo instead of catching it.
-"""
+CARD_TIER_TRIMMED = (
+    "Every death card on this page is trimmed: it keeps what each player had at the moment "
+    "of death, and drops the run-up timeline and the health curve. Those two are what "
+    "`wowperf night --deep <fight>` buys back for a named pull, and what `wowperf raid "
+    "--fight N` draws for one pull on its own."
+)
+
+CARD_TIER_NONE = (
+    "No death card was drawn on any pull: this night was read with death cards off, so the "
+    "Deaths tab is empty because none was asked for rather than for want of a reading."
+)
 
 
 def _tier(fight_id: int, deep_fights: frozenset[int], *, death_cards: bool) -> str:
@@ -39,6 +50,33 @@ def _tier(fight_id: int, deep_fights: frozenset[int], *, death_cards: bool) -> s
     if not death_cards:
         return NO_CARDS
     return DEEP if fight_id in deep_fights else TRIMMED
+
+
+def _card_tier_method(deep_fights: frozenset[int], *, death_cards: bool) -> str:
+    """What depth this run asked for, in one line, for a reader who did not type it.
+
+    Read from the same two arguments the tiers themselves are read from, so
+    the sentence and the pages it describes cannot disagree.
+
+    A line rather than a `tier` field on the report: on a `--deep` night the
+    tier is per pull by design, and one field would be false of every pull the
+    flag did not name. This states what was asked for, which is the half a
+    reader cannot recover from the page itself -- least of all on a night where
+    every pull failed and there is no card to look at.
+
+    The named fights are sorted, because a frozenset has no order and a page
+    whose prose reshuffles between two builds of the same night is a page
+    nobody can diff. They are stated as named rather than as drawn: a named
+    fight whose streams failed carries no card at all, and its own Provenance
+    line above already says so.
+    """
+    if not death_cards:
+        return CARD_TIER_NONE
+    if not deep_fights:
+        return f"{CARD_TIER_TRIMMED} No pull was named for a deeper read."
+    named = sorted(deep_fights)
+    ids = ", ".join(str(one) for one in named)
+    return f"{CARD_TIER_TRIMMED} `--deep` named {plural(len(named), 'fight')} {ids}."
 
 
 def _withheld(failed_pulls: Sequence[FailedPull]) -> tuple[str, ...]:
@@ -59,6 +97,7 @@ def build_night_report(
     defensives: Defensives,
     consumables: Consumables,
     roles: Roles,
+    *,
     deep_fights: frozenset[int],
     death_cards: bool,
     externals: Externals = Externals(),
@@ -133,5 +172,6 @@ def build_night_report(
         provenance=NightProvenance(
             fetched_at=fetched_at,
             withheld=_withheld(loaded.failed_pulls),
+            methods=(_card_tier_method(deep_fights, death_cards=death_cards),),
         ),
     )

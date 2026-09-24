@@ -20,16 +20,18 @@ class NightHeader(Frozen):
 
 
 class PullSection(Frozen):
-    """One pull, already analysed as a full raid report, and which stream tier produced it.
+    """One pull, already analysed as a full raid report, and which tier it was drawn at.
 
     `report` is the same view model `wowperf raid` builds for one pull on its
     own; the night page reuses it whole rather than inventing a second shape
     for the same judgement, so a death card or a grid cell means the same
     thing whichever command drew it.
 
-    `tier` is one of "none", "trimmed" or "deep" -- the stream depth the pull
-    was deepened at. A reader comparing two pulls needs to know they were not
-    fetched at the same depth before reading anything into a difference
+    `tier` is one of "none", "trimmed" or "deep" -- the depth this page drew
+    the pull at. It is the builder's own reading of `--deep` and `--no-deaths`,
+    not a record of what the loader bought; the two agree because one pair of
+    values reaches both. A reader comparing two pulls needs to know they were
+    not drawn at the same depth before reading anything into a difference
     between them, which is a fact a bare `RaidReport` cannot state on its own.
     """
 
@@ -67,10 +69,18 @@ class NightProvenance(Frozen):
     else. Two independently gathered representations of the same fact drift,
     and then the page names one set of pulls in a list and another in a
     paragraph.
+
+    `methods` states what depth the run asked for. It is prose rather than a
+    `tier` field because on a `--deep` night the tier is per pull by design,
+    and one field would be false of every pull the flag did not name --
+    `PullSection.tier` is where a pull's own tier is stated. Without it, a
+    reader who did not type the command cannot tell a Deaths tab that was
+    suppressed from one that failed, and these pages get shared.
     """
 
     fetched_at: str
     withheld: tuple[str, ...] = ()
+    methods: tuple[str, ...] = ()
 
 
 class NightReport(Frozen):
@@ -93,11 +103,11 @@ class NightReport(Frozen):
     """
 
     header: NightHeader
+    provenance: NightProvenance
     bosses: tuple[BossSection, ...] = ()
     total_pulls: int = 0
     failed_pulls: tuple[FailedPull, ...] = ()
     observations: tuple[LedgerRow, ...] = ()
-    provenance: NightProvenance
 
 
 def all_night_ledger_rows(report: NightReport) -> tuple[LedgerRow, ...]:
