@@ -1981,6 +1981,39 @@ def night(
         len(one) for one in findings_by_fight.values()
     )
 
+    # Built and rendered before either file is written, and guarded on its own.
+    # A page that cannot be built must leave nothing behind: written after the
+    # findings, it would hand a reader a findings file naming a report that does
+    # not exist, and no page to open. `ValueError` alongside `OSError` because
+    # `night_frame.night_subject` refuses a pull whose roster is empty -- a shape
+    # `Encounter` allows and the loader passes through -- and it names the fight
+    # when it does, which is an answer rather than the traceback this would
+    # otherwise print after both writes had already claimed to succeed.
+    try:
+        page = render_night(
+            build_night_report(
+                loaded,
+                findings_by_fight,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                defensives,
+                consumables,
+                roles,
+                deep_fights=deep_fights,
+                death_cards=death_cards,
+                externals=load_externals(),
+                self_resurrections=load_self_resurrections(),
+            ),
+            # One ability dictionary answers the whole night --
+            # `load_night_attempts` fetches it once per report and hands the same
+            # icon half to every pull -- so any drawn pull addresses the art for
+            # all of them. None when no pull was drawn at all: there is then no
+            # dictionary to read and nothing on the page to address with it.
+            icons=build_icons(drawn[0], ()) if drawn else None,
+        )
+    except (ValueError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
     written = out / f"{night.report_code}.night.json"
     # A guard of its own, on the same reasoning `progression`'s write phase
     # carries one: this fails differently from the block above, and can fail
@@ -1998,34 +2031,11 @@ def night(
     typer.echo(f"{counted} findings written to {written}")
 
     report_file = out / f"{night.report_code}.night.html"
-    # A second guard, for the same reason the first one exists: rendering fails
-    # differently from fetching, and it fails after the findings have already
-    # been computed and written.
+    # A guard of its own again, and for the reason the other two carry theirs:
+    # this fails differently from building the page and from writing the
+    # findings, and it fails after both have already succeeded.
     try:
-        report_file.write_text(
-            render_night(
-                build_night_report(
-                    loaded,
-                    findings_by_fight,
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    defensives,
-                    consumables,
-                    roles,
-                    deep_fights=deep_fights,
-                    death_cards=death_cards,
-                    externals=load_externals(),
-                    self_resurrections=load_self_resurrections(),
-                ),
-                # One ability dictionary answers the whole night --
-                # `load_night_attempts` fetches it once per report and hands the
-                # same icon half to every pull -- so any drawn pull addresses
-                # the art for all of them. None when no pull was drawn at all:
-                # there is then no dictionary to read and nothing on the page to
-                # address with it.
-                icons=build_icons(drawn[0], ()) if drawn else None,
-            ),
-            encoding="utf-8",
-        )
+        report_file.write_text(page, encoding="utf-8")
     except OSError as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error

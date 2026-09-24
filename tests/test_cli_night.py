@@ -553,6 +553,43 @@ def test_a_pull_that_will_not_load_shrinks_the_night_and_is_named(tmp_path: Path
     assert str(SECOND_PULL) in report_file.read_text(encoding="utf-8")
 
 
+def test_a_pull_with_no_roster_is_refused_naming_the_fight_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    """A page that cannot be built leaves no file behind, and no traceback either.
+
+    `night_frame.night_subject` refuses a pull whose roster is empty, naming the
+    fight: `Encounter.players` carries no non-empty guarantee and the loader
+    passes such a pull straight through, so the command meets it. Built after
+    the findings were written, that refusal would hand a reader a findings file
+    naming a report that does not exist and no page to open, with a stack trace
+    where the reason should be.
+
+    The first pull here carries the whole roster, so everything except the
+    second pull is a night that would have rendered: an implementation that
+    wrote the findings first leaves that file on disk, and this fails on it
+    rather than on the exit code.
+    """
+    fights = [
+        _night_fight(FIRST_PULL, start_ms=0, end_ms=120_000),
+        {**_night_fight(SECOND_PULL, start_ms=200_000, end_ms=320_000),
+         "friendlyPlayers": [], "friendlySpecs": [], "friendlyItemLevels": []},
+    ]
+    result = run_night(tmp_path, fights=fights)
+
+    assert result.exit_code != 0
+    output = plain(result.output)
+    # The refusal's own sentence, which is the only thing that names which pull
+    # could not be drawn. Reaching the output at all means it was caught and
+    # printed rather than raised through the command.
+    assert f"fight {SECOND_PULL}" in output
+    assert "roster" in output
+    assert "Traceback" not in result.output
+    findings_file, report_file = _written(tmp_path)
+    assert not findings_file.exists(), "a findings file for a page that was never built"
+    assert not report_file.exists()
+
+
 def test_night_states_what_it_spent(tmp_path: Path) -> None:
     """The promise every command that touches the network keeps.
 
