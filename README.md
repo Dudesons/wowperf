@@ -1,7 +1,7 @@
 # wowperf
 
-Two halves. A command-line tool that reads a Mythic+ run, a raid boss fight, or a whole night of
-attempts at one boss from Warcraft Logs and computes what happened, and a set of Claude skills
+Two halves. A command-line tool that reads a Mythic+ run, a raid boss fight, or every attempt at
+one boss from Warcraft Logs and computes what happened, and a set of Claude skills
 that read those numbers back and tell you what they mean.
 
 The line between them is the whole design: **Python produces facts, Claude produces meaning.**
@@ -90,6 +90,18 @@ required once a report holds more than one boss. It draws no outside reference a
 attempts being judged against each other, which is why it is the cheapest of the three by an
 order of magnitude.
 
+```bash
+uv run wowperf night https://www.warcraftlogs.com/reports/YOURCODE
+```
+
+reads every boss and every pull the report holds and writes them as one page, behind two
+dropdowns — a boss, then a pull within it. There is no `--fight`; covering every fight is the
+point, and there is no outside comparison either: `--player`, `--all-players` and `--no-compare`
+are not offered, and the page says so once instead of leaving those families silently missing.
+`--deep FIGHT` buys back one named pull's full death anatomy, repeatable; `--no-deaths` drops
+death cards from the whole page instead, and the two together are a contradiction the command
+refuses. It writes `<code>.night.json` and `<code>.night.html`.
+
 ## Asking Claude to coach you
 
 The tool gives you a report. The skills give you someone to read it with.
@@ -116,8 +128,8 @@ Without Claude Code, everything above still works. You read the report yourself.
 
 A key gets six tabs — Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. A boss
 fight gets seven: Route & tempo gives way to Damage and Mechanics, the two axes a boss has in its
-place. A night of attempts gets five — Summary, Attempts, Repeats, Best attempt, Provenance — the
-night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work.
+place. Every attempt at one boss gets five — Summary, Attempts, Repeats, Best attempt, Provenance —
+the night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work.
 
 Each death gets a recap: a health curve, a timeline of what hit you, how you came back, and every
 defensive, consumable and teammate external placed in one of six states at the moment you died —
@@ -148,7 +160,7 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 
 | Command | Points |
 | --- | --- |
-| `progression`, a whole night | 3 to 26 |
+| `progression`, every attempt | 3 to 26 |
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
 | `analyze`, one player | 83 to 95 |

@@ -1,6 +1,6 @@
 ---
 name: analyzing-a-run
-description: Use when given a Warcraft Logs URL to analyse — a Mythic+ key, a raid boss fight, or a night of attempts at one boss — runs the tool, interprets the findings, and hands back a finished report
+description: Use when given a Warcraft Logs URL to analyse — a Mythic+ key, a raid boss fight, or every attempt at one boss — runs the tool, interprets the findings, and hands back a finished report
 ---
 
 # Analysing a run
@@ -149,7 +149,7 @@ exactly as `analyze` does.
 
 ## The `progression` command
 
-A whole night of attempts at one boss is `wowperf progression <url> [--boss ID] [--difficulty N]`,
+Every attempt at one boss is `wowperf progression <url> [--boss ID] [--difficulty N]`,
 a sibling of `analyze` and `raid`, not a mode of either. It reads every fight in the report in one
 query and reports where a night's attempts sat against each other — never against another report,
 since a night's attempts are compared only to one another and no external reference is drawn.
@@ -162,6 +162,44 @@ sample and writes no narrative-bearing page. It writes `<code>-<encounter>.progr
 `<code>-<encounter>.progression.html`, a five-tab page — Summary, Attempts, Repeats, Best attempt,
 Provenance — carrying the night's shape and deliberately not any one attempt's anatomy. A finding
 that wants one names the `wowperf raid --fight N` that renders it.
+
+## The `night` command
+
+Every boss and every pull one report holds is `wowperf night <url> [--deep FIGHT]...
+[--no-deaths] [--difficulty N] [--cache-dir DIR] [--out DIR]`, the fourth sibling of `analyze`,
+`raid` and `progression`, not a mode of any of them, and the widest of the four: `raid` reads one
+pull, `progression` one boss's pulls, this one every boss and every pull the report holds. There
+is no `--fight`, because covering every fight is the point.
+
+It draws no comparison at all — neither axis `raid` draws for a single pull. The parse axis is
+per player per boss, and across a whole report it would cost an order of magnitude more than
+everything else here put together, so `--player`, `--all-players` and `--no-compare` do not apply
+and are not offered; there is no per-player reference for them to widen or skip. The mechanics
+axis is absent too, for a different reason: this command fetches no reference kill of any kind,
+so every pull's Damage tab and every player's spell-and-talent section read "No reference run was
+fetched for this analysis, so there is nothing to compare against" — the same line `raid
+--no-compare` prints, since neither command fetched one. The page also states the parse absence
+once, on its own, naming the families it leaves out — damage against the board, damage by target,
+casts a minute, talents, buff uptime, the percentile — rather than leaving them silently missing.
+`wowperf raid --fight N` is what draws both axes, for one pull. `--narrative` is not offered
+either, for the reason `raid` and `progression` do not take it: this command writes no
+narrative-bearing page.
+
+What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws no death card at all,
+the cheapest tier a pull can be read at; left unset, the default trims every card to what each
+player had at the moment of death; and `--deep FIGHT`, repeatable, buys back a named pull's whole
+death anatomy — its run-up timeline and its health curve — priced per pull rather than per night.
+`--deep` and `--no-deaths` contradict each other and are refused together, naming both.
+`--difficulty` takes a difficulty id and skips any boss the report holds only at another one,
+defaulting per boss to that boss's own first fight in the report. `--cache-dir` and `--out` move
+the response cache and the output files, the same shapes the other three offer.
+
+It writes `<code>.night.json` and `<code>.night.html` — no fight or encounter id in either name,
+because the whole report is what `--out` writes for. The page draws every pull with the same
+seven panels `raid` draws for one — Summary, Damage, Mechanics, Deaths, Interrupts, Players,
+Provenance — behind two dropdowns, a boss and then a pull within it. A pull drawn at less than the
+deep tier still has its full death anatomy on hand elsewhere: `--deep` buys it back here for a
+named pull, or `wowperf raid --fight N` draws it for that one pull on its own.
 
 ## When it goes wrong
 
