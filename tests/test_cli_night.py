@@ -11,7 +11,11 @@ from typer.testing import CliRunner
 
 from tests.test_cli import operation_name, plain, quota_response
 from wowperf.adapters.wcl.repository import WclRunRepository
-from wowperf.cli import app
+from wowperf.cli import (
+    PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    app,
+)
 from wowperf.domain.report.night_build import CARD_TIER_NONE, build_night_report
 
 runner = CliRunner()
@@ -309,7 +313,15 @@ def test_a_night_writes_both_files_at_the_documented_names(tmp_path: Path) -> No
     assert [
         pull["fight_id"] for boss in payload["bosses"] for pull in boss["pulls"]
     ] == [FIRST_PULL, SECOND_PULL, THIRD_PULL]
+    # A boss's findings are the progression analyser's, and every id it mints
+    # carries that prefix. Truthiness alone would survive a command that wrote
+    # the pull analyser's list here, which is the mirror of the mistake the
+    # pull assertion below catches.
     assert payload["bosses"][0]["findings"], "a boss with no finding has nothing to say"
+    assert all(
+        finding["id"].startswith("progression.")
+        for finding in payload["bosses"][0]["findings"]
+    )
     # The pull that had a death: its own findings are the raid analyser's, not
     # the boss's, and a command that wrote the boss's list under every pull
     # would carry a `progression.` id here.
@@ -323,6 +335,32 @@ def test_a_night_writes_both_files_at_the_documented_names(tmp_path: Path) -> No
         for boss in payload["bosses"]
         for finding in boss["findings"] + [f for pull in boss["pulls"] for f in pull["findings"]]
     )
+    # The rest of the payload's stated contract, which nothing else reads: what
+    # the run was asked for, the two counts, and a ranking warning per family.
+    # A file whose warning named the other family's rule would tell a reader to
+    # sum figures that must not be summed.
+    assert payload["asked_for"] == {
+        "difficulty": None,
+        "deep_fights": [],
+        "death_cards": True,
+    }
+    assert payload["bosses_counted"] == 2
+    assert payload["pulls_drawn"] == len(A_NIGHT)
+    assert (
+        payload["boss_findings_are_ranked_not_additive"]
+        == PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    )
+    assert (
+        payload["pull_findings_are_ranked_not_additive"]
+        == RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE
+    )
+    # Both families counted in the line the command prints, so a run that wrote
+    # one list and announced the other's length is caught here.
+    counted = sum(
+        len(boss["findings"]) + sum(len(pull["findings"]) for pull in boss["pulls"])
+        for boss in payload["bosses"]
+    )
+    assert f"{counted} findings written to" in plain(result.output)
 
     html = report_file.read_text(encoding="utf-8")
     assert FIRST_BOSS_NAME in html
@@ -420,6 +458,10 @@ def test_a_report_with_no_boss_fight_is_refused_naming_the_report(tmp_path: Path
     assert result.exit_code != 0
     output = plain(result.output)
     assert NIGHT_REPORT_CODE in output
+    # And what is wrong with it. The report code alone would be printed by any
+    # failure inside `load_night` that happened to echo it, including ones that
+    # have nothing to do with the report holding no boss fight.
+    assert "holds no boss fight" in output
     assert "Traceback" not in result.output
     findings_file, report_file = _written(tmp_path)
     assert not findings_file.exists()
@@ -550,7 +592,12 @@ def test_a_pull_that_will_not_load_shrinks_the_night_and_is_named(tmp_path: Path
         pull["fight_id"] for boss in payload["bosses"] for pull in boss["pulls"]
     ] == [FIRST_PULL, THIRD_PULL]
     assert [one["fight_id"] for one in payload["withheld_pulls"]] == [SECOND_PULL]
-    assert str(SECOND_PULL) in report_file.read_text(encoding="utf-8")
+    # The page's own sentence, not the bare id: the report code is `night12`,
+    # so a search for "12" in this page is true whatever it says about the
+    # withheld pull, and would pass over a page that named it nowhere.
+    assert (
+        f"Fight {SECOND_PULL} is not on this page" in report_file.read_text(encoding="utf-8")
+    )
 
 
 def test_a_pull_with_no_roster_is_refused_naming_the_fight_and_writes_nothing(
@@ -588,6 +635,42 @@ def test_a_pull_with_no_roster_is_refused_naming_the_fight_and_writes_nothing(
     findings_file, report_file = _written(tmp_path)
     assert not findings_file.exists(), "a findings file for a page that was never built"
     assert not report_file.exists()
+
+
+def test_difficulty_narrows_the_night_to_the_bosses_held_at_it(tmp_path: Path) -> None:
+    """The flag is threaded to `load_night` and echoed, and nothing else passed it.
+
+    A real raid night clears some bosses at one difficulty and pushes others at
+    another, and `load_night` skips a boss the report holds only at a
+    difficulty other than the one asked for. Two bosses at two difficulties
+    here, so a command that dropped the flag on the floor draws both -- which
+    is what a run with no `--difficulty` at all already draws, and why the
+    fixture cannot be one difficulty throughout.
+    """
+    mixed = [
+        _night_fight(FIRST_PULL, difficulty=NIGHT_DIFFICULTY, start_ms=0, end_ms=120_000),
+        _night_fight(
+            THIRD_PULL,
+            encounter_id=NIGHT_SECOND_BOSS,
+            boss_name=SECOND_BOSS_NAME,
+            difficulty=NIGHT_DIFFICULTY - 1,
+            start_ms=400_000,
+            end_ms=520_000,
+        ),
+    ]
+    result = run_night(tmp_path, "--difficulty", str(NIGHT_DIFFICULTY), fights=mixed)
+
+    assert result.exit_code == 0, result.output
+    findings_file, report_file = _written(tmp_path)
+    payload = json.loads(findings_file.read_text(encoding="utf-8"))
+    assert [boss["encounter_id"] for boss in payload["bosses"]] == [NIGHT_FIRST_BOSS]
+    assert payload["bosses"][0]["difficulty"] == NIGHT_DIFFICULTY
+    assert payload["bosses_counted"] == 1
+    # Echoed as asked for, which is the half a reader cannot recover from the
+    # findings: one boss at difficulty 5 looks the same whether the other was
+    # skipped or never pulled.
+    assert payload["asked_for"]["difficulty"] == NIGHT_DIFFICULTY
+    assert SECOND_BOSS_NAME not in report_file.read_text(encoding="utf-8")
 
 
 def test_night_states_what_it_spent(tmp_path: Path) -> None:
