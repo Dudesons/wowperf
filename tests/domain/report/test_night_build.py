@@ -169,7 +169,7 @@ def test_every_pull_is_built_and_grouped_under_its_own_boss() -> None:
     assert report.provenance.fetched_at == FETCHED
     assert report.provenance.withheld == ()
     assert "trimmed" in tier_line(report)
-    assert "named fight" not in tier_line(report)
+    assert "except" not in tier_line(report)
 
 
 def test_a_pull_named_by_deep_is_the_only_one_built_deep() -> None:
@@ -197,10 +197,43 @@ def test_a_pull_named_by_deep_is_the_only_one_built_deep() -> None:
 
     pulls = report.bosses[0].pulls
     assert tuple(pull.tier for pull in pulls) == ("trimmed", "deep", "trimmed")
-    assert f"named fight {named}." in tier_line(report)
+    # The claim, not the mention. A line whose opening clause says every card
+    # on the page is trimmed has told a reader something false of this very
+    # pull -- the one whose timeline the assertion above just found -- and
+    # naming the exception in a later sentence does not retract it. So the
+    # qualification has to land before the opening sentence ends.
+    lead = tier_line(report).split(". ")[0]
+    assert "except" in lead
+    assert str(named) in lead
     assert pulls[1].report.deaths[0].timeline != ()
     assert pulls[0].report.deaths[0].timeline == ()
     assert pulls[2].report.deaths[0].timeline == ()
+
+
+def test_two_named_pulls_are_both_named_where_the_claim_is_qualified() -> None:
+    """The plural branch of the same sentence, and both ids inside the exception.
+
+    One named fight exercises neither the pluralised noun nor the join, and a
+    line that qualified its claim for one pull while silently swallowing the
+    other would be false of the pull it dropped.
+    """
+    night = a_night(bosses=(3,))
+    named = tuple(attempt.fight_id for attempt in night.night.bosses[0].attempts[:2])
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(named),
+        death_cards=True,
+    )
+
+    lead = tier_line(report).split(". ")[0]
+    assert "fights" in lead
+    assert all(str(one) in lead for one in named)
 
 
 def test_no_death_cards_leaves_every_pull_without_one() -> None:

@@ -26,12 +26,19 @@ NO_CARDS = "none"
 TRIMMED = "trimmed"
 DEEP = "deep"
 
-CARD_TIER_TRIMMED = (
-    "Every death card on this page is trimmed: it keeps what each player had at the moment "
-    "of death, and drops the run-up timeline and the health curve. Those two are what "
-    "`wowperf night --deep <fight>` buys back for a named pull, and what `wowperf raid "
-    "--fight N` draws for one pull on its own."
+WHAT_TRIMMING_DROPS = (
+    "A trimmed card keeps what each player had at the moment of death, and drops the run-up "
+    "timeline and the health curve. Those two are what `wowperf night --deep <fight>` buys "
+    "back for a named pull, and what `wowperf raid --fight N` draws for one pull on its own."
 )
+"""What a trimmed card is, true of both trimmed branches and claimed by neither.
+
+Split from the clause that says *which* cards are trimmed, because that clause
+is the half that changes: an explanation appended to a universal does not
+qualify it, and a page that opened by claiming every card was trimmed and named
+the exception a sentence later would have told a reader something false about a
+card on the very same page.
+"""
 
 CARD_TIER_NONE = (
     "No death card was drawn on any pull: this night was read with death cards off, so the "
@@ -69,14 +76,26 @@ def _card_tier_method(deep_fights: frozenset[int], *, death_cards: bool) -> str:
     nobody can diff. They are stated as named rather than as drawn: a named
     fight whose streams failed carries no card at all, and its own Provenance
     line above already says so.
+
+    Which cards are trimmed is claimed in the opening clause and qualified
+    there, never by a sentence appended after it. "Every death card on this
+    page is trimmed" is false the moment `--deep` names one, and an exception
+    stated a sentence later does not retract it for the reader who stopped at
+    the full stop.
     """
     if not death_cards:
         return CARD_TIER_NONE
     if not deep_fights:
-        return f"{CARD_TIER_TRIMMED} No pull was named for a deeper read."
+        return (
+            "Every death card on this page is trimmed, and no pull was named for a "
+            f"deeper read. {WHAT_TRIMMING_DROPS}"
+        )
     named = sorted(deep_fights)
     ids = ", ".join(str(one) for one in named)
-    return f"{CARD_TIER_TRIMMED} `--deep` named {plural(len(named), 'fight')} {ids}."
+    return (
+        "Every death card on this page is trimmed except on the "
+        f"{plural(len(named), 'fight')} `--deep` named: {ids}. {WHAT_TRIMMING_DROPS}"
+    )
 
 
 def _withheld(failed_pulls: Sequence[FailedPull]) -> tuple[str, ...]:
