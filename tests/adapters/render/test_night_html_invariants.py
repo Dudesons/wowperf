@@ -2,7 +2,9 @@
 # ABOUTME: Two dropdowns that only show and hide, and no element id shared between two pulls.
 
 import re
+from pathlib import Path
 
+import pytest
 from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON_HOST
@@ -291,9 +293,21 @@ def a_night_report(
     )
 
 
+def golden_night_html(deep_every_pull: bool = False) -> str:
+    """The page the golden test and the byte-budget pair below pin.
+
+    No icon resolver, matching `golden_raid_html` and `minimal_html`: neither
+    of the other two goldens passes one either, so an ability reaches every
+    golden page as a bare name rather than a resolved address. `deep_every_pull`
+    is the only thing that varies -- the same fixture, read at whichever tier
+    the caller needs.
+    """
+    return render_night(a_night_report(deep_every_pull=deep_every_pull))
+
+
 def a_night_page() -> str:
     """The trimmed page: the tier every night is drawn at unless `--deep` names one."""
-    return render_night(a_night_report())
+    return golden_night_html()
 
 
 def a_deep_night_page_with_icons() -> str:
@@ -763,3 +777,44 @@ def test_the_raid_page_still_says_no_deaths_when_the_log_reported_none() -> None
 
     assert "No deaths." in html
     assert NO_CARDS_ASKED not in html
+
+
+NIGHT_GOLDEN = Path(__file__).parent / "golden" / "night.html"
+
+
+def test_the_rendered_night_page_matches_the_golden_file(pytestconfig: pytest.Config) -> None:
+    html = golden_night_html()
+    if pytestconfig.getoption("--golden-update"):
+        NIGHT_GOLDEN.parent.mkdir(parents=True, exist_ok=True)
+        NIGHT_GOLDEN.write_text(html, encoding="utf-8")
+        pytest.skip("golden file rewritten")
+    assert html == NIGHT_GOLDEN.read_text(encoding="utf-8"), (
+        "The rendered night report changed. Read the diff, then regenerate with "
+        "`uv run pytest tests/adapters/render/test_night_html_invariants.py --golden-update`."
+    )
+
+
+TRIMMED_NIGHT_BUDGET_BYTES = 70_000
+"""Measured 67,334 bytes from `golden_night_html()` on 2026-09-24 -- two bosses,
+five pulls, one death apiece, all trimmed -- rounded up by roughly 4%. The same
+fixture read deep is 88,454 bytes, well past this budget: a budget with room to
+spare is a test that cannot fail until the damage is done, so this one sits
+close enough to the real figure that a card regaining a field it lost, or a
+tier check that stopped trimming, moves it.
+"""
+
+
+def test_a_trimmed_night_stays_inside_its_byte_budget() -> None:
+    # Two bosses, five pulls, one death apiece. The budget is deliberately
+    # close to the real figure: a budget with room to spare is a test that
+    # cannot fail until the damage is done.
+    html = golden_night_html()
+    assert len(html.encode("utf-8")) < TRIMMED_NIGHT_BUDGET_BYTES
+
+
+def test_the_budget_would_catch_a_full_card_regression() -> None:
+    # The same fixture at the deep tier must exceed the trimmed budget.
+    # Without this, a builder that quietly ignores the tier passes the budget
+    # test by rendering a small page for the wrong reason.
+    html = golden_night_html(deep_every_pull=True)
+    assert len(html.encode("utf-8")) > TRIMMED_NIGHT_BUDGET_BYTES

@@ -1,0 +1,1345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night TESTCODE00000000</title>
+<style>
+:root {
+  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
+  --page: #16181c; --card: #1e2126; --line: #2c3038;
+  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c; --hit: #e07a7a;
+  --cooldown: #6a7280; --done: #b08ad6;
+  --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
+  --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
+  --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
+  --class-monk: #00ff96; --class-paladin: #f58cba; --class-priest: #ffffff;
+  --class-rogue: #fff569; --class-shaman: #0070de; --class-warlock: #9482c9;
+  --class-warrior: #c79c6e; --class-unknown: #a8a29b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+/* The page takes the screen; running prose does not. A paragraph read at the
+   width of a monitor is harder to follow than one read in a narrow column, so
+   the measure moves off the page and onto the text, and the dense content --
+   cards, tables, drawings -- keeps the whole width. */
+main { max-width: 1400px; margin: 0 auto; }
+.detail, .sub, .legend, .nests, .group-note, .narrative, .withheld { max-width: 68ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px; align-items: start; }
+a { color: var(--ours); }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+p { margin: 0 0 10px; }
+.sub { color: var(--ink-dim); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; margin: 0 0 10px; }
+.row-head { display: flex; align-items: baseline; gap: 10px; }
+.row-head h3 { flex: 1; }
+.cost { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page);
+  text-decoration: none; }
+.badge-measured { background: var(--badge-measured); }
+.badge-derived { background: var(--badge-derived); }
+.badge-inferred { background: var(--badge-inferred); }
+.detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* `.findings` is a grid and this note is one of its direct children, so
+   without a span it would take one card's own column instead of reading as
+   an introduction to the run of cards after it. */
+.group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
+  border-left: 2px solid var(--line); grid-column: 1 / -1; }
+.evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
+.evidence li::before { content: "· "; }
+.nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
+.pointer { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; margin: 0 0 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); text-decoration: none; }
+.pointer-title { flex: 1; }
+.withheld { color: var(--ink-dim); font-style: italic; }
+.narrative { border-left: 3px solid var(--ours); padding: 2px 0 2px 14px;
+  white-space: pre-wrap; margin: 0 0 10px; }
+.tabs { display: none; }
+.js .tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 20px 0 0;
+  border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ink-dim);
+  font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; }
+.tab.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ours); }
+.js .panel:not(.active) { display: none; }
+.subtabs { margin: 8px 0 12px; }
+.js .card[data-tab-panel]:not(.active) { display: none; }
+.legend { color: var(--ink-faint); font-size: 13px; }
+.track-label { fill: var(--ink-dim); font-size: 12px; }
+.tick { stroke: var(--ink-faint); stroke-width: 1; }
+.tick-label { fill: var(--ink-faint); font-size: 11px; }
+.block { fill: var(--ours); }
+.block-theirs { fill: var(--theirs); }
+.block-boss { stroke: var(--ink); stroke-width: 1; }
+.block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
+.block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
+.attempt-bar { fill: var(--ours); }
+.attempt-best { stroke: var(--ink); stroke-width: 2; }
+.attempt-kill { fill: var(--badge-measured); }
+.attempts { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 8px; }
+.attempts th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 4px 0; }
+.attempts td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line);
+  color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.attempts tr.best td { color: var(--ink); font-weight: 600; }
+.death-when { color: var(--ink-dim); font-size: 13px; }
+.recap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px;
+  margin: 8px 0 0; }
+@media (max-width: 640px) { .recap { grid-template-columns: 1fr; } }
+.timeline { width: 100%; border-collapse: collapse; font-size: 13px; }
+.timeline th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 3px 0; }
+.timeline td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim);
+  vertical-align: top; }
+.timeline tr.hit td:nth-child(2) { color: var(--hit); }
+.timeline tr.absorb td:nth-child(2) { color: var(--ours); }
+.timeline tr.heal td:nth-child(2) { color: var(--badge-measured); }
+.timeline tr.cast td { color: var(--ink-faint); }
+.hp { position: relative; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+.hp-bar { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--badge-measured); }
+/* The curve outlives the table's scroll. A row's hover lights a marker on the
+   curve and a press lights the window its buff covered; both were invisible
+   while the card stood 2007px tall and the curve left the screen at 300.
+   No script: this asks the page's one inline script for nothing.
+   Safe because nothing in this card's ancestry sets `overflow` -- the whole
+   stylesheet sets it once, on `.icon-defs`. */
+.hp-pinned { position: sticky; top: 0; z-index: 4; background: var(--card); }
+.hp-curve { display: block; margin: 10px 0 2px; }
+.hp-guide { stroke: var(--line); stroke-width: 1; }
+.hp-axis { fill: var(--ink-faint); font-size: 11px; }
+.hp-health { text-anchor: end; dominant-baseline: middle; }
+.hp-time { text-anchor: middle; }
+/* The line takes the derived tint and a dashed stroke, because it is
+   arithmetic between readings rather than anything the log stated. The
+   readings take the measured tint and a ring against the page colour, so a
+   stated figure reads as a mark on the drawing rather than as a kink in the
+   line it happens to sit on. */
+.hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
+  stroke-linejoin: round; stroke-dasharray: 5 3; }
+.hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
+/* Placed by the builder, hidden until the row it belongs to is hovered or
+   focused. Hidden by opacity rather than by display so the browser has no
+   layout to recompute when it appears. */
+.hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
+.hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. Measured
+   tint, not derived: the window is the aura table's own band, the same claim
+   the run timeline's `.cover` rule paints in the same colour -- `--ours`
+   happens to be byte-identical to `--badge-derived`, which would read this
+   measured window as the curve's own arithmetic. */
+.hp-cover { fill: var(--badge-measured); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
+tr[id]:hover td { background: var(--line); }
+details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
+  padding: 2px 0; }
+.avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
+.avail ul { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.avail li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0;
+  border-top: 1px solid var(--line); }
+.avail li.pressed .avail-detail { color: var(--badge-measured); }
+.avail li.held .avail-detail { color: var(--badge-measured); }
+.avail li.faded .avail-detail { color: var(--extra); }
+.avail li.cooldown .avail-detail { color: var(--extra); }
+.avail li.unseen { color: var(--ink-faint); }
+.owner { color: var(--ink-faint); font-size: 12px; }
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  position: relative; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
+.player-head { display: flex; align-items: baseline; gap: 8px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* The chart's own box, so a row's hover strip can be placed against it. A
+   percentage top resolves against this height, so the margin lives here and
+   not on the svg: a margin inside the wrapper would offset every strip by its
+   own height. */
+.timeline-wrap { position: relative; margin: 10px 0 2px; }
+.player-timeline { display: block; width: 100%; margin: 0; }
+/* A transparent strip over each row, carrying the row's panel. It is what
+   makes a whole row hoverable: the row paints only where something happened,
+   and across the rest the pull band behind it is what a pointer finds, so
+   without this most of most rows answer with the pull's name. */
+.row-hit { position: absolute; left: 0; right: 0; }
+/* Every row is named, and the name is right-aligned into the gutter left of the
+   track so it never crosses the row it labels. Its own size, smaller than the
+   run timeline's captions, is what lets the longest ability name in the data
+   files fit that gutter. */
+.row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
+.damage-bar { fill: var(--hit); }
+/* The other direction, in a hue of its own: red is what hit this player,
+   blue is a press, green is the buff up and grey is a cooldown, so the
+   output track takes the one part of the wheel the drawing has left. */
+.damage-done-bar { fill: var(--done); }
+/* Opaque and lighter than the band behind it: this is the layer the inferred
+   badge grades, and a state marker fainter than the background it sits on is
+   a state a screenshot loses. */
+.on-cooldown { fill: var(--cooldown); }
+.not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+/* The share of each cycle the ability was doing anything, at true scale. A
+   green head on a grey bar. */
+.cover { fill: var(--badge-measured); }
+.press { fill: var(--ours); }
+/* An open tick, not a filled mark: a press is something the player did and a
+   comeback is something that merely became true, and the two must not read as
+   the same event. */
+.ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+/* A swatch takes the same fill as the rectangle it stands for, so the key
+   cannot drift from the track. `.not-judged` is a stroke and no fill, so the
+   swatch shows its dash the way the track does. */
+.state-key { color: var(--ink-dim); font-size: 12px; margin: 2px 0; }
+.state-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+  vertical-align: -1px; border-radius: 2px; }
+.state-swatch.press { background: var(--ours); }
+.state-swatch.cover { background: var(--badge-measured); }
+.state-swatch.on-cooldown { background: var(--cooldown); }
+.state-swatch.not-judged { border: 1px dashed var(--ink-faint); }
+.damage-axis { stroke: var(--line); stroke-width: 1; }
+.pull-name { fill: var(--ink-dim); font-size: 8px; }
+/* Revealed by hover and by keyboard focus, and rendered into the page whether
+   or not it is shown: the panel is markup the builder wrote, never text the
+   script fetches or writes. */
+.tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
+  min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.ability:hover .tip, .ability:focus-within .tip { display: block; }
+.row-hit:hover .tip, .row-hit:focus-within .tip { display: block; }
+.tip-line { display: flex; justify-content: space-between; gap: 12px; }
+/* Only a panel that opens away from the thing it describes names it: a row's
+   strip is laid over a drawing, so the panel says which row it belongs to. */
+.tip-head { display: block; font-weight: 500; margin-bottom: 4px; color: var(--ink); }
+.tip-label { color: var(--ink-dim); }
+.tip-value { font-variant-numeric: tabular-nums; }
+.tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }
+/* Collapsed by default and opened by the reader: `<details>` is native, so the
+   page's one script stays the only script and still only shows and hides. */
+.compared { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.compared > summary { cursor: pointer; color: var(--ink-dim); font-size: 13px; }
+.compared-rows { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.compared-rows th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.compared-rows td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.compared-rows .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The verdict is a word in its own column and a tint here, never a colour alone:
+   a reader who cannot separate the tints, or who printed the page, still has
+   the column. Three of the four land on the second cell, our own figure, which
+   is the one the verdict is about, and they say two different things. Hue says
+   which side our figure landed on: --theirs mutes it where we sit under the
+   sample's median, --ours picks it out where we sit over it, --ink-dim settles
+   it where the two are level. Weight says whether the comparison found a
+   difference at all, so below and above carry it and level does not. Without
+   both readings the row a reader can act on is the quietest in the table, and
+   a level row left to inherit would keep the body's ink, the brightest on the
+   page. An unjudged row is greyed whole, because none of its figures was read
+   as a shortfall. */
+.compared-rows tr.v-below td:nth-child(2) { color: var(--theirs); font-weight: 500; }
+.compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
+.compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
+.compared-rows tr.v-unjudged td { color: var(--ink-faint); }
+.damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
+.damage-grid th[scope="row"] { text-align: left; font-weight: normal; }
+/* The tint reuses `--hit`, the colour this report already gives damage a
+   player took (`.damage-bar`, and `.timeline tr.hit` for the hit that mattered
+   toward a death), because a tint here states that same fact and not a new one.
+   It marks the figure rather than filling the cell, matching how the timeline
+   uses this colour: a filled block among a hundred plain numbers reads as an
+   alert, and design 7.3 is explicit that a tint is not a mistake -- taking a
+   tankbuster is correct, and soaking is doing the job. One signal is enough to
+   tie the cell to the card that explains it. */
+.damage-grid .cell.tinted { color: var(--hit); font-weight: 600; }
+.damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
+.alive-chart .alive-line { stroke: var(--ours); stroke-width: 2; }
+.night-pick { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px;
+  margin: 18px 0 8px; padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; }
+.night-pick label { color: var(--ink-dim); font-size: 13px; }
+.night-pick select { background: var(--page); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; font: inherit; font-size: 14px; padding: 5px 8px; max-width: 100%; }
+/* Without the script every pull and every pull control is on the page, stacked
+   in report order, which is the whole document a reader can still search and
+   print. The script adds the root class and these two rules take over. */
+.js .night-pulls:not(.active) { display: none; }
+.js .pull:not(.active) { display: none; }
+.pull { border-top: 1px solid var(--line); margin: 20px 0 0; padding: 4px 0 0; }
+.night-notes { border-top: 1px solid var(--line); margin: 28px 0 0; padding: 4px 0 0; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Report TESTCODE00000000</h1>
+<p class="sub">Every pull this report holds, 5 in all.</p>
+
+<div class="night-pick">
+  <label for="night-boss">Boss</label>
+  <select id="night-boss" data-night-boss>
+    <option value="b0">Ula&#39;tek</option>
+    <option value="b1">Nek&#39;zali</option>
+  </select>
+  <span class="night-pulls" data-night-for="b0">
+  <label for="night-pull-b0">Pull</label>
+  <select id="night-pull-b0" data-night-pull>
+    <option value="f10-pull">Pull 1 &mdash; Wiped at 50.0% remaining</option>
+    <option value="f11-pull">Pull 2 &mdash; Wiped at 50.0% remaining</option>
+  </select>
+  </span>
+  <span class="night-pulls" data-night-for="b1">
+  <label for="night-pull-b1">Pull</label>
+  <select id="night-pull-b1" data-night-pull>
+    <option value="f20-pull">Pull 1 &mdash; Wiped at 50.0% remaining</option>
+    <option value="f21-pull">Pull 2 &mdash; Wiped at 50.0% remaining</option>
+    <option value="f22-pull">Pull 3 &mdash; Wiped at 50.0% remaining</option>
+  </select>
+  </span>
+</div>
+
+<section class="pull" data-night-pull-panel id="f10-pull">
+
+<h2>Ula&#39;tek Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 10 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f10-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f10-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f10-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-summary">
+
+<h2 id="f10-alive">How the attempt went
+  <a class="badge badge-derived" href="#f10-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f10-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f10-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 0 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f10-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f10-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 0</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f10-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-damage">
+
+<h2 id="f10-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-mechanics">
+
+<h2 id="f10-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-deaths">
+
+<h2 id="f10-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f10-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f10-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-interrupts">
+
+<h2 id="f10-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-players">
+
+<h2 id="f10-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f10-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f10-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f10-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f10-players" id="f10-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f10-players" id="f10-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f10-main" id="f10-tab-provenance">
+
+<h2 id="f10-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 10,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f11-pull">
+
+<h2>Ula&#39;tek Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 11 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f11-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f11-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f11-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-summary">
+
+<h2 id="f11-alive">How the attempt went
+  <a class="badge badge-derived" href="#f11-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f11-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f11-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 1 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f11-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f11-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 1</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f11-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-damage">
+
+<h2 id="f11-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-mechanics">
+
+<h2 id="f11-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-deaths">
+
+<h2 id="f11-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f11-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f11-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-interrupts">
+
+<h2 id="f11-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-players">
+
+<h2 id="f11-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f11-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f11-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f11-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f11-players" id="f11-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f11-players" id="f11-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f11-main" id="f11-tab-provenance">
+
+<h2 id="f11-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 11,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f20-pull">
+
+<h2>Nek&#39;zali Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 20 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f20-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f20-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f20-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-summary">
+
+<h2 id="f20-alive">How the attempt went
+  <a class="badge badge-derived" href="#f20-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f20-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f20-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 2 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f20-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f20-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 2</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f20-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-damage">
+
+<h2 id="f20-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-mechanics">
+
+<h2 id="f20-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-deaths">
+
+<h2 id="f20-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f20-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f20-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-interrupts">
+
+<h2 id="f20-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-players">
+
+<h2 id="f20-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f20-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f20-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f20-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f20-players" id="f20-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f20-players" id="f20-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f20-main" id="f20-tab-provenance">
+
+<h2 id="f20-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 20,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f21-pull">
+
+<h2>Nek&#39;zali Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 21 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f21-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f21-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f21-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-summary">
+
+<h2 id="f21-alive">How the attempt went
+  <a class="badge badge-derived" href="#f21-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f21-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f21-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 3 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f21-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f21-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 3</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f21-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-damage">
+
+<h2 id="f21-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-mechanics">
+
+<h2 id="f21-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-deaths">
+
+<h2 id="f21-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f21-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f21-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-interrupts">
+
+<h2 id="f21-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-players">
+
+<h2 id="f21-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f21-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f21-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f21-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f21-players" id="f21-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f21-players" id="f21-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f21-main" id="f21-tab-provenance">
+
+<h2 id="f21-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 21,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f22-pull">
+
+<h2>Nek&#39;zali Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 22 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f22-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f22-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f22-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-summary">
+
+<h2 id="f22-alive">How the attempt went
+  <a class="badge badge-derived" href="#f22-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f22-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f22-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 4 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f22-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f22-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 4</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f22-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-damage">
+
+<h2 id="f22-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-mechanics">
+
+<h2 id="f22-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-deaths">
+
+<h2 id="f22-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f22-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f22-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-interrupts">
+
+<h2 id="f22-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-players">
+
+<h2 id="f22-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f22-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f22-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f22-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f22-players" id="f22-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f22-players" id="f22-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f22-main" id="f22-tab-provenance">
+
+<h2 id="f22-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 22,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+
+<section class="night-notes">
+
+<h2 id="night-observations">Findings about the night</h2>
+<p class="sub">Findings true of the whole report rather than of any one pull.</p>
+<div class="findings">
+<div class="card" id="finding-compare.parse.not_drawn">
+  <div class="row-head">
+    <h3>No comparison against other kills is drawn on this page</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">wowperf night does not draw the parse axis at all: this page never asks a leaderboard for a comparison, on a kill or on a wipe. Every family that axis carries is absent from this page as a result: damage against the board, damage by target, casts a minute, talents, buff uptime, and the percentile. wowperf raid --fight N is what draws them, for one pull.</p>
+  <ul class="evidence"><li>wowperf night never queries a parse leaderboard</li></ul>
+</div>
+
+</div>
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report TESTCODE00000000, fetched 2026-09-24 09:00.</p>
+<p class="sub">Every death card on this page is trimmed, and no pull was named for a deeper read. A trimmed card keeps what each player had at the moment of death, and drops the run-up timeline and the health curve. Those two are what `wowperf night --deep &lt;fight&gt;` buys back for a named pull, and what `wowperf raid --fight N` draws for one pull on its own.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</main>
+<script>
+(function () {
+  document.documentElement.classList.add("js");
+
+  function show(panel) {
+    var group = panel.getAttribute("data-tab-panel");
+    var panels = document.querySelectorAll('[data-tab-panel="' + group + '"]');
+    var buttons = document.querySelectorAll('[data-tab-group="' + group + '"] [data-tab-for]');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.toggle("active", panels[i] === panel);
+    }
+    for (var j = 0; j < buttons.length; j++) {
+      var on = buttons[j].getAttribute("data-tab-for") === panel.id;
+      buttons[j].classList.toggle("active", on);
+      buttons[j].setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  function reveal(target) {
+    var panels = [];
+    for (var node = target; node && node !== document.body; node = node.parentElement) {
+      if (node.hasAttribute("data-tab-panel")) { panels.unshift(node); }
+    }
+    for (var i = 0; i < panels.length; i++) { show(panels[i]); }
+    return panels.length > 0;
+  }
+
+  function resolve() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var target = id ? document.getElementById(id) : null;
+    if (target && reveal(target) && !target.hasAttribute("data-tab-panel")) {
+      target.scrollIntoView();
+    }
+  }
+
+  var buttons = document.querySelectorAll("[data-tab-for]");
+  for (var b = 0; b < buttons.length; b++) {
+    buttons[b].addEventListener("click", function (event) {
+      var panel = document.getElementById(event.currentTarget.getAttribute("data-tab-for"));
+      if (panel) {
+        show(panel);
+        history.replaceState(null, "", "#" + panel.id);
+      }
+    });
+  }
+
+  var groups = document.querySelectorAll("[data-tab-group]");
+  for (var g = 0; g < groups.length; g++) {
+    var first = groups[g].querySelector("[data-tab-for]");
+    var panel = first ? document.getElementById(first.getAttribute("data-tab-for")) : null;
+    if (panel) { show(panel); }
+  }
+  window.addEventListener("hashchange", resolve);
+  window.addEventListener("load", resolve);
+  resolve();
+
+  // Lighting a marker, and the cover window beside it, that the builder
+  // already placed. No geometry here: the x of every marker and the x and
+  // width of every cover were computed in Python and are already in the
+  // document, so this only decides which of them is visible.
+  var rows = document.querySelectorAll("tr[id]");
+  for (var r = 0; r < rows.length; r++) {
+    rows[r].addEventListener("mouseenter", light);
+    rows[r].addEventListener("mouseleave", darken);
+    rows[r].addEventListener("focus", light);
+    rows[r].addEventListener("blur", darken);
+  }
+
+  function markerOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-mark");
+  }
+
+  function coverOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-cover");
+  }
+
+  function light(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.add("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.add("lit"); }
+  }
+
+  function darken(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.remove("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.remove("lit"); }
+  }
+})();
+(function () {
+  var boss = document.getElementById("night-boss");
+  if (!boss) { return; }
+  var controls = document.querySelectorAll("[data-night-for]");
+  var pulls = document.querySelectorAll("[data-night-pull-panel]");
+
+  // Every pull is already in the document. This decides which one is visible.
+  function showPull(id) {
+    for (var i = 0; i < pulls.length; i++) {
+      pulls[i].classList.toggle("active", pulls[i].id === id);
+    }
+  }
+
+  // One pull control per boss, all of them already drawn: choosing a boss
+  // shows that boss's control, hides the others, and opens whichever pull
+  // the shown control is already sitting on.
+  function showBoss(name) {
+    var shown = null;
+    for (var i = 0; i < controls.length; i++) {
+      var on = controls[i].getAttribute("data-night-for") === name;
+      controls[i].classList.toggle("active", on);
+      if (on) { shown = controls[i].querySelector("select"); }
+    }
+    if (shown) { showPull(shown.value); }
+  }
+
+  boss.addEventListener("change", function (event) {
+    showBoss(event.currentTarget.value);
+  });
+
+  var picks = document.querySelectorAll("[data-night-pull]");
+  for (var p = 0; p < picks.length; p++) {
+    picks[p].addEventListener("change", function (event) {
+      showPull(event.currentTarget.value);
+    });
+  }
+
+  showBoss(boss.value);
+})();
+</script>
+</body>
+</html>
