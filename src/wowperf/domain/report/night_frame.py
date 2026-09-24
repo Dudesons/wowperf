@@ -39,8 +39,19 @@ def night_subject(encounter: Encounter) -> Player:
     extra click and no accuracy.
 
     A pull whose roster is empty has no card for the tab to open on at all, and
-    is outside what this function can answer.
+    is refused naming the fight. `Encounter.players` carries no non-empty
+    guarantee, so this is a shape the type allows rather than one ruled out;
+    the alternative is an `IndexError` on the line below, which names nothing
+    and takes the whole page down over one pull -- undoing, one layer up, the
+    ruling that a pull which will not load shrinks the night rather than
+    failing it. `FailedPull` is deliberately not minted here: that type belongs
+    to the load layer, and a pull that loaded is not a pull that failed.
     """
+    if not encounter.players:
+        raise ValueError(
+            f"fight {encounter.fight_id} carries no roster, "
+            "so no card can open its Players tab"
+        )
     owner = encounter.owner_name
     found = find_player(encounter.players, owner) if owner else None
     return found or encounter.players[0]
