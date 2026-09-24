@@ -14,12 +14,13 @@ NOT_DRAWN_DETAIL = (
 )
 """Why the whole page carries no parse axis, once, in place of six silences.
 
-`compare_parse_axis.WITHHELD_DETAIL` says a wipe carries no rankings row, which
-is true of a wipe and false of a night page: a night page omits the axis on
-kills too, because the command never draws it. Reusing that sentence here
-would put the wrong cause in front of a reader, so this is a distinct sentence
-with a distinct id, naming the same six families the raid axis names so a
-reader who has seen `raid`'s output can match the two lists.
+`WITHHELD_DETAIL` in `parse_axis.py` opens by saying the attempt did not kill
+the boss, and therefore this report carries no rankings row -- true of a wipe
+and false of a night page: a night page omits the axis on kills too, because
+the command never draws it. Reusing that sentence here would put the wrong
+cause in front of a reader, so this is a distinct sentence with a distinct id,
+naming the same six families the raid axis names so a reader who has seen
+`raid`'s output can match the two lists.
 """
 
 
