@@ -1,0 +1,76 @@
+{# ABOUTME: Document skeleton for the night report: every pull pre-rendered, two dropdowns #}
+{# ABOUTME: choosing which one is read, and one inline script that only shows and hides. #}
+{% from "_night_pull.html.j2" import pull_section with context %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Night {{ report.header.report_code }}</title>
+<style>
+{% include "report.css.j2" %}
+{% include "night.css.j2" %}
+{% for ability_id, uri in icons_by_id.items() %}
+.i-{{ ability_id }} { background-image: url({{ uri }}); }
+{% endfor %}
+</style>
+</head>
+<body>
+{% if icons_by_id %}
+<svg class="icon-defs" aria-hidden="true">
+{% for ability_id, uri in icons_by_id.items() %}
+<symbol id="icon-{{ ability_id }}" viewBox="0 0 1 1"><image href="{{ uri }}" width="1" height="1"/></symbol>
+{% endfor %}
+</svg>
+{% endif %}
+<main>
+
+<h1>Report {{ report.header.report_code }}</h1>
+<p class="sub">Every pull this report holds, {{ report.total_pulls }} in all.</p>
+
+{# One boss control, and one pull control per boss. Choosing a boss shows that #}
+{# boss's own control and hides the others, which keeps the script to showing #}
+{# and hiding whole elements rather than reaching inside an <option>. #}
+<div class="night-pick">
+  <label for="night-boss">Boss</label>
+  <select id="night-boss" data-night-boss>
+{% for boss in report.bosses %}
+    <option value="b{{ loop.index0 }}">{{ boss.boss_name }}</option>
+{% endfor %}
+  </select>
+{% for boss in report.bosses %}
+  <span class="night-pulls" data-night-for="b{{ loop.index0 }}">
+  <label for="night-pull-b{{ loop.index0 }}">Pull</label>
+  <select id="night-pull-b{{ loop.index0 }}" data-night-pull>
+{% for pull in boss.pulls %}
+    <option value="{{ scopes[pull.report.provenance.fight_id] }}pull">Pull {{ loop.index }} &mdash; {{ pull.report.header.outcome }}</option>
+{% endfor %}
+{% if not boss.pulls %}
+    <option value="b{{ loop.index0 }}-none-pull">Nothing to show</option>
+{% endif %}
+  </select>
+  </span>
+{% endfor %}
+</div>
+
+{% for boss in report.bosses %}
+{% if not boss.pulls %}
+<section class="pull" data-night-pull-panel id="b{{ loop.index0 }}-none-pull">
+<h2>{{ boss.boss_name }}</h2>
+<p class="sub">No pull at this boss reached the page. Provenance says why.</p>
+</section>
+{% endif %}
+{% for pull in boss.pulls %}
+{{ pull_section(pull.report, scopes[pull.report.provenance.fight_id], pull.tier) }}
+{% endfor %}
+{% endfor %}
+
+{% include "_night_provenance.html.j2" %}
+
+</main>
+<script>
+{% include "report.js.j2" %}
+{% include "night.js.j2" %}
+</script>
+</body>
+</html>

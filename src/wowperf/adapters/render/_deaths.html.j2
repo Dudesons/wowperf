@@ -15,7 +15,7 @@
   {% endfor %}
   {% for row in rows %}
   {% if row.cover_width is not none %}
-  <rect class="hp-cover" id="{{ row.marker_id }}-cover"
+  <rect class="hp-cover" id="{{ scope }}{{ row.marker_id }}-cover"
         x="{{ row.cover_x }}" y="{{ curve.plot_y0 }}"
         width="{{ row.cover_width }}" height="{{ curve.plot_height }}"></rect>
   {% endif %}
@@ -31,7 +31,7 @@
   {% endfor %}
   {% for row in rows %}
   {% if row.marker_x is not none %}
-  <line class="hp-marker" id="{{ row.marker_id }}-mark"
+  <line class="hp-marker" id="{{ scope }}{{ row.marker_id }}-mark"
         x1="{{ row.marker_x }}" y1="{{ curve.plot_y0 }}"
         x2="{{ row.marker_x }}" y2="{{ curve.plot_y1 }}"></line>
   {% endif %}
@@ -40,16 +40,16 @@
 {% if curve.reading_legend %}
 <p class="legend">{{ curve.reading_legend }}
   {%- if curve.reading_badge %} <a class="badge {{ curve.reading_badge.tint }}"
-     href="#provenance">{{ curve.reading_badge.label }}</a>{% endif %}</p>
+     href="#{{ scope }}provenance">{{ curve.reading_badge.label }}</a>{% endif %}</p>
 {% endif %}
 <p class="legend">{{ curve.line_legend }}
   {%- if curve.line_badge %} <a class="badge {{ curve.line_badge.tint }}"
-     href="#provenance">{{ curve.line_badge.label }}</a>{% endif %}</p>
+     href="#{{ scope }}provenance">{{ curve.line_badge.label }}</a>{% endif %}</p>
 </div>
 {% endmacro %}
-<section class="panel" data-tab-panel="main" id="tab-deaths">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-deaths">
 
-<h2 id="deaths">Deaths</h2>
+<h2 id="{{ scope }}deaths">Deaths</h2>
 {% if not report.deaths %}
 <p class="sub">No deaths.</p>
 {% endif %}
@@ -72,7 +72,7 @@
         <thead><tr><th>Before</th><th>Event</th><th>Detail</th><th>Health</th></tr></thead>
         <tbody>
         {% for row in death.timeline %}
-        <tr class="{{ row.kind }}"{% if row.marker_id %} id="{{ row.marker_id }}" tabindex="0"{% endif %}>
+        <tr class="{{ row.kind }}"{% if row.marker_id %} id="{{ scope }}{{ row.marker_id }}" tabindex="0"{% endif %}>
           <td>{{ row.seconds_before }}</td>
           <td>{{ ability(row.ability_id, row.ability, row.tooltip) }}</td>
           <td>{{ row.detail }}</td>
@@ -85,7 +85,7 @@
       </table>
       {% if death.health_badge %}
       <p class="nests">Health after each event
-        <a class="badge {{ death.health_badge.tint }}" href="#provenance">{{ death.health_badge.label }}</a></p>
+        <a class="badge {{ death.health_badge.tint }}" href="#{{ scope }}provenance">{{ death.health_badge.label }}</a></p>
       {% endif %}
       </details>
       {% elif death.timeline_note %}
@@ -97,7 +97,7 @@
       {% if death.came_back %}
       <p class="detail">{{ death.came_back }}
         {%- if death.came_back_badge %} <a class="badge {{ death.came_back_badge.tint }}"
-           href="#provenance">{{ death.came_back_badge.label }}</a>{% endif %}</p>
+           href="#{{ scope }}provenance">{{ death.came_back_badge.label }}</a>{% endif %}</p>
       {% endif %}
     </div>
     <div class="recap-availability">
@@ -105,7 +105,7 @@
       <div class="avail">
         <p class="avail-title">{{ group.title }}
           {%- if group.badge %} <a class="badge {{ group.badge.tint }}"
-             href="#provenance">{{ group.badge.label }}</a>{% endif %}</p>
+             href="#{{ scope }}provenance">{{ group.badge.label }}</a>{% endif %}</p>
         {% if group.rows %}
         <ul>
           {% for row in group.rows %}

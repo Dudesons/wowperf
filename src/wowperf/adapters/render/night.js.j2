@@ -1,0 +1,41 @@
+{# ABOUTME: The night page's half of the one script: which boss control, and which pull, is shown. #}
+{# ABOUTME: It toggles one class on elements already in the document -- it builds nothing. #}
+(function () {
+  var boss = document.getElementById("night-boss");
+  if (!boss) { return; }
+  var controls = document.querySelectorAll("[data-night-for]");
+  var pulls = document.querySelectorAll("[data-night-pull-panel]");
+
+  // Every pull is already in the document. This decides which one is visible.
+  function showPull(id) {
+    for (var i = 0; i < pulls.length; i++) {
+      pulls[i].classList.toggle("active", pulls[i].id === id);
+    }
+  }
+
+  // One pull control per boss, all of them already drawn: choosing a boss
+  // shows that boss's control, hides the others, and opens whichever pull
+  // the shown control is already sitting on.
+  function showBoss(name) {
+    var shown = null;
+    for (var i = 0; i < controls.length; i++) {
+      var on = controls[i].getAttribute("data-night-for") === name;
+      controls[i].classList.toggle("active", on);
+      if (on) { shown = controls[i].querySelector("select"); }
+    }
+    if (shown) { showPull(shown.value); }
+  }
+
+  boss.addEventListener("change", function (event) {
+    showBoss(event.currentTarget.value);
+  });
+
+  var picks = document.querySelectorAll("[data-night-pull]");
+  for (var p = 0; p < picks.length; p++) {
+    picks[p].addEventListener("change", function (event) {
+      showPull(event.currentTarget.value);
+    });
+  }
+
+  showBoss(boss.value);
+})();

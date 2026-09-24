@@ -1,8 +1,8 @@
 {# ABOUTME: The Provenance panel: what was fetched, what was withheld, every reference. #}
 {# ABOUTME: A reference carries a link and never a figure, so the page is not a corpus. #}
-<section class="panel" data-tab-panel="main" id="tab-provenance">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-provenance">
 
-<h2 id="provenance">Provenance</h2>
+<h2 id="{{ scope }}provenance">Provenance</h2>
 <p class="sub">Report {{ report.provenance.report_code }}, fight {{ report.provenance.fight_id }},
 fetched {{ report.provenance.fetched_at }}.</p>
 {# No per-row difficulty here, unlike the Mythic+ line's "+<keystone level>": the rankings query #}

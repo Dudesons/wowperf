@@ -2,19 +2,19 @@
 {# ABOUTME: Damage reads against the group median, never as avoidable. #}
 {% from "_macros.html.j2" import ability, ledger_row with context %}
 {% from "_player_timeline.html.j2" import player_timeline with context %}
-<section class="panel" data-tab-panel="main" id="tab-players">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-players">
 
-<h2 id="players">Players</h2>
+<h2 id="{{ scope }}players">Players</h2>
 {% if not report.players %}
 <p class="sub">No players.</p>
 {% endif %}
-<nav class="tabs subtabs" data-tab-group="players" aria-label="Players">
+<nav class="tabs subtabs" data-tab-group="{{ scope }}players" aria-label="Players">
 {% for player in report.players %}
-  <button type="button" class="tab" data-tab-for="player-{{ player.slug }}">{{ player.name }}</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}player-{{ player.slug }}">{{ player.name }}</button>
 {% endfor %}
 </nav>
 {% for player in report.players %}
-<div class="card" data-tab-panel="players" id="player-{{ player.slug }}">
+<div class="card" data-tab-panel="{{ scope }}players" id="{{ scope }}player-{{ player.slug }}">
   <div class="player-head">
     <span class="swatch" style="background: var(--{{ player.colour }})"></span>
     <h3>{{ player.name }}</h3>

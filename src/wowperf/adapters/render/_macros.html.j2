@@ -1,14 +1,21 @@
 {# ABOUTME: The two shapes a finding takes on the page: a full card, and a link to one. #}
 {# ABOUTME: Each renders whichever fields it is handed; build.py decided what they hold. #}
+{# `scope` prefixes every id and every fragment link these macros draw. A page that
+   renders one report leaves it unset, which renders as nothing and names the card
+   `finding-<id>` as it always has. The night page renders many reports into one
+   document and sets it per pull: finding ids are unique inside one pull's report and
+   repeat across pulls, because every pull draws from the same analysers, so without a
+   prefix two pulls would carry the same element id and a pointer would open whichever
+   the browser reached first. #}
 {% macro ledger_row(row) %}
 {% if row.group_note %}
 <p class="group-note">{{ row.group_note }}</p>
 {% endif %}
-<div class="card" id="finding-{{ row.finding_id }}">
+<div class="card" id="{{ scope }}finding-{{ row.finding_id }}">
   <div class="row-head">
     <h3>{{ row.title_before }}{% if row.title_ability %}{{ ability(row.ability_id, row.title_ability, row.tooltip) }}{% endif %}{{ row.title_after }}</h3>
     {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
-    <a class="badge {{ row.badge.tint }}" href="#provenance">{{ row.badge.label }}</a>
+    <a class="badge {{ row.badge.tint }}" href="#{{ scope }}provenance">{{ row.badge.label }}</a>
   </div>
   {% if row.detail %}
   <p class="detail">{{ row.detail }}</p>
@@ -23,7 +30,7 @@
 {% endmacro %}
 
 {% macro pointer(row) %}
-<a class="pointer" href="#finding-{{ row.finding_id }}">
+<a class="pointer" href="#{{ scope }}finding-{{ row.finding_id }}">
   <span class="pointer-title">{{ row.title }}</span>
   <span class="cost">{{ row.seconds }}</span>
   <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>

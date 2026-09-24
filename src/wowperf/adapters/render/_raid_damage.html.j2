@@ -1,9 +1,9 @@
 {# ABOUTME: The raid Damage panel: throughput against the sample, and where it went. #}
 {# ABOUTME: Withheld on an attempt that did not kill -- Warcraft Logs ranks kills alone. #}
 {% from "_macros.html.j2" import ledger_row with context %}
-<section class="panel" data-tab-panel="main" id="tab-damage">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-damage">
 
-<h2 id="damage">Damage</h2>
+<h2 id="{{ scope }}damage">Damage</h2>
 {% if report.damage.state.value == "withheld" %}
 <p class="withheld">{{ report.damage.reason }}</p>
 {% else %}
