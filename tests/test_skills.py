@@ -32,7 +32,7 @@ FLAG = re.compile(r"--[a-z][a-z-]+")
 # `--difficulty`) that are not. Each command's own section is checked against
 # its own `--help` instead, so a fourth command means one more entry here
 # rather than a moved boundary.
-COMMANDS = ("analyze", "raid", "progression")
+COMMANDS = ("analyze", "raid", "progression", "night")
 
 # Flags a section names while talking about a sibling command rather than its
 # own -- "the same shapes `analyze` offers, minus `--narrative`", or the
@@ -43,6 +43,9 @@ COMMANDS = ("analyze", "raid", "progression")
 EXPLICITLY_UNSUPPORTED: dict[str, frozenset[str]] = {
     "raid": frozenset({"--throughput-ceiling", "--narrative"}),
     "progression": frozenset({
+        "--player", "--all-players", "--no-compare", "--narrative", "--fight",
+    }),
+    "night": frozenset({
         "--player", "--all-players", "--no-compare", "--narrative", "--fight",
     }),
 }
@@ -64,7 +67,9 @@ def _section_text(command: str) -> str:
     if command == "raid":
         return text.split("## The `raid` command")[1].split("## The `progression` command")[0]
     if command == "progression":
-        return text.split("## The `progression` command")[1].split("## When it goes wrong")[0]
+        return text.split("## The `progression` command")[1].split("## The `night` command")[0]
+    if command == "night":
+        return text.split("## The `night` command")[1].split("## When it goes wrong")[0]
     raise ValueError(f"no section known for {command!r}")
 
 

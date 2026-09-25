@@ -8,6 +8,7 @@ from jinja2 import Environment, FileSystemLoader
 
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.report.model import DeathCard, LedgerRow, PlayerCard, Report, all_ledger_rows
+from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_model import (
     ProgressionReport,
     all_progression_ledger_rows,
@@ -18,6 +19,7 @@ TEMPLATE_DIR = Path(__file__).parent
 TEMPLATE_NAME = "report.html.j2"
 RAID_TEMPLATE_NAME = "raid.html.j2"
 PROGRESSION_TEMPLATE_NAME = "progression.html.j2"
+NIGHT_TEMPLATE_NAME = "night.html.j2"
 
 
 def _environment() -> Environment:
@@ -175,6 +177,72 @@ def render_raid(report: RaidReport, icons: CdnIcons | None = None) -> str:
     )
     return _environment().get_template(RAID_TEMPLATE_NAME).render(
         report=report, icons_by_id=addresses
+    )
+
+
+def _night_scopes(report: NightReport) -> dict[int, str]:
+    """The id prefix each pull's markup is drawn under, keyed by the fight it came from.
+
+    Every id under a pull carries this in front of it. Panel ids, finding ids
+    and player slugs are unique inside one pull's report and repeat across
+    pulls -- every pull draws its findings from the same analysers and its
+    cards from the same roster -- so without a prefix one night page would
+    carry the same element id once per pull, and every link into one of them
+    would open whichever copy the browser reached first.
+
+    A fight id is what the report itself calls a pull, and one report never
+    gives two fights the same one, so it tells every pull on the page apart
+    whichever boss it sits under, with no index to keep in step.
+
+    Minted here and not in the template, which loops and decides nothing, and
+    not in the builder either: which strings a document needs to keep its
+    anchors apart is a fact about HTML, and `NightReport` is the same value
+    whether anything renders it or not.
+    """
+    return {
+        pull.report.provenance.fight_id: f"f{pull.report.provenance.fight_id}-"
+        for boss in report.bosses
+        for pull in boss.pulls
+    }
+
+
+def render_night(report: NightReport, icons: CdnIcons | None = None) -> str:
+    """`render_raid`'s counterpart for a whole report: every pull on one page.
+
+    The page is the raid page's seven panels drawn once per pull, so the icon
+    walk is the raid page's walk widened to the night. `_icon_addresses` takes
+    the collections it walks rather than a report -- its own docstring says why
+    -- and that is what lets it be called once here over the night's
+    collections instead of once per pull: what it is handed is every pull's
+    deaths, every pull's players and every pull's grid columns, chained. One
+    call means one `asked` set, so an ability met on two pulls is resolved once
+    and the first occurrence wins, exactly as within a single page.
+
+    `all_night_ledger_rows` is the row walk, and it already reaches the night's
+    own `observations` as well as every pull's rows -- the disclosure that no
+    parse axis was drawn lives there and nowhere else, so a per-pull walk would
+    never meet it.
+
+    Without an `icons` source the page draws exactly as the other three do
+    without one: every ability id on the view model is inert until something
+    can address it, and the `ability` macro renders a bare name.
+    """
+    pulls = [pull.report for boss in report.bosses for pull in boss.pulls]
+    addresses = (
+        {}
+        if icons is None
+        else _icon_addresses(
+            tuple(card for one in pulls for card in one.deaths),
+            all_night_ledger_rows(report),
+            tuple(card for one in pulls for card in one.players),
+            icons,
+            grid_columns=tuple(
+                column for one in pulls if one.grid for column in one.grid.columns
+            ),
+        )
+    )
+    return _environment().get_template(NIGHT_TEMPLATE_NAME).render(
+        report=report, icons_by_id=addresses, scopes=_night_scopes(report)
     )
 
 

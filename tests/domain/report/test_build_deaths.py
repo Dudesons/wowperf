@@ -24,6 +24,7 @@ from wowperf.domain.report.deaths import (
     CONSUMABLE_CAVEAT,
     NO_CONSUMABLE_DATA,
     NO_TIMELINE_EVENT,
+    TRIMMED_CARD_NOTE,
     build_deaths,
 )
 from wowperf.domain.report.model import DeathCard
@@ -474,6 +475,39 @@ def test_a_death_with_an_empty_run_up_carries_the_reason_as_a_note() -> None:
 
     assert card.timeline == ()
     assert card.timeline_note == NO_TIMELINE_EVENT
+
+
+def a_loaded_fight_with_events() -> LoadedRun:
+    """A death with a real hit in its run-up, so an untrimmed card would render a row.
+
+    A trimmed-card test needs this rather than an empty fixture: both timeline
+    notes are reachable from an empty run-up, so only a fixture that would
+    otherwise produce rows can tell the two notes apart.
+    """
+    return a_loaded_with((a_death(1, 60_000),), (a_hit(1, 54_200, "Snowdrift", 82_410),))
+
+
+def test_a_trimmed_card_drops_the_timeline_and_the_curve() -> None:
+    cards = build_deaths(a_loaded_fight_with_events(), NO_DEFENSIVES, NO_CONSUMABLES,
+                         trimmed=True)
+    assert cards[0].timeline == ()
+    assert cards[0].health_curve is None
+
+
+def test_a_trimmed_card_says_which_absence_this_is() -> None:
+    # The fixture has events, so an untrimmed card would render rows. The note
+    # must not claim the log was quiet -- it was not.
+    cards = build_deaths(a_loaded_fight_with_events(), NO_DEFENSIVES, NO_CONSUMABLES,
+                         trimmed=True)
+    assert cards[0].timeline_note == TRIMMED_CARD_NOTE
+    assert cards[0].timeline_note != NO_TIMELINE_EVENT
+    assert "--deep" in cards[0].timeline_note
+
+
+def test_an_untrimmed_card_is_unchanged() -> None:
+    cards = build_deaths(a_loaded_fight_with_events(), NO_DEFENSIVES, NO_CONSUMABLES)
+    assert cards[0].timeline != ()
+    assert cards[0].timeline_note == ""
 
 
 def test_an_actor_whose_id_is_zero_is_named_like_any_other() -> None:

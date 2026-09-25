@@ -1,0 +1,32 @@
+{# ABOUTME: What the night page says about itself: its own findings, and how it was read. #}
+{# ABOUTME: Drawn once for the document, outside every pull, because neither is about one pull. #}
+{% from "_macros.html.j2" import ledger_row with context %}
+<section class="night-notes">
+
+<h2 id="night-observations">Findings about the night</h2>
+{% if report.observations %}
+<p class="sub">Findings true of the whole report rather than of any one pull.</p>
+<div class="findings">
+{% for row in report.observations %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% else %}
+<p class="sub">Nothing to report.</p>
+{% endif %}
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report {{ report.header.report_code }}, fetched {{ report.provenance.fetched_at }}.</p>
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+{% for line in report.provenance.methods %}
+<p class="sub">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>

@@ -17,6 +17,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import BASELINE_Y, PLOT_TOP, PLOT_X0, PLOT_X1
 from wowperf.domain.report.build import ceiling_withheld_line
+from wowperf.domain.report.deaths import NO_CARDS_ASKED
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
@@ -535,6 +536,52 @@ def test_the_fights_deaths_each_get_a_recap_card() -> None:
     )
 
     assert [card.player for card in report.deaths] == ["Stonewake"]
+
+
+def test_death_cards_false_skips_building_them_entirely() -> None:
+    """The tier with no cards at all: `deaths` comes back empty, not built then discarded."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    without_cards = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES, death_cards=False,
+    )
+    default = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES,
+    )
+
+    assert without_cards.deaths == ()
+    assert default.deaths != ()
+
+
+def test_only_the_no_cards_tier_says_why_its_deaths_tab_is_empty() -> None:
+    """The one tier whose empty `deaths` is not a reading of the log.
+
+    A fight with no death has an empty tuple because nobody died, and the page
+    says "No deaths." over it. This fixture's fight has one, so cards off
+    empties the same tuple while the death findings stay -- and a page that
+    printed the same sentence would be blaming the log for what the run
+    decided. `deaths_note` is what the page reads instead, so it is set here
+    and nowhere else.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    without_cards = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES, death_cards=False,
+    )
+    default = build_raid_report(
+        loaded, a_wipes_findings(), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        NO_ROLES,
+    )
+
+    assert without_cards.deaths_note == NO_CARDS_ASKED
+    # The other half, and the reason the note is not simply always present: a
+    # report that built its cards has nothing to explain, and an explanation
+    # drawn beside a card would be false about it.
+    assert default.deaths_note == ""
+    assert default.deaths != ()
 
 
 def test_the_subjects_card_opens_the_players_tab() -> None:

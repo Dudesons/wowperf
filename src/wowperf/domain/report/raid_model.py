@@ -120,6 +120,11 @@ class RaidReport(Frozen):
     # None where no ability qualified.
     grid: RaidGrid | None = None
     deaths: tuple[DeathCard, ...]
+    # Why `deaths` is empty, where the reason is the run rather than the log.
+    # Empty on every report whose Deaths tab was asked for at all, which is the
+    # page saying what it read: "No deaths." is then a true reading of the log.
+    # See `NO_CARDS_ASKED`.
+    deaths_note: str = ""
     death_rows: tuple[LedgerRow, ...] = ()
     interrupts: tuple[LedgerRow, ...]
     players: tuple[PlayerCard, ...]

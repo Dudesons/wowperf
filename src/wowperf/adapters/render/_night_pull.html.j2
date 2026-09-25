@@ -1,0 +1,44 @@
+{# ABOUTME: One pull of the night: its heading, its seven tabs, and the raid partials below. #}
+{# ABOUTME: A macro and not a plain include, so `scope` and `report` bind as arguments. #}
+{# The three arguments reach the partials below as ordinary context: a macro's
+   parameters are in scope for anything it includes, which is what lets this
+   rebind `report` to one pull's raid report without an assignment tag, which
+   no template here carries and `test_the_report_carries_no_total_row` refuses.
+   `scope` prefixes every id drawn under here, so two pulls on one page never
+   share one; the adapter minted it from the pull's own fight id. #}
+{% macro pull_section(report, scope, tier) %}
+<section class="pull" data-night-pull-panel id="{{ scope }}pull">
+
+<h2>{{ report.header.boss }} {{ report.header.difficulty }}</h2>
+<p class="sub">{{ report.header.outcome }} &middot; fight {{ report.provenance.fight_id }} &middot; death cards: {{ tier }}</p>
+
+<nav class="tabs" data-tab-group="{{ scope }}main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-provenance">Provenance</button>
+</nav>
+{# The blank lines below are page output, not source spacing: text outside a tag renders, #}
+{# and a comment or an include tag does not. Removing one changes the rendered page. #}
+
+
+
+{% include "_raid_summary.html.j2" %}
+
+{% include "_raid_damage.html.j2" %}
+
+{% include "_raid_mechanics.html.j2" %}
+
+{% include "_deaths.html.j2" %}
+
+{% include "_interrupts.html.j2" %}
+
+{% include "_players.html.j2" %}
+
+{% include "_raid_provenance.html.j2" %}
+
+</section>
+{% endmacro %}

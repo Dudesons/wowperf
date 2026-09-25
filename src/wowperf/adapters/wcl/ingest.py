@@ -102,7 +102,15 @@ def select_raid_fight(fights: list[dict[str, Any]], fight_id: int | None) -> dic
         raise IngestError("This report contains no boss fight")
     if len(boss_fights) > 1:
         ids = ", ".join(str(fight["id"]) for fight in boss_fights)
-        raise IngestError(f"This report holds several boss fights ({ids}); pass --fight")
+        # `--fight` first, and the alternative after it: a reader who wanted one
+        # of these fights is answered before being offered another command. The
+        # second clause is for the reader who pasted a bare report link meaning
+        # the whole night, which is now something this tool reads rather than a
+        # question it can only refuse.
+        raise IngestError(
+            f"This report holds several boss fights ({ids}); pass --fight, "
+            "or read every one of them with `wowperf night`"
+        )
     return boss_fights[0]
 
 

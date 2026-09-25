@@ -106,6 +106,44 @@ NO_HEALTH_READING = (
 
 NO_TIMELINE_EVENT = "No event in the last seconds."
 
+TRIMMED_CARD_NOTE = (
+    "This card is trimmed: the timeline and health curve were not built for this pull. "
+    "Re-run with --deep <fight> to render them."
+)
+"""Why a card has no timeline, when the reason is us rather than the log.
+
+`NO_TIMELINE_EVENT` says the log recorded nothing in the window. This says the
+run declined to build it. They look the same on the page and mean opposite
+things, and a reader who takes this one for that concludes the pull was quiet.
+"""
+
+NO_CARDS_ASKED = (
+    "No death card was built for this pull, because the run asked for none with "
+    "--no-deaths. This is not a claim that nobody died: any death finding below was "
+    "measured without a card."
+)
+"""Why a Deaths tab is empty, when the reason is us rather than the log.
+
+Names the flag, as `TRIMMED_CARD_NOTE` above already names `--deep` from this
+same shared module. The flag it names is the one to drop rather than the one to
+add, because this absence was asked for rather than declined: `--no-deaths` is
+the only route to this tier, so a reader who meets this sentence typed that
+flag or inherited a command line that did. A reader who opens the Deaths tab
+and reads no further is then told what emptied it, without having to find the
+Provenance line that says the same thing about the whole page.
+
+"No deaths." is a reading of the log, and it is the right sentence wherever the
+log is what was read. At this tier it would be a lie: the tab is empty because
+nobody asked for a card, and the death-cost ledger a few lines below it on the
+same tab may be listing what those very deaths cost -- so the page would
+contradict itself on one screen.
+
+The same family as `TRIMMED_CARD_NOTE` above, one level out: that one says the
+run declined to build a card's insides, this one says it declined to build the
+card. Both deny the reading a reader would otherwise take, because the two
+sentences sit in the same place and mean opposite things.
+"""
+
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
 
 NO_CONSUMABLE_DATA = (
@@ -319,6 +357,8 @@ def build_deaths(
     consumables: Consumables,
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
+    *,
+    trimmed: bool = False,
 ) -> tuple[DeathCard, ...]:
     """One recap per death, oldest first.
 
@@ -326,6 +366,13 @@ def build_deaths(
     the health readings or the return, which is the reason this section
     exists at all. The same run-up window decides the timeline and the
     availability, so the card shows the damage and the answers side by side.
+
+    `trimmed` drops the timeline and the health curve, and nothing else: the
+    six availability states below still come from `availability_at`, which
+    reads the cast stream and the aura table directly rather than through the
+    timeline this flag skips building. Skipping means what it says -- the
+    timeline is never assembled and then discarded, which is the whole point
+    of a tier that exists to avoid the work.
     """
     players_by_id = {player.actor_id: player for player in loaded.players}
     names = display_names(loaded.players)
@@ -333,27 +380,33 @@ def build_deaths(
     cards = []
     for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)
-        events = recap_timeline(loaded, death)
-        curve = build_health_curve(
-            events, readings_in_window(loaded.health_samples, death), death
-        )
         slug = f"death-{index}"
         auras = loaded.auras_by_actor.get(death.actor_id)
-        # Every event still reaches the curve and the press tooltips below:
-        # health is reconstructed from the whole run-up, and a press sums what
-        # arrived inside its cover from the same unfiltered list. Only which
-        # rows a reader is shown narrows here -- see design section 4.1.
-        drawn = tuple(
-            event
-            for event in events
-            if event.kind != CAST or _press_band(event, death, auras) is not None
-        )
-        timeline = tuple(
-            _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras,
-                       events)
-            for position, event in enumerate(drawn)
-        )
-        has_health = any(row.health_percent is not None for row in timeline)
+        if trimmed:
+            # Not computed and discarded: the tier exists to skip this work.
+            curve = None
+            timeline: tuple[RecapRow, ...] = ()
+            has_health = False
+        else:
+            events = recap_timeline(loaded, death)
+            curve = build_health_curve(
+                events, readings_in_window(loaded.health_samples, death), death
+            )
+            # Every event still reaches the curve and the press tooltips below:
+            # health is reconstructed from the whole run-up, and a press sums what
+            # arrived inside its cover from the same unfiltered list. Only which
+            # rows a reader is shown narrows here -- see design section 4.1.
+            drawn = tuple(
+                event
+                for event in events
+                if event.kind != CAST or _press_band(event, death, auras) is not None
+            )
+            timeline = tuple(
+                _recap_row(event, death, names, f"{slug}-e{position}", curve is not None, auras,
+                           events)
+                for position, event in enumerate(drawn)
+            )
+            has_health = any(row.health_percent is not None for row in timeline)
         at = availability_at(
             loaded.players, loaded.casts, death, defensives, consumables, externals,
             visible_from_ms=start_ms,
@@ -384,7 +437,9 @@ def build_deaths(
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
                 health_curve=curve,
                 timeline_summary=f"{len(timeline)} {plural(len(timeline), 'event')}",
-                timeline_note="" if timeline else NO_TIMELINE_EVENT,
+                timeline_note=(
+                    TRIMMED_CARD_NOTE if trimmed else ("" if timeline else NO_TIMELINE_EVENT)
+                ),
                 health_note="" if has_health or not timeline else NO_HEALTH_READING,
                 came_back=came_back,
                 came_back_badge=came_back_badge,

@@ -352,7 +352,7 @@ src/wowperf/
 │   ├── model.py           the Mythic+ run as structure: Player, EnemyNpc, Pull, Run, LoadedRun
 │   ├── events.py          the run as a sequence: Death, CastEvent, DamageTakenEvent, HealthSample…
 │   ├── encounter.py       one raid boss fight: Encounter, LoadedEncounter — a sibling of Run
-│   ├── progression.py     a night of attempts on one boss
+│   ├── progression.py     every attempt on one boss
 │   ├── fight.py           LoadedFight Protocol — what both a run and an encounter satisfy
 │   ├── findings.py        Finding, FindingFact, Confidence, rank_findings
 │   ├── loadout.py         EquippedItem, StatBlock, Loadout

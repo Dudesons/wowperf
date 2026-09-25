@@ -25,7 +25,7 @@ from wowperf.adapters.config.toml import (
     load_slot_names,
     load_throughput_cooldowns,
 )
-from wowperf.adapters.render.html import render, render_progression, render_raid
+from wowperf.adapters.render.html import render, render_night, render_progression, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
@@ -78,6 +78,7 @@ from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
+from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_build import build_raid_report
@@ -1785,6 +1786,256 @@ def progression(
             ),
             encoding="utf-8",
         )
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository.client.costs)
+
+
+@app.command()
+def night(
+    report: str = typer.Argument(..., help="Report URL or code"),
+    deep: list[int] = typer.Option(
+        [],
+        "--deep",
+        help="Draw this pull's whole death anatomy -- its run-up timeline and its health "
+        "curve. Repeatable, and priced per pull rather than per night.",
+    ),
+    no_deaths: bool = typer.Option(
+        False,
+        "--no-deaths",
+        help="Draw no death card at all, which is the cheapest tier a pull can be read at",
+    ),
+    difficulty: int | None = typer.Option(
+        None,
+        help="Difficulty id; skips any boss this report holds only at another difficulty. "
+        "Defaults per boss to that boss's own first fight in the report.",
+    ),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the findings JSON"),
+) -> None:
+    """Analyse every boss fight one report holds and write them as one page.
+
+    The fourth sibling of `analyze`, `raid` and `progression`, and the widest:
+    `raid` reads one pull, `progression` one boss's pulls, this one the whole
+    report. There is no `--fight`, because covering every fight is the point.
+
+    It draws no parse axis. That sample is per player per boss, and across a
+    report it would cost an order of magnitude more than everything else here
+    put together -- so `--player`, `--all-players` and `--no-compare` are not
+    offered, there being no per-player reference for them to widen or skip. The
+    page says so once, in as many words, rather than leaving six families
+    silently missing.
+
+    What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws
+    no death card at all, the default trims every card to what each player had
+    at the moment of death, and `--deep FIGHT` buys back the named pull's
+    timeline and health curve. `--deep` and `--no-deaths` contradict each other
+    and are refused together.
+    """
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    # Refused before the repository is built, so a contradiction costs nothing
+    # at all: one flag asks for a fuller card on a named pull and the other for
+    # no card anywhere, and letting either win silently would draw a night
+    # nobody asked for.
+    if deep and no_deaths:
+        raise typer.BadParameter(
+            "--deep asks for a fuller death card on a named pull and --no-deaths asks for "
+            "no death card at all; pass one or the other"
+        )
+
+    # The tier, read off the flags once. Both `load_night_attempts` and
+    # `build_night_report` take this pair, the first to decide what to fetch and
+    # the second to decide what to draw, and neither can detect that the other
+    # was handed something else: a pull fetched with no cards and drawn with one
+    # renders a card with an empty timeline and no explanation on the page at
+    # all. One pair of names, read here and passed to both, is what rules that
+    # out; `tests/test_cli_night.py` pins it.
+    deep_fights = frozenset(deep)
+    death_cards = not no_deaths
+
+    try:
+        code, _ = parse_report_url(report)
+        repository = build_repository(cache_dir)
+        before = repository.rate_limit()
+        night = repository.load_night(code, difficulty)
+        # `load_night` answers a report with no boss fight with an empty
+        # `Night` rather than raising, because only the command knows which
+        # report was asked for. Worded as `load_progression` words the same
+        # refusal, so the two siblings say one thing about one report.
+        if not night.bosses:
+            raise ValueError(f"Report {code} holds no boss fight")
+        # `--deep` is checked against the attempts this night will actually
+        # draw, not against every fight in the report: an id that names a fight
+        # too short to read would otherwise be accepted and deepen nothing,
+        # which is the flag silently doing nothing at the price of a full run.
+        drawable = sorted({one.fight_id for boss in night.bosses for one in boss.attempts})
+        unknown = sorted(deep_fights.difference(drawable))
+        if unknown:
+            named = ", ".join(str(one) for one in unknown)
+            if drawable:
+                holds = ", ".join(str(one) for one in drawable)
+                raise ValueError(
+                    f"--deep names fight {named}, which this night has no attempt for; "
+                    f"its attempts are {holds}"
+                )
+            # A night every one of whose fights fell under the duration floor
+            # has no id to offer back, and "its attempts are " followed by
+            # nothing would read as a bug rather than as an answer.
+            raise ValueError(
+                f"--deep names fight {named}, and no fight in this report is long enough "
+                "to read as an attempt"
+            )
+        loaded = repository.load_night_attempts(
+            night, deep_fights=deep_fights, death_cards=death_cards
+        )
+        # Loaded once and shared between the pull analyser and the page builder
+        # below, exactly as `raid` shares them between its own two readers.
+        defensives = load_defensives()
+        consumables = load_consumables()
+        roles = load_roles()
+        # Every pull the night drew, in the order the page draws them, walked
+        # once and named once: what follows prices icons, findings and the
+        # payload off this single list rather than rebuilding it three times.
+        drawn = [attempt for boss in loaded.loaded for attempt in boss.attempts_with_events]
+        # Two lists, not one. A boss's findings read its attempts' metadata and
+        # a pull's read that pull's own streams; neither is a summary of the
+        # other, and section 9 writes both out under the boss they belong to.
+        boss_findings = {
+            boss.progression.encounter_id: rank_raid_findings(analyse_progression(boss))
+            for boss in loaded.loaded
+        }
+        # No mechanics sample and no parse subject: this command fetches no
+        # reference kill of any kind, and handing the analyser an empty sample
+        # is what leaves those families undrawn rather than drawn from nothing.
+        findings_by_fight = {
+            attempt.encounter.fight_id: analyse_encounter(
+                attempt, defensives, consumables, roles=roles
+            )
+            for attempt in drawn
+        }
+        after = repository.rate_limit()
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    payload = {
+        "report_code": night.report_code,
+        # What was asked for, which is the half a reader cannot recover from
+        # the findings themselves -- least of all on a night where every pull
+        # failed and there is nothing left to infer it from.
+        "asked_for": {
+            "difficulty": difficulty,
+            "deep_fights": sorted(deep_fights),
+            "death_cards": death_cards,
+        },
+        "bosses_counted": len(night.bosses),
+        "pulls_drawn": len(drawn),
+        "withheld_pulls": [
+            {"fight_id": one.fight_id, "reason": one.reason} for one in loaded.failed_pulls
+        ],
+        # A warning per family rather than one for the file: the two lists come
+        # from two analysers with two different ordering rules, and one sentence
+        # over both would state an accounting neither of them keeps.
+        "boss_findings_are_ranked_not_additive": PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "pull_findings_are_ranked_not_additive": RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "bosses": [
+            {
+                "encounter_id": boss.progression.encounter_id,
+                "boss_name": boss.progression.boss_name,
+                "difficulty": boss.progression.difficulty,
+                "size": boss.progression.size,
+                "killed": boss.progression.killed,
+                "attempts_counted": len(boss.progression.attempts),
+                "attempts_discarded": len(boss.progression.discarded),
+                "attempts_deepened": len(boss.loaded),
+                "findings": [
+                    finding.model_dump(mode="json")
+                    for finding in boss_findings[boss.progression.encounter_id]
+                ],
+                "pulls": [
+                    {
+                        "fight_id": attempt.encounter.fight_id,
+                        "kill": attempt.encounter.kill,
+                        "duration_seconds": attempt.encounter.duration_seconds,
+                        "fight_percentage": attempt.encounter.fight_percentage,
+                        "findings": [
+                            finding.model_dump(mode="json")
+                            for finding in findings_by_fight[attempt.encounter.fight_id]
+                        ],
+                    }
+                    for attempt in boss.attempts_with_events
+                ],
+            }
+            for boss in loaded.loaded
+        ],
+    }
+    counted = sum(len(one) for one in boss_findings.values()) + sum(
+        len(one) for one in findings_by_fight.values()
+    )
+
+    # Built and rendered before either file is written, and guarded on its own.
+    # A page that cannot be built must leave nothing behind: written after the
+    # findings, it would hand a reader a findings file naming a report that does
+    # not exist, and no page to open. `ValueError` alongside `OSError` because
+    # `night_frame.night_subject` refuses a pull whose roster is empty -- a shape
+    # `Encounter` allows and the loader passes through -- and it names the fight
+    # when it does, which is an answer rather than the traceback this would
+    # otherwise print after both writes had already claimed to succeed.
+    try:
+        page = render_night(
+            build_night_report(
+                loaded,
+                findings_by_fight,
+                datetime.now().strftime("%Y-%m-%d %H:%M"),
+                defensives,
+                consumables,
+                roles,
+                deep_fights=deep_fights,
+                death_cards=death_cards,
+                externals=load_externals(),
+                self_resurrections=load_self_resurrections(),
+            ),
+            # One ability dictionary answers the whole night --
+            # `load_night_attempts` fetches it once per report and hands the same
+            # icon half to every pull -- so any drawn pull addresses the art for
+            # all of them. None when no pull was drawn at all: there is then no
+            # dictionary to read and nothing on the page to address with it.
+            icons=build_icons(drawn[0], ()) if drawn else None,
+        )
+    except (ValueError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    written = out / f"{night.report_code}.night.json"
+    # A guard of its own, on the same reasoning `progression`'s write phase
+    # carries one: this fails differently from the block above, and can fail
+    # after every finding has already been computed.
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        # Real rosters and boss names contain non-ASCII characters; write_text's
+        # default encoding is locale-dependent (commonly cp1252 on Windows) and
+        # would raise on them.
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    typer.echo(f"{counted} findings written to {written}")
+
+    report_file = out / f"{night.report_code}.night.html"
+    # A guard of its own again, and for the reason the other two carry theirs:
+    # this fails differently from building the page and from writing the
+    # findings, and it fails after both have already succeeded.
+    try:
+        report_file.write_text(page, encoding="utf-8")
     except OSError as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error

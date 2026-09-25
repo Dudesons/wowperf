@@ -10,7 +10,7 @@ from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids, ceiling_withheld_line
-from wowperf.domain.report.deaths import HEALTH_METHOD, build_deaths
+from wowperf.domain.report.deaths import HEALTH_METHOD, NO_CARDS_ASKED, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
 from wowperf.domain.report.frame import NO_COMPARISON_RAN, PARSE_UNAVAILABLE_ID
 from wowperf.domain.report.ledger import (
@@ -88,6 +88,9 @@ def build_raid_report(
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
     reference_records: tuple[ReferenceRecord, ...] = (),
+    *,
+    trimmed: bool = False,
+    death_cards: bool = True,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
 
@@ -100,6 +103,14 @@ def build_raid_report(
     comparison row reaches is decided by the slug the finding carries.
     `compared_slugs` is who a comparison was asked for, and `None` means none
     was asked for at all.
+
+    `trimmed` and `death_cards` are the night command's tier ladder for the
+    Deaths tab, not a raid-page concern: a raid fight always wants full cards,
+    which is why both default to what the raid page has always rendered.
+    `death_cards=False` skips `build_deaths` entirely rather than calling it
+    and discarding the result, so `deaths` comes back `()` without the work
+    ever being done. `trimmed` is threaded straight through to `build_deaths`
+    when cards are built at all.
 
     Four of `build_report`'s parameters are deliberately absent, and each
     absence is a fact about a raid rather than an omission. There is no
@@ -244,7 +255,14 @@ def build_raid_report(
                     f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
                 )
 
-    deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)
+    # `death_cards=False` skips the call rather than building cards and
+    # throwing them away: the tier exists so the work is never done.
+    deaths = (
+        build_deaths(loaded, defensives, consumables, externals, self_resurrections,
+                     trimmed=trimmed)
+        if death_cards
+        else ()
+    )
     methods = (HEALTH_METHOD,) if any(card.health_badge for card in deaths) else ()
 
     return RaidReport(
@@ -257,6 +275,10 @@ def build_raid_report(
         mechanics_rows=placed_rows["mechanics_rows"],
         grid=grid,
         deaths=deaths,
+        # Only this tier can leave the tab empty over a pull that had deaths,
+        # so only this tier says why. Every other empty `deaths` is the log's
+        # own answer, and the page states it as one.
+        deaths_note="" if death_cards else NO_CARDS_ASKED,
         death_rows=placed_rows["death_rows"],
         interrupts=placed_rows["interrupts"],
         players=players,

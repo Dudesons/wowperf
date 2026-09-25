@@ -4,6 +4,8 @@
 from collections.abc import Sequence
 from typing import Any, Literal, NamedTuple, cast
 
+import httpx
+
 from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.config.toml import load_raid_partition
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
@@ -29,7 +31,7 @@ from wowperf.adapters.wcl.ingest import (
     select_raid_fight,
 )
 from wowperf.adapters.wcl.loadouts import build_loadouts
-from wowperf.adapters.wcl.pagination import fetch_all_events
+from wowperf.adapters.wcl.pagination import Execute, fetch_all_events
 from wowperf.adapters.wcl.queries import (
     ABILITIES_QUERY,
     ACTORS_QUERY,
@@ -53,10 +55,11 @@ from wowperf.adapters.wcl.report_rankings import build_report_rankings
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.raid_reference import ReportRankings
-from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
+from wowperf.domain.night import FailedPull, LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression, build_progression
 
 # `full` loads everything our own run needs. `speed` and `parse` are the two
@@ -513,6 +516,79 @@ class WclRunRepository:
             separates_wipes=separates_wipes,
         )
 
+    def load_night(self, report_code: str, difficulty: int | None) -> Night:
+        """Every boss in one report, each as a Progression, from one fight list.
+
+        `load_progression` reads this same list and then narrows it to one boss,
+        refusing when nothing picks one out. This reads it and keeps all of
+        them: the report is the subject here, so several bosses is what the
+        command is for rather than an ambiguity to refuse.
+
+        One `Fights` query answers the whole report, exactly as it does for
+        `load_progression` -- the cost of reading a night's shape does not scale
+        with how many bosses it holds. What scales is the deepening, which is
+        `load_night_attempts`' business and priced there.
+
+        An explicit `difficulty` narrows the report rather than one boss: a
+        boss fought only at a different difficulty is skipped, never raised
+        on the way `_pick_boss` raises for a single `--boss`/`--difficulty`
+        mismatch. A real raid night routinely clears some bosses at one
+        difficulty and pushes others at another, and skipping never invents a
+        difficulty for the boss it keeps -- mixing difficulties on one page
+        would make the page's own difficulty label meaningless. Only when
+        every boss is skipped this way does it raise, naming the difficulty
+        asked for and the ones the report actually holds: a report with boss
+        fights that simply are not at that difficulty is a different failure,
+        with a different cause, than a report with no boss fights at all.
+        """
+        report = self._report(report_code)
+        boss_fights = [f for f in report.get("fights") or () if f.get("encounterID")]
+        if not boss_fights:
+            return Night(report_code=report_code, bosses=())
+
+        boss_ids: list[int] = []
+        for fight in boss_fights:
+            boss_id = int(fight["encounterID"])
+            if boss_id not in boss_ids:
+                boss_ids.append(boss_id)
+
+        if difficulty is not None:
+            boss_ids = [
+                boss_id
+                for boss_id in boss_ids
+                if any(
+                    fight["encounterID"] == boss_id and int(fight["difficulty"]) == difficulty
+                    for fight in boss_fights
+                )
+            ]
+            if not boss_ids:
+                present = sorted({int(fight["difficulty"]) for fight in boss_fights})
+                named = ", ".join(str(one) for one in present)
+                raise ValueError(
+                    f"This report holds no boss fight at difficulty {difficulty}; "
+                    f"it holds difficulty {named}"
+                )
+
+        partition = load_raid_partition()
+        encounters = [
+            build_encounter(report, fight, partition=partition) for fight in boss_fights
+        ]
+
+        bosses: list[Progression] = []
+        for boss_id in boss_ids:
+            resolved_id, resolved_difficulty = _pick_boss(boss_fights, boss_id, difficulty)
+            phases, separates_wipes = build_phases(report, resolved_id)
+            bosses.append(
+                build_progression(
+                    encounters,
+                    encounter_id=resolved_id,
+                    difficulty=resolved_difficulty,
+                    phases=phases,
+                    separates_wipes=separates_wipes,
+                )
+            )
+        return Night(report_code=report_code, bosses=tuple(bosses))
+
     def load_progression_attempts(self, progression: Progression) -> LoadedProgression:
         """Deepen every qualifying attempt: deaths and damage taken, nothing else.
 
@@ -575,6 +651,242 @@ class WclRunRepository:
             )
 
         return LoadedProgression(progression=progression, loaded=tuple(loaded))
+
+    def load_night_attempts(
+        self, night: Night, *, deep_fights: frozenset[int], death_cards: bool
+    ) -> LoadedNight:
+        """Deepen every attempt of every boss, each at the cheapest tier that serves it.
+
+        A night pull renders a whole pull page, so it needs more than the two
+        streams `load_progression_attempts` fetches -- that page draws no death
+        card at all. It needs less than `load_encounter` fetches, though: no
+        parse axis, and no stream a trimmed card leaves undrawn. What it needs
+        is a ladder, consulted per attempt:
+
+        * Every tier fetches deaths, damage taken, enemy casts, interrupts,
+          resurrections and the damage graph. Nothing the seven tabs draw
+          unconditionally is optional, and the last two are on this rung for a
+          second reason: what they leave behind when unfetched is an empty
+          tuple every reader takes for a measurement. No resurrections makes
+          every death card on every pull say "released" of players who were in
+          fact brought back, and makes the alive chart draw a raid that never
+          gets up; no damage graph makes the page print a sentence naming the
+          graph as the cause of a track that was never requested. Two cheap
+          queries a pull buy a page that tells the truth with the vocabulary it
+          already has, against a third abstention that would have to be
+          invented.
+        * `death_cards` adds the casts stream and the aura tables, which are
+          one pair and must stay one. A press is read from the cast stream:
+          `availability_at` derives every press from it, and `state_of`
+          answers UNSEEN -- "never seen all run" -- for any ability with no
+          press at all. The aura table is what then refines a press into
+          `held` or `faded`. Send neither and every defensive, consumable and
+          external on every card reads UNSEEN of players who did press them.
+          Send the tables alone and they refine a press that cannot exist;
+          send the casts alone and every press stands at `pressed`, the
+          explicit unknown. The casts stream is also the health column, since
+          `build_health_samples` reads it.
+        * `deep_fights` adds one healing window a death, for the named fights
+          alone. It is the only rung above the cards, because it is the only
+          stream whose absence a card survives.
+
+        What the dear rungs cost, from the breakdown in
+        `.claude/skills/wcl-api/SKILL.md` (2026-09-23): on a 20-player Mythic
+        wipe costing 65.19 points, `AuraTable` was 20.00 of it at one call a
+        roster player and `Healing` 22.00 at one call a death, while `Casts`
+        was 1.00 for the whole fight. Those are figures for one `raid` run on
+        one fight, not for this command, which no live run has yet exercised
+        -- so they price the rungs rather than the night, and the first live
+        night should report its own.
+
+        `deep_fights` is read once per attempt rather than once for the night:
+        a `--deep` that leaked would put every pull at the dearest tier, which
+        is the whole night at the price the flag exists to charge for one.
+
+        Returns before fetching anything when no boss has a qualifying attempt:
+        an ability dictionary nothing would read is a point spent for no
+        reason. The bosses still come back, each with an empty
+        `LoadedProgression`, because a boss that was only ever reset is still a
+        boss this report holds.
+        """
+        if not any(boss.attempts for boss in night.bosses):
+            return LoadedNight(
+                night=night,
+                loaded=tuple(LoadedProgression(progression=boss) for boss in night.bosses),
+            )
+
+        # Both halves, where `load_progression_attempts` keeps only the names:
+        # a night's death cards and ledger rows draw ability icons, and one
+        # query answers the whole report however many pulls read it.
+        ability_names, ability_icons = self._ability_dictionary(night.report_code)
+
+        # No `hits` list threaded through. Nothing here reports whether a night
+        # came from the cache, and a tally nobody reads is a tally that goes
+        # stale without anyone noticing.
+        def query(one_query: str, variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, variables)
+
+        loaded: list[LoadedProgression] = []
+        failures: list[FailedPull] = []
+        for boss in night.bosses:
+            deepened: list[LoadedEncounter] = []
+            for attempt in boss.attempts:
+                try:
+                    deepened.append(
+                        self._deepen_attempt(
+                            attempt,
+                            query,
+                            ability_names,
+                            ability_icons,
+                            deep=attempt.fight_id in deep_fights,
+                            death_cards=death_cards,
+                        )
+                    )
+                except RateLimitExceeded:
+                    # Not this pull's failure but every remaining pull's, so it
+                    # stops the night instead of being recorded once per pull
+                    # under a cause that would be true of none of them.
+                    # `_affix_names` lets it through for the same reason.
+                    raise
+                except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+                    # The tuple the `progression` command treats as a load
+                    # failure, caught per attempt rather than per night: one
+                    # pull that cannot be read shrinks the night, and the
+                    # record below is what keeps the shrinking from being
+                    # silent.
+                    failures.append(FailedPull(fight_id=attempt.fight_id, reason=str(error)))
+            loaded.append(LoadedProgression(progression=boss, loaded=tuple(deepened)))
+
+        return LoadedNight(night=night, loaded=tuple(loaded), failed_pulls=tuple(failures))
+
+    def _deepen_attempt(
+        self,
+        attempt: Encounter,
+        query: Execute,
+        ability_names: dict[int, str],
+        ability_icons: tuple[tuple[int, str], ...],
+        *,
+        deep: bool,
+        death_cards: bool,
+    ) -> LoadedEncounter:
+        """One pull's streams, at the tier `deep` and `death_cards` place it on.
+
+        Every stream this skips leaves an empty tuple behind, which reads the
+        same as "this pull had none" -- the shape `load_speed_reference` and
+        `load_parse_reference` leave behind for the streams their own axes do
+        not read. Nothing may report absence off a trimmed tier without
+        knowing which tier it was fetched at, or it would state as a finding
+        what is only a stream nobody paid for.
+        """
+        # The tiers are a ladder, so the deep one reaches everything the
+        # trimmed one does. A fight named deep is a request for that pull's
+        # whole anatomy, which outranks a night-wide "no cards".
+        cards = death_cards or deep
+
+        event_variables = {
+            "code": attempt.report_code,
+            "fightId": attempt.fight_id,
+            "startTime": float(attempt.start_ms),
+            "endTime": float(attempt.end_ms),
+        }
+        # A boss fight carries no pulls at all, so every builder below indexes
+        # its events against an empty route -- `pull_index_at` answers None
+        # over one, which is the right answer for an event that is never
+        # inside or outside a pull.
+        no_pulls: tuple[Pull, ...] = ()
+
+        # On the cards rung, not the deep one, and inseparable from the aura
+        # tables below: a press is read from this stream, so without it every
+        # ability on every card reads UNSEEN and the tables refine nothing.
+        # One stream, two readings -- the casts themselves and the health
+        # column `build_health_samples` takes out of them. Where it is skipped
+        # `build_deaths` gets an empty one, which costs only its reading of how
+        # long a death kept the player out.
+        cast_events = fetch_all_events(query, CASTS_QUERY, event_variables) if cards else []
+        casts = build_casts(cast_events, no_pulls, ability_names)
+
+        player_names = {player.actor_id: player.name for player in attempt.players}
+        deaths = build_deaths(
+            fetch_all_events(query, DEATHS_QUERY, event_variables),
+            no_pulls,
+            casts,
+            player_names,
+            ability_names,
+        )
+        damage_taken = build_damage_taken(
+            fetch_all_events(query, DAMAGE_TAKEN_QUERY, event_variables),
+            no_pulls,
+            ability_names,
+        )
+        enemy_cast_rows = build_enemy_cast_rows(
+            fetch_all_events(query, ENEMY_CASTS_QUERY, event_variables),
+            no_pulls,
+            ability_names,
+        )
+        interrupts = build_interrupts(
+            fetch_all_events(query, INTERRUPTS_QUERY, event_variables),
+            no_pulls,
+            player_names,
+        )
+        # Both belong to the base tier rather than the card one, because what
+        # reads them is drawn whether or not cards are, and because an empty
+        # one is read as a fact rather than as a gap. Unfetched resurrections
+        # make every card say "released" of players who were brought back, and
+        # an unfetched graph makes the page print a sentence naming the graph
+        # as the cause of a track it never asked for.
+        resurrections = build_resurrections(
+            fetch_all_events(query, RESURRECTS_QUERY, event_variables), ability_names
+        )
+        # Pre-aggregated by the API, so one call rather than a paginated
+        # stream, and one response carries a series for every player.
+        damage_done = build_damage_done(query(DAMAGE_DONE_GRAPH_QUERY, event_variables))
+
+        # Through `auras` rather than the query directly: the raid path reads
+        # its tables through that method, and one aura fetch with two call
+        # sites is one place for the pair of them to drift apart.
+        auras: tuple[PlayerAuras, ...] = ()
+        if cards:
+            auras = tuple(
+                self.auras(attempt.report_code, attempt.fight_id, player.actor_id)
+                for player in attempt.players
+            )
+
+        # One healing window per stretch of run-ups, scoped to the dying
+        # player, exactly as `load_encounter` fetches it.
+        healing: list[HealingEvent] = []
+        if deep:
+            for actor_id, start, end in healing_windows(deaths):
+                scoped = {
+                    "code": attempt.report_code,
+                    "fightId": attempt.fight_id,
+                    "actorId": actor_id,
+                    "startTime": float(start),
+                    "endTime": float(end),
+                }
+                healing.extend(
+                    build_healing(fetch_all_events(query, HEALING_QUERY, scoped), ability_names)
+                )
+
+        return LoadedEncounter(
+            encounter=attempt,
+            casts=casts,
+            deaths=deaths,
+            enemy_cast_rows=enemy_cast_rows,
+            interrupts=interrupts,
+            damage_taken=damage_taken,
+            damage_done=damage_done,
+            health_samples=build_health_samples(cast_events),
+            healing=tuple(healing),
+            resurrections=resurrections,
+            auras=auras,
+            ability_icons=ability_icons,
+            # `load_night` takes every attempt's partition from
+            # `load_raid_partition()` and sends no rankings query, so the
+            # season file is the source for every pull of a night -- stated
+            # here rather than left empty, which would have the page report no
+            # source for a partition that does have one.
+            partition_source="data/season.toml",
+        )
 
     def load_speed_reference(
         self, report_code: str, fight_id: int | None

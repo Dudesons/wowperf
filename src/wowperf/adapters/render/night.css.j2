@@ -1,0 +1,15 @@
+{# ABOUTME: The rules only the night page needs: the two dropdowns, and one pull at a time. #}
+{# ABOUTME: Every hiding rule sits under `.js`, so a reader with no script still sees them all. #}
+.night-pick { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px;
+  margin: 18px 0 8px; padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; }
+.night-pick label { color: var(--ink-dim); font-size: 13px; }
+.night-pick select { background: var(--page); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; font: inherit; font-size: 14px; padding: 5px 8px; max-width: 100%; }
+/* Without the script every pull and every pull control is on the page, stacked
+   in report order, which is the whole document a reader can still search and
+   print. The script adds the root class and these two rules take over. */
+.js .night-pulls:not(.active) { display: none; }
+.js .pull:not(.active) { display: none; }
+.pull { border-top: 1px solid var(--line); margin: 20px 0 0; padding: 4px 0 0; }
+.night-notes { border-top: 1px solid var(--line); margin: 28px 0 0; padding: 4px 0 0; }

@@ -145,8 +145,18 @@ def test_a_fight_id_absent_from_the_report_is_refused() -> None:
 def test_several_boss_fights_and_no_choice_is_refused_rather_than_guessed() -> None:
     # Picking "the last one" or "the only kill" would silently analyse a fight
     # the reader did not ask for, on a report that holds a whole night.
-    with pytest.raises(IngestError, match="--fight"):
+    with pytest.raises(IngestError) as excinfo:
         select_raid_fight(raid_fights(), None)
+
+    message = str(excinfo.value)
+    # Every boss fight is named, so a reader can pass one of them straight back.
+    assert "22, 28, 30" in message
+    # `--fight` first, the whole-report alternative second. A reader who wanted
+    # one of these fights has their answer before an offer of a different
+    # command, and one who pasted a bare report link meaning the night reads on
+    # to find it. The order is the claim here, not the mention: a message
+    # opening with `wowperf night` would still contain both.
+    assert message.index("--fight") < message.index("wowperf night")
 
 
 def test_one_boss_fight_needs_no_choice() -> None:
