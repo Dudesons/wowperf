@@ -164,12 +164,23 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
 | `analyze`, one player | 83 to 95 |
+| `night --no-deaths`, a whole report | 106 to 118 |
 | `analyze --all-players` | 190 |
+| `night`, a whole report | 300, with a caveat below |
 | `raid --all-players`, a kill | 878 |
 
 Each is one reading of one report on one day rather than a budget; the dates and the conditions
 behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
 goes.
+
+**The two `night` rows are a sixteen-pull report, and only the first is a cold-cache reading.**
+That one was measured twice, minutes apart, at 106 and 118 — the spread is the same per-query
+drift the rest of these figures carry. The 300 was measured on the same day against a cache
+that earlier `raid` and `progression` runs on that same report had already partly filled, so a
+first look at a report nobody has read costs more than 300, by an amount nobody has measured.
+What separates the two rows is the death cards: the default tier draws one per death and needs
+an aura table per raider per pull to tell a defensive that was held from one that had faded,
+and that single query family was 239 of the 300.
 
 **Whether the boss died is what moves the raid figures, not how many players you name.**
 Warcraft Logs ranks kills alone, so an attempt that wiped carries no rankings row, and the

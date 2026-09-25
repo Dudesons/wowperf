@@ -148,6 +148,37 @@ command does that work anyway, so those streams are not a marginal cost here.
 **Decision: trimmed cards are on by default.** About 440 points, an eighth of the hourly budget,
 for the tab most readers open first. `--deep` buys the rest per pull.
 
+### 6.1 Amendment: measured on the command itself, 2026-09-24
+
+The table above is arithmetic over one `raid` reading; this is the first reading of `wowperf
+night`. Both figures moved **up**, and the no-death-card row moved a long way. Report
+`cW38jmwdnZfbHVL4`, 8 bosses, 16 drawn pulls, 20 raiders; full breakdowns in
+`.claude/skills/wcl-api/SKILL.md`.
+
+| per pull | projected above | measured 2026-09-24 |
+| --- | --- | --- |
+| no death cards | ~2 | **6.6 to 7.4** (106.01 and 118.17 over 16 pulls, cold, two runs) |
+| trimmed cards | ~22 | **18.8 or more** (300.34 over 16 pulls, on a partly warm cache) |
+
+**The ~2 was the marginal cost, not the price.** It came from the paragraph below the table --
+a deepened `progression` pass fetches its streams anyway, so they are not a marginal cost here.
+They are not marginal to a reader with an empty cache, though, and `load_night_attempts` fetches
+six streams a pull at every tier: deaths, damage taken, enemy casts, interrupts, resurrections
+and the damage graph. Three of those six a `progression` pass never fetches at all. So the
+cheapest tier is nearly four times what this table projected, and a twenty-pull night with no
+cards is nearer 150 points than 40.
+
+**The trimmed row is a floor rather than a reading.** 300.34 was measured against a cache that
+earlier `raid` and `progression` runs on the same report had partly filled -- 239 aura tables
+fetched of the 320 the tier needs, no `Fights` or `DamageTaken` call at all. A cold run costs
+more, by an amount nobody has measured. What the reading does settle is the shape the table got
+right: `AuraTable` is the whole difference between the two tiers, at one call per raider per
+pull, and it is 239 of the 300.
+
+The **decision** above stands. The default tier is dearer than projected, and still the tier
+worth defaulting to: what the aura tables buy is `held` and `faded` against a bare `pressed`,
+and the first live run drew 21 and 14 of them across 186 death cards.
+
 ## 7. Death cards, and the one element that does not scale
 
 Measured on fight 26's page, a death card is **77 KB**. Stripped:

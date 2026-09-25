@@ -471,6 +471,43 @@ The `Casts` row also speaks to the price contradiction above: sixteen pages with
 `includeResources: true` for 16.00 points, 1.00 each, agreeing with the 2026-09-08 reading and not
 with the 2026-09-07 one. Still recorded rather than resolved, since nothing here depends on it.
 
+**A whole report at the default tier, 2026-09-24: 300.34 points of 3600.** `wowperf night
+cW38jmwdnZfbHVL4`, no flags: 8 bosses, 19 boss fights of which 16 clear the attempt floor, 20
+raiders, a trimmed death card per death and no `--deep`. Composed as the command prints it.
+
+| Operation | Calls | Points |
+| --- | --- | --- |
+| `AuraTable` | 239 | 239.00 |
+| `Casts` | 11 | 11.34 |
+| `DamageDoneGraph` | 11 | 11.00 |
+| `EnemyCasts` | 11 | 11.00 |
+| `Interrupts` | 11 | 11.00 |
+| `Resurrects` | 11 | 11.00 |
+| `Deaths` | 5 | 5.00 |
+| `RateLimit` | 2 | 1.00 |
+
+**This reading was not taken against a cold cache, and its own call counts are how you can tell.**
+Sixteen pulls need sixteen of each per-pull stream and one aura table per raider per pull, which
+is 320; this run made 239 aura calls, 11 of most streams, 5 `Deaths`, and no `Fights` or
+`DamageTaken` call at all. The remainder was served from a cache that earlier `raid` runs on
+individual fights of this report, and a `progression` pass over one boss's attempts, had already
+filled. So 300.34 is a floor for this command on this report rather than its cold price, and how
+much higher a genuinely cold run lands has not been measured.
+
+**The same report with `--no-deaths`, cold, the same day: 118.17 and 106.01 points**, two runs of
+`tests/e2e/test_night_e2e.py` minutes apart, each against a fresh cache directory. 6.6 to 7.4
+points a pull over 16 pulls, for the six streams every tier fetches -- deaths, damage taken,
+enemy casts, interrupts, resurrections and the damage graph -- plus the report's own `Fights`
+query. The 12-point spread between two runs of identical shape is the same per-query drift this
+section already records for `Deaths` and `DamageTaken`, at a larger call count.
+
+**What the two tiers say together: the death cards are the command's whole price, and
+`AuraTable` is the death cards' whole price.** 239 aura calls against a cheap tier that makes
+none is the entire distance between 106 and 300, and it is one call per raider per pull,
+proportional to nothing else. The refinement those tables buy is real -- `held` and `faded`
+against a bare `pressed` -- and it is what a reader is paying for; see
+`docs/plans/2026-09-22-raid-defensive-ceiling-design.md`.
+
 ## Mythic+ in the schema
 
 Verified 2026-09-03 against the Warcraft Logs GraphQL schema.
