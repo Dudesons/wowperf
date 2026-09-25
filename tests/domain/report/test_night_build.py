@@ -4,6 +4,7 @@
 from collections.abc import Mapping, Sequence
 
 from tests.domain.progression_fixtures import a_loaded_attempt
+from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
@@ -13,6 +14,7 @@ from wowperf.domain.progression import LoadedProgression, Progression
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
+from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_model import all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles
 
@@ -158,6 +160,7 @@ def test_every_pull_is_built_and_grouped_under_its_own_boss() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     assert tuple(len(boss.pulls) for boss in report.bosses) == (2, 3)
@@ -193,6 +196,7 @@ def test_a_pull_named_by_deep_is_the_only_one_built_deep() -> None:
         NO_ROLES,
         deep_fights=frozenset({named}),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     pulls = report.bosses[0].pulls
@@ -229,6 +233,7 @@ def test_two_named_pulls_are_both_named_where_the_claim_is_qualified() -> None:
         NO_ROLES,
         deep_fights=frozenset(named),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     lead = tier_line(report).split(". ")[0]
@@ -246,6 +251,7 @@ def test_no_death_cards_leaves_every_pull_without_one() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=False,
+        findings_by_boss=NO_FINDINGS,
     )
 
     assert all(pull.report.deaths == () for pull in report.bosses[0].pulls)
@@ -268,6 +274,7 @@ def test_the_same_night_does_carry_cards_when_they_are_asked_for() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     assert all(len(pull.report.deaths) == 1 for pull in report.bosses[0].pulls)
@@ -283,6 +290,7 @@ def test_the_page_carries_the_absent_axis_disclosure_exactly_once() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     ids = [row.finding_id for row in all_night_ledger_rows(report)]
@@ -306,6 +314,7 @@ def test_a_failed_pull_is_named_in_provenance_and_left_out_of_the_count() -> Non
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     assert report.total_pulls == 1
@@ -331,6 +340,7 @@ def test_a_boss_whose_every_pull_failed_is_still_on_the_page() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     assert [boss.boss_name for boss in report.bosses] == [BOSS_NAMES[0]]
@@ -355,6 +365,7 @@ def test_the_report_owner_opens_every_pulls_players_tab() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     opened = [
@@ -374,6 +385,7 @@ def test_a_pull_whose_owner_is_not_on_the_roster_opens_on_the_first_raider() -> 
             NO_ROLES,
             deep_fights=frozenset(),
             death_cards=True,
+            findings_by_boss=NO_FINDINGS,
         )
 
         opened = [pull.report.players[0].name for pull in report.bosses[0].pulls]
@@ -396,6 +408,7 @@ def test_every_pull_states_that_no_comparison_was_drawn_for_it() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     for pull in report.bosses[0].pulls:
@@ -425,6 +438,7 @@ def test_each_pulls_findings_reach_that_pull_alone() -> None:
         NO_ROLES,
         deep_fights=frozenset(),
         death_cards=True,
+        findings_by_boss=NO_FINDINGS,
     )
 
     drawn = [
@@ -436,3 +450,78 @@ def test_each_pulls_findings_reach_that_pull_alone() -> None:
         for pull in report.bosses[0].pulls
     ]
     assert drawn == [["night.pull.ten"], ["night.pull.eleven"]]
+
+
+def boss_findings(night: LoadedNight) -> dict[int, tuple[Finding, ...]]:
+    """What the command computes per boss: the progression analyser, run for real."""
+    return {
+        boss.progression.encounter_id: tuple(analyse_progression(boss))
+        for boss in night.loaded
+    }
+
+
+def a_report(night: LoadedNight, *, death_cards: bool = True) -> NightReport:
+    return build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=death_cards,
+        findings_by_boss=boss_findings(night),
+    )
+
+
+def test_a_boss_pulled_once_has_no_summary_and_a_boss_pulled_twice_has_one() -> None:
+    """One and two, side by side, so the threshold is pinned from both sides at once."""
+    report = a_report(a_night(bosses=(1, 2)))
+
+    assert report.bosses[0].summary is None
+    assert report.bosses[1].summary is not None
+
+
+def test_a_boss_with_no_drawn_pull_has_no_summary() -> None:
+    report = a_report(a_night(bosses=(2,), failed=(10, 11)))
+
+    assert report.bosses[0].pulls == ()
+    assert report.bosses[0].summary is None
+
+
+def test_the_threshold_counts_drawn_pulls_not_attempts() -> None:
+    """Three attempts, two failed: one drawn pull, so no summary -- though three were pulled."""
+    report = a_report(a_night(bosses=(3,), failed=(11, 12)))
+
+    assert len(report.bosses[0].pulls) == 1
+    assert report.bosses[0].summary is None
+
+
+def test_a_summary_is_the_progression_page_for_that_boss_and_nothing_else() -> None:
+    """Equal to a direct call on the same boss: the reuse is whole, not an imitation."""
+    night = a_night(bosses=(1, 3))
+    findings = boss_findings(night)
+    report = a_report(night)
+
+    boss = night.loaded[1]
+    assert report.bosses[1].summary == build_progression_report(
+        boss, findings[boss.progression.encounter_id], FETCHED
+    )
+
+
+def test_a_summary_with_a_failed_pull_says_how_many_were_counted_and_how_many_deepened() -> None:
+    report = a_report(a_night(bosses=(3,), failed=(12,)))
+
+    summary = report.bosses[0].summary
+    assert summary is not None
+    assert summary.provenance.attempts_counted == 3
+    assert summary.provenance.attempts_deepened == 2
+
+
+def test_a_summary_does_not_depend_on_the_death_card_tier() -> None:
+    """Progression reads deaths and damage taken, which every tier fetches."""
+    night = a_night(bosses=(3,))
+
+    assert a_report(night, death_cards=True).bosses[0].summary == a_report(
+        night, death_cards=False
+    ).bosses[0].summary

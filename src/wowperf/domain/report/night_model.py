@@ -4,6 +4,7 @@
 from wowperf.domain.base import Frozen
 from wowperf.domain.night import FailedPull
 from wowperf.domain.report.model import LedgerRow
+from wowperf.domain.report.progression_model import ProgressionReport, all_progression_ledger_rows
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 
 
@@ -40,16 +41,22 @@ class PullSection(Frozen):
 
 
 class BossSection(Frozen):
-    """One boss's pulls, in the order the report's fight list gave them.
+    """One boss's pulls, in the order the report's fight list gave them, and its summary.
 
     Present even when `pulls` is empty: a boss whose every attempt was a
     reset, or whose every attempt failed to deepen, is still a boss the night
     pulled, and the page says so rather than dropping it -- the same ruling
     `LoadedNight` already makes one layer down, in `night.py`.
+
+    `summary` is the progression page for this boss, built whole by
+    `build_progression_report`, or None when fewer than two pulls were drawn:
+    nearly every progression finding compares attempts with each other, and one
+    attempt leaves nothing to compare.
     """
 
     boss_name: str
     pulls: tuple[PullSection, ...] = ()
+    summary: ProgressionReport | None = None
 
 
 class NightProvenance(Frozen):
@@ -121,11 +128,15 @@ def all_night_ledger_rows(report: NightReport) -> tuple[LedgerRow, ...]:
     Delegates each pull to `all_raid_ledger_rows` rather than re-listing
     `RaidReport`'s row fields here, so the two walkers cannot drift apart: a
     row family added to the raid page is reached by every pull on the night
-    page without this function changing.
+    page without this function changing. A boss's summary rows are walked
+    through `all_progression_ledger_rows` for the same reason pulls go through
+    `all_raid_ledger_rows`.
     """
     rows: list[LedgerRow] = []
     for boss in report.bosses:
         for pull in boss.pulls:
             rows.extend(all_raid_ledger_rows(pull.report))
+        if boss.summary is not None:
+            rows.extend(all_progression_ledger_rows(boss.summary))
     rows.extend(report.observations)
     return tuple(rows)

@@ -62,6 +62,8 @@ from wowperf.adapters.config.toml import (
 )
 from wowperf.cli import app, build_repository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.progression_service import analyse_progression
+from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import all_night_ledger_rows
@@ -166,6 +168,10 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
         roles,
         deep_fights=frozenset(),
         death_cards=False,
+        findings_by_boss={
+            boss.progression.encounter_id: tuple(rank_raid_findings(analyse_progression(boss)))
+            for boss in loaded.loaded
+        },
         externals=load_externals(),
         self_resurrections=load_self_resurrections(),
     )

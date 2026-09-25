@@ -290,6 +290,7 @@ def a_night_report(
         NO_ROLES,
         deep_fights=every if deep_every_pull else frozenset(),
         death_cards=death_cards,
+        findings_by_boss={},
     )
 
 

@@ -2000,6 +2000,7 @@ def night(
                 roles,
                 deep_fights=deep_fights,
                 death_cards=death_cards,
+                findings_by_boss=boss_findings,
                 externals=load_externals(),
                 self_resurrections=load_self_resurrections(),
             ),
