@@ -678,11 +678,15 @@ def test_names_every_ability_reaching_two_most_first_with_no_icon() -> None:
 
 
 def test_breaks_a_tie_in_count_by_name() -> None:
+    """Soul Lash is inserted first, so a tiebreak that dropped the name key and
+    relied on a stable sort over insertion order would list it first too --
+    only reading `names[ability_id]` as the tiebreak gets "Grasp" ahead of it.
+    """
     finding = repeat_killing_blow(series_of(
-        first_death_by(1, 440_003, "Grasp"),
-        first_death_by(2, SOUL_LASH, "Soul Lash"),
-        first_death_by(3, 440_003, "Grasp"),
-        first_death_by(4, SOUL_LASH, "Soul Lash"),
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, 440_003, "Grasp"),
+        first_death_by(3, SOUL_LASH, "Soul Lash"),
+        first_death_by(4, 440_003, "Grasp"),
     ))
     assert finding is not None
     assert [line.split(" dealt")[0] for line in finding.evidence] == ["Grasp", "Soul Lash"]
