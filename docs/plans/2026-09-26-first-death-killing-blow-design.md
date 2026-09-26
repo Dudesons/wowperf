@@ -97,9 +97,10 @@ less.
   summary.
 - **JSON:** each boss's `findings` in the night JSON, and the progression JSON, in the shape its
   siblings have.
-- **Goldens:** the standalone progression golden's fixture is changed so its first deaths repeat a
-  killing blow, and the golden is regenerated and read by eye: the row is pinned, not merely
-  possible. Whether the night golden's fixture also fires the finding is the plan's to state.
+- **Goldens:** the standalone progression golden is rendered from hand-built findings, not from
+  the analyser, so it carries one hand-built `progression.repeat.killing_blow` finding, which pins
+  placement and rendering; the analyser itself is pinned by its unit tests. The night golden's
+  fixtures name no killing blow, so it does not move.
 
 ## 6. Testing
 
