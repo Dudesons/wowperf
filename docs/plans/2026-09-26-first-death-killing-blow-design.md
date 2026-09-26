@@ -136,6 +136,12 @@ fell to a different specialisation (measured 2026-09-26), which says nothing abo
 fell to different abilities. If it fires on none of the three, read the raw first-death killing
 blows before calling that the data.
 
+`tests/e2e/test_progression_e2e.py` is unchanged and covers the new finding only through its
+existing check that no roster name appears in any finding text. `tests/e2e/test_night_e2e.py`
+additionally asserts that `progression.repeat.killing_blow` fires on at least one summary boss,
+so a regression that silently stopped it from firing at all cannot pass while every per-boss
+shape check stays vacuously true.
+
 ## 7. Out of scope
 
 - Deaths after the first, in any form (§2).

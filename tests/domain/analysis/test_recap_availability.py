@@ -156,6 +156,17 @@ def test_no_lethal_hit_where_the_stream_lacks_it_or_the_log_named_nothing() -> N
     assert lethal_hit((a_hit(BLOW_MS, 0),), a_death_by(0)) is None
 
 
+def test_a_hit_at_the_deaths_own_timestamp_is_still_the_lethal_hit() -> None:
+    """`<=` reaches the death's own instant, not just what came before it.
+
+    A hit carrying the death's `killing_blow_id` can share the death event's
+    own timestamp rather than landing strictly earlier; this must still match.
+    """
+    blow = a_hit_from(DEATH_MS_AT_THE_BLOW, BLOW_ID, source_id=4242)
+
+    assert lethal_hit((blow,), a_death_by(BLOW_ID)) == blow
+
+
 def test_an_ability_never_pressed_is_unseen_not_judged() -> None:
     assert state_of((), "Icebound Fortitude", 120.0, 1, DEATH_MS).state == UNSEEN
 

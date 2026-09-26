@@ -301,6 +301,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # unit tests pin the counting rule and the live distribution measures it;
     # this asserts what any correct run must satisfy regardless of which
     # ability actually named itself on this report.
+    killing_blow_fired = False
     for index, boss in enumerate(report.bosses):
         if boss.summary is None:
             continue
@@ -310,6 +311,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
             None,
         )
         if blow is not None:
+            killing_blow_fired = True
             # Between one and five abilities, each at two or more attempts and
             # never more than the boss was pulled.
             counts = [
@@ -321,6 +323,11 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
             assert 1 <= len(counts) == len(blow["evidence"]) <= 5
             assert all(2 <= count <= PULLS_PER_BOSS[index] for count in counts)
             assert blow["confidence"] == "measured"
+    # A regression that stopped the finding from firing at all would still pass
+    # every branch above, since each one is gated on the finding being present.
+    # This fixed report fires it on at least one summary boss; the message
+    # carries no ability or player name, only the finding id.
+    assert killing_blow_fired, "progression.repeat.killing_blow did not fire on any summary boss"
 
     # Every pull is its own tab group, across sixteen of them, plus one group
     # per boss summary: ids that collide send every button on the page to

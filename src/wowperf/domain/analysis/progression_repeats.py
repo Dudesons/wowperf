@@ -215,6 +215,9 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
     )
 
 
+MAX_REPEAT_ABILITIES = 5
+
+
 def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
     """Which abilities dealt each attempt's first death, counted across the night.
 
@@ -290,9 +293,6 @@ def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
         ability_id=single,
         ability_name=names[single] if single is not None else "",
     )
-
-
-MAX_REPEAT_ABILITIES = 5
 
 
 def _abilities_in_window(one: LoadedEncounter) -> dict[int, str] | None:
