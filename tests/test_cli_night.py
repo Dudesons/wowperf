@@ -580,6 +580,30 @@ def test_the_loader_and_the_builder_are_handed_the_same_tier(
     assert seen["loader"] == expected
 
 
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [((), True), (("--no-deaths",), False)],
+)
+def test_each_boss_summary_asks_for_the_pooled_finding_only_with_death_cards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flags: tuple[str, ...], expected: bool
+) -> None:
+    """One call per boss, each carrying the tier the command was run at."""
+    import wowperf.cli as cli
+    from wowperf.domain.analysis.night_service import analyse_night_boss
+
+    seen: list[bool] = []
+
+    def recording(series: Any, defensives: Any, *, death_cards: bool) -> Any:
+        seen.append(death_cards)
+        return analyse_night_boss(series, defensives, death_cards=death_cards)
+
+    monkeypatch.setattr(cli, "analyse_night_boss", recording)
+    result = run_night(tmp_path, *flags)
+
+    assert result.exit_code == 0, result.output
+    assert seen == [expected, expected]
+
+
 def test_no_deaths_buys_no_aura_table_and_says_so_on_the_page(tmp_path: Path) -> None:
     """The cheapest tier, from the command line: no card work fetched, and the page says why.
 
