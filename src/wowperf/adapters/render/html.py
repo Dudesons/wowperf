@@ -206,6 +206,16 @@ def _night_scopes(report: NightReport) -> dict[int, str]:
     }
 
 
+def _night_boss_scopes(report: NightReport) -> tuple[str, ...]:
+    """The id prefix each boss's summary is drawn under, in `report.bosses` order.
+
+    A boss has no fight id of its own, so its index names it -- the same `b{i}`
+    the boss dropdown and the "Nothing to show" section already carry. It can
+    never collide with a pull's `f{fight_id}-`, which begins with another letter.
+    """
+    return tuple(f"b{index}-" for index in range(len(report.bosses)))
+
+
 def render_night(report: NightReport, icons: CdnIcons | None = None) -> str:
     """`render_raid`'s counterpart for a whole report: every pull on one page.
 
@@ -242,7 +252,10 @@ def render_night(report: NightReport, icons: CdnIcons | None = None) -> str:
         )
     )
     return _environment().get_template(NIGHT_TEMPLATE_NAME).render(
-        report=report, icons_by_id=addresses, scopes=_night_scopes(report)
+        report=report,
+        icons_by_id=addresses,
+        scopes=_night_scopes(report),
+        boss_scopes=_night_boss_scopes(report),
     )
 
 

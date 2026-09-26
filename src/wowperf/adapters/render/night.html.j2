@@ -1,6 +1,7 @@
 {# ABOUTME: Document skeleton for the night report: every pull pre-rendered, two dropdowns #}
 {# ABOUTME: choosing which one is read, and one inline script that only shows and hides. #}
 {% from "_night_pull.html.j2" import pull_section with context %}
+{% from "_night_summary.html.j2" import summary_section with context %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -42,6 +43,9 @@
   <span class="night-pulls" data-night-for="b{{ loop.index0 }}">
   <label for="night-pull-b{{ loop.index0 }}">Pull</label>
   <select id="night-pull-b{{ loop.index0 }}" data-night-pull>
+{% if boss.summary %}
+    <option value="{{ boss_scopes[loop.index0] }}summary">Summary: {{ boss.summary.provenance.attempts_deepened }} pulls</option>
+{% endif %}
 {% for pull in boss.pulls %}
     <option value="{{ scopes[pull.report.provenance.fight_id] }}pull">Pull {{ loop.index }} &mdash; {{ pull.report.header.outcome }}</option>
 {% endfor %}
@@ -59,6 +63,9 @@
 <h2>{{ boss.boss_name }}</h2>
 <p class="sub">No pull at this boss reached the page. Provenance says why.</p>
 </section>
+{% endif %}
+{% if boss.summary %}
+{{ summary_section(boss.summary, boss_scopes[loop.index0]) }}
 {% endif %}
 {% for pull in boss.pulls %}
 {{ pull_section(pull.report, scopes[pull.report.provenance.fight_id], pull.tier) }}

@@ -22,6 +22,7 @@ from tests.domain.report.test_night_build import (
 )
 from wowperf.adapters.render.html import render_night, render_raid
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
 from wowperf.domain.events import CastEvent, HealthSample
@@ -33,15 +34,24 @@ from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport
 from wowperf.domain.season import DefensiveAbility, Defensives
 
-PULLS_PER_BOSS = (2, 3)
-"""Two bosses, and deliberately not the same number of pulls under each.
+PULLS_PER_BOSS = (1, 2, 3)
+"""Three bosses at three different counts, the first pulled only once.
 
 Nearly every rule in this file is about *many* pulls -- ids that must not
 collide, one pull control per boss, an icon map gathered past the first pull.
 A fixture of one boss with one pull passes every one of them against an
 implementation that handles only the first thing it is given, and two bosses
 holding two pulls each passes a control that renders the first boss's count
-twice. Two and three can be passed by neither.
+twice. The single-pull boss is what puts a boss with no summary on the page
+beside two that carry one, so both shapes are drawn -- and still no two
+bosses share a count.
+"""
+
+NIGHT_BOSS_NAMES = (*BOSS_NAMES, "Vorthal the Unmade")
+"""`BOSS_NAMES` with a third boss for the third count.
+
+Widened here rather than next door: the builder test that groups every pull
+under its own boss compares against the whole of `BOSS_NAMES`.
 """
 
 PANELS_PER_PULL = 7
@@ -52,15 +62,29 @@ the raid partials rather than inventing a second set. Stated here so a pull that
 lost a panel fails by count rather than by a reader noticing a missing tab.
 """
 
-ABILITY_IDS = (445_566, 445_567, 445_568, 445_569, 445_570)
+PANELS_PER_SUMMARY = 5
+"""Summary, Attempts, Repeats, Best attempt, Provenance.
+
+The progression page's own five, drawn once per boss summary for the same
+reason the pulls draw the raid page's seven: the night composes the
+progression partials rather than inventing a third set.
+"""
+
+
+def summaries_on(report: NightReport) -> int:
+    """How many bosses on the page carry a summary, counted off the report itself."""
+    return sum(1 for boss in report.bosses if boss.summary)
+
+
+ABILITY_IDS = (445_566, 445_567, 445_568, 445_569, 445_570, 445_571)
 """One ability id per pull, each different from every other.
 
 The icon address map is gathered over every pull, and a walk that stopped at
 the first pull -- or at the first boss -- would resolve one of these and draw
-the rest as bare names. Five ids for five pulls is what makes that visible.
+the rest as bare names. Six ids for six pulls is what makes that visible.
 """
 
-ROW_ABILITY_IDS = (700_101, 700_102, 700_103, 700_104, 700_105)
+ROW_ABILITY_IDS = (700_101, 700_102, 700_103, 700_104, 700_105, 700_106)
 """One ability per pull, named by that pull's finding rather than by its death.
 
 `_icon_addresses` walks ledger rows as well as death cards, and those are two
@@ -68,7 +92,7 @@ different arms of it: a fixture whose icons all arrive through a death card's
 timeline leaves the row arm untested, and dropping it entirely then fails
 nothing. Measured -- that is exactly what survived before these existed. One id
 per pull for the same reason `ABILITY_IDS` has one: a walk that stopped at the
-first pull would resolve one of them and leave four abilities drawn as bare
+first pull would resolve one of them and leave five abilities drawn as bare
 names.
 """
 
@@ -129,7 +153,7 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
     loaded: list[LoadedProgression] = []
     drawn = 0
     for index, count in enumerate(counts):
-        boss_name = BOSS_NAMES[index]
+        boss_name = NIGHT_BOSS_NAMES[index]
         encounter_id = 3490 + index
         pulls = []
         for which in range(count):
@@ -290,7 +314,10 @@ def a_night_report(
         NO_ROLES,
         deep_fights=every if deep_every_pull else frozenset(),
         death_cards=death_cards,
-        findings_by_boss={},
+        findings_by_boss={
+            boss.progression.encounter_id: tuple(analyse_progression(boss))
+            for boss in night.loaded
+        },
     )
 
 
@@ -345,7 +372,10 @@ def test_the_fixture_draws_more_than_one_pull_and_more_than_one_boss() -> None:
     assert len(ABILITY_IDS) == report.total_pulls
 
     html = a_night_page()
-    assert html.count('<section class="panel"') == PANELS_PER_PULL * report.total_pulls
+    assert summaries_on(report) == sum(1 for count in PULLS_PER_BOSS if count >= 2)
+    assert html.count('<section class="panel"') == (
+        PANELS_PER_PULL * report.total_pulls + PANELS_PER_SUMMARY * summaries_on(report)
+    )
     assert TRIMMED_ON_THE_PAGE in html
 
     # The shapes the id rules below are about, each drawn once per pull and
@@ -427,11 +457,12 @@ def test_one_boss_control_and_exactly_one_pull_control_for_each_boss() -> None:
 
 
 def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
-    """The other half: a control per boss is worth nothing if both list the night.
+    """The other half: a control per boss is worth nothing if all list the night.
 
-    Two bosses holding two and three pulls, so a control that offered every
-    pull to every boss would read five twice, and one that offered the first
-    boss's count to both would read two twice.
+    Three bosses holding one, two and three pulls, so a control that offered
+    every pull to every boss would read six three times, and one that offered
+    the first boss's count to all would read one three times. A boss with a
+    summary offers it as one more option beside its pulls.
     """
     report = a_night_report()
     html = render_night(report)
@@ -439,7 +470,10 @@ def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
     offered = {
         int(index): body.count("<option") for index, body in PULL_CONTROL.findall(html)
     }
-    assert offered == {0: PULLS_PER_BOSS[0], 1: PULLS_PER_BOSS[1]}
+    assert offered == {
+        index: count + (1 if boss.summary else 0)
+        for index, (count, boss) in enumerate(zip(PULLS_PER_BOSS, report.bosses, strict=True))
+    }
 
 
 def test_every_pull_is_its_own_tab_group() -> None:
@@ -454,8 +488,10 @@ def test_every_pull_is_its_own_tab_group() -> None:
     html = render_night(report)
 
     groups = re.findall(r'<section class="panel" data-tab-panel="([^"]+)"', html)
-    assert len(groups) == PANELS_PER_PULL * report.total_pulls
-    assert len(set(groups)) == report.total_pulls
+    assert len(groups) == (
+        PANELS_PER_PULL * report.total_pulls + PANELS_PER_SUMMARY * summaries_on(report)
+    )
+    assert len(set(groups)) == report.total_pulls + summaries_on(report)
 
     # Every tab bar on the page, not only the seven-panel one. Each pull draws
     # two -- its own sections, and the per-player sub-tabs inside its Players
@@ -466,12 +502,14 @@ def test_every_pull_is_its_own_tab_group() -> None:
     # by a bare attribute search, which `report.js.j2` would also answer: the
     # script builds that same attribute selector as a string, and a rule
     # counting those would be counting the script.
+    # A summary draws one bar, its own five tabs: the progression page has no
+    # per-player sub-tabs.
     bars = re.findall(r'<nav class="tabs[^"]*" data-tab-group="([^"]+)"', html)
-    assert len(bars) == 2 * report.total_pulls
+    assert len(bars) == 2 * report.total_pulls + summaries_on(report)
     assert len(set(bars)) == len(bars)
 
 
-def test_no_element_id_appears_twice_across_five_pulls() -> None:
+def test_no_element_id_appears_twice_across_every_pull() -> None:
     """Finding ids repeat across pulls by design, and DOM ids may not.
 
     Every pull draws its findings from the same analysers, so the ids inside
@@ -521,6 +559,67 @@ def pull_blocks(html: str) -> list[str]:
     return [html[start:end] for start, end in zip(starts, ends, strict=True)]
 
 
+SUMMARY_ID = re.compile(r'<section class="pull" data-night-pull-panel id="(b\d+-summary)">')
+
+
+def summary_blocks(html: str) -> dict[str, str]:
+    """Each summary section's markup, keyed by its id, cut where `pull_blocks` cuts."""
+    blocks: dict[str, str] = {}
+    for block in pull_blocks(html):
+        opened = SUMMARY_ID.match(block)
+        if opened is not None:
+            blocks[opened.group(1)] = block
+    return blocks
+
+
+def test_a_boss_pulled_more_than_once_opens_on_its_summary() -> None:
+    """The summary is the first option, so a fresh page and a boss change both land on it."""
+    html = a_night_page()
+    for index, count in enumerate(PULLS_PER_BOSS):
+        control = re.search(
+            rf'<select id="night-pull-b{index}" data-night-pull>(.*?)</select>', html, re.S
+        )
+        assert control is not None
+        first = re.search(r'<option value="([^"]+)"', control.group(1))
+        assert first is not None
+        if count >= 2:
+            assert first.group(1) == f"b{index}-summary"
+        else:
+            assert first.group(1).endswith("-pull"), "a single-pull boss opens on its pull"
+
+
+def test_exactly_the_bosses_pulled_more_than_once_carry_a_summary_section() -> None:
+    html = a_night_page()
+    expected = {f"b{i}-summary" for i, count in enumerate(PULLS_PER_BOSS) if count >= 2}
+    assert set(summary_blocks(html)) == expected
+
+
+def test_a_summary_draws_the_progression_tabs_under_its_own_scope() -> None:
+    """Five tabs, each button naming a panel inside the same summary."""
+    blocks = summary_blocks(a_night_page())
+    assert blocks, "the page drew no summary, so this rule was never exercised"
+    for scope_id, block in blocks.items():
+        scope = scope_id.removesuffix("summary")
+        buttons = re.findall(r'data-tab-for="([^"]+)"', block)
+        panels = re.findall(r'<section class="panel" data-tab-panel="[^"]+" id="([^"]+)"', block)
+        assert buttons == [f"{scope}tab-{name}" for name in
+                           ("summary", "attempts", "repeats", "best", "provenance")]
+        assert buttons == panels
+
+
+def test_a_summary_draws_every_progression_finding_its_boss_earned() -> None:
+    night = a_loaded_night()
+    html = a_night_page()
+    blocks = summary_blocks(html)
+    for index, boss in enumerate(night.loaded):
+        if len(boss.attempts_with_events) < 2:
+            continue
+        ids = {finding.id for finding in analyse_progression(boss)}
+        assert ids, "a fixture boss with no progression finding pins nothing"
+        drawn = set(re.findall(rf'id="b{index}-finding-([^"]+)"', blocks[f"b{index}-summary"]))
+        assert drawn == ids
+
+
 def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
     """Resolving somewhere is not the same as resolving to the right pull.
 
@@ -539,7 +638,7 @@ def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
     every pull to draw from, which is the whole point of a symbol.
     """
     blocks = pull_blocks(a_deep_night_page_with_icons())
-    assert len(blocks) == sum(PULLS_PER_BOSS)
+    assert len(blocks) == sum(PULLS_PER_BOSS) + summaries_on(a_night_report(deep_every_pull=True))
 
     checked = 0
     for index, block in enumerate(blocks):
@@ -650,7 +749,9 @@ def test_a_boss_whose_every_pull_failed_still_gets_a_control_and_says_so() -> No
     assert report.bosses[1].pulls == ()
     assert len(SELECT_TAG.findall(html)) == 1 + len(report.bosses)
     offered = {int(index): body.count("<option") for index, body in PULL_CONTROL.findall(html)}
-    assert offered == {0: 2, 1: 1}
+    # The first boss's two drawn pulls earn it a summary, a third option.
+    assert report.bosses[0].summary is not None
+    assert offered == {0: 3, 1: 1}
     # Guarded like every other loop here: an empty `withheld` would leave the
     # lines below asserting over nothing, on the one fixture whose whole point
     # is that two pulls failed and the page has to say so.
@@ -700,12 +801,13 @@ def test_each_pull_option_names_a_pull_section_that_exists() -> None:
     html = render_night(report)
 
     drawn = re.findall(r'<section class="pull"[^>]*\sid="([^"]+)"', html)
-    assert len(drawn) == report.total_pulls
+    assert len(drawn) == report.total_pulls + summaries_on(report)
 
     offered: list[str] = []
     for index, body in PULL_CONTROL.findall(html):
         values = OPTION_VALUE.findall(body)
-        assert len(values) == PULLS_PER_BOSS[int(index)], index
+        boss = report.bosses[int(index)]
+        assert len(values) == PULLS_PER_BOSS[int(index)] + (1 if boss.summary else 0), index
         offered.extend(values)
 
     # Compared as a list: the sections are drawn in the same boss-then-pull
@@ -728,7 +830,10 @@ def test_every_pull_names_its_own_fight_and_the_tier_it_was_drawn_at() -> None:
     for deep in (False, True):
         report = a_night_report(deep_every_pull=deep)
         html = render_night(report)
-        blocks = pull_blocks(html)
+        every = pull_blocks(html)
+        assert len(every) == report.total_pulls + summaries_on(report)
+        # A summary names no fight and no tier, so only the pulls' own blocks are read.
+        blocks = [block for block in every if SUMMARY_ID.match(block) is None]
         assert len(blocks) == report.total_pulls
 
         pulls = [pull for boss in report.bosses for pull in boss.pulls]
@@ -795,18 +900,18 @@ def test_the_rendered_night_page_matches_the_golden_file(pytestconfig: pytest.Co
     )
 
 
-TRIMMED_NIGHT_BUDGET_BYTES = 70_000
-"""Measured 67,334 bytes from `golden_night_html()` on 2026-09-24 -- two bosses,
-five pulls, one death apiece, all trimmed -- rounded up by roughly 4%. The same
-fixture read deep is 88,454 bytes, well past this budget: a budget with room to
-spare is a test that cannot fail until the damage is done, so this one sits
-close enough to the real figure that a card regaining a field it lost, or a
-tier check that stopped trimming, moves it.
+TRIMMED_NIGHT_BUDGET_BYTES = 95_000
+"""Measured 91,642 bytes from `golden_night_html()` on 2026-09-26 -- three bosses,
+six pulls, one death apiece, all trimmed, and two boss summaries -- rounded up by
+roughly 4%. The same fixture read deep is 116,987 bytes, well past this budget: a
+budget with room to spare is a test that cannot fail until the damage is done, so
+this one sits close enough to the real figure that a card regaining a field it
+lost, or a tier check that stopped trimming, moves it.
 """
 
 
 def test_a_trimmed_night_stays_inside_its_byte_budget() -> None:
-    # Two bosses, five pulls, one death apiece. The budget is deliberately
+    # Three bosses, six pulls, one death apiece. The budget is deliberately
     # close to the real figure: a budget with room to spare is a test that
     # cannot fail until the damage is done.
     html = golden_night_html()

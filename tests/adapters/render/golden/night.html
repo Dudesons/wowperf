@@ -282,27 +282,36 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 <main>
 
 <h1>Report TESTCODE00000000</h1>
-<p class="sub">Every pull this report holds, 5 in all.</p>
+<p class="sub">Every pull this report holds, 6 in all.</p>
 
 <div class="night-pick">
   <label for="night-boss">Boss</label>
   <select id="night-boss" data-night-boss>
     <option value="b0">Ula&#39;tek</option>
     <option value="b1">Nek&#39;zali</option>
+    <option value="b2">Vorthal the Unmade</option>
   </select>
   <span class="night-pulls" data-night-for="b0">
   <label for="night-pull-b0">Pull</label>
   <select id="night-pull-b0" data-night-pull>
     <option value="f10-pull">Pull 1 &mdash; Wiped at 50.0% remaining</option>
-    <option value="f11-pull">Pull 2 &mdash; Wiped at 50.0% remaining</option>
   </select>
   </span>
   <span class="night-pulls" data-night-for="b1">
   <label for="night-pull-b1">Pull</label>
   <select id="night-pull-b1" data-night-pull>
+    <option value="b1-summary">Summary: 2 pulls</option>
     <option value="f20-pull">Pull 1 &mdash; Wiped at 50.0% remaining</option>
     <option value="f21-pull">Pull 2 &mdash; Wiped at 50.0% remaining</option>
-    <option value="f22-pull">Pull 3 &mdash; Wiped at 50.0% remaining</option>
+  </select>
+  </span>
+  <span class="night-pulls" data-night-for="b2">
+  <label for="night-pull-b2">Pull</label>
+  <select id="night-pull-b2" data-night-pull>
+    <option value="b2-summary">Summary: 3 pulls</option>
+    <option value="f30-pull">Pull 1 &mdash; Wiped at 50.0% remaining</option>
+    <option value="f31-pull">Pull 2 &mdash; Wiped at 50.0% remaining</option>
+    <option value="f32-pull">Pull 3 &mdash; Wiped at 50.0% remaining</option>
   </select>
   </span>
 </div>
@@ -482,171 +491,146 @@ fetched 2026-09-24 09:00.</p>
 
 </section>
 
-<section class="pull" data-night-pull-panel id="f11-pull">
+<section class="pull" data-night-pull-panel id="b1-summary">
 
-<h2>Ula&#39;tek Mythic</h2>
-<p class="sub">Wiped at 50.0% remaining &middot; fight 11 &middot; death cards: trimmed</p>
+<h2>Nek&#39;zali Mythic &middot; summary</h2>
+<p class="sub">No kill in 2 attempts &middot; 2 attempts read &middot; depth is encounter progress</p>
 
-<nav class="tabs" data-tab-group="f11-main" aria-label="Sections">
-  <button type="button" class="tab" data-tab-for="f11-tab-summary">Summary</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-damage">Damage</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-mechanics">Mechanics</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-deaths">Deaths</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-interrupts">Interrupts</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-players">Players</button>
-  <button type="button" class="tab" data-tab-for="f11-tab-provenance">Provenance</button>
+<nav class="tabs" data-tab-group="b1-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="b1-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="b1-tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="b1-tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="b1-tab-best">Best attempt</button>
+  <button type="button" class="tab" data-tab-for="b1-tab-provenance">Provenance</button>
 </nav>
 
 
 
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-summary">
+<section class="panel" data-tab-panel="b1-main" id="b1-tab-summary">
 
-<h2 id="f11-alive">How the attempt went
-  <a class="badge badge-derived" href="#f11-provenance">derived</a></h2>
-<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
-<svg class="alive-chart" width="100%"
-     viewBox="0 0 680.0 200.0">
-  <line class="tick" x1="46.0" y1="170.0"
-        x2="664.0" y2="170.0"></line>
-  <text class="tick-label" x="40.0" y="170.0"
-        text-anchor="end" dominant-baseline="middle">0</text>
-  <line class="tick" x1="46.0" y1="93.0"
-        x2="664.0" y2="93.0"></line>
-  <text class="tick-label" x="40.0" y="93.0"
-        text-anchor="end" dominant-baseline="middle">10</text>
+<p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
+and Best attempt holds what the deepest attempt did differently.</p>
+
+<h2 id="b1-observations">Other findings</h2>
+<p class="sub">Nothing else measured.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="b1-main" id="b1-tab-attempts">
+
+<h2 id="b1-attempts">Attempts</h2>
+<p class="legend">One bar an attempt, in pull order. Height is depth reached (encounter progress): a taller bar got further into the encounter. The outlined bar is the attempt that went deepest.</p>
+<svg width="100%" viewBox="0 0 680.0 220.0">
+  <line class="tick" x1="46.0" y1="186.0"
+        x2="664.0" y2="186.0"></line>
+  <text class="tick-label" x="40.0" y="186.0"
+        text-anchor="end" dominant-baseline="middle">0%</text>
+  <line class="tick" x1="46.0" y1="143.5"
+        x2="664.0" y2="143.5"></line>
+  <text class="tick-label" x="40.0" y="143.5"
+        text-anchor="end" dominant-baseline="middle">25%</text>
+  <line class="tick" x1="46.0" y1="101.0"
+        x2="664.0" y2="101.0"></line>
+  <text class="tick-label" x="40.0" y="101.0"
+        text-anchor="end" dominant-baseline="middle">50%</text>
+  <line class="tick" x1="46.0" y1="58.5"
+        x2="664.0" y2="58.5"></line>
+  <text class="tick-label" x="40.0" y="58.5"
+        text-anchor="end" dominant-baseline="middle">75%</text>
   <line class="tick" x1="46.0" y1="16.0"
         x2="664.0" y2="16.0"></line>
   <text class="tick-label" x="40.0" y="16.0"
-        text-anchor="end" dominant-baseline="middle">20</text>
-  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+        text-anchor="end" dominant-baseline="middle">100%</text>
+  <rect class="attempt-bar attempt-best" x="46.0" y="101.0"
+        width="303.0" height="85.0"><title>Attempt 1: 50.0% left (encounter progress), 200 seconds</title></rect>
+  <rect class="attempt-bar" x="355.0" y="101.0"
+        width="303.0" height="85.0"><title>Attempt 2: 50.0% left (encounter progress), 200 seconds</title></rect>
 </svg>
 
+<table class="attempts">
+<thead>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+</thead>
+<tbody>
+<tr class="best">
+<td>1</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<tr>
+<td>2</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+</tbody>
+</table>
 
-<h2 id="f11-losses">Biggest losses</h2>
-<p class="sub">Each line opens its card. Ranked, not additive.</p>
-<a class="pointer" href="#f11-finding-night.pull.repeated">
-  <span class="pointer-title">Rite 1 is what this pull earned a word about</span>
-  <span class="cost">0:12</span>
-  <span class="badge badge-measured">measured</span>
-</a>
-
-
-<h2 id="f11-observations">Other findings</h2>
-<p class="sub">Findings no other section claimed.</p>
 <div class="findings">
-<div class="card" id="f11-finding-night.pull.repeated">
+<div class="card" id="b1-finding-progression.cluster">
   <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">Rite 1</span></span> is what this pull earned a word about</h3>
-<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f11-provenance">measured</a>
+    <h3>Attempts sat at a median of 50.0% (encounter progress)</h3>
+    <a class="badge badge-measured" href="#b1-provenance">measured</a>
   </div>
-  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+  <p class="detail">Across 2 attempts the observed range ran 50.0% to 50.0%. A median and a range, never an average: one attempt that went deep does not move a median, but it would drag an average down.</p>
+  <ul class="evidence"><li>2 attempts counted</li><li>range 50.0% to 50.0%</li></ul>
 </div>
 
-</div>
-
-</section>
-
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-damage">
-
-<h2 id="f11-damage">Damage</h2>
-<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
-
-</section>
-
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-mechanics">
-
-<h2 id="f11-mechanics">Mechanics</h2>
-<p class="sub">Nothing to report.</p>
-
-
-</section>
-
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-deaths">
-
-<h2 id="f11-deaths">Deaths</h2>
-<div class="card">
+<div class="card" id="b1-finding-progression.movement">
   <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
-    <span class="death-when">0:10</span>
+    <h3>Movement across the night is not compared</h3>
+    <a class="badge badge-derived" href="#b1-provenance">derived</a>
   </div>
-  <p class="detail">Mage</p>
-  <div class="recap">
-    <div class="recap-timeline">
-      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
-      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
-           href="#f11-provenance">measured</a></p>
-    </div>
-    <div class="recap-availability">
-      <div class="avail">
-        <p class="avail-title">Defensives <a class="badge badge-inferred"
-             href="#f11-provenance">inferred</a></p>
-        <ul>
-          <li class="pressed">
-            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
-            <span class="avail-detail">5.0 s before death</span>
-          </li>
-        </ul>
-      </div>
-      <div class="avail">
-        <p class="avail-title">Consumables</p>
-        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
-      </div>
-      <div class="avail">
-        <p class="avail-title">Teammates&#39; externals</p>
-        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
-      </div>
-    </div>
-  </div>
+  <p class="detail">2 attempts qualified and at least 6 are needed to split a night into halves worth comparing. Below that the two sides are anecdotes.</p>
 </div>
 
+</div>
 
 </section>
 
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-interrupts">
+<section class="panel" data-tab-panel="b1-main" id="b1-tab-repeats">
 
-<h2 id="f11-interrupts">Interrupts</h2>
-<p class="sub">Nothing to report.</p>
+<h2 id="b1-repeats">Repeats</h2>
+<div class="findings">
+<div class="card" id="b1-finding-progression.repeat.first_death">
+  <div class="row-head">
+    <h3>Arcane Mage died first in 2 of 2 attempts</h3>
+    <a class="badge badge-measured" href="#b1-provenance">measured</a>
+  </div>
+  <p class="detail">Across the 2 attempts whose earliest death matched a roster player, Arcane Mage died first 2 times. A specialisation dying first is usually about where that role stands when a pull comes apart, not about the player in the seat -- this counts, and assigns no blame.</p>
+  <ul class="evidence"><li>2 of 2 attempts</li></ul>
+</div>
+
+<div class="card" id="b1-finding-progression.collapse">
+  <div class="row-head">
+    <h3>Attempts took a median of 190 seconds to fall apart</h3>
+    <a class="badge badge-measured" href="#b1-provenance">measured</a>
+  </div>
+  <p class="detail">Measured across 2 attempts that had a death, from the first one to the end of the attempt. The observed range ran 190 to 190 seconds. A long window is a raid bleeding out and a short one is a raid losing the fight at once; they want different fixes, and this figure is the one that tells them apart. A median and a range, never an average.</p>
+  <ul class="evidence"><li>2 attempts with a death</li><li>range 190 to 190 seconds</li></ul>
+</div>
+
+</div>
 
 </section>
 
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-players">
+<section class="panel" data-tab-panel="b1-main" id="b1-tab-best">
 
-<h2 id="f11-players">Players</h2>
-<nav class="tabs subtabs" data-tab-group="f11-players" aria-label="Players">
-  <button type="button" class="tab" data-tab-for="f11-player-stonewake-1">Stonewake</button>
-  <button type="button" class="tab" data-tab-for="f11-player-emberkin-0">Emberkin</button>
-</nav>
-<div class="card" data-tab-panel="f11-players" id="f11-player-stonewake-1">
-  <div class="player-head">
-    <span class="swatch" style="background: var(--class-deathknight)"></span>
-    <h3>Stonewake</h3>
-    <span class="sub">DeathKnight Blood</span>
+<h2 id="b1-best">Best attempt</h2>
+<div class="findings">
+<div class="card" id="b1-finding-progression.best">
+  <div class="row-head">
+    <h3>The best attempt left 50.0% (encounter progress)</h3>
+    <a class="badge badge-measured" href="#b1-provenance">measured</a>
   </div>
-  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
-  
-  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
-</div>
-<div class="card" data-tab-panel="f11-players" id="f11-player-emberkin-0">
-  <div class="player-head">
-    <span class="swatch" style="background: var(--class-mage)"></span>
-    <h3>Emberkin</h3>
-    <span class="sub">Mage Arcane</span>
-  </div>
-  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
-  
-  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+  <p class="detail">Attempt 1 of 2 got furthest, lasting 200 seconds. The deepest attempt of a night is often not its last.</p>
+  <ul class="evidence"><li>Attempt 1 of 2, fight 20</li><li>200 seconds</li></ul>
 </div>
 
+</div>
 
 </section>
 
-<section class="panel" data-tab-panel="f11-main" id="f11-tab-provenance">
+<section class="panel" data-tab-panel="b1-main" id="b1-tab-provenance">
 
-<h2 id="f11-provenance">Provenance</h2>
-<p class="sub">Report abc123, fight 11,
-fetched 2026-09-24 09:00.</p>
-<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
-<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<h2 id="b1-provenance">Provenance</h2>
+<p class="sub">Report TESTCODE00000000, encounter 3491, 2 attempts read and 2 deepened, fetched 2026-09-24 09:00.</p>
+<p class="sub">No reference run of any kind was fetched: this page compares a night against itself.</p>
+<p class="sub">Every percentage on this page is the same scale, chosen once for the whole series: boss health where every qualifying attempt carried one, and the encounter&#39;s own progress otherwise. Both count down -- a kill reads about 0.01 and an instant wipe reads 100 -- and the header names which scale this night is on.</p>
+<p class="sub">This page draws the night, never one attempt&#39;s internals. The health curves, what hit whom and what each player still had are `wowperf raid --fight N`&#39;s work, and the findings that want them carry the invocation.</p>
 <p class="legend">
 <span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
 <span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
@@ -700,7 +684,7 @@ fetched 2026-09-24 09:00.</p>
 <h2 id="f20-losses">Biggest losses</h2>
 <p class="sub">Each line opens its card. Ranked, not additive.</p>
 <a class="pointer" href="#f20-finding-night.pull.repeated">
-  <span class="pointer-title">Rite 2 is what this pull earned a word about</span>
+  <span class="pointer-title">Rite 1 is what this pull earned a word about</span>
   <span class="cost">0:12</span>
   <span class="badge badge-measured">measured</span>
 </a>
@@ -711,7 +695,7 @@ fetched 2026-09-24 09:00.</p>
 <div class="findings">
 <div class="card" id="f20-finding-night.pull.repeated">
   <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">Rite 2</span></span> is what this pull earned a word about</h3>
+    <h3><span class="ability"><span class="ability-name">Rite 1</span></span> is what this pull earned a word about</h3>
 <span class="cost">0:12</span>    <a class="badge badge-measured" href="#f20-provenance">measured</a>
   </div>
   <p class="detail">Drawn on every pull, under the id every pull mints.</p>
@@ -875,7 +859,7 @@ fetched 2026-09-24 09:00.</p>
 <h2 id="f21-losses">Biggest losses</h2>
 <p class="sub">Each line opens its card. Ranked, not additive.</p>
 <a class="pointer" href="#f21-finding-night.pull.repeated">
-  <span class="pointer-title">Rite 3 is what this pull earned a word about</span>
+  <span class="pointer-title">Rite 2 is what this pull earned a word about</span>
   <span class="cost">0:12</span>
   <span class="badge badge-measured">measured</span>
 </a>
@@ -886,7 +870,7 @@ fetched 2026-09-24 09:00.</p>
 <div class="findings">
 <div class="card" id="f21-finding-night.pull.repeated">
   <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">Rite 3</span></span> is what this pull earned a word about</h3>
+    <h3><span class="ability"><span class="ability-name">Rite 2</span></span> is what this pull earned a word about</h3>
 <span class="cost">0:12</span>    <a class="badge badge-measured" href="#f21-provenance">measured</a>
   </div>
   <p class="detail">Drawn on every pull, under the id every pull mints.</p>
@@ -1007,27 +991,190 @@ fetched 2026-09-24 09:00.</p>
 
 </section>
 
-<section class="pull" data-night-pull-panel id="f22-pull">
+<section class="pull" data-night-pull-panel id="b2-summary">
 
-<h2>Nek&#39;zali Mythic</h2>
-<p class="sub">Wiped at 50.0% remaining &middot; fight 22 &middot; death cards: trimmed</p>
+<h2>Vorthal the Unmade Mythic &middot; summary</h2>
+<p class="sub">No kill in 3 attempts &middot; 3 attempts read &middot; depth is encounter progress</p>
 
-<nav class="tabs" data-tab-group="f22-main" aria-label="Sections">
-  <button type="button" class="tab" data-tab-for="f22-tab-summary">Summary</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-damage">Damage</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-mechanics">Mechanics</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-deaths">Deaths</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-interrupts">Interrupts</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-players">Players</button>
-  <button type="button" class="tab" data-tab-for="f22-tab-provenance">Provenance</button>
+<nav class="tabs" data-tab-group="b2-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="b2-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="b2-tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="b2-tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="b2-tab-best">Best attempt</button>
+  <button type="button" class="tab" data-tab-for="b2-tab-provenance">Provenance</button>
 </nav>
 
 
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-summary">
+<section class="panel" data-tab-panel="b2-main" id="b2-tab-summary">
 
-<h2 id="f22-alive">How the attempt went
-  <a class="badge badge-derived" href="#f22-provenance">derived</a></h2>
+<p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
+and Best attempt holds what the deepest attempt did differently.</p>
+
+<h2 id="b2-observations">Other findings</h2>
+<p class="sub">Nothing else measured.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="b2-main" id="b2-tab-attempts">
+
+<h2 id="b2-attempts">Attempts</h2>
+<p class="legend">One bar an attempt, in pull order. Height is depth reached (encounter progress): a taller bar got further into the encounter. The outlined bar is the attempt that went deepest.</p>
+<svg width="100%" viewBox="0 0 680.0 220.0">
+  <line class="tick" x1="46.0" y1="186.0"
+        x2="664.0" y2="186.0"></line>
+  <text class="tick-label" x="40.0" y="186.0"
+        text-anchor="end" dominant-baseline="middle">0%</text>
+  <line class="tick" x1="46.0" y1="143.5"
+        x2="664.0" y2="143.5"></line>
+  <text class="tick-label" x="40.0" y="143.5"
+        text-anchor="end" dominant-baseline="middle">25%</text>
+  <line class="tick" x1="46.0" y1="101.0"
+        x2="664.0" y2="101.0"></line>
+  <text class="tick-label" x="40.0" y="101.0"
+        text-anchor="end" dominant-baseline="middle">50%</text>
+  <line class="tick" x1="46.0" y1="58.5"
+        x2="664.0" y2="58.5"></line>
+  <text class="tick-label" x="40.0" y="58.5"
+        text-anchor="end" dominant-baseline="middle">75%</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">100%</text>
+  <rect class="attempt-bar attempt-best" x="46.0" y="101.0"
+        width="200.0" height="85.0"><title>Attempt 1: 50.0% left (encounter progress), 200 seconds</title></rect>
+  <rect class="attempt-bar" x="252.0" y="101.0"
+        width="200.0" height="85.0"><title>Attempt 2: 50.0% left (encounter progress), 200 seconds</title></rect>
+  <rect class="attempt-bar" x="458.0" y="101.0"
+        width="200.0" height="85.0"><title>Attempt 3: 50.0% left (encounter progress), 200 seconds</title></rect>
+</svg>
+
+<table class="attempts">
+<thead>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+</thead>
+<tbody>
+<tr class="best">
+<td>1</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<tr>
+<td>2</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<tr>
+<td>3</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+</tbody>
+</table>
+
+<div class="findings">
+<div class="card" id="b2-finding-progression.cluster">
+  <div class="row-head">
+    <h3>Attempts sat at a median of 50.0% (encounter progress)</h3>
+    <a class="badge badge-measured" href="#b2-provenance">measured</a>
+  </div>
+  <p class="detail">Across 3 attempts the observed range ran 50.0% to 50.0%. A median and a range, never an average: one attempt that went deep does not move a median, but it would drag an average down.</p>
+  <ul class="evidence"><li>3 attempts counted</li><li>range 50.0% to 50.0%</li></ul>
+</div>
+
+<div class="card" id="b2-finding-progression.movement">
+  <div class="row-head">
+    <h3>Movement across the night is not compared</h3>
+    <a class="badge badge-derived" href="#b2-provenance">derived</a>
+  </div>
+  <p class="detail">3 attempts qualified and at least 6 are needed to split a night into halves worth comparing. Below that the two sides are anecdotes.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="b2-main" id="b2-tab-repeats">
+
+<h2 id="b2-repeats">Repeats</h2>
+<div class="findings">
+<div class="card" id="b2-finding-progression.repeat.first_death">
+  <div class="row-head">
+    <h3>Arcane Mage died first in 3 of 3 attempts</h3>
+    <a class="badge badge-measured" href="#b2-provenance">measured</a>
+  </div>
+  <p class="detail">Across the 3 attempts whose earliest death matched a roster player, Arcane Mage died first 3 times. A specialisation dying first is usually about where that role stands when a pull comes apart, not about the player in the seat -- this counts, and assigns no blame.</p>
+  <ul class="evidence"><li>3 of 3 attempts</li></ul>
+</div>
+
+<div class="card" id="b2-finding-progression.collapse">
+  <div class="row-head">
+    <h3>Attempts took a median of 190 seconds to fall apart</h3>
+    <a class="badge badge-measured" href="#b2-provenance">measured</a>
+  </div>
+  <p class="detail">Measured across 3 attempts that had a death, from the first one to the end of the attempt. The observed range ran 190 to 190 seconds. A long window is a raid bleeding out and a short one is a raid losing the fight at once; they want different fixes, and this figure is the one that tells them apart. A median and a range, never an average.</p>
+  <ul class="evidence"><li>3 attempts with a death</li><li>range 190 to 190 seconds</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="b2-main" id="b2-tab-best">
+
+<h2 id="b2-best">Best attempt</h2>
+<div class="findings">
+<div class="card" id="b2-finding-progression.best">
+  <div class="row-head">
+    <h3>The best attempt left 50.0% (encounter progress)</h3>
+    <a class="badge badge-measured" href="#b2-provenance">measured</a>
+  </div>
+  <p class="detail">Attempt 1 of 3 got furthest, lasting 200 seconds. The deepest attempt of a night is often not its last.</p>
+  <ul class="evidence"><li>Attempt 1 of 3, fight 30</li><li>200 seconds</li></ul>
+</div>
+
+<div class="card" id="b2-finding-progression.best.deaths">
+  <div class="row-head">
+    <h3>The best attempt took 1 roster deaths, no difference from the rest</h3>
+    <a class="badge badge-measured" href="#b2-provenance">measured</a>
+  </div>
+  <p class="detail">Counted across the 2 other deepened attempts, whose median was 1.0 roster deaths. A median and a range, never an average. This counts deaths and says nothing about what caused them; to see that attempt&#39;s anatomy -- the health curves, what hit whom, and what each player still had -- run `wowperf raid abc123 --fight 30`.</p>
+  <ul class="evidence"><li>1 roster deaths on the deepest attempt, fight 30</li><li>median 1.0 across 2 other attempts</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="b2-main" id="b2-tab-provenance">
+
+<h2 id="b2-provenance">Provenance</h2>
+<p class="sub">Report TESTCODE00000000, encounter 3492, 3 attempts read and 3 deepened, fetched 2026-09-24 09:00.</p>
+<p class="sub">No reference run of any kind was fetched: this page compares a night against itself.</p>
+<p class="sub">Every percentage on this page is the same scale, chosen once for the whole series: boss health where every qualifying attempt carried one, and the encounter&#39;s own progress otherwise. Both count down -- a kill reads about 0.01 and an instant wipe reads 100 -- and the header names which scale this night is on.</p>
+<p class="sub">This page draws the night, never one attempt&#39;s internals. The health curves, what hit whom and what each player still had are `wowperf raid --fight N`&#39;s work, and the findings that want them carry the invocation.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f30-pull">
+
+<h2>Vorthal the Unmade Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 30 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f30-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f30-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f30-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-summary">
+
+<h2 id="f30-alive">How the attempt went
+  <a class="badge badge-derived" href="#f30-provenance">derived</a></h2>
 <p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
 <svg class="alive-chart" width="100%"
      viewBox="0 0 680.0 200.0">
@@ -1047,22 +1194,22 @@ fetched 2026-09-24 09:00.</p>
 </svg>
 
 
-<h2 id="f22-losses">Biggest losses</h2>
+<h2 id="f30-losses">Biggest losses</h2>
 <p class="sub">Each line opens its card. Ranked, not additive.</p>
-<a class="pointer" href="#f22-finding-night.pull.repeated">
-  <span class="pointer-title">Rite 4 is what this pull earned a word about</span>
+<a class="pointer" href="#f30-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 3 is what this pull earned a word about</span>
   <span class="cost">0:12</span>
   <span class="badge badge-measured">measured</span>
 </a>
 
 
-<h2 id="f22-observations">Other findings</h2>
+<h2 id="f30-observations">Other findings</h2>
 <p class="sub">Findings no other section claimed.</p>
 <div class="findings">
-<div class="card" id="f22-finding-night.pull.repeated">
+<div class="card" id="f30-finding-night.pull.repeated">
   <div class="row-head">
-    <h3><span class="ability"><span class="ability-name">Rite 4</span></span> is what this pull earned a word about</h3>
-<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f22-provenance">measured</a>
+    <h3><span class="ability"><span class="ability-name">Rite 3</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f30-provenance">measured</a>
   </div>
   <p class="detail">Drawn on every pull, under the id every pull mints.</p>
 </div>
@@ -1071,24 +1218,24 @@ fetched 2026-09-24 09:00.</p>
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-damage">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-damage">
 
-<h2 id="f22-damage">Damage</h2>
+<h2 id="f30-damage">Damage</h2>
 <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-mechanics">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-mechanics">
 
-<h2 id="f22-mechanics">Mechanics</h2>
+<h2 id="f30-mechanics">Mechanics</h2>
 <p class="sub">Nothing to report.</p>
 
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-deaths">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-deaths">
 
-<h2 id="f22-deaths">Deaths</h2>
+<h2 id="f30-deaths">Deaths</h2>
 <div class="card">
   <div class="row-head">
     <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
@@ -1099,12 +1246,12 @@ fetched 2026-09-24 09:00.</p>
     <div class="recap-timeline">
       <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
       <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
-           href="#f22-provenance">measured</a></p>
+           href="#f30-provenance">measured</a></p>
     </div>
     <div class="recap-availability">
       <div class="avail">
         <p class="avail-title">Defensives <a class="badge badge-inferred"
-             href="#f22-provenance">inferred</a></p>
+             href="#f30-provenance">inferred</a></p>
         <ul>
           <li class="pressed">
             <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
@@ -1127,21 +1274,21 @@ fetched 2026-09-24 09:00.</p>
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-interrupts">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-interrupts">
 
-<h2 id="f22-interrupts">Interrupts</h2>
+<h2 id="f30-interrupts">Interrupts</h2>
 <p class="sub">Nothing to report.</p>
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-players">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-players">
 
-<h2 id="f22-players">Players</h2>
-<nav class="tabs subtabs" data-tab-group="f22-players" aria-label="Players">
-  <button type="button" class="tab" data-tab-for="f22-player-stonewake-1">Stonewake</button>
-  <button type="button" class="tab" data-tab-for="f22-player-emberkin-0">Emberkin</button>
+<h2 id="f30-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f30-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f30-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f30-player-emberkin-0">Emberkin</button>
 </nav>
-<div class="card" data-tab-panel="f22-players" id="f22-player-stonewake-1">
+<div class="card" data-tab-panel="f30-players" id="f30-player-stonewake-1">
   <div class="player-head">
     <span class="swatch" style="background: var(--class-deathknight)"></span>
     <h3>Stonewake</h3>
@@ -1151,7 +1298,7 @@ fetched 2026-09-24 09:00.</p>
   
   <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 </div>
-<div class="card" data-tab-panel="f22-players" id="f22-player-emberkin-0">
+<div class="card" data-tab-panel="f30-players" id="f30-player-emberkin-0">
   <div class="player-head">
     <span class="swatch" style="background: var(--class-mage)"></span>
     <h3>Emberkin</h3>
@@ -1165,10 +1312,360 @@ fetched 2026-09-24 09:00.</p>
 
 </section>
 
-<section class="panel" data-tab-panel="f22-main" id="f22-tab-provenance">
+<section class="panel" data-tab-panel="f30-main" id="f30-tab-provenance">
 
-<h2 id="f22-provenance">Provenance</h2>
-<p class="sub">Report abc123, fight 22,
+<h2 id="f30-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 30,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f31-pull">
+
+<h2>Vorthal the Unmade Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 31 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f31-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f31-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f31-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-summary">
+
+<h2 id="f31-alive">How the attempt went
+  <a class="badge badge-derived" href="#f31-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f31-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f31-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 4 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f31-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f31-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 4</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f31-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-damage">
+
+<h2 id="f31-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-mechanics">
+
+<h2 id="f31-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-deaths">
+
+<h2 id="f31-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f31-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f31-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-interrupts">
+
+<h2 id="f31-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-players">
+
+<h2 id="f31-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f31-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f31-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f31-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f31-players" id="f31-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f31-players" id="f31-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f31-main" id="f31-tab-provenance">
+
+<h2 id="f31-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 31,
+fetched 2026-09-24 09:00.</p>
+<p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</section>
+
+<section class="pull" data-night-pull-panel id="f32-pull">
+
+<h2>Vorthal the Unmade Mythic</h2>
+<p class="sub">Wiped at 50.0% remaining &middot; fight 32 &middot; death cards: trimmed</p>
+
+<nav class="tabs" data-tab-group="f32-main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="f32-tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-damage">Damage</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-mechanics">Mechanics</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="f32-tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-summary">
+
+<h2 id="f32-alive">How the attempt went
+  <a class="badge badge-derived" href="#f32-provenance">derived</a></h2>
+<p class="legend">Players still standing, across the attempt. A battle resurrection steps the line back up. A player who released and ran back leaves no record, so this can only undercount how many were actually up. This report gives no boss health for this attempt.</p>
+<svg class="alive-chart" width="100%"
+     viewBox="0 0 680.0 200.0">
+  <line class="tick" x1="46.0" y1="170.0"
+        x2="664.0" y2="170.0"></line>
+  <text class="tick-label" x="40.0" y="170.0"
+        text-anchor="end" dominant-baseline="middle">0</text>
+  <line class="tick" x1="46.0" y1="93.0"
+        x2="664.0" y2="93.0"></line>
+  <text class="tick-label" x="40.0" y="93.0"
+        text-anchor="end" dominant-baseline="middle">10</text>
+  <line class="tick" x1="46.0" y1="16.0"
+        x2="664.0" y2="16.0"></line>
+  <text class="tick-label" x="40.0" y="16.0"
+        text-anchor="end" dominant-baseline="middle">20</text>
+  <polyline class="alive-line" fill="none" points="46.0,16.0 76.9,16.0 76.9,23.700000000000017 "></polyline>
+</svg>
+
+
+<h2 id="f32-losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#f32-finding-night.pull.repeated">
+  <span class="pointer-title">Rite 5 is what this pull earned a word about</span>
+  <span class="cost">0:12</span>
+  <span class="badge badge-measured">measured</span>
+</a>
+
+
+<h2 id="f32-observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="f32-finding-night.pull.repeated">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">Rite 5</span></span> is what this pull earned a word about</h3>
+<span class="cost">0:12</span>    <a class="badge badge-measured" href="#f32-provenance">measured</a>
+  </div>
+  <p class="detail">Drawn on every pull, under the id every pull mints.</p>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-damage">
+
+<h2 id="f32-damage">Damage</h2>
+<p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-mechanics">
+
+<h2 id="f32-mechanics">Mechanics</h2>
+<p class="sub">Nothing to report.</p>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-deaths">
+
+<h2 id="f32-deaths">Deaths</h2>
+<div class="card">
+  <div class="row-head">
+    <h3><span class="ability"><span class="ability-name">x</span></span> — Emberkin</h3>
+    <span class="death-when">0:10</span>
+  </div>
+  <p class="detail">Mage</p>
+  <div class="recap">
+    <div class="recap-timeline">
+      <p class="sub">This card is trimmed: the timeline and health curve were not built for this pull. Re-run with --deep &lt;fight&gt; to render them.</p>
+      <p class="detail">Not seen acting again this run. <a class="badge badge-measured"
+           href="#f32-provenance">measured</a></p>
+    </div>
+    <div class="recap-availability">
+      <div class="avail">
+        <p class="avail-title">Defensives <a class="badge badge-inferred"
+             href="#f32-provenance">inferred</a></p>
+        <ul>
+          <li class="pressed">
+            <span class="avail-name"><span class="ability" tabindex="0"><span class="ability-name">Ice Barrier</span><span class="tip" role="note"><span class="tip-line"><span class="tip-label">Base cooldown <span class="badge badge-inferred">inferred</span></span><span class="tip-value">25 s</span></span><span class="tip-line"><span class="tip-label">Presses</span><span class="tip-value">1</span></span><span class="tip-line"><span class="tip-label">Cover</span><span class="tip-value">4.0 s</span></span><span class="tip-line"><span class="tip-label">Arrived while it was up</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Reached health</span><span class="tip-value">0</span></span><span class="tip-line"><span class="tip-label">Mitigated inside / outside <span class="badge badge-derived">derived</span></span><span class="tip-value">-- / --</span></span><span class="tip-note">The log does not attribute what reduced these hits: armour, Versatility, spec passives, a defensive and a teammate&#39;s external all land in one figure, for every hit summed here. The gap between the two rates is suggestive, not attributable: this ability is one of several things reducing every hit, and the log separates none of them.</span></span></span></span>
+            <span class="avail-detail">5.0 s before death</span>
+          </li>
+        </ul>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Consumables</p>
+        <p class="nests">No consumable can be judged here: either none is listed for this run, or the death came too early for the log to show one&#39;s cooldown.</p>
+      </div>
+      <div class="avail">
+        <p class="avail-title">Teammates&#39; externals</p>
+        <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-interrupts">
+
+<h2 id="f32-interrupts">Interrupts</h2>
+<p class="sub">Nothing to report.</p>
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-players">
+
+<h2 id="f32-players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="f32-players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="f32-player-stonewake-1">Stonewake</button>
+  <button type="button" class="tab" data-tab-for="f32-player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="f32-players" id="f32-player-stonewake-1">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-deathknight)"></span>
+    <h3>Stonewake</h3>
+    <span class="sub">DeathKnight Blood</span>
+  </div>
+  <p class="stats">0 casts in 3:20 of the fight · 0 deaths · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+<div class="card" data-tab-panel="f32-players" id="f32-player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">1 cast in 3:20 of the fight · 1 death · 0 interrupts</p>
+  
+  <p class="withheld">No reference run was fetched for this analysis, so there is nothing to compare against.</p>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="f32-main" id="f32-tab-provenance">
+
+<h2 id="f32-provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 32,
 fetched 2026-09-24 09:00.</p>
 <p class="withheld">Damage against other kills: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
 <p class="withheld">Spell and talent comparison: No reference run was fetched for this analysis, so there is nothing to compare against.</p>
