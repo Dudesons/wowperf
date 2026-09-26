@@ -444,7 +444,8 @@ def test_defensives_up_are_pooled_across_one_bosss_pulls(tmp_path: Path) -> None
     for finding in findings:
         prefixed = finding.id.startswith("progression.repeat.ready.")
         assert prefixed, "a pooled finding carries another family's id"
-        assert finding.confidence is Confidence.INFERRED
+        inferred = finding.confidence is Confidence.INFERRED
+        assert inferred, "a pooled finding lost its inferred badge"
         unlinked = finding.player_slug == ""
         assert unlinked, "a pooled finding was linked to a player card"
         pairs = [line.match(text) for text in finding.evidence[1:]]

@@ -107,8 +107,12 @@ def _base_ids(players: Iterable[Player]) -> dict[int, str]:
     Counted on the slug rather than the name, because the slug is what the id
     carries: `Bríala` and `Briala` are two players and one slug, and only the
     actor id then tells their findings apart. One helper, so the per-pull
-    finding and the one pooling it across pulls can never mint two different
-    ids for the same player.
+    finding and the one pooling it across pulls apply the same disambiguation
+    rule -- each against its own roster: the per-pull finding counts slugs on
+    that one pull's roster, the pooled finding on the whole boss's roster
+    across every pull. The two rosters can disagree, so the same player can
+    take `briala` on a pull where they are the only `Bríala`/`Briala` present
+    and `briala.<actor_id>` in the pooled finding, where both are.
     """
     unique = {player.actor_id: player for player in players}
     slugs = {actor_id: player_slug(player.name) for actor_id, player in unique.items()}

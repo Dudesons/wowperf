@@ -287,9 +287,20 @@ def a_pull(
     deaths: tuple[tuple[Player, float], ...] = (),
     casts: tuple[tuple[Player, DefensiveAbility, float], ...] = (),
     players: tuple[Player, ...] = (EMBERKIN,),
+    start_ms: int | None = None,
 ) -> LoadedEncounter:
-    """One pull, its deaths and casts given as seconds after the pull's start."""
-    encounter = an_attempt(fight_id, 50.0, 600.0, players=players)
+    """One pull, its deaths and casts given as seconds after the pull's start.
+
+    `start_ms` overrides the pull's own start, which `an_attempt` otherwise
+    derives from `fight_id * 1_000_000` -- far enough apart that two pulls
+    built that way never sit close together. Passing it is how a test places
+    one pull shortly after another, the way a real raid's pulls do.
+    """
+    overrides: dict[str, object] = {"players": players}
+    if start_ms is not None:
+        overrides["start_ms"] = start_ms
+        overrides["end_ms"] = start_ms + 600_000
+    encounter = an_attempt(fight_id, 50.0, 600.0, **overrides)
     start = encounter.start_ms
     return LoadedEncounter(
         encounter=encounter,
@@ -371,8 +382,12 @@ def test_a_pressed_ability_stays_in_the_denominator_and_out_of_the_count() -> No
 def test_a_talent_cast_on_one_pull_is_not_owned_on_the_next() -> None:
     """The pull-by-pull ruling: pull 2 never casts it, so pull 2's death says nothing.
 
-    Judged across the night instead, pull 1's cast would make it "up" on pull
-    2 as well, and the player would be named at 2 of 2.
+    Judged across the whole night instead -- both the casts handed to
+    `defensives_up_at` and the `cast_ids` ownership gate drawing from every
+    pull rather than just their own -- pull 1's cast would make it "up" on
+    pull 2 as well, and the player would be named at 2 of 2. The design's
+    rejected alternative; going night-wide on only one of the two lines does
+    not reproduce it.
     """
     swapped_out = a_pull(2, deaths=((EMBERKIN, 400.0),))
     assert repeat_defensives_up(
@@ -464,3 +479,100 @@ def test_the_detail_says_it_is_a_question_and_how_it_was_judged() -> None:
     )
     assert "pull by pull" in finding.detail
     assert "a question to ask, not a mistake to fix" in finding.detail
+
+
+def test_a_late_press_on_one_pull_does_not_bleed_into_the_next_pulls_window() -> None:
+    """Real pulls can restart less than a cooldown after the last one ended.
+
+    Anti-Magic Shell's window is (60 + 10) seconds. Pull 1 presses it at 590s
+    of a 600s pull, and also has an earlier death (100s) where it reads up, so
+    the player qualifies to be named. Pull 2 starts 30s after pull 1 ends --
+    only 40s past that late press -- and the player dies there at 20s in,
+    battle-rezzed, then presses it again at 200s to prove they still own it.
+
+    Judged on pull 2's own casts alone, as the design requires, that death
+    reads up: nothing of the player's own was pressed inside pull 2's window.
+    Handed the night's casts run together instead, pull 1's press at 590s
+    would fall inside pull 2's window (it is only 40s before pull 2's death),
+    and the death would read as not up -- which is the bug this pins.
+    """
+    pull_one = a_pull(
+        1,
+        deaths=((EMBERKIN, 100.0),),
+        casts=((EMBERKIN, AMS, 590.0),),
+    )
+    pull_two = a_pull(
+        2,
+        start_ms=pull_one.encounter.end_ms + 30_000,
+        deaths=((EMBERKIN, 20.0),),
+        casts=((EMBERKIN, AMS, 200.0),),
+    )
+    findings = repeat_defensives_up(a_loaded_series(pull_one, pull_two), BLOOD)
+    assert [f.title for f in findings] == ["Emberkin: Anti-Magic Shell up at 2 of 2 deaths"]
+
+
+def test_pooled_counts_equal_the_pull_rows_defensives_up_at_would_give() -> None:
+    """The design's core promise: pooled is exactly the sum of the pull rows beneath it.
+
+    `analyse_defensives_at_death` folds a player's per-death lines into one
+    finding's free-text evidence rather than a per-ability count, so there is
+    no clean field of its to compare against. This instead calls
+    `defensives_up_at` once per pull per player per ability -- the same call
+    `repeat_defensives_up` itself makes -- and sums the result by hand, over a
+    series with two players, two abilities and three pulls, then checks that
+    `repeat_defensives_up`'s own findings say exactly the same numbers.
+    """
+    kirillitsa = Player(
+        actor_id=3, name="Кириллица", class_name="DeathKnight", spec="Blood", item_level=600
+    )
+    roster = (EMBERKIN, kirillitsa)
+    pull_one = a_pull(
+        1, players=roster,
+        deaths=((EMBERKIN, 400.0), (kirillitsa, 400.0)),
+        casts=((EMBERKIN, IBF, 1.0), (kirillitsa, AMS, 1.0)),
+    )
+    pull_two = a_pull(
+        2, players=roster,
+        deaths=((EMBERKIN, 400.0), (kirillitsa, 400.0)),
+        casts=((EMBERKIN, IBF, 1.0), (kirillitsa, AMS, 1.0)),
+    )
+    # A third press inside its own window: Kirillitsa's Anti-Magic Shell stays
+    # judged on this pull but does not count as up, so her denominator grows
+    # without her count doing the same.
+    pull_three = a_pull(
+        3, players=roster,
+        deaths=((kirillitsa, 400.0),),
+        casts=((kirillitsa, AMS, 1.0), (kirillitsa, AMS, 380.0)),
+    )
+    pulls = (pull_one, pull_two, pull_three)
+    series = a_loaded_series(*pulls)
+
+    tallies: dict[tuple[int, int], list[int]] = {}
+    for pull in pulls:
+        for player in pull.players:
+            abilities = BLOOD.for_spec(player.class_name, player.spec)
+            cast_ids = {c.ability_id for c in pull.casts if c.actor_id == player.actor_id}
+            for death in pull.deaths:
+                if death.actor_id != player.actor_id:
+                    continue
+                up_now = defensives_up_at(
+                    pull.casts, abilities, player.actor_id, death.timestamp_ms
+                )
+                for ability in abilities:
+                    if ability.ability_id not in cast_ids:
+                        continue
+                    key = (player.actor_id, ability.ability_id)
+                    tally = tallies.setdefault(key, [0, 0])
+                    tally[1] += 1
+                    if ability.name in up_now:
+                        tally[0] += 1
+
+    findings = {finding.id: finding for finding in repeat_defensives_up(series, BLOOD)}
+    emberkin_up, emberkin_judged = tallies[(EMBERKIN.actor_id, IBF.ability_id)]
+    kirillitsa_up, kirillitsa_judged = tallies[(kirillitsa.actor_id, AMS.ability_id)]
+    assert findings["progression.repeat.ready.emberkin"].evidence[1:] == (
+        f"Icebound Fortitude up at {emberkin_up} of {emberkin_judged} deaths",
+    )
+    assert findings["progression.repeat.ready.player"].evidence[1:] == (
+        f"Anti-Magic Shell up at {kirillitsa_up} of {kirillitsa_judged} deaths",
+    )
