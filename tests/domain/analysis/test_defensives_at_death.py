@@ -1,11 +1,15 @@
 # ABOUTME: The rule deciding which defensives a player had off cooldown when they died.
 # ABOUTME: Every uncertainty in it is resolved toward silence, and these pin that direction.
 
+from tests.domain.progression_fixtures import a_loaded_series
+from tests.domain.test_progression import an_attempt
 from wowperf.domain.analysis.deaths import pull_offset
 from wowperf.domain.analysis.defensives import (
     analyse_defensives_at_death,
     defensives_up_at,
+    repeat_defensives_up,
 )
+from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -257,3 +261,318 @@ def test_players_whose_names_slug_alike_get_ids_that_tell_them_apart() -> None:
     }
 
     assert ids == {"defensives.unused.briala.11", "defensives.unused.briala.12"}
+
+
+# --- progression.repeat.ready: the rule above, pooled across a boss's pulls ---
+#
+# Each pull is judged on its own casts, and the pulls are added up. Every pull
+# below runs 600 seconds from `an_attempt`'s `fight_id * 1_000_000`, so pull
+# windows never overlap.
+
+IBF = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=180.0)
+AMS = DefensiveAbility(ability_id=48707, name="Anti-Magic Shell", cooldown_seconds=60.0)
+BLOOD = Defensives(entries=(("DeathKnight/Blood", (IBF, AMS)),))
+"""Icebound Fortitude listed first: an insertion-ordered sort puts it first,
+and a name-ordered one puts Anti-Magic Shell first."""
+
+EMBERKIN = Player(actor_id=1, name="Emberkin", class_name="DeathKnight", spec="Blood",
+                  item_level=600)
+STONEWAKE = Player(actor_id=2, name="Stonewake", class_name="Mage", spec="Arcane",
+                   item_level=600)
+
+
+def a_pull(
+    fight_id: int,
+    *,
+    deaths: tuple[tuple[Player, float], ...] = (),
+    casts: tuple[tuple[Player, DefensiveAbility, float], ...] = (),
+    players: tuple[Player, ...] = (EMBERKIN,),
+    start_ms: int | None = None,
+) -> LoadedEncounter:
+    """One pull, its deaths and casts given as seconds after the pull's start.
+
+    `start_ms` overrides the pull's own start, which `an_attempt` otherwise
+    derives from `fight_id * 1_000_000` -- far enough apart that two pulls
+    built that way never sit close together. Passing it is how a test places
+    one pull shortly after another, the way a real raid's pulls do.
+    """
+    overrides: dict[str, object] = {"players": players}
+    if start_ms is not None:
+        overrides["start_ms"] = start_ms
+        overrides["end_ms"] = start_ms + 600_000
+    encounter = an_attempt(fight_id, 50.0, 600.0, **overrides)
+    start = encounter.start_ms
+    return LoadedEncounter(
+        encounter=encounter,
+        deaths=tuple(
+            Death(player_name=who.name, actor_id=who.actor_id,
+                  timestamp_ms=start + int(at * 1000), killing_blow="Void Bolt")
+            for who, at in deaths
+        ),
+        casts=tuple(
+            CastEvent(actor_id=who.actor_id, ability_id=ability.ability_id,
+                      ability_name=ability.name, timestamp_ms=start + int(at * 1000))
+            for who, ability, at in casts
+        ),
+    )
+
+
+def owned_and_died(fight_id: int, *abilities: DefensiveAbility) -> LoadedEncounter:
+    """Emberkin casts each ability at 1s -- proof of owning it -- and dies at 400s.
+
+    400s is past every window here (Icebound Fortitude's is 180 + 10), so each
+    ability cast is up at the death.
+    """
+    return a_pull(
+        fight_id,
+        deaths=((EMBERKIN, 400.0),),
+        casts=tuple((EMBERKIN, ability, 1.0) for ability in abilities),
+    )
+
+
+def test_an_ability_up_at_deaths_on_two_pulls_names_the_player() -> None:
+    findings = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF), owned_and_died(2, IBF)), BLOOD
+    )
+    assert [f.id for f in findings] == ["progression.repeat.ready.emberkin"]
+    (finding,) = findings
+    assert finding.title == "Emberkin: Icebound Fortitude up at 2 of 2 deaths"
+    assert finding.ability_id == IBF.ability_id
+    assert finding.ability_name == "Icebound Fortitude"
+    assert finding.evidence == (
+        "DeathKnight Blood", "Icebound Fortitude up at 2 of 2 deaths",
+    )
+    assert finding.confidence is Confidence.INFERRED
+    assert finding.player_slug == ""
+
+
+def test_two_deaths_inside_one_pull_are_that_pulls_claim_not_this_one() -> None:
+    """A battle resurrection, then a second death: both up, both on pull 1."""
+    twice = a_pull(
+        1,
+        deaths=((EMBERKIN, 300.0), (EMBERKIN, 500.0)),
+        casts=((EMBERKIN, IBF, 1.0),),
+    )
+    quiet = a_pull(2, casts=((EMBERKIN, IBF, 1.0),))
+    assert repeat_defensives_up(a_loaded_series(twice, quiet), BLOOD) == []
+
+
+def test_a_death_on_a_pull_without_the_ability_cast_is_left_out_of_its_denominator() -> None:
+    """Pull 3 holds a death and no Icebound Fortitude cast: unknown, not "not up"."""
+    unowned = a_pull(3, deaths=((EMBERKIN, 400.0),))
+    findings = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF), owned_and_died(2, IBF), unowned), BLOOD
+    )
+    assert findings[0].title == "Emberkin: Icebound Fortitude up at 2 of 2 deaths"
+
+
+def test_a_pressed_ability_stays_in_the_denominator_and_out_of_the_count() -> None:
+    """Pull 3: owned, pressed at 380s inside its window, so judged and not up."""
+    pressed = a_pull(
+        3,
+        deaths=((EMBERKIN, 400.0),),
+        casts=((EMBERKIN, IBF, 1.0), (EMBERKIN, IBF, 380.0)),
+    )
+    findings = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF), owned_and_died(2, IBF), pressed), BLOOD
+    )
+    assert findings[0].title == "Emberkin: Icebound Fortitude up at 2 of 3 deaths"
+
+
+def test_a_talent_cast_on_one_pull_is_not_owned_on_the_next() -> None:
+    """The pull-by-pull ruling: pull 2 never casts it, so pull 2's death says nothing.
+
+    Judged across the whole night instead -- both the casts handed to
+    `defensives_up_at` and the `cast_ids` ownership gate drawing from every
+    pull rather than just their own -- pull 1's cast would make it "up" on
+    pull 2 as well, and the player would be named at 2 of 2. The design's
+    rejected alternative; going night-wide on only one of the two lines does
+    not reproduce it.
+    """
+    swapped_out = a_pull(2, deaths=((EMBERKIN, 400.0),))
+    assert repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF), swapped_out), BLOOD
+    ) == []
+
+
+def test_several_abilities_are_named_in_one_finding_tied_counts_by_name() -> None:
+    findings = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF, AMS), owned_and_died(2, IBF, AMS)), BLOOD
+    )
+    (finding,) = findings
+    assert finding.title == "Emberkin: 2 defensives up at more than one death"
+    assert finding.ability_id is None
+    assert finding.evidence == (
+        "DeathKnight Blood",
+        "Anti-Magic Shell up at 2 of 2 deaths",
+        "Icebound Fortitude up at 2 of 2 deaths",
+    )
+
+
+def test_abilities_are_ordered_by_count_before_name() -> None:
+    """Icebound Fortitude up 3 times, Anti-Magic Shell 2: count wins over the alphabet.
+
+    Listed Anti-Magic Shell first, so neither insertion order nor name order
+    can produce the expected order by accident.
+    """
+    ams_first = Defensives(entries=(("DeathKnight/Blood", (AMS, IBF)),))
+    pressed_ams = a_pull(
+        3,
+        deaths=((EMBERKIN, 400.0),),
+        casts=((EMBERKIN, IBF, 1.0), (EMBERKIN, AMS, 1.0), (EMBERKIN, AMS, 380.0)),
+    )
+    (finding,) = repeat_defensives_up(
+        a_loaded_series(
+            owned_and_died(1, IBF, AMS), owned_and_died(2, IBF, AMS), pressed_ams
+        ),
+        ams_first,
+    )
+    assert finding.evidence[1:] == (
+        "Icebound Fortitude up at 3 of 3 deaths",
+        "Anti-Magic Shell up at 2 of 3 deaths",
+    )
+
+
+def test_a_player_absent_from_a_pull_is_judged_on_the_pulls_they_played() -> None:
+    """Emberkin sits out pull 1: a roster read from the first pull alone would miss him."""
+    benched = a_pull(1, players=(STONEWAKE,), deaths=((STONEWAKE, 400.0),))
+    findings = repeat_defensives_up(
+        a_loaded_series(benched, owned_and_died(2, IBF), owned_and_died(3, IBF)), BLOOD
+    )
+    assert [f.title for f in findings] == ["Emberkin: Icebound Fortitude up at 2 of 2 deaths"]
+
+
+def test_two_players_sharing_a_slug_get_two_ids() -> None:
+    accented = Player(actor_id=1, name="Bríala", class_name="DeathKnight", spec="Blood",
+                      item_level=600)
+    plain = Player(actor_id=3, name="Briala", class_name="DeathKnight", spec="Blood",
+                   item_level=600)
+
+    def both_die(fight_id: int) -> LoadedEncounter:
+        return a_pull(
+            fight_id,
+            players=(accented, plain),
+            deaths=((accented, 400.0), (plain, 410.0)),
+            casts=((accented, IBF, 1.0), (plain, IBF, 1.0)),
+        )
+
+    findings = repeat_defensives_up(a_loaded_series(both_die(1), both_die(2)), BLOOD)
+    assert sorted(f.id for f in findings) == [
+        "progression.repeat.ready.briala.1",
+        "progression.repeat.ready.briala.3",
+    ]
+
+
+def test_a_spec_absent_from_the_data_file_names_nobody() -> None:
+    def mage_dies(fight_id: int) -> LoadedEncounter:
+        return a_pull(
+            fight_id, players=(STONEWAKE,), deaths=((STONEWAKE, 400.0),),
+            casts=((STONEWAKE, IBF, 1.0),),
+        )
+
+    assert repeat_defensives_up(a_loaded_series(mage_dies(1), mage_dies(2)), BLOOD) == []
+
+
+def test_the_detail_says_it_is_a_question_and_how_it_was_judged() -> None:
+    (finding,) = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, IBF), owned_and_died(2, IBF)), BLOOD
+    )
+    assert "pull by pull" in finding.detail
+    assert "a question to ask, not a mistake to fix" in finding.detail
+
+
+def test_a_late_press_on_one_pull_does_not_bleed_into_the_next_pulls_window() -> None:
+    """Real pulls can restart less than a cooldown after the last one ended.
+
+    Anti-Magic Shell's window is (60 + 10) seconds. Pull 1 presses it at 590s
+    of a 600s pull, and also has an earlier death (100s) where it reads up, so
+    the player qualifies to be named. Pull 2 starts 30s after pull 1 ends --
+    only 40s past that late press -- and the player dies there at 20s in,
+    battle-rezzed, then presses it again at 200s to prove they still own it.
+
+    Judged on pull 2's own casts alone, as the design requires, that death
+    reads up: nothing of the player's own was pressed inside pull 2's window.
+    Handed the night's casts run together instead, pull 1's press at 590s
+    would fall inside pull 2's window (it is only 40s before pull 2's death),
+    and the death would read as not up -- which is the bug this pins.
+    """
+    pull_one = a_pull(
+        1,
+        deaths=((EMBERKIN, 100.0),),
+        casts=((EMBERKIN, AMS, 590.0),),
+    )
+    pull_two = a_pull(
+        2,
+        start_ms=pull_one.encounter.end_ms + 30_000,
+        deaths=((EMBERKIN, 20.0),),
+        casts=((EMBERKIN, AMS, 200.0),),
+    )
+    findings = repeat_defensives_up(a_loaded_series(pull_one, pull_two), BLOOD)
+    assert [f.title for f in findings] == ["Emberkin: Anti-Magic Shell up at 2 of 2 deaths"]
+
+
+def test_pooled_counts_equal_the_pull_rows_defensives_up_at_would_give() -> None:
+    """The design's core promise: pooled is exactly the sum of the pull rows beneath it.
+
+    `analyse_defensives_at_death` folds a player's per-death lines into one
+    finding's free-text evidence rather than a per-ability count, so there is
+    no clean field of its to compare against. This instead calls
+    `defensives_up_at` once per pull per player per ability -- the same call
+    `repeat_defensives_up` itself makes -- and sums the result by hand, over a
+    series with two players, two abilities and three pulls, then checks that
+    `repeat_defensives_up`'s own findings say exactly the same numbers.
+    """
+    kirillitsa = Player(
+        actor_id=3, name="Кириллица", class_name="DeathKnight", spec="Blood", item_level=600
+    )
+    roster = (EMBERKIN, kirillitsa)
+    pull_one = a_pull(
+        1, players=roster,
+        deaths=((EMBERKIN, 400.0), (kirillitsa, 400.0)),
+        casts=((EMBERKIN, IBF, 1.0), (kirillitsa, AMS, 1.0)),
+    )
+    pull_two = a_pull(
+        2, players=roster,
+        deaths=((EMBERKIN, 400.0), (kirillitsa, 400.0)),
+        casts=((EMBERKIN, IBF, 1.0), (kirillitsa, AMS, 1.0)),
+    )
+    # A third press inside its own window: Kirillitsa's Anti-Magic Shell stays
+    # judged on this pull but does not count as up, so her denominator grows
+    # without her count doing the same.
+    pull_three = a_pull(
+        3, players=roster,
+        deaths=((kirillitsa, 400.0),),
+        casts=((kirillitsa, AMS, 1.0), (kirillitsa, AMS, 380.0)),
+    )
+    pulls = (pull_one, pull_two, pull_three)
+    series = a_loaded_series(*pulls)
+
+    tallies: dict[tuple[int, int], list[int]] = {}
+    for pull in pulls:
+        for player in pull.players:
+            abilities = BLOOD.for_spec(player.class_name, player.spec)
+            cast_ids = {c.ability_id for c in pull.casts if c.actor_id == player.actor_id}
+            for death in pull.deaths:
+                if death.actor_id != player.actor_id:
+                    continue
+                up_now = defensives_up_at(
+                    pull.casts, abilities, player.actor_id, death.timestamp_ms
+                )
+                for ability in abilities:
+                    if ability.ability_id not in cast_ids:
+                        continue
+                    key = (player.actor_id, ability.ability_id)
+                    tally = tallies.setdefault(key, [0, 0])
+                    tally[1] += 1
+                    if ability.name in up_now:
+                        tally[0] += 1
+
+    findings = {finding.id: finding for finding in repeat_defensives_up(series, BLOOD)}
+    emberkin_up, emberkin_judged = tallies[(EMBERKIN.actor_id, IBF.ability_id)]
+    kirillitsa_up, kirillitsa_judged = tallies[(kirillitsa.actor_id, AMS.ability_id)]
+    assert findings["progression.repeat.ready.emberkin"].evidence[1:] == (
+        f"Icebound Fortitude up at {emberkin_up} of {emberkin_judged} deaths",
+    )
+    assert findings["progression.repeat.ready.player"].evidence[1:] == (
+        f"Anti-Magic Shell up at {kirillitsa_up} of {kirillitsa_judged} deaths",
+    )

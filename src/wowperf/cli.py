@@ -39,6 +39,7 @@ from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.night_service import analyse_night_boss
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
@@ -1908,8 +1909,12 @@ def night(
         # Two lists, not one. A boss's findings read its attempts' metadata and
         # a pull's read that pull's own streams; neither is a summary of the
         # other, and section 9 writes both out under the boss they belong to.
+        # A boss's list also pools each player's defensives across that boss's
+        # pulls, which only the death-card tier has the casts for.
         boss_findings = {
-            boss.progression.encounter_id: rank_raid_findings(analyse_progression(boss))
+            boss.progression.encounter_id: rank_raid_findings(
+                analyse_night_boss(boss, defensives, death_cards=death_cards)
+            )
             for boss in loaded.loaded
         }
         # No mechanics sample and no parse subject: this command fetches no

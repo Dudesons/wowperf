@@ -620,6 +620,35 @@ def test_a_summary_draws_every_progression_finding_its_boss_earned() -> None:
         assert drawn == ids
 
 
+def test_a_pooled_defensives_finding_is_drawn_on_its_summary_repeats_tab() -> None:
+    """Handed to one boss's `findings_by_boss`, it is drawn only on that boss's Repeats tab."""
+    night = a_loaded_night()
+    index, boss = next(
+        (i, b) for i, b in enumerate(night.loaded) if len(b.attempts_with_events) >= 2
+    )
+    pooled = Finding(
+        id="progression.repeat.ready.emberkin",
+        title="Emberkin: Icebound Fortitude up at 2 of 3 deaths",
+        detail="Judged pull by pull.",
+        confidence=Confidence.INFERRED,
+        evidence=("DeathKnight Blood", "Icebound Fortitude up at 2 of 3 deaths"),
+        ability_id=48792,
+        ability_name="Icebound Fortitude",
+    )
+    html = render_night(build_night_report(
+        night, a_nights_findings(night), FETCHED, A_DEFENSIVE, NO_CONSUMABLES, NO_ROLES,
+        deep_fights=frozenset(), death_cards=True,
+        findings_by_boss={
+            one.progression.encounter_id: tuple(analyse_progression(one))
+            + ((pooled,) if one is boss else ())
+            for one in night.loaded
+        },
+    ))
+    block = summary_blocks(html)[f"b{index}-summary"]
+    repeats = block.split(f'id="b{index}-tab-repeats"', 1)[1].split("</section>", 1)[0]
+    assert "finding-progression.repeat.ready.emberkin" in repeats
+
+
 def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
     """Resolving somewhere is not the same as resolving to the right pull.
 

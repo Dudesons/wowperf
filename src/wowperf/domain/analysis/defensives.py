@@ -1,12 +1,13 @@
 # ABOUTME: Defensive claims a combat log can support: cast far below the cooldown ceiling,
-# ABOUTME: or off cooldown at a death. Both are inferred.
+# ABOUTME: or off cooldown at a death, one pull at a time or pooled across a boss. All inferred.
 
-from collections import defaultdict
-from collections.abc import Callable
+from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable
 
 from wowperf.domain.events import CastEvent, Death
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
+from wowperf.domain.progression import LoadedProgression
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
 from wowperf.domain.slug import player_slug
 
@@ -100,6 +101,28 @@ def defensives_up_at(
     )
 
 
+def _base_ids(players: Iterable[Player]) -> dict[int, str]:
+    """Each player's id stem: the slug, or `slug.actor_id` when two players share it.
+
+    Counted on the slug rather than the name, because the slug is what the id
+    carries: `Bríala` and `Briala` are two players and one slug, and only the
+    actor id then tells their findings apart. One helper, so the per-pull
+    finding and the one pooling it across pulls apply the same disambiguation
+    rule -- each against its own roster: the per-pull finding counts slugs on
+    that one pull's roster, the pooled finding on the whole boss's roster
+    across every pull. The two rosters can disagree, so the same player can
+    take `briala` on a pull where they are the only `Bríala`/`Briala` present
+    and `briala.<actor_id>` in the pooled finding, where both are.
+    """
+    unique = {player.actor_id: player for player in players}
+    slugs = {actor_id: player_slug(player.name) for actor_id, player in unique.items()}
+    counts = Counter(slugs.values())
+    return {
+        actor_id: slug if counts[slug] == 1 else f"{slug}.{actor_id}"
+        for actor_id, slug in slugs.items()
+    }
+
+
 def analyse_defensives_at_death(
     players: tuple[Player, ...],
     casts: tuple[CastEvent, ...],
@@ -131,12 +154,7 @@ def analyse_defensives_at_death(
     offset for a keystone, something else for a fight with no pulls to offset
     against.
     """
-    # Counted on the slug rather than the name, because the slug is what the id
-    # carries: `Bríala` and `Briala` are two players and one slug, and only the
-    # actor id then tells their findings apart.
-    slug_counts: dict[str, int] = defaultdict(int)
-    for player in players:
-        slug_counts[player_slug(player.name)] += 1
+    base_ids = _base_ids(players)
 
     findings = []
     for player in players:
@@ -163,8 +181,7 @@ def analyse_defensives_at_death(
         if not lines:
             continue
 
-        slug = player_slug(player.name)
-        base_id = slug if slug_counts[slug] == 1 else f"{slug}.{player.actor_id}"
+        base_id = base_ids[player.actor_id]
         times = "once" if len(lines) == 1 else f"{len(lines)} times"
         findings.append(
             Finding(
@@ -183,6 +200,111 @@ def analyse_defensives_at_death(
                 seconds_lost=None,
                 evidence=(f"{player.class_name} {player.spec}", *lines),
                 pull_index=first_pull,
+            )
+        )
+    return findings
+
+
+REPEAT_READY_PREFIX = "progression.repeat.ready."
+"""Pooled across a boss's pulls, so it sits on the summary's Repeats tab.
+
+The `progression.repeat.` placement puts it there with no table change; the
+player's id stem follows, exactly as it does on the per-pull finding.
+"""
+
+
+def repeat_defensives_up(series: LoadedProgression, defensives: Defensives) -> list[Finding]:
+    """Players whose own defensives were up at their deaths on more than one pull.
+
+    `analyse_defensives_at_death`'s rule, pooled: each pull is judged by
+    `defensives_up_at` on that pull's own casts, and the judgements are added
+    up, so the pooled count is exactly the sum of the pull rows beneath it and
+    stays right when a raider swaps a talent between pulls. Ownership is never
+    judged across the night -- a talent dropped after one pull would otherwise
+    read as available and unpressed on the next.
+
+    Per player and ability, the count is the deaths at which it was up, and the
+    denominator is the deaths on pulls where the player cast it at least once:
+    on any other pull the rule cannot say whether they owned it, so those
+    deaths are unknown rather than "not up". A player is named when some
+    ability was up at two or more deaths on two or more pulls -- two deaths
+    inside one pull are a claim that pull's own row already makes.
+
+    Every death counts, late wipe deaths included: measured on a real night,
+    the share of defensives still ready at death does not rise in the pile-up
+    (`docs/plans/2026-09-26-night-defensives-pooled-design.md` section 2).
+
+    `inferred`, like every claim in this module. Players are matched across
+    pulls by actor id, stable within one report, and each pull reads the spec
+    that pull's roster gives. A spec absent from the data file names nobody.
+    """
+    roster: dict[int, Player] = {}
+    for one in series.attempts_with_events:
+        for player in one.players:
+            roster.setdefault(player.actor_id, player)
+    base_ids = _base_ids(roster.values())
+
+    names: dict[tuple[int, int], str] = {}
+    up: Counter[tuple[int, int]] = Counter()
+    judged: Counter[tuple[int, int]] = Counter()
+    pulls_up: dict[tuple[int, int], set[int]] = defaultdict(set)
+    for one in series.attempts_with_events:
+        for player in one.players:
+            abilities = defensives.for_spec(player.class_name, player.spec)
+            cast_ids = {
+                cast.ability_id for cast in one.casts if cast.actor_id == player.actor_id
+            }
+            for death in one.deaths:
+                if death.actor_id != player.actor_id:
+                    continue
+                up_now = defensives_up_at(
+                    one.casts, abilities, player.actor_id, death.timestamp_ms
+                )
+                for ability in abilities:
+                    if ability.ability_id not in cast_ids:
+                        continue
+                    key = (player.actor_id, ability.ability_id)
+                    names.setdefault(key, ability.name)
+                    judged[key] += 1
+                    if ability.name in up_now:
+                        up[key] += 1
+                        pulls_up[key].add(one.encounter.fight_id)
+
+    findings = []
+    for actor_id, player in roster.items():
+        # Two pulls is the whole rule: each pull in `pulls_up` holds at least
+        # one death at which the ability was up, so two pulls imply two deaths.
+        named = sorted(
+            (key for key in up if key[0] == actor_id and len(pulls_up[key]) >= 2),
+            key=lambda key: (-up[key], names[key]),
+        )
+        if not named:
+            continue
+        lines = tuple(
+            f"{names[key]} up at {up[key]} of {judged[key]} deaths" for key in named
+        )
+        single = named[0] if len(named) == 1 else None
+        findings.append(
+            Finding(
+                id=f"{REPEAT_READY_PREFIX}{base_ids[actor_id]}",
+                title=(
+                    f"{player.name}: {lines[0]}"
+                    if single is not None
+                    else f"{player.name}: {len(named)} defensives up at more than one death"
+                ),
+                detail=(
+                    "Judged pull by pull from this player's own casts against each "
+                    "ability's base cooldown, counting only abilities they cast somewhere "
+                    "in that pull, then added up across the boss's pulls. Every death "
+                    "counts, late wipe deaths included: the share of defensives still up "
+                    "at death was measured not to rise once a wipe comes apart. A "
+                    "defensive is pressed into damage rather than on cooldown, so this is "
+                    "a question to ask, not a mistake to fix."
+                ),
+                confidence=Confidence.INFERRED,
+                evidence=(f"{player.class_name} {player.spec}", *lines),
+                ability_id=single[1] if single is not None else None,
+                ability_name=names[single] if single is not None else "",
             )
         )
     return findings

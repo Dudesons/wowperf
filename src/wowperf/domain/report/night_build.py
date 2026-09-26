@@ -46,7 +46,8 @@ MIN_PULLS_FOR_SUMMARY = 2
 
 CARD_TIER_NONE = (
     "No death card was drawn on any pull: this night was read with death cards off, so the "
-    "Deaths tab is empty because none was asked for rather than for want of a reading."
+    "Deaths tab is empty because none was asked for rather than for want of a reading. No "
+    "boss summary says which defensives were up at a death either, for the same reason."
 )
 
 

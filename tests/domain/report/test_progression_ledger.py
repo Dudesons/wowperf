@@ -21,6 +21,7 @@ from wowperf.domain.report.progression_ledger import (
         ("progression.repeat.first_death", "repeat_rows"),
         ("progression.repeat.killing_blow", "repeat_rows"),
         ("progression.repeat.ability", "repeat_rows"),
+        ("progression.repeat.ready.emberkin", "repeat_rows"),
         ("progression.collapse", "repeat_rows"),
     ],
 )
