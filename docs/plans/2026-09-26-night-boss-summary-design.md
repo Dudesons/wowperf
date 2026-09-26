@@ -1,7 +1,6 @@
 # A summary for every boss the night pulled more than once
 
-**Status:** approved design, not yet planned or built. The next step is
-`superpowers:writing-plans`.
+**Status:** approved design, planned in docs/plans/2026-09-26-night-boss-summary-plan.md.
 **Slice:** the first piece of spec B, the cross-pull half that
 `docs/plans/2026-09-23-night-report-design.md` §12 deferred. It adds no analyser. The three new
 analyser families that section names come after it, into the container this builds.
@@ -70,8 +69,9 @@ pulled once.
   pulls". A single-pull boss's dropdown is unchanged.
 - **No script change.** `night.js.j2` opens whichever entry a boss's dropdown sits on, and a
   freshly loaded page sits on the first option, so the summary is the default without a line of
-  script. Choosing a boss shows its summary instead of pull 1: a behaviour change, and the one
-  this design is for.
+  script. A fresh page, and a boss not yet visited, now open on the summary instead of pull 1:
+  a behaviour change, and the one this design is for. Returning to a boss reopens whatever its
+  dropdown was last left on, as it did before.
 - **The section.** `<section class="pull" data-night-pull-panel id="b{i}-summary">`, drawn by a
   `_night_summary.html.j2` macro that mirrors `_night_pull.html.j2`: a heading, the five
   progression tabs, and the five progression partials included unchanged. The summary keeps its
