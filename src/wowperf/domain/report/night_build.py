@@ -155,7 +155,9 @@ def build_night_report(
     `findings_by_boss` is the per-boss findings the progression analyser
     produced, keyed by encounter id -- the same mapping the command writes to
     the JSON. A boss with fewer than `MIN_PULLS_FOR_SUMMARY` drawn pulls gets no
-    summary, so its findings are never read even when present.
+    summary, so its findings are never read even when present. A boss missing
+    from the mapping entirely draws a summary with no findings, the same
+    `.get(..., ())` fallback `findings_by_fight` relies on above.
     """
     bosses: list[BossSection] = []
     for boss in loaded.loaded:

@@ -573,7 +573,7 @@ def summary_blocks(html: str) -> dict[str, str]:
 
 
 def test_a_boss_pulled_more_than_once_opens_on_its_summary() -> None:
-    """The summary is the first option, so a fresh page and a boss change both land on it."""
+    """The summary is the first option, so a fresh page, and a boss not yet visited, opens on it."""
     html = a_night_page()
     for index, count in enumerate(PULLS_PER_BOSS):
         control = re.search(
@@ -758,6 +758,30 @@ def test_a_boss_whose_every_pull_failed_still_gets_a_control_and_says_so() -> No
     assert report.provenance.withheld
     for line in report.provenance.withheld:
         assert line in html
+
+
+def test_the_summary_option_counts_deepened_pulls_not_attempts() -> None:
+    """Three attempts, one failed: counted 3, deepened 2, and the label reads the smaller figure.
+
+    `night.html.j2` reads `attempts_deepened` for the option text. Both figures
+    live on the same `provenance` object, so a swap to `attempts_counted` would
+    still render a page -- just the wrong number on it, one no other test here
+    reads closely enough to catch.
+    """
+    report = a_night_report(a_night(bosses=(3,), failed=(12,)))
+    html = render_night(report)
+
+    assert report.bosses[0].summary is not None
+    assert report.bosses[0].summary.provenance.attempts_counted == 3
+    assert report.bosses[0].summary.provenance.attempts_deepened == 2
+
+    control = re.search(
+        r'<select id="night-pull-b0" data-night-pull>(.*?)</select>', html, re.S
+    )
+    assert control is not None
+    first = re.search(r'<option value="([^"]+)">([^<]*)</option>', control.group(1))
+    assert first is not None
+    assert first.group(2) == "Summary: 2 pulls"
 
 
 BOSS_OPTION = re.compile(r'<select id="night-boss"[^>]*>(.*?)</select>', re.DOTALL)

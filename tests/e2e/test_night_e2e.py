@@ -49,8 +49,7 @@ summary sits on exactly the two 2-pull bosses and the 7-pull boss, nowhere else,
 `--no-deaths` tier and the same cost as before -- summaries fetch nothing, being built from
 streams every tier already reads. Each summary's control opens on its own `b{i}-summary`
 option first, each summary's finding ids match what the command wrote for that boss in the
-findings file, and each summary's own titles are drawn inside its own block and no other
-boss's.
+findings file, and each summary's own titles are drawn inside its own block.
 """
 
 import json
@@ -259,7 +258,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     assert sum("data-night-pull" in one for one in selects) == len(report.bosses)
 
     # Every boss with a summary opens its own pull control on that summary --
-    # the first option, so a fresh page and a boss change both land on it --
+    # the first option, so a fresh page, and a boss not yet visited, opens on it --
     # and the finding ids drawn on the summary section are exactly the ids the
     # findings file wrote for that boss: one findings object, two readers.
     for index, boss in enumerate(report.bosses):
