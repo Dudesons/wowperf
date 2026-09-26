@@ -1,7 +1,6 @@
 # What dealt the first death, counted across a boss's pulls
 
-**Status:** approved design, not yet planned or built. The next step is
-`superpowers:writing-plans`.
+**Status:** approved design, planned in docs/plans/2026-09-26-first-death-killing-blow-plan.md.
 **Slice:** the second piece of spec B, the family `docs/plans/2026-09-26-night-boss-summary-design.md`
 §2 left as "killing blows counted across pulls". It lands in the summary that design built, and on
 the standalone progression page, through the analyser both already run.
@@ -124,9 +123,12 @@ Every test must be shown able to fail against the code it guards.
 `build_progression_report` places it in `repeat_rows`.
 
 **End to end:** `tests/e2e/test_progression_e2e.py` and `tests/e2e/test_night_e2e.py` assert
-shape and counts only, never a player's name or slug. The night
-suite asserts that each summary boss carries the finding exactly when an independent count over
-its loaded first deaths says it should.
+shape and counts only, never a player's name or slug. Where a summary boss carries the finding,
+the night suite asserts shape rather than an independent count: between one and five abilities,
+each named at two or more attempts and never more than the boss was pulled, at `measured`
+confidence. An independent count written into the test would re-implement the analyser's own
+rule and share any mistake it makes; the unit tests pin the rule instead, and the live
+distribution in the next section is the measurement.
 
 **Live:** run `wowperf night cW38jmwdnZfbHVL4` and report, for each of the three summary bosses,
 whether it fired, how many abilities it named and over how many attempts. Every first death there
