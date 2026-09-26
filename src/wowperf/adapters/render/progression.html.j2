@@ -26,12 +26,12 @@
 <h1>{{ report.header.boss }} {{ report.header.difficulty }}</h1>
 <p class="sub">{{ report.header.outcome }} &middot; {{ report.header.attempts_counted }} attempts read{% if report.header.attempts_discarded %}, {{ report.header.attempts_discarded }} excluded as too short{% endif %} &middot; depth is {{ report.header.depth_label }}</p>
 
-<nav class="tabs" data-tab-group="main" aria-label="Sections">
-  <button type="button" class="tab" data-tab-for="tab-summary">Summary</button>
-  <button type="button" class="tab" data-tab-for="tab-attempts">Attempts</button>
-  <button type="button" class="tab" data-tab-for="tab-repeats">Repeats</button>
-  <button type="button" class="tab" data-tab-for="tab-best">Best attempt</button>
-  <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
+<nav class="tabs" data-tab-group="{{ scope }}main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-best">Best attempt</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-provenance">Provenance</button>
 </nav>
 {# The blank lines below are page output, not source spacing: text outside a tag renders, #}
 {# and a comment or an include tag does not. Removing one changes the rendered page. #}

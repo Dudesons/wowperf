@@ -1,12 +1,12 @@
 {# ABOUTME: The progression Summary panel: what the other tabs hold, and what none of them claimed. #}
 {# ABOUTME: No decomposition ledger and no pointer list -- a progression finding costs no seconds. #}
 {% from "_macros.html.j2" import ledger_row with context %}
-<section class="panel" data-tab-panel="main" id="tab-summary">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-summary">
 
 <p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
 and Best attempt holds what the deepest attempt did differently.</p>
 
-<h2 id="observations">Other findings</h2>
+<h2 id="{{ scope }}observations">Other findings</h2>
 {% if report.observations %}
 <p class="sub">Findings no other section claimed.</p>
 <div class="findings">

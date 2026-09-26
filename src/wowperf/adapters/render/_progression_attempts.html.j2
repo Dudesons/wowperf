@@ -1,9 +1,9 @@
 {# ABOUTME: The Attempts panel: the night's shape as a drawing, then every attempt as a row. #}
 {# ABOUTME: Every coordinate below was computed in progression_chart.py; this loops and prints. #}
 {% from "_macros.html.j2" import ledger_row with context %}
-<section class="panel" data-tab-panel="main" id="tab-attempts">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-attempts">
 
-<h2 id="attempts">Attempts</h2>
+<h2 id="{{ scope }}attempts">Attempts</h2>
 {% if report.chart.section.state.value == "withheld" %}
 <p class="withheld">{{ report.chart.section.reason }}</p>
 {% else %}

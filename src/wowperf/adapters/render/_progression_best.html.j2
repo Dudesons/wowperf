@@ -1,9 +1,9 @@
 {# ABOUTME: The Best attempt panel: what the deepest attempt did differently. #}
 {# ABOUTME: Withheld when no attempt was deepened; rows needing no deepening still render. #}
 {% from "_macros.html.j2" import ledger_row with context %}
-<section class="panel" data-tab-panel="main" id="tab-best">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-best">
 
-<h2 id="best">Best attempt</h2>
+<h2 id="{{ scope }}best">Best attempt</h2>
 {% if report.best.state.value == "withheld" %}
 <p class="withheld">{{ report.best.reason }}</p>
 {% endif %}

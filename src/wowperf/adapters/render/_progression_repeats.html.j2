@@ -1,9 +1,9 @@
 {# ABOUTME: The Repeats panel: what kept happening across the night's attempts. #}
 {# ABOUTME: Design section 8 -- the phase, who fell first, what kept landing, the collapse. #}
 {% from "_macros.html.j2" import ledger_row with context %}
-<section class="panel" data-tab-panel="main" id="tab-repeats">
+<section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-repeats">
 
-<h2 id="repeats">Repeats</h2>
+<h2 id="{{ scope }}repeats">Repeats</h2>
 {% if report.repeat_rows %}
 <div class="findings">
 {% for row in report.repeat_rows %}
