@@ -1,10 +1,11 @@
-# ABOUTME: What repeated across a night's attempts: the phase, the collapse, who fell first.
+# ABOUTME: What repeated across a night's attempts -- the phase, collapse, who fell first, to what.
 # ABOUTME: Counts and presence only -- naming a mechanic as missed is the one claim forbidden here.
 
 from collections import Counter
 from statistics import median
 from typing import TypeVar
 
+from wowperf.domain.analysis.recap import lethal_hit
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding, quantity
@@ -211,6 +212,83 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
         ),
         confidence=Confidence.MEASURED,
         evidence=(f"{count} of {len(specs)} attempts",),
+    )
+
+
+def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
+    """Which abilities dealt each attempt's first death, counted across the night.
+
+    Reads the death `_earliest_death` picks -- the one `repeat_first_death`
+    reads -- so the two findings always speak of the same death on every pull.
+    Only the first: on a wipe most deaths come after the raid has come apart,
+    and counting them would measure what finishes a lost pull rather than what
+    started it going wrong.
+
+    An attempt drops out when its first death matches no roster player, names
+    no ability (`killing_blow_id` zero), or was dealt by a roster player -- the
+    rule `repeat.ability` applies to every hit, since a teammate's hit says
+    nothing about the encounter. Where the stream holds no lethal hit, or the
+    hit names no source, the attempt stays: the log still named the ability.
+
+    Withheld below two qualifying attempts, or when no ability reaches two: a
+    mode of one is not a pattern. No control subtraction against the deepest
+    attempt, unlike `repeat_ability` -- a best attempt that also opened with
+    this death is more reason to name it, not less. Measured: the log names the
+    death and its blow, and the rest is counting. Names no player and no
+    specialisation; who died first is `repeat_first_death`'s claim.
+    """
+    names: dict[int, str] = {}
+    counts: Counter[int] = Counter()
+    qualifying = 0
+    for one in series.attempts_with_events:
+        death = _earliest_death(one)
+        if death is None or not death.killing_blow_id:
+            continue
+        roster = {player.actor_id for player in one.players}
+        if death.actor_id not in roster:
+            continue
+        hit = lethal_hit(one.damage_taken, death)
+        if hit is not None and hit.source_id is not None and hit.source_id in roster:
+            continue
+        qualifying += 1
+        names.setdefault(death.killing_blow_id, death.killing_blow)
+        counts[death.killing_blow_id] += 1
+
+    if qualifying < 2:
+        return None
+    named = sorted(
+        (ability_id for ability_id, count in counts.items() if count >= 2),
+        key=lambda ability_id: (-counts[ability_id], names[ability_id]),
+    )[:MAX_REPEAT_ABILITIES]
+    if not named:
+        return None
+
+    lines = tuple(
+        f"{names[ability_id]} dealt the first death in {counts[ability_id]} of "
+        f"{qualifying} attempts"
+        for ability_id in named
+    )
+    single = named[0] if len(named) == 1 else None
+    return Finding(
+        id="progression.repeat.killing_blow",
+        title=(
+            lines[0]
+            if single is not None
+            else f"{len(named)} abilities dealt the first death in more than one attempt"
+        ),
+        detail=(
+            f"Across the {qualifying} attempts whose first death was a roster player "
+            "killed by an ability the log named: "
+            + "; ".join(lines)
+            + ". Only each attempt's first death is read -- the one the rest of a wipe "
+            "cannot swamp -- and an attempt whose first death a raider dealt is left out. "
+            "This counts what the log names; it does not say the death could have been "
+            "avoided."
+        ),
+        confidence=Confidence.MEASURED,
+        evidence=lines,
+        ability_id=single,
+        ability_name=names[single] if single is not None else "",
     )
 
 

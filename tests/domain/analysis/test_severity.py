@@ -116,3 +116,20 @@ def test_every_family_the_progression_path_emits_has_a_severity() -> None:
     for finding in findings:
         family = finding.id.split(".")[0]
         assert family in SEVERITY_BY_FAMILY, f"{finding.id} ranks on UNKNOWN_SEVERITY"
+
+    # `a_deepened_trio` names no killing blow, so `progression.repeat.killing_blow`
+    # never fires from it -- it is checked here instead, from a fixture built to
+    # name one, against the same table the loop above checks every other id against.
+    from tests.domain.analysis.test_progression_repeats import SOUL_LASH, first_death_by
+    from tests.domain.progression_fixtures import a_loaded_series
+
+    killing_blow_findings = analyse_progression(a_loaded_series(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+    ))
+    assert "progression.repeat.killing_blow" in {f.id for f in killing_blow_findings}, (
+        "a fixture built to name one killing blow twice must actually fire it"
+    )
+    for finding in killing_blow_findings:
+        family = finding.id.split(".")[0]
+        assert family in SEVERITY_BY_FAMILY, f"{finding.id} ranks on UNKNOWN_SEVERITY"

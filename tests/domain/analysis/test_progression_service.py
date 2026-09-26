@@ -258,6 +258,21 @@ def test_a_night_where_only_some_attempts_carry_boss_health_reads_as_encounter_p
     assert "31.9" not in cluster.title
 
 
+def test_the_killing_blow_finding_follows_the_first_death_it_reads() -> None:
+    """Emitted by the service, right after `repeat_first_death` -- they read one death."""
+    from tests.domain.analysis.test_progression_repeats import SOUL_LASH, first_death_by
+
+    found = ids(analyse_progression(a_loaded_series(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+    )))
+
+    assert "progression.repeat.killing_blow" in found
+    assert found.index("progression.repeat.killing_blow") == (
+        found.index("progression.repeat.first_death") + 1
+    )
+
+
 def a_deepened_trio() -> LoadedProgression:
     """Three qualifying attempts, deepened enough to fire every Layer 2 analyser.
 
