@@ -43,6 +43,14 @@ report would cost more than everything else put together), and no mechanics samp
 either. `NOT_DRAWN_ID` is the page saying so once, in as many words, instead of leaving the
 comparison families silently missing -- which is why this test counts that disclosure rather
 than merely finding it.
+
+**Verified live 2026-09-26.** The boss summaries this plan built draw on the same report: a
+summary sits on exactly the two 2-pull bosses and the 7-pull boss, nowhere else, at the same
+`--no-deaths` tier and the same cost as before -- summaries fetch nothing, being built from
+streams every tier already reads. Each summary's control opens on its own `b{i}-summary`
+option first, each summary's finding ids match what the command wrote for that boss in the
+findings file, and each summary's own titles are drawn inside its own block and no other
+boss's.
 """
 
 import json
@@ -51,6 +59,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from markupsafe import escape
 from typer.testing import CliRunner
 
 from wowperf.adapters.config.toml import (
@@ -178,6 +187,11 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
 
     assert tuple(len(boss.pulls) for boss in report.bosses) == PULLS_PER_BOSS
     assert report.total_pulls == sum(PULLS_PER_BOSS)
+    # A summary sits exactly where the pull counts say two or more: the two
+    # 2-pull bosses and the 7-pull boss, and nowhere else.
+    assert tuple(boss.summary is not None for boss in report.bosses) == tuple(
+        count >= 2 for count in PULLS_PER_BOSS
+    )
     for boss in report.bosses:
         for pull in boss.pulls:
             # Every pull is a whole raid report -- the reuse section 8 rests on.
@@ -244,12 +258,54 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     assert sum("data-night-boss" in one for one in selects) == 1
     assert sum("data-night-pull" in one for one in selects) == len(report.bosses)
 
-    # Every pull is its own tab group, across sixteen of them: ids that
-    # collide send every button on the page to whichever panel the browser
-    # picked first, and eight bosses is where a scoping bug that survives two
-    # shows itself.
+    # Every boss with a summary opens its own pull control on that summary --
+    # the first option, so a fresh page and a boss change both land on it --
+    # and the finding ids drawn on the summary section are exactly the ids the
+    # findings file wrote for that boss: one findings object, two readers.
+    for index, boss in enumerate(report.bosses):
+        control = re.search(
+            rf'<select id="night-pull-b{index}" data-night-pull>(.*?)</select>', html, re.S
+        )
+        assert control is not None
+        first = re.search(r'<option value="([^"]+)"', control.group(1))
+        assert first is not None
+        if boss.summary is not None:
+            assert first.group(1) == f"b{index}-summary"
+            drawn_ids = set(re.findall(rf'id="b{index}-finding-([^"]+)"', html))
+            written_ids = {finding["id"] for finding in payload["bosses"][index]["findings"]}
+            assert drawn_ids == written_ids
+        else:
+            assert first.group(1).endswith("-pull"), "a single-pull boss opens on its pull"
+            assert f'id="b{index}-summary"' not in html
+
+    # Every one of a boss's finding titles, escaped as the page escapes them,
+    # is drawn inside that boss's own summary block -- not merely somewhere on
+    # the page, and not another boss's block, which the id check alone cannot
+    # rule out: `analyse_progression` mints boss-agnostic ids
+    # (`progression.best`, `.cluster`, `.movement`), so two different bosses'
+    # findings can share an id set even though nothing else about them agrees.
+    for index, boss in enumerate(report.bosses):
+        if boss.summary is None:
+            continue
+        match = re.search(
+            rf'<section class="pull" data-night-pull-panel id="b{index}-summary">.*?'
+            r'(?=<section class="pull"|<section class="night-notes")',
+            html,
+            re.DOTALL,
+        )
+        assert match, f"boss {index}'s summary section is not on the page"
+        block = match.group(0)
+        for finding in payload["bosses"][index]["findings"]:
+            assert str(escape(finding["title"])) in block
+
+    # Every pull is its own tab group, across sixteen of them, plus one group
+    # per boss summary: ids that collide send every button on the page to
+    # whichever panel the browser picked first, and eight bosses is where a
+    # scoping bug that survives two shows itself.
     groups = re.findall(r'<section class="panel" data-tab-panel="([^"]+)"', html)
-    assert len(set(groups)) == report.total_pulls
+    assert len(set(groups)) == report.total_pulls + sum(
+        1 for boss in report.bosses if boss.summary
+    )
 
     # One player card per raider, per pull. This page names its raiders, unlike
     # the progression page, whose own end-to-end test asserts that no roster
