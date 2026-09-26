@@ -14,6 +14,7 @@ from wowperf.domain.analysis.recap import (
     availability_at,
     consumable_state,
     killing_blow_ms,
+    lethal_hit,
     state_of,
 )
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
@@ -116,6 +117,54 @@ def test_a_death_naming_no_ability_at_all_has_no_moment() -> None:
     # `killing_blow_id` defaults to zero, meaning the log named no ability.
     # Matching on it would pair the death with any hit the log left unnamed.
     assert killing_blow_ms((a_hit(BLOW_MS, 0),), a_death_by(0)) is None
+
+
+# --- the blow itself ------------------------------------------------------------
+#
+# `killing_blow_ms` answers when; `lethal_hit` answers which row, so a caller can
+# read who dealt it. The two must agree on every death, or one page would name a
+# moment another reader traces to a different hit.
+
+
+def a_hit_from(at_ms: int, ability_id: int, source_id: int | None) -> DamageTakenEvent:
+    return DamageTakenEvent(actor_id=1, ability_id=ability_id, ability_name="x",
+                            amount=1, health_damage=1, timestamp_ms=at_ms,
+                            source_id=source_id)
+
+
+def test_the_lethal_hit_is_the_row_the_moment_is_read_from() -> None:
+    """The same stream `killing_blow_ms` is tested against, returning the row itself."""
+    blow = a_hit_from(BLOW_MS, BLOW_ID, source_id=4242)
+    stream = (a_hit_from(9_989_000, BLOW_ID, 1111), blow, a_hit_from(9_997_405, OTHER_ID, 2222))
+
+    assert lethal_hit(stream, a_death_by(BLOW_ID)) == blow
+    hit = lethal_hit(stream, a_death_by(BLOW_ID))
+    assert hit is not None
+    assert hit.source_id == 4242
+
+
+def test_a_hit_after_the_death_is_never_its_lethal_hit() -> None:
+    stream = (a_hit_from(BLOW_MS, BLOW_ID, 1), a_hit_from(9_999_000, BLOW_ID, 2))
+
+    hit = lethal_hit(stream, a_death_by(BLOW_ID))
+    assert hit is not None
+    assert hit.timestamp_ms == BLOW_MS
+
+
+def test_no_lethal_hit_where_the_stream_lacks_it_or_the_log_named_nothing() -> None:
+    assert lethal_hit((a_hit(BLOW_MS, OTHER_ID),), a_death_by(BLOW_ID)) is None
+    assert lethal_hit((a_hit(BLOW_MS, 0),), a_death_by(0)) is None
+
+
+def test_a_hit_at_the_deaths_own_timestamp_is_still_the_lethal_hit() -> None:
+    """`<=` reaches the death's own instant, not just what came before it.
+
+    A hit carrying the death's `killing_blow_id` can share the death event's
+    own timestamp rather than landing strictly earlier; this must still match.
+    """
+    blow = a_hit_from(DEATH_MS_AT_THE_BLOW, BLOW_ID, source_id=4242)
+
+    assert lethal_hit((blow,), a_death_by(BLOW_ID)) == blow
 
 
 def test_an_ability_never_pressed_is_unseen_not_judged() -> None:

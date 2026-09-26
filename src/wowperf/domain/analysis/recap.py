@@ -246,6 +246,29 @@ class AbilityState(Frozen):
     seconds: float | None = None
 
 
+def lethal_hit(
+    damage_taken: tuple[DamageTakenEvent, ...], death: Death
+) -> DamageTakenEvent | None:
+    """The hit this death names as its killing blow, or None where the stream does not carry it.
+
+    The one definition of "the hit that killed this player": the latest hit on
+    the dying player carrying the death's own `killing_blow_id`, at or before
+    the death. `killing_blow_ms` reads its moment and a progression finding
+    reads its source, so both answer from the same row. A `killing_blow_id` of
+    zero is the log naming no ability, and matches nothing.
+    """
+    if not death.killing_blow_id:
+        return None
+    hits = [
+        hit
+        for hit in damage_taken
+        if hit.actor_id == death.actor_id
+        and hit.ability_id == death.killing_blow_id
+        and hit.timestamp_ms <= death.timestamp_ms
+    ]
+    return max(hits, key=lambda hit: hit.timestamp_ms) if hits else None
+
+
 def killing_blow_ms(damage_taken: tuple[DamageTakenEvent, ...], death: Death) -> int | None:
     """When the blow this death names landed, or None where the stream does not carry it.
 
@@ -261,17 +284,11 @@ def killing_blow_ms(damage_taken: tuple[DamageTakenEvent, ...], death: Death) ->
     `killing_blow_id` of zero is the log naming no ability at all, and it
     matches nothing here rather than pairing the death with whatever hit the
     log also left unnamed.
+
+    The match itself is `lethal_hit`'s; this reads only its moment.
     """
-    if not death.killing_blow_id:
-        return None
-    moments = [
-        hit.timestamp_ms
-        for hit in damage_taken
-        if hit.actor_id == death.actor_id
-        and hit.ability_id == death.killing_blow_id
-        and hit.timestamp_ms <= death.timestamp_ms
-    ]
-    return max(moments) if moments else None
+    hit = lethal_hit(damage_taken, death)
+    return hit.timestamp_ms if hit is not None else None
 
 
 class AvailabilityAt(Frozen):

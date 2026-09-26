@@ -19,6 +19,7 @@ from wowperf.domain.report.progression_ledger import (
         ("progression.attempts.discarded", "attempt_rows"),
         ("progression.repeat.phase", "repeat_rows"),
         ("progression.repeat.first_death", "repeat_rows"),
+        ("progression.repeat.killing_blow", "repeat_rows"),
         ("progression.repeat.ability", "repeat_rows"),
         ("progression.collapse", "repeat_rows"),
     ],

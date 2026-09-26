@@ -156,12 +156,30 @@ def a_progression_findings() -> tuple[Finding, ...]:
             confidence=Confidence.MEASURED,
         ),
         Finding(
+            id="progression.repeat.killing_blow",
+            title="Frigid Roar dealt the first death in 3 of 7 attempts",
+            detail=(
+                "Across the 7 attempts whose first death was a roster player: "
+                "Frigid Roar dealt 3."
+            ),
+            confidence=Confidence.MEASURED,
+            evidence=("Frigid Roar dealt the first death in 3 of 7 attempts",),
+            ability_id=1_309_919,
+            ability_name="Frigid Roar",
+        ),
+        Finding(
             id=UNROUTED_ID,
             title="The pull timer drifted across the night",
             detail="No section of this report claims this measurement yet.",
             confidence=Confidence.INFERRED,
         ),
     )
+
+
+def test_the_first_death_killing_blow_is_drawn_on_the_repeats_tab() -> None:
+    html = a_progression_page()
+    repeats = html.split('id="tab-repeats"', 1)[1].split("</section>", 1)[0]
+    assert "finding-progression.repeat.killing_blow" in repeats
 
 
 def a_progression_report() -> ProgressionReport:

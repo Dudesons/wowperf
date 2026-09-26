@@ -9,10 +9,11 @@ from wowperf.domain.analysis.progression_repeats import (
     collapse_seconds,
     repeat_ability,
     repeat_first_death,
+    repeat_killing_blow,
     repeat_phase,
 )
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.events import Death
+from wowperf.domain.events import DamageTakenEvent, Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 from wowperf.domain.progression import LoadedProgression
@@ -588,3 +589,211 @@ def test_withholds_entirely_when_the_deepest_attempt_never_had_a_death() -> None
         ),
     ))
     assert finding is None
+
+
+# --- progression.repeat.killing_blow ---
+
+SOUL_LASH = 440_001
+VOID_BOLT = 440_002
+ENEMY = 90_001
+"""An enemy's actor id: never a roster member's."""
+
+
+def first_death_by(
+    fight_id: int,
+    ability_id: int,
+    ability_name: str,
+    *,
+    source_id: int | None = ENEMY,
+    lethal_hit: bool = True,
+    dying: int = 0,
+) -> LoadedEncounter:
+    """One attempt whose first death -- `ROSTER[dying]`'s -- was dealt by `ability_id`.
+
+    A later death by another ability follows, so a counter that read every
+    death rather than the first would count `VOID_BOLT` on every attempt.
+    `lethal_hit=False` leaves the stream without the killing hit, the honest
+    unknown pagination can produce; `source_id` says who dealt it when it is
+    there.
+    """
+    encounter = an_attempt(fight_id, 50.0, 200.0, players=ROSTER)
+    start = encounter.start_ms
+    victim = ROSTER[dying]
+    other = ROSTER[1 - dying]
+    deaths = (
+        Death(player_name=victim.name, actor_id=victim.actor_id,
+              timestamp_ms=start + 1_000, killing_blow=ability_name,
+              killing_blow_id=ability_id),
+        Death(player_name=other.name, actor_id=other.actor_id,
+              timestamp_ms=start + 9_000, killing_blow="Void Bolt",
+              killing_blow_id=VOID_BOLT),
+    )
+    hits = (
+        DamageTakenEvent(actor_id=victim.actor_id, ability_id=ability_id,
+                         ability_name=ability_name, amount=1, timestamp_ms=start + 990,
+                         source_id=source_id),
+    ) if lethal_hit else ()
+    return LoadedEncounter(encounter=encounter, deaths=deaths, damage_taken=hits)
+
+
+def test_names_the_ability_that_dealt_the_first_death_in_more_than_one_attempt() -> None:
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+        first_death_by(3, 440_003, "Grasp"),
+    ))
+    assert finding is not None
+    assert finding.id == "progression.repeat.killing_blow"
+    assert finding.title == "Soul Lash dealt the first death in 2 of 3 attempts"
+    assert finding.ability_id == SOUL_LASH
+    assert finding.ability_name == "Soul Lash"
+    assert finding.confidence is Confidence.MEASURED
+
+
+def test_reads_only_the_first_death_of_each_attempt() -> None:
+    """Every attempt's second death is a Void Bolt; it must never be counted."""
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, 440_003, "Grasp"),
+    ))
+    assert finding is None
+
+
+def test_names_every_ability_reaching_two_most_first_with_no_icon() -> None:
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+        first_death_by(3, SOUL_LASH, "Soul Lash"),
+        first_death_by(4, 440_003, "Grasp"),
+        first_death_by(5, 440_003, "Grasp"),
+        first_death_by(6, 440_004, "Rend"),
+    ))
+    assert finding is not None
+    assert finding.title == "2 abilities dealt the first death in more than one attempt"
+    assert finding.ability_id is None
+    assert finding.evidence == (
+        "Soul Lash dealt the first death in 3 of 6 attempts",
+        "Grasp dealt the first death in 2 of 6 attempts",
+    )
+
+
+def test_breaks_a_tie_in_count_by_name() -> None:
+    """Soul Lash is inserted first, so a tiebreak that dropped the name key and
+    relied on a stable sort over insertion order would list it first too --
+    only reading `names[ability_id]` as the tiebreak gets "Grasp" ahead of it.
+    """
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, 440_003, "Grasp"),
+        first_death_by(3, SOUL_LASH, "Soul Lash"),
+        first_death_by(4, 440_003, "Grasp"),
+    ))
+    assert finding is not None
+    assert [line.split(" dealt")[0] for line in finding.evidence] == ["Grasp", "Soul Lash"]
+
+
+def test_caps_the_named_abilities_at_five() -> None:
+    attempts = [
+        first_death_by(10 * n + k + 1, 441_000 + n, f"Rite {n}")
+        for n in range(6)
+        for k in range(2)
+    ]
+    finding = repeat_killing_blow(series_of(*attempts))
+    assert finding is not None
+    assert len(finding.evidence) == 5
+
+
+def test_is_silent_below_two_qualifying_attempts() -> None:
+    assert repeat_killing_blow(series_of(first_death_by(1, SOUL_LASH, "Soul Lash"))) is None
+
+
+def test_a_death_naming_no_ability_drops_its_attempt_from_the_count() -> None:
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+        first_death_by(3, 0, "", lethal_hit=False),
+    ))
+    assert finding is not None
+    assert finding.title == "Soul Lash dealt the first death in 2 of 2 attempts"
+
+
+def test_a_first_death_a_raider_dealt_drops_its_attempt() -> None:
+    """Friendly hits say nothing about what the encounter did (repeat.ability's rule)."""
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+        first_death_by(3, SOUL_LASH, "Soul Lash", source_id=ROSTER[1].actor_id),
+    ))
+    assert finding is not None
+    assert finding.title == "Soul Lash dealt the first death in 2 of 2 attempts"
+
+
+def test_a_missing_lethal_hit_or_an_unnamed_source_keeps_its_attempt() -> None:
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash", lethal_hit=False),
+        first_death_by(2, SOUL_LASH, "Soul Lash", source_id=None),
+    ))
+    assert finding is not None
+    assert finding.title == "Soul Lash dealt the first death in 2 of 2 attempts"
+
+
+def test_a_first_death_off_the_roster_drops_its_attempt() -> None:
+    """A pet dies first, to the repeating ability: its attempt must not count.
+
+    Built by hand rather than with `loaded_attempt_with_roster(..., None)`, whose
+    pet death names no ability -- that attempt would be dropped by the
+    zero-id rule and never reach the roster rule this test is about.
+    """
+    encounter = an_attempt(3, 50.0, 200.0, players=ROSTER)
+    pet_first = LoadedEncounter(
+        encounter=encounter,
+        deaths=(
+            Death(player_name="Unidentified", actor_id=999,
+                  timestamp_ms=encounter.start_ms + 1_000, killing_blow="Soul Lash",
+                  killing_blow_id=SOUL_LASH),
+        ),
+    )
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+        pet_first,
+    ))
+    assert finding is not None
+    assert finding.title == "Soul Lash dealt the first death in 2 of 2 attempts"
+
+
+def test_reads_the_same_death_repeat_first_death_reads_on_a_tie() -> None:
+    """Two deaths at one instant: the lower actor id is first, for both findings.
+
+    The higher-id death is listed first and carries the repeating ability, so a
+    function that took the stream's first-listed death would name it.
+    """
+    def tied(fight_id: int) -> LoadedEncounter:
+        encounter = an_attempt(fight_id, 50.0, 200.0, players=ROSTER)
+        start = encounter.start_ms
+        high = Death(player_name=ROSTER[1].name, actor_id=ROSTER[1].actor_id,
+                     timestamp_ms=start + 1_000, killing_blow="Void Bolt",
+                     killing_blow_id=VOID_BOLT)
+        low = Death(player_name=ROSTER[0].name, actor_id=ROSTER[0].actor_id,
+                    timestamp_ms=start + 1_000, killing_blow="Soul Lash",
+                    killing_blow_id=SOUL_LASH)
+        return LoadedEncounter(encounter=encounter, deaths=(high, low))
+
+    series = series_of(tied(1), tied(2))
+    killing = repeat_killing_blow(series)
+    first = repeat_first_death(series)
+    assert killing is not None and first is not None
+    assert killing.ability_name == "Soul Lash"
+    assert ROSTER[0].spec in first.title
+
+
+def test_never_names_a_player_or_a_specialisation() -> None:
+    finding = repeat_killing_blow(series_of(
+        first_death_by(1, SOUL_LASH, "Soul Lash"),
+        first_death_by(2, SOUL_LASH, "Soul Lash"),
+    ))
+    assert finding is not None
+    text = f"{finding.title} {finding.detail} {' '.join(finding.evidence)}"
+    for word in ("Emberkin", "Stonewake", "Bríala", "Кириллица",
+                 *(p.spec for p in ROSTER), *(p.class_name for p in ROSTER)):
+        assert word not in text

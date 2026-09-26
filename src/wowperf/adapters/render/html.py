@@ -264,9 +264,9 @@ def render_progression(report: ProgressionReport, icons: CdnIcons | None = None)
 
     `_icon_addresses` is not reused: it walks death cards and player cards, and
     this page has neither. Only a ledger row can name an ability here --
-    `progression.repeat.ability` is the one finding that does -- so the walk is
-    that single loop rather than a third caller of a function whose other two
-    arguments would every time be empty.
+    `progression.repeat.ability` and `progression.repeat.killing_blow` are the
+    findings that do -- so the walk is that single loop rather than a third
+    caller of a function whose other two arguments would every time be empty.
 
     Without an `icons` source the page draws exactly as the other two do
     without one: every ability id on the view model is inert until something

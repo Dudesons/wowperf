@@ -8,6 +8,7 @@ from wowperf.domain.analysis.progression_repeats import (
     collapse,
     repeat_ability,
     repeat_first_death,
+    repeat_killing_blow,
     repeat_phase,
 )
 from wowperf.domain.findings import Confidence, Finding
@@ -139,6 +140,7 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
     for deeper in (
         repeat_phase(progression),
         repeat_first_death(series),
+        repeat_killing_blow(series),
         repeat_ability(series),
         collapse(series),
         best_deaths(series),
