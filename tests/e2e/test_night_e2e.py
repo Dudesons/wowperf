@@ -69,10 +69,12 @@ from wowperf.adapters.config.toml import (
     load_self_resurrections,
 )
 from wowperf.cli import app, build_repository
+from wowperf.domain.analysis.defensives import repeat_defensives_up
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
+from wowperf.domain.findings import Confidence
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import all_night_ledger_rows
 from wowperf.domain.report.raid_model import RaidReport
@@ -107,6 +109,15 @@ where it would read as a night that simply had fewer pulls.
 
 TIER = "none"
 """The tier `--no-deaths` draws every pull at; see the header on why this suite runs there."""
+
+FIRING_BOSS = 7
+"""The night index of the one summary boss the pooled defensives finding fires on.
+
+Measured 2026-09-26 over the default tier: of the three summary bosses (night
+indices 1, 6 and 7), only the 7-pull boss names anyone -- eight players. On
+each 2-pull boss no ability was up at a death on both pulls, so nobody
+qualifies there, and the cheapest boss that exercises the finding is this one.
+"""
 
 
 @pytest.mark.e2e
@@ -388,3 +399,58 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # No link back to the report. This page draws one group's own night and
     # never a corpus of anyone else's logs (RPGLogs terms SS5d).
     assert "warcraftlogs.com/reports/" not in html
+
+
+@pytest.mark.e2e
+def test_defensives_up_are_pooled_across_one_bosss_pulls(tmp_path: Path) -> None:
+    """One summary boss at the default tier: the only tier with the casts this reads.
+
+    The whole-night test above runs `--no-deaths`, where this finding is never
+    computed, so it is exercised here on one boss rather than paying the
+    default tier for all sixteen pulls.
+    """
+    repository = build_repository(tmp_path / "cache")
+    before = repository.rate_limit().points_spent_this_hour
+    night = repository.load_night(REPORT_CODE, None)
+    one_boss = night.model_copy(update={"bosses": (night.bosses[FIRING_BOSS],)})
+    loaded = repository.load_night_attempts(
+        one_boss, deep_fights=frozenset(), death_cards=True
+    )
+    spent = repository.rate_limit().points_spent_this_hour - before
+    # Measured at 195.44 on one cold run, 2026-09-26: about 28 points a pull
+    # over seven pulls, most of it the one `AuraTable` per roster player per
+    # pull that the death-card tier adds. The bound leaves room for the
+    # per-query fractions the API moves between runs, and still fails a load
+    # that fetched the whole night rather than the one boss.
+    assert spent < 250, f"one boss at the default tier spent {spent:.2f} points, want under 250"
+    print(f"one boss, default tier, cold cache: {spent:.2f} points")
+
+    (series,) = loaded.loaded
+    findings = repeat_defensives_up(series, load_defensives())
+    assert findings, "no player was named on the boss this report fires it on"
+
+    # The most deaths any one player took across the boss's pulls: no pooled
+    # count, and no denominator, can exceed it.
+    most_deaths = max(
+        sum(1 for one in series.attempts_with_events for d in one.deaths
+            if d.actor_id == actor_id)
+        for actor_id in {p.actor_id for one in series.attempts_with_events
+                         for p in one.players}
+    )
+    # Each check is reduced to a bool before it is asserted, as the element-id
+    # check above does: an id embeds a real slug and an evidence line a real
+    # ability, and pytest's introspection would print either on a failure.
+    line = re.compile(r"^.+ up at (\d+) of (\d+) deaths$")
+    for finding in findings:
+        prefixed = finding.id.startswith("progression.repeat.ready.")
+        assert prefixed, "a pooled finding carries another family's id"
+        assert finding.confidence is Confidence.INFERRED
+        unlinked = finding.player_slug == ""
+        assert unlinked, "a pooled finding was linked to a player card"
+        pairs = [line.match(text) for text in finding.evidence[1:]]
+        shaped = bool(pairs) and all(pairs)
+        assert shaped, "an evidence line lost its shape"
+        for match in pairs:
+            assert match is not None
+            n, m = int(match.group(1)), int(match.group(2))
+            assert 2 <= n <= m <= most_deaths

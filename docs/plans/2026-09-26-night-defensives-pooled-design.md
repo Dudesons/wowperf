@@ -1,7 +1,6 @@
 # Defensives up at a player's deaths, pooled across a boss's pulls
 
-**Status:** approved design, not yet planned or built. The next step is
-`superpowers:writing-plans`.
+**Status:** approved design, planned in docs/plans/2026-09-26-night-defensives-pooled-plan.md.
 **Slice:** the third piece of spec B, the family `docs/plans/2026-09-26-night-boss-summary-design.md`
 §2 left as "deaths per player across pulls; availability pooled across pulls". It lands in the
 night page's boss summary that design built, beside the first-death killing blow
@@ -134,7 +133,8 @@ no reason the page could state.
 
 Every test must be shown able to fail against the line it guards.
 
-**Unit** (`tests/domain/analysis/test_defensives.py`, sanctioned names only):
+**Unit** (`tests/domain/analysis/test_defensives_at_death.py`, where `defensives_up_at`'s own
+tests live; sanctioned names only):
 - one ability up at two deaths on two pulls fires, with title, `ability_id` and counts;
 - two such deaths inside one pull are withheld;
 - the denominator leaves out pulls where the ability was never cast;
@@ -155,13 +155,33 @@ fixture fires it.
 
 **End to end** (`tests/e2e/test_night_e2e.py`): shape only -- each count at least 2 and at most
 its denominator, each denominator at most the boss's roster deaths, confidence `inferred`. No
-assertion message prints a player name.
+assertion message prints a player name. The whole-night test in that file runs `--no-deaths`,
+where this finding is never computed, so a check there could only pass vacuously. A separate
+test, `test_defensives_up_are_pooled_across_one_bosss_pulls`, loads the one summary boss the
+live read below measured firing -- night index 7, the 7-pull boss -- at the default tier, and
+asserts the shape there. One cold run cost 195.44 points of 3600 (2026-09-26), about 28 a pull.
 
 **Live:** `wowperf night cW38jmwdnZfbHVL4` over the warm cache. Read the JSON, never the HTML,
 and report per summary boss, by index and never by name: how many players were named, the
 count and denominator spread, and whether the one-ability and several-ability titles each
 occurred. The one-ability, icon-drawing state went unseen live in the killing-blow slice; this is
 where to look for it.
+
+Measured 2026-09-26, over the warm cache for 1.00 point (the two `RateLimit` reads):
+
+| Night index | Pulls | Named | One-ability | Several-ability | Counts | Denominators | `defensives.unused.` rows across its pulls |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | 2 | 0 | 0 | 0 | -- | -- | 1 |
+| 6 | 2 | 0 | 0 | 0 | -- | -- | 6 |
+| 7 | 7 | 8 | 4 | 4 | 2 to 4 | 3 to 8 | 32 |
+
+Both title states occurred, the one-ability state four times. Each several-ability finding named
+two abilities, twelve evidence lines in all. On index 7 exactly eight players hold a pull row on
+two or more pulls, and they are the eight named, so the pooled finding fires nowhere a pull row
+does not stand beneath it twice. The two 2-pull bosses name nobody because no ability was up at
+a death on both of their pulls: on index 1 one player died on both pulls and one ability was up
+at one death; on index 6 four players died on both, and nine abilities were up at a death, each
+on one pull only.
 
 ## 8. Out of scope
 
