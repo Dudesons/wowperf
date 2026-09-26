@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import pytest
+from markupsafe import escape
 from typer.testing import CliRunner
 
 from tests.test_cli import operation_name, plain, quota_response
@@ -375,6 +376,14 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
 
     The first boss was pulled twice and has a summary; the second was pulled
     once and has none, so its findings are in the file and on no summary.
+
+    The id-set check alone would pass on a summary drawn from a *different*
+    boss whose findings happen to carry the same ids -- `analyse_progression`
+    mints boss-agnostic ids (`progression.best`, `.cluster`, `.movement`), so
+    two different bosses' findings can share an id set even though nothing
+    else about them agrees. The title check below closes that gap: a boss's
+    titles embed its own attempt count and percentages, so boss 0's and
+    boss 1's titles differ even when their ids do not.
     """
     result = run_night(tmp_path)
     assert result.exit_code == 0, result.output
@@ -382,11 +391,34 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
     payload = json.loads(findings_file.read_text(encoding="utf-8"))
     html = report_file.read_text(encoding="utf-8")
 
-    written = {finding["id"] for finding in payload["bosses"][0]["findings"]}
+    boss0_findings = payload["bosses"][0]["findings"]
+    boss1_findings = payload["bosses"][1]["findings"]
+
+    written = {finding["id"] for finding in boss0_findings}
     assert written, "a boss with no finding pins nothing"
     drawn = set(re.findall(r'id="b0-finding-([^"]+)"', html))
     assert drawn == written
     assert 'id="b1-summary"' not in html
+
+    # Precondition: the two bosses' titles must differ, or the check below
+    # would pass even if boss 0's summary drew boss 1's findings by mistake.
+    boss0_titles = {finding["title"] for finding in boss0_findings}
+    boss1_titles = {finding["title"] for finding in boss1_findings}
+    assert boss0_titles != boss1_titles, (
+        "the fixture must give the two bosses distinguishable findings, "
+        "or a swapped summary could not be told apart from a correct one"
+    )
+
+    match = re.search(
+        r'<section class="pull" data-night-pull-panel id="b0-summary">.*?'
+        r'(?=<section class="pull"|<section class="night-notes")',
+        html,
+        re.DOTALL,
+    )
+    assert match, "boss 0's summary section is not on the page"
+    boss0_summary_block = match.group(0)
+    for finding in boss0_findings:
+        assert str(escape(finding["title"])) in boss0_summary_block
 
 
 def test_deep_and_no_deaths_together_is_refused_naming_both(tmp_path: Path) -> None:
