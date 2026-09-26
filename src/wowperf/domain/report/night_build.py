@@ -15,6 +15,7 @@ from wowperf.domain.report.night_model import (
     NightReport,
     PullSection,
 )
+from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
 
@@ -39,6 +40,9 @@ qualify it, and a page that opened by claiming every card was trimmed and named
 the exception a sentence later would have told a reader something false about a
 card on the very same page.
 """
+
+MIN_PULLS_FOR_SUMMARY = 2
+"""Below this many drawn pulls a boss gets no summary: there is nothing to compare."""
 
 CARD_TIER_NONE = (
     "No death card was drawn on any pull: this night was read with death cards off, so the "
@@ -119,6 +123,7 @@ def build_night_report(
     *,
     deep_fights: frozenset[int],
     death_cards: bool,
+    findings_by_boss: Mapping[int, Sequence[Finding]],
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
 ) -> NightReport:
@@ -146,11 +151,19 @@ def build_night_report(
     already carries the boss it belongs to, so there is no index to keep in
     step. Pulls come from `attempts_with_events`, which is pull order whatever
     order the streams arrived in.
+
+    `findings_by_boss` is the per-boss findings the progression analyser
+    produced, keyed by encounter id -- the same mapping the command writes to
+    the JSON. A boss with fewer than `MIN_PULLS_FOR_SUMMARY` drawn pulls gets no
+    summary, so its findings are never read even when present. A boss missing
+    from the mapping entirely draws a summary with no findings, the same
+    `.get(..., ())` fallback `findings_by_fight` relies on above.
     """
     bosses: list[BossSection] = []
     for boss in loaded.loaded:
+        drawn = boss.attempts_with_events
         pulls: list[PullSection] = []
-        for attempt in boss.attempts_with_events:
+        for attempt in drawn:
             fight_id = attempt.encounter.fight_id
             tier = _tier(fight_id, deep_fights, death_cards=death_cards)
             pulls.append(
@@ -172,8 +185,17 @@ def build_night_report(
                     tier=tier,
                 )
             )
+        summary = (
+            build_progression_report(
+                boss, findings_by_boss.get(boss.progression.encounter_id, ()), fetched_at
+            )
+            if len(drawn) >= MIN_PULLS_FOR_SUMMARY
+            else None
+        )
         bosses.append(
-            BossSection(boss_name=boss.progression.boss_name, pulls=tuple(pulls))
+            BossSection(
+                boss_name=boss.progression.boss_name, pulls=tuple(pulls), summary=summary
+            )
         )
 
     # Stated once for the page rather than on every pull's tab: the axis is

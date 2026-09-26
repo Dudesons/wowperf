@@ -15,7 +15,7 @@ from tests.domain.progression_fixtures import (
     a_loaded_series,
 )
 from tests.domain.test_progression import an_attempt
-from wowperf.adapters.render.html import render_progression
+from wowperf.adapters.render.html import PROGRESSION_TEMPLATE_NAME, _environment, render_progression
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import Death
@@ -457,3 +457,35 @@ def test_the_rendered_page_matches_the_golden_file(pytestconfig: pytest.Config) 
         "`uv run pytest tests/adapters/render/test_progression_html_invariants.py "
         "--golden-update`."
     )
+
+
+SCOPE = "b9-"
+
+
+def test_every_anchor_the_progression_partials_draw_takes_the_scope() -> None:
+    """The night page draws these partials once per boss; an unprefixed id collides.
+
+    Rendered through the real template with a scope handed in, which is exactly
+    how the night page will reach them. Every family of anchor is checked, not
+    only ids: a tab button whose `data-tab-for` stayed bare would open another
+    boss's panel.
+    """
+    html = _environment().get_template(PROGRESSION_TEMPLATE_NAME).render(
+        report=a_progression_report(), icons_by_id={}, scope=SCOPE
+    )
+    # Cut before the inline script as well as after <main>: report.js.j2 builds
+    # its own selectors by string concatenation ('[data-tab-panel="' + group +
+    # '"]'), and the naive regexes below would read that literal text as a bare
+    # data-tab-panel value. It is JS source, not a drawn anchor, and no template
+    # this task touches can change it -- test_night_html_invariants.py notes the
+    # same script-text hazard for its own tab-bar count.
+    body = html.split("<main>", 1)[1].split("<script", 1)[0]
+    values = (
+        re.findall(r'\sid="([^"]+)"', body)
+        + re.findall(r'data-tab-panel="([^"]+)"', body)
+        + re.findall(r'data-tab-for="([^"]+)"', body)
+        + re.findall(r'href="#([^"]+)"', body)
+    )
+    assert values, "a page with no anchors would pass this vacuously"
+    bare = sorted({value for value in values if not value.startswith(SCOPE)})
+    assert bare == [], f"drawn without the scope: {bare}"

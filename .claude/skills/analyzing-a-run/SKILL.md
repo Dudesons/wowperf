@@ -197,7 +197,13 @@ the response cache and the output files, the same shapes the other three offer.
 It writes `<code>.night.json` and `<code>.night.html` — no fight or encounter id in either name,
 because the whole report is what `--out` writes for. The page draws every pull with the same
 seven panels `raid` draws for one — Summary, Damage, Mechanics, Deaths, Interrupts, Players,
-Provenance — behind two dropdowns, a boss and then a pull within it. A pull drawn at less than the
+Provenance — behind two dropdowns, a boss and then a pull within it. A boss pulled two or more
+times opens on a summary before any pull: the page `wowperf progression` draws for that boss —
+its attempts, what kept repeating across them and what the best one did differently — built from
+the same findings the night's JSON writes under that boss. A boss pulled once has no summary,
+since one attempt leaves nothing to compare, and opens on its pull.
+
+A pull drawn at less than the
 deep tier still has its full death anatomy on hand elsewhere: `--deep` buys it back here for a
 named pull, or `wowperf raid --fight N` draws it for that one pull on its own.
 

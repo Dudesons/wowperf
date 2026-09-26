@@ -13,6 +13,12 @@ from wowperf.domain.report.night_model import (
     PullSection,
     all_night_ledger_rows,
 )
+from wowperf.domain.report.progression_model import (
+    AttemptsChart,
+    ProgressionHeader,
+    ProgressionProvenance,
+    ProgressionReport,
+)
 from wowperf.domain.report.raid_frame import RaidHeader
 from wowperf.domain.report.raid_model import RaidReport
 
@@ -183,6 +189,50 @@ def test_a_pulls_own_rows_are_walked_too() -> None:
     walked = {row.finding_id for row in all_night_ledger_rows(report)}
 
     assert walked == {"finding-in-pull-one", "finding-in-pull-two"}
+
+
+def test_a_bosss_summary_rows_are_walked_too() -> None:
+    """A `BossSection.summary` is walked through `all_progression_ledger_rows`.
+
+    One row in each of the progression report's four row-bearing fields, each
+    with a distinct id, so a walker that missed one field would drop its id.
+    """
+    summary = ProgressionReport(
+        header=ProgressionHeader(
+            boss="Stonewake",
+            difficulty="Mythic",
+            size=20,
+            outcome="No kill in 7 attempts",
+            attempts_counted=7,
+            attempts_discarded=1,
+            depth_label="encounter progress",
+        ),
+        chart=AttemptsChart(section=a_section()),
+        attempt_rows=(a_ledger_row(finding_id="finding-in-attempt-rows"),),
+        repeat_rows=(a_ledger_row(finding_id="finding-in-repeat-rows"),),
+        best_rows=(a_ledger_row(finding_id="finding-in-best-rows"),),
+        best=a_section(),
+        observations=(a_ledger_row(finding_id="finding-in-observations"),),
+        provenance=ProgressionProvenance(
+            report_code="abc123",
+            encounter_id=3492,
+            attempts_counted=7,
+            attempts_deepened=3,
+            fetched_at="2026-09-16 08:14",
+        ),
+    )
+    report = a_night_report(
+        bosses=(BossSection(boss_name="Stonewake", summary=summary),),
+    )
+
+    walked = {row.finding_id for row in all_night_ledger_rows(report)}
+
+    assert walked == {
+        "finding-in-attempt-rows",
+        "finding-in-repeat-rows",
+        "finding-in-best-rows",
+        "finding-in-observations",
+    }
 
 
 def test_the_walker_returns_a_tuple_not_a_generator() -> None:

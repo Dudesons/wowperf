@@ -1,0 +1,34 @@
+{# ABOUTME: One boss's summary on the night page: its heading, the five progression tabs, #}
+{# ABOUTME: and the progression partials below. A macro, so `scope` and `report` bind as arguments. #}
+{# Rebinds `report` to one boss's ProgressionReport exactly as `_night_pull.html.j2`
+   rebinds it to one pull's RaidReport, with no assignment tag. `scope` prefixes
+   every id drawn under here; the adapter minted it from the boss's index. #}
+{% macro summary_section(report, scope) %}
+<section class="pull" data-night-pull-panel id="{{ scope }}summary">
+
+<h2>{{ report.header.boss }} {{ report.header.difficulty }} &middot; summary</h2>
+<p class="sub">{{ report.header.outcome }} &middot; {{ report.header.attempts_counted }} attempts read{% if report.header.attempts_discarded %}, {{ report.header.attempts_discarded }} excluded as too short{% endif %} &middot; depth is {{ report.header.depth_label }}</p>
+
+<nav class="tabs" data-tab-group="{{ scope }}main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-attempts">Attempts</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-repeats">Repeats</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-best">Best attempt</button>
+  <button type="button" class="tab" data-tab-for="{{ scope }}tab-provenance">Provenance</button>
+</nav>
+{# The blank lines below are page output, not source spacing. #}
+
+
+
+{% include "_progression_summary.html.j2" %}
+
+{% include "_progression_attempts.html.j2" %}
+
+{% include "_progression_repeats.html.j2" %}
+
+{% include "_progression_best.html.j2" %}
+
+{% include "_progression_provenance.html.j2" %}
+
+</section>
+{% endmacro %}
