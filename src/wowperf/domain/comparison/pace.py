@@ -30,6 +30,10 @@ NO_SINGLE_BOSS = (
 NO_BOSS_DAMAGE = "The damage graph for this boss held no series to compare."
 NO_REFERENCE_KILL = "No reference kill of this raid size could be loaded to compare against."
 BOSS_IN_NO_REFERENCE = "This boss could not be found in any reference kill's fight."
+NOTHING_TO_COMPARE = (
+    "No second of this attempt could be compared: the reference kills had dealt the boss no "
+    "damage by then, or the attempt ended within its first second."
+)
 
 BOSS_DETAIL = (
     "Cumulative damage to the boss, second by second from the pull, against the reference "
@@ -97,7 +101,7 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     if reading is None:
         return [_notice(NO_REFERENCE_KILL)]
     if not reading.seconds or reading.seconds[-1].median <= 0:
-        return []
+        return [_notice(NOTHING_TO_COMPARE)]
 
     total = cumulative_at(sample.ours, encounter.duration_seconds)
     withheld_projection = ""

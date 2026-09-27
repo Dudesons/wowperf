@@ -9,6 +9,7 @@ from wowperf.domain.comparison.pace import (
     BOSS_IN_NO_REFERENCE,
     NO_REFERENCE_KILL,
     NO_SINGLE_BOSS,
+    NOTHING_TO_COMPARE,
     PACE_ID,
     PROJECTION_ID,
     UNAVAILABLE_ID,
@@ -139,3 +140,13 @@ def test_an_earlier_behind_stretch_longer_than_the_widest_bucket_is_mentioned() 
     found = by_id(analyse_pace(a_wipe(9), PaceSample(ours=ours, references=kills)))
     pace = found[PACE_ID]
     assert "Also behind between 0:04 and 0:05" in pace.evidence
+
+
+def test_no_comparable_seconds_yields_a_notice() -> None:
+    """Reference kills that dealt zero damage (e.g. three a_kill(0, 400)) mean reading.seconds
+    is empty or the last second has zero median; both cannot be compared.
+    """
+    kills = (a_kill(0, 400), a_kill(0, 400), a_kill(0, 400))
+    [notice] = analyse_pace(a_wipe(200), PaceSample(ours=steady(80, 200), references=kills))
+    assert notice.id == UNAVAILABLE_ID
+    assert notice.detail == NOTHING_TO_COMPARE
