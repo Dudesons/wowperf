@@ -224,12 +224,13 @@ fight 30 of `cW38jmwdnZfbHVL4`, cold cache -- 89.01 points of 3600, passed first
 
 **A state not yet seen.** Run live 2026-09-28 over all nine listed fights (28-34, 26, 8) of
 `cW38jmwdnZfbHVL4`: all seven boss fights (28-34) landed `behind`; the two council fights (26, 8)
-withheld with `compare.pace.unavailable`. On pace, ahead and the slowest-kill fallback still never
-occurred, across nine fights now rather than seven. Per this design's own instruction above, this
-counts as a state not yet seen rather than a defect -- the code path for each is exercised by the
-unit suite (§10, Unit) -- but slice 1 has now been run against every wipe this report offers, so a
-fourth state would need a different report to surface. No single run passed the 120-point stop
-threshold set for this exercise; the costliest, fight 28, spent 45.63.
+withheld with `compare.pace.unavailable`. On pace, ahead and the slowest-kill fallback did not
+occur on any of the nine fights this report offers. The offline suite exercises each of those
+code paths (§10, Unit), but until a live run shows on pace, ahead and the fallback actually
+occurring, slice 1 is not exercised live in those three states. This is left open, not resolved
+either way: RwlRwl is to supply another report to look for them on. No single run over the nine
+fights passed the 120-point stop threshold set for this exercise; the costliest, fight 28, spent
+45.63.
 
 ## 11. Measurements taken (2026-09-27, `cW38jmwdnZfbHVL4`, Heroic, about 46 points)
 
