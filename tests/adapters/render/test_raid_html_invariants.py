@@ -487,6 +487,16 @@ def test_a_behind_wipe_draws_the_pace_chart_and_the_summary_pointer() -> None:
     assert "Behind the reference kills' pace. The chart is on the Damage tab." in html
 
 
+def test_the_page_carries_no_literal_none() -> None:
+    """The pace finding has no `seconds_lost`, so its pointer must guard
+    `row.seconds` exactly as `ledger_row` already does -- an unguarded print
+    of `None` (the Jinja Environment carries no `finalize`) would read as a
+    real timing figure on a card that has none.
+    """
+    html = a_wiped_raid_page_with_pace(per_second=80)
+    assert ">None<" not in html
+
+
 def test_an_on_pace_wipe_draws_no_mark_and_no_pointer() -> None:
     """The other half of the behind page above: on pace draws the same chart
     with neither the behind mark nor the Summary paragraph that only a

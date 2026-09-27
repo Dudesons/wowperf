@@ -65,6 +65,44 @@ def test_the_band_cut_is_stated() -> None:
     )
 
 
+def test_the_single_reference_wording_names_the_one_kill_and_its_cut() -> None:
+    """One reference, ending before the wipe: hand arithmetic below.
+
+    `a_kill(100, 200)` deals 100 a second for 200 s; against a 300 s wipe the
+    band has fewer than `MIN_SAMPLE_FOR_AGGREGATE` (3) references throughout,
+    so `reading.single` is True and the comparison stops at second 200, where
+    the one kill ended -- band_cut is True, and `reading.references == 1`
+    reaches the branch `test_the_fallback_names_the_slowest_kill_and_gives_no_range`
+    (two references) cannot.
+    """
+    kill = a_kill(100, 200)
+    found = by_id(
+        analyse_pace(a_wipe(300), PaceSample(ours=steady(80, 300), references=(kill,)))
+    )
+    pace = found[PACE_ID]
+    assert pace.evidence[0] == (
+        "Against the one reference kill of this raid size: fewer than three were available"
+    )
+    assert "Compared through 3:20, when the reference kill ended" in pace.evidence
+
+
+def test_the_single_reference_projection_times_its_own_total() -> None:
+    """Hand arithmetic: target is the one kill's total at its own end, 200 s *
+    100/s = 20000; our rate is 24000 (300 s * 80/s) / 300 s = 80/s; projected =
+    20000 / 80 = 250 s = 4:10.
+    """
+    kill = a_kill(100, 200)
+    found = by_id(
+        analyse_pace(a_wipe(300), PaceSample(ours=steady(80, 300), references=(kill,)))
+    )
+    projection = found[PROJECTION_ID]
+    assert projection.title == (
+        "At its average pace this raid would have dealt the slowest kill's boss damage "
+        "by about 4:10"
+    )
+    assert projection.evidence == ("The reference kill took 3:20",)
+
+
 def test_the_fallback_names_the_slowest_kill_and_gives_no_range() -> None:
     kills = (a_kill(200, 300), a_kill(100, 400))
     found = by_id(analyse_pace(a_wipe(200), PaceSample(ours=steady(80, 200), references=kills)))
@@ -116,6 +154,9 @@ def test_each_withhold_is_one_notice_carrying_its_reason() -> None:
         (PaceSample(unavailable=NO_SINGLE_BOSS), NO_SINGLE_BOSS),
         (PaceSample(ours=steady(80, 200), unavailable=BOSS_IN_NO_REFERENCE), BOSS_IN_NO_REFERENCE),
         (PaceSample(ours=steady(80, 200)), NO_REFERENCE_KILL),
+        # The shape `load_pace_sample` now returns with no references at all:
+        # `ours` was never fetched, so it stays unset alongside the reason.
+        (PaceSample(unavailable=NO_REFERENCE_KILL), NO_REFERENCE_KILL),
     ):
         [notice] = analyse_pace(a_wipe(200), sample)
         assert notice.id == UNAVAILABLE_ID

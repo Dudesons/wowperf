@@ -189,14 +189,18 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     section 6, `RAID_COMPARISON_PREFIXES`) land on `spell_and_talent_rows`,
     and are icons the resolver would otherwise never see.
 
-    `report.verdict` is the one deliberate exception: it heads Summary as its
-    own headline rather than sitting in a tab's list, and `build_raid_report`
-    already keeps its finding from also reaching `observations` -- walking it
-    here too would count the same row twice for every caller of this
-    function, including the once-only checks in the render invariants.
-    `classify_attempt` never puts an ability on the verdict finding, so
-    today's icon resolver loses nothing by not seeing it; a future verdict
-    that named one would need its own arm in `_icon_addresses` instead.
+    `report.verdict` and `report.pace_warning` are the two deliberate
+    exceptions. `report.verdict` heads Summary as its own headline rather than
+    sitting in a tab's list, and `build_raid_report` already keeps its finding
+    from also reaching `observations` -- walking it here too would count the
+    same row twice for every caller of this function, including the
+    once-only checks in the render invariants. `classify_attempt` never puts
+    an ability on the verdict finding, so today's icon resolver loses nothing
+    by not seeing it; a future verdict that named one would need its own arm
+    in `_icon_addresses` instead. `report.pace_warning` is not a second finding
+    to walk at all: it repeats a row `damage_rows` already carries (the same
+    `compare.pace.boss` finding, wrapped as a pointer rather than a card), so
+    walking it here would count that one row twice.
     """
     yield from report.ledger_decomposition
     yield from report.summary_pointers

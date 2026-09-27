@@ -165,9 +165,10 @@ share early in a pull (above). Damage on both sides is one measured quantity fro
   fewer than three kills remain. X: time from the pull. Y: share of the kills' median total. No
   raw damage figure appears. The page's one inline script is untouched.
 - **Withheld.** `compare.pace.unavailable` goes to Provenance only, as the verdict's and the
-  defensive ceiling's notices do, with its reason: no single boss actor (a council); no reference
-  kill of this raid size; the boss absent from every reference. The Damage tab then shows nothing,
-  not an empty chart.
+  defensive ceiling's notices do, with its reason: no single boss actor (a council); our boss's own
+  damage graph held no series to compare; no reference kill of this raid size; the boss absent from
+  every reference; no second of the attempt could be compared against the references at all. The
+  Damage tab then shows nothing, not an empty chart.
 - **On a kill:** no pace finding, no chart, no notice; the page is unchanged.
 - **The findings JSON** carries the findings like any other; no new top-level field.
 
@@ -208,8 +209,11 @@ median, our line, the T mark and the cut; no raw damage figure in the chart's la
 `compare.pace.` lands on `damage_rows`; the Summary pointer appears only when behind; the notice
 lands in Provenance only; a kill makes no pace request.
 
-**Golden:** the raid wipe golden moves by exactly the new rows, chart and pointer. The kill golden
-does not move.
+**Golden:** no wipe golden exists. The raid golden is a kill handed a real, behind pace sample --
+it pins the kill gate (design section 4's "only on a wipe": nothing from that sample reaches the
+page). The render tests pin the pace chart's own elements, the Summary pointer, and the
+Provenance line, against fixtures built for those tests rather than against the golden file
+(ruled 2026-09-28).
 
 **End to end:** `raid --fight 30` on `cW38jmwdnZfbHVL4`, the canonical wipe. Shape only: the state
 is one of three, shares fall in a plausible range, T precedes the last compared second, the cost is
@@ -225,12 +229,14 @@ fight 30 of `cW38jmwdnZfbHVL4`, cold cache -- 89.01 points of 3600, passed first
 **A state not yet seen.** Run live 2026-09-28 over all nine listed fights (28-34, 26, 8) of
 `cW38jmwdnZfbHVL4`: all seven boss fights (28-34) landed `behind`; the two council fights (26, 8)
 withheld with `compare.pace.unavailable`. On pace, ahead and the slowest-kill fallback did not
-occur on any of the nine fights this report offers. The offline suite exercises each of those
-code paths (§10, Unit), but until a live run shows on pace, ahead and the fallback actually
-occurring, slice 1 is not exercised live in those three states. This is left open, not resolved
-either way: RwlRwl is to supply another report to look for them on. No single run over the nine
-fights passed the 120-point stop threshold set for this exercise; the costliest, fight 28, spent
-45.63.
+occur on any of the nine fights this report offers. The offline suite does exercise each of those
+code paths (§10, Unit) -- including, after the 2026-09-28 fix wave, the exactly-one-reference
+wording of the fallback and its projection, which `test_the_fallback_names_the_slowest_kill_and_gives_no_range`
+alone had left at two references and untested at one -- but until a live run shows on pace, ahead
+and the fallback actually occurring, slice 1 is not exercised live in those three states. This is
+left open, not resolved either way: RwlRwl is to supply another report to look for them on. No
+single run over the nine fights passed the 120-point stop threshold set for this exercise; the
+costliest, fight 28, spent 45.63.
 
 ## 11. Measurements taken (2026-09-27, `cW38jmwdnZfbHVL4`, Heroic, about 46 points)
 

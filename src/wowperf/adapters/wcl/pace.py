@@ -101,6 +101,12 @@ def load_pace_sample(
     if boss is None:
         return PaceSample(unavailable=NO_SINGLE_BOSS), ()
 
+    if not references:
+        # No reference to compare against, so our own graph is never worth its
+        # quota: this is the one withhold this function reaches before it has
+        # spent anything on the fight it was actually asked to read.
+        return PaceSample(unavailable=NO_REFERENCE_KILL), ()
+
     own_graph_variables = {
         "code": encounter.report_code,
         "fightId": encounter.fight_id,
@@ -112,9 +118,6 @@ def load_pace_sample(
     ours = build_boss_damage(graph_payload, fight_start_ms=encounter.start_ms)
     if ours is None:
         return PaceSample(unavailable=NO_BOSS_DAMAGE), ()
-
-    if not references:
-        return PaceSample(ours=ours, unavailable=NO_REFERENCE_KILL), ()
 
     members: list[PaceReference] = []
     records: list[ReferenceRecord] = []

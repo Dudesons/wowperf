@@ -675,6 +675,20 @@ class ReferenceFight(Frozen):
     enemies: tuple[EnemyNpc, ...]
 
 
+def _reference_int(value: Any, description: str) -> int:
+    """A field `build_reference_fight` cannot build a reference from without.
+
+    A reference fight lives in a report we do not own, so a missing or
+    non-numeric field is schema drift rather than something to default away.
+    Raising `IngestError` here is what keeps it inside `load_pace_sample`'s own
+    `except` tuple -- a bare `KeyError` or `TypeError` would fall through that
+    tuple uncaught and take the whole command down with it.
+    """
+    if not isinstance(value, (int, float)):
+        raise IngestError(f"A reference fight carries no usable {description}")
+    return int(value)
+
+
 def build_reference_fight(payload: dict[str, Any]) -> ReferenceFight | None:
     """The one fight `REFERENCE_FIGHT_QUERY` asked for, or `None` when it is missing."""
     report = (payload.get("reportData") or {}).get("report") or {}
@@ -683,10 +697,13 @@ def build_reference_fight(payload: dict[str, Any]) -> ReferenceFight | None:
         return None
     fight = fights[0]
     return ReferenceFight(
-        start_ms=int(fight["startTime"]),
-        end_ms=int(fight["endTime"]),
+        start_ms=_reference_int(fight.get("startTime"), "startTime"),
+        end_ms=_reference_int(fight.get("endTime"), "endTime"),
         enemies=tuple(
-            EnemyNpc(actor_id=npc["id"], game_id=npc["gameID"])
+            EnemyNpc(
+                actor_id=_reference_int(npc.get("id"), "enemy id"),
+                game_id=_reference_int(npc.get("gameID"), "enemy gameID"),
+            )
             for npc in (fight.get("enemyNPCs") or [])
         ),
     )

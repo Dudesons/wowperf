@@ -7,15 +7,25 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
-from wowperf.adapters.wcl.ingest import build_boss_damage, build_npc_actors, build_reference_fight
-from wowperf.adapters.wcl.pace import load_pace_sample
+from wowperf.adapters.wcl.ingest import (
+    IngestError,
+    build_boss_damage,
+    build_npc_actors,
+    build_reference_fight,
+)
+from wowperf.adapters.wcl.pace import (
+    BOSS_APPEARS_TWICE,
+    FIGHT_NOT_IN_REPORT,
+    load_pace_sample,
+)
 from wowperf.adapters.wcl.queries import operation_name
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
-from wowperf.domain.comparison.pace import BOSS_IN_NO_REFERENCE, NO_SINGLE_BOSS
+from wowperf.domain.comparison.pace import BOSS_IN_NO_REFERENCE, NO_REFERENCE_KILL, NO_SINGLE_BOSS
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage
 from wowperf.domain.encounter import Encounter
@@ -77,6 +87,14 @@ def test_a_reference_fight_carries_its_window_and_enemies() -> None:
 
 def test_a_missing_reference_fight_is_none() -> None:
     assert build_reference_fight({"reportData": {"report": {"fights": []}}}) is None
+
+
+def test_a_reference_fight_missing_endtime_raises_ingest_error() -> None:
+    payload = {"reportData": {"report": {"fights": [
+        {"id": 12, "startTime": 1000, "enemyNPCs": []},
+    ]}}}
+    with pytest.raises(IngestError):
+        build_reference_fight(payload)
 
 
 def _encounter(**overrides: Any) -> Encounter:
@@ -190,6 +208,35 @@ def test_a_council_report_finds_no_single_boss_and_asks_for_no_graph(tmp_path: P
     sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, ())
 
     assert sample.unavailable == NO_SINGLE_BOSS
+    assert records == ()
+    assert "BossDamageGraph" not in calls
+
+
+def test_no_references_asks_for_no_boss_damage_graph_at_all(tmp_path: Path) -> None:
+    """`load_pace_sample` must not spend our own graph's quota when there is
+    nothing to compare it against: no references, no `BossDamageGraph` call,
+    and `ours` stays unset since it was never fetched.
+    """
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        calls.append(name)
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, ())
+
+    assert sample.unavailable == NO_REFERENCE_KILL
     assert records == ()
     assert "BossDamageGraph" not in calls
 
@@ -318,6 +365,132 @@ def test_every_reference_lacking_the_boss_withholds_with_its_own_reason(tmp_path
     assert sample.unavailable == BOSS_IN_NO_REFERENCE
     assert len(records) == 2
     assert all(not one.loaded for one in records)
+
+
+def test_a_reference_whose_fight_is_missing_from_its_report_is_recorded(tmp_path: Path) -> None:
+    references = (
+        ReferenceKillRow(report_code="refnofight0000A", fight_id=20, size=20, duration_ms=200000),
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            return httpx.Response(
+                200, json={"data": {"reportData": {"report": {"fights": []}}}}
+            )
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert sample.references == ()
+    assert len(records) == 1
+    assert records[0].loaded is False
+    assert records[0].reason == FIGHT_NOT_IN_REPORT
+
+
+def test_a_reference_whose_fight_lists_the_boss_under_two_actors_is_recorded(
+    tmp_path: Path,
+) -> None:
+    references = (
+        ReferenceKillRow(report_code="reftwice00000A", fight_id=20, size=20, duration_ms=200000),
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                1000, 211000,
+                [{"id": 40, "gameID": BOSS_GAME_ID}, {"id": 41, "gameID": BOSS_GAME_ID}],
+            )
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert sample.references == ()
+    assert len(records) == 1
+    assert records[0].loaded is False
+    assert records[0].reason == BOSS_APPEARS_TWICE
+
+
+def test_a_reference_with_a_malformed_fight_is_recorded_while_others_load(
+    tmp_path: Path,
+) -> None:
+    references = (
+        ReferenceKillRow(report_code="refmalformed00A", fight_id=20, size=20, duration_ms=200000),
+        ReferenceKillRow(report_code="refloads0000000B", fight_id=21, size=20, duration_ms=210000),
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight" and variables["code"] == "refmalformed00A":
+            # `endTime` is missing: `build_reference_fight` must turn that into
+            # `IngestError`, which is what proves it lands in the loader's own
+            # `except` tuple instead of crashing the command.
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "reportData": {
+                            "report": {
+                                "fights": [
+                                    {"id": 1, "startTime": 1000, "enemyNPCs": []}
+                                ]
+                            }
+                        }
+                    }
+                },
+            )
+        if name == "ReferenceFight":
+            return _reference_fight_response(1000, 211000, [{"id": 40, "gameID": BOSS_GAME_ID}])
+        if name == "BossDamageGraph":
+            return _graph_response([5.0], point_start=1000, interval=1000.0)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert len(sample.references) == 1
+    failed = [one for one in records if not one.loaded]
+    assert len(failed) == 1
+    assert failed[0].report_code == "refmalformed00A"
 
 
 def test_a_reference_answering_with_an_http_error_is_recorded_not_raised(tmp_path: Path) -> None:
