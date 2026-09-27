@@ -478,9 +478,77 @@ def test_a_behind_wipe_draws_the_pace_chart_and_the_summary_pointer() -> None:
 
     assert 'class="pace-chart"' in html
     assert '<polygon class="pace-band"' in html
+    assert '<polyline class="pace-median"' in html
+    assert '<polyline class="pace-ours"' in html
+    assert '<line class="pace-mark"' in html
     assert report.pace_warning is not None
     assert f'id="finding-{PACE_ID}"' in html
     assert f'href="#finding-{PACE_ID}"' in html
+    assert "Behind the reference kills' pace. The chart is on the Damage tab." in html
+
+
+def test_an_on_pace_wipe_draws_no_mark_and_no_pointer() -> None:
+    """The other half of the behind page above: on pace draws the same chart
+    with neither the behind mark nor the Summary paragraph that only a
+    behind reading earns."""
+    report = a_wiped_raid_report_with_pace(per_second=100)
+    html = render_raid(report)
+
+    assert 'class="pace-chart"' in html
+    assert report.pace_warning is None
+    assert '<line class="pace-mark"' not in html
+    assert "Behind the reference kills' pace." not in html
+
+
+def a_pace_sample_cut_short_of_the_wipe() -> PaceSample:
+    """Four references so the band is a real one (`single` stays `False`),
+    two of which end well before the wipe: the band the other two still make
+    falls below `MIN_SAMPLE_FOR_AGGREGATE` (three) partway through, so the
+    comparison stops there rather than running to the wipe's own end."""
+    kills = (a_kill(100, 100), a_kill(100, 100), a_kill(100, PACE_DURATION),
+             a_kill(100, PACE_DURATION))
+    return PaceSample(ours=steady(80, PACE_DURATION), references=kills)
+
+
+def a_wiped_raid_report_with_cut_pace() -> RaidReport:
+    loaded = a_raid_fight(kill=False)
+    sample = a_pace_sample_cut_short_of_the_wipe()
+    pace_findings = analyse_pace(loaded.encounter, sample)
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,), pace=sample,
+    )
+
+
+def test_a_band_cut_short_of_the_wipe_draws_the_cut_mark() -> None:
+    report = a_wiped_raid_report_with_cut_pace()
+    html = render_raid(report)
+
+    assert report.pace_chart is not None
+    assert report.pace_chart.cut_x is not None
+    assert '<line class="pace-cut"' in html
+
+
+def a_wiped_raid_report_with_unavailable_pace() -> RaidReport:
+    loaded = a_raid_fight(kill=False)
+    sample = PaceSample(unavailable="No boss actor could be found for this fight.")
+    pace_findings = analyse_pace(loaded.encounter, sample)
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,), pace=sample,
+    )
+
+
+def test_an_unavailable_pace_comparison_is_named_in_the_provenance() -> None:
+    report = a_wiped_raid_report_with_unavailable_pace()
+    html = render_raid(report)
+
+    assert report.pace_chart is None
+    assert 'class="pace-chart"' not in html
+    assert (
+        "Damage pace against other kills: No boss actor could be found for this fight."
+        in html
+    )
 
 
 def test_a_kill_page_draws_no_pace_markup() -> None:
