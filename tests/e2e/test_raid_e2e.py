@@ -579,3 +579,104 @@ def test_a_real_raid_roster_renders_one_page_with_no_collisions(tmp_path: Path) 
     }
     uncompared = card_slugs - finding_player_slugs
     assert uncompared == set(), f"{len(uncompared)} card(s) with no finding naming their slug"
+
+
+@pytest.mark.e2e
+def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
+    """The wipe damage pace comparison, driven as the command against the live API.
+
+    Every check below is reduced to a bool before the assertion, and every
+    message names a shape rather than quoting a title or an evidence line:
+    the reference records this findings file carries point at other players'
+    reports, and pytest prints a failing assertion's operands regardless of
+    what the message says.
+    """
+    if not WIPE:
+        pytest.fail(
+            "Set WOWPERF_E2E_RAID_WIPE to a public report URL naming a wiped attempt "
+            "(include the #fight=N fragment) to run this"
+        )
+
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        app,
+        [
+            "raid", WIPE,
+            "--cache-dir", str(tmp_path / "cache"),
+            "--out", str(out),
+        ],
+    )
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+
+    stderr_ascii = result.stderr.encode("ascii", "backslashreplace").decode("ascii")
+    print(stderr_ascii)
+
+    # Measured 2026-09-28 against report cW38jmwdnZfbHVL4 fight 30, a fresh
+    # cache directory, comparison on: 89.01 points of 3600. The pace axis
+    # reuses the mechanics sample's own references, so its marginal cost is
+    # the boss-only damage graphs (`BossDamageGraph`, `ReferenceFight`) rather
+    # than a second full sample. The bound below leaves headroom over that
+    # figure without hiding a real regression.
+    spent_match = re.search(r"Rate limit: ([\d.]+) points spent", stderr_ascii)
+    assert spent_match is not None, "no rate-limit line in the command's own output"
+    spent = float(spent_match.group(1))
+    assert spent <= 120.0, "the run spent more than the bound this test allows"
+
+    [written] = out.glob("*.findings.json")
+    payload = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
+    findings = payload["findings"]
+
+    pace_findings = [f for f in findings if f["id"] == "compare.pace.boss"]
+    assert len(pace_findings) == 1, "compare.pace.boss did not appear exactly once"
+    pace = pace_findings[0]
+    assert pace["confidence"] == "derived", "compare.pace.boss was not badged derived"
+
+    title = cast(str, pace["title"])
+    starts_as_expected = title.startswith(("Behind ", "On ", "Ahead of "))
+    assert starts_as_expected, "the pace finding's title did not open with a recognised state"
+
+    share_match = re.search(r"(\d+)% of", title)
+    assert share_match is not None, "the pace finding's title carried no percentage"
+    share = int(share_match.group(1))
+    share_in_range = 1 <= share <= 300
+    assert share_in_range, "the pace finding's share fell outside the range this test expects"
+
+    evidence = cast(list[str], pace["evidence"])
+    behind_lines = [line for line in evidence if line.startswith("Behind from ")]
+    compared_through_matches = (
+        re.search(r"Compared through(?: the wipe at| )\s*(\d+:\d{2})", line) for line in evidence
+    )
+    compared_through_match = next((m for m in compared_through_matches if m), None)
+    if behind_lines:
+        behind_match = re.search(r"Behind from (\d+:\d{2}) to (\d+:\d{2})", behind_lines[0])
+        assert behind_match is not None, "a 'Behind from' line did not match the expected shape"
+        a_clock, b_clock = behind_match.group(1), behind_match.group(2)
+
+        def _as_seconds(clock: str) -> int:
+            minutes, seconds = clock.split(":")
+            return int(minutes) * 60 + int(seconds)
+
+        a_before_or_at_b = _as_seconds(a_clock) <= _as_seconds(b_clock)
+        assert a_before_or_at_b, "the behind stretch's start came after its own end"
+
+        assert compared_through_match is not None, "no 'Compared through' line to check b against"
+        b_matches_compared_through = b_clock == compared_through_match.group(1)
+        assert b_matches_compared_through, (
+            "the behind stretch's end did not match the 'Compared through' clock"
+        )
+
+    projection_findings = [f for f in findings if f["id"] == "compare.pace.projection"]
+    if projection_findings:
+        [projection] = projection_findings
+        assert projection["confidence"] == "inferred", (
+            "compare.pace.projection was not badged inferred"
+        )
+
+    references = payload["comparison"]["references"]
+    pace_references = [r for r in references if r["axis"] == "pace"]
+    reference_records_are_well_formed = all(
+        bool(r["loaded"]) or bool(r["reason"]) for r in pace_references
+    )
+    assert reference_records_are_well_formed, (
+        "a pace reference record was neither loaded nor carried a reason"
+    )

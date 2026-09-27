@@ -1,7 +1,7 @@
 # A wipe's damage pace against the kills, with a projection
 
-**Status:** approved design, not yet planned or built. The next step is
-`superpowers:writing-plans` for slice 1.
+**Status:** approved design; slice 1 planned in
+`docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built.
 **Area:** the raid page on a wipe. It amends ruling 4.5 of
 `docs/plans/2026-09-18-wipe-analysis-design.md` for damage *done* (§3) and opens the depletion
 question that design's §8.4 set aside, answered with damage rather than health.
@@ -219,10 +219,17 @@ bounded.
 state -- behind, on pace, ahead, withheld by reason, fallback, band cut -- how often it occurred, by
 fight index and never by name.
 
-**A state not yet seen.** Measured 2026-09-27, all seven comparable wipes on this report ended
-behind (fight 32 only in its last four seconds). On pace and ahead at the wipe never occurred, and
-neither did the fallback. The live step must look for them on another report before calling them
-the data rather than a defect.
+**End to end, run 2026-09-28:** `test_a_real_wipe_is_compared_against_the_kills_pace` against
+fight 30 of `cW38jmwdnZfbHVL4`, cold cache -- 89.01 points of 3600, passed first run.
+
+**A state not yet seen.** Run live 2026-09-28 over all nine listed fights (28-34, 26, 8) of
+`cW38jmwdnZfbHVL4`: all seven boss fights (28-34) landed `behind`; the two council fights (26, 8)
+withheld with `compare.pace.unavailable`. On pace, ahead and the slowest-kill fallback still never
+occurred, across nine fights now rather than seven. Per this design's own instruction above, this
+counts as a state not yet seen rather than a defect -- the code path for each is exercised by the
+unit suite (§10, Unit) -- but slice 1 has now been run against every wipe this report offers, so a
+fourth state would need a different report to surface. No single run passed the 120-point stop
+threshold set for this exercise; the costliest, fight 28, spent 45.63.
 
 ## 11. Measurements taken (2026-09-27, `cW38jmwdnZfbHVL4`, Heroic, about 46 points)
 
@@ -238,9 +245,18 @@ the data rather than a defect.
 
 All on Ula'tek, against four references of size 20 (kills of 461, 461, 504 and 518 s). The
 measurement read fight 30's share at the wipe against the two kills still fighting then; under §5
-it is compared through 461 s instead, the last second with three. The two council wipes (26 and 8)
-had no size-20 reference: their first leaderboard page is 10-18 players. Every reference on all
-three boards was deathless.
+it is compared through 461 s instead, the last second with three. Every reference on all three
+boards was deathless.
+
+**Corrected 2026-09-28, from the live command rather than the spike above:** the two council
+wipes (26 and 8) do not withhold for want of a size-20 reference. `raid --fight N` run live against
+both spent 2.00 points each and produced `compare.pace.unavailable` with detail `NO_SINGLE_BOSS`
+("this fight has no single boss to compare"): the pace axis withholds before it ever looks for a
+reference, because a council fight's report names no one boss actor after the fight, per the boss
+actor rule in the Binding constraints. The sentence this replaces described a size mismatch that
+this design never measured for fights 26 and 8; the live run found the actual, earlier cause.
+Every figure in the table above matches what `raid --fight N` produced live on 2026-09-28, so
+none of it needed correcting.
 
 ## 12. Out of scope
 
