@@ -270,9 +270,9 @@ def build_raid_report(
     # "" unless a section was withheld, so a present Damage tab has stated
     # nothing and suppresses nothing.
     #
-    # Read off `parse_damage` rather than `damage`: since Task 4, `damage` also
-    # opens on pace rows alone, and pace being present says nothing about
-    # whether the parse comparison itself had anything to withhold.
+    # Read off `parse_damage` rather than `damage`: `damage` also opens on
+    # pace rows alone, and pace being present says nothing about whether the
+    # parse comparison itself had anything to withhold.
     stated_for_the_whole_fight = parse_damage.reason
 
     # `--no-compare` fetched no reference at all, so the whole fight gets one
