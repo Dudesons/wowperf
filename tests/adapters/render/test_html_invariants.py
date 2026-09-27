@@ -58,7 +58,14 @@ from wowperf.domain.report.model import (
     all_ledger_rows,
 )
 from wowperf.domain.report.raid_frame import RaidHeader
-from wowperf.domain.report.raid_model import AliveChart, AliveStep, GridCell, GridColumn
+from wowperf.domain.report.raid_model import (
+    AliveChart,
+    AliveStep,
+    ChartPoint,
+    GridCell,
+    GridColumn,
+    PaceChart,
+)
 from wowperf.domain.season import (
     ConsumableCategory,
     Consumables,
@@ -1044,6 +1051,20 @@ NUMBERS_THAT_ARE_NOT_TOTALS = {
     (AliveChart, "tick_x1"),
     (AliveChart, "tick_x2"),
     (AliveChart, "tick_label_x"),
+    # The pace chart's geometry, for the same reason as the alive chart's just
+    # above: every one of these is a viewBox coordinate `pace_chart.py`
+    # computes, never a quantity a reader could sum.
+    (ChartPoint, "x"),
+    (ChartPoint, "y"),
+    (PaceChart, "behind_x"),
+    (PaceChart, "cut_x"),
+    (PaceChart, "plot_top"),
+    (PaceChart, "baseline_y"),
+    (PaceChart, "width"),
+    (PaceChart, "height"),
+    (PaceChart, "tick_x1"),
+    (PaceChart, "tick_x2"),
+    (PaceChart, "tick_label_x"),
 }
 
 

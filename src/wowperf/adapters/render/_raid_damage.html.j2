@@ -7,6 +7,37 @@
 {% if report.damage.state.value == "withheld" %}
 <p class="withheld">{{ report.damage.reason }}</p>
 {% else %}
+{% if report.pace_chart %}
+<h3 id="{{ scope }}pace">Damage to the boss against the kills
+  <a class="badge {{ report.pace_chart.badge.tint }}" href="#{{ scope }}provenance">{{ report.pace_chart.badge.label }}</a></h3>
+<p class="legend">{{ report.pace_chart.legend }}</p>
+<svg class="pace-chart" width="100%"
+     viewBox="0 0 {{ report.pace_chart.width }} {{ report.pace_chart.height }}">
+  {% for y, label in report.pace_chart.ticks %}
+  <line class="tick" x1="{{ report.pace_chart.tick_x1 }}" y1="{{ y }}"
+        x2="{{ report.pace_chart.tick_x2 }}" y2="{{ y }}"></line>
+  <text class="tick-label" x="{{ report.pace_chart.tick_label_x }}" y="{{ y }}"
+        text-anchor="end" dominant-baseline="middle">{{ label }}</text>
+  {% endfor %}
+  <polygon class="pace-band" points="
+    {%- for point in report.pace_chart.band %}{{ point.x }},{{ point.y }} {% endfor -%}
+  "></polygon>
+  <polyline class="pace-median" fill="none" points="
+    {%- for point in report.pace_chart.median %}{{ point.x }},{{ point.y }} {% endfor -%}
+  "></polyline>
+  <polyline class="pace-ours" fill="none" points="
+    {%- for point in report.pace_chart.ours %}{{ point.x }},{{ point.y }} {% endfor -%}
+  "></polyline>
+  {% if report.pace_chart.behind_x is not none %}
+  <line class="pace-mark" x1="{{ report.pace_chart.behind_x }}" y1="{{ report.pace_chart.plot_top }}"
+        x2="{{ report.pace_chart.behind_x }}" y2="{{ report.pace_chart.baseline_y }}"></line>
+  {% endif %}
+  {% if report.pace_chart.cut_x is not none %}
+  <line class="pace-cut" x1="{{ report.pace_chart.cut_x }}" y1="{{ report.pace_chart.plot_top }}"
+        x2="{{ report.pace_chart.cut_x }}" y2="{{ report.pace_chart.baseline_y }}"></line>
+  {% endif %}
+</svg>
+{% endif %}
 <div class="findings">
 {% for row in report.damage_rows %}
 {{ ledger_row(row) }}

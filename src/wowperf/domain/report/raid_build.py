@@ -5,6 +5,14 @@ from collections.abc import Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
+from wowperf.domain.comparison.pace import (
+    PACE_ID,
+    PACE_PREFIX,
+    UNAVAILABLE_ID,
+    PaceSample,
+    pace_reading,
+)
+from wowperf.domain.comparison.pace_curve import PaceState
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -27,6 +35,7 @@ from wowperf.domain.report.model import (
     Section,
     SectionState,
 )
+from wowperf.domain.report.pace_chart import build_pace_chart
 from wowperf.domain.report.raid_frame import build_raid_header
 from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
@@ -91,6 +100,7 @@ def build_raid_report(
     *,
     trimmed: bool = False,
     death_cards: bool = True,
+    pace: PaceSample | None = None,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
 
@@ -146,6 +156,14 @@ def build_raid_report(
     # judgements, where "I could not judge this" would read as one of them.
     ceiling_notices = [one for one in findings if one.id == CEILING_WITHHELD_ID]
     findings = [one for one in findings if one.id != CEILING_WITHHELD_ID]
+
+    # The damage-pace notice is disclosed in Provenance and nowhere else, for
+    # the same reason as the two notices above: left among `findings` it would
+    # match `RAID_PLACEMENTS`' `compare.pace.` prefix and land on the Damage
+    # tab beside a real reading, where "nothing could be compared" would read
+    # as one.
+    pace_notices = [one for one in findings if one.id == UNAVAILABLE_ID]
+    findings = [one for one in findings if one.id != UNAVAILABLE_ID]
 
     titles_by_id = {finding.id: finding.title for finding in findings}
     # Built once, here, because this is where `loaded`, the per-actor aura
@@ -204,15 +222,32 @@ def build_raid_report(
     if verdict_finding:
         placed_ids.add(verdict_finding.id)
 
-    damage = _damage_section(findings, placed_rows["damage_rows"])
+    # Pace rows would otherwise make the Damage tab present on a wipe and turn
+    # the parse comparison's own withheld reason -- stated once below for the
+    # whole fight -- into a claim that pace was withheld for the same reason,
+    # which it never is: pace and the parse comparison are withheld
+    # independently. `parse_damage` is read on the rows the parse comparison
+    # itself placed, with the pace rows filtered back out, so the Provenance
+    # line and the per-card suppression below both stay about the parse
+    # comparison alone; `damage`, the tab's own section, opens whenever either
+    # comparison left a row to show.
+    parse_rows = tuple(
+        row for row in placed_rows["damage_rows"] if not row.finding_id.startswith(PACE_PREFIX)
+    )
+    parse_damage = _damage_section(findings, parse_rows)
+    damage = (
+        Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
+    )
 
     withheld: list[str] = []
     for notice in verdict_notices:
         withheld.append(f"Why this attempt ended: {notice.detail}")
     for notice in ceiling_notices:
         withheld.append(ceiling_withheld_line(notice))
-    if damage.state is SectionState.WITHHELD:
-        withheld.append(f"Damage against other kills: {damage.reason}")
+    for notice in pace_notices:
+        withheld.append(f"Damage pace against other kills: {notice.detail}")
+    if parse_damage.state is SectionState.WITHHELD:
+        withheld.append(f"Damage against other kills: {parse_damage.reason}")
 
     # One line per distinct reason, never one per raider. A wipe withholds
     # every raider's comparison for the same reason -- the boss lived, which is
@@ -234,7 +269,11 @@ def build_raid_report(
     # No branch on the Damage section's own state is needed: `Section.reason` is
     # "" unless a section was withheld, so a present Damage tab has stated
     # nothing and suppresses nothing.
-    stated_for_the_whole_fight = damage.reason
+    #
+    # Read off `parse_damage` rather than `damage`: since Task 4, `damage` also
+    # opens on pace rows alone, and pace being present says nothing about
+    # whether the parse comparison itself had anything to withhold.
+    stated_for_the_whole_fight = parse_damage.reason
 
     # `--no-compare` fetched no reference at all, so the whole fight gets one
     # report-level line rather than one per card -- a line per raider here
@@ -265,6 +304,26 @@ def build_raid_report(
     )
     methods = (HEALTH_METHOD,) if any(card.health_badge for card in deaths) else ()
 
+    # `reading` is the one computation the pace finding's own sentence and the
+    # chart's own coordinates both read, so the two can never disagree about
+    # what "behind" meant. `pace_finding` gates the chart on the finding
+    # actually being on the page rather than only on `pace` being given, so a
+    # sample that could not be read (`pace_reading` returning `None`, e.g. a
+    # kill) draws no orphaned chart with no card to badge it from.
+    reading = pace_reading(loaded.encounter, pace) if pace is not None else None
+    pace_finding = next((one for one in findings if one.id == PACE_ID), None)
+    pace_chart = (
+        build_pace_chart(reading, loaded.encounter.duration_seconds)
+        if reading and pace_finding
+        else None
+    )
+    pace_warning = (
+        ledger_row(pace_finding, titles_by_id, tooltips)
+        if pace_finding and reading and reading.seconds
+        and reading.seconds[-1].state is PaceState.BEHIND
+        else None
+    )
+
     return RaidReport(
         header=build_raid_header(loaded.encounter),
         verdict=verdict,
@@ -293,4 +352,6 @@ def build_raid_report(
             methods=methods,
         ),
         alive_chart=alive_chart,
+        pace_chart=pace_chart,
+        pace_warning=pace_warning,
     )

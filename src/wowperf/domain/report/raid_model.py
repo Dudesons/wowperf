@@ -96,6 +96,39 @@ class AliveChart(Frozen):
     tick_label_x: float
 
 
+class ChartPoint(Frozen):
+    """One point of a line or a polygon, in viewBox units."""
+
+    x: float
+    y: float
+
+
+class PaceChart(Frozen):
+    """Our cumulative boss damage against the kills' band, as one drawing.
+
+    Every coordinate lives here so the template computes none. The y axis is a
+    share of the kills' median total boss damage and the tick labels are
+    percentages: no raw damage figure reaches the page. `band` is a closed
+    polygon -- the highest edge left to right, then the lowest edge back.
+    """
+
+    band: tuple[ChartPoint, ...]
+    median: tuple[ChartPoint, ...]
+    ours: tuple[ChartPoint, ...]
+    behind_x: float | None
+    cut_x: float | None
+    plot_top: float
+    baseline_y: float
+    ticks: tuple[tuple[float, str], ...]
+    legend: str
+    badge: Badge
+    width: float
+    height: float
+    tick_x1: float
+    tick_x2: float
+    tick_label_x: float
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     verdict: LedgerRow | None = None
@@ -135,6 +168,12 @@ class RaidReport(Frozen):
     provenance: Provenance
     # The players-alive step chart. None where the attempt carries no duration.
     alive_chart: AliveChart | None = None
+    # Our damage pace against the kills' band. None on a kill, on `--no-compare`,
+    # and wherever the comparison itself came back unavailable.
+    pace_chart: PaceChart | None = None
+    # Points at the pace card, set only where the wipe ended behind pace: the
+    # one damage-pace fact the Summary is worth interrupting for.
+    pace_warning: LedgerRow | None = None
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
