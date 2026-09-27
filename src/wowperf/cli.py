@@ -35,6 +35,7 @@ from wowperf.adapters.wcl.damage_tables import build_target_rows
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
+from wowperf.adapters.wcl.pace import load_pace_sample
 from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_TARGETS_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
@@ -54,6 +55,7 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
     select_reference_kills,
 )
+from wowperf.domain.comparison.pace import PaceSample
 from wowperf.domain.comparison.parse_axis import ParseSubject
 from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.reference import (
@@ -1534,6 +1536,7 @@ def raid(
         our_abilities: tuple[AbilityTakenRow, ...] = ()
         reference_records: tuple[ReferenceRecord, ...] = ()
         parse_subjects: tuple[ParseSubject, ...] = ()
+        pace_sample: PaceSample | None = None
         if not no_compare:
             transient = DiskCache(
                 cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
@@ -1542,6 +1545,18 @@ def raid(
             mechanics_sample, reference_records = _mechanics_sample(
                 encounter_rankings, repository.client, transient, encounter
             )
+            # A wipe only: kills have the parse comparison, and nothing is fetched for a
+            # comparison the page would not draw. The references are the mechanics
+            # sample's own members, so the page's two comparisons stand on one sample.
+            if not encounter.kill:
+                pace_sample, pace_records = load_pace_sample(
+                    repository.client,
+                    repository.cache,
+                    transient,
+                    encounter,
+                    tuple(member.row for member in mechanics_sample.members),
+                )
+                reference_records += pace_records
             # Our own report's responses never expire, so this is cached
             # beside every other query `load_encounter` already issued for it,
             # not in the transient store the reference kills' tables share.
@@ -1573,6 +1588,7 @@ def raid(
             mechanics=mechanics_sample,
             our_abilities=our_abilities,
             parse_subjects=parse_subjects,
+            pace=pace_sample,
         )
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -1667,6 +1683,7 @@ def raid(
                     externals=load_externals(),
                     self_resurrections=load_self_resurrections(),
                     reference_records=reference_records,
+                    pace=pace_sample,
                 ),
                 icons=build_icons(
                     loaded,
