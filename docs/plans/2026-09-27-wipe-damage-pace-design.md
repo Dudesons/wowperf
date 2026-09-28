@@ -344,9 +344,11 @@ canonical wipe.
 - **Evidence, in order:**
   - "Against 7 Frost Mages across 4 reference kills of this raid size";
   - "Their range at 3:20: 88% to 112% of their median";
-  - the lag: "By 3:20 they had dealt what the kills' Frost Mages had dealt by 2:41: 39 seconds
-    behind"; ahead, "... by 3:52: 32 seconds ahead"; past the band, "More than the kills' median
-    had dealt by 5:10, where fewer than three were still fighting";
+  - the lag: "By 3:20 they had dealt what the kills' median Frost Mage had dealt by 2:41: 39
+    seconds behind"; ahead, "... by 3:52: 32 seconds ahead"; past the band, "More than the kills'
+    median had dealt by 5:10, where fewer than three were still fighting". The lag names the
+    median because the state reads the whole band: a player can be on pace, inside the band, and
+    still seconds behind its median, and the line must say which of the two it measured;
   - where the window ended: "Compared through the wipe at 3:20", "Compared through their death at
     2:05", or "Compared through 4:10, after which fewer than three Frost Mages were still
     fighting";

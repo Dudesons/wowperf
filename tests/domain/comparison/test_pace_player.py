@@ -104,7 +104,8 @@ def test_a_player_behind_their_spec_gets_the_share_and_the_lag() -> None:
     assert finding.evidence == (
         "Against 3 Frost Mages across 3 reference kills of this raid size",
         "Their range at 3:20: 90% to 110% of their median",
-        "By 3:20 they had dealt what the kills' Frost Mages had dealt by 2:40: 40 seconds behind",
+        "By 3:20 they had dealt what the kills' median Frost Mage had dealt by 2:40: "
+        "40 seconds behind",
         "Compared through the wipe at 3:20",
         "Behind from 0:01 to 3:20",
     )
@@ -116,7 +117,8 @@ def test_ahead_reads_the_lag_as_seconds_ahead() -> None:
     finding = analysed(sample=a_sample(130))[FROST_ID]
     assert finding.title.startswith("Ahead of the kills' Frost Mages: 130% ")
     assert (
-        "By 3:20 they had dealt what the kills' Frost Mages had dealt by 4:20: 60 seconds ahead"
+        "By 3:20 they had dealt what the kills' median Frost Mage had dealt by 4:20: "
+        "60 seconds ahead"
         in finding.evidence
     )
     assert not any(line.startswith("Behind from") for line in finding.evidence)
@@ -126,7 +128,8 @@ def test_level_with_the_median_says_so_without_a_figure() -> None:
     finding = analysed(sample=a_sample(100))[FROST_ID]
     assert finding.title.startswith("On the kills' Frost Mages' pace: 100% ")
     assert (
-        "By 3:20 they had dealt what the kills' Frost Mages had dealt by then" in finding.evidence
+        "By 3:20 they had dealt what the kills' median Frost Mage had dealt by then"
+        in finding.evidence
     )
 
 

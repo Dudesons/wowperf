@@ -192,7 +192,11 @@ def _notice(slug: str, title: str, detail: str) -> Finding:
     )
 
 
-def _lag_line(label: str, second: int, amount: float, peers: tuple[PaceReference, ...]) -> str:
+def _lag_line(
+    label: str, one: str, second: int, amount: float, peers: tuple[PaceReference, ...]
+) -> str:
+    """The lag names the median: the state reads the whole band, so "on pace" and
+    seconds behind can both be true, and the line must say which it measured."""
     lag = lag_against(amount, peers)
     if lag.reached_at is None:
         return (
@@ -201,10 +205,13 @@ def _lag_line(label: str, second: int, amount: float, peers: tuple[PaceReference
         )
     gap = round(second - lag.reached_at)
     if gap == 0:
-        return f"By {clock_text(second)} they had dealt what the kills' {label} had dealt by then"
+        return (
+            f"By {clock_text(second)} they had dealt what the kills' median {one} had dealt "
+            "by then"
+        )
     seconds = f"{abs(gap)} second{'s' if abs(gap) != 1 else ''}"
     return (
-        f"By {clock_text(second)} they had dealt what the kills' {label} had dealt by "
+        f"By {clock_text(second)} they had dealt what the kills' median {one} had dealt by "
         f"{clock_text(lag.reached_at)}: {seconds} {'behind' if gap > 0 else 'ahead'}"
     )
 
@@ -235,7 +242,8 @@ def _finding(
     ]
     dealt = cumulative_at(ours, last.second)
     if dealt > 0:
-        evidence.append(_lag_line(label, last.second, dealt, peers))
+        one = pair_label(player.class_name, player.spec, plural=False)
+        evidence.append(_lag_line(label, one, last.second, dealt, peers))
     if reading.band_cut:
         evidence.append(
             f"Compared through {clock}, after which fewer than three {label} were still fighting"
