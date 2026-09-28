@@ -3,7 +3,8 @@
 **Status:** approved design; slice 1 planned in
 `docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built. Slice 2 specified in §13 (approved
 2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-per-player-plan.md` and built. Slice 3
-specified in §14 (approved 2026-09-28).
+specified in §14 (approved 2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-night-plan.md`
+and built.
 **Area:** the raid page on a wipe. It amends ruling 4.5 of
 `docs/plans/2026-09-18-wipe-analysis-design.md` for damage *done* (§3) and opens the depletion
 question that design's §8.4 set aside, answered with damage rather than health.
@@ -502,6 +503,40 @@ withheld the comparison and why.
   than 60 points over the same night without it. The findings JSON is read by a script that prints
   no name, counting how often each per-pull state and each boss-line state occurred; a state that
   never occurs is recorded as open. The night e2e gains pace assertions on the same single run.
+
+**Live (2026-09-28, `cW38jmwdnZfbHVL4`, `night --no-deaths`).** Eight bosses, sixteen pulls:
+seven kills and nine wipes. Boss indices count bosses in the page's order, first appearance in
+the report.
+
+- **The cost.** The e2e (`test_a_whole_report_reads_as_one_night`, cold cache, passed first run)
+  spent 106.83 points on the night's own streams and **26.98 for the pace half**, against the stop
+  line of 60. The command printed 24.98 of them: `BossDamageGraph` 11 calls for 11.95 (seven
+  wipes' own graphs and four references'), `ReferenceFight` 4 for 8.00, `EncounterKillRankings` 3
+  for 3.03, `NpcActors` 1 for 1.00, `RateLimit` 2 for 1.00; the other 2.00 are the two quota reads
+  it leaves unpriced. The distribution run, against the default cache, spent 4.03:
+  the three leaderboards and the quota reads, every other pace query already on disk. Three
+  leaderboards for one compared boss, because the reference rows are chosen before
+  `load_pace_sample` finds the fight has no single boss.
+- **Kills: 7 of 7 carry no `compare.pace.` finding** (fights 2, 9, 13, 17, 20, 22, 27).
+- **Nine wipes, each with exactly one reading.** Behind 7 (boss 7, fights 28-34, all `derived`,
+  each against four reference kills), on pace 0, ahead 0. Withheld 2, both `measured` and both
+  for no single boss (fight 8 on boss 1, fight 26 on boss 6); no other withheld reason occurred.
+- **The band cut 1** (fight 30); the fallback to one kill 0. A projection on all 7 compared wipes.
+- **The boss line fired 1** (boss 7, "7 of 7"): seven evidence lines in pull order, no size line.
+  Bosses 1 and 6 each had one wipe and it was withheld, so no line; the five others held no wipe.
+- **The night Provenance** lists the four reference kills once each; the page links them 32 times
+  in all, four in the night Provenance and four in each compared pull's own. It names fights 8 and
+  26 as withheld. The analysed report is linked nowhere.
+- The page carries no template leak: no `>None<`, `>null<`, `>nan<`, `nan%`, `inf%`, `{{` or
+  `{%`. `>None ` appears 13 times, each the deaths finding's own sentence opening "None of these".
+
+**Open:** on pace (0 occurrences), ahead (0), the fallback to one reference kill and its "against
+the slowest kill alone" line (0), a band cut by the one reference kill ending (0), the "None of"
+title (0), the size line (0; no boss's wipes ran at two sizes), a withheld pull listed inside a
+boss line (0; no boss held both a compared and a withheld wipe), a boss with exactly one compared
+wipe and so no line (0; the two one-wipe bosses were withheld, not compared), and every withheld
+reason but no single boss -- no boss damage, no reference kill, the boss in no reference kill,
+nothing to compare (0 each).
 
 ### 14.6 Out of scope
 
