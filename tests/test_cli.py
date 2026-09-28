@@ -225,6 +225,12 @@ RAID_WIPE_FIGHT_ID = 30
 PACE_BOSS_GAME_ID = 950
 PACE_BOSS_OUR_ACTOR_ID = 61
 PACE_BOSS_REFERENCE_ACTOR_ID = 62
+RAID_REFERENCE_PLAYER_ACTOR_ID = 63
+"""One reference kill's Mage/Arcane player -- the same class and spec as
+`RAID_ROSTER[0]` (Emberkin), so the per-player pace comparison has a peer to
+pool. Distinct from every boss actor id above: `build_player_boss_damage`
+splits a graph's series by whichever id it carries, and a shared id would
+read the boss's own damage as a player's."""
 """The wipe fight's boss (named "Ula'tek", matching `_raid_fights_payload`'s
 own wipe fight) as the pace comparison's own queries find it: one game id
 shared by our actor and the reference kill's, and distinct actor ids on each
@@ -567,6 +573,11 @@ def build_raid_transport(
     }
 
     def reference_fight_payload(fight_id: int) -> dict[str, Any]:
+        # `friendlyPlayers`/`friendlySpecs` plus `masterData.actors` are the
+        # roster the per-player pace comparison pools its peers from -- one
+        # Mage/Arcane player per reference, the same pair `RAID_ROSTER[0]`
+        # plays, so a wipe run has three same-pair peers across the three
+        # reference kills the pace tests below name.
         return {
             "reportData": {
                 "report": {
@@ -576,25 +587,48 @@ def build_raid_transport(
                             "enemyNPCs": [
                                 {"id": PACE_BOSS_REFERENCE_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID}
                             ],
+                            "friendlyPlayers": [RAID_REFERENCE_PLAYER_ACTOR_ID],
+                            "friendlySpecs": ["Arcane"],
                         }
-                    ]
+                    ],
+                    "masterData": {
+                        "actors": [
+                            {"id": RAID_REFERENCE_PLAYER_ACTOR_ID, "subType": "Mage"},
+                        ]
+                    },
                 }
             }
         }
 
-    def boss_damage_graph_payload(point_start: float, amount_per_second: float) -> dict[str, Any]:
+    def boss_damage_graph_payload(
+        point_start: float,
+        amount_per_second: float,
+        *,
+        player_actor_id: int | None = None,
+        player_amount: float | None = None,
+    ) -> dict[str, Any]:
+        series = [
+            {
+                "id": "Total", "pointStart": point_start,
+                "pointInterval": 1_000.0,
+                "data": [amount_per_second] * 400,
+            }
+        ]
+        if player_actor_id is not None:
+            series.append(
+                {
+                    "id": player_actor_id, "pointStart": point_start,
+                    "pointInterval": 1_000.0,
+                    "data": [player_amount if player_amount is not None else amount_per_second]
+                    * 400,
+                }
+            )
         return {
             "reportData": {
                 "report": {
                     "graph": {
                         "data": {
-                            "series": [
-                                {
-                                    "id": "Total", "pointStart": point_start,
-                                    "pointInterval": 1_000.0,
-                                    "data": [amount_per_second] * 400,
-                                }
-                            ]
+                            "series": series
                         }
                     }
                 }
@@ -816,10 +850,16 @@ def build_raid_transport(
         if name == "BossDamageGraph":
             ours = code == RAID_REPORT_CODE
             amount = 5.0 if ours else 50.0
+            player_actor_id = (
+                roster[0]["actor_id"] if ours else RAID_REFERENCE_PLAYER_ACTOR_ID
+            )
             return httpx.Response(
                 200,
                 json={
-                    "data": boss_damage_graph_payload(float(variables["startTime"]), amount)
+                    "data": boss_damage_graph_payload(
+                        float(variables["startTime"]), amount,
+                        player_actor_id=player_actor_id, player_amount=amount,
+                    )
                 },
             )
         return httpx.Response(200, json={"data": empty_events})
@@ -1184,6 +1224,59 @@ def test_no_compare_on_a_wipe_asks_for_none_of_the_pace_operations(tmp_path: Pat
     payload = written_raid_findings(tmp_path)
     ids = [one["id"] for one in payload["findings"]]
     assert not any(one.startswith("compare.pace.") for one in ids), ids
+
+
+THREE_REFERENCE_KILLS = [
+    _reference_kill_row("refcode1", 5),
+    _reference_kill_row("refcode2", 6),
+    _reference_kill_row("refcode3", 7),
+]
+"""Three reference kills, none of them a self-match of the report under test.
+
+Each one's `ReferenceFight` answers with one Mage/Arcane player (see
+`reference_fight_payload` above), so the default subject -- Emberkin, the
+report owner, Mage/Arcane -- is compared against exactly
+`MIN_SAMPLE_FOR_AGGREGATE` peers rather than withheld for too few."""
+
+
+def test_a_wipe_run_writes_the_per_player_pace_finding(tmp_path: Path) -> None:
+    """The per-player half this task wires into the `raid` command.
+
+    Slice 1's Task 5 fixture already proves the raid-wide `compare.pace.`
+    finding; this is the same wipe, with a roster and per-player damage series
+    thick enough for the per-player half to have something to compare.
+    """
+    result = run_raid(
+        tmp_path, fight_id=RAID_WIPE_FIGHT_ID, kill_rankings=THREE_REFERENCE_KILLS,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    slug = RAID_ROSTER_SLUGS[11]
+    assert f"compare.pace.player.{slug}" in ids, ids
+
+
+def test_a_kill_run_writes_no_per_player_pace_finding(tmp_path: Path) -> None:
+    """A kill has the parse comparison; the per-player pace half never runs."""
+    result = run_raid(tmp_path, kill_rankings=THREE_REFERENCE_KILLS)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert not any(one.startswith("compare.pace.player.") for one in ids), ids
+
+
+def test_no_compare_on_a_wipe_writes_no_per_player_pace_finding(tmp_path: Path) -> None:
+    """`--no-compare` skips the reference kills, so the per-player half has nothing to read."""
+    result = run_raid(
+        tmp_path, "--no-compare", fight_id=RAID_WIPE_FIGHT_ID, kill_rankings=THREE_REFERENCE_KILLS,
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert not any(one.startswith("compare.pace.player.") for one in ids), ids
 
 
 def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:

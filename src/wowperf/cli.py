@@ -1523,6 +1523,10 @@ def raid(
         defensives = load_defensives()
         consumables = load_consumables()
         roles = load_roles()
+        # Loaded once and passed to both `analyse_encounter` and
+        # `build_raid_report` below, so the per-player pace windows and the
+        # death recaps read the same self-resurrection list.
+        self_resurrections = load_self_resurrections()
 
         encounter = loaded.encounter
         # The roster's own spelling, computed once and read by everything that
@@ -1589,6 +1593,7 @@ def raid(
             our_abilities=our_abilities,
             parse_subjects=parse_subjects,
             pace=pace_sample,
+            self_resurrections=self_resurrections,
         )
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -1681,7 +1686,7 @@ def raid(
                     consumables,
                     roles=roles,
                     externals=load_externals(),
-                    self_resurrections=load_self_resurrections(),
+                    self_resurrections=self_resurrections,
                     reference_records=reference_records,
                     pace=pace_sample,
                 ),

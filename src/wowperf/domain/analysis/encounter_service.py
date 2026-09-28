@@ -24,12 +24,13 @@ from wowperf.domain.comparison.mechanics import (
     compare_phase_cost,
 )
 from wowperf.domain.comparison.pace import PaceSample, analyse_pace
+from wowperf.domain.comparison.pace_player import analyse_player_pace
 from wowperf.domain.comparison.parse_axis import ParseSubject, compare_parse_axis
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.phase_windows import dominant_phase_by_ability
-from wowperf.domain.season import Consumables, Defensives, Roles
+from wowperf.domain.season import Consumables, Defensives, Roles, SelfResurrections
 
 
 def _for_raider(findings: list[Finding], slug: str) -> list[Finding]:
@@ -64,6 +65,7 @@ def analyse_encounter(
     our_abilities: tuple[AbilityTakenRow, ...] = (),
     parse_subjects: Sequence[ParseSubject] = (),
     pace: PaceSample | None = None,
+    self_resurrections: SelfResurrections = SelfResurrections(),
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
 
@@ -97,6 +99,12 @@ def analyse_encounter(
     `pace` runs `analyse_pace` on the wipes the command fetched references for;
     `None` means the command never asked -- a kill, or `--no-compare` -- and is
     kept apart from a sample that asked and found nothing to compare.
+
+    The same `pace` also runs `analyse_player_pace`, one row per compared
+    damage dealer or tank; it reads `parse_subjects` rather than
+    `encounter.players` because that is the roster `--player`/`--all-players`
+    actually asked to compare, the same list the raid-wide parse axis above
+    reads from.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
@@ -173,4 +181,5 @@ def analyse_encounter(
         )
     if pace is not None:
         findings += analyse_pace(encounter, pace)
+        findings += analyse_player_pace(loaded, pace, parse_subjects, roles, self_resurrections)
     return rank_raid_findings(findings)
