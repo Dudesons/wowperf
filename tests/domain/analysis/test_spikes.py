@@ -338,11 +338,22 @@ def test_exact_detail_text_of_spikes_findings() -> None:
     )
 
 
-def test_title_text_with_multiple_states() -> None:
-    casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
-    findings = spikes([*steady(300), *burst(200)], casts)
+def test_one_title_can_count_all_three_states() -> None:
+    nine_minutes = (0, 540_000)
+    damage = [*steady(540), *burst(100, per_second=3000), *burst(300, per_second=2000),
+              *burst(450, per_second=1500)]
+    casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60),
+             cast(DRUID, TRANQUILITY, 400), cast(WARRIOR, RALLYING, 400)]
+    findings = spikes(damage, casts, span=nine_minutes)
     assert the(findings, SPIKES_ID).title == (
-        "1 heaviest moment: 1 unanswered while cooldowns were ready"
+        "3 heaviest moments: 1 answered, 1 unanswered while cooldowns were ready, "
+        "1 unanswered with no answer shown ready"
+    )
+    assert the(findings, SPIKES_ID).evidence[2] == (
+        "7:30 to 7:35, the third heaviest (16.0 times the median): nothing pressed, and no "
+        "answer was shown ready; Tranquility (Restoration Druid, Emberkin): pressed at 6:40, "
+        "within its base cooldown of 3:00; Rallying Cry (Arms Warrior, Stonewake): pressed at "
+        "6:40, within its base cooldown of 3:00"
     )
 
 
