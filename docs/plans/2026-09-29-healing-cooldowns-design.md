@@ -1,6 +1,6 @@
 # Healing cooldowns against the group's heaviest moments
 
-**Status:** approved design, 2026-09-29. Not yet planned.
+**Status:** approved design, 2026-09-29; planned in `docs/plans/2026-09-29-healing-cooldowns-plan.md`.
 **Area:** slice 4 (healer analysis), its first sub-slice. It adds one analyser and two findings
 to the Mythic+ page (`analyze`) and the raid page (`raid`, and therefore every `night` pull).
 
@@ -32,8 +32,10 @@ output, which is the README's own rule: "It is about decisions, not throughput."
 - **Damage taken**, as raw `events(dataType: DamageTaken, hostilityType: Friendlies)`
   (`DAMAGE_TAKEN_QUERY`, `repository.py` `_load` and `load_encounter`), held as
   `DamageTakenEvent`. Fields verified in `.claude/skills/wcl-api/SKILL.md` (2026-09-04) include
-  `amount`, `absorbed`, `targetID` and `timestamp`. **No `overkill` field is verified**, so on a
-  killing blow `amount` may include damage past death; the finding's detail says so (§6).
+  `amount`, `absorbed`, `targetID` and `timestamp`, and `overkill` is verified there too, present
+  only on a lethal blow. In the domain model `health_damage` is the log's `amount` (what reached
+  health), `absorbed` what a shield took, and `overkill` the damage past death (amended
+  2026-09-29).
 - **Casts**, for every actor (`CASTS_QUERY`, unfiltered by source), in `analyze`'s `parse` and
   `full` profiles and in `raid`'s `load_encounter`. `analyze`'s `speed` profile fetches no casts;
   the judgement is then withheld with a notice (§6).
@@ -43,8 +45,9 @@ on every fight, and saves only a few lines of summing over events already held.
 
 ## 4. The heaviest moments
 
-- **Counted:** every damage-taken event whose target is a roster player, `amount + absorbed` --
-  what healers have to answer. Pets and NPCs are excluded.
+- **Counted:** every damage-taken event whose target is a roster player,
+  `health_damage + absorbed - overkill` -- what healers had to answer: what reached health, what a
+  shield took, less what no heal could have saved. Pets and NPCs are excluded.
 - **The curve:** 1-second buckets from the start of the fight, or of the run on a keystone.
 - **A moment** is a rolling 5-second window over those buckets (`SPIKE_WINDOW_SECONDS = 5`), so a
   burst straddling a fixed boundary is not halved.
@@ -64,14 +67,17 @@ on every fight, and saves only a few lines of summing over events already held.
 
 ## 5. The answers, and each moment's state
 
-**The answer set.**
-- Every cooldown `data/throughput_cooldowns.toml` lists under a specialisation that
-  `data/roles.toml` calls a healer.
-- Every `data/externals.toml` entry carrying a new `group = true` marker: Power Word: Barrier,
-  Spirit Link Totem and Rallying Cry are already in that file. Anti-Magic Zone, Darkness, Aura
-  Mastery and any other group-wide defensive are checked when the plan is written, each added
-  with its spell id confirmed from a real log and the file's verified date updated -- never
+**The answer set** (amended 2026-09-29: the healer blocks of `throughput_cooldowns.toml` also
+hold abilities that answer nobody's damage -- Touch of Death, Power Infusion, Holy Word:
+Chastise -- so "every cooldown under a healer spec" would count them):
+- Every entry of `data/throughput_cooldowns.toml`, under a specialisation that `data/roles.toml`
+  calls a healer, that carries a new `group = true` marker.
+- Every entry of `data/externals.toml` that carries the same marker: Power Word: Barrier, Spirit
+  Link Totem and Rallying Cry are already in that file. Anti-Magic Zone, Darkness, Aura Mastery
+  and any other group-wide defensive are added only with their spell id confirmed from a real
+  log and their cooldown from a primary source, and the file's verified date updated -- never
   guessed. An ability stays listed in one file only, the house rule both files already state.
+- Each marker is set by hand, per ability; the plan lists the proposed set for review.
 - A player holds an answer when their class and specialisation list it.
 
 **Pressed in answer:** a cast of the answer falling between 10 seconds before the window opens
@@ -87,14 +93,28 @@ cooldown when the window opened. Three consequences, all in the safe direction:
 - Cooldowns are base values; no talent reduction is modelled, as everywhere in this repository.
 
 A holder **dead** when the window opens is excluded: a dead player presses nothing, and counting
-their cooldown against the group would be false.
+their cooldown against the group would be false. Dead means a death before the window with no
+resurrection and no cast of theirs since: a cast is the only sign of life a player who released
+and ran back leaves.
+
+**Early in a fight nothing can be shown ready** (amended 2026-09-29). `ready_at()` does not
+judge a cooldown whose base cooldown reaches back before the fight's first second, since a press
+before the log began is invisible; for a three-minute answer that is the fight's first three
+minutes. A check on `cW38jmwdnZfbHVL4`'s fifteen repeated boss pulls found no sign of cooldowns
+resetting between pulls: the earliest re-press of the same answer in a later pull came at 0.85
+of its base cooldown, and within one pull presses came as early as 0.50 (talent reductions), so
+the gaps are cooldown reductions carried over, not resets. The rule stands, and the page says
+"not judged" rather than inventing a state.
 
 **Each moment is one of three states.**
 - **Answered:** at least one answer pressed; every press is listed with its holder.
 - **Unanswered, cooldowns ready:** nothing pressed while at least one answer sat ready. The only
   state held against the group.
-- **Unanswered, nothing ready:** every answer was on cooldown or had no living holder. Stated as
-  a fact, not a fault.
+- **Unanswered, no answer shown ready:** stated as a fact, not a fault, with the reason for each
+  answer the group held: its holder was dead; it was pressed at a given clock, within its base
+  cooldown; or it was not judged because its base cooldown reaches before the first second. The
+  page never says a cooldown was "on cooldown": talents shorten some, so it states the press it
+  saw and leaves the talent to the reader.
 
 **The judgement is the group's.** Healers plan cooldown rotations together, so one holding while
 another spends is usually correct; a per-healer judgement would call planned rotations mistakes
@@ -121,8 +141,7 @@ an answer sat ready.
 - Evidence: one line per such moment, each ready answer and its holder.
 - Detail states the limits: the group may have planned that moment for someone else's cooldown;
   cooldowns are base values; a second charge reads as not ready; a cooldown never pressed all
-  fight is invisible; `amount` may include damage past a death; the 10-second lead and the floor
-  of 2 are chosen numbers.
+  fight is invisible; the 10-second lead and the floor of 2 are chosen numbers.
 - No time lost: it never becomes a Summary pointer. Pricing a held cooldown in seconds would be
   dishonest.
 - `inferred`, as `throughput.alignment` is: "should have pressed" is a judgement.
@@ -136,8 +155,10 @@ an answer sat ready.
 
 - **Raid:** the **Mechanics** tab, which already shows what hit the raid. Every `night` pull's
   page is the raid page, so it gains this unchanged.
-- **Mythic+:** the **Deaths** tab, above the death cards. A keystone page has no Mechanics tab,
-  and heavy moments are what deaths come from.
+- **Mythic+:** the **Deaths** tab, among its findings below the death cards (amended 2026-09-29:
+  findings are placed by id prefix into `death_rows`, which render there; a block above the
+  cards would need a field and a template block of its own for two findings). A keystone page
+  has no Mechanics tab, and heavy moments are what deaths come from.
 - A per-boss line across a night's pulls, as the pace boss line does, is left out.
 - A dedicated Healing tab on both pages is the alternative, held until healer analysis has more
   than two findings to show.
@@ -145,7 +166,7 @@ an answer sat ready.
 ## 8. Testing
 
 - **Unit, test first, plain fixtures, no network:** the 1-second curve and the rolling window;
-  roster players only; `amount + absorbed`; greedy non-overlap; the count rule; the floor and its
+  roster players only; `health_damage + absorbed - overkill`; greedy non-overlap; the count rule; the floor and its
   median; the answer set from both data files; the 10-second lead (an 11th second does not
   count); a holder dead at the window's open excluded; a cooldown never pressed never ready;
   each state and each notice's wording pinned; no raw damage figure in any title or evidence
