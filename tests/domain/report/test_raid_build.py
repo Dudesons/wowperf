@@ -6,13 +6,27 @@ from collections import Counter
 import pytest
 
 from tests.domain.comparison.test_pace_curve import a_kill, steady
+from tests.domain.comparison.test_pace_player import (
+    BLOOD,
+    FROST,
+    NO_SELF_RESURRECTIONS,
+)
+from tests.domain.comparison.test_pace_player import ROLES as PLAYER_PACE_ROLES
+from tests.domain.comparison.test_pace_player import a_sample as a_player_pace_sample
+from tests.domain.comparison.test_pace_player import a_wipe as a_player_pace_wipe
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
 from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
-from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
+from wowperf.domain.comparison.pace_player import (
+    PLAYER_PACE_PREFIX,
+    PLAYER_UNAVAILABLE_PREFIX,
+    SCOPE_LINE,
+    analyse_player_pace,
+)
+from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL, ParseSubject
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence, Finding
@@ -900,3 +914,113 @@ def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:
     assert report.pace_chart is None
     assert report.pace_warning is None
     assert report.damage_rows, "an open damage tab with no rows on it"
+
+
+def _player_pace_findings() -> tuple[LoadedEncounter, tuple[Finding, ...]]:
+    """Real per-player pace findings from `analyse_player_pace`, never hand-typed.
+
+    `test_pace_player`'s own fixtures: Emberkin plays Mage/Frost and has three
+    reference peers across `THREE_KILLS`, so `analyse_player_pace` reaches a
+    real reading for them; Stonewake plays DeathKnight/Blood and has only two,
+    which is what earns them the fewer-than-three notice instead. The two
+    subjects are minted with this file's own `EMBERKIN_SLUG`/`STONEWAKE_SLUG`
+    rather than `test_pace_player`'s own `p<actor_id>` convention, because
+    `slugs_by_actor` mints a card's slug from the display name and the roster
+    index alone -- both rosters name their players Emberkin and Stonewake in
+    the same order, so the card slug and the finding's `player_slug` have to
+    agree on the same two strings for the row to land on the right card.
+    """
+    loaded = a_player_pace_wipe()
+    sample = a_player_pace_sample()
+    subjects = (
+        ParseSubject(player=FROST, slug=EMBERKIN_SLUG, display_name="Emberkin"),
+        ParseSubject(player=BLOOD, slug=STONEWAKE_SLUG, display_name="Stonewake"),
+    )
+    findings = analyse_player_pace(
+        loaded, sample, subjects, PLAYER_PACE_ROLES, NO_SELF_RESURRECTIONS
+    )
+    return loaded, tuple(findings)
+
+
+def test_a_players_pace_finding_lands_on_their_own_card() -> None:
+    loaded, findings = _player_pace_findings()
+    pace_finding = next(f for f in findings if f.id == f"{PLAYER_PACE_PREFIX}{EMBERKIN_SLUG}")
+
+    report = build_raid_report(
+        loaded, findings, FROST, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, PLAYER_PACE_ROLES,
+    )
+
+    emberkin_card = next(card for card in report.players if card.slug == EMBERKIN_SLUG)
+    other_cards = [card for card in report.players if card.slug != EMBERKIN_SLUG]
+    assert [row.finding_id for row in emberkin_card.pace_rows] == [pace_finding.id]
+    for card in other_cards:
+        assert pace_finding.id not in [row.finding_id for row in card.pace_rows], (
+            f"{pace_finding.id} landed on {card.slug}'s card as well as Emberkin's -- "
+            "the slug match must be exact, not a prefix"
+        )
+
+
+def test_a_players_pace_notice_lands_on_their_own_card() -> None:
+    loaded, findings = _player_pace_findings()
+    notice = next(f for f in findings if f.id.startswith(PLAYER_UNAVAILABLE_PREFIX))
+    assert notice.id == f"{PLAYER_UNAVAILABLE_PREFIX}.{STONEWAKE_SLUG}"
+
+    report = build_raid_report(
+        loaded, findings, FROST, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, PLAYER_PACE_ROLES,
+    )
+
+    stonewake_card = next(card for card in report.players if card.slug == STONEWAKE_SLUG)
+    assert [row.finding_id for row in stonewake_card.pace_rows] == [notice.id]
+
+
+def test_no_player_pace_row_or_notice_reaches_the_damage_tab() -> None:
+    loaded, findings = _player_pace_findings()
+
+    report = build_raid_report(
+        loaded, findings, FROST, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, PLAYER_PACE_ROLES,
+    )
+
+    assert not any(
+        row.finding_id.startswith(PLAYER_PACE_PREFIX) for row in report.damage_rows
+    ), report.damage_rows
+
+
+def test_every_player_pace_finding_is_placed_exactly_once() -> None:
+    loaded, findings = _player_pace_findings()
+
+    report = build_raid_report(
+        loaded, findings, FROST, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, PLAYER_PACE_ROLES,
+    )
+
+    placed = placements(report)
+    counts = Counter(placed)
+    for finding in findings:
+        assert counts[finding.id] == 1, (
+            f"{finding.id} placed {counts[finding.id]} times, expected exactly once"
+        )
+
+
+def test_the_scope_line_appears_once_when_a_player_pace_finding_exists() -> None:
+    loaded, findings = _player_pace_findings()
+
+    report = build_raid_report(
+        loaded, findings, FROST, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, PLAYER_PACE_ROLES,
+    )
+
+    assert report.provenance.withheld.count(SCOPE_LINE) == 1
+
+
+def test_the_scope_line_is_absent_without_a_player_pace_finding() -> None:
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert SCOPE_LINE not in report.provenance.withheld

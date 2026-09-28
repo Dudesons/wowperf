@@ -12,6 +12,7 @@ from tests.adapters.render.test_html_invariants import (
     ICON_HOST,
     NUMBERS_THAT_ARE_NOT_TOTALS,
     is_a_bare_number,
+    player_cards,
 )
 from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
 from tests.domain.comparison.test_pace_curve import a_kill, steady
@@ -34,6 +35,12 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
 )
 from wowperf.domain.comparison.pace import PACE_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace_curve import PaceReference, PlayerSeries
+from wowperf.domain.comparison.pace_player import (
+    PLAYER_PACE_PREFIX,
+    SCOPE_LINE,
+    analyse_player_pace,
+)
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL, ParseSubject
 from wowperf.domain.comparison.raid_reference import (
     RaidParseRow,
@@ -50,6 +57,7 @@ from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.model import (
     Badge,
     LedgerRow,
+    PlayerCard,
     Provenance,
     ReferenceRecord,
     Section,
@@ -66,7 +74,7 @@ from wowperf.domain.report.raid_model import (
     RaidReport,
     all_raid_ledger_rows,
 )
-from wowperf.domain.season import DefensiveAbility, Defensives
+from wowperf.domain.season import DefensiveAbility, Defensives, SelfResurrections
 
 RAID_PANEL_ORDER = [
     "tab-summary",
@@ -566,6 +574,143 @@ def test_a_kill_page_draws_no_pace_markup() -> None:
 
     assert 'class="pace-chart"' not in html
     assert '<polygon class="pace-band"' not in html
+
+
+NO_SELF_RESURRECTIONS = SelfResurrections()
+
+
+def a_player_pace_sample(per_second: int = 80) -> PaceSample:
+    """Three reference kills' Arcane Mages -- `MIN_SAMPLE_FOR_AGGREGATE` is
+    three -- plus Emberkin's own boss damage, for `analyse_player_pace`'s real
+    reading. Stonewake plays Blood, and no reference kill here carries one, so
+    the same sample also earns Stonewake the fewer-than-three notice with no
+    fixture of its own."""
+    kills = tuple(
+        PaceReference(
+            duration_seconds=float(PACE_DURATION),
+            damage=steady(100, PACE_DURATION),
+            players=(
+                PlayerSeries(
+                    actor_id=90, class_name="Mage", spec="Arcane",
+                    damage=steady(rate, PACE_DURATION),
+                ),
+            ),
+        )
+        for rate in (90, 100, 110)
+    )
+    return PaceSample(
+        ours=steady(100, PACE_DURATION),
+        references=kills,
+        our_players=(
+            PlayerSeries(
+                actor_id=EMBERKIN.actor_id, class_name="Mage", spec="Arcane",
+                damage=steady(per_second, PACE_DURATION),
+            ),
+        ),
+    )
+
+
+def a_wiped_raid_report_with_player_pace() -> RaidReport:
+    """A wipe carrying a real per-player pace finding for Emberkin and a real
+    withheld notice for Stonewake, both from `analyse_player_pace` -- never a
+    hand-typed finding."""
+    loaded = a_raid_fight(kill=False)
+    sample = a_player_pace_sample()
+    subjects = (
+        ParseSubject(player=EMBERKIN, slug=EMBERKIN_SLUG, display_name="Emberkin"),
+        ParseSubject(player=STONEWAKE, slug=STONEWAKE_SLUG, display_name="Stonewake"),
+    )
+    pace_findings = analyse_player_pace(
+        loaded, sample, subjects, NO_ROLES, NO_SELF_RESURRECTIONS
+    )
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,),
+    )
+
+
+def _card(report: RaidReport, slug: str) -> PlayerCard:
+    return next(card for card in report.players if card.slug == slug)
+
+
+def _panel(html: str, panel_id: str) -> str:
+    """The markup from one top-level panel's opening tag to the next one's."""
+    start = html.index(f'id="{panel_id}"')
+    rest = html[start:]
+    end = rest.find('<section class="panel"')
+    return rest if end == -1 else rest[:end]
+
+
+def test_a_players_pace_finding_shows_on_their_card_and_nowhere_on_damage() -> None:
+    report = a_wiped_raid_report_with_player_pace()
+    html = render_raid(report)
+
+    emberkin = _card(report, EMBERKIN_SLUG)
+    assert emberkin.pace_rows, "fixture must carry Emberkin's own pace finding"
+    finding = emberkin.pace_rows[0]
+    finding_title = finding.title
+    lag_line = next(
+        line for line in finding.evidence if line.startswith(("By ", "More than"))
+    )
+    window_line = next(line for line in finding.evidence if line.startswith("Compared through"))
+
+    cards = player_cards(html)
+    card = cards[EMBERKIN_SLUG]
+    assert str(escape(finding_title)) in card
+    assert "Damage pace against the kills" in card
+    assert str(escape(lag_line)) in card
+    assert str(escape(window_line)) in card
+
+    # The title has to sit inside the same `class="findings"` wrapper every
+    # other ledger row on the page is drawn in -- not bare markup beside it,
+    # which is what the row looked like before this wrapper was added.
+    # `.index` starting after the heading raises if no such wrapper follows
+    # it in this card, which is what proves the row is actually inside one
+    # rather than merely somewhere on the same card.
+    heading_at = card.index("Damage pace against the kills")
+    wrapper_at = card.index('<div class="findings">', heading_at)
+    title_at = card.index(str(escape(finding_title)))
+    assert heading_at < wrapper_at < title_at, (
+        "the pace row's title must fall after a findings wrapper that itself "
+        "follows the heading"
+    )
+
+    damage_panel = _panel(html, "tab-damage")
+    assert str(escape(finding_title)) not in damage_panel
+    assert not any(
+        row.finding_id.startswith(PLAYER_PACE_PREFIX) for row in report.damage_rows
+    )
+
+
+def test_a_withheld_players_pace_notice_shows_on_their_own_card() -> None:
+    report = a_wiped_raid_report_with_player_pace()
+    html = render_raid(report)
+
+    stonewake = _card(report, STONEWAKE_SLUG)
+    assert stonewake.pace_rows, "fixture must carry Stonewake's own withheld notice"
+    notice_title = stonewake.pace_rows[0].title
+
+    cards = player_cards(html)
+    assert str(escape(notice_title)) in cards[STONEWAKE_SLUG]
+    assert str(escape(notice_title)) not in cards[EMBERKIN_SLUG]
+
+
+def test_the_player_pace_scope_line_appears_once_in_provenance() -> None:
+    report = a_wiped_raid_report_with_player_pace()
+    html = render_raid(report)
+
+    assert report.provenance.withheld.count(SCOPE_LINE) == 1
+    assert html.count(escape(SCOPE_LINE)) == 1
+
+
+def test_the_page_with_player_pace_carries_no_literal_none() -> None:
+    html = render_raid(a_wiped_raid_report_with_player_pace())
+    assert ">None<" not in html
+
+
+def test_a_kill_page_draws_no_player_pace_heading() -> None:
+    html = a_raid_page()
+    assert "Damage pace against the kills" not in html
 
 
 MARKUP = re.compile(r"<[^>]*>")

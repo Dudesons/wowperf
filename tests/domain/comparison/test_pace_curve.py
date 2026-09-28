@@ -11,6 +11,7 @@ from wowperf.domain.comparison.pace_curve import (
     cumulative_at,
     earlier_behind,
     final_behind_start,
+    lag_against,
     read_pace,
 )
 
@@ -180,3 +181,59 @@ def test_an_earlier_stretch_counts_only_when_longer_than_the_widest_bucket() -> 
     assert behind_stretches(reading) == ((1, 1), (4, 5), (8, 9))
     assert final_behind_start(reading) == 8
     assert earlier_behind(reading) == ((4, 5),)
+
+
+def one_second_kills(*seconds: int) -> tuple[PaceReference, ...]:
+    """Kills dealing 100 a second in 1 s buckets, one per length given."""
+    return tuple(a_kill(100, length, interval_ms=1000.0) for length in seconds)
+
+
+def test_the_lag_is_the_second_the_median_reached_our_total() -> None:
+    lag = lag_against(8000.0, one_second_kills(400, 400, 400))
+    assert lag.reached_at == pytest.approx(80.0)
+    assert lag.band_end == 400
+
+
+def test_the_lag_is_interpolated_within_the_second() -> None:
+    """The median holds 7900 at 79 s and 8000 at 80 s: 7950 is reached half way."""
+    lag = lag_against(7950.0, one_second_kills(400, 400, 400))
+    assert lag.reached_at == pytest.approx(79.5)
+
+
+def test_the_lag_reads_the_median_not_the_mean() -> None:
+    """At 100, 100 and 400 a second the median is 100 a second; the mean would be 200."""
+    kills = (
+        a_kill(100, 400, interval_ms=1000.0),
+        a_kill(100, 400, interval_ms=1000.0),
+        a_kill(400, 400, interval_ms=1000.0),
+    )
+    assert lag_against(8000.0, kills).reached_at == pytest.approx(80.0)
+
+
+def test_a_total_the_median_never_reached_has_no_lag() -> None:
+    lag = lag_against(50_000.0, one_second_kills(400, 400, 400))
+    assert lag.reached_at is None
+    assert lag.band_end == 400
+
+
+def test_the_band_ends_where_fewer_than_three_are_still_fighting() -> None:
+    """Four kills of 100, 200, 300 and 400 s: three fight through 200 s, two after."""
+    lag = lag_against(50_000.0, one_second_kills(100, 200, 300, 400))
+    assert lag.reached_at is None
+    assert lag.band_end == 200
+
+
+def test_the_lag_is_searched_past_where_our_window_ended() -> None:
+    """Nothing about our own window bounds the search: 30000 is reached at 300 s."""
+    lag = lag_against(30_000.0, one_second_kills(400, 400, 400))
+    assert lag.reached_at == pytest.approx(300.0)
+
+
+def test_nothing_dealt_is_reached_at_the_pull() -> None:
+    assert lag_against(0.0, one_second_kills(400, 400, 400)).reached_at == 0.0
+
+
+def test_fewer_than_three_references_hold_no_band() -> None:
+    lag = lag_against(100.0, one_second_kills(400, 400))
+    assert lag.reached_at is None
+    assert lag.band_end == 0

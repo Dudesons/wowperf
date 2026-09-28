@@ -9,6 +9,7 @@ from wowperf.domain.comparison.pace_curve import (
     PaceReading,
     PaceReference,
     PaceState,
+    PlayerSeries,
     cumulative_at,
     earlier_behind,
     final_behind_start,
@@ -54,19 +55,23 @@ class PaceSample(Frozen):
     """What the pace comparison was given: our boss damage and the kills', or why neither.
 
     `unavailable` is set exactly when nothing can be compared, and names why.
+    `our_players` splits `ours` by player, for the per-player comparison.
     """
 
     ours: BossDamage | None = None
     references: tuple[PaceReference, ...] = ()
     unavailable: str = ""
+    our_players: tuple[PlayerSeries, ...] = ()
 
 
-def _clock(seconds: float) -> str:
+def clock_text(seconds: float) -> str:
+    """Seconds from the pull as a clock, "3:20"; shared with the per-player findings."""
     whole = int(round(seconds))
     return f"{whole // 60}:{whole % 60:02d}"
 
 
-def _share(value: float, of: float) -> int:
+def share_of(value: float, of: float) -> int:
+    """`value` as a whole percentage of `of`; shared with the per-player findings."""
     return round(100 * value / of)
 
 
@@ -86,6 +91,24 @@ def _notice(reason: str) -> Finding:
     )
 
 
+def withheld_reason(encounter: Encounter, sample: PaceSample) -> str:
+    """Why `analyse_pace` would withhold with `compare.pace.unavailable`, or "".
+
+    The one predicate both the raid-wide and the per-player analyser read, so
+    a wipe that withholds one withholds the other. Does not check
+    `encounter.kill`: a kill withholds for a different reason (there is no
+    pace comparison at all) that each caller already checks on its own.
+    """
+    if sample.unavailable or sample.ours is None:
+        return sample.unavailable or NO_BOSS_DAMAGE
+    reading = pace_reading(encounter, sample)
+    if reading is None:
+        return NO_REFERENCE_KILL
+    if not reading.seconds or reading.seconds[-1].median <= 0:
+        return NOTHING_TO_COMPARE
+    return ""
+
+
 def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     """`compare.pace.boss` and `compare.pace.projection`, or the notice saying why not.
 
@@ -95,13 +118,12 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     """
     if encounter.kill:
         return []
-    if sample.unavailable or sample.ours is None:
-        return [_notice(sample.unavailable or NO_BOSS_DAMAGE)]
+    reason = withheld_reason(encounter, sample)
+    if reason:
+        return [_notice(reason)]
     reading = pace_reading(encounter, sample)
-    if reading is None:
-        return [_notice(NO_REFERENCE_KILL)]
-    if not reading.seconds or reading.seconds[-1].median <= 0:
-        return [_notice(NOTHING_TO_COMPARE)]
+    assert reading is not None  # withheld_reason("") guarantees a usable reading
+    assert sample.ours is not None  # same guarantee covers this
 
     total = cumulative_at(sample.ours, encounter.duration_seconds)
     withheld_projection = ""
@@ -120,7 +142,7 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
 
 def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
     last = reading.seconds[-1]
-    clock = _clock(last.second)
+    clock = clock_text(last.second)
     against = "the slowest kill's" if reading.single else "the kills'"
     of = "its boss damage" if reading.single else "their median boss damage"
     lead = {
@@ -140,8 +162,8 @@ def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
     else:
         evidence.append(f"Against {reading.references} reference kills of this raid size")
         evidence.append(
-            f"Their range at {clock}: {_share(last.low, last.median)}% to "
-            f"{_share(last.high, last.median)}% of their median"
+            f"Their range at {clock}: {share_of(last.low, last.median)}% to "
+            f"{share_of(last.high, last.median)}% of their median"
         )
     if not reading.band_cut:
         evidence.append(f"Compared through the wipe at {clock}")
@@ -153,9 +175,9 @@ def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
         )
     start = final_behind_start(reading)
     if start is not None:
-        evidence.append(f"Behind from {_clock(start)} to {clock}")
+        evidence.append(f"Behind from {clock_text(start)} to {clock}")
         evidence.extend(
-            f"Also behind between {_clock(first)} and {_clock(end)}"
+            f"Also behind between {clock_text(first)} and {clock_text(end)}"
             for first, end in earlier_behind(reading)
         )
     if withheld_projection:
@@ -163,7 +185,7 @@ def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
 
     return Finding(
         id=PACE_ID,
-        title=f"{lead}: {_share(last.ours, last.median)}% of {of} by {clock}",
+        title=f"{lead}: {share_of(last.ours, last.median)}% of {of} by {clock}",
         detail=BOSS_DETAIL,
         confidence=Confidence.DERIVED,
         evidence=tuple(evidence),
@@ -175,17 +197,17 @@ def _projection(reading: PaceReading, total: float, duration_seconds: float) -> 
     whose = "the slowest kill's" if reading.single else "the kills'"
     durations = reading.reference_durations
     if reading.single:
-        evidence = (f"The reference kill took {_clock(durations[0])}",)
+        evidence = (f"The reference kill took {clock_text(durations[0])}",)
     else:
         evidence = (
-            f"The kills took {_clock(durations[0])} to {_clock(durations[-1])}, "
-            f"median {_clock(median(durations))}",
+            f"The kills took {clock_text(durations[0])} to {clock_text(durations[-1])}, "
+            f"median {clock_text(median(durations))}",
         )
     return Finding(
         id=PROJECTION_ID,
         title=(
             f"At its average pace this raid would have dealt {whose} boss damage by about "
-            f"{_clock(projected)}"
+            f"{clock_text(projected)}"
         ),
         detail=PROJECTION_DETAIL,
         confidence=Confidence.INFERRED,

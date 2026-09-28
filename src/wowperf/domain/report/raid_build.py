@@ -13,6 +13,7 @@ from wowperf.domain.comparison.pace import (
     pace_reading,
 )
 from wowperf.domain.comparison.pace_curve import PaceState
+from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -207,8 +208,16 @@ def build_raid_report(
         if finding.seconds_lost is not None and finding.id in RAID_DECOMPOSITION_IDS
     )
     decomposition_ids = {row.finding_id for row in ledger_decomposition}
+    # A per-player pace reading lands on that raider's card via `build_raid_players`'
+    # `pace_rows`, never here: `RAID_PLACEMENTS`' `("compare.pace.", "damage_rows")`
+    # matches by prefix, so `compare.pace.player.*` would otherwise also land on
+    # the Damage tab beside the fight-wide reading it is not. `build_raid_players`,
+    # above, was handed the unfiltered `findings` and already placed these.
+    findings_for_tabs = [
+        finding for finding in findings if not finding.id.startswith(PLAYER_PACE_PREFIX)
+    ]
     placed_rows = place_rows(
-        findings, titles_by_id, decomposition_ids, tooltips, placements=RAID_PLACEMENTS
+        findings_for_tabs, titles_by_id, decomposition_ids, tooltips, placements=RAID_PLACEMENTS
     )
     summary_pointers = build_summary_pointers(
         findings, titles_by_id, decomposition_ids, tooltips
@@ -246,6 +255,12 @@ def build_raid_report(
         withheld.append(ceiling_withheld_line(notice))
     for notice in pace_notices:
         withheld.append(f"Damage pace against other kills: {notice.detail}")
+    # Stated once for the whole page rather than once per card, exactly like
+    # the parse and pace lines beside it: every `compare.pace.player.*` row or
+    # notice this fight carries shares the same scope, so the scope belongs
+    # here and not repeated on every card it explains.
+    if any(finding.id.startswith(PLAYER_PACE_PREFIX) for finding in findings):
+        withheld.append(SCOPE_LINE)
     if parse_damage.state is SectionState.WITHHELD:
         withheld.append(f"Damage against other kills: {parse_damage.reason}")
 

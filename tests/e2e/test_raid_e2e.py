@@ -581,6 +581,43 @@ def test_a_real_raid_roster_renders_one_page_with_no_collisions(tmp_path: Path) 
     assert uncompared == set(), f"{len(uncompared)} card(s) with no finding naming their slug"
 
 
+PLAYER_PACE_LEADS = ("Behind the kills' ", "On the kills' ", "Ahead of the kills' ")
+
+
+def assert_player_pace_is_well_formed(findings: Sequence[dict[str, Any]]) -> None:
+    """What every per-player pace finding and notice must be true of, whatever it found.
+
+    Every check is reduced to a bool, and every message names a shape and a
+    count: these ids carry a real player's slug and these titles a real
+    player's result, and pytest prints a failing assertion's operands
+    whatever the message says.
+    """
+    notice_prefix = "compare.pace.player.unavailable."
+    notices = [f for f in findings if f["id"].startswith(notice_prefix)]
+    readings = [
+        f
+        for f in findings
+        if f["id"].startswith("compare.pace.player.") and not f["id"].startswith(notice_prefix)
+    ]
+    has_any = bool(notices or readings)
+    assert has_any, "no compare.pace.player. finding or notice of either kind on a wipe"
+
+    badly_badged = sum(f["confidence"] != "derived" for f in readings)
+    assert badly_badged == 0, f"{badly_badged} per-player pace finding(s) not badged derived"
+    badly_led = sum(not cast(str, f["title"]).startswith(PLAYER_PACE_LEADS) for f in readings)
+    assert badly_led == 0, f"{badly_led} per-player pace title(s) open with no recognised state"
+    shares = [re.search(r"(\d+)% of their median", cast(str, f["title"])) for f in readings]
+    unshared = sum(match is None for match in shares)
+    assert unshared == 0, f"{unshared} per-player pace title(s) carry no share"
+    out_of_range = sum(not 0 <= int(m.group(1)) <= 400 for m in shares if m is not None)
+    assert out_of_range == 0, f"{out_of_range} per-player share(s) outside 0 to 400"
+
+    badly_badged_notices = sum(f["confidence"] != "measured" for f in notices)
+    assert badly_badged_notices == 0, (
+        f"{badly_badged_notices} per-player pace notice(s) not badged measured"
+    )
+
+
 @pytest.mark.e2e
 def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
     """The wipe damage pace comparison, driven as the command against the live API.
@@ -602,6 +639,7 @@ def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
         app,
         [
             "raid", WIPE,
+            "--all-players",
             "--cache-dir", str(tmp_path / "cache"),
             "--out", str(out),
         ],
@@ -611,16 +649,9 @@ def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
     stderr_ascii = result.stderr.encode("ascii", "backslashreplace").decode("ascii")
     print(stderr_ascii)
 
-    # Measured 2026-09-28 against report cW38jmwdnZfbHVL4 fight 30, a fresh
-    # cache directory, comparison on: 89.01 points of 3600. The pace axis
-    # reuses the mechanics sample's own references, so its marginal cost is
-    # the boss-only damage graphs (`BossDamageGraph`, `ReferenceFight`) rather
-    # than a second full sample. The bound below leaves headroom over that
-    # figure without hiding a real regression.
     spent_match = re.search(r"Rate limit: ([\d.]+) points spent", stderr_ascii)
     assert spent_match is not None, "no rate-limit line in the command's own output"
     spent = float(spent_match.group(1))
-    assert spent <= 120.0, "the run spent more than the bound this test allows"
 
     [written] = out.glob("*.findings.json")
     payload = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
@@ -680,3 +711,19 @@ def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
     assert reference_records_are_well_formed, (
         "a pace reference record was neither loaded nor carried a reason"
     )
+
+    assert_player_pace_is_well_formed(findings)
+
+    # Asserted last, so a run over the bound still checks everything above
+    # before failing: a second live run costs as much again.
+    # Measured 2026-09-28 against report cW38jmwdnZfbHVL4 fight 30, a fresh
+    # cache directory, comparison on, `--all-players`: 83.00 points of 3600
+    # (89.01 for the one-player run earlier the same day, whose composition
+    # was not recorded, so the gap between the two is not explained here). Each
+    # player's pace reads the per-player series of the boss-only graphs the
+    # raid-wide pace already fetches, and the reference rosters come in the
+    # same `ReferenceFight` lookup at 2.00 a call, so twenty players cost no
+    # more requests than one. No reference kill's deaths were read: one
+    # `Deaths` call, our own. The bound leaves headroom over that figure
+    # without hiding a real regression.
+    assert spent <= 120.0, "the run spent more than the bound this test allows"

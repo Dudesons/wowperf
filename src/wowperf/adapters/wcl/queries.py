@@ -289,8 +289,15 @@ query NpcActors($code: String!) {
 }
 """
 
-# One reference kill's own fight window and enemy roster, so its boss actor
-# can be found by game id rather than assumed to share ours.
+# One reference kill's own fight window, enemy roster and player roster, so
+# its boss actor can be found by game id rather than assumed to share ours,
+# and its per-player boss damage can be split by class and spec.
+#
+# The roster rides in this lookup for the per-player comparison, priced 2.00
+# points against 1.00 without it (wcl-api skill, "A reference kill's roster
+# costs one point more, read in the same lookup", 2026-09-28). `friendlySpecs`
+# names the spec only, so the class comes from the player actors' `subType`,
+# which span the whole report and are a lookup, never the roster.
 REFERENCE_FIGHT_QUERY = """
 query ReferenceFight($code: String!, $fightId: Int!) {
   reportData {
@@ -300,6 +307,11 @@ query ReferenceFight($code: String!, $fightId: Int!) {
         startTime
         endTime
         enemyNPCs { id gameID }
+        friendlyPlayers
+        friendlySpecs
+      }
+      masterData(translate: true) {
+        actors(type: "Player") { id subType }
       }
     }
   }

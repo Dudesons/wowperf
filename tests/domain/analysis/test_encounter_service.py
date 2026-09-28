@@ -1,6 +1,7 @@
 # ABOUTME: The raid analyser list, and which claims a boss fight can support.
 # ABOUTME: What is absent here matters as much as what is present.
 
+from tests.domain.comparison.test_pace_curve import steady
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -9,7 +10,8 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
 )
 from wowperf.domain.comparison.pace import PACE_PREFIX, PaceSample
-from wowperf.domain.comparison.pace_curve import BossDamage, PaceReference
+from wowperf.domain.comparison.pace_curve import BossDamage, PaceReference, PlayerSeries
+from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX
 from wowperf.domain.comparison.parse_axis import ParseSubject
 from wowperf.domain.comparison.raid_reference import (
     RaidParseRow,
@@ -818,3 +820,68 @@ def test_a_wipe_with_no_pace_sample_carries_no_pace_finding() -> None:
 
     ids = {finding.id for finding in findings}
     assert not any(one.startswith(PACE_PREFIX) for one in ids), ids
+
+
+def a_raid_wipe_encounter() -> Encounter:
+    """`a_raid_encounter`'s own roster and duration, but a wipe rather than a kill.
+
+    `analyse_player_pace` gates on `loaded.encounter.kill`, so the per-player
+    half needs its own wipe fixture -- `a_raid_encounter` above stays a kill,
+    used by tests that predate this task and must not change shape.
+    """
+    return Encounter(
+        report_code="wipe3", fight_id=22, encounter_id=3421,
+        boss_name="The Twin Fangs", difficulty=4, partition=1, size=20,
+        kill=False, boss_percentage=60.0, fight_percentage=0.01,
+        start_ms=1_000, end_ms=121_000, players=RAID,
+    )
+
+
+def _three_same_pair_peers() -> tuple[PaceReference, ...]:
+    """Three reference kills, one Mage/Arcane player each -- exactly `MIN_SAMPLE_FOR_AGGREGATE`."""
+    return tuple(
+        PaceReference(
+            duration_seconds=120.0,
+            damage=steady(1_000, 120),
+            players=(
+                PlayerSeries(
+                    actor_id=90 + one, class_name="Mage", spec="Arcane",
+                    damage=steady(90 + one * 10, 120),
+                ),
+            ),
+        )
+        for one in range(3)
+    )
+
+
+def _player_pace_sample() -> PaceSample:
+    ours = (PlayerSeries(actor_id=11, class_name="Mage", spec="Arcane", damage=steady(80, 120)),)
+    return PaceSample(
+        ours=steady(1_000, 120), references=_three_same_pair_peers(), our_players=ours
+    )
+
+
+def test_a_wipe_with_a_pace_sample_carries_the_per_player_pace_finding() -> None:
+    """The parameter this task adds, asserted through the one id it can produce."""
+    loaded = a_loaded_encounter(encounter=a_raid_wipe_encounter())
+    slug = RAID_SLUGS[RAID[0].actor_id]
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(),
+        parse_subjects=(a_parse_subject(),), pace=_player_pace_sample(),
+    )
+
+    ids = {finding.id for finding in findings}
+    assert f"{PLAYER_PACE_PREFIX}{slug}" in ids, ids
+
+
+def test_a_wipe_with_no_pace_sample_carries_no_per_player_pace_finding() -> None:
+    """`pace=None` means the same thing here as it does for the raid-wide finding."""
+    loaded = a_loaded_encounter(encounter=a_raid_wipe_encounter())
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), parse_subjects=(a_parse_subject(),),
+    )
+
+    ids = {finding.id for finding in findings}
+    assert not any(one.startswith(PLAYER_PACE_PREFIX) for one in ids), ids

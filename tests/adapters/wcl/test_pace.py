@@ -14,8 +14,11 @@ from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.ingest import (
     IngestError,
+    RosterEntry,
     build_boss_damage,
+    build_first_deaths,
     build_npc_actors,
+    build_player_boss_damage,
     build_reference_fight,
 )
 from wowperf.adapters.wcl.pace import (
@@ -27,8 +30,9 @@ from wowperf.adapters.wcl.queries import operation_name
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
 from wowperf.domain.comparison.pace import BOSS_IN_NO_REFERENCE, NO_REFERENCE_KILL, NO_SINGLE_BOSS
 from wowperf.domain.comparison.pace_boss import NpcActor
-from wowperf.domain.comparison.pace_curve import BossDamage
+from wowperf.domain.comparison.pace_curve import BossDamage, PlayerSeries
 from wowperf.domain.encounter import Encounter
+from wowperf.domain.model import Player
 
 TOKEN = {"access_token": "t", "expires_in": 86400}
 FIGHT_NAME = "The Test Colossus"
@@ -97,6 +101,56 @@ def test_a_reference_fight_missing_endtime_raises_ingest_error() -> None:
         build_reference_fight(payload)
 
 
+def test_a_reference_fight_carries_its_roster_by_class_and_spec() -> None:
+    payload = {"reportData": {"report": {
+        "fights": [{"id": 12, "startTime": 1000, "endTime": 481000,
+                    "enemyNPCs": [{"id": 31, "gameID": 900}],
+                    "friendlyPlayers": [5, 6, 7, 8],
+                    "friendlySpecs": ["Frost", "Blood", None, "Frost"]}],
+        "masterData": {"actors": [
+            {"id": 5, "subType": "Mage"}, {"id": 6, "subType": "DeathKnight"},
+            {"id": 7, "subType": "Priest"}, {"id": 99, "subType": "Rogue"},
+        ]},
+    }}}
+    fight = build_reference_fight(payload)
+    assert fight is not None
+    # 7 has no spec and 8 no class: neither is pooled, rather than guessed at.
+    assert fight.roster == (
+        RosterEntry(actor_id=5, class_name="Mage", spec="Frost"),
+        RosterEntry(actor_id=6, class_name="DeathKnight", spec="Blood"),
+    )
+
+
+def test_a_reference_fight_without_roster_fields_has_an_empty_roster() -> None:
+    payload = {"reportData": {"report": {"fights": [
+        {"id": 12, "startTime": 1000, "endTime": 481000, "enemyNPCs": []},
+    ]}}}
+    fight = build_reference_fight(payload)
+    assert fight is not None and fight.roster == ()
+
+
+def test_every_player_series_becomes_boss_damage_and_total_is_left_out() -> None:
+    payload = {"reportData": {"report": {"graph": {"data": {"series": [
+        {"id": 7, "pointStart": 5000, "pointInterval": 2000.0, "data": [10.0, 20.0]},
+        {"id": 8, "pointStart": 5000, "pointInterval": 2000.0, "data": [5.0]},
+        {"id": "Total", "pointStart": 5000, "pointInterval": 2000.0, "data": [15.0, 20.0]},
+    ]}}}}}
+    assert build_player_boss_damage(payload, fight_start_ms=5000) == {
+        7: BossDamage(interval_ms=2000.0, amounts=(20, 40)),
+        8: BossDamage(interval_ms=2000.0, amounts=(10,)),
+    }
+
+
+def test_the_first_death_of_each_listed_player_is_read_in_seconds_from_the_pull() -> None:
+    events = [
+        {"type": "death", "targetID": 5, "timestamp": 61_000},
+        {"type": "death", "targetID": 5, "timestamp": 90_000},
+        {"type": "death", "targetID": 42, "timestamp": 30_000},
+        {"type": "cast", "targetID": 6, "timestamp": 20_000},
+    ]
+    assert build_first_deaths(events, frozenset({5, 6}), fight_start_ms=1_000) == {5: 60.0}
+
+
 def _encounter(**overrides: Any) -> Encounter:
     fields: dict[str, Any] = dict(
         report_code=OUR_REPORT,
@@ -153,23 +207,57 @@ def _graph_response(total: list[float], *, point_start: int, interval: float) ->
 
 
 def _reference_fight_response(
-    start_ms: int, end_ms: int, enemies: list[dict[str, int]]
+    start_ms: int,
+    end_ms: int,
+    enemies: list[dict[str, int]],
+    *,
+    friendly_players: list[int] | None = None,
+    friendly_specs: list[str | None] | None = None,
+    player_actors: list[dict[str, object]] | None = None,
 ) -> httpx.Response:
+    fight: dict[str, object] = {
+        "id": 1,
+        "startTime": start_ms,
+        "endTime": end_ms,
+        "enemyNPCs": enemies,
+    }
+    if friendly_players is not None:
+        fight["friendlyPlayers"] = friendly_players
+    if friendly_specs is not None:
+        fight["friendlySpecs"] = friendly_specs
+    report: dict[str, object] = {"fights": [fight]}
+    if player_actors is not None:
+        report["masterData"] = {"actors": player_actors}
+    return httpx.Response(200, json={"data": {"reportData": {"report": report}}})
+
+
+def _player_graph_response(
+    series: dict[int, list[float]], total: list[float], *, point_start: int, interval: float
+) -> httpx.Response:
+    rows = [
+        {"id": actor_id, "pointStart": point_start, "pointInterval": interval, "data": data}
+        for actor_id, data in series.items()
+    ]
+    rows.append(
+        {"id": "Total", "pointStart": point_start, "pointInterval": interval, "data": total}
+    )
+    return httpx.Response(
+        200,
+        json={
+            "data": {
+                "reportData": {"report": {"graph": {"data": {"series": rows}}}}
+            }
+        },
+    )
+
+
+def _deaths_response(events: list[dict[str, object]]) -> httpx.Response:
     return httpx.Response(
         200,
         json={
             "data": {
                 "reportData": {
-                    "report": {
-                        "fights": [
-                            {
-                                "id": 1,
-                                "startTime": start_ms,
-                                "endTime": end_ms,
-                                "enemyNPCs": enemies,
-                            }
-                        ]
-                    }
+                    "report": {"events": {"data": events, "nextPageTimestamp": None}}
                 }
             }
         },
@@ -568,3 +656,196 @@ def test_our_responses_use_the_own_cache_and_references_the_reference_cache(
 
     assert len(list(own_dir.glob("*.json"))) == 2
     assert len(list(reference_dir.glob("*.json"))) == 4
+
+
+def test_three_references_split_their_boss_graph_by_player_and_our_players_too(
+    tmp_path: Path,
+) -> None:
+    references = tuple(
+        ReferenceKillRow(
+            report_code=f"refroster0000{i}A", fight_id=50 + i, size=20, duration_ms=210000
+        )
+        for i in range(3)
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _player_graph_response(
+                {7: [5.0], 8: [3.0]}, [8.0], point_start=0, interval=1000.0
+            )
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                1000,
+                211000,
+                [{"id": 100, "gameID": BOSS_GAME_ID}],
+                friendly_players=[40, 41],
+                friendly_specs=["Frost", "Fury"],
+                player_actors=[{"id": 40, "subType": "Mage"}, {"id": 41, "subType": "Warrior"}],
+            )
+        if name == "BossDamageGraph":
+            return _player_graph_response(
+                {40: [4.0], 41: [1.0]}, [5.0], point_start=1000, interval=1000.0
+            )
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter(
+        players=(
+            Player(actor_id=7, name="Emberkin", class_name="Mage", spec="Frost", item_level=0),
+            Player(actor_id=8, name="Stonewake", class_name="Warrior", spec="Fury", item_level=0),
+        )
+    )
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert sample.our_players == (
+        PlayerSeries(
+            actor_id=7,
+            class_name="Mage",
+            spec="Frost",
+            damage=BossDamage(interval_ms=1000.0, amounts=(5,)),
+        ),
+        PlayerSeries(
+            actor_id=8,
+            class_name="Warrior",
+            spec="Fury",
+            damage=BossDamage(interval_ms=1000.0, amounts=(3,)),
+        ),
+    )
+    assert len(sample.references) == 3
+    for reference in sample.references:
+        assert reference.players == (
+            PlayerSeries(
+                actor_id=40,
+                class_name="Mage",
+                spec="Frost",
+                damage=BossDamage(interval_ms=1000.0, amounts=(4,)),
+            ),
+            PlayerSeries(
+                actor_id=41,
+                class_name="Warrior",
+                spec="Fury",
+                damage=BossDamage(interval_ms=1000.0, amounts=(1,)),
+            ),
+        )
+
+
+def test_a_reference_kills_deaths_are_read_only_when_someone_died(tmp_path: Path) -> None:
+    references = (
+        ReferenceKillRow(
+            report_code="refnodeath0000A", fight_id=60, size=20, duration_ms=210000, deaths=0
+        ),
+        ReferenceKillRow(
+            report_code="refonedeath000A", fight_id=61, size=20, duration_ms=210000, deaths=1
+        ),
+    )
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        calls.append(name)
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                1000,
+                211000,
+                [{"id": 100, "gameID": BOSS_GAME_ID}],
+                friendly_players=[40, 41],
+                friendly_specs=["Frost", "Fury"],
+                player_actors=[{"id": 40, "subType": "Mage"}, {"id": 41, "subType": "Warrior"}],
+            )
+        if name == "BossDamageGraph":
+            return _player_graph_response(
+                {40: [4.0], 41: [1.0]}, [5.0], point_start=1000, interval=1000.0
+            )
+        if name == "Deaths" and variables["code"] == "refonedeath000A":
+            return _deaths_response([{"type": "death", "targetID": 41, "timestamp": 61000}])
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_dir = tmp_path / "reference"
+    reference_cache = DiskCache(reference_dir)
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert calls.count("Deaths") == 1
+    no_death_reference = next(
+        one for one in sample.references if one.duration_seconds == 210.0
+        and all(player.until_seconds is None for player in one.players)
+    )
+    assert no_death_reference is not None
+    dying_reference = next(
+        one for one in sample.references
+        if any(player.until_seconds is not None for player in one.players)
+    )
+    dying_player = next(p for p in dying_reference.players if p.actor_id == 41)
+    assert dying_player.until_seconds == 60.0
+    survivor = next(p for p in dying_reference.players if p.actor_id == 40)
+    assert survivor.until_seconds is None
+    # The Deaths request rode through the reference cache, never own_cache: the
+    # own cache never expires and a reference kill's events must not linger there.
+    assert len(list(reference_dir.glob("*.json"))) == 2 * 2 + 1
+
+
+def test_a_roster_entry_missing_from_the_graph_is_left_out_and_an_extra_series_ignored(
+    tmp_path: Path,
+) -> None:
+    references = (
+        ReferenceKillRow(report_code="refmismatch000A", fight_id=70, size=20, duration_ms=210000),
+    )
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            # Roster carries actors 40 and 41; the graph only carries 40 and an
+            # unrelated actor 99 with no roster entry.
+            return _reference_fight_response(
+                1000,
+                211000,
+                [{"id": 100, "gameID": BOSS_GAME_ID}],
+                friendly_players=[40, 41],
+                friendly_specs=["Frost", "Fury"],
+                player_actors=[{"id": 40, "subType": "Mage"}, {"id": 41, "subType": "Warrior"}],
+            )
+        if name == "BossDamageGraph":
+            return _player_graph_response(
+                {40: [4.0], 99: [2.0]}, [6.0], point_start=1000, interval=1000.0
+            )
+        raise AssertionError(f"unexpected operation: {name}")
+
+    client = _client(handle)
+    own_cache = DiskCache(tmp_path / "own")
+    reference_cache = DiskCache(tmp_path / "reference")
+    encounter = _encounter()
+
+    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
+
+    assert len(sample.references) == 1
+    players = sample.references[0].players
+    assert [p.actor_id for p in players] == [40]

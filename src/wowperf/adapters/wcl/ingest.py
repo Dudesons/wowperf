@@ -605,6 +605,27 @@ def build_damage_done(payload: dict[str, Any]) -> tuple[DamageDoneSeries, ...]:
     return tuple(built)
 
 
+def _boss_damage_row(row: dict[str, Any], fight_start_ms: int) -> BossDamage | None:
+    """One boss-scoped damage graph row, converted from its rate.
+
+    Shared by `build_boss_damage` (the `Total` row) and `build_player_boss_damage`
+    (every per-player row), so the rate conversion lives once. `None` when the
+    row's interval is zero or negative -- the same guard `build_damage_done`
+    applies, for the same reason: a zero interval would make every bucket zero
+    seconds wide.
+    """
+    interval_ms = float(row.get("pointInterval") or 0.0)
+    if interval_ms <= 0:
+        return None
+    return BossDamage(
+        interval_ms=interval_ms,
+        amounts=tuple(
+            int(round(float(point) * interval_ms / 1000)) for point in row.get("data") or []
+        ),
+        lead_ms=int(row.get("pointStart") or 0) - fight_start_ms,
+    )
+
+
 def build_boss_damage(payload: dict[str, Any], *, fight_start_ms: int) -> BossDamage | None:
     """The `Total` series of a boss-scoped damage graph, converted from its rate.
 
@@ -612,12 +633,11 @@ def build_boss_damage(payload: dict[str, Any], *, fight_start_ms: int) -> BossDa
     sitting in the model is one import away from a page that ranks players.
     This graph is different: `targetID` already scopes it to one enemy actor,
     so there is no per-player ranking to protect, and `Total` is the only row
-    this pace comparison has any use for. The per-player rows this same graph
-    carries are left for slice 2.
+    this function reads. The per-player rows this same graph carries are read
+    by `build_player_boss_damage`.
 
     `None` when the response holds no `Total` row, or when its interval is
-    zero or negative -- the same guard `build_damage_done` applies, for the
-    same reason: a zero interval would make every bucket zero seconds wide.
+    zero or negative.
     """
     report = (payload.get("reportData") or {}).get("report") or {}
     graph = report.get("graph") or {}
@@ -626,17 +646,34 @@ def build_boss_damage(payload: dict[str, Any], *, fight_start_ms: int) -> BossDa
     for row in rows:
         if row.get("id") != "Total":
             continue
-        interval_ms = float(row.get("pointInterval") or 0.0)
-        if interval_ms <= 0:
-            return None
-        return BossDamage(
-            interval_ms=interval_ms,
-            amounts=tuple(
-                int(round(float(point) * interval_ms / 1000)) for point in row.get("data") or []
-            ),
-            lead_ms=int(row.get("pointStart") or 0) - fight_start_ms,
-        )
+        return _boss_damage_row(row, fight_start_ms)
     return None
+
+
+def build_player_boss_damage(
+    payload: dict[str, Any], *, fight_start_ms: int
+) -> dict[int, BossDamage]:
+    """Every per-player row of a boss-scoped damage graph, keyed by actor id.
+
+    The same graph `build_boss_damage` reads its `Total` row from, split by
+    player: every row whose `id` is an `int` (never `bool`, which Python's
+    `isinstance` would otherwise let through as a numeric type). A row with a
+    non-positive interval is skipped rather than raising, the same guard
+    `_boss_damage_row` applies to the `Total` row.
+    """
+    report = (payload.get("reportData") or {}).get("report") or {}
+    graph = report.get("graph") or {}
+    rows = (graph.get("data") or {}).get("series") or []
+
+    built: dict[int, BossDamage] = {}
+    for row in rows:
+        actor_id = row.get("id")
+        if not isinstance(actor_id, int) or isinstance(actor_id, bool):
+            continue
+        damage = _boss_damage_row(row, fight_start_ms)
+        if damage is not None:
+            built[actor_id] = damage
+    return built
 
 
 def build_npc_actors(payload: dict[str, Any]) -> tuple[NpcActor, ...]:
@@ -663,16 +700,37 @@ def build_npc_actors(payload: dict[str, Any]) -> tuple[NpcActor, ...]:
     return tuple(built)
 
 
+class RosterEntry(Frozen):
+    """One reference kill's player, by class and spec -- never by name.
+
+    `PlayerSeries` carries the same two fields for the same reason: a
+    per-player comparison groups by class and spec, and nothing here needs a
+    name to do it.
+    """
+
+    actor_id: int
+    class_name: str
+    spec: str
+
+
 class ReferenceFight(Frozen):
-    """One reference kill's own fight window and enemy roster.
+    """One reference kill's own fight window, enemy roster and player roster.
 
     Read to find the boss actor of a report we did not fetch `masterData`
     for: our own boss's game id, looked up in this fight's own `enemies`.
+
+    `roster` is this fight's own player roster, for the per-player
+    comparison; empty when the fight carries no roster fields. It is built
+    from `friendlyPlayers` and `friendlySpecs`, which name the roster of this
+    fight alone, never from the report's player actors -- those span every
+    fight in the report, so filtering them by id alone would silently include
+    a player who was never in this fight.
     """
 
     start_ms: int
     end_ms: int
     enemies: tuple[EnemyNpc, ...]
+    roster: tuple[RosterEntry, ...] = ()
 
 
 def _reference_int(value: Any, description: str) -> int:
@@ -689,13 +747,53 @@ def _reference_int(value: Any, description: str) -> int:
     return int(value)
 
 
+def _reference_roster(
+    fight: dict[str, Any], actors: list[dict[str, Any]]
+) -> tuple[RosterEntry, ...]:
+    """`friendlyPlayers` paired with `friendlySpecs`, classed from the actor lookup.
+
+    Index-aligned, as `_build_players` reads the same two arrays. An entry
+    whose spec is null or missing, or whose id names no player actor, is
+    skipped -- a player not pooled rather than a guess, since neither array
+    is filled in for every reference kill's report.
+    """
+    ids = fight.get("friendlyPlayers") or []
+    specs = fight.get("friendlySpecs") or []
+    class_by_id = {actor["id"]: actor.get("subType") for actor in actors if "id" in actor}
+
+    roster = []
+    for position, actor_id in enumerate(ids):
+        spec = specs[position] if position < len(specs) else None
+        if spec is None:
+            continue
+        class_name = class_by_id.get(actor_id)
+        if class_name is None:
+            continue
+        roster.append(
+            RosterEntry(
+                actor_id=_reference_int(actor_id, "roster actor id"),
+                class_name=str(class_name),
+                spec=str(spec),
+            )
+        )
+    return tuple(roster)
+
+
 def build_reference_fight(payload: dict[str, Any]) -> ReferenceFight | None:
-    """The one fight `REFERENCE_FIGHT_QUERY` asked for, or `None` when it is missing."""
+    """The one fight `REFERENCE_FIGHT_QUERY` asked for, or `None` when it is missing.
+
+    The player actors `masterData` carries are an id-to-class lookup only,
+    never the roster: they span the whole report, across every fight in it,
+    so filtering them by id alone would silently include a player who was
+    never in this fight. The roster comes from `friendlyPlayers` and
+    `friendlySpecs`, which name this fight's own roster.
+    """
     report = (payload.get("reportData") or {}).get("report") or {}
     fights = report.get("fights") or []
     if not fights:
         return None
     fight = fights[0]
+    actors = (report.get("masterData") or {}).get("actors") or []
     return ReferenceFight(
         start_ms=_reference_int(fight.get("startTime"), "startTime"),
         end_ms=_reference_int(fight.get("endTime"), "endTime"),
@@ -706,7 +804,37 @@ def build_reference_fight(payload: dict[str, Any]) -> ReferenceFight | None:
             )
             for npc in (fight.get("enemyNPCs") or [])
         ),
+        roster=_reference_roster(fight, actors),
     )
+
+
+def build_first_deaths(
+    events: list[dict[str, Any]], actor_ids: frozenset[int], *, fight_start_ms: int
+) -> dict[int, float]:
+    """The first `death` event of each listed player, in seconds from the pull.
+
+    Only the first: a reference kill's resurrections are not read, so there is
+    no way to tell an answered death from one that was not, and a reference
+    player's `until_seconds` is taken to end their part in the kill at their
+    first death regardless. Ending early only drops that player from the band
+    sooner than an unread resurrection would have. An event whose `targetID`
+    or `timestamp` is not an `int` is skipped -- this function's own guard,
+    since it reads its own dict from the same events the caller passed in.
+    """
+    first: dict[int, float] = {}
+    for event in events:
+        if event.get("type") != "death":
+            continue
+        actor_id = event.get("targetID")
+        timestamp = event.get("timestamp")
+        if not isinstance(actor_id, int) or isinstance(actor_id, bool):
+            continue
+        if not isinstance(timestamp, int) or isinstance(timestamp, bool):
+            continue
+        if actor_id not in actor_ids or actor_id in first:
+            continue
+        first[actor_id] = (timestamp - fight_start_ms) / 1000
+    return first
 
 
 def build_health_samples(events: list[dict[str, Any]]) -> tuple[HealthSample, ...]:

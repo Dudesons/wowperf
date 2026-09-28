@@ -11,11 +11,15 @@ from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
     build_boss_damage,
+    build_first_deaths,
     build_npc_actors,
+    build_player_boss_damage,
     build_reference_fight,
 )
+from wowperf.adapters.wcl.pagination import fetch_all_events
 from wowperf.adapters.wcl.queries import (
     BOSS_DAMAGE_GRAPH_QUERY,
+    DEATHS_QUERY,
     NPC_ACTORS_QUERY,
     REFERENCE_FIGHT_QUERY,
 )
@@ -28,7 +32,7 @@ from wowperf.domain.comparison.pace import (
     PaceSample,
 )
 from wowperf.domain.comparison.pace_boss import find_boss_actor
-from wowperf.domain.comparison.pace_curve import PaceReference
+from wowperf.domain.comparison.pace_curve import PaceReference, PlayerSeries
 from wowperf.domain.comparison.reference import REPORT_URL
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.report.model import ReferenceRecord
@@ -88,6 +92,13 @@ def load_pace_sample(
     kept for one comparison. `references` is the mechanics comparison's own
     members, so the page's two comparisons stand on one sample.
 
+    Each side's boss graph is also split by player: `our_players` is our own
+    roster's part of it, and each `PaceReference.players` its own kill's
+    roster. A reference kill's deaths are read only when its row says someone
+    died -- `ReferenceKillRow.deaths > 0` -- since a clean kill has no
+    `until_seconds` to set and the query would spend quota for nothing. None
+    of this is written anywhere; it lives for one comparison in memory.
+
     A reference is dropped, with its reason recorded, when its fight is
     missing, when our boss's game id names no actor in it or more than one, or
     when its graph carries no boss series. Never fatal: a `WclError`,
@@ -118,6 +129,18 @@ def load_pace_sample(
     ours = build_boss_damage(graph_payload, fight_start_ms=encounter.start_ms)
     if ours is None:
         return PaceSample(unavailable=NO_BOSS_DAMAGE), ()
+
+    our_series = build_player_boss_damage(graph_payload, fight_start_ms=encounter.start_ms)
+    our_players = tuple(
+        PlayerSeries(
+            actor_id=player.actor_id,
+            class_name=player.class_name,
+            spec=player.spec,
+            damage=our_series[player.actor_id],
+        )
+        for player in encounter.players
+        if player.actor_id in our_series
+    )
 
     members: list[PaceReference] = []
     records: list[ReferenceRecord] = []
@@ -160,7 +183,43 @@ def load_pace_sample(
                 records.append(_record(row, loaded=False, reason=NO_BOSS_SERIES))
                 continue
 
-            members.append(PaceReference(duration_seconds=row.duration_seconds, damage=damage))
+            series = build_player_boss_damage(damage_payload, fight_start_ms=fight.start_ms)
+            deaths: dict[int, float] = {}
+            if row.deaths > 0:
+                events = fetch_all_events(
+                    lambda one_query, variables: _fetch(
+                        client, reference_cache, one_query, variables
+                    )[0],
+                    DEATHS_QUERY,
+                    {
+                        "code": row.report_code,
+                        "fightId": row.fight_id,
+                        "startTime": float(fight.start_ms),
+                        "endTime": float(fight.end_ms),
+                    },
+                )
+                deaths = build_first_deaths(
+                    events,
+                    frozenset(entry.actor_id for entry in fight.roster),
+                    fight_start_ms=fight.start_ms,
+                )
+            players = tuple(
+                PlayerSeries(
+                    actor_id=entry.actor_id,
+                    class_name=entry.class_name,
+                    spec=entry.spec,
+                    damage=series[entry.actor_id],
+                    until_seconds=deaths.get(entry.actor_id),
+                )
+                for entry in fight.roster
+                if entry.actor_id in series
+            )
+
+            members.append(
+                PaceReference(
+                    duration_seconds=row.duration_seconds, damage=damage, players=players
+                )
+            )
             records.append(_record(row, loaded=True, from_cache=fight_hit and damage_hit))
         except (WclError, IngestError, httpx.HTTPError) as error:
             records.append(_record(row, loaded=False, reason=str(error)))
@@ -172,6 +231,11 @@ def load_pace_sample(
             if references and boss_absent_count == len(references)
             else NO_REFERENCE_KILL
         )
-        return PaceSample(ours=ours, unavailable=unavailable), tuple(records)
+        return PaceSample(ours=ours, unavailable=unavailable, our_players=our_players), tuple(
+            records
+        )
 
-    return PaceSample(ours=ours, references=tuple(members)), tuple(records)
+    return (
+        PaceSample(ours=ours, references=tuple(members), our_players=our_players),
+        tuple(records),
+    )

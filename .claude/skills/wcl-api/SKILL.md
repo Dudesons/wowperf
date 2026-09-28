@@ -1331,6 +1331,29 @@ encounters on this report (Entombed Sentinels, The Coiled Altar) each field two 
 neither named after the fight. A reference fight's boss is found by our boss's `gameID` in that
 fight's `enemyNPCs`, 1.00 point each, and was found on all four references read.
 
+## A reference kill's roster costs one point more, read in the same lookup
+
+Measured 2026-09-28 against the four reference kills the mechanics comparison drew for fight 30 of
+`cW38jmwdnZfbHVL4` (Heroic, size 20), about 15 points.
+
+**`friendlySpecs` names the specialisation only**, never the class: "Arcane", "Havoc", "Holy",
+"Devastation". "Frost" or "Holy" alone is ambiguous, so the class comes from
+`masterData(translate: true) { actors(type: "Player") { id subType } }`, whose `subType` is the class.
+All four references carried 20 of 20 `friendlyPlayers` with a non-null spec, and every one resolved
+against the report's player actors.
+
+**The report's player actors are not the fight's roster.** The four reports held 370, 26, 29 and 21
+player actors for 20-player fights: one report spanned a raid team's many nights. Read the roster
+from `friendlyPlayers`, and the actors only as an id-to-class lookup.
+
+**The boss-only damage graph's per-player series join on those ids.** On three references the
+integer series ids equalled `friendlyPlayers` exactly; the fourth carried 21 series for 20 players,
+one id with no roster entry, not identified. No series had a non-integer id other than `Total`.
+
+**Cost:** the reference-fight lookup with `friendlyPlayers`, `friendlySpecs` and the player actors
+folded in priced at 2.00 points, against 1.00 without them; the roster read on its own, as a
+separate query, also priced at 2.00. Folding it in costs one point per reference.
+
 ## Terms of service
 
 Read 2026-09-03 from the RPGLogs API Terms of Service. §5d prohibits scraping, building

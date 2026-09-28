@@ -1,7 +1,8 @@
 # A wipe's damage pace against the kills, with a projection
 
 **Status:** approved design; slice 1 planned in
-`docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built.
+`docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built. Slice 2 specified in §13 (approved
+2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-per-player-plan.md` and built.
 **Area:** the raid page on a wipe. It amends ruling 4.5 of
 `docs/plans/2026-09-18-wipe-analysis-design.md` for damage *done* (§3) and opens the depletion
 question that design's §8.4 set aside, answered with damage rather than health.
@@ -29,7 +30,8 @@ our duration against the kills' median duration.
    is often held by fewer than three players across the reference kills; one player's damage over
    a stretch depends on an assignment reference raids hand out differently; and every plan here
    has found its worst defects on the first live run, which is easier to read on one line than on
-   twenty.
+   twenty. **Specified in §13 (approved 2026-09-28)**; the roster check it waited on was run
+   that day, and §13 amends this paragraph where the two differ.
 3. **The night page:** slice 1's comparison on each wipe pull. Each boss's reference kills are
    fetched once and shared by all its pulls, so a pull costs about one graph.
 
@@ -270,6 +272,154 @@ none of it needed correcting.
 - Kills; they have the parse comparison.
 - Enrage and berserk timers: no data.
 - A boss-health projection (§6).
-- Council encounters in slice 1.
-- Slices 2 and 3 beyond what §2 records.
+- Council encounters in slices 1 and 2.
+- Slice 3 beyond what §2 records.
 - Any change to `wipe.cause`.
+- A per-player projection (§13.3).
+
+## 13. Slice 2: each player's pace against the same specialisation
+
+Approved 2026-09-28. Everything in §1-§12 holds for this slice unless this section says otherwise.
+
+### 13.1 The roster check
+
+Run 2026-09-28 against the four references the mechanics comparison drew for fight 30, about 15
+points, and recorded in `.claude/skills/wcl-api/SKILL.md` ("A reference kill's roster costs one
+point more, read in the same lookup"). `friendlySpecs` names the specialisation only, so the class
+comes from the reference report's player actors (`subType`); every roster id resolved; the
+boss-only graph's per-player series ids equalled the roster's on three references, and one
+reference carried a 21st series with no roster entry.
+
+**The sample is thin, and that shapes the slice.** Fight 30's twenty players hold 19 distinct
+class-and-specialisation pairs. Across the four references, 10 of them have three or more players
+of the same pair, 5 have two, 1 has one and 3 have none. About half the raid gets a reading on the
+canonical wipe.
+
+### 13.2 Data
+
+- **The reference roster** is read in the one reference-fight lookup §4 already makes, with
+  `friendlyPlayers`, `friendlySpecs` and `masterData(translate: true) { actors(type: "Player") { id
+  subType } }` added: one request per reference as before, priced 2.00 points against 1.00, about
+  four points more per wipe. The report's player actors span the whole report (370 actors on one
+  reference for a 20-player fight), so they are an id-to-class lookup and never the roster.
+- **The damage** is the per-player series of the boss-only graphs §4 already fetches, ours and each
+  reference's. No new graph. A series whose id is not in its fight's roster is dropped.
+- **Who is compared:** the players the `raid` command analyses (`--player`, `--all-players`), kept
+  when `data/roles.toml` reads them as damage or tank. Healers are not compared.
+- **Against whom:** every reference player of the same class and specialisation, pooled across the
+  reference kills, each over their own kill's length.
+
+### 13.3 The comparison
+
+- **The band** is §5's arithmetic over those players: lowest, median and highest at each second,
+  cut where fewer than three are still fighting. States as §5: behind below the lowest, ahead
+  above the highest, on pace between. "Behind from T" and the earlier-stretch bar are §5's.
+- **Below three same-specialisation players: withheld**, with a notice (ruled 2026-09-28). There is
+  no slowest-player fallback: one other player's boss damage mostly reflects what that raid
+  assigned them, so a comparison against one player reads as a verdict on a coin flip.
+- **The window** runs from the pull to the player's first death that no resurrection answered, or
+  to the wipe's end. A death answered by a resurrection or a self-resurrection, as `return_of`
+  classifies it for the death recaps, does not end the window: the stretch spent dead stays in and
+  is named in the evidence. A release ends the window, since on a wipe a release is the end of the
+  attempt for that player. A reference player's window ends at their first death, answered or
+  not: a reference kill's resurrections are not read, so an answered death cannot be told from
+  one that was not, and ending at the first death only drops that player from the band sooner
+  than an unread resurrection would have. Every reference read so far was deathless.
+- **The time lag** replaces a projection. Take the player's cumulative boss damage at the end of
+  their window; find the first time at which the same-specialisation median reaches it, interpolated
+  within the second, searched over every second the band holds; the lag is the window's end minus
+  that time, behind when positive and ahead when negative. When the median never reaches the
+  player's damage before the band ends, the lag is not a number and the evidence says so. It is read
+  off the same curves as the share, so the two cannot disagree, and it assumes nothing about pace
+  holding.
+- **No per-player projection.** The raid-wide projection answers a real event: the boss dies when
+  the raid's total reaches the kills'. No event answers one player reaching one specialisation's
+  total, and at a steady pace such a projection is the share restated as a guess.
+
+### 13.4 Findings
+
+- **`compare.pace.player.<slug>`, `derived`**, one per compared player. Titles follow §5's shape,
+  naming the pair: "Behind the kills' Frost Mages: 82% of their median boss damage by 3:20";
+  "On the kills' Frost Mages' pace: ..."; "Ahead of the kills' Frost Mages: ...".
+- **Evidence, in order:**
+  - "Against 7 Frost Mages across 4 reference kills of this raid size";
+  - "Their range at 3:20: 88% to 112% of their median";
+  - the lag: "By 3:20 they had dealt what the kills' median Frost Mage had dealt by 2:41: 39
+    seconds behind"; ahead, "... by 3:52: 32 seconds ahead"; past the band, "More than the kills'
+    median had dealt by 5:10, where fewer than three were still fighting". The lag names the
+    median because the state reads the whole band: a player can be on pace, inside the band, and
+    still seconds behind its median, and the line must say which of the two it measured;
+  - where the window ended: "Compared through the wipe at 3:20", "Compared through their death at
+    2:05", or "Compared through 4:10, after which fewer than three Frost Mages were still
+    fighting";
+  - "Dead from 1:10 to 1:40, then resurrected", one line per answered death;
+  - "Behind from 2:30 to 3:20", and "Also behind between ..." under §5's bar.
+- **The detail** says this is damage to the boss only: a player assigned to adds, or a tank who
+  held adds, reads behind for that assignment, not for their play.
+- **`compare.pace.player.unavailable.<slug>`, `measured`**, the withheld notice, on the player's
+  card: "Only 2 Frost Mages in the reference kills: fewer than three to compare against." A player
+  whose specialisation the report does not name reads "This report does not name their
+  specialisation."
+- **When the raid-wide comparison was withheld** (§7: a council, no reference, no boss series), no
+  per-player finding or notice is emitted; the raid-wide notice in Provenance covers them.
+- A player with no series in our graph dealt the boss nothing: 0%, and no lag. A player dead before
+  the first second has no reading and no line.
+
+### 13.5 On the page
+
+- The finding and the notice sit on the player's card on the Players tab, in the comparison family.
+  No new chart, no Summary pointer: twenty charts would bury §7's one, and twenty pointers would
+  crowd the verdict.
+- Provenance says once: "Damage pace per player compares damage dealers and tanks only."
+- No raw damage figure anywhere: shares, clocks and seconds.
+
+### 13.6 Wiring
+
+`load_pace_sample` also returns, per reference, its roster (actor id to class and specialisation)
+and its per-player boss series, and our own per-player series, read from the graph already fetched
+by a builder beside `build_boss_damage` that keeps the integer-id rows. A pure
+`analyse_player_pace` takes the sample, the analysed players with their roles, and our deaths and
+resurrections, and reuses `return_of`. The band and lag arithmetic sits in `pace_curve.py` beside
+§5's. No I/O in the domain. The only added cost is the point per reference.
+
+### 13.7 Testing
+
+**Unit:** pooling by class and specialisation across references; each window end -- the wipe, an
+unanswered death, a resurrected death, a release; the lag behind, ahead and past the band; the
+notice below three and for an unnamed specialisation; healers not compared; a player absent from
+our graph at 0%. **Integration:** the per-player builder on a hand-written graph payload, the
+roster in the reference lookup, the finding and the notice on the card. **Render:** a card carries
+the line; a withheld card carries the notice. **End to end:** shape only, on fight 30.
+**Live:** `raid --fight N` over fights 28-34 of `cW38jmwdnZfbHVL4`, reading the findings JSON only,
+counting by fight and player index -- never by name -- how often each state occurred: behind, on
+pace, ahead, lag past the band, withheld below three, withheld for an unnamed specialisation. A
+state that never occurs is reported as open, as §10's were.
+
+**Live (2026-09-28, `cW38jmwdnZfbHVL4`, fights 28-34, `raid --fight N --all-players`).** Seven
+wipes, twenty players each; four healers per fight carry no line, so 112 per-player lines, 16 per
+fight. Player indices count each findings file's distinct player slugs in sorted order, the same
+twenty on every fight.
+
+- **69 readings, all `derived`:** behind 30, on pace 26, ahead 13.
+- **The lag:** behind 44, ahead 22, past the band 3 (fight 30, players 8, 12 and 14). A lag of
+  exactly zero never occurred, and neither did a player with no series in our graph (0%, no lag).
+- **The window's end:** a death 60, the band cut 8 (all fight 30), the wipe 1 (fight 29, player
+  16). The findings file does not tell an unanswered death from a release, so the release's own
+  window end is not counted apart.
+- **A resurrection stretch named:** 2 (fight 30, players 10 and 14).
+- **43 notices, all `measured`, all withheld below three:** players 0, 1, 3, 6, 7 and 15 on every
+  fight, and player 10 on fight 28 only, where they played another specialisation than on fights
+  29-34.
+- **The e2e** (`test_a_real_wipe_is_compared_against_the_kills_pace`, fight 30, `--all-players`,
+  cold cache) spent 83.00 points; the seven distribution runs 15.00 together, against a warm
+  cache (9.00 for the first, which re-read the four reference lookups, then 1.00 each).
+- **No reference kill's deaths were ever read:** the e2e's one `Deaths` call was our own fight's,
+  and no distribution run made one.
+- The seven pages carry no template leak: no `>None<`, `>null<`, `>nan<`, `nan%`, `inf%`, `{{`
+  or `{%`. Four pages carry `>None ` once each, and each is the deaths finding's own sentence
+  opening "None of these".
+
+**Open:** withheld for an unnamed specialisation (0 occurrences), the "no second could be
+compared" notice (0), a player at 0% with no lag (0), a lag of exactly zero (0), a window ended
+by a release as distinct from an unanswered death (not observable in the findings file), and a
+reference player's window ended by their death (no reference kill with a death was drawn).
