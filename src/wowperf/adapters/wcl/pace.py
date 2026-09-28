@@ -34,6 +34,7 @@ from wowperf.domain.comparison.pace import (
 from wowperf.domain.comparison.pace_boss import find_boss_actor
 from wowperf.domain.comparison.pace_curve import PaceReference, PlayerSeries
 from wowperf.domain.comparison.reference import REPORT_URL
+from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.report.model import ReferenceRecord
 
@@ -89,8 +90,12 @@ def load_pace_sample(
 
     Our report's responses go in `own_cache`, which never expires; the
     reference kills' in `reference_cache`, which does -- other players' logs,
-    kept for one comparison. `references` is the mechanics comparison's own
-    members, so the page's two comparisons stand on one sample.
+    kept for one comparison. `references` is the candidates in the order they
+    are tried: `raid` hands its mechanics comparison's own members, so the
+    page's two comparisons stand on one sample, and `night` hands every
+    candidate the leaderboard offers, so a reference that fails is refilled
+    from the rows behind it. Either way the loop stops once it holds
+    `SAMPLE_SIZE` references, and a candidate past that costs no request.
 
     Each side's boss graph is also split by player: `our_players` is our own
     roster's part of it, and each `PaceReference.players` its own kill's
@@ -147,6 +152,8 @@ def load_pace_sample(
     boss_absent_count = 0
 
     for row in references:
+        if len(members) >= SAMPLE_SIZE:
+            break
         try:
             fight_variables = {"code": row.report_code, "fightId": row.fight_id}
             fight_payload, fight_hit = _fetch(

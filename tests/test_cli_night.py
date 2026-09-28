@@ -28,8 +28,10 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
+from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
+from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.night_build import CARD_TIER_NONE, build_night_report
 
@@ -223,6 +225,7 @@ def build_night_transport(
     deaths_on: tuple[int, ...] = (FIRST_PULL,),
     failing: frozenset[int] = frozenset(),
     kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
+    pace_errors: Mapping[tuple[str, str], int] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query a night issues, recording each operation and its variables.
 
@@ -248,6 +251,13 @@ def build_night_transport(
     before this task keeps working unchanged. `NpcActors`, `ReferenceFight`
     and `BossDamageGraph` answer the pace comparison's other three queries,
     following `build_raid_transport`'s own shapes for the same three.
+
+    `pace_errors` answers one pace request with a bare HTTP status instead:
+    keyed by operation and `encounterId` for `EncounterKillRankings`, by
+    operation and report code for `ReferenceFight` and a reference's
+    `BossDamageGraph`, and by operation and fight id for our own report's
+    `BossDamageGraph`. A 500 is how one boss's board or one pull's graph
+    fails; a 429 is how the hourly budget runs out.
     """
     running = 100.0
     quota = [100.0, 140.0]
@@ -316,13 +326,16 @@ def build_night_transport(
             }
         }
     }
-    # Which boss's own kill each reference `(code, fight id)` names, so
-    # `reference_fight_payload_for` can answer with only that boss's NPC --
-    # a real reference kill's `enemyNPCs` never lists a boss it was not
-    # fought, unlike the whole-report `masterData` `NpcActors` answers above.
+    # Which boss's own kill each reference `(code, fight id)` names, read off
+    # the board that listed it, so `reference_fight_payload_for` can answer
+    # with only that boss's NPC -- a real reference kill's `enemyNPCs` never
+    # lists a boss it was not fought, unlike the whole-report `masterData`
+    # `NpcActors` answers above.
     first_boss_pairs = frozenset(
-        zip(FIRST_BOSS_REFERENCE_CODES, FIRST_BOSS_REFERENCE_FIGHTS, strict=True)
+        (row["report"]["code"], row["report"]["fightID"])
+        for row in rankings_by_encounter.get(NIGHT_FIRST_BOSS, [])
     )
+    errors = pace_errors if pace_errors is not None else {}
 
     def reference_fight_payload_for(code: str, fight_id: int) -> dict[str, Any]:
         game_id, actor_id = (
@@ -412,6 +425,14 @@ def build_night_transport(
         if name == "AuraTable":
             return carrying_quota(auras)
         if name == "EncounterKillRankings":
+            key = str(variables["encounterId"])
+        elif name == "BossDamageGraph" and variables.get("code") == NIGHT_REPORT_CODE:
+            key = str(variables["fightId"])
+        else:
+            key = str(variables.get("code"))
+        if (name, key) in errors:
+            return httpx.Response(errors[(name, key)])
+        if name == "EncounterKillRankings":
             encounter_id = int(variables["encounterId"])
             rows = rankings_by_encounter.get(encounter_id, [])
             return carrying_quota(
@@ -450,6 +471,7 @@ def run_night(
     deaths_on: tuple[int, ...] = (FIRST_PULL,),
     failing: frozenset[int] = frozenset(),
     kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
+    pace_errors: Mapping[tuple[str, str], int] | None = None,
 ) -> Any:
     transport = build_night_transport(
         A_NIGHT if fights is None else fights,
@@ -457,6 +479,7 @@ def run_night(
         deaths_on=deaths_on,
         failing=failing,
         kill_rankings=kill_rankings,
+        pace_errors=pace_errors,
     )
     real_client = httpx.Client
 
@@ -1202,3 +1225,97 @@ def test_the_night_notes_list_each_reference_url_once(tmp_path: Path) -> None:
     for code, fight_id in PACE_REFERENCE_PAIRS:
         url = REPORT_URL.format(code=code, fight=fight_id)
         assert notes.count(url) == 1, url
+
+
+def _pulls_by_fight(tmp_path: Path) -> dict[int, dict[str, Any]]:
+    payload = json.loads(_written(tmp_path)[0].read_text(encoding="utf-8"))
+    return {pull["fight_id"]: pull for boss in payload["bosses"] for pull in boss["pulls"]}
+
+
+def _pace_notice(pull: dict[str, Any]) -> dict[str, Any] | None:
+    return next(
+        (one for one in pull["findings"] if one["id"] == "compare.pace.unavailable"), None
+    )
+
+
+def test_a_boss_whose_leaderboard_fails_withholds_its_own_wipes_and_the_night_goes_on(
+    tmp_path: Path,
+) -> None:
+    """A night is allowed to shrink, never to stop, for one boss's board.
+
+    The board lists the kills a wipe could be read against, so there is no
+    other kill to fall back on when it does not answer: that boss's wipes are
+    not compared, each saying why, and every other boss is compared as usual.
+    """
+    result = run_night(
+        tmp_path,
+        kill_rankings=PACE_KILL_RANKINGS,
+        pace_errors={("EncounterKillRankings", str(NIGHT_FIRST_BOSS)): 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    pulls = _pulls_by_fight(tmp_path)
+    for fight_id in (FIRST_PULL, SECOND_PULL):
+        notice = _pace_notice(pulls[fight_id])
+        assert notice is not None, fight_id
+        assert notice["detail"].startswith(PACE_NOT_FETCHED), fight_id
+    assert "compare.pace.boss" in _finding_ids(pulls[THIRD_PULL]["findings"])
+
+
+def test_a_pull_whose_own_boss_graph_fails_is_withheld_alone(tmp_path: Path) -> None:
+    """Our own report's graph is one pull's: its failure withholds that pull's pace only."""
+    result = run_night(
+        tmp_path,
+        kill_rankings=PACE_KILL_RANKINGS,
+        pace_errors={("BossDamageGraph", str(FIRST_PULL)): 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    pulls = _pulls_by_fight(tmp_path)
+    notice = _pace_notice(pulls[FIRST_PULL])
+    assert notice is not None
+    assert notice["detail"].startswith(PACE_NOT_FETCHED)
+    for fight_id in (SECOND_PULL, THIRD_PULL):
+        assert "compare.pace.boss" in _finding_ids(pulls[fight_id]["findings"]), fight_id
+
+
+def test_a_spent_hourly_budget_still_stops_the_night(tmp_path: Path) -> None:
+    """Not one pull's failure but every remaining pull's, as when a pull's streams
+    are loaded: recording it once per wipe would state a cause true of none."""
+    result = run_night(
+        tmp_path,
+        kill_rankings=PACE_KILL_RANKINGS,
+        pace_errors={("EncounterKillRankings", str(NIGHT_FIRST_BOSS)): 429},
+    )
+
+    assert result.exit_code == 1
+    assert "hourly point budget is spent" in plain(result.output)
+    assert not _written(tmp_path)[0].exists()
+
+
+EXTRA_FIRST_BOSS_REFERENCES = (
+    ("nightref1d", 9104), ("nightref1e", 9105), ("nightref1f", 9106), ("nightref1g", 9107)
+)
+
+
+def test_a_reference_kill_that_fails_is_replaced_by_the_next_on_the_board(
+    tmp_path: Path,
+) -> None:
+    """Seven kills on the first boss's board, the first two failing: the next
+    ones on the board take their place, so each wipe still reads five."""
+    rankings = {
+        **PACE_KILL_RANKINGS,
+        NIGHT_FIRST_BOSS: [
+            *PACE_KILL_RANKINGS[NIGHT_FIRST_BOSS],
+            *(_pace_reference_row(code, fight) for code, fight in EXTRA_FIRST_BOSS_REFERENCES),
+        ],
+    }
+    failing = {("ReferenceFight", code): 500 for code in FIRST_BOSS_REFERENCE_CODES[:2]}
+
+    result = run_night(tmp_path, kill_rankings=rankings, pace_errors=failing)
+
+    assert result.exit_code == 0, result.output
+    pulls = _pulls_by_fight(tmp_path)
+    for fight_id in (FIRST_PULL, SECOND_PULL):
+        [pace] = [one for one in pulls[fight_id]["findings"] if one["id"] == "compare.pace.boss"]
+        assert f"Against {SAMPLE_SIZE} reference kills of this raid size" in pace["evidence"]

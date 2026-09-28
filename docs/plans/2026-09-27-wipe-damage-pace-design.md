@@ -455,6 +455,15 @@ possible follow-up once this has been read on the page.
   at no cost. Each pull pays its own boss graph, about 1.4 points (§4).
 - **Raid size.** References match the pull's own size; a boss whose pulls ran at two sizes reads
   each pull against its own size's kills, and the sharing holds per boss and size.
+- **Failures shrink a pull's comparison, never the night** (amended 2026-09-28). `night` hands
+  `load_pace_sample` every row the rule selects, in leaderboard order, and the loader stops once it
+  holds five: a reference kill that fails to load is recorded "not used" and refilled from the
+  rows behind it, and a row past a full sample costs no request. When the boss's leaderboard, or
+  a request on our own report, fails, there is no other board to fall back on: that wipe is not
+  compared, its notice opens "Warcraft Logs did not return what this comparison reads" and
+  carries the error's first line, and every other pull goes on. A spent hourly budget
+  (`RateLimitExceeded`) still stops the night, as it does while pulls load: it is every remaining
+  pull's failure, not one pull's.
 
 ### 14.3 Wiring
 

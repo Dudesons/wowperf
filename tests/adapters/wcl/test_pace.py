@@ -31,6 +31,7 @@ from wowperf.domain.comparison.mechanics import ReferenceKillRow
 from wowperf.domain.comparison.pace import BOSS_IN_NO_REFERENCE, NO_REFERENCE_KILL, NO_SINGLE_BOSS
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage, PlayerSeries
+from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.model import Player
 
@@ -616,6 +617,83 @@ def test_a_reference_answering_with_an_http_error_is_recorded_not_raised(tmp_pat
     failed = [one for one in records if not one.loaded]
     assert len(failed) == 1
     assert failed[0].report_code == "reffails000000A"
+
+
+def _candidates(count: int) -> tuple[ReferenceKillRow, ...]:
+    return tuple(
+        ReferenceKillRow(
+            report_code=f"refcandidate{i:03d}A", fight_id=40 + i, size=20, duration_ms=200000
+        )
+        for i in range(count)
+    )
+
+
+def _answering(
+    fights_asked: list[str], *, failing: frozenset[str] = frozenset()
+) -> Callable[[httpx.Request], httpx.Response]:
+    """Every reference loads but the `failing` ones, which answer a 500."""
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            fights_asked.append(variables["code"])
+            if variables["code"] in failing:
+                return httpx.Response(500)
+            return _reference_fight_response(1000, 201000, [{"id": 40, "gameID": BOSS_GAME_ID}])
+        if name == "BossDamageGraph":
+            return _graph_response([5.0], point_start=1000, interval=1000.0)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    return handle
+
+
+def test_a_reference_that_fails_is_replaced_by_the_next_candidate(tmp_path: Path) -> None:
+    """Handed more candidates than a sample holds, the loop refills a failed
+    reference from the rows behind it rather than comparing against fewer."""
+    candidates = _candidates(SAMPLE_SIZE + 2)
+    failing = frozenset(one.report_code for one in candidates[:2])
+    asked: list[str] = []
+
+    sample, records = load_pace_sample(
+        _client(_answering(asked, failing=failing)),
+        DiskCache(tmp_path / "own"),
+        DiskCache(tmp_path / "reference"),
+        _encounter(),
+        candidates,
+    )
+
+    assert len(sample.references) == SAMPLE_SIZE
+    assert [one.report_code for one in records if not one.loaded] == [
+        one.report_code for one in candidates[:2]
+    ]
+    assert asked == [one.report_code for one in candidates]
+
+
+def test_no_candidate_past_a_full_sample_is_fetched(tmp_path: Path) -> None:
+    """The sample stops at `SAMPLE_SIZE` loaded references: a candidate behind
+    a full sample costs no request and leaves no record."""
+    candidates = _candidates(SAMPLE_SIZE + 2)
+    asked: list[str] = []
+
+    sample, records = load_pace_sample(
+        _client(_answering(asked)),
+        DiskCache(tmp_path / "own"),
+        DiskCache(tmp_path / "reference"),
+        _encounter(),
+        candidates,
+    )
+
+    assert len(sample.references) == SAMPLE_SIZE
+    assert asked == [one.report_code for one in candidates[:SAMPLE_SIZE]]
+    assert len(records) == SAMPLE_SIZE
 
 
 def test_our_responses_use_the_own_cache_and_references_the_reference_cache(

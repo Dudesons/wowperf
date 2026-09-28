@@ -11,10 +11,12 @@ from wowperf.domain.comparison.pace import (
     NO_SINGLE_BOSS,
     NOTHING_TO_COMPARE,
     PACE_ID,
+    PACE_NOT_FETCHED,
     PROJECTION_ID,
     UNAVAILABLE_ID,
     PaceSample,
     analyse_pace,
+    not_fetched,
 )
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import Confidence, Finding
@@ -191,3 +193,21 @@ def test_no_comparable_seconds_yields_a_notice() -> None:
     [notice] = analyse_pace(a_wipe(200), PaceSample(ours=steady(80, 200), references=kills))
     assert notice.id == UNAVAILABLE_ID
     assert notice.detail == NOTHING_TO_COMPARE
+
+
+def test_a_reason_for_data_that_never_arrived_keeps_the_errors_first_line() -> None:
+    """The error's own words say what failed; its later lines are a pointer to docs
+    or a stack of context no reader of the page can act on."""
+    reason = not_fetched("Server error '500 Internal Server Error'\nFor more information check")
+    assert reason == f"{PACE_NOT_FETCHED}: Server error '500 Internal Server Error'."
+
+
+def test_a_reason_for_data_that_never_arrived_ends_on_one_period() -> None:
+    assert not_fetched("The report is private.") == f"{PACE_NOT_FETCHED}: The report is private."
+
+
+def test_a_withheld_wipe_carries_the_not_fetched_reason_verbatim() -> None:
+    encounter = an_encounter(kill=False, fight_percentage=40.0)
+    reason = not_fetched("timed out")
+    [notice] = analyse_pace(encounter, PaceSample(unavailable=reason))
+    assert (notice.id, notice.detail) == (UNAVAILABLE_ID, reason)
