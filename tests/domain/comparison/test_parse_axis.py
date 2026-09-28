@@ -301,7 +301,7 @@ def evidence_of(findings: list[Finding], finding_id: str) -> list[str]:
 def test_a_wipe_withholds_the_whole_external_frame_in_one_sentence() -> None:
     """Design 14 item 4: `fightRankings` is a kill leaderboard under every metric
     and `Report.rankings` returns nothing for a wipe, so there is no external
-    reference at all. Design 13's first risk is that readers expect one anyway."""
+    parse reference at all. Design 13's first risk is that readers expect one anyway."""
     findings = compare_parse_axis(
         our_player=PLAYER, our_name="Emberkin", our_seconds=300.0, our_casts=(),
         our_auras=None, sample=ParseSample(), standing=None, boss_standing=None,
@@ -313,6 +313,21 @@ def test_a_wipe_withholds_the_whole_external_frame_in_one_sentence() -> None:
     # Every comparison it stands in for is named, so no reader wonders which ran.
     for family in ("damage", "casts", "talents", "buff uptime", "percentile"):
         assert family in findings[0].detail
+
+
+def test_a_wipe_withholds_the_parse_axis_and_not_every_comparison_against_the_kills() -> None:
+    """The same wipe's page draws its damage pace against the reference kills,
+    and each damage dealer's and tank's against the kills' own spec, so the
+    notice may say only that the parse leaderboard is absent. A title or detail
+    denying any outside reference is false beside those findings."""
+    [finding] = compare_parse_axis(
+        our_player=PLAYER, our_name="Emberkin", our_seconds=300.0, our_casts=(),
+        our_auras=None, sample=ParseSample(), standing=None, boss_standing=None,
+        board=(), boss_board=(), our_targets=(), their_targets=[],
+    )
+    assert finding.title == "No parse comparison is available for Emberkin"
+    assert "no parse leaderboard sample stands beside it" in finding.detail
+    assert "outside reference" not in finding.detail
 
 
 def test_a_kill_with_a_sample_emits_every_family_the_external_frame_owns() -> None:

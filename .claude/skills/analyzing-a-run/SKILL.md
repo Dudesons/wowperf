@@ -182,7 +182,7 @@ kill, or a night read with `--no-compare`, reads "No reference run was fetched f
 so there is nothing to compare against" — the same line `raid --no-compare` prints, since neither
 drew this axis at all — while a wipe pull whose pace was compared, which did fetch reference
 kills, reads the sentence `raid --fight N` prints for that wipe: the attempt did not kill the boss,
-so no leaderboard sample stands beside it and every parse family is withheld. It says so where
+so no parse leaderboard sample stands beside it and every parse family is withheld. It says so where
 `raid` does — on every card, on the Damage tab when no pace row opens it, and once in the pull's
 Provenance. That pull's verdict notice says the night draws no mechanics sample, so the attempt's
 duration and death toll are not read against the kills here, and names `wowperf raid --fight
