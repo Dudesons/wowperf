@@ -7,7 +7,7 @@ from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
 from wowperf.domain.comparison.pace import UNAVAILABLE_ID, PaceSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.night import FailedPull, LoadedNight
-from wowperf.domain.report.frame import plural
+from wowperf.domain.report.frame import NO_COMPARISON_RAN, plural
 from wowperf.domain.report.ledger import ledger_row
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.night_frame import build_night_header, night_subject
@@ -130,6 +130,22 @@ def _pace_withheld_line(fight_id: int, findings: Sequence[Finding]) -> str | Non
     return f"Fight {fight_id}: damage pace against the kills was not compared. {notice.detail}"
 
 
+def _no_comparison_reason(fight_id: int) -> str:
+    """Why a night pull's spell-and-talent comparison is silent, for a pull that did fetch.
+
+    `NO_COMPARISON_RAN` claims nothing was fetched at all, which is false of a
+    pull `pace_by_fight` names: `load_pace_sample` ran for it, whether or not
+    it found a reference kill to compare against. The axis this line is
+    actually about -- spell and talent, per player -- was never drawn either
+    way, and `wowperf raid --fight <fight_id>` is what draws it, so a reader
+    who wants it is pointed there rather than told nothing was ever fetched.
+    """
+    return (
+        "The night page draws no spell and talent comparison: "
+        f"`wowperf raid --fight {fight_id}` draws one for this pull."
+    )
+
+
 def build_night_report(
     loaded: LoadedNight,
     findings_by_fight: Mapping[int, Sequence[Finding]],
@@ -210,6 +226,7 @@ def build_night_report(
             pace_line = _pace_withheld_line(fight_id, pull_findings)
             if pace_line is not None:
                 pace_withheld.append(pace_line)
+            pace_sample = (pace_by_fight or {}).get(fight_id)
             pulls.append(
                 PullSection(
                     report=build_raid_report(
@@ -226,7 +243,12 @@ def build_night_report(
                         reference_records=pull_records,
                         trimmed=tier == TRIMMED,
                         death_cards=tier != NO_CARDS,
-                        pace=(pace_by_fight or {}).get(fight_id),
+                        pace=pace_sample,
+                        no_comparison_reason=(
+                            _no_comparison_reason(fight_id)
+                            if pace_sample is not None
+                            else NO_COMPARISON_RAN
+                        ),
                     ),
                     tier=tier,
                 )

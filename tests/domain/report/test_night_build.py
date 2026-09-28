@@ -738,6 +738,53 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
     ]
 
 
+def test_a_pull_handed_a_pace_sample_names_the_night_reason_not_no_comparison_ran() -> None:
+    """`NO_COMPARISON_RAN` says nothing was fetched at all, which stops being true
+    the moment `load_pace_sample` ran for a pull -- whether or not it found a
+    reference kill to compare against. The switch is on being handed a
+    sample, not on that sample succeeding: an available and an unavailable
+    sample both get the night's own reason, and only a pull `pace_by_fight`
+    never names at all keeps today's line.
+    """
+    night = a_night(bosses=(3,))
+    compared, unavailable, untouched = (
+        attempt.fight_id for attempt in night.night.bosses[0].attempts
+    )
+    encounter = next(
+        one for one in night.night.bosses[0].attempts if one.fight_id == compared
+    )
+    sample = a_sample(80, int(encounter.duration_seconds))
+    findings = analyse_pace(encounter, sample)
+
+    report = build_night_report(
+        night,
+        {compared: findings},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={
+            compared: sample,
+            unavailable: PaceSample(unavailable=NO_SINGLE_BOSS),
+        },
+    )
+
+    def withheld_for(fight_id: int) -> tuple[str, ...]:
+        pull = next(
+            one.report for one in report.bosses[0].pulls
+            if one.report.provenance.fight_id == fight_id
+        )
+        return pull.provenance.withheld
+
+    for fight_id in (compared, unavailable):
+        assert not any(NO_COMPARISON_RAN in line for line in withheld_for(fight_id)), fight_id
+        assert any(f"raid --fight {fight_id}" in line for line in withheld_for(fight_id)), fight_id
+    assert any(NO_COMPARISON_RAN in line for line in withheld_for(untouched))
+
+
 def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None:
     """Task 1's line, handed through `findings_by_boss` as the command will hand it.
 

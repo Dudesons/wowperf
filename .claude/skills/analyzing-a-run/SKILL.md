@@ -175,13 +175,16 @@ It draws no parse axis and no mechanics axis — the two per-player and per-boss
 draws for a single pull. The parse axis is per player per boss, and across a whole report it would
 cost an order of magnitude more than everything else here put together, so `--player` and
 `--all-players` do not apply and are not offered; there is no per-player reference for them to
-widen. The mechanics axis is absent for a different reason: this command fetches no
-execution-leaderboard ability table, so every pull's spell-and-talent section reads "No reference
-run was fetched for this analysis, so there is nothing to compare against" — the same line `raid
---no-compare` prints for that axis, since neither command fetched one. The page also states the
-parse absence once, on its own, naming the families it leaves out — damage against the board,
-damage by target, casts a minute, talents, buff uptime, the percentile — rather than leaving them
-silently missing.
+widen. The mechanics axis is absent for a different reason: this command draws no per-boss
+mechanics comparison at all, so it loads no damage-taken table for one, whatever `--no-compare`
+says. Either way, every pull's spell-and-talent section is empty, and why it is differs: a
+kill, or a night read with `--no-compare`, reads "No reference run was fetched for this analysis,
+so there is nothing to compare against" — the same line `raid --no-compare` prints, since neither
+drew this axis at all — while a compared wipe pull, whose pace comparison did fetch a reference
+kill, reads a line pointing to `wowperf raid --fight <fight>` for the comparison this command never
+draws. The page also states the parse absence once, on its own, naming the families it leaves out
+— damage against the board, damage by target, casts a minute, talents, buff uptime, the percentile
+— rather than leaving them silently missing.
 
 It does draw one comparison, on by default: each wipe pull's damage pace against the reference
 kills, the same reading `raid --fight N` draws for that pull, shared through the one-day reference

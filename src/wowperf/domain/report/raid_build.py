@@ -54,7 +54,12 @@ sibling that is not the verdict itself.
 """
 
 
-def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) -> Section:
+def _damage_section(
+    findings: Sequence[Finding],
+    rows: tuple[LedgerRow, ...],
+    *,
+    no_comparison_reason: str = NO_COMPARISON_RAN,
+) -> Section:
     """The Damage tab: present when it has rows, withheld with the comparison's own reason.
 
     Matched by prefix and never by id. `compare_parse_axis` mints
@@ -74,6 +79,13 @@ def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) ->
     `section_for` is not reused for the same reason: its reason is resolved
     through `finding_by_id`, an exact match, which is the half that cannot
     hold here.
+
+    `no_comparison_reason` is what the fallback states when neither a row nor
+    a `compare.parse.unavailable` finding is found -- `build_raid_report`'s own
+    parameter of the same name, threaded through rather than read as
+    `NO_COMPARISON_RAN` unconditionally, so a caller for whom that claim is
+    false (the night page, which fetches a reference kill this axis never
+    draws on) can say why instead.
     """
     if rows:
         return Section(state=SectionState.PRESENT)
@@ -82,7 +94,7 @@ def _damage_section(findings: Sequence[Finding], rows: tuple[LedgerRow, ...]) ->
     )
     return Section(
         state=SectionState.WITHHELD,
-        reason=unavailable.detail if unavailable else NO_COMPARISON_RAN,
+        reason=unavailable.detail if unavailable else no_comparison_reason,
     )
 
 
@@ -102,6 +114,7 @@ def build_raid_report(
     trimmed: bool = False,
     death_cards: bool = True,
     pace: PaceSample | None = None,
+    no_comparison_reason: str = NO_COMPARISON_RAN,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
 
@@ -133,6 +146,16 @@ def build_raid_report(
     measures themselves are computed from a `LoadedRun`, which this path never
     holds. A parameter accepted and ignored is a lie the type system helps
     tell.
+
+    `no_comparison_reason` is what the page says wherever `NO_COMPARISON_RAN`
+    would otherwise be printed -- the Damage tab's own fallback and the
+    report-wide "Spell and talent comparison" line -- and defaults to that
+    same constant, so `raid` itself is unaffected. The night page overrides
+    it for a pull it fetched a pace sample for: that pull did fetch a
+    reference kill, so the claim "no reference run was fetched for this
+    analysis" would be false of it, even though the axis this reason is
+    actually about -- spell and talent, per player -- was never drawn either
+    way.
     """
     _check_unique_finding_ids(findings)
 
@@ -243,7 +266,9 @@ def build_raid_report(
     parse_rows = tuple(
         row for row in placed_rows["damage_rows"] if not row.finding_id.startswith(PACE_PREFIX)
     )
-    parse_damage = _damage_section(findings, parse_rows)
+    parse_damage = _damage_section(
+        findings, parse_rows, no_comparison_reason=no_comparison_reason
+    )
     damage = (
         Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
     )
@@ -297,7 +322,7 @@ def build_raid_report(
     # asked for is left off this list for the same reason: their comparison
     # was not withheld, it was not requested.
     if compared_slugs is None:
-        withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
+        withheld.append(f"Spell and talent comparison: {no_comparison_reason}")
     else:
         for card in players:
             if (

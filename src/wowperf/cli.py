@@ -1883,11 +1883,14 @@ def night(
     `raid` reads one pull, `progression` one boss's pulls, this one the whole
     report. There is no `--fight`, because covering every fight is the point.
 
-    It draws no parse axis and no mechanics axis. Both are per player or per
-    boss and cost an order of magnitude more than everything else here put
-    together, so `--player` and `--all-players` are not offered, there being
-    no per-player reference for them to widen, and the page says once that no
-    parse axis was drawn rather than leaving six families silently missing.
+    It draws no parse axis. That sample is per player per boss, and across a
+    report it would cost an order of magnitude more than everything else here
+    put together, so `--player` and `--all-players` are not offered, there
+    being no per-player reference for them to widen. It draws no mechanics
+    axis either, for a different reason: the night draws no per-boss
+    mechanics comparison at all, so it loads no damage-taken table for one.
+    The page says once that no parse axis was drawn, rather than leaving six
+    families silently missing.
 
     It does draw one comparison, on by default: each wipe pull's damage pace
     against the reference kills, the same reading `raid --fight N` draws for
@@ -2020,7 +2023,10 @@ def night(
         # for a kill or for a night read with `--no-compare`.
         findings_by_fight = {
             attempt.encounter.fight_id: analyse_encounter(
-                attempt, defensives, consumables, roles=roles,
+                attempt,
+                defensives,
+                consumables,
+                roles=roles,
                 pace=pace_by_fight.get(attempt.encounter.fight_id),
             )
             for attempt in drawn

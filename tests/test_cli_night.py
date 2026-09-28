@@ -3,6 +3,7 @@
 
 import json
 import re
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -69,15 +70,28 @@ withholds with `NO_REFERENCE_KILL` rather than `NO_SINGLE_BOSS` unless a test
 says otherwise, and `NO_REFERENCE_KILL` is what the default empty
 `kill_rankings` promises the existing tests below."""
 
-PACE_REFERENCE_CODES = ("nightref1", "nightref2", "nightref3")
-PACE_REFERENCE_FIGHTS = (9101, 9102, 9103)
-"""Three reference kills, shared by both bosses in this fixture.
+FIRST_BOSS_REFERENCE_ACTOR_ID = 1
+SECOND_BOSS_REFERENCE_ACTOR_ID = 2
+"""Each boss's own actor id inside its OWN reference fights, distinct per boss.
 
-A live leaderboard would answer two different bosses with two different sets
-of kills; this transport answers every `EncounterKillRankings` call with the
-same three rows regardless of which boss asked, which is what lets the
-operation-count tests below prove the reference cache shares a fetch across a
-boss's own wipes without needing two distinct fixtures to prove it twice."""
+A real reference kill is a fight against one boss alone, so its `enemyNPCs`
+never lists the other boss at all -- unlike a real report's `masterData`,
+which spans every fight and does list both. Distinct actor ids per boss (not
+merely distinct game ids) are what makes `BossDamageGraph`'s `targetId` name
+the right boss's actor rather than colliding into one, which a shared actor
+id across bosses would silently paper over."""
+
+FIRST_BOSS_REFERENCE_CODES = ("nightref1a", "nightref1b", "nightref1c")
+FIRST_BOSS_REFERENCE_FIGHTS = (9101, 9102, 9103)
+SECOND_BOSS_REFERENCE_CODES = ("nightref2a", "nightref2b", "nightref2c")
+SECOND_BOSS_REFERENCE_FIGHTS = (9201, 9202, 9203)
+"""Three reference kills per boss, six report codes total and none shared.
+
+Spec 14.2: the sharing holds per boss and size, never across bosses -- a real
+leaderboard answers two different bosses with two different sets of kills, so
+a fixture where both bosses drew the same three rows would be physically
+impossible and could not tell a builder that shares correctly per boss from
+one that (wrongly) shares across bosses too."""
 
 
 def _pace_reference_row(report_code: str, fight_id: int) -> dict[str, Any]:
@@ -95,13 +109,29 @@ def _pace_reference_row(report_code: str, fight_id: int) -> dict[str, Any]:
     }
 
 
-PACE_KILL_RANKINGS = [
-    _pace_reference_row(code, fight_id)
-    for code, fight_id in zip(PACE_REFERENCE_CODES, PACE_REFERENCE_FIGHTS, strict=True)
-]
+PACE_KILL_RANKINGS = {
+    NIGHT_FIRST_BOSS: [
+        _pace_reference_row(code, fight_id)
+        for code, fight_id in zip(
+            FIRST_BOSS_REFERENCE_CODES, FIRST_BOSS_REFERENCE_FIGHTS, strict=True
+        )
+    ],
+    NIGHT_SECOND_BOSS: [
+        _pace_reference_row(code, fight_id)
+        for code, fight_id in zip(
+            SECOND_BOSS_REFERENCE_CODES, SECOND_BOSS_REFERENCE_FIGHTS, strict=True
+        )
+    ],
+}
+"""`EncounterKillRankings`' rows, keyed by the `encounterId` that asked -- each
+boss's own three references, never the other boss's."""
 
-PACE_REFERENCE_PAIRS = sorted(zip(PACE_REFERENCE_CODES, PACE_REFERENCE_FIGHTS, strict=True))
-"""Each reference's `(code, fight id)`, sorted -- what a request-count test compares against."""
+PACE_REFERENCE_PAIRS = sorted(
+    zip(FIRST_BOSS_REFERENCE_CODES, FIRST_BOSS_REFERENCE_FIGHTS, strict=True)
+) + sorted(
+    zip(SECOND_BOSS_REFERENCE_CODES, SECOND_BOSS_REFERENCE_FIGHTS, strict=True)
+)
+"""All six references' `(code, fight id)` -- what a request-count test compares against."""
 
 
 def _night_fight(
@@ -181,7 +211,7 @@ def build_night_transport(
     *,
     deaths_on: tuple[int, ...] = (FIRST_PULL,),
     failing: frozenset[int] = frozenset(),
-    kill_rankings: list[dict[str, Any]] | None = None,
+    kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query a night issues, recording each operation and its variables.
 
@@ -197,14 +227,16 @@ def build_night_transport(
     into the repository: a cached response is served without one, and the
     ability dictionary is fetched once for the whole report.
 
-    `kill_rankings` answers `EncounterKillRankings` with the rows given, empty
-    by default -- the same convention `build_raid_transport` uses, except
-    empty rather than one working reference: with nothing on the board, every
-    wipe still withholds its pace comparison with `NO_REFERENCE_KILL`, before
-    any graph is fetched, so every test written before this task keeps
-    working unchanged. `NpcActors`, `ReferenceFight` and `BossDamageGraph`
-    answer the pace comparison's other three queries, following
-    `build_raid_transport`'s own shapes for the same three.
+    `kill_rankings` answers `EncounterKillRankings` with that boss's own rows,
+    keyed by `encounterId` and empty by default for a boss the mapping does
+    not name -- the same convention `build_raid_transport` uses for its own
+    single leaderboard, except keyed per boss here because spec 14.2 shares a
+    reference kill within a boss and never across two. With nothing on the
+    board, every wipe still withholds its pace comparison with
+    `NO_REFERENCE_KILL`, before any graph is fetched, so every test written
+    before this task keeps working unchanged. `NpcActors`, `ReferenceFight`
+    and `BossDamageGraph` answer the pace comparison's other three queries,
+    following `build_raid_transport`'s own shapes for the same three.
     """
     running = 100.0
     quota = [100.0, 140.0]
@@ -252,22 +284,13 @@ def build_night_transport(
         }
     }
 
-    # The pace comparison's own four queries. `rankings_payload` answers every
-    # `EncounterKillRankings` call with the same rows regardless of which
-    # boss's `encounterId` asked -- a live leaderboard would not, but nothing
-    # here needs two distinct boards to prove a boss's own kills are shared
-    # across its own wipes. `npc_actors_payload` always carries both bosses'
-    # actors, so a wipe withholds `NO_REFERENCE_KILL` (the empty-board case)
-    # rather than `NO_SINGLE_BOSS` (a boss lookup failure) by default.
-    rows = kill_rankings if kill_rankings is not None else []
-    rankings_payload: dict[str, Any] = {
-        "worldData": {
-            "encounter": {
-                "id": NIGHT_FIRST_BOSS,
-                "fightRankings": {"page": 1, "hasMorePages": False, "rankings": rows},
-            }
-        }
-    }
+    # The pace comparison's own four queries. `rankings_by_encounter` answers
+    # each boss's `EncounterKillRankings` call with that boss's own three rows
+    # and no other boss's, matching spec 14.2: the sharing holds per boss and
+    # size, never across bosses. `npc_actors_payload` always carries both
+    # bosses' actors, so a wipe withholds `NO_REFERENCE_KILL` (the empty-board
+    # case) rather than `NO_SINGLE_BOSS` (a boss lookup failure) by default.
+    rankings_by_encounter = kill_rankings if kill_rankings is not None else {}
     npc_actors_payload: dict[str, Any] = {
         "reportData": {
             "report": {
@@ -282,31 +305,36 @@ def build_night_transport(
             }
         }
     }
-    # One fixed reference fight, reused for every reference kill: its
-    # `enemyNPCs` carry both bosses' game ids, so whichever boss is being
-    # compared finds its own actor in it, both under the same actor id --
-    # this fixture's one reference stands in for a different kill per real
-    # boss, and giving both game ids the same actor id is what lets the
-    # `BossDamageGraph` query, scoped by that actor id as `targetId`, land
-    # on one cache key for either boss rather than two. Empty roster arrays,
-    # since the night draws no per-player pace at all (section 14.6).
-    reference_fight_payload: dict[str, Any] = {
-        "reportData": {
-            "report": {
-                "fights": [
-                    {
-                        "id": 1, "startTime": 0, "endTime": 300_000,
-                        "enemyNPCs": [
-                            {"id": 1, "gameID": FIRST_BOSS_GAME_ID},
-                            {"id": 1, "gameID": SECOND_BOSS_GAME_ID},
-                        ],
-                        "friendlyPlayers": [],
-                        "friendlySpecs": [],
-                    }
-                ],
+    # Which boss's own kill each reference `(code, fight id)` names, so
+    # `reference_fight_payload_for` can answer with only that boss's NPC --
+    # a real reference kill's `enemyNPCs` never lists a boss it was not
+    # fought, unlike the whole-report `masterData` `NpcActors` answers above.
+    first_boss_pairs = frozenset(
+        zip(FIRST_BOSS_REFERENCE_CODES, FIRST_BOSS_REFERENCE_FIGHTS, strict=True)
+    )
+
+    def reference_fight_payload_for(code: str, fight_id: int) -> dict[str, Any]:
+        game_id, actor_id = (
+            (FIRST_BOSS_GAME_ID, FIRST_BOSS_REFERENCE_ACTOR_ID)
+            if (code, fight_id) in first_boss_pairs
+            else (SECOND_BOSS_GAME_ID, SECOND_BOSS_REFERENCE_ACTOR_ID)
+        )
+        return {
+            "reportData": {
+                "report": {
+                    "fights": [
+                        {
+                            "id": fight_id, "startTime": 0, "endTime": 300_000,
+                            "enemyNPCs": [{"id": actor_id, "gameID": game_id}],
+                            # Empty roster arrays: the night draws no
+                            # per-player pace at all (section 14.6).
+                            "friendlyPlayers": [],
+                            "friendlySpecs": [],
+                        }
+                    ],
+                }
             }
         }
-    }
 
     def boss_damage_graph_payload(point_start: float, amount_per_second: float) -> dict[str, Any]:
         return {
@@ -373,11 +401,26 @@ def build_night_transport(
         if name == "AuraTable":
             return carrying_quota(auras)
         if name == "EncounterKillRankings":
-            return carrying_quota(rankings_payload)
+            encounter_id = int(variables["encounterId"])
+            rows = rankings_by_encounter.get(encounter_id, [])
+            return carrying_quota(
+                {
+                    "worldData": {
+                        "encounter": {
+                            "id": encounter_id,
+                            "fightRankings": {
+                                "page": 1, "hasMorePages": False, "rankings": rows,
+                            },
+                        }
+                    }
+                }
+            )
         if name == "NpcActors":
             return carrying_quota(npc_actors_payload)
         if name == "ReferenceFight":
-            return carrying_quota(reference_fight_payload)
+            return carrying_quota(
+                reference_fight_payload_for(variables["code"], int(variables["fightId"]))
+            )
         if name == "BossDamageGraph":
             ours = variables.get("code") == NIGHT_REPORT_CODE
             point_start = float(variables["startTime"])
@@ -395,7 +438,7 @@ def run_night(
     calls: list[tuple[str, dict[str, Any]]] | None = None,
     deaths_on: tuple[int, ...] = (FIRST_PULL,),
     failing: frozenset[int] = frozenset(),
-    kill_rankings: list[dict[str, Any]] | None = None,
+    kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
 ) -> Any:
     transport = build_night_transport(
         A_NIGHT if fights is None else fights,
@@ -899,7 +942,12 @@ def test_night_states_what_it_spent(tmp_path: Path) -> None:
 
     The breakdown names the dearest operation, so a command printing the
     sentence without the breakdown -- or the breakdown without the sentence --
-    fails here.
+    fails here. A compared night's own pace queries appear in the breakdown
+    too, on by default: `EncounterKillRankings` and `NpcActors` run for every
+    wipe pull's boss even with nothing on the board (design 14.5's "the spend
+    test is extended"). Proved able to fail by a `--no-compare` run of this
+    same assertion, which issues neither -- see the fix report for that run's
+    output.
     """
     result = run_night(tmp_path)
 
@@ -908,6 +956,8 @@ def test_night_states_what_it_spent(tmp_path: Path) -> None:
     assert "Rate limit:" in output
     assert "points spent" in output
     assert "Fights" in output
+    assert "EncounterKillRankings" in output
+    assert "NpcActors" in output
 
 
 PACE_OPERATIONS = ("EncounterKillRankings", "NpcActors", "ReferenceFight", "BossDamageGraph")
@@ -944,10 +994,13 @@ def test_a_boss_wide_reference_kill_is_fetched_once_and_shared_across_its_wipes(
 ) -> None:
     """Section 14.2: the reference cache, not a second loader, is what shares a fetch.
 
-    `EncounterKillRankings` once per boss (its own `encounterId`), `ReferenceFight`
-    once per reference for the whole night, and `BossDamageGraph` once per
-    reference plus once per wipe pull of our own report -- proved by call
-    count and variables, not by trusting the exit code alone.
+    The first boss holds two wipes and the second one, each against its own
+    three references -- never the other boss's, per spec 14.2's "holds per
+    boss and size, not across". `EncounterKillRankings` once per boss (its own
+    `encounterId`); each of the six references' `ReferenceFight` and
+    `BossDamageGraph` exactly once, however many of that boss's wipes drew on
+    it; `BossDamageGraph` once more per wipe pull for our own report. Proved
+    by call count and variables, not by trusting the exit code alone.
     """
     calls: list[tuple[str, dict[str, Any]]] = []
     result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS, calls=calls)
@@ -1028,10 +1081,12 @@ def test_a_night_of_only_kills_fetches_no_reference_kill(tmp_path: Path) -> None
 def test_the_night_notes_list_each_reference_url_once(tmp_path: Path) -> None:
     """Section 14.3: the night's Provenance lists each reference once, however many pulls used it.
 
-    Three references shared by three wipe pulls at two bosses would print each
-    url three times over if the night pooled every pull's own records without
+    Two references shared by the first boss's two wipes would print each url
+    twice over if the night pooled every pull's own records without
     deduplicating; `build_night_report` dedupes by url, and this is what would
-    catch a regression of that.
+    catch a regression of that. Six urls in total -- three per boss, and the
+    second boss's own three prove the notes list every reference, not only
+    the ones a boss's own repeated wipe happens to share.
     """
     result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
 
@@ -1040,6 +1095,6 @@ def test_the_night_notes_list_each_reference_url_once(tmp_path: Path) -> None:
     start = html.index('<section class="night-notes">')
     end = html.index("</section>", start)
     notes = html[start:end]
-    for code, fight_id in zip(PACE_REFERENCE_CODES, PACE_REFERENCE_FIGHTS, strict=True):
+    for code, fight_id in PACE_REFERENCE_PAIRS:
         url = REPORT_URL.format(code=code, fight=fight_id)
         assert notes.count(url) == 1, url
