@@ -2,7 +2,8 @@
 
 **Status:** approved design; slice 1 planned in
 `docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built. Slice 2 specified in §13 (approved
-2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-per-player-plan.md` and built.
+2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-per-player-plan.md` and built. Slice 3
+specified in §14 (approved 2026-09-28).
 **Area:** the raid page on a wipe. It amends ruling 4.5 of
 `docs/plans/2026-09-18-wipe-analysis-design.md` for damage *done* (§3) and opens the depletion
 question that design's §8.4 set aside, answered with damage rather than health.
@@ -33,7 +34,8 @@ our duration against the kills' median duration.
    twenty. **Specified in §13 (approved 2026-09-28)**; the roster check it waited on was run
    that day, and §13 amends this paragraph where the two differ.
 3. **The night page:** slice 1's comparison on each wipe pull. Each boss's reference kills are
-   fetched once and shared by all its pulls, so a pull costs about one graph.
+   fetched once and shared by all its pulls, so a pull costs about one graph. **Specified in §14
+   (approved 2026-09-28)**, which adds one line per boss across its wipes.
 
 ## 3. Ruling 4.5, amended for damage done
 
@@ -273,7 +275,7 @@ none of it needed correcting.
 - Enrage and berserk timers: no data.
 - A boss-health projection (§6).
 - Council encounters in slices 1 and 2.
-- Slice 3 beyond what §2 records.
+- Slice 3 beyond what §14 records.
 - Any change to `wipe.cause`.
 - A per-player projection (§13.3).
 
@@ -423,3 +425,85 @@ twenty on every fight.
 compared" notice (0), a player at 0% with no lag (0), a lag of exactly zero (0), a window ended
 by a release as distinct from an unanswered death (not observable in the findings file), and a
 reference player's window ended by their death (no reference kill with a death was drawn).
+
+## 14. Slice 3: the night page
+
+Approved 2026-09-28. Everything in §1-§12 holds for this slice unless this section says otherwise;
+§13 (per player) is not part of it.
+
+### 14.1 Scope
+
+Each wipe pull of `wowperf night` carries slice 1's raid-wide comparison exactly as `raid --fight
+N` draws it for a wipe: `compare.pace.boss`, `compare.pace.projection` or `compare.pace.unavailable`,
+the chart on the pull's Damage tab and the Summary pointer. Each boss adds one line across its
+wipes (§14.4). A kill pull gains nothing. Per-player lines on the night pulls are out of scope, a
+possible follow-up once this has been read on the page.
+
+### 14.2 Data
+
+- **On by default**, skipped with a new `--no-compare` flag, the name `raid` and `analyze` already
+  use. A kill pull, or `--no-compare`, requests nothing for pace.
+- **The reference kills** are chosen by the rule `raid` uses: the execution leaderboard's kills of
+  the same boss, difficulty, partition and raid size, never the fight under analysis, up to five.
+  `raid` takes them from its mechanics sample, which also loads each kill's damage-taken table;
+  `night` draws no mechanics comparison, so it takes the rows by the same rule without that table.
+  The row selection moves out of `_mechanics_sample` into one helper both commands call.
+- **Shared through the cache.** Each wipe pull runs `load_pace_sample` as `raid` does. The
+  leaderboard and each reference's lookup and boss graph go through the one-day reference cache, so
+  the first wipe pull at a boss and raid size pays for them and every later pull reads them back
+  at no cost. Each pull pays its own boss graph, about 1.4 points (§4).
+- **Raid size.** References match the pull's own size; a boss whose pulls ran at two sizes reads
+  each pull against its own size's kills, and the sharing holds per boss and size.
+
+### 14.3 Wiring
+
+Each wipe pull's `PaceSample` reaches `analyse_encounter`, for the findings, and
+`build_raid_report`, for the chart, the pointer and that pull's reference records in its own
+Provenance -- the page a `raid --fight N` wipe draws. The night's Provenance lists each reference
+kill once, as a link and never a figure, however many pulls used it, and says which pulls
+withheld the comparison and why.
+
+### 14.4 The boss-level line: `progression.attempts.pace`, `derived`
+
+- **Where:** the boss block's Attempts tab, by the existing rule that places `progression.attempts.`
+  there. Emitted only on the night page, only when two or more of the boss's wipe pulls were
+  compared; with one, it would repeat that pull's finding. It carries no time lost, so it never
+  becomes a Summary pointer.
+- **Title:** a count, with no claim of improvement: "3 of 4 wipes ended behind the kills' pace";
+  "None of 3 wipes ended behind the kills' pace". The count is over the compared pulls only.
+- **Evidence:** one line per wipe pull, in pull order, named by fight id as the pull's own heading
+  names it, each read from that pull's slice 1 reading:
+  - "Fight 12: behind from 1:10 to the wipe at 2:40";
+  - "Fight 14: behind from 3:10 to 5:00, where fewer than three kills were still fighting";
+  - "Fight 15: on pace through the wipe at 4:10";
+  - "Fight 16: ahead through the wipe at 3:20";
+  - "Fight 17: not compared: ...", carrying that pull's own withheld reason verbatim; listed, not
+    counted.
+  - When the boss's pulls ran at more than one raid size, one line says which fights ran at which
+    size.
+- **No new arithmetic:** every clock and state is one slice 1 already computed for that pull. No
+  damage figure, no trend word.
+
+### 14.5 Testing
+
+- **Unit:** the boss line from per-pull readings built with slice 1's helpers, never hand-typed
+  findings: behind, on pace, ahead, a band cut, a withheld pull with its reason; one compared pull
+  (no line) against two; the count and the "None of" title; two raid sizes; pull order; no
+  four-digit figure.
+- **Builder and render:** a wipe pull on the night page carries the chart, the pointer and the
+  pace rows on its Damage tab, asserted by what they render; a kill pull carries none; the boss
+  line sits on its boss's Attempts tab only, placed exactly once; the night Provenance lists each
+  reference once; no `>None<`. The night golden stays byte-identical: it carries no pace, and
+  every new block is guarded.
+- **CLI (offline):** two wipe pulls at one boss make the reference requests once, counted by
+  operation name, and one boss graph each; `--no-compare` makes no pace request; a kill-only boss
+  makes none; the spend test is extended.
+- **Live, not optional:** one cold `night` run on `cW38jmwdnZfbHVL4`, stopping if pace adds more
+  than 60 points over the same night without it. The findings JSON is read by a script that prints
+  no name, counting how often each per-pull state and each boss-line state occurred; a state that
+  never occurs is recorded as open. The night e2e gains pace assertions on the same single run.
+
+### 14.6 Out of scope
+
+Per-player lines on night pulls; any trend judgement; the `progression` command; any change to
+`raid` beyond the moved row-selection helper.
