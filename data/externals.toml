@@ -14,13 +14,15 @@
 # Every ability id and cooldown here was read from the game's own spell data on the
 # date below, one spell at a time, and the name returned had to match the ability
 # intended. An id that matches nothing fails silently forever, so recall is not enough.
+#
+# group = true marks an ability that answers the whole group's damage (healing-cooldowns design, 2026-09-29).
 verified = "2026-09-07"
 
 
 ["Priest/Discipline"]
 abilities = [
   { ability_id = 33206, name = "Pain Suppression", cooldown_seconds = 180.0 },
-  { ability_id = 62618, name = "Power Word: Barrier", cooldown_seconds = 180.0 },
+  { ability_id = 62618, name = "Power Word: Barrier", cooldown_seconds = 180.0, group = true },
 ]
 
 ["Priest/Holy"]
@@ -40,7 +42,7 @@ abilities = [
 
 ["Shaman/Restoration"]
 abilities = [
-  { ability_id = 98008, name = "Spirit Link Totem", cooldown_seconds = 180.0 },
+  { ability_id = 98008, name = "Spirit Link Totem", cooldown_seconds = 180.0, group = true },
 ]
 
 ["Evoker/Preservation"]
@@ -71,15 +73,15 @@ abilities = [
 
 ["Warrior/Arms"]
 abilities = [
-  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0, group = true },
 ]
 
 ["Warrior/Fury"]
 abilities = [
-  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0, group = true },
 ]
 
 ["Warrior/Protection"]
 abilities = [
-  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0 },
+  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0, group = true },
 ]

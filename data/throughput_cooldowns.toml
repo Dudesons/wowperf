@@ -21,6 +21,8 @@
 # from the game years ago, so availability was confirmed separately against live
 # talent data and current spec guides. This pass dropped a dozen abilities that
 # resolved perfectly and no longer exist.
+#
+# group = true marks an ability that answers the whole group's damage (healing-cooldowns design, 2026-09-29).
 verified = "2026-09-06"
 
 
@@ -85,9 +87,9 @@ abilities = [
 
 ["Druid/Restoration"]
 abilities = [
-  { ability_id = 33891, name = "Incarnation: Tree of Life", cooldown_seconds = 180.0 },
-  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0 },
-  { ability_id = 740, name = "Tranquility", cooldown_seconds = 180.0 },
+  { ability_id = 33891, name = "Incarnation: Tree of Life", cooldown_seconds = 180.0, group = true },
+  { ability_id = 391528, name = "Convoke the Spirits", cooldown_seconds = 120.0, group = true },
+  { ability_id = 740, name = "Tranquility", cooldown_seconds = 180.0, group = true },
   { ability_id = 132158, name = "Nature's Swiftness", cooldown_seconds = 60.0 },
 ]
 
@@ -106,8 +108,8 @@ abilities = [
 
 ["Evoker/Preservation"]
 abilities = [
-  { ability_id = 363534, name = "Rewind", cooldown_seconds = 240.0 },
-  { ability_id = 370960, name = "Emerald Communion", cooldown_seconds = 180.0 },
+  { ability_id = 363534, name = "Rewind", cooldown_seconds = 240.0, group = true },
+  { ability_id = 370960, name = "Emerald Communion", cooldown_seconds = 180.0, group = true },
   { ability_id = 370537, name = "Stasis", cooldown_seconds = 90.0 },
   { ability_id = 370553, name = "Tip the Scales", cooldown_seconds = 120.0 },
 ]
@@ -158,10 +160,10 @@ abilities = [
 
 ["Monk/Mistweaver"]
 abilities = [
-  { ability_id = 322118, name = "Invoke Yu'lon, the Jade Serpent", cooldown_seconds = 120.0 },
-  { ability_id = 325197, name = "Invoke Chi-Ji, the Red Crane", cooldown_seconds = 120.0 },
-  { ability_id = 115310, name = "Revival", cooldown_seconds = 180.0 },
-  { ability_id = 388615, name = "Restoral", cooldown_seconds = 180.0 },
+  { ability_id = 322118, name = "Invoke Yu'lon, the Jade Serpent", cooldown_seconds = 120.0, group = true },
+  { ability_id = 325197, name = "Invoke Chi-Ji, the Red Crane", cooldown_seconds = 120.0, group = true },
+  { ability_id = 115310, name = "Revival", cooldown_seconds = 180.0, group = true },
+  { ability_id = 388615, name = "Restoral", cooldown_seconds = 180.0, group = true },
   { ability_id = 443028, name = "Celestial Conduit", cooldown_seconds = 90.0 },
   { ability_id = 322109, name = "Touch of Death", cooldown_seconds = 180.0 },
 ]
@@ -176,7 +178,7 @@ abilities = [
 
 ["Paladin/Holy"]
 abilities = [
-  { ability_id = 31884, name = "Avenging Wrath", cooldown_seconds = 120.0 },
+  { ability_id = 31884, name = "Avenging Wrath", cooldown_seconds = 120.0, group = true },
   { ability_id = 216331, name = "Avenging Crusader", cooldown_seconds = 60.0 },
   { ability_id = 375576, name = "Divine Toll", cooldown_seconds = 60.0 },
 ]
@@ -196,14 +198,14 @@ abilities = [
 
 ["Priest/Discipline"]
 abilities = [
-  { ability_id = 472433, name = "Evangelism", cooldown_seconds = 90.0 },
+  { ability_id = 472433, name = "Evangelism", cooldown_seconds = 90.0, group = true },
   { ability_id = 10060, name = "Power Infusion", cooldown_seconds = 120.0 },
 ]
 
 ["Priest/Holy"]
 abilities = [
-  { ability_id = 200183, name = "Apotheosis", cooldown_seconds = 120.0 },
-  { ability_id = 64843, name = "Divine Hymn", cooldown_seconds = 180.0 },
+  { ability_id = 200183, name = "Apotheosis", cooldown_seconds = 120.0, group = true },
+  { ability_id = 64843, name = "Divine Hymn", cooldown_seconds = 180.0, group = true },
   { ability_id = 120517, name = "Halo", cooldown_seconds = 60.0 },
   { ability_id = 88625, name = "Holy Word: Chastise", cooldown_seconds = 60.0 },
   { ability_id = 10060, name = "Power Infusion", cooldown_seconds = 120.0 },
@@ -249,8 +251,8 @@ abilities = [
 
 ["Shaman/Restoration"]
 abilities = [
-  { ability_id = 108280, name = "Healing Tide Totem", cooldown_seconds = 180.0 },
-  { ability_id = 114052, name = "Ascendance", cooldown_seconds = 180.0 },
+  { ability_id = 108280, name = "Healing Tide Totem", cooldown_seconds = 180.0, group = true },
+  { ability_id = 114052, name = "Ascendance", cooldown_seconds = 180.0, group = true },
 ]
 
 ["Warlock/Affliction"]

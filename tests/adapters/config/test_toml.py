@@ -10,6 +10,7 @@ from wowperf.adapters.config.toml import (
     load_raid_partition,
     load_season_data,
 )
+from wowperf.domain.season import CooldownAbility
 
 
 def test_season_data_is_read_from_a_toml_file(tmp_path: Path) -> None:
@@ -392,3 +393,71 @@ def test_the_committed_slot_names_file_names_every_identified_slot() -> None:
     }
     for slot, name in expected.items():
         assert slot_names.name_for(slot) == name
+
+
+def test_a_group_marker_is_read_and_its_absence_reads_false(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_externals
+
+    path = tmp_path / "externals.toml"
+    path.write_text(
+        'verified = "2026-09-29"\n\n'
+        '["Warrior/Arms"]\n'
+        "abilities = [\n"
+        '  { ability_id = 97462, name = "Rallying Cry", cooldown_seconds = 180.0, group = true },\n'
+        '  { ability_id = 3411, name = "Intervene", cooldown_seconds = 30.0 },\n'
+        "]\n",
+        encoding="utf-8",
+    )
+    [rallying, intervene] = load_externals(path).for_spec("Warrior", "Arms")
+    assert (rallying.name, rallying.group) == ("Rallying Cry", True)
+    assert (intervene.name, intervene.group) == ("Intervene", False)
+
+
+GROUP_THROUGHPUT = {
+    ("Druid/Restoration", "Incarnation: Tree of Life"),
+    ("Druid/Restoration", "Convoke the Spirits"),
+    ("Druid/Restoration", "Tranquility"),
+    ("Evoker/Preservation", "Rewind"),
+    ("Evoker/Preservation", "Emerald Communion"),
+    ("Monk/Mistweaver", "Invoke Yu'lon, the Jade Serpent"),
+    ("Monk/Mistweaver", "Invoke Chi-Ji, the Red Crane"),
+    ("Monk/Mistweaver", "Revival"),
+    ("Monk/Mistweaver", "Restoral"),
+    ("Paladin/Holy", "Avenging Wrath"),
+    ("Priest/Discipline", "Evangelism"),
+    ("Priest/Holy", "Apotheosis"),
+    ("Priest/Holy", "Divine Hymn"),
+    ("Shaman/Restoration", "Healing Tide Totem"),
+    ("Shaman/Restoration", "Ascendance"),
+}
+"""The healer cooldowns that answer the whole group's damage. Touch of Death, Power Infusion,
+Holy Word: Chastise and the rest of the healer blocks answer nobody's damage, or one target's."""
+
+GROUP_EXTERNALS = {
+    ("Priest/Discipline", "Power Word: Barrier"),
+    ("Shaman/Restoration", "Spirit Link Totem"),
+    ("Warrior/Arms", "Rallying Cry"),
+    ("Warrior/Fury", "Rallying Cry"),
+    ("Warrior/Protection", "Rallying Cry"),
+}
+
+
+def test_the_committed_group_markers_are_exactly_the_reviewed_set() -> None:
+    from wowperf.adapters.config.toml import load_externals, load_throughput_cooldowns
+
+    def marked(
+        entries: tuple[tuple[str, tuple[CooldownAbility, ...]], ...],
+    ) -> set[tuple[str, str]]:
+        return {(spec, one.name) for spec, abilities in entries for one in abilities if one.group}
+
+    assert marked(load_throughput_cooldowns().entries) == GROUP_THROUGHPUT
+    assert marked(load_externals().entries) == GROUP_EXTERNALS
+
+
+def test_every_marked_throughput_cooldown_sits_under_a_healer_spec() -> None:
+    from wowperf.adapters.config.toml import load_roles, load_throughput_cooldowns
+
+    healers = set(load_roles().healers)
+    for spec, abilities in load_throughput_cooldowns().entries:
+        if any(one.group for one in abilities):
+            assert spec in healers, f"{spec} is not a healer spec"
