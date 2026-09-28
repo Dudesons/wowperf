@@ -2,7 +2,7 @@
 
 **Status:** approved design; slice 1 planned in
 `docs/plans/2026-09-27-wipe-damage-pace-plan.md` and built. Slice 2 specified in §13 (approved
-2026-09-28), not yet planned.
+2026-09-28), planned in `docs/plans/2026-09-28-wipe-pace-per-player-plan.md` and built.
 **Area:** the raid page on a wipe. It amends ruling 4.5 of
 `docs/plans/2026-09-18-wipe-analysis-design.md` for damage *done* (§3) and opens the depletion
 question that design's §8.4 set aside, answered with damage rather than health.
@@ -321,8 +321,10 @@ canonical wipe.
   to the wipe's end. A death answered by a resurrection or a self-resurrection, as `return_of`
   classifies it for the death recaps, does not end the window: the stretch spent dead stays in and
   is named in the evidence. A release ends the window, since on a wipe a release is the end of the
-  attempt for that player. A reference player's window ends the same way at their own death,
-  although every reference read so far was deathless.
+  attempt for that player. A reference player's window ends at their first death, answered or
+  not: a reference kill's resurrections are not read, so an answered death cannot be told from
+  one that was not, and ending at the first death only drops that player from the band sooner
+  than an unread resurrection would have. Every reference read so far was deathless.
 - **The time lag** replaces a projection. Take the player's cumulative boss damage at the end of
   their window; find the first time at which the same-specialisation median reaches it, interpolated
   within the second, searched over every second the band holds; the lag is the window's end minus
@@ -390,3 +392,32 @@ the line; a withheld card carries the notice. **End to end:** shape only, on fig
 counting by fight and player index -- never by name -- how often each state occurred: behind, on
 pace, ahead, lag past the band, withheld below three, withheld for an unnamed specialisation. A
 state that never occurs is reported as open, as §10's were.
+
+**Live (2026-09-28, `cW38jmwdnZfbHVL4`, fights 28-34, `raid --fight N --all-players`).** Seven
+wipes, twenty players each; four healers per fight carry no line, so 112 per-player lines, 16 per
+fight. Player indices count each findings file's distinct player slugs in sorted order, the same
+twenty on every fight.
+
+- **69 readings, all `derived`:** behind 30, on pace 26, ahead 13.
+- **The lag:** behind 44, ahead 22, past the band 3 (fight 30, players 8, 12 and 14). A lag of
+  exactly zero never occurred, and neither did a player with no series in our graph (0%, no lag).
+- **The window's end:** a death 60, the band cut 8 (all fight 30), the wipe 1 (fight 29, player
+  16). The findings file does not tell an unanswered death from a release, so the release's own
+  window end is not counted apart.
+- **A resurrection stretch named:** 2 (fight 30, players 10 and 14).
+- **43 notices, all `measured`, all withheld below three:** players 0, 1, 3, 6, 7 and 15 on every
+  fight, and player 10 on fight 28 only, where they played another specialisation than on fights
+  29-34.
+- **The e2e** (`test_a_real_wipe_is_compared_against_the_kills_pace`, fight 30, `--all-players`,
+  cold cache) spent 83.00 points; the seven distribution runs 15.00 together, against a warm
+  cache (9.00 for the first, which re-read the four reference lookups, then 1.00 each).
+- **No reference kill's deaths were ever read:** the e2e's one `Deaths` call was our own fight's,
+  and no distribution run made one.
+- The seven pages carry no template leak: no `>None<`, `>null<`, `>nan<`, `nan%`, `inf%`, `{{`
+  or `{%`. Four pages carry `>None ` once each, and each is the deaths finding's own sentence
+  opening "None of these".
+
+**Open:** withheld for an unnamed specialisation (0 occurrences), the "no second could be
+compared" notice (0), a player at 0% with no lag (0), a lag of exactly zero (0), a window ended
+by a release as distinct from an unanswered death (not observable in the findings file), and a
+reference player's window ended by their death (no reference kill with a death was drawn).
