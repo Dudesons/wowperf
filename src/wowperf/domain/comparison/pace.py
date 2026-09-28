@@ -91,6 +91,24 @@ def _notice(reason: str) -> Finding:
     )
 
 
+def withheld_reason(encounter: Encounter, sample: PaceSample) -> str:
+    """Why `analyse_pace` would withhold with `compare.pace.unavailable`, or "".
+
+    The one predicate both the raid-wide and the per-player analyser read, so
+    a wipe that withholds one withholds the other. Does not check
+    `encounter.kill`: a kill withholds for a different reason (there is no
+    pace comparison at all) that each caller already checks on its own.
+    """
+    if sample.unavailable or sample.ours is None:
+        return sample.unavailable or NO_BOSS_DAMAGE
+    reading = pace_reading(encounter, sample)
+    if reading is None:
+        return NO_REFERENCE_KILL
+    if not reading.seconds or reading.seconds[-1].median <= 0:
+        return NOTHING_TO_COMPARE
+    return ""
+
+
 def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     """`compare.pace.boss` and `compare.pace.projection`, or the notice saying why not.
 
@@ -100,13 +118,12 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     """
     if encounter.kill:
         return []
-    if sample.unavailable or sample.ours is None:
-        return [_notice(sample.unavailable or NO_BOSS_DAMAGE)]
+    reason = withheld_reason(encounter, sample)
+    if reason:
+        return [_notice(reason)]
     reading = pace_reading(encounter, sample)
-    if reading is None:
-        return [_notice(NO_REFERENCE_KILL)]
-    if not reading.seconds or reading.seconds[-1].median <= 0:
-        return [_notice(NOTHING_TO_COMPARE)]
+    assert reading is not None  # withheld_reason("") guarantees a usable reading
+    assert sample.ours is not None  # same guarantee covers this
 
     total = cumulative_at(sample.ours, encounter.duration_seconds)
     withheld_projection = ""

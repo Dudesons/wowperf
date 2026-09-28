@@ -647,12 +647,19 @@ def test_a_players_pace_finding_shows_on_their_card_and_nowhere_on_damage() -> N
 
     emberkin = _card(report, EMBERKIN_SLUG)
     assert emberkin.pace_rows, "fixture must carry Emberkin's own pace finding"
-    finding_title = emberkin.pace_rows[0].title
+    finding = emberkin.pace_rows[0]
+    finding_title = finding.title
+    lag_line = next(
+        line for line in finding.evidence if line.startswith(("By ", "More than"))
+    )
+    window_line = next(line for line in finding.evidence if line.startswith("Compared through"))
 
     cards = player_cards(html)
     card = cards[EMBERKIN_SLUG]
     assert str(escape(finding_title)) in card
     assert "Damage pace against the kills" in card
+    assert str(escape(lag_line)) in card
+    assert str(escape(window_line)) in card
 
     # The title has to sit inside the same `class="findings"` wrapper every
     # other ledger row on the page is drawn in -- not bare markup beside it,

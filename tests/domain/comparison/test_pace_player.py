@@ -177,6 +177,30 @@ def test_a_reference_players_own_death_cuts_the_band() -> None:
     )
 
 
+def test_a_death_after_the_band_cut_is_not_named_as_a_dead_stretch() -> None:
+    """The band cuts the comparison at 1:40 (100 s); a death at 2:30, answered
+    at 2:50, happened after the last second compared and must not be named --
+    it would otherwise read as a stretch inside a comparison that had already
+    ended."""
+    kills = (
+        a_reference_kill(a_peer("Mage", "Frost", 90, until_seconds=100.0)),
+        a_reference_kill(a_peer("Mage", "Frost", 100)),
+        a_reference_kill(a_peer("Mage", "Frost", 110)),
+    )
+    death = Death(player_name="Emberkin", actor_id=1, timestamp_ms=150_000, killing_blow="Crush")
+    rez = Resurrection(actor_id=1, caster_id=2, ability_id=20484, ability_name="Rebirth",
+                       timestamp_ms=170_000)
+    finding = analysed(
+        loaded=a_wipe(deaths=(death,), resurrections=(rez,)),
+        sample=a_sample().model_copy(update={"references": kills}),
+    )[FROST_ID]
+    assert (
+        "Compared through 1:40, after which fewer than three Frost Mages were still fighting"
+        in finding.evidence
+    )
+    assert not any(line.startswith("Dead from") for line in finding.evidence)
+
+
 def test_a_player_the_graph_never_saw_dealt_nothing_and_has_no_lag() -> None:
     finding = analysed(sample=a_sample().model_copy(update={"our_players": ()}))[FROST_ID]
     assert finding.title.startswith("Behind the kills' Frost Mages: 0% ")
@@ -215,6 +239,21 @@ def test_a_kill_is_never_compared() -> None:
 
 def test_nothing_is_said_per_player_when_the_raid_wide_comparison_was_withheld() -> None:
     assert analysed(sample=PaceSample(unavailable=NO_REFERENCE_KILL)) == {}
+
+
+def test_nothing_is_said_per_player_when_the_raid_wide_pace_has_nothing_to_compare() -> None:
+    """The references dealt the boss zero aggregate damage through the wipe, so the
+    raid-wide comparison withholds with `compare.pace.unavailable` (its
+    NOTHING_TO_COMPARE reason) even though real per-player peer series exist:
+    the per-player analyser must withhold too, not just the raid-wide one."""
+    kills = tuple(
+        a_reference_kill(a_peer("Mage", "Frost", rate)).model_copy(
+            update={"damage": steady(0, 400)}
+        )
+        for rate in (90, 100, 110)
+    )
+    sample = a_sample().model_copy(update={"references": kills})
+    assert analysed(sample=sample) == {}
 
 
 def test_no_finding_prints_a_raw_damage_figure() -> None:

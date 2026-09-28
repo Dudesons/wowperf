@@ -6,7 +6,7 @@ from collections.abc import Sequence
 
 from wowperf.domain.analysis.recap import RESURRECTED, SELF_RESURRECTED, return_of
 from wowperf.domain.base import Frozen
-from wowperf.domain.comparison.pace import PaceSample, clock_text, share_of
+from wowperf.domain.comparison.pace import PaceSample, clock_text, share_of, withheld_reason
 from wowperf.domain.comparison.pace_curve import (
     BossDamage,
     PaceReading,
@@ -114,7 +114,7 @@ def analyse_player_pace(
     healer is not compared. A player dead before the first second has no
     reading and no line.
     """
-    if loaded.encounter.kill or sample.unavailable or not sample.references:
+    if loaded.encounter.kill or withheld_reason(loaded.encounter, sample):
         return []
     ours_by_actor = {one.actor_id: one.damage for one in sample.our_players}
 
@@ -244,9 +244,12 @@ def _finding(
         evidence.append(f"Compared through their death at {clock}")
     else:
         evidence.append(f"Compared through the wipe at {clock}")
+    compared_through = last.second
     evidence.extend(
-        f"Dead from {clock_text(died)} to {clock_text(back)}, then resurrected"
+        f"Dead from {clock_text(died)} to {clock_text(min(back, compared_through))}, "
+        "then resurrected"
         for died, back in window.dead
+        if died < compared_through
     )
     start = final_behind_start(reading)
     if start is not None:
