@@ -46,7 +46,7 @@ EXPLICITLY_UNSUPPORTED: dict[str, frozenset[str]] = {
         "--player", "--all-players", "--no-compare", "--narrative", "--fight",
     }),
     "night": frozenset({
-        "--player", "--all-players", "--no-compare", "--narrative", "--fight",
+        "--player", "--all-players", "--narrative", "--fight",
     }),
 }
 

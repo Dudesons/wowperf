@@ -37,12 +37,21 @@ property of the default tier, and this test would pass unchanged if every one of
 What pins them is a live run at the default tier, reported once per plan rather than per suite
 run.
 
-**No comparison of any kind is drawn**, and that is the design rather than a gap in the fetch:
-section 5 rules the parse axis out for this command (it is per player per boss, and across a
-report would cost more than everything else put together), and no mechanics sample is fetched
-either. `NOT_DRAWN_ID` is the page saying so once, in as many words, instead of leaving the
-comparison families silently missing -- which is why this test counts that disclosure rather
-than merely finding it.
+**One comparison is drawn: each wipe's damage pace against the reference kills**, on by
+default, as `raid --fight N` draws it for that wipe. The parse axis is still not drawn, and that
+is the design rather than a gap in the fetch: section 5 rules it out for this command (it is per
+player per boss, and across a report would cost more than everything else put together), and no
+mechanics sample is fetched either. `NOT_DRAWN_ID` is the page saying so once, in as many words,
+instead of leaving the parse families silently missing -- which is why this test counts that
+disclosure rather than merely finding it. The pace half is paid inside the command's own run,
+after the loader's bound above is read: every wipe pull's own boss graph, and per boss and raid
+size one execution leaderboard and each reference kill's lookup and boss graph, shared through
+the one-day reference cache. Measured 2026-09-28 against a cold cache: **26.98 points** over
+this report's wipes, against the design's stop line of 60 (section 14.5), which is the bound
+asserted. The command printed 24.98 of them -- `BossDamageGraph` 11 calls for 11.95,
+`ReferenceFight` 4 for 8.00, `EncounterKillRankings` 3 for 3.03, `NpcActors` 1 for 1.00 and
+`RateLimit` 2 for 1.00 -- and the other 2.00 are the quota reads it leaves unpriced: this test's
+own reading of `after` and the command's closing read.
 
 **Verified live 2026-09-26.** The boss summaries this plan built draw on the same report: a
 summary sits on exactly the two 2-pull bosses and the 7-pull boss, nowhere else, at the same
@@ -221,9 +230,10 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     assert ids.count(NOT_DRAWN_ID) == 1
 
     # The command itself, over the cache the reads above already filled. Every
-    # query it makes is warm, so this costs the two `RateLimit` reads it
-    # brackets its own work with rather than a second night -- spent after
-    # `after` was read, so outside the bound asserted above. Driving it rather
+    # stream of the night's own is warm, so what it spends is the pace half and
+    # the two `RateLimit` reads it brackets its own work with rather than a
+    # second night -- spent after `after` was read, so outside the bound
+    # asserted above and priced by one of its own below. Driving it rather
     # than re-rendering its parts is the point: which files the night lands in,
     # what the page is handed for icons, and the order the two writes happen in
     # are decided in `cli.night` and nowhere else.
@@ -242,6 +252,18 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # expected is held on the result. Neither prints a roster.
     assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
 
+    # What the pace half added: every wipe pull's own boss graph, and per boss
+    # and raid size one execution leaderboard and each reference kill's lookup
+    # and boss graph, all cold in this fresh cache directory. The bound is the
+    # design's own stop line (section 14.5): pace may add at most 60 points to
+    # the night it compares. Measured at 26.98 on one cold run, 2026-09-28.
+    paced = repository.rate_limit().points_spent_this_hour - after
+    print(f"night, --no-deaths, pace half, cold reference cache: {paced:.2f} points")
+    # The command's own quota sentence and breakdown by operation, which on a
+    # run that succeeded carry figures and operation names and nothing else.
+    print(result.stderr)
+    assert paced < 60, f"the pace half spent {paced:.2f} points, want under 60"
+
     [written_json] = out.glob("*.night.json")
     [page] = out.glob("*.night.html")
     payload = cast(dict[str, Any], json.loads(written_json.read_text(encoding="utf-8")))
@@ -256,9 +278,69 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     assert payload["pulls_drawn"] == sum(PULLS_PER_BOSS)
     assert payload["withheld_pulls"] == []
     assert payload["asked_for"] == {
-        "difficulty": None, "deep_fights": [], "death_cards": False
+        "difficulty": None, "deep_fights": [], "death_cards": False, "compare": True
     }
     assert tuple(len(boss["pulls"]) for boss in payload["bosses"]) == PULLS_PER_BOSS
+
+    # Each wipe's pace, over the same single run. Every live check is reduced
+    # to a bool before it is asserted and no message carries a title or an
+    # evidence line: a pull's findings name real players elsewhere in the same
+    # list, and pytest's introspection would print whatever it was handed.
+    compared_somewhere = False
+    for index, boss in enumerate(payload["bosses"]):
+        wipes = [pull for pull in boss["pulls"] if not pull["kill"]]
+        paces: list[dict[str, Any]] = []
+        for pull in boss["pulls"]:
+            fight_id = pull["fight_id"]
+            pace_ids = [f["id"] for f in pull["findings"] if f["id"].startswith("compare.pace.")]
+            if pull["kill"]:
+                # A kill has no pace to read and requested nothing for one.
+                untouched = not pace_ids
+                assert untouched, f"kill fight {fight_id} carries a pace finding"
+                continue
+            # A wipe reads as compared or as withheld, never both and never neither.
+            one_of = pace_ids.count("compare.pace.boss") + pace_ids.count(
+                "compare.pace.unavailable"
+            ) == 1
+            assert one_of, f"wipe fight {fight_id} carries not exactly one pace reading"
+            for finding in pull["findings"]:
+                if finding["id"] != "compare.pace.boss":
+                    continue
+                paces.append(finding)
+                derived = finding["confidence"] == "derived"
+                assert derived, f"fight {fight_id}'s pace lost its derived badge"
+                led = finding["title"].startswith(("Behind ", "On ", "Ahead of "))
+                assert led, f"fight {fight_id}'s pace title opens on no pace state"
+        compared_somewhere = compared_somewhere or bool(paces)
+
+        lines = [f for f in boss["findings"] if f["id"] == "progression.attempts.pace"]
+        # The boss line fires exactly when two or more of its wipes were compared.
+        fired_as_ruled = bool(lines) == (len(paces) >= 2)
+        assert fired_as_ruled, f"boss {index}'s pace line fired against the rule"
+        for line in lines:
+            derived = line["confidence"] == "derived"
+            assert derived, f"boss {index}'s pace line lost its derived badge"
+            enough = len(wipes) >= 2
+            assert enough, f"boss {index}'s pace line sits on fewer than two wipes"
+            sized = [one for one in line["evidence"]
+                     if one.endswith(": each against kills of its own size")]
+            per_pull = [one for one in line["evidence"] if one not in sized]
+            named = [re.match(r"Fight (\d+)[:,]", one) for one in per_pull]
+            in_pull_order = [int(m.group(1)) if m else None for m in named] == [
+                pull["fight_id"] for pull in wipes
+            ]
+            assert in_pull_order, f"boss {index}'s pace line is not one line per wipe"
+            one_size_line = len(sized) <= 1
+            assert one_size_line, f"boss {index}'s pace line carries more than one size line"
+            # The count agrees with the pulls' own readings: behind is the
+            # state a pull's title opens on, and only compared wipes count.
+            behind = sum(1 for one in paces if one["title"].startswith("Behind "))
+            counted = line["title"] == (
+                f"{behind if behind else 'None'} of {len(paces)} wipes ended behind "
+                "the kills' pace"
+            )
+            assert counted, f"boss {index}'s pace line miscounts its wipes"
+    assert compared_somewhere, "no wipe pull on this report was compared against the kills"
 
     # One boss control, and one pull control per boss -- the two-dropdown
     # design, over eight real bosses rather than the fixture's two. A page that
@@ -397,8 +479,10 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     )
 
     # No link back to the report. This page draws one group's own night and
-    # never a corpus of anyone else's logs (RPGLogs terms SS5d).
-    assert "warcraftlogs.com/reports/" not in html
+    # never a corpus of anyone else's logs (RPGLogs terms SS5d). The reference
+    # kills a wipe's pace is read against are linked, as `raid` links them, so
+    # the check names the analysed report rather than every report link.
+    assert f"warcraftlogs.com/reports/{REPORT_CODE}" not in html
 
 
 @pytest.mark.e2e

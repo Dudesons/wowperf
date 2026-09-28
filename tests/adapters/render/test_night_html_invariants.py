@@ -9,6 +9,7 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON_HOST
 from tests.adapters.render.test_raid_html_invariants import a_minimal_raid_report
+from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from tests.domain.report.test_night_build import (
     BOSS_NAMES,
@@ -19,12 +20,15 @@ from tests.domain.report.test_night_build import (
     REPORT_CODE,
     ROSTER,
     a_night,
+    a_reference_record,
 )
 from wowperf.adapters.render.html import render_night, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
+from wowperf.domain.comparison.pace import analyse_pace
+from wowperf.domain.comparison.pace_night import analyse_night_pace
 from wowperf.domain.events import CastEvent, HealthSample
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.night import LoadedNight, Night
@@ -936,6 +940,75 @@ def test_the_raid_page_still_says_no_deaths_when_the_log_reported_none() -> None
 
     assert "No deaths." in html
     assert NO_CARDS_ASKED not in html
+
+
+def test_a_wiped_pulls_own_damage_panel_carries_its_pace_finding_and_chart() -> None:
+    """Rendered text taken from the finding objects, and scoped to the one pull it is about.
+
+    One boss, three pulls: two given a sample -- which is what earns the boss
+    its own Task 1 line -- and one given none, so its Damage panel proves the
+    chart and the row are withheld together rather than drawn from nothing.
+    """
+    night = a_night(bosses=(3,))
+    fights = [attempt.fight_id for attempt in night.night.bosses[0].attempts]
+    sampled = fights[:2]
+    bare = fights[2]
+    encounters_by_fight = {
+        fight_id: next(one for one in night.night.bosses[0].attempts if one.fight_id == fight_id)
+        for fight_id in sampled
+    }
+    # Each fight's own duration, read off its own encounter -- a hardcoded
+    # figure would happen to match `a_loaded_attempt`'s default and would
+    # stop matching the moment the fixture's own duration changed.
+    samples = {
+        fight_id: a_sample(80, int(encounters_by_fight[fight_id].duration_seconds))
+        for fight_id in sampled
+    }
+    findings_by_fight = {
+        fight_id: analyse_pace(encounters_by_fight[fight_id], samples[fight_id])
+        for fight_id in sampled
+    }
+    records = (a_reference_record(1),)
+    records_by_fight = {fight_id: records for fight_id in sampled}
+    boss = night.loaded[0]
+    boss_line = analyse_night_pace(boss.attempts_with_events, samples)
+    assert boss_line, "the fixture must actually earn the boss line, or this pins nothing"
+
+    report = build_night_report(
+        night,
+        findings_by_fight,
+        FETCHED,
+        A_DEFENSIVE,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss={boss.progression.encounter_id: tuple(boss_line)},
+        pace_by_fight=samples,
+        records_by_fight=records_by_fight,
+    )
+    html = render_night(report)
+
+    assert ">None<" not in html
+
+    # Escaped: the finding's title carries an apostrophe, which Jinja's
+    # autoescape writes as `&#39;`, so only the escaped form is ever on the page.
+    pace_title = str(escape(findings_by_fight[sampled[0]][0].title))
+    chart_heading = "Damage to the boss against the kills"
+
+    with_sample = html.split(f'id="f{sampled[0]}-tab-damage"', 1)[1].split("</section>", 1)[0]
+    assert pace_title in with_sample
+    assert chart_heading in with_sample
+
+    without_sample = html.split(f'id="f{bare}-tab-damage"', 1)[1].split("</section>", 1)[0]
+    assert pace_title not in without_sample
+    assert chart_heading not in without_sample
+
+    notes = html[html.index('<section class="night-notes">') :]
+    assert notes.count(records[0].url) == 1
+
+    summary = summary_blocks(html)["b0-summary"]
+    assert str(escape(boss_line[0].title)) in summary
 
 
 NIGHT_GOLDEN = Path(__file__).parent / "golden" / "night.html"

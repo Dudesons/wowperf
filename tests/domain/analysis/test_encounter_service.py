@@ -2,6 +2,11 @@
 # ABOUTME: What is absent here matters as much as what is present.
 
 from tests.domain.comparison.test_pace_curve import steady
+from wowperf.domain.analysis.attempt_shape import (
+    NO_REFERENCE_SAMPLE,
+    WITHHELD_ID,
+    no_sample_on_the_night,
+)
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -719,6 +724,26 @@ def test_a_wipe_reaches_a_lethal_finding_and_a_verdict() -> None:
 
     assert any(one.startswith("mechanics.lethal.") for one in ids)
     assert "wipe.cause" in ids
+
+
+def test_the_callers_own_sample_absence_reaches_the_withheld_verdict() -> None:
+    """The night page's absence, handed to the analyser, is what the notice states.
+
+    Without it the analyser falls back to `NO_REFERENCE_SAMPLE`, the sentence
+    for a run that drew no reference kill -- false of a night wipe whose pace
+    was read against kills it drew.
+    """
+    loaded = _loaded_wipe_with(deaths=1)
+    absence = no_sample_on_the_night(loaded.encounter.fight_id)
+
+    handed = analyse_encounter(loaded, DEFENSIVES, Consumables(), no_sample=absence)
+    default = analyse_encounter(loaded, DEFENSIVES, Consumables())
+
+    [notice] = [finding for finding in handed if finding.id == WITHHELD_ID]
+    assert notice.detail == absence.detail
+    assert notice.evidence == (absence.evidence,)
+    [fallback] = [finding for finding in default if finding.id == WITHHELD_ID]
+    assert fallback.detail == NO_REFERENCE_SAMPLE
 
 
 def test_the_resurrection_stream_reaches_the_verdict() -> None:

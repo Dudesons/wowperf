@@ -116,7 +116,11 @@ def slugs_by_actor(players: tuple[Player, ...]) -> dict[int, str]:
 
 
 def _comparison_section(
-    findings: Sequence[Finding], slug: str, compared_slugs: frozenset[str] | None
+    findings: Sequence[Finding],
+    slug: str,
+    compared_slugs: frozenset[str] | None,
+    *,
+    parse_withheld: str | None = None,
 ) -> Section:
     """One player's comparison section, in whichever of three states it is in.
 
@@ -124,9 +128,16 @@ def _comparison_section(
     nothing for, and neither is the same as a run that fetched no reference at
     all. Saying so is the whole job: a reader who cannot tell "not asked" from
     "not available" will read the second as the first and stop asking.
+
+    `parse_withheld` stands in for `NO_COMPARISON_RAN` where no subject was
+    handed (`compared_slugs` is `None`) and a reference was fetched all the
+    same -- the night page's compared wipe, whose reason is the wipe's own.
     """
     if compared_slugs is None:
-        return Section(state=SectionState.WITHHELD, reason=NO_COMPARISON_RAN)
+        return Section(
+            state=SectionState.WITHHELD,
+            reason=parse_withheld if parse_withheld is not None else NO_COMPARISON_RAN,
+        )
     if slug not in compared_slugs:
         return Section(state=SectionState.WITHHELD, reason=NOT_REQUESTED)
     unavailable_id = parse_unavailable_id(slug)

@@ -3,7 +3,7 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.analysis.attempt_shape import classify_attempt
+from wowperf.domain.analysis.attempt_shape import NO_SAMPLE, NoSample, classify_attempt
 from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
@@ -66,6 +66,7 @@ def analyse_encounter(
     parse_subjects: Sequence[ParseSubject] = (),
     pace: PaceSample | None = None,
     self_resurrections: SelfResurrections = SelfResurrections(),
+    no_sample: NoSample = NO_SAMPLE,
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
 
@@ -105,6 +106,10 @@ def analyse_encounter(
     `encounter.players` because that is the roster `--player`/`--all-players`
     actually asked to compare, the same list the raid-wide parse axis above
     reads from.
+
+    `no_sample` is what the attempt verdict's notice says when `mechanics`
+    holds no reference kill, handed straight to `classify_attempt`; the
+    night page passes its own, since it never draws that sample.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
@@ -153,7 +158,11 @@ def analyse_encounter(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
     verdict = classify_attempt(
-        encounter, loaded.deaths, mechanics, resurrections=loaded.resurrections
+        encounter,
+        loaded.deaths,
+        mechanics,
+        resurrections=loaded.resurrections,
+        no_sample=no_sample,
     )
     if verdict is not None:
         findings.append(verdict)

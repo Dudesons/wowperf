@@ -39,6 +39,7 @@ from wowperf.adapters.wcl.pace import load_pace_sample
 from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_TARGETS_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
+from wowperf.domain.analysis.attempt_shape import NO_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.night_service import analyse_night_boss
 from wowperf.domain.analysis.progression_service import analyse_progression
@@ -712,6 +713,40 @@ def _ability_taken(
     return build_ability_taken_rows(payload, "taken"), from_cache
 
 
+def _reference_kill_rows(
+    rankings: WclEncounterRankingRepository, encounter: Encounter
+) -> tuple[ReferenceKillRow, ...]:
+    """Every execution-leaderboard kill of this boss a comparison may draw, in leaderboard order.
+
+    The one rule `raid` and `night` both select their reference kills by: this
+    difficulty (the query's own argument) and partition, and this raid size.
+    """
+    rows = rankings.reference_kills(
+        encounter.encounter_id, encounter.difficulty, encounter.partition
+    )
+    return select_reference_kills(rows, our_size=encounter.size, limit=None)
+
+
+def _pace_references(
+    rankings: WclEncounterRankingRepository, encounter: Encounter
+) -> tuple[ReferenceKillRow, ...]:
+    """The kills a night wipe's pace is read against: `raid`'s rule, without its tables.
+
+    `raid` takes its pace references from the mechanics sample, which also
+    loads each kill's damage-taken table; the night page draws no mechanics
+    comparison, so it takes the first `SAMPLE_SIZE` rows the same rule
+    selects, never the fight under analysis. A reference whose own fight
+    will not load is dropped by `load_pace_sample`, not refilled.
+    """
+    ours = (encounter.report_code, encounter.fight_id)
+    rows = tuple(
+        row
+        for row in _reference_kill_rows(rankings, encounter)
+        if (row.report_code, row.fight_id) != ours
+    )
+    return rows[:SAMPLE_SIZE]
+
+
 def _mechanics_sample(
     rankings: WclEncounterRankingRepository,
     client: WclClient,
@@ -741,10 +776,7 @@ def _mechanics_sample(
     `reference_kills` already passes `encounter.difficulty` as the query's own
     argument, so every row it returns is at that difficulty already.
     """
-    rows = rankings.reference_kills(
-        encounter.encounter_id, encounter.difficulty, encounter.partition
-    )
-    selected = select_reference_kills(rows, our_size=encounter.size, limit=None)
+    selected = _reference_kill_rows(rankings, encounter)
 
     members: list[MechanicsMember] = []
     records: list[ReferenceRecord] = []
@@ -1832,6 +1864,12 @@ def night(
         "--no-deaths",
         help="Draw no death card at all, which is the cheapest tier a pull can be read at",
     ),
+    no_compare: bool = typer.Option(
+        False,
+        "--no-compare",
+        help="Fetch no reference kill: no wipe pull's damage pace is compared against "
+        "the kills",
+    ),
     difficulty: int | None = typer.Option(
         None,
         help="Difficulty id; skips any boss this report holds only at another difficulty. "
@@ -1848,10 +1886,20 @@ def night(
 
     It draws no parse axis. That sample is per player per boss, and across a
     report it would cost an order of magnitude more than everything else here
-    put together -- so `--player`, `--all-players` and `--no-compare` are not
-    offered, there being no per-player reference for them to widen or skip. The
-    page says so once, in as many words, rather than leaving six families
-    silently missing.
+    put together, so `--player` and `--all-players` are not offered, there
+    being no per-player reference for them to widen. It draws no mechanics
+    axis either, for a different reason: the night draws no per-boss
+    mechanics comparison at all, so it loads no damage-taken table for one.
+    The page says once that no parse axis was drawn, rather than leaving six
+    families silently missing.
+
+    It does draw one comparison, on by default: each wipe pull's damage pace
+    against the reference kills, the same reading `raid --fight N` draws for
+    that pull, shared through the one-day reference cache across every pull at
+    one boss and raid size. `--no-compare` skips it and analyses every pull in
+    isolation; a kill pull never draws it either way, kills having no pace to
+    read. Two or more compared wipes at one boss also add one line to that
+    boss's Attempts tab, counting how many ended behind the kills' pace.
 
     What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws
     no death card at all, the default trims every card to what each player had
@@ -1928,6 +1976,34 @@ def night(
         # once and named once: what follows prices icons, findings and the
         # payload off this single list rather than rebuilding it three times.
         drawn = [attempt for boss in loaded.loaded for attempt in boss.attempts_with_events]
+
+        pace_by_fight: dict[int, PaceSample] = {}
+        records_by_fight: dict[int, tuple[ReferenceRecord, ...]] = {}
+        if not no_compare:
+            # One `DiskCache` and one ranking repository for the whole night,
+            # never per boss or per pull: the reference cache is what shares a
+            # boss's kills across its own wipes (design section 14.2), so
+            # nothing here needs to refill or re-share anything itself.
+            transient = DiskCache(
+                cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
+            )
+            encounter_rankings = WclEncounterRankingRepository(repository.client, transient)
+            for attempt in drawn:
+                # A kill has the parse comparison on `raid`, and no pace to
+                # read here either: nothing is fetched for a comparison the
+                # page would not draw.
+                if attempt.encounter.kill:
+                    continue
+                pace_sample, pace_records = load_pace_sample(
+                    repository.client,
+                    repository.cache,
+                    transient,
+                    attempt.encounter,
+                    _pace_references(encounter_rankings, attempt.encounter),
+                )
+                pace_by_fight[attempt.encounter.fight_id] = pace_sample
+                records_by_fight[attempt.encounter.fight_id] = pace_records
+
         # Two lists, not one. A boss's findings read its attempts' metadata and
         # a pull's read that pull's own streams; neither is a summary of the
         # other, and section 9 writes both out under the boss they belong to.
@@ -1935,16 +2011,31 @@ def night(
         # pulls, which only the death-card tier has the casts for.
         boss_findings = {
             boss.progression.encounter_id: rank_raid_findings(
-                analyse_night_boss(boss, defensives, death_cards=death_cards)
+                analyse_night_boss(boss, defensives, death_cards=death_cards, pace=pace_by_fight)
             )
             for boss in loaded.loaded
         }
         # No mechanics sample and no parse subject: this command fetches no
-        # reference kill of any kind, and handing the analyser an empty sample
-        # is what leaves those families undrawn rather than drawn from nothing.
+        # execution-leaderboard ability table and compares no player's parse,
+        # so handing the analyser an empty sample and no subjects is what
+        # leaves those two families undrawn rather than drawn from nothing.
+        # Pace is the one comparison this command does draw, on by default;
+        # `pace_by_fight` hands each pull its own sample, or nothing at all
+        # for a kill or for a night read with `--no-compare`. A pull handed
+        # one also drew reference kills, so its verdict notice may not say
+        # none were drawn: it says the night drew no mechanics sample instead.
         findings_by_fight = {
             attempt.encounter.fight_id: analyse_encounter(
-                attempt, defensives, consumables, roles=roles
+                attempt,
+                defensives,
+                consumables,
+                roles=roles,
+                pace=pace_by_fight.get(attempt.encounter.fight_id),
+                no_sample=(
+                    no_sample_on_the_night(attempt.encounter.fight_id)
+                    if attempt.encounter.fight_id in pace_by_fight
+                    else NO_SAMPLE
+                ),
             )
             for attempt in drawn
         }
@@ -1962,6 +2053,7 @@ def night(
             "difficulty": difficulty,
             "deep_fights": sorted(deep_fights),
             "death_cards": death_cards,
+            "compare": not no_compare,
         },
         "bosses_counted": len(night.bosses),
         "pulls_drawn": len(drawn),
@@ -2030,6 +2122,8 @@ def night(
                 findings_by_boss=boss_findings,
                 externals=load_externals(),
                 self_resurrections=load_self_resurrections(),
+                pace_by_fight=pace_by_fight,
+                records_by_fight=records_by_fight,
             ),
             # One ability dictionary answers the whole night --
             # `load_night_attempts` fetches it once per report and hands the same

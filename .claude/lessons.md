@@ -107,3 +107,19 @@ generated file a script will overwrite. `git checkout <path>` and `git restore <
 uncommitted changes silently and are the natural way to undo a scripted edit.
 
 **Scope:** any script that writes to tracked files.
+
+## 2026-09-28 — A replacement sentence is a claim; verify it before ruling it in
+
+**What happened:** A task review found the night page saying "No reference run was fetched"
+on pulls that had fetched reference kills. The controller ruled in a replacement pointing the
+reader at `raid --fight N` for the missing comparison, without checking what `raid` draws on
+a wipe. It draws none: the parse axis is withheld on every wipe. The fix swapped one false
+sentence for another, reached two of the four places the old one printed, and a test pinned
+the new falsehood. Only the final whole-branch review caught it.
+
+**The rule:** Before writing or ruling in any sentence the page will show, find the code path
+that makes it true on every pull it can reach, and grep every site that prints the sentence
+being replaced. When a spec says "the page X draws", reuse X's own sentence rather than
+composing a new one.
+
+**Scope:** any user-facing reason, notice or disclosure text, and any ruling that supplies one.

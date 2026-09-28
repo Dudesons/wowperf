@@ -22,6 +22,8 @@ def build_raid_players(
     compared_slugs: frozenset[str] | None,
     titles_by_id: dict[str, str],
     tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
+    *,
+    parse_withheld: str | None = None,
 ) -> tuple[PlayerCard, ...]:
     """One card per raider.
 
@@ -47,6 +49,10 @@ def build_raid_players(
     these out of the findings it hands `place_rows`, since `RAID_PLACEMENTS`'
     `compare.pace.` prefix would otherwise take them onto the Damage tab; this
     function still receives every finding and routes them here instead.
+
+    `parse_withheld` is `build_raid_report`'s own parameter, handed to every
+    card's comparison section: the reason each card states in place of
+    `NO_COMPARISON_RAN` when no parse subject was handed at all.
     """
     players = loaded.encounter.players
     names_by_actor = display_names(players)
@@ -72,7 +78,9 @@ def build_raid_players(
                 spec=player.spec,
                 colour=class_colour(player.class_name),
                 stats_line=_stats_line(loaded, player.actor_id),
-                spell_and_talent=_comparison_section(findings, slug, compared_slugs),
+                spell_and_talent=_comparison_section(
+                    findings, slug, compared_slugs, parse_withheld=parse_withheld
+                ),
                 spell_and_talent_rows=collapse_repeated_details(
                     [
                         ledger_row(finding, titles_by_id, tooltips)
