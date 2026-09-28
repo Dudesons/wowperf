@@ -13,7 +13,7 @@ import pytest
 from markupsafe import escape
 from typer.testing import CliRunner
 
-from tests.test_cli import operation_name, plain, quota_response
+from tests.test_cli import heavy_moment_readings, operation_name, plain, quota_response
 from wowperf.adapters.cache.disk import cache_key
 from wowperf.adapters.wcl.client import MAX_WAITS
 from wowperf.adapters.wcl.queries import (
@@ -30,6 +30,7 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
+from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, UNAVAILABLE_ID
 from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
@@ -1023,6 +1024,31 @@ def test_two_wipes_at_one_boss_each_carry_the_pace_comparison_and_pool_a_boss_li
 
     assert "progression.attempts.pace" in _finding_ids(payload["bosses"][0]["findings"])
     assert "progression.attempts.pace" not in _finding_ids(payload["bosses"][1]["findings"])
+
+
+def test_every_pull_reads_its_heaviest_moments_once(tmp_path: Path) -> None:
+    result = run_night(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    pulls = _pulls_by_fight(tmp_path)
+    assert sorted(pulls) == sorted(one["id"] for one in A_NIGHT)
+    for fight_id, pull in pulls.items():
+        assert len(heavy_moment_readings(pull["findings"])) == 1, fight_id
+
+
+def test_a_night_read_with_no_death_cards_says_each_pull_was_read_without_its_casts(
+    tmp_path: Path,
+) -> None:
+    """The cheapest tier fetches no casts, so no press can be seen and none is judged."""
+    result = run_night(tmp_path, "--no-deaths")
+
+    assert result.exit_code == 0, result.output
+    for fight_id, pull in _pulls_by_fight(tmp_path).items():
+        [notice] = [one for one in pull["findings"] if one["id"] == UNAVAILABLE_ID]
+        assert notice["title"] == NOT_JUDGED_TITLE, fight_id
+        assert notice["detail"] == (
+            "This fight was read without its casts, so no press of any cooldown can be seen."
+        ), fight_id
 
 
 def test_a_boss_wide_reference_kill_is_fetched_once_and_shared_across_its_wipes(

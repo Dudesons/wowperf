@@ -97,6 +97,16 @@ def spikes(
     )
 
 
+def a_heavy_moment_left_unanswered(setting: str = "fight") -> list[Finding]:
+    """`healing.spikes` and `healing.spikes.unanswered`, exactly as `analyse_spikes` writes them.
+
+    For the builder and render tests: a page must place and draw what the
+    analyser emits, and a title typed out to look like it pins only itself.
+    """
+    casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
+    return spikes([*steady(300), *burst(200)], casts, setting=setting)
+
+
 def the(findings: list[Finding], finding_id: str) -> Finding:
     [one] = [finding for finding in findings if finding.id == finding_id]
     return one

@@ -1,6 +1,8 @@
 # ABOUTME: The raid analyser list, and which claims a boss fight can support.
 # ABOUTME: What is absent here matters as much as what is present.
 
+import re
+
 from tests.domain.comparison.test_pace_curve import steady
 from wowperf.domain.analysis.attempt_shape import (
     NO_REFERENCE_SAMPLE,
@@ -8,6 +10,7 @@ from wowperf.domain.analysis.attempt_shape import (
     no_sample_on_the_night,
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID, answers_for
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsMember,
@@ -37,7 +40,15 @@ from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.players import slugs_by_actor
-from wowperf.domain.season import Consumables, DefensiveAbility, Defensives, Roles
+from wowperf.domain.season import (
+    Consumables,
+    DefensiveAbility,
+    Defensives,
+    ExternalAbility,
+    Externals,
+    Roles,
+    ThroughputCooldowns,
+)
 
 DEFENSIVES = Defensives(
     entries=(
@@ -910,3 +921,60 @@ def test_a_wipe_with_no_pace_sample_carries_no_per_player_pace_finding() -> None
 
     ids = {finding.id for finding in findings}
     assert not any(one.startswith(PLAYER_PACE_PREFIX) for one in ids), ids
+
+
+GROUP_WARD = ExternalAbility(
+    ability_id=2, name="Group Ward", cooldown_seconds=180.0, group=True
+)
+"""A cooldown that answers the whole raid's damage, held by the fixture's one Mage.
+
+Hand-built: no Arcane Mage holds one in the data files, and what is under test
+here is the service handing the answer set on, not the file behind it.
+"""
+GROUP_EXTERNALS = Externals(entries=(("Mage/Arcane", (GROUP_WARD,)),))
+
+
+def an_encounter_with_a_heavy_moment() -> LoadedEncounter:
+    """The bare fight taking steady damage throughout, with one burst and one answer.
+
+    The burst fills the fight's 100th to 105th second, counted from its own
+    start rather than the report's zero; the Mage presses the group cooldown
+    two seconds before it.
+    """
+    loaded = a_loaded_encounter()
+    start = loaded.encounter.start_ms
+    seconds = range((loaded.encounter.end_ms - start) // 1_000)
+    steady_hits = tuple(
+        DamageTakenEvent(actor_id=11, ability_id=400, ability_name="Ravenous Feast",
+                         amount=100, health_damage=100, timestamp_ms=start + second * 1_000)
+        for second in seconds
+    )
+    burst = tuple(
+        DamageTakenEvent(actor_id=11, ability_id=400, ability_name="Ravenous Feast",
+                         amount=1_000, health_damage=1_000, timestamp_ms=start + second * 1_000)
+        for second in range(100, 105)
+    )
+    answer = CastEvent(actor_id=11, ability_id=GROUP_WARD.ability_id,
+                       ability_name=GROUP_WARD.name, timestamp_ms=start + 98_000)
+    return loaded.model_copy(update={"damage_taken": steady_hits + burst, "casts": (answer,)})
+
+
+def test_no_answer_set_runs_no_spike_analysis() -> None:
+    findings = analyse_encounter(an_encounter_with_a_heavy_moment(), DEFENSIVES, Consumables())
+    assert [f.id for f in findings if f.id.startswith("healing.")] == []
+
+
+def test_an_answer_set_reads_the_heaviest_moments_of_the_fight() -> None:
+    loaded = an_encounter_with_a_heavy_moment()
+    answers = answers_for(
+        loaded.encounter.players, ThroughputCooldowns(), GROUP_EXTERNALS, Roles()
+    )
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables(), answers=answers)
+    [reading] = [f for f in findings if f.id in (SPIKES_ID, UNAVAILABLE_ID)]
+    assert reading.id == SPIKES_ID
+    assert reading.title == "1 heaviest moment: 1 answered"
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert reading.evidence[0].endswith("answered by Group Ward (Arcane Mage, Emberkin)")
+    assert "of the fight" in reading.detail
+    for text in (reading.title, reading.detail, *reading.evidence):
+        assert not re.search(r"\brun\b", text), text

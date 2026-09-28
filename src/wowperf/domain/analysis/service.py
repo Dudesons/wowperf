@@ -1,6 +1,8 @@
 # ABOUTME: Runs every analyser over one loaded run and ranks the findings by time cost.
 # ABOUTME: Deliberately dull: all the judgement lives in the analysers, none of it here.
 
+from collections.abc import Sequence
+
 from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
@@ -12,6 +14,7 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.players import analyse_players
+from wowperf.domain.analysis.spikes import Answer, analyse_spikes
 from wowperf.domain.analysis.throughput import (
     analyse_cooldown_alignment,
     analyse_cooldown_ceiling,
@@ -38,6 +41,7 @@ def analyse(
     *,
     roles: Roles = Roles(),
     include_cooldown_ceiling: bool = False,
+    answers: Sequence[Answer] | None = None,
 ) -> list[Finding]:
     """Every analyser, one ranked list.
 
@@ -46,6 +50,10 @@ def analyse(
     burst cooldown, so pressing one far below its theoretical maximum is
     often correct. The alignment claim beside it asks the same question of
     the pulls where the answer means something, and needs no asking for.
+
+    The group's heaviest moments are read only when `answers` is handed in,
+    because the answer set is built from the data files by the caller, and
+    `None` runs no spike analysis at all.
     """
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
 
@@ -98,5 +106,17 @@ def analyse(
     if include_cooldown_ceiling:
         findings += analyse_cooldown_ceiling(
             loaded.run, loaded.casts, throughput, loaded.deaths
+        )
+    if answers is not None:
+        findings += analyse_spikes(
+            damage_taken=loaded.damage_taken,
+            casts=loaded.casts,
+            deaths=loaded.deaths,
+            resurrections=loaded.resurrections,
+            players=loaded.run.players,
+            answers=answers,
+            span=loaded.run.window_ms,
+            combat=tuple((pull.start_ms, pull.end_ms) for pull in loaded.run.pulls),
+            setting="run",
         )
     return rank_findings(findings)
