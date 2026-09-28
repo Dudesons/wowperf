@@ -9,17 +9,18 @@ from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
 from wowperf.domain.comparison.pace import NO_SINGLE_BOSS, PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
+from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.night import FailedPull, LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
-from wowperf.domain.report.model import ReferenceRecord
+from wowperf.domain.report.model import ReferenceRecord, SectionState
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_build import build_progression_report
-from wowperf.domain.report.raid_model import all_raid_ledger_rows
+from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles
 
 REPORT_CODE = "TESTCODE00000000"
@@ -769,27 +770,22 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
     ]
 
 
-def test_a_pull_handed_a_pace_sample_names_the_night_reason_not_no_comparison_ran() -> None:
-    """`NO_COMPARISON_RAN` says nothing was fetched at all, which stops being true
-    the moment `load_pace_sample` ran for a pull -- whether or not it found a
-    reference kill to compare against. The switch is on being handed a
-    sample, not on that sample succeeding: an available and an unavailable
-    sample both get the night's own reason, and only a pull `pace_by_fight`
-    never names at all keeps today's line.
+def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
+    """Three wipes at one boss: one compared, one handed a sample that withheld, one handed none.
+
+    The switch under test is on being handed a sample, not on that sample
+    succeeding: `load_pace_sample` ran for both of the first two, and only the
+    third is a pull `pace_by_fight` never names -- the shape a kill or a
+    `--no-compare` night has. Returned by role, so each test below reads the
+    pull it is about by name rather than by position.
     """
     night = a_night(bosses=(3,))
-    compared, unavailable, untouched = (
-        attempt.fight_id for attempt in night.night.bosses[0].attempts
-    )
-    encounter = next(
-        one for one in night.night.bosses[0].attempts if one.fight_id == compared
-    )
-    sample = a_sample(80, int(encounter.duration_seconds))
-    findings = analyse_pace(encounter, sample)
+    compared, unavailable, untouched = night.night.bosses[0].attempts
+    sample = a_sample(80, int(compared.duration_seconds))
 
     report = build_night_report(
         night,
-        {compared: findings},
+        {compared.fight_id: analyse_pace(compared, sample)},
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
@@ -798,22 +794,81 @@ def test_a_pull_handed_a_pace_sample_names_the_night_reason_not_no_comparison_ra
         death_cards=True,
         findings_by_boss=NO_FINDINGS,
         pace_by_fight={
-            compared: sample,
-            unavailable: PaceSample(unavailable=NO_SINGLE_BOSS),
+            compared.fight_id: sample,
+            unavailable.fight_id: PaceSample(unavailable=NO_SINGLE_BOSS),
         },
     )
+    by_fight = {pull.report.provenance.fight_id: pull.report for pull in report.bosses[0].pulls}
+    return {
+        "compared": by_fight[compared.fight_id],
+        "unavailable": by_fight[unavailable.fight_id],
+        "untouched": by_fight[untouched.fight_id],
+    }
 
-    def withheld_for(fight_id: int) -> tuple[str, ...]:
-        pull = next(
-            one.report for one in report.bosses[0].pulls
-            if one.report.provenance.fight_id == fight_id
-        )
-        return pull.provenance.withheld
 
-    for fight_id in (compared, unavailable):
-        assert not any(NO_COMPARISON_RAN in line for line in withheld_for(fight_id)), fight_id
-        assert any(f"raid --fight {fight_id}" in line for line in withheld_for(fight_id)), fight_id
-    assert any(NO_COMPARISON_RAN in line for line in withheld_for(untouched))
+def test_a_pull_handed_a_pace_sample_states_the_wipes_own_reason_on_every_card() -> None:
+    """Design 14.3: the pull's page is the page `raid --fight N` draws for that wipe.
+
+    `raid` on a wipe says `WITHHELD_DETAIL` on the card of every raider it
+    compared -- the attempt did not kill, so no leaderboard sample stands
+    beside it. `NO_COMPARISON_RAN` says no reference run was fetched at all,
+    which is false of a pull `load_pace_sample` ran for.
+    """
+    pulls = three_wipes_one_handed_no_sample()
+
+    for role in ("compared", "unavailable"):
+        cards = pulls[role].players
+        assert len(cards) == len(ROSTER), role
+        assert [card.spell_and_talent.reason for card in cards] == [WITHHELD_DETAIL] * 2, role
+
+
+def test_a_pull_handed_a_pace_sample_withholds_its_damage_tab_as_raid_does_on_that_wipe() -> None:
+    """The Damage tab's own fallback: `raid`'s wipe withholds it with `WITHHELD_DETAIL`.
+
+    The compared pull's tab opens on its pace row, so the fallback shows only
+    on the pull whose sample withheld -- the one place a reader meets it.
+    """
+    pulls = three_wipes_one_handed_no_sample()
+
+    assert pulls["compared"].damage.state is SectionState.PRESENT
+    unavailable = pulls["unavailable"].damage
+    assert unavailable.state is SectionState.WITHHELD
+    assert unavailable.reason == WITHHELD_DETAIL
+
+
+def test_a_pull_handed_a_pace_sample_states_the_wipes_reason_once_in_its_provenance() -> None:
+    """`raid`'s wipe states `WITHHELD_DETAIL` once, as the Damage line, and never again.
+
+    Its per-card spell-and-talent lines are suppressed there as repeats of the
+    reason the whole attempt shares, so the night pull carries no "Spell and
+    talent comparison" line either -- and nothing saying no reference was fetched.
+    """
+    pulls = three_wipes_one_handed_no_sample()
+
+    for role in ("compared", "unavailable"):
+        withheld = pulls[role].provenance.withheld
+        assert [line for line in withheld if WITHHELD_DETAIL in line] == [
+            f"Damage against other kills: {WITHHELD_DETAIL}"
+        ], role
+        assert not any(line.startswith("Spell and talent comparison") for line in withheld), role
+        assert not any(NO_COMPARISON_RAN in line for line in withheld), role
+
+
+def test_a_pull_handed_no_pace_sample_keeps_no_comparison_ran_at_every_site() -> None:
+    """A kill, or a `--no-compare` night: nothing was fetched for it, and the page says so."""
+    pulls = three_wipes_one_handed_no_sample()
+    untouched = pulls["untouched"]
+
+    assert [card.spell_and_talent.reason for card in untouched.players] == [
+        NO_COMPARISON_RAN
+    ] * 2
+    assert untouched.damage.state is SectionState.WITHHELD
+    assert untouched.damage.reason == NO_COMPARISON_RAN
+    assert [line for line in untouched.provenance.withheld if NO_COMPARISON_RAN in line] == [
+        f"Damage against other kills: {NO_COMPARISON_RAN}",
+        f"Spell and talent comparison: {NO_COMPARISON_RAN}",
+    ]
+    assert not any(WITHHELD_DETAIL in line for line in untouched.provenance.withheld)
 
 
 def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None:

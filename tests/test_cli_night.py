@@ -13,13 +13,24 @@ from markupsafe import escape
 from typer.testing import CliRunner
 
 from tests.test_cli import operation_name, plain, quota_response
+from wowperf.adapters.cache.disk import cache_key
+from wowperf.adapters.wcl.queries import (
+    BOSS_DAMAGE_GRAPH_QUERY,
+    ENCOUNTER_KILL_RANKINGS_QUERY,
+    REFERENCE_FIGHT_QUERY,
+)
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     PROGRESSION_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
     RAID_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    REFERENCE_CACHE_SUBDIR,
     app,
 )
+from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, no_sample_on_the_night
+from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
+from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
+from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.night_build import CARD_TIER_NONE, build_night_report
 
 runner = CliRunner()
@@ -1076,6 +1087,99 @@ def test_a_night_of_only_kills_fetches_no_reference_kill(tmp_path: Path) -> None
     operations = _operations(calls)
     for operation in PACE_OPERATIONS:
         assert operation not in operations
+
+
+def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path: Path) -> None:
+    """Design 14.3: each wipe pull's page is the page `raid --fight N` draws for it.
+
+    Every pull here is a wipe handed a pace sample, so none of them may say no
+    reference run was fetched, or that no reference kills were drawn: the
+    command drew them. The parse axis says the wipe's own sentence, and the
+    verdict notice says what the night itself did not draw.
+    """
+    result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
+
+    assert result.exit_code == 0, result.output
+    findings_file, page_file = _written(tmp_path)
+    payload = json.loads(findings_file.read_text(encoding="utf-8"))
+    pulls = [pull for boss in payload["bosses"] for pull in boss["pulls"]]
+    assert [pull["fight_id"] for pull in pulls] == [FIRST_PULL, SECOND_PULL, THIRD_PULL]
+    for pull in pulls:
+        [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
+        assert notice["detail"] == no_sample_on_the_night(pull["fight_id"]).detail
+
+    html = page_file.read_text(encoding="utf-8")
+    assert str(escape(NO_COMPARISON_RAN)) not in html
+    assert str(escape(NO_REFERENCE_SAMPLE)) not in html
+    assert str(escape(WITHHELD_DETAIL)) in html
+    for pull in pulls:
+        reason = no_sample_on_the_night(pull["fight_id"]).detail
+        assert f"Why this attempt ended: {escape(reason)}" in html, pull["fight_id"]
+
+
+def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_nothing(
+    tmp_path: Path,
+) -> None:
+    """The other half: `--no-compare` fetched nothing, and the page still says so."""
+    result = run_night(tmp_path, "--no-compare", kill_rankings=PACE_KILL_RANKINGS)
+
+    assert result.exit_code == 0, result.output
+    findings_file, page_file = _written(tmp_path)
+    payload = json.loads(findings_file.read_text(encoding="utf-8"))
+    for boss in payload["bosses"]:
+        for pull in boss["pulls"]:
+            [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
+            assert notice["detail"] == NO_REFERENCE_SAMPLE, pull["fight_id"]
+
+    html = page_file.read_text(encoding="utf-8")
+    assert str(escape(NO_COMPARISON_RAN)) in html
+    assert str(escape(WITHHELD_DETAIL)) not in html
+
+
+def test_the_nights_leaderboard_and_reference_responses_go_to_the_one_day_store(
+    tmp_path: Path,
+) -> None:
+    """Section 14.2 and the terms: other players' logs are kept for a day, never warehoused.
+
+    Every leaderboard answer, every reference kill's fight lookup and every
+    reference boss graph is looked up by the key its own repository cached it
+    under, and must sit in `REFERENCE_CACHE_SUBDIR` and nowhere in the
+    permanent store beside it. Our own report's graph is the control: it
+    belongs to the permanent store, and is asserted there.
+    """
+    calls: list[tuple[str, dict[str, Any]]] = []
+    result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS, calls=calls)
+    assert result.exit_code == 0, result.output
+
+    queries = {
+        "EncounterKillRankings": ENCOUNTER_KILL_RANKINGS_QUERY,
+        "ReferenceFight": REFERENCE_FIGHT_QUERY,
+        "BossDamageGraph": BOSS_DAMAGE_GRAPH_QUERY,
+    }
+    theirs = [
+        cache_key(queries[name], variables)
+        for name, variables in calls
+        if name in ("EncounterKillRankings", "ReferenceFight")
+        or (name == "BossDamageGraph" and variables["code"] != NIGHT_REPORT_CODE)
+    ]
+    ours = [
+        cache_key(BOSS_DAMAGE_GRAPH_QUERY, variables)
+        for name, variables in calls
+        if name == "BossDamageGraph" and variables["code"] == NIGHT_REPORT_CODE
+    ]
+    # Two leaderboards, six fight lookups, six reference graphs: every one of
+    # them fetched once and so recorded once.
+    assert len(theirs) == 2 + 6 + 6
+    assert len(ours) == 3
+
+    permanent = tmp_path / "cache"
+    transient = permanent / REFERENCE_CACHE_SUBDIR
+    for key in theirs:
+        assert (transient / f"{key}.json").is_file(), key
+        assert not (permanent / f"{key}.json").exists(), key
+    for key in ours:
+        assert (permanent / f"{key}.json").is_file(), key
+        assert not (transient / f"{key}.json").exists(), key
 
 
 def test_the_night_notes_list_each_reference_url_once(tmp_path: Path) -> None:

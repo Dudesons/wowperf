@@ -5,9 +5,10 @@ from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
 from wowperf.domain.comparison.pace import UNAVAILABLE_ID, PaceSample
+from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.findings import Finding
 from wowperf.domain.night import FailedPull, LoadedNight
-from wowperf.domain.report.frame import NO_COMPARISON_RAN, plural
+from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.night_frame import build_night_header, night_subject
@@ -130,22 +131,6 @@ def _pace_withheld_line(fight_id: int, findings: Sequence[Finding]) -> str | Non
     return f"Fight {fight_id}: damage pace against the kills was not compared. {notice.detail}"
 
 
-def _no_comparison_reason(fight_id: int) -> str:
-    """Why a night pull's spell-and-talent comparison is silent, for a pull that did fetch.
-
-    `NO_COMPARISON_RAN` claims nothing was fetched at all, which is false of a
-    pull `pace_by_fight` names: `load_pace_sample` ran for it, whether or not
-    it found a reference kill to compare against. The axis this line is
-    actually about -- spell and talent, per player -- was never drawn either
-    way, and `wowperf raid --fight <fight_id>` is what draws it, so a reader
-    who wants it is pointed there rather than told nothing was ever fetched.
-    """
-    return (
-        "The night page draws no spell and talent comparison: "
-        f"`wowperf raid --fight {fight_id}` draws one for this pull."
-    )
-
-
 def build_night_report(
     loaded: LoadedNight,
     findings_by_fight: Mapping[int, Sequence[Finding]],
@@ -178,11 +163,19 @@ def build_night_report(
     `None`: the raid builder reads that as "no comparison was asked for at all",
     which is true of every pull on this page, where an empty frozenset would
     claim one ran and matched nobody -- no parse comparison ever runs on a
-    night. `reference_records` is no longer left at its empty default: each
-    wipe pull now gets its own records from `records_by_fight`, the same
-    reference kills `raid --fight N` would draw for that pull, read back from
-    the one-day reference cache the command shares across every pull at one
-    boss and size.
+    night. `reference_records` is each wipe pull's own records from
+    `records_by_fight`, the same reference kills `raid --fight N` would draw
+    for that pull, read back from the one-day reference cache the command
+    shares across every pull at one boss and size.
+
+    `parse_withheld` is `WITHHELD_DETAIL` for a pull `pace_by_fight` names,
+    and nothing for any other. `load_pace_sample` ran for such a pull, so
+    `NO_COMPARISON_RAN` -- no reference run was fetched -- would be false of
+    it; what is true is the sentence `raid --fight N` prints for that wipe,
+    whose parse comparison it withholds because the boss lived. So the pull
+    says that, where `raid` says it: on every card, in the Damage tab's
+    fallback, and once in its Provenance. A kill, or any pull of a
+    `--no-compare` night, fetched nothing and keeps `NO_COMPARISON_RAN`.
 
     Walks `loaded.loaded` rather than `loaded.night.bosses`: the two run
     parallel by `LoadedNight`'s own contract, and each `LoadedProgression`
@@ -244,11 +237,7 @@ def build_night_report(
                         trimmed=tier == TRIMMED,
                         death_cards=tier != NO_CARDS,
                         pace=pace_sample,
-                        no_comparison_reason=(
-                            _no_comparison_reason(fight_id)
-                            if pace_sample is not None
-                            else NO_COMPARISON_RAN
-                        ),
+                        parse_withheld=WITHHELD_DETAIL if pace_sample is not None else None,
                     ),
                     tier=tier,
                 )

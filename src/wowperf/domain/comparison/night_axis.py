@@ -32,14 +32,16 @@ NOT_DRAWN_PACE_DETAIL = (
     "each wipe's damage pace against the execution leaderboard's kills. Every family the "
     "parse axis carries is absent from this page as a result: damage against the board, "
     "damage by target, casts a minute, talents, buff uptime, and the percentile. wowperf "
-    "raid --fight N is what draws them, for one pull."
+    "raid --fight N is what draws them, for one kill."
 )
 """`NOT_DRAWN_DETAIL` for a night that compared its wipes' pace.
 
 Such a night did ask a leaderboard, the execution board, for its reference
 kills, so "never asks a leaderboard" and "no comparison against other kills"
 would both be false on it. The parse half stays as it was, and so do the six
-families and the pointer to `raid`.
+families and the pointer to `raid` -- which draws them for one kill, not one
+pull: on a wipe `raid` withholds all six, which is also what this night's own
+wipe pulls say on their cards.
 """
 
 TITLE = "No comparison against other kills is drawn on this page"

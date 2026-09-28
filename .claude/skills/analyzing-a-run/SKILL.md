@@ -180,20 +180,26 @@ mechanics comparison at all, so it loads no damage-taken table for one, whatever
 says. Either way, every pull's spell-and-talent section is empty, and why it is differs: a
 kill, or a night read with `--no-compare`, reads "No reference run was fetched for this analysis,
 so there is nothing to compare against" — the same line `raid --no-compare` prints, since neither
-drew this axis at all — while a compared wipe pull, whose pace comparison did fetch a reference
-kill, reads a line pointing to `wowperf raid --fight <fight>` for the comparison this command never
-draws. The page also states the parse absence once, on its own, naming the families it leaves out
-— damage against the board, damage by target, casts a minute, talents, buff uptime, the percentile
-— rather than leaving them silently missing.
+drew this axis at all — while a wipe pull whose pace was compared, which did fetch reference
+kills, reads the sentence `raid --fight N` prints for that wipe: the attempt did not kill the boss,
+so no leaderboard sample stands beside it and every parse family is withheld. It says so where
+`raid` does — on every card, on the Damage tab when no pace row opens it, and once in the pull's
+Provenance. That pull's verdict notice says the night draws no mechanics sample, so the attempt's
+duration and death toll are not read against the kills here, and names `wowperf raid --fight
+<fight>` as the command that draws that sample; a `--no-compare` night's says instead that no
+reference kills were drawn. The page also states the parse absence once, on its own, naming the
+families it leaves out — damage against the board, damage by target, casts a minute, talents, buff
+uptime, the percentile — rather than leaving them silently missing.
 
 It does draw one comparison, on by default: each wipe pull's damage pace against the reference
 kills, the same reading `raid --fight N` draws for that pull, shared through the one-day reference
 cache across every pull at one boss and raid size. `--no-compare` skips it and analyses every pull
 in isolation; a kill pull draws no pace comparison either way, kills having no pace to read. Two or
 more compared wipes at one boss also add one line to that boss's Attempts tab, counting how many
-ended behind the kills' pace. `wowperf raid --fight N` is what draws the mechanics and parse axes,
-for one pull. `--narrative` is not offered either, for the reason `raid` and `progression` do not
-take it: this command writes no narrative-bearing page.
+ended behind the kills' pace. `wowperf raid --fight N` is what draws the mechanics axis for one
+pull, and the parse axis for one kill — on a wipe `raid` withholds the parse axis too.
+`--narrative` is not offered either, for the reason `raid` and `progression` do not take it: this
+command writes no narrative-bearing page.
 
 What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws no death card at all,
 the cheapest tier a pull can be read at; left unset, the default trims every card to what each

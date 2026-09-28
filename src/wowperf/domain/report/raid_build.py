@@ -58,7 +58,7 @@ def _damage_section(
     findings: Sequence[Finding],
     rows: tuple[LedgerRow, ...],
     *,
-    no_comparison_reason: str = NO_COMPARISON_RAN,
+    parse_withheld: str | None = None,
 ) -> Section:
     """The Damage tab: present when it has rows, withheld with the comparison's own reason.
 
@@ -80,21 +80,21 @@ def _damage_section(
     through `finding_by_id`, an exact match, which is the half that cannot
     hold here.
 
-    `no_comparison_reason` is what the fallback states when neither a row nor
-    a `compare.parse.unavailable` finding is found -- `build_raid_report`'s own
-    parameter of the same name, threaded through rather than read as
-    `NO_COMPARISON_RAN` unconditionally, so a caller for whom that claim is
-    false (the night page, which fetches a reference kill this axis never
-    draws on) can say why instead.
+    `parse_withheld` is what the fallback states when neither a row nor a
+    `compare.parse.unavailable` finding is found and it is given --
+    `build_raid_report`'s own parameter of the same name. Left at `None`, the
+    fallback is `NO_COMPARISON_RAN`, which is what that absence means on every
+    page but the night's.
     """
     if rows:
         return Section(state=SectionState.PRESENT)
     unavailable = next(
         (finding for finding in findings if finding.id.startswith(PARSE_UNAVAILABLE_ID)), None
     )
+    fallback = NO_COMPARISON_RAN if parse_withheld is None else parse_withheld
     return Section(
         state=SectionState.WITHHELD,
-        reason=unavailable.detail if unavailable else no_comparison_reason,
+        reason=unavailable.detail if unavailable else fallback,
     )
 
 
@@ -114,7 +114,7 @@ def build_raid_report(
     trimmed: bool = False,
     death_cards: bool = True,
     pace: PaceSample | None = None,
-    no_comparison_reason: str = NO_COMPARISON_RAN,
+    parse_withheld: str | None = None,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
 
@@ -147,15 +147,16 @@ def build_raid_report(
     holds. A parameter accepted and ignored is a lie the type system helps
     tell.
 
-    `no_comparison_reason` is what the page says wherever `NO_COMPARISON_RAN`
-    would otherwise be printed -- the Damage tab's own fallback and the
-    report-wide "Spell and talent comparison" line -- and defaults to that
-    same constant, so `raid` itself is unaffected. The night page overrides
-    it for a pull it fetched a pace sample for: that pull did fetch a
-    reference kill, so the claim "no reference run was fetched for this
-    analysis" would be false of it, even though the axis this reason is
-    actually about -- spell and talent, per player -- was never drawn either
-    way.
+    `parse_withheld` is why the parse comparison is withheld for every raider
+    at once, for a caller that hands no parse subject (`compared_slugs` is
+    `None`) and for whom `NO_COMPARISON_RAN` would be false: the night page,
+    on a wipe it fetched a pace sample for, which fetched a reference kill for
+    that pull. Given, it stands where `NO_COMPARISON_RAN` would -- on every
+    card and in the Damage tab's fallback -- and is stated once in Provenance,
+    on the Damage line, with no "Spell and talent comparison" line repeating
+    it: exactly how `raid` states `WITHHELD_DETAIL` on a wipe it compared
+    every raider for. `None`, the default, is the page `raid` has always
+    drawn, so `raid` itself passes nothing here.
     """
     _check_unique_finding_ids(findings)
 
@@ -198,7 +199,8 @@ def build_raid_report(
         ledger_row(verdict_finding, titles_by_id, tooltips) if verdict_finding else None
     )
     players = build_raid_players(
-        loaded, findings, subject, compared_slugs, titles_by_id, tooltips
+        loaded, findings, subject, compared_slugs, titles_by_id, tooltips,
+        parse_withheld=parse_withheld,
     )
     grid = build_raid_grid(loaded.players, loaded.damage_taken, roles, findings)
     # `Death.timestamp_ms` and `Resurrection.timestamp_ms` sit on the report's
@@ -266,9 +268,7 @@ def build_raid_report(
     parse_rows = tuple(
         row for row in placed_rows["damage_rows"] if not row.finding_id.startswith(PACE_PREFIX)
     )
-    parse_damage = _damage_section(
-        findings, parse_rows, no_comparison_reason=no_comparison_reason
-    )
+    parse_damage = _damage_section(findings, parse_rows, parse_withheld=parse_withheld)
     damage = (
         Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
     )
@@ -321,8 +321,13 @@ def build_raid_report(
     # none was ever asked for. When a comparison did run, a raider nobody
     # asked for is left off this list for the same reason: their comparison
     # was not withheld, it was not requested.
+    #
+    # `parse_withheld` is a reason the whole attempt shares, so it is stated
+    # once, by the Damage line above, and never repeated here -- the same
+    # suppression a wipe's per-card lines get below.
     if compared_slugs is None:
-        withheld.append(f"Spell and talent comparison: {no_comparison_reason}")
+        if parse_withheld is None:
+            withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
     else:
         for card in players:
             if (

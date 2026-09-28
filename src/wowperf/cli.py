@@ -39,6 +39,7 @@ from wowperf.adapters.wcl.pace import load_pace_sample
 from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_TARGETS_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
+from wowperf.domain.analysis.attempt_shape import NO_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.night_service import analyse_night_boss
 from wowperf.domain.analysis.progression_service import analyse_progression
@@ -2020,7 +2021,9 @@ def night(
         # leaves those two families undrawn rather than drawn from nothing.
         # Pace is the one comparison this command does draw, on by default;
         # `pace_by_fight` hands each pull its own sample, or nothing at all
-        # for a kill or for a night read with `--no-compare`.
+        # for a kill or for a night read with `--no-compare`. A pull handed
+        # one also drew reference kills, so its verdict notice may not say
+        # none were drawn: it says the night drew no mechanics sample instead.
         findings_by_fight = {
             attempt.encounter.fight_id: analyse_encounter(
                 attempt,
@@ -2028,6 +2031,11 @@ def night(
                 consumables,
                 roles=roles,
                 pace=pace_by_fight.get(attempt.encounter.fight_id),
+                no_sample=(
+                    no_sample_on_the_night(attempt.encounter.fight_id)
+                    if attempt.encounter.fight_id in pace_by_fight
+                    else NO_SAMPLE
+                ),
             )
             for attempt in drawn
         }

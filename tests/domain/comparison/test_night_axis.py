@@ -49,4 +49,8 @@ def test_a_night_that_compared_pace_says_it_draws_no_parse_comparison_only() -> 
     for family in ("damage", "casts a minute", "talents", "uptime", "percentile"):
         assert family in finding.detail
     assert "wowperf raid --fight" in finding.detail
+    # `raid` draws these families on a kill alone: on a wipe it withholds all
+    # six, so pointing a reader at "one pull" would send them to a wipe's page
+    # for a comparison it never shows.
+    assert finding.detail.endswith("wowperf raid --fight N is what draws them, for one kill.")
     assert finding.evidence == ("wowperf night never queries a parse leaderboard",)
