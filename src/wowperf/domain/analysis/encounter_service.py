@@ -23,6 +23,7 @@ from wowperf.domain.comparison.mechanics import (
     compare_mechanics,
     compare_phase_cost,
 )
+from wowperf.domain.comparison.pace import PaceSample, analyse_pace
 from wowperf.domain.comparison.parse_axis import ParseSubject, compare_parse_axis
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
@@ -62,6 +63,7 @@ def analyse_encounter(
     mechanics: MechanicsSample = MechanicsSample(),
     our_abilities: tuple[AbilityTakenRow, ...] = (),
     parse_subjects: Sequence[ParseSubject] = (),
+    pace: PaceSample | None = None,
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
 
@@ -91,6 +93,10 @@ def analyse_encounter(
     This axis is compared last, and `rank_raid_findings` decides where its rows
     land -- the order here is the order the analysers ran in, never an order a
     reader meets.
+
+    `pace` runs `analyse_pace` on the wipes the command fetched references for;
+    `None` means the command never asked -- a kill, or `--no-compare` -- and is
+    kept apart from a sample that asked and found nothing to compare.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
@@ -165,4 +171,6 @@ def analyse_encounter(
             ),
             subject.slug,
         )
+    if pace is not None:
+        findings += analyse_pace(encounter, pace)
     return rank_raid_findings(findings)

@@ -8,6 +8,8 @@ from wowperf.domain.comparison.mechanics import (
     MechanicsSample,
     ReferenceKillRow,
 )
+from wowperf.domain.comparison.pace import PACE_PREFIX, PaceSample
+from wowperf.domain.comparison.pace_curve import BossDamage, PaceReference
 from wowperf.domain.comparison.parse_axis import ParseSubject
 from wowperf.domain.comparison.raid_reference import (
     RaidParseRow,
@@ -773,3 +775,46 @@ def test_a_compared_ability_carries_the_phase_its_landings_fell_in() -> None:
     assert "3 of 4 landings fell in Stage Two: Something Else" in compared.evidence, (
         compared.evidence
     )
+
+
+def _behind_pace_sample() -> PaceSample:
+    """One reference kill that dealt the boss ten times what we did, every second.
+
+    Below `MIN_SAMPLE_FOR_AGGREGATE` on purpose: the single-reference fallback
+    needs only one member, which keeps this fixture small while still reading
+    as behind for the whole wipe.
+    """
+    return PaceSample(
+        ours=BossDamage(interval_ms=1000, amounts=(100,) * 500),
+        references=(
+            PaceReference(
+                duration_seconds=500.0,
+                damage=BossDamage(interval_ms=1000, amounts=(1000,) * 500),
+            ),
+        ),
+    )
+
+
+def test_a_wipe_with_a_pace_sample_carries_the_pace_finding() -> None:
+    """The parameter this task adds, asserted through the one id it can produce."""
+    loaded = _loaded_wipe_with(deaths=14)
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), mechanics=_mechanics_sample(),
+        pace=_behind_pace_sample(),
+    )
+
+    ids = {finding.id for finding in findings}
+    assert any(one.startswith(PACE_PREFIX) for one in ids), ids
+
+
+def test_a_wipe_with_no_pace_sample_carries_no_pace_finding() -> None:
+    """`pace=None` means the command never asked, not that nothing was found."""
+    loaded = _loaded_wipe_with(deaths=14)
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(), mechanics=_mechanics_sample(),
+    )
+
+    ids = {finding.id for finding in findings}
+    assert not any(one.startswith(PACE_PREFIX) for one in ids), ids

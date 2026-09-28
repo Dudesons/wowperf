@@ -4,6 +4,9 @@
 from typing import Any
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.pace_boss import NpcActor
+from wowperf.domain.comparison.pace_curve import BossDamage
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
@@ -600,6 +603,110 @@ def build_damage_done(payload: dict[str, Any]) -> tuple[DamageDoneSeries, ...]:
             )
         )
     return tuple(built)
+
+
+def build_boss_damage(payload: dict[str, Any], *, fight_start_ms: int) -> BossDamage | None:
+    """The `Total` series of a boss-scoped damage graph, converted from its rate.
+
+    `build_damage_done` drops the `"Total"` row deliberately -- a run-wide sum
+    sitting in the model is one import away from a page that ranks players.
+    This graph is different: `targetID` already scopes it to one enemy actor,
+    so there is no per-player ranking to protect, and `Total` is the only row
+    this pace comparison has any use for. The per-player rows this same graph
+    carries are left for slice 2.
+
+    `None` when the response holds no `Total` row, or when its interval is
+    zero or negative -- the same guard `build_damage_done` applies, for the
+    same reason: a zero interval would make every bucket zero seconds wide.
+    """
+    report = (payload.get("reportData") or {}).get("report") or {}
+    graph = report.get("graph") or {}
+    rows = (graph.get("data") or {}).get("series") or []
+
+    for row in rows:
+        if row.get("id") != "Total":
+            continue
+        interval_ms = float(row.get("pointInterval") or 0.0)
+        if interval_ms <= 0:
+            return None
+        return BossDamage(
+            interval_ms=interval_ms,
+            amounts=tuple(
+                int(round(float(point) * interval_ms / 1000)) for point in row.get("data") or []
+            ),
+            lead_ms=int(row.get("pointStart") or 0) - fight_start_ms,
+        )
+    return None
+
+
+def build_npc_actors(payload: dict[str, Any]) -> tuple[NpcActor, ...]:
+    """Every enemy actor of a report, with its boss flag.
+
+    A row missing `id` or `gameID` is skipped: it names nothing `find_boss_actor`
+    or a reference fight's enemy list could ever match against.
+    """
+    report = (payload.get("reportData") or {}).get("report") or {}
+    rows = (report.get("masterData") or {}).get("actors") or []
+    built = []
+    for row in rows:
+        actor_id, game_id = row.get("id"), row.get("gameID")
+        if actor_id is None or game_id is None:
+            continue
+        built.append(
+            NpcActor(
+                actor_id=int(actor_id),
+                game_id=int(game_id),
+                name=str(row.get("name") or ""),
+                sub_type=str(row.get("subType") or ""),
+            )
+        )
+    return tuple(built)
+
+
+class ReferenceFight(Frozen):
+    """One reference kill's own fight window and enemy roster.
+
+    Read to find the boss actor of a report we did not fetch `masterData`
+    for: our own boss's game id, looked up in this fight's own `enemies`.
+    """
+
+    start_ms: int
+    end_ms: int
+    enemies: tuple[EnemyNpc, ...]
+
+
+def _reference_int(value: Any, description: str) -> int:
+    """A field `build_reference_fight` cannot build a reference from without.
+
+    A reference fight lives in a report we do not own, so a missing or
+    non-numeric field is schema drift rather than something to default away.
+    Raising `IngestError` here is what keeps it inside `load_pace_sample`'s own
+    `except` tuple -- a bare `KeyError` or `TypeError` would fall through that
+    tuple uncaught and take the whole command down with it.
+    """
+    if not isinstance(value, (int, float)):
+        raise IngestError(f"A reference fight carries no usable {description}")
+    return int(value)
+
+
+def build_reference_fight(payload: dict[str, Any]) -> ReferenceFight | None:
+    """The one fight `REFERENCE_FIGHT_QUERY` asked for, or `None` when it is missing."""
+    report = (payload.get("reportData") or {}).get("report") or {}
+    fights = report.get("fights") or []
+    if not fights:
+        return None
+    fight = fights[0]
+    return ReferenceFight(
+        start_ms=_reference_int(fight.get("startTime"), "startTime"),
+        end_ms=_reference_int(fight.get("endTime"), "endTime"),
+        enemies=tuple(
+            EnemyNpc(
+                actor_id=_reference_int(npc.get("id"), "enemy id"),
+                game_id=_reference_int(npc.get("gameID"), "enemy gameID"),
+            )
+            for npc in (fight.get("enemyNPCs") or [])
+        ),
+    )
 
 
 def build_health_samples(events: list[dict[str, Any]]) -> tuple[HealthSample, ...]:

@@ -1300,6 +1300,37 @@ occurred), so nothing may assume an index. `comparison/targets._boss_share` read
 there has never been another, so the behaviour is unobserved rather than known to be safe. A
 two-boss encounter — a council fight — is the shape that would test it, and none has been read.
 
+## A damage graph can be scoped to the boss, and the boss is found by `subType` and name
+
+Introspected and measured 2026-09-27 against report `cW38jmwdnZfbHVL4`.
+
+**`graph` takes `targetID: Int`**, and its whole argument list is `table`'s, argument for
+argument (28 arguments). `graph(dataType: DamageDone, hostilityType: Friendlies, fightIDs: [N],
+startTime, endTime, targetID: <boss actor id>)` on fight 2, a 20-player Heroic kill with three add
+types, returned the unscoped call's grid exactly -- same series count (21, `Total` included),
+`pointStart`, `pointInterval` and point count -- with each series reduced to damage to that one
+actor. Rebuilt totals: 493,479,037 scoped against 749,473,080 unscoped (34% lower, the adds).
+`table(dataType: DamageDone, targetID: <boss>)` summed to 498,963,668, within 1.10% of the scoped
+graph -- the per-series rate shortfall recorded above, over twenty players.
+
+**The grid, over sixteen boss-only graphs on nine wipes and four kills:** `pointStart` equals the
+fight's `startTime` on every one; `pointInterval` is about duration / 240, since every graph holds
+about 241 points; the grid overhangs the fight's end by one bucket, twice by two. `Total` summed
+equals the per-player series summed to 1e-8. A leaderboard row's `duration` equals the fight's
+`endTime - startTime` to the millisecond. **Cost:** 1.00 point on the fight 2 probe, but 21.96 over
+those sixteen calls, 1.37 each, so budget on the higher figure.
+
+**Nothing on `enemyNPCs` marks the boss.** `ReportFightNPC` is `{ gameID id instanceCount
+groupCount petOwner }`, and `encounterID` is not an NPC `gameID` (3492 against 257758 on Ula'tek).
+`masterData.actors(type: "NPC")` carries `subType`, reading `Boss`, `NPC` or `Unknown` (17, 81
+and 12 actors on this report). `subType: Boss` alone over-selects: on Ula'tek it also marks Gore
+Rattle and Venomous Heart, adds with a boss frame, while a second actor named Ula'tek carries
+`subType: NPC` and took no player damage. **`subType == "Boss"` and `name` equal to the fight's
+`name` together picked exactly one actor on every single-boss fight read.** The two council
+encounters on this report (Entombed Sentinels, The Coiled Altar) each field two `Boss` actors,
+neither named after the fight. A reference fight's boss is found by our boss's `gameID` in that
+fight's `enemyNPCs`, 1.00 point each, and was found on all four references read.
+
 ## Terms of service
 
 Read 2026-09-03 from the RPGLogs API Terms of Service. §5d prohibits scraping, building

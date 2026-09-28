@@ -32,7 +32,7 @@
 {% macro pointer(row) %}
 <a class="pointer" href="#{{ scope }}finding-{{ row.finding_id }}">
   <span class="pointer-title">{{ row.title }}</span>
-  <span class="cost">{{ row.seconds }}</span>
+  {% if row.seconds %}<span class="cost">{{ row.seconds }}</span>{% endif %}
   <span class="badge {{ row.badge.tint }}">{{ row.badge.label }}</span>
 </a>
 {% endmacro %}

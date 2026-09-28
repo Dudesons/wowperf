@@ -222,6 +222,14 @@ RAID_REFERENCE_CODE = "refcode1"
 RAID_REFERENCE_FIGHT = 5
 
 RAID_WIPE_FIGHT_ID = 30
+PACE_BOSS_GAME_ID = 950
+PACE_BOSS_OUR_ACTOR_ID = 61
+PACE_BOSS_REFERENCE_ACTOR_ID = 62
+"""The wipe fight's boss (named "Ula'tek", matching `_raid_fights_payload`'s
+own wipe fight) as the pace comparison's own queries find it: one game id
+shared by our actor and the reference kill's, and distinct actor ids on each
+side -- the join `find_boss_actor` and the reference-fight lookup are meant
+to make, not one a shared id could pass by accident."""
 RAID_PARSE_CODES = ("refpa", "refpb", "refpc", "refpd", "refpe")
 RAID_PARSE_FIGHT = 8
 RAID_PARSE_CHARACTER = "Кириллица"
@@ -537,6 +545,62 @@ def build_raid_transport(
         }
     }
 
+    # The pace comparison's own three queries, answered only on a wipe: a
+    # boss actor named after the wipe fight itself (`_raid_fights_payload`'s
+    # own rule, "Ula'tek"), a reference fight naming that same boss by game
+    # id, and each side's boss-only damage graph. Ours deals the boss far
+    # less than the reference every second, so the wipe reads as behind
+    # rather than landing on a state this task does not need to prove.
+    npc_actors_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {
+                "masterData": {
+                    "actors": [
+                        {
+                            "id": PACE_BOSS_OUR_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID,
+                            "name": "Ula'tek", "subType": "Boss",
+                        }
+                    ]
+                }
+            }
+        }
+    }
+
+    def reference_fight_payload(fight_id: int) -> dict[str, Any]:
+        return {
+            "reportData": {
+                "report": {
+                    "fights": [
+                        {
+                            "id": fight_id, "startTime": 1_000, "endTime": 381_000,
+                            "enemyNPCs": [
+                                {"id": PACE_BOSS_REFERENCE_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID}
+                            ],
+                        }
+                    ]
+                }
+            }
+        }
+
+    def boss_damage_graph_payload(point_start: float, amount_per_second: float) -> dict[str, Any]:
+        return {
+            "reportData": {
+                "report": {
+                    "graph": {
+                        "data": {
+                            "series": [
+                                {
+                                    "id": "Total", "pointStart": point_start,
+                                    "pointInterval": 1_000.0,
+                                    "data": [amount_per_second] * 400,
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        }
+
     def cast_rows(
         actor_id: int, ability_id: int, count: int, first_ms: int
     ) -> list[dict[str, Any]]:
@@ -741,6 +805,21 @@ def build_raid_transport(
                             "report": {"events": {"data": rows, "nextPageTimestamp": None}}
                         }
                     }
+                },
+            )
+        if name == "NpcActors":
+            return httpx.Response(200, json={"data": npc_actors_payload})
+        if name == "ReferenceFight":
+            return httpx.Response(
+                200, json={"data": reference_fight_payload(int(variables["fightId"]))}
+            )
+        if name == "BossDamageGraph":
+            ours = code == RAID_REPORT_CODE
+            amount = 5.0 if ours else 50.0
+            return httpx.Response(
+                200,
+                json={
+                    "data": boss_damage_graph_payload(float(variables["startTime"]), amount)
                 },
             )
         return httpx.Response(200, json={"data": empty_events})
@@ -1050,6 +1129,61 @@ def test_a_wipe_pays_for_no_parse_leaderboard_at_all(tmp_path: Path) -> None:
     # of what was fetched rather than a run that fetched nothing.
     assert "Casts" in calls
     assert "EncounterKillRankings" in calls
+
+
+PACE_OPERATIONS = ("NpcActors", "ReferenceFight", "BossDamageGraph")
+
+
+def test_a_wipe_run_writes_the_pace_finding_and_one_reference_per_mechanics_member(
+    tmp_path: Path,
+) -> None:
+    """The wiring this task adds, seen through the artefact `analyse_encounter` writes.
+
+    The references are the mechanics comparison's own accepted members, not
+    every leaderboard row the mechanics loop looked at: the fixture's
+    leaderboard also names this very report and fight, which the mechanics
+    loop discards as a self-match, leaving one member. Passing the raw
+    leaderboard rows instead of `mechanics_sample.members` would carry that
+    discard through to the pace axis and record two, not one.
+    """
+    result = run_raid(
+        tmp_path,
+        fight_id=RAID_WIPE_FIGHT_ID,
+        kill_rankings=[
+            _reference_kill_row(RAID_REPORT_CODE, RAID_WIPE_FIGHT_ID),
+            _reference_kill_row(),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert any(one.startswith("compare.pace.") for one in ids), ids
+    assert payload["comparison"]["sample_size"]["mechanics"] == 1
+    pace_records = [
+        one for one in payload["comparison"]["references"] if one["axis"] == "pace"
+    ]
+    assert len(pace_records) == 1, pace_records
+
+
+def test_a_kill_run_asks_for_none_of_the_pace_operations(tmp_path: Path) -> None:
+    """A kill has the parse comparison; nothing about its pace is ever fetched."""
+    calls: list[str] = []
+    result = run_raid(tmp_path, calls=calls)
+
+    assert result.exit_code == 0, result.output
+    assert not any(one in PACE_OPERATIONS for one in calls), calls
+
+
+def test_no_compare_on_a_wipe_asks_for_none_of_the_pace_operations(tmp_path: Path) -> None:
+    calls: list[str] = []
+    result = run_raid(tmp_path, "--no-compare", fight_id=RAID_WIPE_FIGHT_ID, calls=calls)
+
+    assert result.exit_code == 0, result.output
+    assert not any(one in PACE_OPERATIONS for one in calls), calls
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert not any(one.startswith("compare.pace.") for one in ids), ids
 
 
 def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:

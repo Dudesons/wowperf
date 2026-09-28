@@ -14,7 +14,13 @@ from tests.adapters.render.test_html_invariants import (
     is_a_bare_number,
 )
 from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
-from tests.domain.report.test_raid_build import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, NO_ROLES
+from tests.domain.comparison.test_pace_curve import a_kill, steady
+from tests.domain.report.test_raid_build import (
+    FETCHED,
+    NO_CONSUMABLES,
+    NO_DEFENSIVES,
+    NO_ROLES,
+)
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
 from wowperf.adapters.render.html import render_raid
@@ -27,6 +33,7 @@ from wowperf.domain.comparison.mechanics import (
     MechanicsSample,
     ReferenceKillRow,
 )
+from wowperf.domain.comparison.pace import PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL, ParseSubject
 from wowperf.domain.comparison.raid_reference import (
     RaidParseRow,
@@ -381,6 +388,7 @@ def a_built_raid_report(
     kill: bool = True,
     findings: tuple[Finding, ...] | None = None,
     compared: frozenset[str] | None = COMPARED,
+    pace: PaceSample | None = None,
 ) -> RaidReport:
     return build_raid_report(
         a_raid_fight(kill=kill),
@@ -392,6 +400,7 @@ def a_built_raid_report(
         NO_CONSUMABLES,
         NO_ROLES,
         reference_records=(A_REFERENCE,),
+        pace=pace,
     )
 
 
@@ -432,6 +441,131 @@ def a_wiped_raid_page_with_a_verdict() -> str:
     return render_raid(
         a_built_raid_report(kill=False, findings=(*a_wipes_findings(), A_VERDICT_FINDING))
     )
+
+
+PACE_DURATION = int((FIGHT_END_MS - FIGHT_START_MS) / 1000) + 60
+"""Longer than the fixture fight, so a reference kill's own band is never cut
+short of the wipe's end."""
+
+
+def a_pace_sample(per_second: int) -> PaceSample:
+    """Three steady reference kills, so the band is a real one and not the
+    single-kill fallback -- `MIN_SAMPLE_FOR_AGGREGATE` is three."""
+    kills = tuple(a_kill(100, PACE_DURATION) for _ in range(3))
+    return PaceSample(ours=steady(per_second, PACE_DURATION), references=kills)
+
+
+def a_wiped_raid_report_with_pace(per_second: int = 80) -> RaidReport:
+    """A wipe with a real pace comparison, built the same way `test_raid_build`
+    proves the builder and `analyse_pace` together: the pace findings below
+    come from the real analyser, never hand-typed."""
+    loaded = a_raid_fight(kill=False)
+    sample = a_pace_sample(per_second)
+    pace_findings = analyse_pace(loaded.encounter, sample)
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,), pace=sample,
+    )
+
+
+def a_wiped_raid_page_with_pace(per_second: int = 80) -> str:
+    return render_raid(a_wiped_raid_report_with_pace(per_second))
+
+
+def test_a_behind_wipe_draws_the_pace_chart_and_the_summary_pointer() -> None:
+    report = a_wiped_raid_report_with_pace(per_second=80)
+    html = render_raid(report)
+
+    assert 'class="pace-chart"' in html
+    assert '<polygon class="pace-band"' in html
+    assert '<polyline class="pace-median"' in html
+    assert '<polyline class="pace-ours"' in html
+    assert '<line class="pace-mark"' in html
+    assert report.pace_warning is not None
+    assert f'id="finding-{PACE_ID}"' in html
+    assert f'href="#finding-{PACE_ID}"' in html
+    assert "Behind the reference kills' pace. The chart is on the Damage tab." in html
+
+
+def test_the_page_carries_no_literal_none() -> None:
+    """The pace finding has no `seconds_lost`, so its pointer must guard
+    `row.seconds` exactly as `ledger_row` already does -- an unguarded print
+    of `None` (the Jinja Environment carries no `finalize`) would read as a
+    real timing figure on a card that has none.
+    """
+    html = a_wiped_raid_page_with_pace(per_second=80)
+    assert ">None<" not in html
+
+
+def test_an_on_pace_wipe_draws_no_mark_and_no_pointer() -> None:
+    """The other half of the behind page above: on pace draws the same chart
+    with neither the behind mark nor the Summary paragraph that only a
+    behind reading earns."""
+    report = a_wiped_raid_report_with_pace(per_second=100)
+    html = render_raid(report)
+
+    assert 'class="pace-chart"' in html
+    assert report.pace_warning is None
+    assert '<line class="pace-mark"' not in html
+    assert "Behind the reference kills' pace." not in html
+
+
+def a_pace_sample_cut_short_of_the_wipe() -> PaceSample:
+    """Four references so the band is a real one (`single` stays `False`),
+    two of which end well before the wipe: the band the other two still make
+    falls below `MIN_SAMPLE_FOR_AGGREGATE` (three) partway through, so the
+    comparison stops there rather than running to the wipe's own end."""
+    kills = (a_kill(100, 100), a_kill(100, 100), a_kill(100, PACE_DURATION),
+             a_kill(100, PACE_DURATION))
+    return PaceSample(ours=steady(80, PACE_DURATION), references=kills)
+
+
+def a_wiped_raid_report_with_cut_pace() -> RaidReport:
+    loaded = a_raid_fight(kill=False)
+    sample = a_pace_sample_cut_short_of_the_wipe()
+    pace_findings = analyse_pace(loaded.encounter, sample)
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,), pace=sample,
+    )
+
+
+def test_a_band_cut_short_of_the_wipe_draws_the_cut_mark() -> None:
+    report = a_wiped_raid_report_with_cut_pace()
+    html = render_raid(report)
+
+    assert report.pace_chart is not None
+    assert report.pace_chart.cut_x is not None
+    assert '<line class="pace-cut"' in html
+
+
+def a_wiped_raid_report_with_unavailable_pace() -> RaidReport:
+    loaded = a_raid_fight(kill=False)
+    sample = PaceSample(unavailable="No boss actor could be found for this fight.")
+    pace_findings = analyse_pace(loaded.encounter, sample)
+    return build_raid_report(
+        loaded, (*a_wipes_findings(), *pace_findings), EMBERKIN, COMPARED, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, reference_records=(A_REFERENCE,), pace=sample,
+    )
+
+
+def test_an_unavailable_pace_comparison_is_named_in_the_provenance() -> None:
+    report = a_wiped_raid_report_with_unavailable_pace()
+    html = render_raid(report)
+
+    assert report.pace_chart is None
+    assert 'class="pace-chart"' not in html
+    assert (
+        "Damage pace against other kills: No boss actor could be found for this fight."
+        in html
+    )
+
+
+def test_a_kill_page_draws_no_pace_markup() -> None:
+    html = a_raid_page()
+
+    assert 'class="pace-chart"' not in html
+    assert '<polygon class="pace-band"' not in html
 
 
 MARKUP = re.compile(r"<[^>]*>")
@@ -1380,10 +1514,28 @@ re-approving this file that it is the normal shape.
 """
 
 
+def a_golden_pace_sample() -> PaceSample:
+    """A behind pace comparison, given to the golden's own kill fight.
+
+    `analyse_pace` and `pace_reading` both refuse a kill outright (design
+    section 4: pace is a wipe-only comparison), so this sample -- and the
+    findings `analyse_pace` would emit from it -- never actually reach the
+    golden page. Passing it here anyway is the proof: the golden byte-compare
+    below holds the page to carrying not one trace of it, through the same
+    `build_raid_report` call a real kill's report is built from, rather than
+    through a synthetic fixture that never risked drawing one.
+    """
+    duration = int((FIGHT_END_MS - FIGHT_START_MS) / 1000) + 60
+    kills = tuple(a_kill(100, duration) for _ in range(3))
+    return PaceSample(ours=steady(80, duration), references=kills)
+
+
 def a_golden_raid_report() -> RaidReport:
+    sample = a_golden_pace_sample()
+    fight = a_compared_raid_fight()
     return build_raid_report(
-        a_compared_raid_fight(),
-        a_real_raid_comparison(),
+        fight,
+        (*a_real_raid_comparison(), *analyse_pace(fight.encounter, sample)),
         GOLDEN_ROSTER[0],
         COMPARED,
         FETCHED,
@@ -1391,6 +1543,7 @@ def a_golden_raid_report() -> RaidReport:
         NO_CONSUMABLES,
         NO_ROLES,
         reference_records=GOLDEN_REFERENCES,
+        pace=sample,
     )
 
 
@@ -1413,6 +1566,20 @@ def test_the_golden_fixture_actually_carries_a_comparison() -> None:
     assert families >= {
         "compare.damage.total", "compare.rank", "compare.talents",
     }, sorted(families)
+
+
+def test_a_kill_carries_a_pace_sample_and_still_draws_none_of_it() -> None:
+    """The golden fixture is a kill given a real, behind pace sample -- design
+    section 4's "only on a wipe" rule, held against the real builder rather
+    than a fixture that never risked drawing anything.
+    """
+    report = a_golden_raid_report()
+
+    assert report.pace_chart is None
+    assert report.pace_warning is None
+    assert not [
+        row for row in all_raid_ledger_rows(report) if row.finding_id.startswith("compare.pace.")
+    ]
 
 
 def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> None:

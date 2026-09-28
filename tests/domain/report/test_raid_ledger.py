@@ -138,6 +138,24 @@ def test_the_throughput_families_reach_the_damage_tab() -> None:
     assert _raid_field_for("compare.rank.emberkin-0") == "damage_rows"
 
 
+def test_the_pace_families_reach_the_damage_tab() -> None:
+    """Pace is computed by `analyse_pace`, a comparison of its own that
+    `analyse_encounter` never calls, so it cannot reach `a_rich_encounter()`'s
+    fixture and is pinned directly here rather than folded into
+    `RAID_FAMILIES` -- exactly as `wipe.cause` and `mechanics.phase.*` are
+    documented to be, above.
+
+    `compare.pace.unavailable` matches the same bare `compare.pace.` prefix,
+    but `build_raid_report` strips it out of `findings` before `place_rows`
+    ever sees it (its own withheld notice belongs in Provenance alone), so it
+    never actually reaches this field in a real report; this only pins that
+    the prefix table itself would route it there if it ever did.
+    """
+    assert _raid_field_for("compare.pace.boss") == "damage_rows"
+    assert _raid_field_for("compare.pace.projection") == "damage_rows"
+    assert _raid_field_for("compare.pace.unavailable") == "damage_rows"
+
+
 def test_no_broader_prefix_sits_ahead_of_a_narrower_one() -> None:
     """`PLACEMENTS` resolves by first match, so order is the whole rule.
 

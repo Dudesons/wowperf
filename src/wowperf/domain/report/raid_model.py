@@ -96,6 +96,39 @@ class AliveChart(Frozen):
     tick_label_x: float
 
 
+class ChartPoint(Frozen):
+    """One point of a line or a polygon, in viewBox units."""
+
+    x: float
+    y: float
+
+
+class PaceChart(Frozen):
+    """Our cumulative boss damage against the kills' band, as one drawing.
+
+    Every coordinate lives here so the template computes none. The y axis is a
+    share of the kills' median total boss damage and the tick labels are
+    percentages: no raw damage figure reaches the page. `band` is a closed
+    polygon -- the highest edge left to right, then the lowest edge back.
+    """
+
+    band: tuple[ChartPoint, ...]
+    median: tuple[ChartPoint, ...]
+    ours: tuple[ChartPoint, ...]
+    behind_x: float | None
+    cut_x: float | None
+    plot_top: float
+    baseline_y: float
+    ticks: tuple[tuple[float, str], ...]
+    legend: str
+    badge: Badge
+    width: float
+    height: float
+    tick_x1: float
+    tick_x2: float
+    tick_label_x: float
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     verdict: LedgerRow | None = None
@@ -135,6 +168,12 @@ class RaidReport(Frozen):
     provenance: Provenance
     # The players-alive step chart. None where the attempt carries no duration.
     alive_chart: AliveChart | None = None
+    # Our damage pace against the kills' band. None on a kill, on `--no-compare`,
+    # and wherever the comparison itself came back unavailable.
+    pace_chart: PaceChart | None = None
+    # Points at the pace card, set only where the wipe ended behind pace: the
+    # one damage-pace fact the Summary is worth interrupting for.
+    pace_warning: LedgerRow | None = None
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
@@ -150,14 +189,18 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     section 6, `RAID_COMPARISON_PREFIXES`) land on `spell_and_talent_rows`,
     and are icons the resolver would otherwise never see.
 
-    `report.verdict` is the one deliberate exception: it heads Summary as its
-    own headline rather than sitting in a tab's list, and `build_raid_report`
-    already keeps its finding from also reaching `observations` -- walking it
-    here too would count the same row twice for every caller of this
-    function, including the once-only checks in the render invariants.
-    `classify_attempt` never puts an ability on the verdict finding, so
-    today's icon resolver loses nothing by not seeing it; a future verdict
-    that named one would need its own arm in `_icon_addresses` instead.
+    `report.verdict` and `report.pace_warning` are the two deliberate
+    exceptions. `report.verdict` heads Summary as its own headline rather than
+    sitting in a tab's list, and `build_raid_report` already keeps its finding
+    from also reaching `observations` -- walking it here too would count the
+    same row twice for every caller of this function, including the
+    once-only checks in the render invariants. `classify_attempt` never puts
+    an ability on the verdict finding, so today's icon resolver loses nothing
+    by not seeing it; a future verdict that named one would need its own arm
+    in `_icon_addresses` instead. `report.pace_warning` is not a second finding
+    to walk at all: it repeats a row `damage_rows` already carries (the same
+    `compare.pace.boss` finding, wrapped as a pointer rather than a card), so
+    walking it here would count that one row twice.
     """
     yield from report.ledger_decomposition
     yield from report.summary_pointers

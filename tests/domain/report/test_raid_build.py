@@ -5,11 +5,13 @@ from collections import Counter
 
 import pytest
 
+from tests.domain.comparison.test_pace_curve import a_kill, steady
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
 from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
+from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
@@ -167,6 +169,22 @@ def a_kills_findings() -> tuple[Finding, ...]:
         a_finding(f"compare.damage.targets.{EMBERKIN_SLUG}"),
         a_finding(f"compare.rank.{EMBERKIN_SLUG}"),
     )
+
+
+PACE_DURATION = (FIGHT_END_MS - FIGHT_START_MS) / 1000
+"""The fixture fight's own duration, so a sample built against it is never cut
+short of what `a_raid_fixture`'s encounter actually runs."""
+
+
+def a_pace_sample(per_second: int) -> PaceSample:
+    """Three reference kills at a steady 100 a second, and our own steady rate.
+
+    Three references clears `MIN_SAMPLE_FOR_AGGREGATE`, so the reading is a
+    real band rather than the single-kill fallback, and every reference runs
+    longer than the fixture fight so the band is never cut before its end.
+    """
+    kills = tuple(a_kill(100, int(PACE_DURATION) + 60) for _ in range(3))
+    return PaceSample(ours=steady(per_second, int(PACE_DURATION) + 60), references=kills)
 
 
 def placements(report: RaidReport) -> list[str]:
@@ -792,3 +810,93 @@ def test_the_verdict_appears_once_on_the_page() -> None:
 
     elsewhere = [row.finding_id for row in all_raid_ledger_rows(report)]
     assert elsewhere.count("wipe.cause") == 0, elsewhere
+
+
+def test_a_behind_wipe_draws_the_pace_rows_the_chart_and_the_summary_pointer() -> None:
+    """`build_raid_report` and `analyse_pace` are tested together: the findings
+    below come from the real analyser rather than a hand-typed stand-in, so a
+    change to either side would show up here."""
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)  # behind: 80 a second against the kills' 100
+    findings = analyse_pace(loaded.encounter, sample)
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    placed_ids = {row.finding_id for row in report.damage_rows}
+    assert {PACE_ID, PROJECTION_ID} <= placed_ids
+    assert report.damage.state is SectionState.PRESENT
+    assert report.pace_chart is not None
+    assert report.pace_warning is not None
+    assert report.pace_warning.finding_id == PACE_ID
+
+
+def test_an_on_pace_wipe_draws_the_chart_but_raises_no_warning() -> None:
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=100)  # matches the kills' own rate: on pace
+    findings = analyse_pace(loaded.encounter, sample)
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    assert report.pace_chart is not None
+    assert report.pace_warning is None
+
+
+def test_a_pace_comparison_that_found_nothing_is_disclosed_in_the_provenance_alone() -> None:
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = PaceSample(unavailable="No boss actor could be found for this fight.")
+    findings = analyse_pace(loaded.encounter, sample)
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    withheld = report.provenance.withheld
+    assert [
+        line for line in withheld
+        if line.startswith("Damage pace against other kills: ")
+    ]
+    assert "compare.pace.unavailable" not in [
+        row.finding_id for row in all_raid_ledger_rows(report)
+    ]
+
+
+def test_a_wipe_with_pace_rows_still_states_the_parse_reason_once() -> None:
+    """Step 2.4's ruling: pace rows would otherwise make the Damage tab present
+    and silently turn the fight-wide parse reason into a per-raider one.
+    Guarded here on a wipe that carries both a pace comparison and the
+    ordinary parse-unavailable findings `a_wipes_findings` gives every raider.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)
+    findings = (*analyse_pace(loaded.encounter, sample), *a_wipes_findings())
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    withheld = report.provenance.withheld
+    assert [line for line in withheld if line.startswith("Damage against other kills: ")] == [
+        f"Damage against other kills: {WITHHELD_DETAIL}"
+    ]
+    assert not [line for line in withheld if line.startswith("Spell and talent comparison for ")]
+
+
+def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.pace_chart is None
+    assert report.pace_warning is None
+    assert report.damage_rows, "an open damage tab with no rows on it"

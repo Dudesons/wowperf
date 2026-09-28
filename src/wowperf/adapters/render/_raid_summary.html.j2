@@ -8,6 +8,10 @@
 {{ ledger_row(report.verdict) }}
 </div>
 {% endif %}
+{% if report.pace_warning %}
+<p class="sub">Behind the reference kills' pace. The chart is on the Damage tab.</p>
+{{ pointer(report.pace_warning) }}
+{% endif %}
 
 {% if report.alive_chart %}
 <h2 id="{{ scope }}alive">How the attempt went

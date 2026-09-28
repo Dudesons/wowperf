@@ -272,6 +272,62 @@ query DamageDoneGraph($code: String!, $fightId: Int!, $startTime: Float!, $endTi
 }
 """
 
+# Every enemy actor of a report, with the flag that tells a boss from an add:
+# `subType` reads "Boss", "NPC" or "Unknown". `translate: true` is required
+# because `find_boss_actor` compares an actor's `name` against
+# `Encounter.boss_name`, which comes from `fights(translate: true)` -- see the
+# wcl-api skill, "A damage graph can be scoped to the boss...", 2026-09-27.
+NPC_ACTORS_QUERY = """
+query NpcActors($code: String!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      masterData(translate: true) {
+        actors(type: "NPC") { id gameID name subType }
+      }
+    }
+  }
+}
+"""
+
+# One reference kill's own fight window and enemy roster, so its boss actor
+# can be found by game id rather than assumed to share ours.
+REFERENCE_FIGHT_QUERY = """
+query ReferenceFight($code: String!, $fightId: Int!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      fights(fightIDs: [$fightId]) {
+        id
+        startTime
+        endTime
+        enemyNPCs { id gameID }
+      }
+    }
+  }
+}
+"""
+
+# The damage-done graph scoped to one enemy actor with `targetID`, so the
+# curve is the boss's own rather than the whole fight's. See the wcl-api
+# skill, "A damage graph can be scoped to the boss...", 2026-09-27.
+BOSS_DAMAGE_GRAPH_QUERY = """
+query BossDamageGraph(
+  $code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!, $targetId: Int!
+) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      graph(
+        dataType: DamageDone
+        hostilityType: Friendlies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        targetID: $targetId
+      )
+    }
+  }
+}
+"""
+
 # Issued once per death, bounded to one actor and a few seconds, so it returns
 # a handful of rows. Scoping by `targetID` is what keeps a ten-death run from
 # paying for ten full streams; the healing stream honours that scoping.
