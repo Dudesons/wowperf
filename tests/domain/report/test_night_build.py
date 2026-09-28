@@ -3,18 +3,23 @@
 
 from collections.abc import Mapping, Sequence
 
+from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
+from wowperf.domain.comparison.pace import NO_SINGLE_BOSS, PACE_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.night import FailedPull, LoadedNight, Night
 from wowperf.domain.progression import LoadedProgression, Progression
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
+from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_build import build_progression_report
+from wowperf.domain.report.progression_model import all_progression_ledger_rows
 from wowperf.domain.report.raid_model import all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles
 
@@ -525,3 +530,194 @@ def test_a_summary_does_not_depend_on_the_death_card_tier() -> None:
     assert a_report(night, death_cards=True).bosses[0].summary == a_report(
         night, death_cards=False
     ).bosses[0].summary
+
+
+PACE_REFERENCE_CODE = "REFCODE0000000A"
+"""A reference kill's report code, fabricated for the fixture below.
+
+Never the code of a real, fetched reference kill -- constraints.md forbids
+printing one of those. This one names nothing that was ever fetched.
+"""
+
+
+def a_reference_record(index: int, *, from_cache: bool = False) -> ReferenceRecord:
+    """One fabricated reference kill, distinguished from its siblings by `index`.
+
+    `url` is what dedup keys on, so two records built with the same `index`
+    but different `from_cache` share a `url` -- the shape two pulls handed the
+    same reference kill actually have, one reading it fresh and the next
+    reading the cached copy back.
+    """
+    return ReferenceRecord(
+        report_code=PACE_REFERENCE_CODE,
+        fight_id=index,
+        keystone_level=0,
+        url=f"https://www.warcraftlogs.com/reports/{PACE_REFERENCE_CODE}#fight={index}",
+        axis="pace",
+        from_cache=from_cache,
+    )
+
+
+def test_a_pull_given_a_pace_sample_draws_its_chart_row_and_pointer() -> None:
+    """The three things one sample buys, built through `analyse_pace` and never hand-typed.
+
+    A hand-typed finding would agree with a builder that stopped reading
+    `pace` at all for the chart, since nothing else here would notice it was
+    gone -- `analyse_pace` is what ties the chart to the same reading its
+    finding states.
+    """
+    night = a_night(bosses=(1,))
+    encounter = night.night.bosses[0].attempts[0]
+    fight_id = encounter.fight_id
+    sample = a_sample(80)
+    findings = analyse_pace(encounter, sample)
+
+    report = build_night_report(
+        night,
+        {fight_id: findings},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={fight_id: sample},
+    )
+
+    pull = report.bosses[0].pulls[0].report
+    assert pull.pace_chart is not None
+    assert any(row.finding_id == PACE_ID for row in pull.damage_rows)
+    assert pull.pace_warning is not None
+
+
+def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
+    night = a_night(bosses=(1,))
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+    )
+
+    pull = report.bosses[0].pulls[0].report
+    assert pull.pace_chart is None
+    assert not any(row.finding_id == PACE_ID for row in pull.damage_rows)
+    assert pull.pace_warning is None
+
+
+def test_a_pulls_own_provenance_carries_the_records_handed_for_it() -> None:
+    night = a_night(bosses=(1,))
+    fight_id = night.night.bosses[0].attempts[0].fight_id
+    records = (a_reference_record(1), a_reference_record(2))
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        records_by_fight={fight_id: records},
+    )
+
+    assert report.bosses[0].pulls[0].report.provenance.references == records
+
+
+def test_two_pulls_sharing_reference_records_are_named_once_each() -> None:
+    """Three records handed to two pulls give three, not six -- the first copies.
+
+    The second pull's records are the same three kills, `from_cache=True`: the
+    shape `load_pace_sample` produces when the first pull already paid for
+    them. Deduped by `url`, so the night's own list carries the first pull's
+    copies and not the cached repeats.
+    """
+    night = a_night(bosses=(2,))
+    fight_a, fight_b = (attempt.fight_id for attempt in night.night.bosses[0].attempts)
+    first = tuple(a_reference_record(i) for i in (1, 2, 3))
+    second = tuple(a_reference_record(i, from_cache=True) for i in (1, 2, 3))
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        records_by_fight={fight_a: first, fight_b: second},
+    )
+
+    assert report.provenance.references == first
+
+
+def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
+    night = a_night(bosses=(1,))
+    encounter = night.night.bosses[0].attempts[0]
+    fight_id = encounter.fight_id
+    sample = PaceSample(unavailable=NO_SINGLE_BOSS)
+    findings = analyse_pace(encounter, sample)
+
+    report = build_night_report(
+        night,
+        {fight_id: findings},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+    )
+
+    named = [line for line in report.provenance.withheld if line.startswith(f"Fight {fight_id}:")]
+    assert named == [
+        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_SINGLE_BOSS}"
+    ]
+
+
+def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None:
+    """Task 1's line, handed through `findings_by_boss` as the command will hand it.
+
+    Placed by the existing `progression.attempts.` prefix rule, so this pins
+    that the wiring reaches the summary and never leaks onto a pull's own
+    tabs -- not a new placement rule of its own.
+    """
+    night = a_night(bosses=(2,))
+    boss = night.loaded[0]
+    encounter_id = boss.progression.encounter_id
+    attempts = boss.attempts_with_events
+    samples = {attempt.encounter.fight_id: a_sample(80) for attempt in attempts}
+    boss_line = analyse_night_pace(attempts, samples)
+    assert boss_line, "the fixture must actually earn the line, or this pins nothing"
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss={encounter_id: tuple(boss_line)},
+    )
+
+    summary = report.bosses[0].summary
+    assert summary is not None
+    summary_ids = [row.finding_id for row in all_progression_ledger_rows(summary)]
+    assert summary_ids.count(NIGHT_PACE_ID) == 1
+    for pull in report.bosses[0].pulls:
+        pull_ids = [row.finding_id for row in all_raid_ledger_rows(pull.report)]
+        assert NIGHT_PACE_ID not in pull_ids

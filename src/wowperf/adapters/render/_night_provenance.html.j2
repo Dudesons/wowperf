@@ -17,6 +17,9 @@
 
 <h2 id="provenance">Provenance</h2>
 <p class="sub">Report {{ report.header.report_code }}, fetched {{ report.provenance.fetched_at }}.</p>
+{% for record in report.provenance.references %}
+<p class="sub"><a href="{{ record.url }}">{{ record.axis|capitalize }} candidate{% if record.player_name %} for {{ record.player_name }}{% endif %} (report {{ record.report_code }}, fight {{ record.fight_id }})</a>{% if record.from_cache %} <span class="legend">— reused from cache, not re-fetched</span>{% endif %}{% if record.reason %} <span class="withheld">— not used: {{ record.reason }}</span>{% endif %}</p>
+{% endfor %}
 {% for line in report.provenance.withheld %}
 <p class="withheld">{{ line }}</p>
 {% endfor %}

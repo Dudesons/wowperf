@@ -3,7 +3,7 @@
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.night import FailedPull
-from wowperf.domain.report.model import LedgerRow
+from wowperf.domain.report.model import LedgerRow, ReferenceRecord
 from wowperf.domain.report.progression_model import ProgressionReport, all_progression_ledger_rows
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 
@@ -64,18 +64,24 @@ class NightProvenance(Frozen):
 
     `Provenance` is deliberately not reused, for the reason
     `ProgressionProvenance` already gives: it carries a `fight_id`, and a night
-    is not one fight, and it carries `references`, the external candidates a
-    comparison weighed, which this command never fetches at all. Each pull
-    keeps its own `Provenance` inside its `RaidReport`, where a fight id is a
-    fact rather than a guess.
+    is not one fight. Each pull keeps its own `Provenance` inside its
+    `RaidReport`, where a fight id is a fact rather than a guess and a
+    reference record is a fact about that one pull's own comparison.
+    `references` below is this page's own list instead: every reference kill
+    any pull weighed, named once regardless of how many pulls weighed it,
+    which no single pull's `fight_id`-scoped `Provenance` could state on its
+    own.
 
     `fetched_at` is stated here rather than read off a pull, because a night
     whose every pull failed to load still has to say when it was read.
 
-    `withheld` is prose built from `NightReport.failed_pulls` and from nothing
-    else. Two independently gathered representations of the same fact drift,
-    and then the page names one set of pulls in a list and another in a
-    paragraph.
+    `withheld` is prose built from two sources and nothing else:
+    `NightReport.failed_pulls`, for the pulls that never loaded at all, and
+    each drawn pull's own `compare.pace.unavailable` finding, for a wipe whose
+    damage pace could not be compared. Each fact still has exactly one
+    source, so the lines cannot drift from what they describe -- two
+    independently gathered representations of the same fact drift, and then
+    the page names one set of pulls in a list and another in a paragraph.
 
     `methods` states what depth the run asked for. It is prose rather than a
     `tier` field because on a `--deep` night the tier is per pull by design,
@@ -86,6 +92,10 @@ class NightProvenance(Frozen):
     """
 
     fetched_at: str
+    # Every reference kill any wipe pull weighed, deduplicated by `url` in the
+    # order the pulls first weighed it. A link and never a figure, like every
+    # `ReferenceRecord` on this page -- see that class's own docstring.
+    references: tuple[ReferenceRecord, ...] = ()
     withheld: tuple[str, ...] = ()
     methods: tuple[str, ...] = ()
 

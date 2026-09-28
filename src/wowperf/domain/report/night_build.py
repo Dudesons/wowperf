@@ -4,10 +4,12 @@
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
+from wowperf.domain.comparison.pace import UNAVAILABLE_ID, PaceSample
 from wowperf.domain.findings import Finding
 from wowperf.domain.night import FailedPull, LoadedNight
 from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
+from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.night_frame import build_night_header, night_subject
 from wowperf.domain.report.night_model import (
     BossSection,
@@ -114,6 +116,20 @@ def _withheld(failed_pulls: Sequence[FailedPull]) -> tuple[str, ...]:
     )
 
 
+def _pace_withheld_line(fight_id: int, findings: Sequence[Finding]) -> str | None:
+    """This pull's own `compare.pace.unavailable` notice, worded for the night's Provenance.
+
+    Read from the same findings that pull's own `RaidReport` is built from, so
+    this line and that pull's Damage tab can never disagree about why its
+    pace was not compared. None where the pull carries no such notice --
+    either its pace was compared, or nothing was asked for it at all.
+    """
+    notice = next((finding for finding in findings if finding.id == UNAVAILABLE_ID), None)
+    if notice is None:
+        return None
+    return f"Fight {fight_id}: damage pace against the kills was not compared. {notice.detail}"
+
+
 def build_night_report(
     loaded: LoadedNight,
     findings_by_fight: Mapping[int, Sequence[Finding]],
@@ -127,6 +143,8 @@ def build_night_report(
     findings_by_boss: Mapping[int, Sequence[Finding]],
     externals: Externals = Externals(),
     self_resurrections: SelfResurrections = SelfResurrections(),
+    pace_by_fight: Mapping[int, PaceSample] | None = None,
+    records_by_fight: Mapping[int, tuple[ReferenceRecord, ...]] | None = None,
 ) -> NightReport:
     """Every boss and every pull, each pull built by the raid builder it reuses whole.
 
@@ -143,9 +161,12 @@ def build_night_report(
     `night_subject`, since a night page names no player. `compared_slugs` is
     `None`: the raid builder reads that as "no comparison was asked for at all",
     which is true of every pull on this page, where an empty frozenset would
-    claim one ran and matched nobody. `reference_records` is left at its empty
-    default for the same reason -- this command fetches no reference run, and a
-    record of one would be an invention rather than a reading.
+    claim one ran and matched nobody -- no parse comparison ever runs on a
+    night. `reference_records` is no longer left at its empty default: each
+    wipe pull now gets its own records from `records_by_fight`, the same
+    reference kills `raid --fight N` would draw for that pull, read back from
+    the one-day reference cache the command shares across every pull at one
+    boss and size.
 
     Walks `loaded.loaded` rather than `loaded.night.bosses`: the two run
     parallel by `LoadedNight`'s own contract, and each `LoadedProgression`
@@ -159,19 +180,41 @@ def build_night_report(
     summary, so its findings are never read even when present. A boss missing
     from the mapping entirely draws a summary with no findings, the same
     `.get(..., ())` fallback `findings_by_fight` relies on above.
+
+    `pace_by_fight` and `records_by_fight` are each wipe pull's own
+    `PaceSample` and reference records, keyed by fight id and read as empty
+    when the whole mapping is `None` -- a kill pull, a night read with
+    `--no-compare`, or a fight neither mapping names, all fall back to no
+    sample and no records the same way `findings_by_fight` falls back above.
+    `NightProvenance.references` is filled by walking every pull's own records
+    in pull order, keeping the first copy seen of each `url`: a later pull's
+    copy is the same reference kill read back from cache.
+    `NightProvenance.withheld` gains one line per drawn pull whose own
+    findings carry a `compare.pace.unavailable` notice, read off that pull's
+    own findings so the line can never name a different reason than the
+    pull's own Damage tab did.
     """
     bosses: list[BossSection] = []
+    reference_records_seen: dict[str, ReferenceRecord] = {}
+    pace_withheld: list[str] = []
     for boss in loaded.loaded:
         drawn = boss.attempts_with_events
         pulls: list[PullSection] = []
         for attempt in drawn:
             fight_id = attempt.encounter.fight_id
             tier = _tier(fight_id, deep_fights, death_cards=death_cards)
+            pull_findings = findings_by_fight.get(fight_id, ())
+            pull_records = (records_by_fight or {}).get(fight_id, ())
+            for record in pull_records:
+                reference_records_seen.setdefault(record.url, record)
+            pace_line = _pace_withheld_line(fight_id, pull_findings)
+            if pace_line is not None:
+                pace_withheld.append(pace_line)
             pulls.append(
                 PullSection(
                     report=build_raid_report(
                         attempt,
-                        findings_by_fight.get(fight_id, ()),
+                        pull_findings,
                         night_subject(attempt.encounter),
                         None,
                         fetched_at,
@@ -180,8 +223,10 @@ def build_night_report(
                         roles,
                         externals,
                         self_resurrections,
+                        reference_records=pull_records,
                         trimmed=tier == TRIMMED,
                         death_cards=tier != NO_CARDS,
+                        pace=(pace_by_fight or {}).get(fight_id),
                     ),
                     tier=tier,
                 )
@@ -213,7 +258,8 @@ def build_night_report(
         observations=(not_drawn,),
         provenance=NightProvenance(
             fetched_at=fetched_at,
-            withheld=_withheld(loaded.failed_pulls),
+            references=tuple(reference_records_seen.values()),
+            withheld=_withheld(loaded.failed_pulls) + tuple(pace_withheld),
             methods=(_card_tier_method(deep_fights, death_cards=death_cards),),
         ),
     )
