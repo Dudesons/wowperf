@@ -318,11 +318,27 @@ ORDINALS = ("", "second ", "third ", "fourth ", "fifth ", "sixth ", "seventh ", 
             "ninth ", "tenth ")
 
 
+def _ordinal(rank: int) -> str:
+    """Return the ordinal suffix for a rank (e.g., '', '2nd ', '21st ')."""
+    if 1 <= rank <= len(ORDINALS):
+        return ORDINALS[rank - 1]
+    suffix = "th"
+    if rank % 100 not in (11, 12, 13):
+        ones = rank % 10
+        if ones == 1:
+            suffix = "st"
+        elif ones == 2:
+            suffix = "nd"
+        elif ones == 3:
+            suffix = "rd"
+    return f"{rank}{suffix} "
+
+
 def _line(verdict: Verdict, origin_ms: int, setting: str) -> str:
     moment = verdict.moment
     opens = clock_text((moment.start_ms - origin_ms) / 1000)
     closes = clock_text((moment.end_ms - origin_ms) / 1000)
-    rank = ORDINALS[moment.rank - 1] if moment.rank <= len(ORDINALS) else f"{moment.rank}th "
+    rank = _ordinal(moment.rank)
     weight = (
         f"{moment.weight:.1f} times the median"
         if moment.weight is not None
@@ -356,17 +372,18 @@ SPIKES_DETAIL = (
     f"shield absorbed, less any damage past death, summed over rolling {SPIKE_WINDOW_SECONDS}-"
     f"second windows. One moment is ranked per started {SECONDS_PER_SPIKE // 60} minutes of the "
     "{setting}, heaviest first and never overlapping, and a window counts only at "
-    f"{SPIKE_FLOOR:g} times the {{setting}}'s median {SPIKE_WINDOW_SECONDS}-second window or "
-    "above. "
-    "A healing or group-wide defensive cooldown answers a moment when it was pressed from "
+    f"{SPIKE_FLOOR:g} times the median {SPIKE_WINDOW_SECONDS}-second window or above, the median "
+    "taken over the windows that sit inside a pull. A healing or group-wide defensive cooldown "
+    "answers a moment when it was pressed from "
     f"{ANSWER_LEAD_SECONDS} seconds before the window opened to its close."
 )
 UNANSWERED_DETAIL = (
     "Judged for the group, never for one healer: the group may have planned this moment for a "
     "cooldown that came later. A cooldown reads as ready when its holder pressed it somewhere "
     "in this {setting}, had not pressed it within its base cooldown before the window opened, "
-    "and was alive. Talents that shorten a cooldown are not modelled, a second charge reads as "
-    "not ready, and a cooldown never pressed in the {setting} is not seen at all, so ready is "
+    "was alive, and that base cooldown reached back no further than the {setting}'s first "
+    "second. Talents that shorten a cooldown are not modelled, a second charge reads as not "
+    "ready, and a cooldown never pressed in the {setting} is not seen at all, so ready is "
     f"understated, never invented. The {ANSWER_LEAD_SECONDS}-second lead and the floor of "
     f"{SPIKE_FLOOR:g} times the median are chosen numbers, not measured ones."
 )
@@ -378,6 +395,6 @@ NO_ANSWER_DETAIL = (
     "cooldown that this tool lists as answering the whole group's damage."
 )
 NO_MOMENT_DETAIL = (
-    f"No {SPIKE_WINDOW_SECONDS}-second window of this {{setting}} reached {SPIKE_FLOOR:g} times "
-    "its median window, so none is presented as a heavy moment."
+    f"No {SPIKE_WINDOW_SECONDS}-second window inside a pull of this {{setting}} reached "
+    f"{SPIKE_FLOOR:g} times the median of those windows, so none is presented as a heavy moment."
 )

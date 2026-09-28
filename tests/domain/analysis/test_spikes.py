@@ -289,3 +289,80 @@ def test_no_title_detail_or_evidence_carries_a_raw_damage_figure() -> None:
     for finding in spikes(damage, casts, span=nine_minutes):
         for text in (finding.title, finding.detail, *finding.evidence):
             assert not re.search(r"\d{4,}", text), text
+
+
+def test_heaviest_first_ranking_and_clock_order_are_independent() -> None:
+    nine_minutes = (0, 540_000)
+    damage = [*steady(540), *burst(100, per_second=1500), *burst(300, per_second=3000),
+              *burst(450, per_second=2000)]
+    moments = heaviest_moments(
+        damage, frozenset({MAGE.actor_id}), nine_minutes, (nine_minutes,)
+    )
+    assert [(one.start_ms // 1000, one.rank) for one in moments] == [(100, 3), (300, 1), (450, 2)]
+    casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60)]
+    findings = spikes(damage, casts, span=nine_minutes)
+    evidence_starts = [line.split(",")[0] for line in the(findings, SPIKES_ID).evidence]
+    assert evidence_starts == ["1:40 to 1:45", "5:00 to 5:05", "7:30 to 7:35"]
+    assert "the third heaviest" in the(findings, SPIKES_ID).evidence[0]
+    assert "the heaviest" in the(findings, SPIKES_ID).evidence[1]
+    assert "the second heaviest" in the(findings, SPIKES_ID).evidence[2]
+
+
+def test_exact_detail_text_of_spikes_findings() -> None:
+    findings = spikes([*steady(300), *burst(200)], [FILLER])
+    assert the(findings, SPIKES_ID).detail == (
+        "The damage the group's players took, each hit counted as what reached health plus what "
+        "a shield absorbed, less any damage past death, summed over rolling 5-second windows. One "
+        "moment is ranked per started 3 minutes of the fight, heaviest first and never "
+        "overlapping, and a window counts only at 2 times the median 5-second window or above, "
+        "the median taken over the windows that sit inside a pull. A healing or group-wide "
+        "defensive cooldown answers a moment when it was pressed from 10 seconds before the "
+        "window opened to its close."
+    )
+    unanswered_casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
+    findings = spikes([*steady(300), *burst(200)], unanswered_casts)
+    assert the(findings, UNANSWERED_ID).detail == (
+        "Judged for the group, never for one healer: the group may have planned this moment for a "
+        "cooldown that came later. A cooldown reads as ready when its holder pressed it somewhere "
+        "in this fight, had not pressed it within its base cooldown before the window opened, was "
+        "alive, and that base cooldown reached back no further than the fight's first second. "
+        "Talents that shorten a cooldown are not modelled, a second charge reads as not ready, and "
+        "a cooldown never pressed in the fight is not seen at all, so ready is understated, never "
+        "invented. The 10-second lead and the floor of 2 times the median are chosen numbers, not "
+        "measured ones."
+    )
+    findings = spikes([*steady(300), *burst(100, per_second=90)], [FILLER])
+    assert the(findings, UNAVAILABLE_ID).detail == (
+        "No 5-second window inside a pull of this fight reached 2 times the median of those "
+        "windows, so none is presented as a heavy moment."
+    )
+
+
+def test_title_text_with_multiple_states() -> None:
+    casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
+    findings = spikes([*steady(300), *burst(200)], casts)
+    assert the(findings, SPIKES_ID).title == (
+        "1 heaviest moment: 1 unanswered while cooldowns were ready"
+    )
+
+
+def test_one_moment_per_started_three_minutes() -> None:
+    damage = [*steady(300), *burst(50, per_second=2000), *burst(250, per_second=1500)]
+    moments = heaviest_moments(
+        damage, frozenset({MAGE.actor_id}), FIVE_MINUTES, (FIVE_MINUTES,)
+    )
+    assert len(moments) == 2
+
+
+def test_ordinal_suffixes_for_ranks_above_ten() -> None:
+    from wowperf.domain.analysis.spikes import _ordinal
+    assert _ordinal(1) == ""
+    assert _ordinal(2) == "second "
+    assert _ordinal(10) == "tenth "
+    assert _ordinal(11) == "11th "
+    assert _ordinal(12) == "12th "
+    assert _ordinal(13) == "13th "
+    assert _ordinal(21) == "21st "
+    assert _ordinal(22) == "22nd "
+    assert _ordinal(23) == "23rd "
+    assert _ordinal(24) == "24th "
