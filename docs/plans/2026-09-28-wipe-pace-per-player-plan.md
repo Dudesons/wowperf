@@ -963,7 +963,7 @@ Full gate. Subject: `Put each wiped player's pace on their card, off the Damage 
 
 - [ ] **Step 2: The command, test first**
 
-In `cli.py`'s `raid` command: `self_resurrections = load_self_resurrections()` beside `roles = load_roles()`, passed to `analyse_encounter`. In `tests/test_cli.py`, extend the wipe fixture from slice 1's Task 5 so its `ReferenceFight` payloads carry a roster (`friendlyPlayers`, `friendlySpecs`, `masterData.actors`) matching the fixture raiders' class and spec across at least three references, and its `BossDamageGraph` payloads carry per-player series: a wipe run writes `compare.pace.player.<slug>` for the analysed player into the findings file; a kill run and a `--no-compare` wipe write no `compare.pace.player.` finding. Prove red by dropping the call in the service.
+In `cli.py`'s `raid` command: load the self-resurrection list once (`self_resurrections = load_self_resurrections()` beside `roles = load_roles()`) and pass that one value both to `analyse_encounter` and to `build_raid_report`, which today loads its own inline (`self_resurrections=load_self_resurrections()` in the `build_raid_report(...)` call) -- so the recaps and the pace windows read one list. In `tests/test_cli.py`, extend the wipe fixture from slice 1's Task 5 so its `ReferenceFight` payloads carry a roster (`friendlyPlayers`, `friendlySpecs`, `masterData.actors`) matching the fixture raiders' class and spec across at least three references, and its `BossDamageGraph` payloads carry per-player series: a wipe run writes `compare.pace.player.<slug>` for the analysed player into the findings file; a kill run and a `--no-compare` wipe write no `compare.pace.player.` finding. Prove red by dropping the call in the service.
 
 - [ ] **Step 3: Gate and commit**
 
@@ -1005,4 +1005,3 @@ Offline gate. Subject: `Exercise each wiped player's pace on a real report`. Bod
 - A per-player projection, chart, or Summary pointer.
 - Healers.
 - Any change to slice 1's raid-wide findings, chart or wording, beyond the helper rename.
-- The self-resurrection list reaching the raid page's death recaps (`build_raid_report`'s own `self_resurrections`): a separate defect, not this slice's.
