@@ -953,12 +953,19 @@ def test_a_wiped_pulls_own_damage_panel_carries_its_pace_finding_and_chart() -> 
     fights = [attempt.fight_id for attempt in night.night.bosses[0].attempts]
     sampled = fights[:2]
     bare = fights[2]
-    samples = {fight_id: a_sample(80) for fight_id in sampled}
+    encounters_by_fight = {
+        fight_id: next(one for one in night.night.bosses[0].attempts if one.fight_id == fight_id)
+        for fight_id in sampled
+    }
+    # Each fight's own duration, read off its own encounter -- a hardcoded
+    # figure would happen to match `a_loaded_attempt`'s default and would
+    # stop matching the moment the fixture's own duration changed.
+    samples = {
+        fight_id: a_sample(80, int(encounters_by_fight[fight_id].duration_seconds))
+        for fight_id in sampled
+    }
     findings_by_fight = {
-        fight_id: analyse_pace(
-            next(one for one in night.night.bosses[0].attempts if one.fight_id == fight_id),
-            samples[fight_id],
-        )
+        fight_id: analyse_pace(encounters_by_fight[fight_id], samples[fight_id])
         for fight_id in sampled
     }
     records = (a_reference_record(1),)

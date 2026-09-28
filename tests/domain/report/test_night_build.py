@@ -19,7 +19,6 @@ from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_build import build_progression_report
-from wowperf.domain.report.progression_model import all_progression_ledger_rows
 from wowperf.domain.report.raid_model import all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles
 
@@ -569,7 +568,10 @@ def test_a_pull_given_a_pace_sample_draws_its_chart_row_and_pointer() -> None:
     night = a_night(bosses=(1,))
     encounter = night.night.bosses[0].attempts[0]
     fight_id = encounter.fight_id
-    sample = a_sample(80)
+    # The pull's own duration, read off its own encounter -- a hardcoded
+    # figure would happen to match `a_loaded_attempt`'s default and would
+    # stop matching the moment the fixture's own duration changed.
+    sample = a_sample(80, int(encounter.duration_seconds))
     findings = analyse_pace(encounter, sample)
 
     report = build_night_report(
@@ -592,6 +594,19 @@ def test_a_pull_given_a_pace_sample_draws_its_chart_row_and_pointer() -> None:
 
 
 def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
+    """A pull nobody asked about draws no chart, no row and no warning.
+
+    The lone pull below has neither a finding nor a `pace_by_fight` entry --
+    the simplest shape, and one a builder that stopped threading `pace`
+    altogether would still pass, since "nothing" is what both a working and
+    a broken builder draw for it. The second pull below closes that gap:
+    both fights carry their own real `compare.pace.boss` finding, so a
+    chart *can* render for either, and `pace_by_fight` names only the first.
+    A builder that read any available sample instead of that fight's own --
+    the first entry `pace_by_fight` happens to hold, say -- would draw the
+    second pull's chart from the first pull's sample, and this is where
+    that would show.
+    """
     night = a_night(bosses=(1,))
 
     report = build_night_report(
@@ -610,6 +625,42 @@ def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
     assert pull.pace_chart is None
     assert not any(row.finding_id == PACE_ID for row in pull.damage_rows)
     assert pull.pace_warning is None
+
+    two_pulls = a_night(bosses=(2,))
+    fight_a, fight_b = (attempt.fight_id for attempt in two_pulls.night.bosses[0].attempts)
+    encounter_a, encounter_b = (
+        next(one for one in two_pulls.night.bosses[0].attempts if one.fight_id == fight)
+        for fight in (fight_a, fight_b)
+    )
+    sample_a = a_sample(80, int(encounter_a.duration_seconds))
+    findings_by_fight = {
+        fight_a: analyse_pace(encounter_a, sample_a),
+        # Its own reading, from its own sample -- so this pull carries a real
+        # finding of its own and a leaked chart would not be the only finding
+        # on the page to explain.
+        fight_b: analyse_pace(encounter_b, sample_a),
+    }
+
+    report_two = build_night_report(
+        two_pulls,
+        findings_by_fight,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={fight_a: sample_a},
+    )
+
+    pull_b = next(
+        one.report
+        for one in report_two.bosses[0].pulls
+        if one.report.provenance.fight_id == fight_b
+    )
+    assert pull_b.pace_chart is None
+    assert pull_b.pace_warning is None
 
 
 def test_a_pulls_own_provenance_carries_the_records_handed_for_it() -> None:
@@ -691,14 +742,21 @@ def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None
     """Task 1's line, handed through `findings_by_boss` as the command will hand it.
 
     Placed by the existing `progression.attempts.` prefix rule, so this pins
-    that the wiring reaches the summary and never leaks onto a pull's own
-    tabs -- not a new placement rule of its own.
+    that the wiring reaches the summary's own Attempts tab and never leaks
+    onto a pull's own tabs -- not a new placement rule of its own. Read off
+    `summary.attempt_rows` directly, the one field the brief names, rather
+    than a union across every progression field: a builder that placed the
+    line on `repeat_rows` or `best_rows` instead would still pass a check
+    that only asked whether the line landed somewhere on the summary.
     """
     night = a_night(bosses=(2,))
     boss = night.loaded[0]
     encounter_id = boss.progression.encounter_id
     attempts = boss.attempts_with_events
-    samples = {attempt.encounter.fight_id: a_sample(80) for attempt in attempts}
+    samples = {
+        attempt.encounter.fight_id: a_sample(80, int(attempt.encounter.duration_seconds))
+        for attempt in attempts
+    }
     boss_line = analyse_night_pace(attempts, samples)
     assert boss_line, "the fixture must actually earn the line, or this pins nothing"
 
@@ -716,8 +774,8 @@ def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None
 
     summary = report.bosses[0].summary
     assert summary is not None
-    summary_ids = [row.finding_id for row in all_progression_ledger_rows(summary)]
-    assert summary_ids.count(NIGHT_PACE_ID) == 1
+    attempt_row_ids = [row.finding_id for row in summary.attempt_rows]
+    assert attempt_row_ids.count(NIGHT_PACE_ID) == 1
     for pull in report.bosses[0].pulls:
         pull_ids = [row.finding_id for row in all_raid_ledger_rows(pull.report)]
         assert NIGHT_PACE_ID not in pull_ids
