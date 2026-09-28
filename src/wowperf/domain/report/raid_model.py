@@ -183,11 +183,13 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     and lose the seventh in silence: a row whose ability reaches the page
     without reaching the icon resolver draws nothing and reports nothing.
 
-    `PlayerCard` is reused whole from the Mythic+ model, so its own two row
+    `PlayerCard` is reused whole from the Mythic+ model, so its own row
     fields are walked here too, exactly as `model.all_ledger_rows` walks them
     for the Mythic+ report -- a raider's per-card comparison rows (design
     section 6, `RAID_COMPARISON_PREFIXES`) land on `spell_and_talent_rows`,
-    and are icons the resolver would otherwise never see.
+    and a raider's own damage-pace reading or notice (design section 13,
+    `PLAYER_PACE_PREFIX`) lands on `pace_rows`; both are icons the resolver
+    would otherwise never see.
 
     `report.verdict` and `report.pace_warning` are the two deliberate
     exceptions. `report.verdict` heads Summary as its own headline rather than
@@ -213,3 +215,4 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     for player in report.players:
         yield from player.damage_rows
         yield from player.spell_and_talent_rows
+        yield from player.pace_rows

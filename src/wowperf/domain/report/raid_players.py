@@ -4,6 +4,7 @@
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
@@ -39,6 +40,13 @@ def build_raid_players(
     the finding carries, never by who the subject is: a raid compares many
     raiders at once, and routing to the subject would put every other
     raider's rows under one name.
+
+    `pace_rows` is filled the same way, from every untimed finding whose id
+    starts with `PLAYER_PACE_PREFIX` -- a per-player damage-pace reading or its
+    notice, both minted by `analyse_player_pace`. `build_raid_report` strips
+    these out of the findings it hands `place_rows`, since `RAID_PLACEMENTS`'
+    `compare.pace.` prefix would otherwise take them onto the Damage tab; this
+    function still receives every finding and routes them here instead.
     """
     players = loaded.encounter.players
     names_by_actor = display_names(players)
@@ -50,6 +58,7 @@ def build_raid_players(
         for finding in untimed
         if any(finding.id.startswith(prefix) for prefix in RAID_COMPARISON_PREFIXES)
     ]
+    pace = [finding for finding in untimed if finding.id.startswith(PLAYER_PACE_PREFIX)]
 
     ordered = sorted(players, key=lambda player: player.actor_id != subject.actor_id)
 
@@ -70,6 +79,11 @@ def build_raid_players(
                         for finding in comparison
                         if finding.player_slug == slug
                     ]
+                ),
+                pace_rows=tuple(
+                    ledger_row(finding, titles_by_id, tooltips)
+                    for finding in pace
+                    if finding.player_slug == slug
                 ),
                 slug=slug,
             )

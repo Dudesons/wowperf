@@ -604,6 +604,13 @@ class PlayerCard(Frozen):
     damage_rows: tuple[LedgerRow, ...] = ()
     spell_and_talent: Section
     spell_and_talent_rows: tuple[LedgerRow, ...] = ()
+    pace_rows: tuple[LedgerRow, ...] = ()
+    """This raider's own damage-pace finding or its notice, raid wipes only.
+
+    Empty on every Mythic+ and night card: neither builds a `PaceSample` per
+    player, so this field stays at its default there and the two pages this
+    card is shared with are unchanged.
+    """
     slug: str = ""
     """This player's fragment id, unique within the report.
 
@@ -733,3 +740,4 @@ def all_ledger_rows(report: Report) -> Iterator[LedgerRow]:
     for player in report.players:
         yield from player.damage_rows
         yield from player.spell_and_talent_rows
+        yield from player.pace_rows

@@ -244,6 +244,7 @@ def placed_finding_ids(
     for card in players:
         ids |= {row.finding_id for row in card.damage_rows}
         ids |= {row.finding_id for row in card.spell_and_talent_rows}
+        ids |= {row.finding_id for row in card.pace_rows}
     return ids
 
 
