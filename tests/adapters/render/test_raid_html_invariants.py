@@ -650,8 +650,23 @@ def test_a_players_pace_finding_shows_on_their_card_and_nowhere_on_damage() -> N
     finding_title = emberkin.pace_rows[0].title
 
     cards = player_cards(html)
-    assert str(escape(finding_title)) in cards[EMBERKIN_SLUG]
-    assert "Damage pace against the kills" in cards[EMBERKIN_SLUG]
+    card = cards[EMBERKIN_SLUG]
+    assert str(escape(finding_title)) in card
+    assert "Damage pace against the kills" in card
+
+    # The title has to sit inside the same `class="findings"` wrapper every
+    # other ledger row on the page is drawn in -- not bare markup beside it,
+    # which is what the row looked like before this wrapper was added.
+    # `.index` starting after the heading raises if no such wrapper follows
+    # it in this card, which is what proves the row is actually inside one
+    # rather than merely somewhere on the same card.
+    heading_at = card.index("Damage pace against the kills")
+    wrapper_at = card.index('<div class="findings">', heading_at)
+    title_at = card.index(str(escape(finding_title)))
+    assert heading_at < wrapper_at < title_at, (
+        "the pace row's title must fall after a findings wrapper that itself "
+        "follows the heading"
+    )
 
     damage_panel = _panel(html, "tab-damage")
     assert str(escape(finding_title)) not in damage_panel

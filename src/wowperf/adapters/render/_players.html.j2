@@ -40,10 +40,12 @@
   </div>
   {% endif %}
   {% if player.pace_rows %}
-  <h4>Damage pace against the kills</h4>
+  <p class="sub">Damage pace against the kills</p>
+  <div class="findings">
   {% for row in player.pace_rows %}
   {{ ledger_row(row) }}
   {% endfor %}
+  </div>
   {% endif %}
   {% for table in player.comparison_tables %}
   <details class="compared">
