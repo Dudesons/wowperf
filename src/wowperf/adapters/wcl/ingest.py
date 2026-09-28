@@ -813,10 +813,13 @@ def build_first_deaths(
 ) -> dict[int, float]:
     """The first `death` event of each listed player, in seconds from the pull.
 
-    Only the first: a reference player's `until_seconds` marks where their
-    part in the kill ended, and a second death after being resurrected is not
-    that moment. An event whose `targetID` or `timestamp` is not an `int` is
-    skipped, the same guard `build_deaths` applies to the same keys.
+    Only the first: a reference kill's resurrections are not read, so there is
+    no way to tell an answered death from one that was not, and a reference
+    player's `until_seconds` is taken to end their part in the kill at their
+    first death regardless. Ending early only drops that player from the band
+    sooner than an unread resurrection would have. An event whose `targetID`
+    or `timestamp` is not an `int` is skipped -- this function's own guard,
+    since it reads its own dict from the same events the caller passed in.
     """
     first: dict[int, float] = {}
     for event in events:
