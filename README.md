@@ -164,7 +164,7 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
 | `analyze`, one player | 83 to 95 |
-| `night --no-deaths`, a whole report | 106 to 118 |
+| `night --no-deaths`, a whole report | 106 to 118, plus 27 for damage pace |
 | `analyze --all-players` | 190 |
 | `night`, a whole report | 300, with a caveat below |
 | `raid --all-players`, a kill | 878 |
@@ -175,9 +175,13 @@ goes.
 
 **The two `night` rows are a sixteen-pull report, and only the first is a cold-cache reading.**
 That one was measured twice, minutes apart, at 106 and 118 — the spread is the same per-query
-drift the rest of these figures carry. The 300 was measured on the same day against a cache
+drift the rest of these figures carry. Both rows predate the damage pace comparison each wipe now
+draws, which added 27 points on one cold run (2026-09-28); `--no-compare` skips it. The 300 was
+measured on the same day against a cache
 that earlier `raid` and `progression` runs on that same report had already partly filled, so a
 first look at a report nobody has read costs more than 300, by an amount nobody has measured.
+Scaling a one-boss reading at the default tier (195 points over seven pulls, 2026-09-26) to all
+sixteen pulls puts a cold default-tier night near 450 to 500 points — an estimate, not a reading.
 What separates the two rows is the death cards: the default tier draws one per death and needs
 an aura table per raider per pull to tell a defensive that was held from one that had faded,
 and that single query family was 239 of the 300.
@@ -188,6 +192,11 @@ per-player reference sample that dominates the last line is never drawn — `--a
 wipe costs about what one player costs. Only that last line is worth a thought before you run
 it: naming every raider on a kill draws a sample for each of the twenty, and four such runs
 would spend the hour. Every command closes by printing what it spent, dearest operation first.
+
+**Running out mid-command costs a wait, not the run.** When Warcraft Logs refuses a request
+because the hour's points are spent, the command says so, waits for the reset — up to an hour —
+and retries. It stops only if the refusal outlasts that wait, and a second run then pays only for
+what the first had not yet cached.
 
 ## Roadmap
 

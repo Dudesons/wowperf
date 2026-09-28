@@ -186,7 +186,13 @@ def build_repository(cache_dir: Path) -> WclRunRepository:
 
     http = httpx.Client(timeout=60.0)
     return WclRunRepository(
-        WclClient(TokenProvider(client_id, client_secret, http), http),
+        WclClient(
+            TokenProvider(client_id, client_secret, http),
+            http,
+            # A wait for the hourly reset can run to an hour, so the reader is
+            # told why the command paused and for how long before it sleeps.
+            on_wait=lambda line: typer.secho(line, err=True, fg="yellow"),
+        ),
         DiskCache(cache_dir),
     )
 
@@ -2005,9 +2011,10 @@ def night(
                         _pace_references(encounter_rankings, attempt.encounter),
                     )
                 except RateLimitExceeded:
-                    # Not this pull's failure but every remaining pull's, as
-                    # when a pull's streams are loaded: recorded once per wipe
-                    # it would state a cause true of none of them.
+                    # Raised only once the client's own waits for the reset
+                    # are spent. Not this pull's failure but every remaining
+                    # pull's, as when a pull's streams are loaded: recorded
+                    # once per wipe it would state a cause true of none of them.
                     raise
                 except (ValueError, WclError, httpx.HTTPError, OSError) as error:
                     # The board, or a request on our own report, did not
