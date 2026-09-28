@@ -29,7 +29,7 @@ from wowperf.adapters.render.html import render, render_night, render_progressio
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import RateLimit, WclClient
+from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.damage_tables import build_target_rows
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
@@ -56,7 +56,7 @@ from wowperf.domain.comparison.mechanics import (
     ReferenceKillRow,
     select_reference_kills,
 )
-from wowperf.domain.comparison.pace import PaceSample
+from wowperf.domain.comparison.pace import PaceSample, not_fetched
 from wowperf.domain.comparison.parse_axis import ParseSubject
 from wowperf.domain.comparison.raid_reference import RaidParseRow
 from wowperf.domain.comparison.reference import (
@@ -730,21 +730,23 @@ def _reference_kill_rows(
 def _pace_references(
     rankings: WclEncounterRankingRepository, encounter: Encounter
 ) -> tuple[ReferenceKillRow, ...]:
-    """The kills a night wipe's pace is read against: `raid`'s rule, without its tables.
+    """The kills a night wipe's pace may be read against: `raid`'s rule, without its tables.
 
     `raid` takes its pace references from the mechanics sample, which also
     loads each kill's damage-taken table; the night page draws no mechanics
-    comparison, so it takes the first `SAMPLE_SIZE` rows the same rule
-    selects, never the fight under analysis. A reference whose own fight
-    will not load is dropped by `load_pace_sample`, not refilled.
+    comparison, so it takes every row the same rule selects, never the fight
+    under analysis, in leaderboard order. All of them rather than the first
+    `SAMPLE_SIZE`: `load_pace_sample` stops once it holds that many, so a
+    reference whose own fight will not load is refilled from the rows behind
+    it instead of shrinking the sample, and a row past a full sample costs
+    no request.
     """
     ours = (encounter.report_code, encounter.fight_id)
-    rows = tuple(
+    return tuple(
         row
         for row in _reference_kill_rows(rankings, encounter)
         if (row.report_code, row.fight_id) != ours
     )
-    return rows[:SAMPLE_SIZE]
 
 
 def _mechanics_sample(
@@ -1994,13 +1996,26 @@ def night(
                 # page would not draw.
                 if attempt.encounter.kill:
                     continue
-                pace_sample, pace_records = load_pace_sample(
-                    repository.client,
-                    repository.cache,
-                    transient,
-                    attempt.encounter,
-                    _pace_references(encounter_rankings, attempt.encounter),
-                )
+                try:
+                    pace_sample, pace_records = load_pace_sample(
+                        repository.client,
+                        repository.cache,
+                        transient,
+                        attempt.encounter,
+                        _pace_references(encounter_rankings, attempt.encounter),
+                    )
+                except RateLimitExceeded:
+                    # Not this pull's failure but every remaining pull's, as
+                    # when a pull's streams are loaded: recorded once per wipe
+                    # it would state a cause true of none of them.
+                    raise
+                except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+                    # The board, or a request on our own report, did not
+                    # answer: there is no other board to fall back on, so this
+                    # wipe is not compared and says why, and the night goes
+                    # on. A reference kill that fails never reaches here --
+                    # `load_pace_sample` records it and tries the next.
+                    pace_sample, pace_records = PaceSample(unavailable=not_fetched(str(error))), ()
                 pace_by_fight[attempt.encounter.fight_id] = pace_sample
                 records_by_fight[attempt.encounter.fight_id] = pace_records
 

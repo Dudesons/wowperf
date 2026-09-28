@@ -35,6 +35,20 @@ NOTHING_TO_COMPARE = (
     "No second of this attempt could be compared: the reference kills had dealt the boss no "
     "damage by then, or the attempt ended within its first second."
 )
+PACE_NOT_FETCHED = "Warcraft Logs did not return what this comparison reads"
+
+
+def not_fetched(message: str) -> str:
+    """Why a wipe was not compared when a request it needed failed, in the error's own words.
+
+    The opening is fixed so every such reason reads alike; the rest is the
+    error's first line, as `FailedPull` keeps a failed pull's, because the
+    exception says what went wrong better than a phrase chosen here would.
+    Its later lines are a documentation pointer or context no reader can act on.
+    """
+    lines = message.strip().splitlines()
+    first = lines[0].rstrip(".") if lines else "no message"
+    return f"{PACE_NOT_FETCHED}: {first}."
 
 BOSS_DETAIL = (
     "Cumulative damage to the boss, second by second from the pull, against the reference "
