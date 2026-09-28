@@ -301,6 +301,37 @@ def test_the_page_carries_the_absent_axis_disclosure_exactly_once() -> None:
     assert ids.count(NOT_DRAWN_ID) == 1
 
 
+def test_a_night_handed_a_pace_sample_says_it_draws_pace_and_no_parses() -> None:
+    """Handed any sample, the night asked a leaderboard for reference kills --
+    even when every wipe then withheld -- so the disclosure may no longer say
+    that no comparison against other kills is drawn. A night handed none, a
+    `--no-compare` or all-kills night, keeps the sentence it always had.
+    """
+    night = a_night(bosses=(1,))
+    fight_id = night.night.bosses[0].attempts[0].fight_id
+
+    def disclosure(pace_by_fight: Mapping[int, PaceSample] | None) -> str:
+        report = build_night_report(
+            night,
+            NO_FINDINGS,
+            FETCHED,
+            NO_DEFENSIVES,
+            NO_CONSUMABLES,
+            NO_ROLES,
+            deep_fights=frozenset(),
+            death_cards=True,
+            findings_by_boss=NO_FINDINGS,
+            pace_by_fight=pace_by_fight,
+        )
+        (row,) = (one for one in report.observations if one.finding_id == NOT_DRAWN_ID)
+        return row.title
+
+    withheld = disclosure({fight_id: PaceSample(unavailable=NO_SINGLE_BOSS)})
+    assert withheld == "No parse comparison is drawn on this page"
+    assert disclosure(None) == "No comparison against other kills is drawn on this page"
+    assert disclosure({}) == "No comparison against other kills is drawn on this page"
+
+
 def test_a_failed_pull_is_named_in_provenance_and_left_out_of_the_count() -> None:
     """Both halves in one test: the count and the note.
 

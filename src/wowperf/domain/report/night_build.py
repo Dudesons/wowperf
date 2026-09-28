@@ -269,8 +269,11 @@ def build_night_report(
     # Stated once for the page rather than on every pull's tab: the axis is
     # absent because this command never draws one, which is a fact about the
     # command and not about any pull -- so it holds even on a night where no
-    # pull loaded at all.
-    not_drawn = ledger_row(parse_axis_not_drawn(), {})
+    # pull loaded at all. Its wording turns on whether the night was handed any
+    # pace sample: one handed any asked the execution leaderboard for reference
+    # kills, even if every wipe then withheld, and may say only that no parse
+    # comparison is drawn; a `--no-compare` or all-kills night was handed none.
+    not_drawn = ledger_row(parse_axis_not_drawn(pace_compared=bool(pace_by_fight)), {})
 
     return NightReport(
         header=build_night_header(loaded),
