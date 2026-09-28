@@ -23,15 +23,33 @@ class BossDamage(Frozen):
     lead_ms: int = 0
 
 
+class PlayerSeries(Frozen):
+    """One player's damage to the boss in one fight, and which class and spec they played.
+
+    `until_seconds` is where a reference player's own death ended their part
+    in the kill, counted from the pull; None when they lived to the end.
+    Carries an actor id and no name.
+    """
+
+    actor_id: int
+    class_name: str
+    spec: str
+    damage: BossDamage
+    until_seconds: float | None = None
+
+
 class PaceReference(Frozen):
     """One reference kill: how long it ran and what it dealt the boss.
 
-    Carries no report code and no name. It lives for one comparison in memory
-    and is never written anywhere.
+    `players` splits `damage` by player, for the per-player comparison; it is
+    empty when the kill's roster could not be read. Carries no report code and
+    no name. It lives for one comparison in memory and is never written
+    anywhere.
     """
 
     duration_seconds: float
     damage: BossDamage
+    players: tuple[PlayerSeries, ...] = ()
 
 
 class PaceState(StrEnum):
@@ -176,3 +194,40 @@ def earlier_behind(reading: PaceReading) -> tuple[tuple[int, int], ...]:
         for start, end in behind_stretches(reading)[:-1]
         if end - start + 1 > reading.widest_bucket_seconds
     )
+
+
+class PaceLag(Frozen):
+    """When the references' median had dealt a given amount of boss damage.
+
+    `reached_at` is in seconds from the pull, interpolated within the second;
+    None when the median never reached the amount before fewer than three
+    references were still fighting. `band_end` is the last second that still
+    held three.
+    """
+
+    reached_at: float | None
+    band_end: int
+
+
+def lag_against(amount: float, references: tuple[PaceReference, ...]) -> PaceLag:
+    """The first time the references' median reached `amount`, over every second the band holds.
+
+    The median is taken over the references still fighting at each second, as
+    `read_pace` takes it, so the time lag and the share read one curve. An
+    amount of zero or less is reached at the pull.
+    """
+    reached_at: float | None = 0.0 if amount <= 0 else None
+    previous = 0.0
+    band_end = 0
+    second = 1
+    while True:
+        fighting = [one for one in references if second <= one.duration_seconds]
+        if len(fighting) < MIN_SAMPLE_FOR_AGGREGATE:
+            break
+        current = median(cumulative_at(one.damage, second) for one in fighting)
+        if reached_at is None and current >= amount:
+            reached_at = second - 1 + (amount - previous) / (current - previous)
+        previous = current
+        band_end = second
+        second += 1
+    return PaceLag(reached_at=reached_at, band_end=band_end)
