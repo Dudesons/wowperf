@@ -3,6 +3,7 @@
 
 import json
 import re
+import time
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typer.testing import CliRunner
 
 from tests.test_cli import operation_name, plain, quota_response
 from wowperf.adapters.cache.disk import cache_key
+from wowperf.adapters.wcl.client import MAX_WAITS
 from wowperf.adapters.wcl.queries import (
     BOSS_DAMAGE_GRAPH_QUERY,
     ENCOUNTER_KILL_RANKINGS_QUERY,
@@ -1279,9 +1281,15 @@ def test_a_pull_whose_own_boss_graph_fails_is_withheld_alone(tmp_path: Path) -> 
         assert "compare.pace.boss" in _finding_ids(pulls[fight_id]["findings"]), fight_id
 
 
-def test_a_spent_hourly_budget_still_stops_the_night(tmp_path: Path) -> None:
-    """Not one pull's failure but every remaining pull's, as when a pull's streams
-    are loaded: recording it once per wipe would state a cause true of none."""
+def test_a_spent_hourly_budget_is_waited_out_and_stops_the_night_only_if_refused_again(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The client waits and retries, telling the reader why it paused; a refusal
+    that outlasts its waits is every remaining pull's failure, as when a pull's
+    streams are loaded, so it stops the night rather than being recorded per wipe."""
+    slept: list[float] = []
+    monkeypatch.setattr(time, "sleep", slept.append)
+
     result = run_night(
         tmp_path,
         kill_rankings=PACE_KILL_RANKINGS,
@@ -1289,7 +1297,10 @@ def test_a_spent_hourly_budget_still_stops_the_night(tmp_path: Path) -> None:
     )
 
     assert result.exit_code == 1
-    assert "hourly point budget is spent" in plain(result.output)
+    output = plain(result.output)
+    assert len(slept) == MAX_WAITS
+    assert output.count("429 Too Many Requests") == MAX_WAITS
+    assert "hourly point budget is spent" in output
     assert not _written(tmp_path)[0].exists()
 
 

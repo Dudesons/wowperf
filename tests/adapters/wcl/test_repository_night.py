@@ -414,7 +414,9 @@ def a_repository_recording_calls(
         raise AssertionError(f"unexpected operation {name!r} in load_night_attempts test")
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    client = WclClient(TokenProvider("id", "secret", http), http)
+    # A 429 is waited out before it is raised; this fixture's waits are not
+    # what any test here reads, so they cost no real time.
+    client = WclClient(TokenProvider("id", "secret", http), http, sleep=lambda _: None)
     return WclRunRepository(client, cache if cache is not None else DiskCache(tmp_path)), calls
 
 

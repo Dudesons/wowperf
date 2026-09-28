@@ -461,9 +461,10 @@ possible follow-up once this has been read on the page.
   rows behind it, and a row past a full sample costs no request. When the boss's leaderboard, or
   a request on our own report, fails, there is no other board to fall back on: that wipe is not
   compared, its notice opens "Warcraft Logs did not return what this comparison reads" and
-  carries the error's first line, and every other pull goes on. A spent hourly budget
-  (`RateLimitExceeded`) still stops the night, as it does while pulls load: it is every remaining
-  pull's failure, not one pull's.
+  carries the error's first line, and every other pull goes on. A spent hourly budget is waited
+  out by the client, which says so and retries (`.claude/skills/wcl-api/SKILL.md`, "When the
+  budget runs out"); a refusal that outlasts those waits (`RateLimitExceeded`) still stops the
+  night, as it does while pulls load: it is every remaining pull's failure, not one pull's.
 
 ### 14.3 Wiring
 

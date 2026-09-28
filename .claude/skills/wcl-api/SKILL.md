@@ -108,6 +108,26 @@ hardcoding it, because it is per-client and can change.
 `pointsSpentThisHour` field is a Float, implying fractional per-query costs. We measure rather
 than predict.
 
+**When the budget runs out** (researched 2026-09-28; the official API docs sit behind a
+Cloudflare challenge and could not be read, so each row says what stands behind it):
+
+| Claim | Status | Source |
+| --- | --- | --- |
+| A spent budget answers HTTP 429 | what `WclClient` has always handled | this repository |
+| `pointsResetIn` is "The number of seconds remaining until the points reset." | confirmed | live schema, as introspected and committed in `math280h/go-wcl` `schema/schema.graphql` |
+| A 429 carries `Retry-After` | unconfirmed | `go-wcl`'s `transport.go` reads it on a 429, falling back to backoff when absent |
+| `X-RateLimit-*` style headers are trustworthy | no: reported reading "798/800 remaining" while limited | `Erilla/SlashWho` pull request 281, a developer's own account |
+| `rateLimitData` still answers once the budget is spent | unconfirmed | no source |
+| A shorter burst limit exists besides the hourly one | unconfirmed | one unanswered forum report of 429s under the hourly cap |
+
+`WclClient.execute` therefore waits out a 429 rather than stopping. It honours `Retry-After` when
+one is present and readable, and otherwise counts from its last quota reading. If that reading
+said the budget was spent, it waits `pointsResetIn` less the time since the reading, on the
+fixed hourly cycle, plus five seconds. If points remained, it backs off 30 seconds first. It
+never waits longer than one cycle, waits at most twice per request, and then raises
+`RateLimitExceeded`. None of this has been seen against a real 429. The first one will show
+whether a header arrives; record what it carried here.
+
 One approximation and three measurements:
 
 - A full compared analysis costs roughly **28 points of 3600** — an order of magnitude observed
