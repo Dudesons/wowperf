@@ -382,7 +382,7 @@ def a_wipes_findings() -> tuple[Finding, ...]:
         *(
             Finding(
                 id=f"compare.parse.unavailable.{slug}",
-                title=f"No comparison against other kills is available for {who}",
+                title=f"No parse comparison is available for {who}",
                 detail=WITHHELD_DETAIL,
                 confidence=Confidence.MEASURED,
                 player_slug=slug,

@@ -35,10 +35,10 @@ they ignore.
 
 WITHHELD_DETAIL = (
     "This attempt did not kill the boss. Warcraft Logs ranks kills alone, so this report "
-    "carries no rankings row and no leaderboard sample stands beside it, and every "
+    "carries no rankings row and no parse leaderboard sample stands beside it, and every "
     "comparison that reads one is withheld together: damage against the board, damage by "
-    "target, casts a minute, talents, buff uptime, and the percentile. Nothing is quietly "
-    "absent below -- there was no outside reference to compare this attempt against."
+    "target, casts a minute, talents, buff uptime, and the percentile. None of the six is "
+    "quietly missing below; each is withheld for this reason."
 )
 """Why six comparisons produced nothing, once, in place of six silences.
 
@@ -52,7 +52,7 @@ or as six separate notes a reader would have to collect.
 def _withheld(our_name: str) -> Finding:
     return Finding(
         id=UNAVAILABLE_ID,
-        title=f"No comparison against other kills is available for {our_name}",
+        title=f"No parse comparison is available for {our_name}",
         detail=WITHHELD_DETAIL,
         confidence=Confidence.MEASURED,
         seconds_lost=None,

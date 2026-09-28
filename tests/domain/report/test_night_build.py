@@ -810,7 +810,7 @@ def test_a_pull_handed_a_pace_sample_states_the_wipes_own_reason_on_every_card()
     """Design 14.3: the pull's page is the page `raid --fight N` draws for that wipe.
 
     `raid` on a wipe says `WITHHELD_DETAIL` on the card of every raider it
-    compared -- the attempt did not kill, so no leaderboard sample stands
+    compared -- the attempt did not kill, so no parse leaderboard sample stands
     beside it. `NO_COMPARISON_RAN` says no reference run was fetched at all,
     which is false of a pull `load_pace_sample` ran for.
     """
