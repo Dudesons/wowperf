@@ -141,10 +141,17 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   non-players, 155 untargeted. 40 lines cast something in the window but never at this player; 34
   cast nothing in the window at all. Of the cooldown rows a line carried: 6 read pressed, 4 read
   ready, 56 read within their base cooldown, 0 read unjudged, 0 read dead.
-- **Open, never seen live:** the "unjudged" cooldown state (a base cooldown reaching back before
-  the fight's or run's first second); the "dead" cooldown state (an ability's holder dead as the
-  run-up opened, though alive again by the death itself); and the line noting that none of a
-  healer's group healing cooldowns was pressed.
+- **Early wipes, to reach the states the three runs missed** (2026-09-29, fights 32, 8, 29 and 31
+  of `cW38jmwdnZfbHVL4`, 88 to 110 seconds each, counted from the cards `build_deaths` draws with
+  the repository's data files; warm cache, no query fetched): 79 deaths, 79 cards, 300
+  other-healer lines, none reading "No other healer". Cooldown rows: 23 pressed, 226 within their
+  base cooldown, 1 unjudged (fight 8), 0 dead, 0 ready. No line carried either note: every other
+  healer pressed at least one of their group healing cooldowns in every one of these fights.
+- **Seen live since:** the "unjudged" cooldown state, once, on fight 8.
+- **Open, never seen live:** the "dead" cooldown state (an ability's holder dead as the run-up
+  opened, though alive again by the death itself); and the line noting that none of a healer's
+  group healing cooldowns was pressed -- on a raid the healers press one before a wipe ends, so it
+  wants a report where a healer never does.
 - **Unreachable with today's data files:** the line noting that none is listed for a healer's
   specialisation at all. Every healer specialisation `data/roles.toml` names -- Druid/Restoration,
   Evoker/Preservation, Monk/Mistweaver, Paladin/Holy, Priest/Discipline, Priest/Holy,
