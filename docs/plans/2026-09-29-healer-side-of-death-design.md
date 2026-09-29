@@ -42,6 +42,10 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   dying player -- a dying healer's own buttons are under "Defensives", and this group is about
   the others. With no other healer present (a keystone's only healer dying), the group holds one
   line: "No other healer was in the group."
+- **A roster player the log names no specialisation for** reads as damage, not as unknown, so a
+  healer among them would otherwise drop out of the group silently; the note counts them instead,
+  either as the whole note (no other healer found) or appended after the other sentences (at
+  least one found), and the dying player's own empty specialisation is never counted.
 - **The window:** the card's own run-up, `RUN_UP_SECONDS` (10) before the death
   (`domain/analysis/defensives.py`).
 - **Each line:**
@@ -139,9 +143,15 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   ready, 56 read within their base cooldown, 0 read unjudged, 0 read dead.
 - **Open, never seen live:** the "unjudged" cooldown state (a base cooldown reaching back before
   the fight's or run's first second); the "dead" cooldown state (an ability's holder dead as the
-  run-up opened, though alive again by the death itself); the line noting that none of a
-  healer's group healing cooldowns was pressed; and the line noting that none is listed for a
-  healer's specialisation at all.
+  run-up opened, though alive again by the death itself); and the line noting that none of a
+  healer's group healing cooldowns was pressed.
+- **Unreachable with today's data files:** the line noting that none is listed for a healer's
+  specialisation at all. Every healer specialisation `data/roles.toml` names -- Druid/Restoration,
+  Evoker/Preservation, Monk/Mistweaver, Paladin/Holy, Priest/Discipline, Priest/Holy,
+  Shaman/Restoration -- lists at least one `group = true` entry in `data/throughput_cooldowns.toml`
+  (checked 2026-09-29), so no healer's specialisation can reach this note today. It is still
+  reachable if a spec's `group` entries changed to none, or a new healer specialisation were
+  added with none.
 - The three HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
 
 ## 7. Out of scope, and follow-ups

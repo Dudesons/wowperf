@@ -163,11 +163,13 @@ Every death card carries a "Healers" group: one line per other healer in the gro
 other healer gets one, whatever the log shows for them — stating their side of this player's
 last ten seconds. Each line counts that healer's casts by where they were aimed — at this
 player, at themselves, at another player, at a non-player, untargeted — and then says one of
-three things: the last cast that reached this player, that a cast this window never reached
-this player, or that this healer cast nothing at all in the window. A cast's target is where it
+three things: the last cast that was aimed at this player, that a cast this window never aimed
+at this player, or that this healer cast nothing at all in the window. A cast's target is where it
 was aimed, not everyone it healed: a smart heal or a heal-over-time can reach this player with
 no cast aimed at them, and a cast at an enemy can still heal, as Discipline's Atonement does. It
-never names the other targets of a healer's casts.
+never names the other targets of a healer's casts. A player the log names no specialisation for
+cannot be told a healer from any other role, and the card says so in its note rather than
+silently leaving them out of the group.
 
 A healer who was alive also has a row for each of their listed group healing cooldowns the log
 ever shows pressed, following the same rule `healing.spikes` reads them by: "ready" is
