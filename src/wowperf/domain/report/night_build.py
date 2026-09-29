@@ -178,7 +178,7 @@ def build_night_report(
 
     `parse_withheld` is `WITHHELD_DETAIL` for a pull `pace_by_fight` names,
     and nothing for any other. `load_pace_sample` ran for such a pull, so
-    `NO_COMPARISON_RAN` -- no reference run was fetched -- would be false of
+    `NO_COMPARISON_RAN` -- no reference was fetched -- would be false of
     it; what is true is the sentence `raid --fight N` prints for that wipe,
     whose parse comparison it withholds because the boss lived. So the pull
     says that, where `raid` says it: on every card, in the Damage tab's

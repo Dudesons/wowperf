@@ -855,7 +855,7 @@ def test_a_pull_handed_a_pace_sample_states_the_wipes_own_reason_on_every_card()
 
     `raid` on a wipe says `WITHHELD_DETAIL` on the card of every raider it
     compared -- the attempt did not kill, so no parse leaderboard sample stands
-    beside it. `NO_COMPARISON_RAN` says no reference run was fetched at all,
+    beside it. `NO_COMPARISON_RAN` says no reference was fetched at all,
     which is false of a pull `load_pace_sample` ran for.
     """
     pulls = three_wipes_one_handed_no_sample()

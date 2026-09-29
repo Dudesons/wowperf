@@ -1,6 +1,7 @@
 # ABOUTME: Behaviour tests for the raid report builder: every finding placed once, or said why.
 # ABOUTME: The Damage tab is the section a wipe withholds, and it has to say so in the tool's words.
 
+import re
 from collections import Counter
 
 import pytest
@@ -1088,3 +1089,28 @@ def test_the_scope_line_is_absent_without_a_player_pace_finding() -> None:
     )
 
     assert SCOPE_LINE not in report.provenance.withheld
+
+
+def _every_string(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _every_string(item)]
+    if isinstance(value, (list, tuple)):
+        return [text for item in value for text in _every_string(item)]
+    return []
+
+
+def test_a_raid_page_that_compared_nothing_calls_nothing_on_it_a_run() -> None:
+    # --no-compare hands no parse subject. The page says what it did not
+    # compare, and a boss fight is not a run: "run" on its own names a
+    # keystone, while "run-up" is the seconds before a death on any card.
+    loaded, subject = a_raid_fixture()
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+    assert any(NO_COMPARISON_RAN in line for line in report.provenance.withheld), (
+        report.provenance.withheld
+    )
+    for text in _every_string(report.model_dump()):
+        assert not re.search(r"\brun\b(?!-)", text), text

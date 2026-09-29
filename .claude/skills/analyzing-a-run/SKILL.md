@@ -178,7 +178,7 @@ cost an order of magnitude more than everything else here put together, so `--pl
 widen. The mechanics axis is absent for a different reason: this command draws no per-boss
 mechanics comparison at all, so it loads no damage-taken table for one, whatever `--no-compare`
 says. Either way, every pull's spell-and-talent section is empty, and why it is differs: a
-kill, or a night read with `--no-compare`, reads "No reference run was fetched for this analysis,
+kill, or a night read with `--no-compare`, reads "No reference was fetched for this analysis,
 so there is nothing to compare against" — the same line `raid --no-compare` prints, since neither
 drew this axis at all — while a wipe pull whose pace was compared, which did fetch reference
 kills, reads the sentence `raid --fight N` prints for that wipe: the attempt did not kill the boss,

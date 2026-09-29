@@ -47,7 +47,7 @@ from wowperf.domain.comparison.sample import SAMPLE_SIZE, ParseMember, ParseSamp
 from wowperf.domain.comparison.service import ComparisonSubject
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.model import LoadedRun, Player, Run
-from wowperf.domain.report.frame import NOT_REQUESTED
+from wowperf.domain.report.frame import NO_COMPARISON_RAN, NOT_REQUESTED
 from wowperf.domain.report.ledger import DECOMPOSITION_IDS, NESTS_INSIDE
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.players import slugs_by_actor
@@ -4497,10 +4497,7 @@ def test_no_compare_report_contains_the_withheld_reason(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, "--no-compare")
     assert result.exit_code == 0, result.output
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
-    assert (
-        "No reference run was fetched for this analysis, so there is nothing to compare against."
-        in html
-    )
+    assert NO_COMPARISON_RAN in html
 
 
 # A finding id as the warning writes it: dotted, lower-case, optionally a `.*` suffix.

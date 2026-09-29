@@ -527,8 +527,8 @@ def analyse_defensive_ceiling(
 
     An ability the player never pressed produces nothing here. It has no
     ceiling to be judged against, and the claim that they never pressed it is
-    the death card's, where it sits beside the three other states a reader
-    needs to weigh it.
+    the death card's, where it sits beside the other states a reader needs to
+    weigh it.
 
     `shape` and `combat_description` feed only the withheld notice's own
     wording -- see `_ceiling_withheld` -- and are required rather than
