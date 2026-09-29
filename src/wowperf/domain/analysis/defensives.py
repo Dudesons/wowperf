@@ -54,6 +54,19 @@ read the sequence, short enough that the card stays a card.
 """
 
 
+def window_inside_log(moment_ms: int, seconds: float, visible_from_ms: int) -> bool:
+    """Whether the `seconds` before `moment_ms` lie wholly inside the log.
+
+    A press before `visible_from_ms` is invisible -- casts are fetched per
+    fight, and a raid cooldown carries over from the pull before -- so a window
+    reaching back past it cannot show that an ability was unspent. Every rule
+    that calls something ready or available asks this first, and one that
+    cannot pass it says "not judged" rather than guess in the one direction
+    this project never guesses in.
+    """
+    return moment_ms - seconds * 1000 >= visible_from_ms
+
+
 def defensives_up_at(
     casts: tuple[CastEvent, ...],
     abilities: tuple[DefensiveAbility, ...],

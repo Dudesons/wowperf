@@ -281,9 +281,12 @@ def owns_icebound(at_ms: int) -> tuple[CastEvent, ...]:
 
 def test_a_card_lists_a_defensive_that_was_off_cooldown_as_ready() -> None:
     # Pressed after the rez, so the ability is demonstrably theirs and the cast
-    # falls outside the window that ends at the death.
-    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
-        update={"casts": owns_icebound(70_000)}
+    # falls outside the window that ends at the death. The death is a full base
+    # cooldown (180s) into the run, so that window lies inside the log.
+    loaded = LoadedRun(
+        run=a_run(players=(a_player(),), pulls=(a_pull(0, 0, 240_000),)),
+        deaths=(a_death(1, 180_000),),
+        casts=owns_icebound(190_000),
     )
     own = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].availability[0]
     assert [(row.ability, row.state) for row in own.rows] == [("Icebound Fortitude", "ready")]
@@ -1185,3 +1188,16 @@ def test_a_heal_that_landed_for_nothing_still_gets_a_row() -> None:
     """Overheal is a fact about who was healing; only casts are filtered."""
     card = a_card_with_heal(amount=0)
     assert [row.detail for row in card.timeline] == ["+0 from Emberkin"]
+
+
+def test_a_card_withholds_a_defensive_whose_base_cooldown_reaches_before_the_first_pull() -> None:
+    # Icebound's 180s base cooldown, 60s into the run: a press before the first
+    # pull would be invisible, so the card says it did not judge, in the run's words.
+    loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
+        update={"casts": owns_icebound(70_000)}
+    )
+    own = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].availability[0]
+    assert [(row.ability, row.state, row.detail) for row in own.rows] == [
+        ("Icebound Fortitude", "unjudged",
+         "not judged, its base cooldown reaches before the run's first second")
+    ]

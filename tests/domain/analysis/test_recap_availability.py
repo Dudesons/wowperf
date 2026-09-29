@@ -10,6 +10,7 @@ from wowperf.domain.analysis.recap import (
     HELD,
     PRESSED,
     READY,
+    UNJUDGED,
     UNSEEN,
     availability_at,
     consumable_state,
@@ -30,6 +31,9 @@ from wowperf.domain.season import (
 )
 
 DEATH_MS = 60_000
+LOG_FROM = DEATH_MS - 3_600_000
+"""A log that began an hour before the death most cases place, so no base cooldown here reaches
+past it. The cases about that edge pass their own origin."""
 ICEBOUND = DefensiveAbility(ability_id=48792, name="Icebound Fortitude", cooldown_seconds=120.0)
 RUNE_TAP = DefensiveAbility(ability_id=194679, name="Rune Tap", cooldown_seconds=25.0, charges=2)
 BARKSKIN = DefensiveAbility(ability_id=22812, name="Barkskin", cooldown_seconds=45.0)
@@ -168,11 +172,17 @@ def test_a_hit_at_the_deaths_own_timestamp_is_still_the_lethal_hit() -> None:
 
 
 def test_an_ability_never_pressed_is_unseen_not_judged() -> None:
-    assert state_of((), "Icebound Fortitude", 120.0, 1, DEATH_MS).state == UNSEEN
+    assert state_of(
+        (), "Icebound Fortitude", 120.0, 1, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    ).state == UNSEEN
 
 
 def test_a_press_inside_the_run_up_is_pressed_with_the_seconds_before_death() -> None:
-    state = state_of((press(48792, 1_000), press(48792, 56_600)), "IBF", 120.0, 1, DEATH_MS)
+    state = state_of(
+        (press(48792, 1_000), press(48792, 56_600)), "IBF", 120.0, 1, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     assert (state.state, state.seconds) == (PRESSED, 3.4)
 
 
@@ -195,6 +205,7 @@ def test_a_defensive_the_death_stripped_still_reads_held_at_the_blow() -> None:
     state = state_of(
         _presses(22812, at_ms=9_994_610), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
         ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=BLOW_MS,
+        visible_from_ms=LOG_FROM,
     )
 
     assert state.state == HELD
@@ -218,6 +229,7 @@ def test_a_defensive_that_lapsed_before_the_blow_reads_faded() -> None:
     state = state_of(
         _presses(22812, at_ms=9_987_804), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
         ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=BLOW_MS,
+        visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -257,7 +269,7 @@ def test_a_defensive_stripped_before_the_blow_reads_held() -> None:
     state = state_of(
         _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*STRIPPED_BANDS),
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == HELD
@@ -282,7 +294,7 @@ def test_a_defensive_that_lapsed_before_the_strip_still_reads_faded() -> None:
     state = state_of(
         _presses(SCALES, at_ms=EVOKER_BLOW_MS - 200 - SCALES_LENGTH), "Obsidian Scales",
         30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*lapsed),
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -302,7 +314,7 @@ def test_a_count_between_the_two_clusters_answers_pressed() -> None:
     state = state_of(
         _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=a_table(*STRIPPED_BANDS[:4]),
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -325,7 +337,7 @@ def test_the_top_of_the_expired_cluster_still_reads_faded() -> None:
     state = state_of(
         _presses(SCALES, at_ms=SCALES_PRESSED_MS), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -353,7 +365,7 @@ def test_an_older_pile_up_of_endings_is_not_this_deaths_strip() -> None:
     state = state_of(
         _presses(SCALES, at_ms=pile_up_ms - 3_000), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -394,7 +406,7 @@ def test_a_reach_back_past_a_small_death_credits_the_older_strip() -> None:
     state = state_of(
         _presses(SCALES, at_ms=pile_up_ms - 3_000), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == HELD
@@ -437,7 +449,7 @@ def test_a_band_spanning_a_strip_but_ending_before_the_blow_is_not_held() -> Non
     state = state_of(
         _presses(SCALES, at_ms=EVOKER_DEATH_MS - 1_000 - SCALES_LENGTH), "Obsidian Scales",
         30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -478,7 +490,7 @@ def test_a_band_trailing_the_strip_among_others_answers_pressed_not_faded() -> N
     state = state_of(
         _presses(SCALES, at_ms=6_987_478 - SCALES_LENGTH), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -519,7 +531,7 @@ def test_an_ancient_strip_cannot_claim_a_press_from_the_run_up() -> None:
     state = state_of(
         _presses(SCALES, at_ms=EVOKER_DEATH_MS - 5_000), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -542,7 +554,7 @@ def test_a_second_press_after_the_strip_does_not_throw_the_strip_away() -> None:
 
     state = state_of(
         presses, "Obsidian Scales", 30.0, 1, EVOKER_DEATH_MS, ability_id=SCALES,
-        auras=table, window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        auras=table, window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == HELD
@@ -574,7 +586,7 @@ def test_an_instant_straddling_the_first_press_cannot_claim_a_band_before_it() -
     state = state_of(
         _presses(SCALES, at_ms=6_987_477), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -611,7 +623,7 @@ def test_a_band_ending_just_before_the_strip_is_condemned_on_position() -> None:
     state = state_of(
         _presses(SCALES, at_ms=6_987_471 - SCALES_LENGTH), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == FADED
@@ -643,7 +655,7 @@ def test_a_band_before_an_ancient_strip_is_not_condemned_by_it() -> None:
     state = state_of(
         _presses(SCALES, at_ms=EVOKER_DEATH_MS - 5_000), "Obsidian Scales", 30.0, 1,
         EVOKER_DEATH_MS, ability_id=SCALES, auras=table,
-        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS,
+        window=EVOKER_WINDOW, blow_ms=EVOKER_BLOW_MS, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -662,7 +674,7 @@ def test_a_death_whose_blow_never_reached_the_stream_stays_pressed() -> None:
 
     state = state_of(
         _presses(22812, at_ms=9_987_804), "Barkskin", 45.0, 1, DEATH_MS_AT_THE_BLOW,
-        ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=None,
+        ability_id=22812, auras=auras, window=FIGHT_WINDOW, blow_ms=None, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -678,7 +690,7 @@ def test_an_ability_with_no_aura_of_its_own_stays_pressed() -> None:
 
     state = state_of(
         _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=auras, window=(0, 10_000), blow_ms=4900,
+        ability_id=22812, auras=auras, window=(0, 10_000), blow_ms=4900, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -687,7 +699,7 @@ def test_an_ability_with_no_aura_of_its_own_stays_pressed() -> None:
 def test_a_player_with_no_aura_table_stays_pressed() -> None:
     state = state_of(
         _presses(22812, at_ms=2000), "Barkskin", 45.0, 1, death_ms=5000,
-        ability_id=22812, auras=None, window=(0, 10_000), blow_ms=4900,
+        ability_id=22812, auras=None, window=(0, 10_000), blow_ms=4900, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == PRESSED
@@ -701,7 +713,7 @@ def test_the_name_fallback_resolves_a_buff_whose_id_differs_from_its_cast() -> N
 
     state = state_of(
         _presses(110959, at_ms=2000), "Greater Invisibility", 90.0, 1, death_ms=5000,
-        ability_id=110959, auras=auras, window=(0, 10_000), blow_ms=4900,
+        ability_id=110959, auras=auras, window=(0, 10_000), blow_ms=4900, visible_from_ms=LOG_FROM,
     )
 
     assert state.state == HELD
@@ -709,27 +721,39 @@ def test_the_name_fallback_resolves_a_buff_whose_id_differs_from_its_cast() -> N
 
 def test_a_press_inside_one_cooldown_leaves_an_upper_bound_in_whole_seconds() -> None:
     # Pressed 100.2 s before death on a 120 s cooldown: at most 19.8 s left, said as 20.
-    state = state_of((press(48792, DEATH_MS - 100_200),), "IBF", 120.0, 1, DEATH_MS)
+    state = state_of(
+        (press(48792, DEATH_MS - 100_200),), "IBF", 120.0, 1, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     assert (state.state, state.seconds) == (COOLDOWN, 20)
 
 
 def test_a_press_older_than_one_cooldown_leaves_the_ability_ready() -> None:
-    state = state_of((press(48792, DEATH_MS - 135_000),), "IBF", 120.0, 1, DEATH_MS)
+    state = state_of(
+        (press(48792, DEATH_MS - 135_000),), "IBF", 120.0, 1, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     assert (state.state, state.seconds) == (READY, None)
 
 
 def test_readiness_that_arrived_inside_the_run_up_says_for_how_long_at_least() -> None:
     # Pressed 124 s before a 120 s cooldown's death: ready for 4 s by the base cooldown,
     # and longer if a talent shortened it — so "at least".
-    state = state_of((press(48792, DEATH_MS - 124_000),), "IBF", 120.0, 1, DEATH_MS)
+    state = state_of(
+        (press(48792, DEATH_MS - 124_000),), "IBF", 120.0, 1, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     assert (state.state, state.seconds) == (READY, 4.0)
 
 
 def test_a_second_charge_keeps_an_ability_ready_until_both_are_spent() -> None:
-    one = state_of((press(194679, DEATH_MS - 20_000),), "Rune Tap", 25.0, 2, DEATH_MS)
+    one = state_of(
+        (press(194679, DEATH_MS - 20_000),), "Rune Tap", 25.0, 2, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     two = state_of(
         (press(194679, DEATH_MS - 20_000), press(194679, DEATH_MS - 15_000)),
-        "Rune Tap", 25.0, 2, DEATH_MS,
+        "Rune Tap", 25.0, 2, DEATH_MS, visible_from_ms=LOG_FROM,
     )
     assert one.state == READY
     # The older press frees the next charge: 25 - 20 = 5 s left at most.
@@ -739,7 +763,10 @@ def test_a_second_charge_keeps_an_ability_ready_until_both_are_spent() -> None:
 def test_a_charge_never_spent_says_nothing_about_since_when() -> None:
     # Two charges, one press: a charge was never spent, so the ability was
     # ready throughout the run-up and there is nothing to say about since when.
-    state = state_of((press(194679, DEATH_MS - 20_000),), "Rune Tap", 25.0, 2, DEATH_MS)
+    state = state_of(
+        (press(194679, DEATH_MS - 20_000),), "Rune Tap", 25.0, 2, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
     assert (state.state, state.seconds) == (READY, None)
 
 
@@ -750,7 +777,7 @@ def test_readiness_comes_from_the_charge_that_recharged_not_the_last_press() -> 
     # 32 - 25 = 7 s before death, and that is the lower bound reported.
     state = state_of(
         (press(194679, DEATH_MS - 32_000), press(194679, DEATH_MS - 22_000)),
-        "Rune Tap", 25.0, 2, DEATH_MS,
+        "Rune Tap", 25.0, 2, DEATH_MS, visible_from_ms=LOG_FROM,
     )
     assert (state.state, state.seconds) == (READY, 7.0)
 
@@ -773,16 +800,16 @@ def test_readiness_uses_the_oldest_of_the_last_charges_presses_not_the_oldest_of
             press(194679, DEATH_MS - 32_000),
             press(194679, DEATH_MS - 20_000),
         ),
-        "Rune Tap", 25.0, 2, DEATH_MS,
+        "Rune Tap", 25.0, 2, DEATH_MS, visible_from_ms=LOG_FROM,
     )
     assert (state.state, state.seconds) == (READY, 7.0)
 
 
 def test_an_external_counts_as_pressed_only_when_cast_on_the_dying_player() -> None:
     on_them = state_of((press(102342, 57_000, actor_id=2, target_id=1),), "Ironbark", 90.0, 1,
-                       DEATH_MS, owner_id=2, on_target=1)
+                       DEATH_MS, owner_id=2, on_target=1, visible_from_ms=LOG_FROM)
     on_other = state_of((press(102342, 57_000, actor_id=2, target_id=3),), "Ironbark", 90.0, 1,
-                        DEATH_MS, owner_id=2, on_target=1)
+                        DEATH_MS, owner_id=2, on_target=1, visible_from_ms=LOG_FROM)
     assert (on_them.state, on_them.owner_id) == (PRESSED, 2)
     assert (on_other.state, on_other.seconds) == (COOLDOWN, 87)
 
@@ -793,9 +820,9 @@ def test_an_untargeted_external_reads_as_pressed_for_the_dying_player() -> None:
     # has no other player it could have been for, so it must not fall through to
     # the cooldown branch the way a cast aimed at someone else does.
     untargeted = state_of((press(97462, 57_000, actor_id=2, target_id=None),), "Rallying Cry",
-                          180.0, 1, DEATH_MS, owner_id=2, on_target=1)
+                          180.0, 1, DEATH_MS, owner_id=2, on_target=1, visible_from_ms=LOG_FROM)
     on_other = state_of((press(97462, 57_000, actor_id=2, target_id=3),), "Rallying Cry",
-                        180.0, 1, DEATH_MS, owner_id=2, on_target=1)
+                        180.0, 1, DEATH_MS, owner_id=2, on_target=1, visible_from_ms=LOG_FROM)
     assert (untargeted.state, untargeted.owner_id) == (PRESSED, 2)
     assert (on_other.state, on_other.seconds) == (COOLDOWN, 177)
 
@@ -804,17 +831,17 @@ def test_a_category_never_drunk_is_not_listed_at_all() -> None:
     # Was `..._is_ready_because_no_talent_gates_a_potion` until 2026-09-12.
     # The log proves nothing about a consumable nobody used: the run-level
     # finding says so once, and the card says nothing.
-    assert consumable_state((), STONE, DEATH_MS) is None
+    assert consumable_state((), STONE, DEATH_MS, visible_from_ms=LOG_FROM) is None
 
 
 def test_a_category_drunk_long_ago_is_listed_as_ready() -> None:
     late = 400_000
-    state = consumable_state((press(6262, late - 300_000),), STONE, late)
+    state = consumable_state((press(6262, late - 300_000),), STONE, late, visible_from_ms=LOG_FROM)
     assert state is not None and state.state == READY
 
 
 def test_a_consumable_drunk_in_the_run_up_is_pressed() -> None:
-    state = consumable_state((press(6262, 58_000),), STONE, DEATH_MS)
+    state = consumable_state((press(6262, 58_000),), STONE, DEATH_MS, visible_from_ms=LOG_FROM)
     assert state is not None and state.state == PRESSED
 
 
@@ -986,3 +1013,78 @@ def test_externals_keep_pressed_even_when_a_matching_aura_band_would_flip_them()
     )
 
     assert [(s.name, s.state) for s in at.externals] == [("Ironbark", PRESSED)]
+
+
+# --- a base cooldown reaching before the log --------------------------------
+#
+# A press before the log's first second is invisible, and on a raid a cooldown
+# carries over from the pull before, so a window reaching past that second
+# cannot show an ability unspent. Every case sits on an origin far from zero,
+# as report timestamps do.
+
+ORIGIN = 5_000_000
+"""The log's first second in these cases."""
+
+
+def after_origin(seconds: float) -> int:
+    return ORIGIN + int(seconds * 1000)
+
+
+def state_at(
+    seconds: float, presses: tuple[CastEvent, ...], ability: DefensiveAbility = ICEBOUND
+) -> str:
+    return state_of(
+        presses, ability.name, ability.cooldown_seconds, ability.charges, after_origin(seconds),
+        ability_id=ability.ability_id, visible_from_ms=ORIGIN,
+    ).state
+
+
+def test_a_base_cooldown_starting_at_the_logs_first_second_is_judged() -> None:
+    owns = (press(ICEBOUND.ability_id, after_origin(300)),)
+    assert state_at(120, owns) == READY
+
+
+def test_a_base_cooldown_reaching_one_millisecond_before_the_log_is_not_judged() -> None:
+    owns = (press(ICEBOUND.ability_id, after_origin(300)),)
+    one_ms_early = state_of(
+        owns, ICEBOUND.name, ICEBOUND.cooldown_seconds, 1, after_origin(120) - 1,
+        ability_id=ICEBOUND.ability_id, visible_from_ms=ORIGIN,
+    )
+    assert (one_ms_early.state, one_ms_early.seconds) == (UNJUDGED, None)
+
+
+def test_a_press_in_the_run_up_outranks_a_window_before_the_log() -> None:
+    assert state_at(30, (press(ICEBOUND.ability_id, after_origin(25)),)) == PRESSED
+
+
+def test_a_spent_cooldown_outranks_a_window_before_the_log() -> None:
+    # Every press it rests on is in the log, so "at most so long left" stays true.
+    assert state_at(60, (press(ICEBOUND.ability_id, after_origin(20)),)) == COOLDOWN
+
+
+def test_a_spare_charge_early_in_the_log_is_not_judged() -> None:
+    # One of Rune Tap's two charges spent 5s in; a press before the log could
+    # have spent the other, so 20s in it is not judged -- and a full base
+    # cooldown in, the window lies inside the log and the spare charge is ready.
+    spent_one = (press(RUNE_TAP.ability_id, after_origin(5)),)
+    assert state_at(20, spent_one, RUNE_TAP) == UNJUDGED
+    assert state_at(26, spent_one, RUNE_TAP) == READY
+
+
+def test_a_cooldown_never_pressed_stays_unseen_before_the_log() -> None:
+    assert state_at(30, ()) == UNSEEN
+
+
+def test_the_dying_players_defensives_and_teammates_externals_are_both_not_judged_early() -> None:
+    death = a_death(at_ms=after_origin(30))
+    casts = (
+        press(ICEBOUND.ability_id, after_origin(300)),
+        press(IRONBARK.ability_id, after_origin(300), actor_id=2, target_id=1),
+    )
+    at = availability_at(
+        (DUDE, TREE), casts, death, Defensives(entries=(("DeathKnight/Blood", (ICEBOUND,)),)),
+        Consumables(), Externals(entries=(("Druid/Restoration", (IRONBARK,)),)), ORIGIN,
+    )
+    assert at.own is not None
+    assert [(one.name, one.state) for one in at.own] == [("Icebound Fortitude", UNJUDGED)]
+    assert [(one.name, one.state) for one in at.externals] == [("Ironbark", UNJUDGED)]

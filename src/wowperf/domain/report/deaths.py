@@ -18,6 +18,7 @@ from wowperf.domain.analysis.recap import (
     RELEASED,
     RESURRECTED,
     SELF_RESURRECTED,
+    UNJUDGED,
     UNSEEN,
     AbilityState,
     RecapEvent,
@@ -159,6 +160,16 @@ sentences sit in the same place and mean opposite things.
 """
 
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
+
+
+def not_judged_detail(setting: str) -> str:
+    """What a row says of a cooldown whose base cooldown reaches before the log's first second.
+
+    One sentence for every group on the card -- a defensive, an external, a
+    group healing cooldown -- so the rows beside each other say it one way.
+    """
+    return f"not judged, its base cooldown reaches before the {setting}'s first second"
+
 
 NO_OTHER_HEALER = "No other healer was in the group."
 
@@ -322,6 +333,7 @@ def _availability_tooltips(
 
 def _availability_row(
     state: AbilityState, names: dict[int, str], tooltips: dict[tuple[int | None, int], Tooltip],
+    setting: str,
 ) -> AvailabilityRow:
     if state.state == HELD:
         detail = f"{state.seconds:.1f} s before death, still up"
@@ -337,6 +349,8 @@ def _availability_row(
         detail = "ready"
     elif state.state == UNSEEN:
         detail = "not seen this run"
+    elif state.state == UNJUDGED:
+        detail = not_judged_detail(setting)
     else:
         detail = ""
     tooltip = tooltips.get((state.owner_id, state.ability_id)) if state.ability_id is not None \
@@ -358,13 +372,15 @@ def _group(
     empty_note: str,
     tooltips: dict[tuple[int | None, int], Tooltip],
     caveat: str = "",
+    *,
+    setting: str,
 ) -> AvailabilityGroup:
     """A group with rows carries the badge and any caveat; an empty one says why it is empty."""
     if not states:
         return AvailabilityGroup(title=title, note=empty_note)
     return AvailabilityGroup(
         title=title,
-        rows=tuple(_availability_row(state, names, tooltips) for state in states),
+        rows=tuple(_availability_row(state, names, tooltips, setting) for state in states),
         badge=badge_for(Confidence.INFERRED),
         note=caveat,
     )
@@ -440,7 +456,7 @@ def _healer_cooldown_row(cooldown: HealerCooldown, death: Death, setting: str) -
     elif reading.reading is Reading.DEAD:
         detail = "its holder was dead when the damage began"
     else:
-        detail = f"not judged, its base cooldown reaches before the {setting}'s first second"
+        detail = not_judged_detail(setting)
     return AvailabilityRow(
         ability=ability.name,
         state=str(reading.reading),
@@ -613,11 +629,12 @@ def build_deaths(
                 came_back=came_back,
                 came_back_badge=came_back_badge,
                 availability=(
-                    _group("Defensives", at.own, names, f"No data file covers {spec}.", tooltips),
+                    _group("Defensives", at.own, names, f"No data file covers {spec}.", tooltips,
+                           setting=setting),
                     _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA, tooltips,
-                           CONSUMABLE_CAVEAT),
+                           CONSUMABLE_CAVEAT, setting=setting),
                     _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS,
-                           tooltips),
+                           tooltips, setting=setting),
                 ),
                 healers=(
                     None

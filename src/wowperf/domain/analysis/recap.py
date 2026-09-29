@@ -4,7 +4,7 @@
 import math
 
 from wowperf.domain.analysis.consumables import consumable_window_start
-from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
+from wowperf.domain.analysis.defensives import RUN_UP_SECONDS, window_inside_log
 from wowperf.domain.auras import (
     EXPIRED_CO_ENDING_ABILITIES,
     PlayerAuras,
@@ -219,6 +219,9 @@ COOLDOWN = "cooldown"
 UNSEEN = "unseen"
 HELD = "held"
 FADED = "faded"
+UNJUDGED = "unjudged"
+"""The value `cooldown_reading.Reading.NOT_JUDGED` carries, so the card's rows and the Healers
+group beside them name a withheld judgement the same way."""
 
 
 class AbilityState(Frozen):
@@ -230,9 +233,9 @@ class AbilityState(Frozen):
     when the blow landed, which is a reading of the same press and not a
     different moment to count from. COOLDOWN: the upper bound left, in whole
     seconds. READY: how long it had been ready when that fell inside the
-    run-up, a lower bound, else None. UNSEEN: always None. `owner_id` is None
-    for the dying player's own abilities and a teammate's actor id for an
-    external.
+    run-up, a lower bound, else None. UNSEEN and UNJUDGED: always None.
+    `owner_id` is None for the dying player's own abilities and a teammate's
+    actor id for an external.
 
     `ability_id` is the game id this state was judged from, and None for a
     consumable: a category is a cooldown group holding several ids, and no one
@@ -459,8 +462,9 @@ def state_of(
     auras: PlayerAuras | None = None,
     window: tuple[int, int] | None = None,
     blow_ms: int | None = None,
+    visible_from_ms: int,
 ) -> AbilityState:
-    """Which of the six states one ability was in at the death.
+    """Which of the seven states one ability was in at the death.
 
     Never pressed in the fight is UNSEEN: a talent not taken looks exactly like
     a button never pressed, so it is listed and not judged. A press inside the
@@ -476,7 +480,11 @@ def state_of(
     strip, and it does not answer for the blow. `_press_state` says why. With
     `charges` or more presses inside one base cooldown before the death the
     ability is on COOLDOWN, and the bound is when the oldest of those presses
-    frees its charge, rounded up. Otherwise READY.
+    frees its charge, rounded up -- true however early, since those presses are
+    in the log. Otherwise, a base cooldown reaching back before
+    `visible_from_ms` is UNJUDGED (`window_inside_log`): an unseen press there
+    could have spent it, a charge included, and on a raid a cooldown carries over
+    from the pull before. Otherwise READY.
 
     Every figure is bounded the safe way: the log records no cooldown reset,
     charge refresh or talent reduction, so the true remaining time is at most
@@ -515,6 +523,8 @@ def state_of(
             name=name, state=COOLDOWN, owner_id=owner_id, ability_id=ability_id,
             seconds=math.ceil((frees_at - death_ms) / 1000),
         )
+    if not window_inside_log(death_ms, cooldown_seconds, visible_from_ms):
+        return AbilityState(name=name, state=UNJUDGED, owner_id=owner_id, ability_id=ability_id)
     # A charge comes free when the oldest of the last `charges` presses
     # recharges. An ability pressed fewer times than it has charges was never
     # fully spent, so it was ready throughout and says nothing about since when.
@@ -533,7 +543,11 @@ def state_of(
 
 
 def consumable_state(
-    presses: tuple[CastEvent, ...], category: ConsumableCategory, death_ms: int
+    presses: tuple[CastEvent, ...],
+    category: ConsumableCategory,
+    death_ms: int,
+    *,
+    visible_from_ms: int,
 ) -> AbilityState | None:
     """A consumable category's state, or None where the player never drank from it all run.
 
@@ -546,7 +560,10 @@ def consumable_state(
     The card said the opposite of the finding on the same page until this
     returned None.
     """
-    state = state_of(presses, category.name, category.cooldown_seconds, 1, death_ms)
+    state = state_of(
+        presses, category.name, category.cooldown_seconds, 1, death_ms,
+        visible_from_ms=visible_from_ms,
+    )
     return None if state.state == UNSEEN else state
 
 
@@ -611,6 +628,7 @@ def availability_at(
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
                     ability_id=ability.ability_id,
                     auras=auras, window=window, blow_ms=blow_ms,
+                    visible_from_ms=visible_from_ms,
                 )
                 for ability in known
             )
@@ -623,7 +641,8 @@ def availability_at(
             for category in survival_categories
             if consumable_window_start(category, death_ms) >= visible_from_ms
             and (state := consumable_state(
-                presses_of(death.actor_id, category.ability_ids), category, death_ms
+                presses_of(death.actor_id, category.ability_ids), category, death_ms,
+                visible_from_ms=visible_from_ms,
             )) is not None
         )
 
@@ -638,6 +657,7 @@ def availability_at(
                     ability.name, ability.cooldown_seconds, ability.charges, death_ms,
                     owner_id=mate.actor_id, on_target=death.actor_id,
                     ability_id=ability.ability_id,
+                    visible_from_ms=visible_from_ms,
                 )
             )
     return AvailabilityAt(own=own, consumables=drinks, externals=tuple(mates))
