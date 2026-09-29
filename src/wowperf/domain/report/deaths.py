@@ -175,7 +175,8 @@ HEALER_COOLDOWNS = (
     "for this {setting}, not within its base cooldown before the damage began, and that base "
     "cooldown reaches back no further than the {setting}'s first second. Talents that shorten "
     "a cooldown are not modelled, a second charge reads as not ready, and a cooldown never "
-    "pressed is not listed, so ready is understated, never invented."
+    "pressed is not listed, so ready is understated, never invented. The log cannot show the "
+    "healers' plan: a ready cooldown is a fact about the log, not a verdict on a healer."
 )
 
 _AIMS = (

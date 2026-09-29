@@ -139,6 +139,24 @@ def test_a_dead_healer_reads_dead_and_lists_no_cooldown() -> None:
     assert (line.cooldowns, line.note) == ((), "")
 
 
+def test_a_cooldown_dead_when_the_run_up_opens_reads_dead_though_its_holder_revived() -> None:
+    # The druid died at 285 and cast nothing more until 296, so the run-up opens
+    # at 290 with them still dead: Tranquility, last pressed at 20, reads DEAD.
+    # The 296 cast is itself a sign of life, so the healer is alive by the death
+    # at 300 -- the two questions read from different instants and can disagree.
+    casts = [
+        cast(DRUID, 20, None, ability_id=740), cast(DRUID, 296, WARRIOR.actor_id),
+    ]
+    [line] = healers_of(card_for(casts, deaths=(death_of(DRUID, 285),))).lines
+    assert line.summary == (
+        "alive when this player died; 1 cast in the last 10 seconds: 1 at this player; "
+        "the last at this player 4.0 s before death"
+    )
+    assert [(row.ability, row.state, row.detail) for row in line.cooldowns] == [
+        ("Tranquility", "dead", "its holder was dead when the damage began")
+    ]
+
+
 def test_a_healer_whose_cooldowns_were_never_pressed_says_so_in_one_clause() -> None:
     [line] = healers_of(card_for([cast(DRUID, 295, None)])).lines
     assert line.cooldowns == ()
@@ -170,7 +188,8 @@ def test_the_group_is_badged_and_its_note_states_the_limits() -> None:
         "base cooldown before the damage began, and that base cooldown reaches back no further "
         "than the run's first second. Talents that shorten a cooldown are not modelled, a "
         "second charge reads as not ready, and a cooldown never pressed is not listed, so "
-        "ready is understated, never invented."
+        "ready is understated, never invented. The log cannot show the healers' plan: a ready "
+        "cooldown is a fact about the log, not a verdict on a healer."
     )
 
 
