@@ -1191,8 +1191,8 @@ def test_a_heal_that_landed_for_nothing_still_gets_a_row() -> None:
 
 
 def test_a_card_withholds_a_defensive_whose_base_cooldown_reaches_before_the_first_pull() -> None:
-    # Icebound's 180s base cooldown, 60s into the run: a press before the first
-    # pull would be invisible, so the card says it did not judge, in the run's words.
+    # Icebound's 180s base cooldown, 60s into the run: the log may not hold a
+    # press before the first pull, so the card says it did not judge, in the run's words.
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(
         update={"casts": owns_icebound(70_000)}
     )

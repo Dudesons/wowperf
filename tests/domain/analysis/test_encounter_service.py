@@ -998,3 +998,20 @@ def test_a_defensive_is_judged_from_the_fights_own_start() -> None:
 
     assert "defensives.unused.emberkin" in ids_for(1_000 + 35_000)
     assert "defensives.unused.emberkin" not in ids_for(1_000 + 34_500)
+
+
+def test_the_defensive_finding_calls_this_stretch_a_fight() -> None:
+    # A boss fight is not a run: the sentence saying what the finding does not
+    # judge, and the one saying which casts prove ownership, both name the fight.
+    loaded = a_loaded_encounter(
+        casts=(CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                         timestamp_ms=200_000),),
+        deaths=(Death(player_name="Emberkin", actor_id=11, timestamp_ms=100_000,
+                      killing_blow="Venom Bolt"),),
+    )
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
+    [finding] = [f for f in findings if f.id == "defensives.unused.emberkin"]
+    assert "before the fight's first second is not judged" in finding.detail
+    assert "cast somewhere in the fight" in finding.detail
+    for text in (finding.title, finding.detail, *finding.evidence):
+        assert not re.search(r"\brun\b", text), text

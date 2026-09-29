@@ -193,7 +193,7 @@ def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
 
 def test_a_defensive_whose_window_reaches_before_the_first_pull_is_not_held_against_them() -> None:
     # The same death 30s in: Prismatic Barrier's (25 + 10) second window reaches
-    # back before the first pull, where a press would be invisible.
+    # back before the first pull, where the log may not hold a press.
     barrier = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
     loaded = a_loaded_run().model_copy(
         update={
@@ -211,6 +211,73 @@ def test_a_defensive_whose_window_reaches_before_the_first_pull_is_not_held_agai
         )
     }
     assert "defensives.unused.emberkin" not in ids
+
+
+LATE_ORIGIN = 4_000_000
+"""Where the first pull starts in the cases below: 4000 s into the report, as a real key's does."""
+
+BARRIER = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
+ONLY_BARRIER = Defensives(entries=(("Mage/Arcane", (BARRIER,)),))
+
+
+def a_late_run_dying_at(death_ms: int, pull_index: int) -> LoadedRun:
+    """The shared run's pulls moved to `LATE_ORIGIN`, and one death `death_ms` after it.
+
+    Emberkin presses Prismatic Barrier 10 s after dying, which proves it is
+    talented without putting it on cooldown before the death. Its window is
+    (25 + 10) seconds. The shared run's enemy rows are dropped: they sit on
+    the unmoved clock and no case here reads them.
+    """
+    loaded = a_loaded_run()
+    pulls = tuple(
+        pull.model_copy(update={"start_ms": LATE_ORIGIN + pull.start_ms,
+                                "end_ms": LATE_ORIGIN + pull.end_ms})
+        for pull in loaded.run.pulls
+    )
+    return loaded.model_copy(
+        update={
+            "run": loaded.run.model_copy(update={"pulls": pulls}),
+            "casts": (
+                CastEvent(actor_id=11, ability_id=BARRIER.ability_id, ability_name=BARRIER.name,
+                          timestamp_ms=LATE_ORIGIN + death_ms + 10_000, pull_index=pull_index),
+            ),
+            "deaths": (
+                Death(player_name="Emberkin", actor_id=11, timestamp_ms=LATE_ORIGIN + death_ms,
+                      killing_blow="Molten Scar", pull_index=pull_index,
+                      seconds_until_next_action=22.0),
+            ),
+            "enemy_cast_rows": (),
+            "enemy_deaths": (),
+        }
+    )
+
+
+def test_the_run_is_judged_from_its_first_pull_not_from_the_reports_zero() -> None:
+    # 30 s into the first pull, the (25 + 10) second window reaches 5 s back
+    # before it, so the death is not judged. Measured from the report's zero it
+    # would sit 3995 s inside the log, and the player would be named.
+    ids = {
+        finding.id
+        for finding in analyse(
+            a_late_run_dying_at(30_000, 0), SEASON, ONLY_BARRIER, Consumables(),
+            ThroughputCooldowns(),
+        )
+    }
+    assert "defensives.unused.emberkin" not in ids
+
+
+def test_the_defensive_finding_calls_this_stretch_a_run() -> None:
+    # 180 s in, on the boss: the window lies inside the run, so the finding is
+    # written, and the sentence saying what it does not judge names the run.
+    findings = analyse(
+        a_late_run_dying_at(180_000, 1), SEASON, ONLY_BARRIER, Consumables(),
+        ThroughputCooldowns(),
+    )
+    [finding] = [f for f in findings if f.id == "defensives.unused.emberkin"]
+    assert "before the run's first second is not judged" in finding.detail
+    assert "cast somewhere in the run" in finding.detail
+    for text in (finding.title, finding.detail, *finding.evidence):
+        assert not re.search(r"\bfight\b", text), text
 
 
 CONSUMABLES = Consumables(

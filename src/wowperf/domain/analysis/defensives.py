@@ -57,12 +57,15 @@ read the sequence, short enough that the card stays a card.
 def window_inside_log(moment_ms: int, seconds: float, visible_from_ms: int) -> bool:
     """Whether the `seconds` before `moment_ms` lie wholly inside the log.
 
-    A press before `visible_from_ms` is invisible -- casts are fetched per
-    fight, and a raid cooldown carries over from the pull before -- so a window
-    reaching back past it cannot show that an ability was unspent. Every rule
-    that calls something ready or available asks this first, and one that
-    cannot pass it says "not judged" rather than guess in the one direction
-    this project never guesses in.
+    The log may not hold a press before `visible_from_ms`: a raid fight's
+    casts start at the pull, and a cooldown carries over from the pull before.
+    So a window reaching back past it cannot show that an ability was unspent.
+    `defensives_up_at`, the pooled finding and the card's `state_of` ask this
+    -- `state_of` only once COOLDOWN has been ruled out, since presses inside
+    the log prove that state however early. `ready_at` (which `read_cooldown`
+    reads through) and the consumable filters apply the same inequality
+    inline. A window that cannot pass it is "not judged" rather than guessed
+    in the one direction this project never guesses in.
     """
     return moment_ms - seconds * 1000 >= visible_from_ms
 
@@ -84,18 +87,18 @@ def defensives_up_at(
     talent casts it nowhere — which looks exactly like having it and never
     pressing it. Reporting silence as availability would accuse someone of not
     pressing a button they do not own. An ability never cast at all is the death
-    card's subject, where it reads as `unseen` beside the three other states a
+    card's subject, where it reads as `unseen` beside the other states a
     reader needs to weigh it against.
 
     **And they must have cast it at no point in `[death - (cooldown + run-up),
     death]`.** That one window does two jobs: it excludes an ability still on
     cooldown, and it excludes one they pressed during the run-up and died anyway.
 
-    **And that window must lie inside the log** (`window_inside_log`). Casts
-    are fetched for the fight, so one pressed before `visible_from_ms` is
-    invisible, and on a raid a cooldown carries over from the pull before. A
+    **And that window must lie inside the log** (`window_inside_log`). The log
+    may not hold a press before `visible_from_ms` -- a raid fight's casts start
+    at the pull, and a cooldown carries over from the pull before -- so a
     window reaching back past the log's first second could hide the press that
-    spent the ability, so it is not judged, and the ability is not named.
+    spent the ability. It is not judged, and the ability is not named.
 
     What remains resolves toward saying nothing. Base cooldowns are longer than
     talented ones; charges are ignored, so a spare charge reads as unavailable;
@@ -220,12 +223,12 @@ def analyse_defensives_at_death(
                 detail=(
                     "Availability is read from this player's own casts against the "
                     "ability's base cooldown, judged from when the damage that killed "
-                    "them began. Only abilities they cast somewhere in the run count, so "
-                    "a talent they never took is never held against them, and spare "
+                    f"them began. Only abilities they cast somewhere in the {shape} count, "
+                    "so a talent they never took is never held against them, and spare "
                     "charges and cooldown resets are ignored because the log does not "
                     "record them. An ability whose base cooldown reaches back before the "
-                    f"{shape}'s first second is not judged, since a press before it is "
-                    "invisible. A defensive is pressed into damage rather than on "
+                    f"{shape}'s first second is not judged, since a press before it may "
+                    "not be in the log. A defensive is pressed into damage rather than on "
                     "cooldown, so this is a question to ask, not a mistake to fix."
                 ),
                 confidence=Confidence.INFERRED,

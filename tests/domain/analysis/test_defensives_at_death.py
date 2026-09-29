@@ -507,6 +507,10 @@ def test_the_detail_says_it_is_a_question_and_how_it_was_judged() -> None:
     )
     assert "pull by pull" in finding.detail
     assert "a question to ask, not a mistake to fix" in finding.detail
+    assert (
+        "A death at which an ability's base cooldown reaches back before that pull's first "
+        "second is not judged or counted for it"
+    ) in finding.detail
 
 
 def test_a_death_whose_window_reaches_into_the_pull_before_is_left_out_of_both_counts() -> None:
@@ -539,6 +543,26 @@ def test_a_death_whose_window_reaches_into_the_pull_before_is_left_out_of_both_c
         casts=((EMBERKIN, AMS, 200.0),),
     )
     findings = repeat_defensives_up(a_loaded_series(pull_one, pull_two, pull_three), BLOOD)
+    assert [f.title for f in findings] == ["Emberkin: Anti-Magic Shell up at 2 of 2 deaths"]
+
+
+def test_a_death_inside_one_cooldown_but_not_the_run_up_after_it_is_left_out() -> None:
+    """The run-up counts toward the window that must lie inside the pull.
+
+    Anti-Magic Shell's base cooldown is 60s and its window 60 + 10. Pull 3's
+    death falls 65s in: one base cooldown clears the pull's first second, the
+    whole window does not. The death is not judged, so the player stands at two
+    of two deaths; judged on the base cooldown alone it would be two of three,
+    a denominator counting a death nothing was read at.
+    """
+    late = a_pull(
+        3,
+        deaths=((EMBERKIN, 65.0),),
+        casts=((EMBERKIN, AMS, 200.0),),
+    )
+    findings = repeat_defensives_up(
+        a_loaded_series(owned_and_died(1, AMS), owned_and_died(2, AMS), late), BLOOD
+    )
     assert [f.title for f in findings] == ["Emberkin: Anti-Magic Shell up at 2 of 2 deaths"]
 
 
@@ -639,5 +663,6 @@ def test_the_finding_says_what_it_does_not_judge_in_its_own_setting() -> None:
         )
         assert (
             "An ability whose base cooldown reaches back before the "
-            f"{shape}'s first second is not judged, since a press before it is invisible."
+            f"{shape}'s first second is not judged, since a press before it may not be in "
+            "the log."
         ) in finding.detail

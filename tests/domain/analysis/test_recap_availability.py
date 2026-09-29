@@ -1017,8 +1017,9 @@ def test_externals_keep_pressed_even_when_a_matching_aura_band_would_flip_them()
 
 # --- a base cooldown reaching before the log --------------------------------
 #
-# A press before the log's first second is invisible, and on a raid a cooldown
-# carries over from the pull before, so a window reaching past that second
+# The log may not hold a press before its first second -- a raid fight's casts
+# start at the pull, and a cooldown carries over from the pull before -- so a
+# window reaching past that second
 # cannot show an ability unspent. Every case sits on an origin far from zero,
 # as report timestamps do.
 

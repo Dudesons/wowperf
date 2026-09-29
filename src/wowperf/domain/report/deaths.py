@@ -548,7 +548,7 @@ def build_deaths(
     availability, so the card shows the damage and the answers side by side.
 
     `trimmed` drops the timeline and the health curve, and nothing else: the
-    six availability states below still come from `availability_at`, which
+    seven availability states below still come from `availability_at`, which
     reads the cast stream and the aura table directly rather than through the
     timeline this flag skips building. Skipping means what it says -- the
     timeline is never assembled and then discarded, which is the whole point
