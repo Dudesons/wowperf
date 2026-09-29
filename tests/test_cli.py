@@ -4148,7 +4148,12 @@ def test_analyze_writes_a_report_whose_icons_address_the_cdn(tmp_path: Path) -> 
 def test_analyze_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> None:
     """`roles=roles` reaches `build_report`, so a teammate the real `data/roles.toml`
     lists as a healer draws the Healers group on the death card of a roster-mate
-    who died -- Bríala, Priest/Holy, survives Emberkin's death here."""
+    who died -- Bríala, Priest/Holy, survives Emberkin's death here.
+
+    `class="avail healers"` alone would also pass with an empty `Roles()`, which
+    draws the group with no other healer found; the holder label and the
+    absence of that fallback sentence are what only real roles produce.
+    """
     result = run_analyze(
         tmp_path,
         teammates=(("Bríala", "Priest", "Holy"),),
@@ -4158,6 +4163,8 @@ def test_analyze_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> No
 
     html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
     assert 'class="avail healers"' in html
+    assert "Holy Priest, Bríala" in html
+    assert "No other healer was in the group." not in html
 
 
 def test_analyze_findings_file_is_unaffected_by_the_healers_group(
