@@ -15,6 +15,7 @@ from tests.adapters.render.test_html_invariants import (
     player_cards,
 )
 from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
+from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
 from tests.domain.comparison.test_pace_curve import a_kill, steady
 from tests.domain.report.test_raid_build import (
     FETCHED,
@@ -24,9 +25,11 @@ from tests.domain.report.test_raid_build import (
 )
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
+from wowperf.adapters.config.toml import load_externals, load_roles, load_throughput_cooldowns
 from wowperf.adapters.render.html import render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.spikes import SPIKES_ID, answers_for
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -639,6 +642,20 @@ def _panel(html: str, panel_id: str) -> str:
     rest = html[start:]
     end = rest.find('<section class="panel"')
     return rest if end == -1 else rest[:end]
+
+
+def test_the_heaviest_moments_are_drawn_on_the_mechanics_tab_alone() -> None:
+    heavy = a_heavy_moment_left_unanswered(setting="fight")
+    spikes = next(finding for finding in heavy if finding.id == SPIKES_ID)
+    html = render_raid(a_built_raid_report(findings=(*a_raids_findings(), *heavy)))
+    drawn = [str(escape(spikes.title)), *(str(escape(line)) for line in spikes.evidence)]
+    for text in drawn:
+        assert text in _panel(html, "tab-mechanics"), text
+        for name in RAID_PANEL_ORDER:
+            if name != "tab-mechanics":
+                assert text not in _panel(html, name), (name, text)
+    assert html.count(f"<h3>{escape(spikes.title)}</h3>") == 1
+    assert ">None<" not in html
 
 
 def test_a_players_pace_finding_shows_on_their_card_and_nowhere_on_damage() -> None:
@@ -1624,6 +1641,10 @@ def a_real_raid_comparison() -> tuple[Finding, ...]:
     to the left, and an earlier task on this plan lost time to a call that meant
     to supply these two and did not. A fixture that stopped supplying them would
     go quietly back to being the thing this one was written to replace.
+
+    `answers` is built from the repository's own data files, as `cli.raid`
+    builds it, so the heavy-moment block the golden pins is the one a real
+    run over this roster would draw.
     """
     return tuple(
         analyse_encounter(
@@ -1633,6 +1654,9 @@ def a_real_raid_comparison() -> tuple[Finding, ...]:
             mechanics=GOLDEN_MECHANICS,
             our_abilities=GOLDEN_ABILITIES_TAKEN,
             parse_subjects=golden_subjects(),
+            answers=answers_for(
+                GOLDEN_ROSTER, load_throughput_cooldowns(), load_externals(), load_roles()
+            ),
         )
     )
 

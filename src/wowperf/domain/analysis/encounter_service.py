@@ -16,6 +16,7 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
+from wowperf.domain.analysis.spikes import Answer, analyse_spikes
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsSample,
@@ -67,6 +68,7 @@ def analyse_encounter(
     pace: PaceSample | None = None,
     self_resurrections: SelfResurrections = SelfResurrections(),
     no_sample: NoSample = NO_SAMPLE,
+    answers: Sequence[Answer] | None = None,
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
 
@@ -110,6 +112,10 @@ def analyse_encounter(
     `no_sample` is what the attempt verdict's notice says when `mechanics`
     holds no reference kill, handed straight to `classify_attempt`; the
     night page passes its own, since it never draws that sample.
+
+    The raid's heaviest moments are read beside what hit it, and only when
+    `answers` is handed in, because the answer set is built from the data
+    files by the caller; `None` runs no spike analysis at all.
     """
     encounter = loaded.encounter
     enemy_casts = reconstruct_enemy_casts(loaded.enemy_cast_rows, loaded.interrupts)
@@ -157,6 +163,19 @@ def analyse_encounter(
     findings += compare_phase_cost(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
+    if answers is not None:
+        span = (encounter.start_ms, encounter.end_ms)
+        findings += analyse_spikes(
+            damage_taken=loaded.damage_taken,
+            casts=loaded.casts,
+            deaths=loaded.deaths,
+            resurrections=loaded.resurrections,
+            players=encounter.players,
+            answers=answers,
+            span=span,
+            combat=(span,),
+            setting="fight",
+        )
     verdict = classify_attempt(
         encounter,
         loaded.deaths,

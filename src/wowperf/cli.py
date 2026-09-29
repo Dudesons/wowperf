@@ -46,6 +46,7 @@ from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.analysis.severity import rank_raid_findings
+from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.measures import PlayerMeasures
@@ -1310,6 +1311,8 @@ def analyze(
         consumables = load_consumables()
         consumable_buffs = load_consumable_buffs()
         throughput = load_throughput_cooldowns()
+        roles = load_roles()
+        externals = load_externals()
         slot_names = load_slot_names()
         # The comparison's combat-potion family reads this one category rather
         # than all of `consumables`: `for_survival()` excludes it (it shares no
@@ -1325,8 +1328,9 @@ def analyze(
             defensives,
             consumables,
             throughput,
-            roles=load_roles(),
+            roles=roles,
             include_cooldown_ceiling=throughput_ceiling,
+            answers=answers_for(loaded.run.players, throughput, externals, roles),
         )
 
         # The roster's own spelling, disambiguated where two members share a
@@ -1478,7 +1482,7 @@ def analyze(
                     datetime.now().strftime("%Y-%m-%d %H:%M"),
                     defensives,
                     consumables,
-                    externals=load_externals(),
+                    externals=externals,
                     self_resurrections=load_self_resurrections(),
                     throughput=throughput,
                     reference_records=reference_records,
@@ -1563,6 +1567,10 @@ def raid(
         defensives = load_defensives()
         consumables = load_consumables()
         roles = load_roles()
+        # Both answer the raid's heaviest moments, and the second also feeds
+        # the death recaps: one read each, shared by the analysis and the page.
+        throughput = load_throughput_cooldowns()
+        externals = load_externals()
         # Loaded once and passed to both `analyse_encounter` and
         # `build_raid_report` below, so the per-player pace windows and the
         # death recaps read the same self-resurrection list.
@@ -1634,6 +1642,7 @@ def raid(
             parse_subjects=parse_subjects,
             pace=pace_sample,
             self_resurrections=self_resurrections,
+            answers=answers_for(encounter.players, throughput, externals, roles),
         )
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
@@ -1725,7 +1734,7 @@ def raid(
                     defensives,
                     consumables,
                     roles=roles,
-                    externals=load_externals(),
+                    externals=externals,
                     self_resurrections=self_resurrections,
                     reference_records=reference_records,
                     pace=pace_sample,
@@ -1980,6 +1989,8 @@ def night(
         defensives = load_defensives()
         consumables = load_consumables()
         roles = load_roles()
+        throughput = load_throughput_cooldowns()
+        externals = load_externals()
         # Every pull the night drew, in the order the page draws them, walked
         # once and named once: what follows prices icons, findings and the
         # payload off this single list rather than rebuilding it three times.
@@ -2046,6 +2057,8 @@ def night(
         # for a kill or for a night read with `--no-compare`. A pull handed
         # one also drew reference kills, so its verdict notice may not say
         # none were drawn: it says the night drew no mechanics sample instead.
+        # Each pull is handed the answers its own roster holds, because a
+        # night's roster can change between one pull and the next.
         findings_by_fight = {
             attempt.encounter.fight_id: analyse_encounter(
                 attempt,
@@ -2058,6 +2071,7 @@ def night(
                     if attempt.encounter.fight_id in pace_by_fight
                     else NO_SAMPLE
                 ),
+                answers=answers_for(attempt.encounter.players, throughput, externals, roles),
             )
             for attempt in drawn
         }
@@ -2142,7 +2156,7 @@ def night(
                 deep_fights=deep_fights,
                 death_cards=death_cards,
                 findings_by_boss=boss_findings,
-                externals=load_externals(),
+                externals=externals,
                 self_resurrections=load_self_resurrections(),
                 pace_by_fight=pace_by_fight,
                 records_by_fight=records_by_fight,

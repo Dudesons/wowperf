@@ -5,12 +5,14 @@ from collections.abc import Sequence
 
 import pytest
 
+from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
 from tests.domain.report.test_build_frame import FETCHED, NO_CONSUMABLES, NO_DEFENSIVES, a_run
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNANSWERED_ID
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.ledger import PLACEMENTS, place_rows
-from wowperf.domain.report.model import LedgerRow, Report
+from wowperf.domain.report.model import LedgerRow, Report, all_ledger_rows
 
 SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
@@ -89,6 +91,14 @@ def test_each_family_lands_on_the_field_the_table_says(finding_id: str, home: st
         if other != home:
             assert ids(getattr(report, other)) == [], other
     assert report.observations == ()
+
+
+def test_the_heaviest_moments_sit_beneath_the_deaths_and_nowhere_else() -> None:
+    findings = a_heavy_moment_left_unanswered(setting="run")
+    assert [finding.id for finding in findings] == [SPIKES_ID, UNANSWERED_ID]
+    report = a_report_of(*findings)
+    assert ids(report.death_rows) == [SPIKES_ID, UNANSWERED_ID]
+    assert sorted(ids(list(all_ledger_rows(report)))) == sorted([SPIKES_ID, UNANSWERED_ID])
 
 
 def test_a_family_the_table_does_not_know_reaches_the_catch_all() -> None:

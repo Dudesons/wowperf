@@ -38,6 +38,7 @@ from wowperf.cli import (
     load_run_with_auras,
 )
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID
 from wowperf.domain.auras import Aura, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
@@ -1303,6 +1304,23 @@ def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:
     assert "Bríala" in html_text
 
 
+def heavy_moment_readings(findings: list[dict[str, Any]]) -> list[str]:
+    """The ids of a findings list's heavy-moment reading: the ranked one or its notice."""
+    return [one["id"] for one in findings if one["id"] in (SPIKES_ID, UNAVAILABLE_ID)]
+
+
+@pytest.mark.parametrize("fight_id", [RAID_FIGHT_ID, RAID_WIPE_FIGHT_ID])
+def test_raid_reads_the_fights_heaviest_moments_once(tmp_path: Path, fight_id: int) -> None:
+    result = run_raid(tmp_path, fight_id=fight_id)
+
+    assert result.exit_code == 0, result.output
+    findings = written_raid_findings(tmp_path)["findings"]
+    [reading] = [one for one in findings if one["id"] in heavy_moment_readings(findings)]
+    # Past both "not judged" notices, which only a roster holding a group answer
+    # reaches: the Protection Warrior's Rallying Cry, from the real data file.
+    assert reading["title"] == "No moment of this fight was heavy enough to rank"
+
+
 def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
     """A path printed is a path a person can open. Two files, two lines."""
     result = run_raid(tmp_path)
@@ -2096,6 +2114,13 @@ def test_analyze_writes_a_findings_file(tmp_path: Path) -> None:
     assert payload["report_code"] == "abc123"
     assert payload["keystone_level"] == 16
     assert isinstance(payload["findings"], list)
+
+
+def test_analyze_reads_the_runs_heaviest_moments_once(tmp_path: Path) -> None:
+    result = invoke_analyze(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    assert len(heavy_moment_readings(written_findings(tmp_path)["findings"])) == 1
 
 
 def test_analyze_prints_the_points_it_spent_on_stderr(tmp_path: Path) -> None:

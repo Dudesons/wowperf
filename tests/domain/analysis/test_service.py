@@ -1,8 +1,11 @@
 # ABOUTME: Behaviour tests for running every analyser over one run and ranking the result.
 # ABOUTME: Guards the two invariants a reader depends on: every badge set, worst finding first.
 
+import re
+
 from wowperf.domain.analysis.service import analyse
-from wowperf.domain.events import CastEvent, Death, EnemyCastRow, EnemyDeath
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID, answers_for
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, EnemyCastRow, EnemyDeath
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 from wowperf.domain.season import (
@@ -11,6 +14,9 @@ from wowperf.domain.season import (
     CooldownAbility,
     DefensiveAbility,
     Defensives,
+    ExternalAbility,
+    Externals,
+    Roles,
     SeasonData,
     ThroughputCooldowns,
 )
@@ -314,3 +320,63 @@ def test_asking_for_the_throughput_ceiling_turns_it_on() -> None:
         include_cooldown_ceiling=True,
     )
     assert any(f.id.startswith("throughput.ceiling.") for f in findings)
+
+
+GROUP_WARD = ExternalAbility(
+    ability_id=2, name="Group Ward", cooldown_seconds=180.0, group=True
+)
+"""A cooldown that answers the whole group's damage, held by the fixture's one Mage.
+
+Hand-built: no Arcane Mage holds one in the data files, and what is under test
+here is the service handing the answer set on, not the file behind it.
+"""
+GROUP_EXTERNALS = Externals(entries=(("Mage/Arcane", (GROUP_WARD,)),))
+
+
+def a_run_with_a_heavy_moment() -> LoadedRun:
+    """The shared run taking steady damage through both pulls, with one burst and one answer.
+
+    The burst fills the first pull's 20th to 25th second; the Mage presses the
+    group cooldown two seconds before it. The quiet between the pulls takes no
+    damage, which is what a keystone's travel looks like.
+    """
+    loaded = a_loaded_run()
+    seconds = (*range(0, 60), *range(150, 200))
+    steady = tuple(
+        DamageTakenEvent(actor_id=11, ability_id=900, ability_name="Searing Wave",
+                         amount=100, health_damage=100, timestamp_ms=second * 1_000)
+        for second in seconds
+    )
+    burst = tuple(
+        DamageTakenEvent(actor_id=11, ability_id=900, ability_name="Searing Wave",
+                         amount=1_000, health_damage=1_000, timestamp_ms=second * 1_000)
+        for second in range(20, 25)
+    )
+    answer = CastEvent(actor_id=11, ability_id=GROUP_WARD.ability_id,
+                       ability_name=GROUP_WARD.name, timestamp_ms=18_000, pull_index=0)
+    return loaded.model_copy(
+        update={"damage_taken": steady + burst, "casts": loaded.casts + (answer,)}
+    )
+
+
+def test_no_answer_set_runs_no_spike_analysis() -> None:
+    findings = analyse(
+        a_run_with_a_heavy_moment(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+    )
+    assert [f.id for f in findings if f.id.startswith("healing.")] == []
+
+
+def test_an_answer_set_reads_the_heaviest_moments_of_the_run() -> None:
+    loaded = a_run_with_a_heavy_moment()
+    answers = answers_for(loaded.run.players, ThroughputCooldowns(), GROUP_EXTERNALS, Roles())
+    findings = analyse(
+        loaded, SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns(), answers=answers
+    )
+    [reading] = [f for f in findings if f.id in (SPIKES_ID, UNAVAILABLE_ID)]
+    assert reading.id == SPIKES_ID
+    assert reading.title == "1 heaviest moment: 1 answered"
+    assert reading.evidence[0].startswith("0:20 to 0:25, the heaviest")
+    assert reading.evidence[0].endswith("answered by Group Ward (Arcane Mage, Emberkin)")
+    assert "of the run" in reading.detail
+    for text in (reading.title, reading.detail, *reading.evidence):
+        assert not re.search(r"\bfight\b", text), text

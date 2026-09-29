@@ -31,6 +31,11 @@ class CooldownAbility(Frozen):
     # ceiling, and a default would let that travel silently into a printed number.
     cooldown_seconds: float
     charges: int = 1
+    # Whether pressing it answers a heavy moment for the whole group, as a
+    # raid-wide heal or damage reduction does. Marked by hand per ability in
+    # the data files, because the lists hold abilities that answer no one but
+    # their target (Power Infusion, Ironbark) beside ones that answer everyone.
+    group: bool = False
 
 
 class DefensiveAbility(CooldownAbility):

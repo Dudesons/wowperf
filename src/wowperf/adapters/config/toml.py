@@ -45,9 +45,10 @@ def _load_cooldowns[AbilityT: CooldownAbility](
     """Read a file of cooldowns grouped by class and specialisation.
 
     The defensives, the externals and the throughput cooldowns hold the same
-    four fields under the same spec keys and differ only in the record they
-    build, so all three are read here. A top-level key that is not a table is
-    the `verified` date, which the domain does not use.
+    four fields -- plus the optional `group` marker -- under the same spec keys
+    and differ only in the record they build, so all three are read here. A
+    top-level key that is not a table is the `verified` date, which the domain
+    does not use.
     """
     entries: list[tuple[str, tuple[AbilityT, ...]]] = []
     for key, value in _read(path).items():
@@ -62,6 +63,7 @@ def _load_cooldowns[AbilityT: CooldownAbility](
                         name=str(item["name"]),
                         cooldown_seconds=float(item["cooldown_seconds"]),
                         charges=int(item.get("charges", 1)),
+                        group=bool(item.get("group", False)),
                     )
                     for item in value.get("abilities") or ()
                 ),

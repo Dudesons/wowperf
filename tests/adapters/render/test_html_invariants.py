@@ -11,6 +11,10 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
 from tests.adapters.render.test_html_sections import a_drawn_timeline, a_player_card
+from tests.domain.analysis.test_spikes import (
+    a_heavy_moment_left_unanswered,
+    no_heavy_moment_to_rank,
+)
 from tests.domain.comparison.test_service import a_parse_sample
 from tests.domain.report.test_build_frame import (
     FETCHED,
@@ -23,6 +27,7 @@ from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
 from wowperf.adapters.render.html import render
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.domain.analysis.spikes import SPIKES_ID
 from wowperf.domain.comparison.measures import AbilityRate, PlayerMeasures, Stretch, Verdict
 from wowperf.domain.comparison.sample import SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
@@ -1341,6 +1346,54 @@ def test_a_pointer_is_a_link_not_a_second_card() -> None:
     # Every finding still appears exactly once as a heading, pointers notwithstanding.
     for finding in minimal_findings():
         assert html.count(f"<h3>{escape(finding.title)}</h3>") == 1, finding.id
+
+
+PANEL_MARKUP = re.compile(r'<section class="panel"[^>]*\sid="([^"]+)"')
+
+
+def panels_of(html: str) -> dict[str, str]:
+    """Each top-level panel's markup, from its opening tag to the next panel's."""
+    starts = [(match.start(), match.group(1)) for match in PANEL_MARKUP.finditer(html)]
+    ends = [start for start, _ in starts[1:]] + [len(html)]
+    return {name: html[start:end] for (start, name), end in zip(starts, ends, strict=True)}
+
+
+def test_the_heaviest_moments_are_drawn_on_the_deaths_tab_alone() -> None:
+    heavy = a_heavy_moment_left_unanswered(setting="run")
+    spikes = next(finding for finding in heavy if finding.id == SPIKES_ID)
+    html = render(
+        build_report(
+            minimal_loaded(), (*minimal_findings(), *heavy), None, COMPARED, SUBJECT, None,
+            FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        )
+    )
+    panels = panels_of(html)
+    assert list(panels) == PANEL_ORDER
+    drawn = [str(escape(spikes.title)), *(str(escape(line)) for line in spikes.evidence)]
+    for text in drawn:
+        assert text in panels["tab-deaths"], text
+        for name, markup in panels.items():
+            if name != "tab-deaths":
+                assert text not in markup, (name, text)
+    assert html.count(f"<h3>{escape(spikes.title)}</h3>") == 1
+    assert ">None<" not in html
+
+
+def test_a_heavy_moment_notice_is_drawn_on_the_deaths_tab_alone() -> None:
+    notice = no_heavy_moment_to_rank(setting="run")
+    html = render(
+        build_report(
+            minimal_loaded(), (*minimal_findings(), notice), None, COMPARED, SUBJECT, None,
+            FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        )
+    )
+    panels = panels_of(html)
+    for text in (str(escape(notice.title)), str(escape(notice.detail))):
+        assert text in panels["tab-deaths"], text
+        for name, markup in panels.items():
+            if name != "tab-deaths":
+                assert text not in markup, (name, text)
+    assert ">None<" not in html
 
 
 def test_the_losses_heading_is_absent_when_nothing_was_timed() -> None:

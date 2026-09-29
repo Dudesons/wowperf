@@ -5,6 +5,7 @@ from collections import Counter
 
 import pytest
 
+from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
 from tests.domain.comparison.test_pace_curve import a_kill, steady
 from tests.domain.comparison.test_pace_player import (
     BLOOD,
@@ -18,6 +19,7 @@ from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
 from wowperf.domain.analysis.defensives import _ceiling_withheld
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNANSWERED_ID
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_player import (
@@ -283,6 +285,19 @@ def test_a_family_nobody_placed_is_caught_rather_than_dropped() -> None:
     )
 
     assert [row.finding_id for row in report.observations] == [AN_UNPLACED_FAMILY]
+
+
+def test_the_heaviest_moments_sit_with_what_hit_the_raid_and_nowhere_else() -> None:
+    loaded, subject = a_raid_fixture()
+    findings = a_heavy_moment_left_unanswered(setting="fight")
+    assert [finding.id for finding in findings] == [SPIKES_ID, UNANSWERED_ID]
+
+    report = build_raid_report(
+        loaded, findings, subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES
+    )
+
+    assert [row.finding_id for row in report.mechanics_rows] == [SPIKES_ID, UNANSWERED_ID]
+    assert sorted(placements(report)) == sorted([SPIKES_ID, UNANSWERED_ID])
 
 
 def test_the_only_raid_decomposition_heads_the_summary_and_is_not_drawn_twice() -> None:
