@@ -58,7 +58,10 @@ before `visible_from_ms`.
 plus run-up before the death, starts at or after the origin. Otherwise it says nothing about
 that ability, as it already does for anything it cannot prove. Both callers hold the origin: the
 keystone service (first pull start) and the raid service (fight start). The pooled night
-finding judges each pull against that pull's own start and sums, so it follows unchanged.
+finding judges each pull against that pull's own start and sums. *Refined while planning:* its
+denominator is the deaths judged, so a death it cannot judge leaves both the count and the
+denominator -- unknown, not "not up", the reasoning that already keeps a pull where the ability
+was never cast out of it. Left in, "up at 2 of 5 deaths" would count deaths it never judged.
 
 **Chosen over rewriting onto `read_cooldown`:** that rule models no charges, no per-target press
 rule and no held/faded refinement; adopting it would lose all three. Both approaches draw the
@@ -79,10 +82,10 @@ line with the same predicate, so they cannot disagree about where "not judged" b
 - **The finding** names fewer abilities, or is not emitted where none remains. Its detail gains
   one clause: an ability whose base cooldown reaches before the {fight's / run's} first second
   is not counted as available. The pooled finding's detail gains the same clause.
-- **Goldens move, deliberately:** every fixture death within a base cooldown of its fight's
-  start turns `ready` rows to `unjudged`, and a defensives finding resting only on an early
-  ability goes. Each golden is regenerated on purpose and its diff read whole: the new rows and
-  the withdrawn findings, nothing else.
+- **Goldens:** *corrected while planning* -- none moves. No golden (`minimal.html`, `raid.html`,
+  `night.html`) holds a single `ready` row (checked 2026-09-29), so none can turn `unjudged`,
+  and none carries a defensives finding the guard withdraws. A render test draws the new row
+  instead, since no golden will.
 - **Docs:** `CLAUDE.md`'s death-card paragraph ("six states" becomes seven); an inline
   amendment note in each earlier design that lists the card's states; the healer design's §7
   marked closed; `.claude/skills/mplus-analysis/SKILL.md`'s defensives section -- `unjudged` is a
@@ -111,8 +114,9 @@ line with the same predicate, so they cannot disagree about where "not judged" b
 
 ## 5. Out of scope
 
-- The `unseen` row reads "not seen this run" on a boss fight too, where there is no run. It
-  predates this and is recorded, not fixed here.
+- The `unseen` row reads "not seen this run", and the card's return line "Not seen acting again
+  this run.", on a boss fight too, where there is no run. Both predate this and are recorded,
+  not fixed here.
 - Modelling talents that shorten a cooldown, charges refreshed early, or cooldown resets.
 - The Healers group's parked items (the measured badge over alive/dead; a dead healer's run-up
   press).
