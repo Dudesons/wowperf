@@ -1,6 +1,7 @@
 # Healing cooldowns against the group's heaviest moments
 
-**Status:** approved design, 2026-09-29; planned in `docs/plans/2026-09-29-healing-cooldowns-plan.md`.
+**Status:** approved design, 2026-09-29; planned in `docs/plans/2026-09-29-healing-cooldowns-plan.md`;
+built 2026-09-29, and exercised live (§8, "Live").
 **Area:** slice 4 (healer analysis), its first sub-slice. It adds one analyser and two findings
 to the Mythic+ page (`analyze`) and the raid page (`raid`, and therefore every `night` pull).
 
@@ -183,6 +184,46 @@ an answer sat ready.
   `raid` on its fights 2 and 30, `analyze` on `6Kx1P9GbNXrcLdHa`. A script that prints no name
   counts each state -- answered, unanswered with cooldowns ready, unanswered with nothing ready,
   windows cut by the floor, each notice. A state that never occurs is recorded as open.
+
+**Live** (2026-09-29, four commands, 59.47 points of 3600 as the commands printed them):
+
+| Command | Points | Moments wanted / ranked / cut by the floor | States and notices |
+| --- | --- | --- | --- |
+| `night cW38jmwdnZfbHVL4 --no-deaths` | 6.49 | -- | 16 of 16 pulls read the no-casts notice |
+| `raid cW38jmwdnZfbHVL4 --fight 2` | 50.98 | 2 / 2 / 0 | 2 answered |
+| `raid cW38jmwdnZfbHVL4 --fight 30 --no-compare` | 1.00 | 3 / 3 / 0 | 3 answered |
+| `analyze 6Kx1P9GbNXrcLdHa --fight 36 --no-compare` | 1.00 | 11 / 11 / 0 | 8 unanswered with cooldowns ready, 3 unanswered with no answer shown ready |
+
+- **Fight 2's 50.98 points were all comparison references**, none of them this judgement's: the
+  one-day reference tier had expired for that fight's sample, so the parse axis re-drew five
+  reference kills (`Talents` 5 calls for 11.40, `Fights` 5 for 10.04, `Abilities`, `Casts`,
+  `DamageDoneTargets` 5 each for 5.00, `AuraTable` 4 for 4.00, `RaidCharacterRankings` 2 for
+  2.02) and the mechanics axis its execution board and tables (`AbilityTakenTable` 5 for 6.51,
+  `EncounterKillRankings` 1 for 1.01). The fight's own streams were warm. The two later runs took
+  `--no-compare` for that reason; the analysed fight or run is loaded in full either way, casts
+  included, so the judgement reads the same data.
+- **The night pulls were read at the `--no-deaths` tier, which fetches no casts**, so every pull
+  drew the no-casts notice, a true sentence. What the judgement says on a night pull at the
+  death-card tier, which does fetch casts, is **open**.
+- **Totals across the three judged runs:** 16 moments wanted, 16 ranked, 0 cut by the floor;
+  5 answered, 8 unanswered with cooldowns ready, 3 unanswered with no answer shown ready. Of the
+  reasons on those 3: 2 "pressed at ..., within its base cooldown", 1 "not judged", 0 "its holder
+  was dead". One `healing.spikes.unanswered` fired, on the keystone, carrying the 8.
+- **Every raid moment was answered** (5 of 5, both fights), so "not judged" did not dominate the
+  raid moments here: an answered moment lists its presses and no reasons, and no raid moment
+  reached the reasons at all. The reset check's prediction -- that early raid moments would read
+  "not judged" -- was therefore neither confirmed nor refuted by these two fights.
+- **The keystone's eight "ready" moments rest on one answer.** The group's only healer was a Holy
+  Paladin, and nobody else held a marked answer, so Avenging Wrath (base 120 seconds, pressed 4
+  times across a 1832-second run window) was the whole answer set. With a two-minute base
+  cooldown pressed four times in half an hour, it sat ready at most heavy moments; the finding is
+  `inferred` and its detail says the group may have planned otherwise. The run's earliest ranked
+  moment's only nearby press landed within a second after that window closed, which the 10-second lead, reaching
+  backwards only, does not count: that moment read "not judged".
+- **Open, never seen live:** the "its holder was dead" reason; the no-answer, below-the-floor
+  and zero-damage notices; a window cut by the floor (0 of 16 wanted); a moment weighed against a
+  median window of zero; and every state on a `night` pull at the death-card tier.
+- The four HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
 
 ## 9. Out of scope
 

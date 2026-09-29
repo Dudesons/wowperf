@@ -127,6 +127,35 @@ thirty seconds away is good play and appears here as a gap. Say so when you repe
 the same caveat as the defensive ceiling and one more: a route, not a rotation, sets how many
 windows existed.
 
+## The heaviest moments ask whether the group answered, not who failed to
+
+`healing.spikes` (`derived`) ranks the group's heaviest 5-second windows of damage taken -- one
+per started three minutes of the fight or run, never overlapping, each weighed as a multiple of
+the median window -- and says of each whether a healing or group-wide defensive cooldown was
+pressed from 10 seconds before it to its close. `healing.spikes.unanswered` (`inferred`) lists
+only the moments where nothing was pressed while an answer sat ready. It carries no time lost and
+never reaches the Summary.
+
+- **The judgement is the group's.** Healers plan rotations together, and one holding while
+  another spends is usually right. Name the holders the evidence names, but never say one healer
+  should have pressed: the file cannot see the plan.
+- **"Ready" is understated, never invented.** A cooldown never pressed in the fight or run is
+  invisible, a second charge reads as not ready, and cooldowns are base values with no talent
+  reduction. Unready, it may still have been usable; ready, it truly was off its base cooldown.
+- **"Not judged" is not a fault.** Early in a fight a base cooldown reaches back before the log's
+  first second, so the tool cannot tell whether it was up, and says so. "Unanswered, no answer
+  shown ready" is stated as fact, with a reason per answer -- holder dead, pressed within its base
+  cooldown, or not judged -- and is not held against the group.
+- **The 10-second lead and the floor of twice the median are chosen numbers**, not measured
+  ones. A window below the floor never ranks, so a gentle fight shows a notice rather than a
+  crisis.
+- **A group with one listed answer reads "ready" often.** A lone healer's two-minute cooldown
+  pressed a handful of times across a key sits ready at most heavy moments, so a long
+  `unanswered` list on a keystone is weaker than it looks. Say how many answers the group held.
+- `healing.spikes.unavailable` (`measured`) replaces both when the judgement cannot be made: no
+  casts were read, nobody holds a listed answer, or no window cleared the floor. None of these
+  is a clean fight.
+
 ## The two consumable claims, and which one to lead with
 
 `consumables.never.*` says the player died and drank from a whole category at no point in the run.
