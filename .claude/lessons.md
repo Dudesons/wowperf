@@ -123,3 +123,22 @@ being replaced. When a spec says "the page X draws", reuse X's own sentence rath
 composing a new one.
 
 **Scope:** any user-facing reason, notice or disclosure text, and any ruling that supplies one.
+
+## 2026-09-29 — A fixture clock that starts at zero hides every origin bug
+
+**What happened:** Every test of the heavy-moment analyser used a span starting at 0 ms, and
+the Mythic+ service fixture's first pull started at 0 too. Two defects passed four task
+reviews that way. First, a cooldown pressed before a key's first pull printed "pressed at
+-1:45": a keystone's casts are read from the fight's start, but the page's clock starts at
+the first pull. Second, passing 0 instead of the span's start as the visibility origin would
+have turned "not judged" into "cooldowns ready" on real, report-relative timestamps, and no
+test could fail on it. The final whole-branch review found both by reading how the live
+report's timestamps were built.
+
+**The rule:** When code subtracts an origin, give the test helper a non-zero origin by default,
+so every clock assertion runs off one. Then ask whether any input stream can start before
+that origin (casts, deaths, auras read from the fight's start while the clock starts later),
+and pin that case with a test.
+
+**Scope:** any analyser or builder that turns timestamps into clocks, cooldown windows or
+visibility cut-offs.
