@@ -76,3 +76,10 @@ def test_a_card_with_no_other_healer_draws_its_one_sentence() -> None:
     assert card.healers is not None
     assert str(escape(card.healers.note)) in deaths
     assert 'class="healer-line"' not in deaths
+
+
+def test_a_card_with_no_healers_group_draws_none_at_all() -> None:
+    card = card_for([], roles=None)
+    assert card.healers is None
+    deaths = _panel(mplus_html(card), "tab-deaths")
+    assert 'class="avail healers"' not in deaths
