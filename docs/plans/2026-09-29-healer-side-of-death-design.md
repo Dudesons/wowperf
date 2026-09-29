@@ -147,11 +147,21 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   other-healer lines, none reading "No other healer". Cooldown rows: 23 pressed, 226 within their
   base cooldown, 1 unjudged (fight 8), 0 dead, 0 ready. No line carried either note: every other
   healer pressed at least one of their group healing cooldowns in every one of these fights.
-- **Seen live since:** the "unjudged" cooldown state, once, on fight 8.
-- **Open, never seen live:** the "dead" cooldown state (an ability's holder dead as the run-up
-  opened, though alive again by the death itself); and the line noting that none of a healer's
-  group healing cooldowns was pressed -- on a raid the healers press one before a wipe ends, so it
-  wants a report where a healer never does.
+- **A key where a healer came back inside another death's run-up** (2026-09-29,
+  `4vFcVAW1PB2CrD9z`, a +18). A pre-check over its eight completed keys read deaths, resurrections
+  and, where the healer died, casts -- 20.4 points -- for a healer dead as another player's run-up
+  opened and back by that death. Battle resurrections landed on the healer twice (fights 54 and
+  62), neither inside another death's run-up; fight 72 held one such return, by a cast 9.9 seconds
+  before the death. `analyze --fight 72 --no-compare` (25.16 points), counted from the cards: 7
+  deaths, 7 cards, 1 "No other healer", 6 lines; cooldown rows 3 within their base cooldown, 1
+  ready, 1 dead; no line note. The page carried the dead row's sentence once and no template leak.
+  Fights on this report that were not completed cannot be read: `analyze` refuses them.
+- **Seen live since:** the "unjudged" cooldown state, once, on fight 8 of `cW38jmwdnZfbHVL4`; the
+  "dead" cooldown state, once, on fight 72 of `4vFcVAW1PB2CrD9z`.
+- **Open, never seen live:** the line noting that none of a healer's group healing cooldowns was
+  pressed -- on a raid the healers press one before a wipe ends, and on the two keys read in full
+  (fight 36 of `6Kx1P9GbNXrcLdHa`, fight 72 of `4vFcVAW1PB2CrD9z`) the healer pressed one in the
+  run, so it wants a run where a healer never does.
 - **Unreachable with today's data files:** the line noting that none is listed for a healer's
   specialisation at all. Every healer specialisation `data/roles.toml` names -- Druid/Restoration,
   Evoker/Preservation, Monk/Mistweaver, Paladin/Holy, Priest/Discipline, Priest/Holy,
