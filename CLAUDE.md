@@ -336,9 +336,9 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis. Slices 1 and 2 have shipped. Slice 3 has shipped everything but
 one claim — that one raider's action caused another's death — which stays unbuilt and
-undesigned. Slice 4 has shipped its first sub-slice — whether the group answered its heaviest
-moments of damage with a healing or group-wide defensive cooldown; the healer's side of each
-death, its second, is not designed.
+undesigned. Slice 4 has shipped two sub-slices: whether the group answered its heaviest moments
+of damage with a healing or group-wide defensive cooldown, and the other healers' side of each
+death.
 
 **Current state: a fight goes in and a report comes out.** `wowperf fetch` prints a run as
 JSON; `wowperf analyze`, `wowperf raid` and `wowperf progression` each write their findings as
@@ -355,8 +355,8 @@ The analysers under `src/wowperf/domain/analysis/` produce the findings: time de
 deaths and what each one cost, missed interrupts, trash efficiency, per-player facts, defensives
 off cooldown at a death and defensives pressed far below what their cooldown allowed, healing
 consumables, throughput cooldowns spent away from the pulls worth spending them on, the group's
-heaviest moments of damage taken and whether a group cooldown answered each, and the recap
-behind each death card. The class data they read — cooldowns, teammates' externals,
+heaviest moments of damage taken and whether a group cooldown answered each, the recap
+behind each death card, and what the other healers were doing when each player died. The class data they read — cooldowns, teammates' externals,
 self-resurrections, roles — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
@@ -385,7 +385,11 @@ how they came back, and every defensive, consumable and teammate external placed
 six states at the moment of death — pressed, ready, on cooldown, or never seen all run, and
 a press on the dying player's own defensive refined to held or faded by whether that
 ability's aura was still up when the killing blow landed. `pressed` is what a press reads as
-when that refinement cannot be made, the explicit unknown rather than a guess.
+when that refinement cannot be made, the explicit unknown rather than a guess. Below those
+sits a Healers group, one line per other healer: alive or dead, where their casts in the last
+ten seconds were aimed, and where each of their group healing cooldowns stood, by the same rule
+the heavy-moment finding reads them. It describes and never judges, and it is on the page only,
+not in the findings file.
 Ability icons are addressed on Wowhead's CDN and fetched by the reader's browser, so the
 build makes no request for art and the page carries no image bytes of its own.
 
