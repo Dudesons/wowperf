@@ -33,6 +33,7 @@ from wowperf.domain.season import (
     Consumables,
     Defensives,
     Externals,
+    Roles,
     SelfResurrections,
     ThroughputCooldowns,
 )
@@ -88,6 +89,7 @@ def build_report(
     throughput: ThroughputCooldowns = ThroughputCooldowns(),
     reference_records: tuple[ReferenceRecord, ...] = (),
     comparison_measures: Mapping[str, PlayerMeasures] = NO_MEASURES,
+    roles: Roles | None = None,
 ) -> Report:
     """Everything the page shows, decided here so the template decides nothing.
 
@@ -113,6 +115,8 @@ def build_report(
     `comparison_measures` is what the comparison measured, keyed by player
     slug — threaded onto each card rather than recomputed here, so this layer
     never reaches back into the comparison for a figure it was already handed.
+    `roles` draws the Healers group on every death card, together with
+    `throughput`: left at `None`, the default, no card carries one.
     """
     compared_speed = sampled(speed)
     timeline_section = section_for(findings, SPEED_UNAVAILABLE_ID, compared_speed)
@@ -174,7 +178,10 @@ def build_report(
     )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
 
-    deaths = build_deaths(loaded, defensives, consumables, externals, self_resurrections)
+    deaths = build_deaths(
+        loaded, defensives, consumables, externals, self_resurrections,
+        roles=roles, throughput=throughput,
+    )
     methods = (HEALTH_METHOD,) if any(card.health_badge for card in deaths) else ()
 
     return Report(

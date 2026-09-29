@@ -6,7 +6,7 @@ from enum import StrEnum
 from math import ceil
 from statistics import median
 
-from wowperf.domain.analysis.throughput import ready_at
+from wowperf.domain.analysis.cooldown_reading import Reading, read_cooldown
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace import clock_text
 from wowperf.domain.comparison.pace_player import pair_label
@@ -168,30 +168,6 @@ def heaviest_moments(
     return tuple(sorted(moments, key=lambda one: one.start_ms))
 
 
-def _dead_at(
-    actor_id: int,
-    at_ms: int,
-    casts: Sequence[CastEvent],
-    deaths: Sequence[Death],
-    resurrections: Sequence[Resurrection],
-) -> bool:
-    """Dead when the moment opened: died before it, with no resurrection and no cast since.
-
-    A cast is a sign of life as good as a resurrection record, and the only
-    one a player who released and ran back leaves: the log records no return.
-    """
-    before = [death.timestamp_ms for death in deaths if death.actor_id == actor_id]
-    before = [when for when in before if when < at_ms]
-    if not before:
-        return False
-    died = max(before)
-    revived = any(
-        one.actor_id == actor_id and died < one.timestamp_ms <= at_ms for one in resurrections
-    )
-    acted = any(one.actor_id == actor_id and died < one.timestamp_ms <= at_ms for one in casts)
-    return not (revived or acted)
-
-
 def judge(
     moment: Moment,
     answers: Sequence[Answer],
@@ -213,38 +189,36 @@ def judge(
     unready: list[str] = []
     for answer in answers:
         name = f"{answer.ability.name} ({answer.holder})"
-        own = [
-            cast.timestamp_ms
-            for cast in casts
-            if cast.actor_id == answer.actor_id and cast.ability_id == answer.ability.ability_id
-        ]
-        if not own:
+        reading = read_cooldown(
+            answer.ability, answer.actor_id, casts, deaths, resurrections,
+            pressed_from_ms=moment.start_ms - lead_ms,
+            judged_at_ms=moment.start_ms,
+            pressed_until_ms=moment.end_ms,
+            visible_from_ms=visible_from_ms,
+        )
+        if reading.reading is Reading.UNSEEN:
             continue
-        if any(moment.start_ms - lead_ms <= when <= moment.end_ms for when in own):
+        if reading.reading is Reading.PRESSED:
             pressed.append(name)
-            continue
-        if _dead_at(answer.actor_id, moment.start_ms, casts, deaths, resurrections):
+        elif reading.reading is Reading.DEAD:
             unready.append(f"{name}: its holder was dead")
-            continue
-        if ready_at(
-            tuple(casts), (answer.ability,), answer.actor_id, moment.start_ms, visible_from_ms
-        ):
+        elif reading.reading is Reading.READY:
             ready.append(name)
-            continue
-        cooldown_ms = answer.ability.cooldown_seconds * 1000
-        recent = [when for when in own if moment.start_ms - cooldown_ms <= when <= moment.start_ms]
-        # A key's casts are read from the fight's start, but its clock starts at
-        # the first pull: a press between the two has no clock to print.
-        if recent and max(recent) < visible_from_ms:
-            unready.append(
-                f"{name}: pressed before the {setting}'s first second, within its base "
-                f"cooldown of {clock_text(answer.ability.cooldown_seconds)}"
-            )
-        elif recent:
-            unready.append(
-                f"{name}: pressed at {clock_text((max(recent) - visible_from_ms) / 1000)}, within "
-                f"its base cooldown of {clock_text(answer.ability.cooldown_seconds)}"
-            )
+        elif reading.reading is Reading.WITHIN:
+            assert reading.press_ms is not None  # WITHIN always carries its press
+            # A key's casts are read from the fight's start, but its clock starts at
+            # the first pull: a press between the two has no clock to print.
+            if reading.press_ms < visible_from_ms:
+                unready.append(
+                    f"{name}: pressed before the {setting}'s first second, within its base "
+                    f"cooldown of {clock_text(answer.ability.cooldown_seconds)}"
+                )
+            else:
+                unready.append(
+                    f"{name}: pressed at "
+                    f"{clock_text((reading.press_ms - visible_from_ms) / 1000)}, within "
+                    f"its base cooldown of {clock_text(answer.ability.cooldown_seconds)}"
+                )
         else:
             unready.append(
                 f"{name}: not judged, its base cooldown reaches before the {setting}'s first second"

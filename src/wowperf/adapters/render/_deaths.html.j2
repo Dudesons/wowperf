@@ -126,6 +126,35 @@
         {% endif %}
       </div>
       {% endfor %}
+      {% if death.healers %}
+      <div class="avail healers">
+        <p class="avail-title">{{ death.healers.title }}
+          {%- if death.healers.badge %} <a class="badge {{ death.healers.badge.tint }}"
+             href="#{{ scope }}provenance">{{ death.healers.badge.label }}</a>{% endif %}</p>
+        {% for line in death.healers.lines %}
+        <p class="healer-line"><span class="owner">{{ line.holder }}</span>: {{ line.summary }}</p>
+        {% if line.cooldowns %}
+        <ul>
+          {% for row in line.cooldowns %}
+          <li class="{{ row.state }}">
+            <span class="avail-name">{{ ability(row.ability_id, row.ability, row.tooltip) }}</span>
+            <span class="avail-detail">{{ row.detail }}</span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if line.note %}
+        <p class="nests">{{ line.note }}</p>
+        {% endif %}
+        {% endfor %}
+        {% if death.healers.note %}
+        <p class="nests">
+          {%- if death.healers.cooldown_badge %}<a class="badge {{ death.healers.cooldown_badge.tint }}"
+             href="#{{ scope }}provenance">{{ death.healers.cooldown_badge.label }}</a> {% endif -%}
+          {{ death.healers.note }}</p>
+        {% endif %}
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

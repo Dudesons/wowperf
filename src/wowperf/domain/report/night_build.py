@@ -20,7 +20,14 @@ from wowperf.domain.report.night_model import (
 )
 from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_build import build_raid_report
-from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
+from wowperf.domain.season import (
+    Consumables,
+    Defensives,
+    Externals,
+    Roles,
+    SelfResurrections,
+    ThroughputCooldowns,
+)
 
 # The three tiers a pull can be drawn at, in cost order. Named here so the
 # builder cannot spell one of them two ways, and asserted as bare strings in
@@ -146,6 +153,7 @@ def build_night_report(
     self_resurrections: SelfResurrections = SelfResurrections(),
     pace_by_fight: Mapping[int, PaceSample] | None = None,
     records_by_fight: Mapping[int, tuple[ReferenceRecord, ...]] | None = None,
+    throughput: ThroughputCooldowns | None = None,
 ) -> NightReport:
     """Every boss and every pull, each pull built by the raid builder it reuses whole.
 
@@ -202,6 +210,10 @@ def build_night_report(
     findings carry a `compare.pace.unavailable` notice, read off that pull's
     own findings so the line can never name a different reason than the
     pull's own Damage tab did.
+
+    `throughput`, threaded straight into every pull's `build_raid_report`
+    alongside `roles`, draws the Healers group on every pull's death cards;
+    left at `None`, the default, no pull's cards carry one.
     """
     bosses: list[BossSection] = []
     reference_records_seen: dict[str, ReferenceRecord] = {}
@@ -238,6 +250,7 @@ def build_night_report(
                         death_cards=tier != NO_CARDS,
                         pace=pace_sample,
                         parse_withheld=WITHHELD_DETAIL if pace_sample is not None else None,
+                        throughput=throughput,
                     ),
                     tier=tier,
                 )

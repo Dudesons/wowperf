@@ -500,6 +500,38 @@ class AvailabilityGroup(Frozen):
     note: str = ""
 
 
+class HealerLine(Frozen):
+    """One other healer at one death: who, what they were doing, where their cooldowns stood.
+
+    `summary` is the sentence after the holder: alive or dead, the run-up's
+    casts by where they were aimed, and the last cast at the dying player.
+    `cooldowns` reuses the availability row with states of its own --
+    "pressed", "ready", "within", "unjudged" or "dead" -- and never "cooldown":
+    talents shorten some, so a press within the base cooldown is stated as the
+    press it was. `note` says why the list is empty when it is.
+    """
+
+    holder: str
+    summary: str
+    cooldowns: tuple[AvailabilityRow, ...] = ()
+    note: str = ""
+
+
+class HealerGroup(Frozen):
+    """The Healers group on a death card.
+
+    `badge` is measured: the lines are counted straight off the cast stream.
+    `cooldown_badge` is derived, and None when no line lists a cooldown. `note`
+    states the limits of both, or, with no line, that no other healer was there.
+    """
+
+    title: str = "Healers"
+    lines: tuple[HealerLine, ...] = ()
+    badge: Badge | None = None
+    cooldown_badge: Badge | None = None
+    note: str = ""
+
+
 class DeathCard(Frozen):
     """One death as a recap: what killed the player, what was up, how they came back.
 
@@ -531,6 +563,9 @@ class DeathCard(Frozen):
     came_back: str = ""
     came_back_badge: Badge | None = None
     availability: tuple[AvailabilityGroup, ...] = ()
+    healers: HealerGroup | None = None
+    """The other healers' side of this death, or None where the card was built without the
+    roles that say who heals."""
     slug: str = ""
     """The stem every marker id on this card is built from, unique within the report.
 

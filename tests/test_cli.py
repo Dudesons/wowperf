@@ -448,6 +448,7 @@ def build_raid_transport(
     our_ability_entries: list[dict[str, Any]] | None = None,
     broken_ability_reports: frozenset[tuple[str, int]] = frozenset(),
     broken_parse_reports: frozenset[str] = frozenset(),
+    death_events: list[dict[str, Any]] | None = None,
     calls: list[str] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `raid` issues for report abc123, fight 22 or fight 30.
@@ -477,8 +478,12 @@ def build_raid_transport(
     codes whose `Fights` request answers a null report, so a parse reference can
     fail to load at all.
 
-    `roster` is our own report's roster. `calls` records every operation name
-    this transport answers, in order -- requests, not calls into the
+    `roster` is our own report's roster. `death_events` answers our own
+    report's `Deaths` with the raw events given, in place of the default empty
+    stream -- matching `build_analyze_transport`'s own parameter of the same
+    name -- letting a caller put a real death, with a real killing blow, on
+    the report a death card is built from. `calls` records every operation
+    name this transport answers, in order -- requests, not calls into the
     repository: the reference cache answers a repeated query without one, so a
     count taken here is a count of distinct queries.
     """
@@ -518,6 +523,11 @@ def build_raid_transport(
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+    deaths_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {"events": {"data": death_events or [], "nextPageTimestamp": None}}
+        }
     }
     damage_done_graph: dict[str, Any] = {
         "reportData": {
@@ -863,6 +873,8 @@ def build_raid_transport(
                     )
                 },
             )
+        if name == "Deaths":
+            return httpx.Response(200, json={"data": deaths_payload})
         return httpx.Response(200, json={"data": empty_events})
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1327,6 +1339,66 @@ def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
 
     assert ".findings.json" in result.output
     assert ".html" in result.output
+
+
+def test_raid_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> None:
+    """`throughput=throughput` reaches `build_raid_report`, so `RAID_ROSTER`'s own
+    Holy Priest -- already in every raid fixture -- draws the Healers group on
+    the death card of the Protection Warrior who dies here.
+
+    The card's own note must say what only a real, non-empty cooldown list can
+    say: `data/throughput_cooldowns.toml` lists Priest/Holy's own group
+    cooldowns, so the note reads "None of their group healing cooldowns was
+    pressed", never "No group healing cooldown is listed for" -- the sentence
+    a spec with no entry in that file, or an empty list handed in its place,
+    would draw instead."""
+    result = run_raid(
+        tmp_path, death_events=[{"type": "death", "targetID": 12, "timestamp": 200_000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    [html] = (tmp_path / "out").glob("*.html")
+    text = html.read_text(encoding="utf-8")
+    assert 'class="avail healers"' in text
+    assert "No group healing cooldown is listed for" not in text
+    assert (
+        "None of their group healing cooldowns was pressed in the log read for this fight."
+        in text
+    )
+
+
+def test_raid_findings_file_is_unaffected_by_the_healers_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Healers group is page-only: proved differentially, not by a substring guess.
+
+    See `test_analyze_findings_file_is_unaffected_by_the_healers_group`'s own
+    docstring for the full shape of this proof: the same fixture analysed
+    twice, into separate cache and out directories, once as is and once with
+    `wowperf.domain.report.deaths.healer_side` patched to answer no side at
+    all. The findings files must come out byte-identical -- `analyse` never
+    calls that function, so nothing it draws can reach a finding -- and the
+    HTML files must differ, proving the patch took hold.
+    """
+    death = {"type": "death", "targetID": 12, "timestamp": 200_000}
+
+    with_group = run_raid(tmp_path / "with-group", death_events=[death])
+    assert with_group.exit_code == 0, with_group.output
+
+    monkeypatch.setattr("wowperf.domain.report.deaths.healer_side", lambda *a, **k: ())
+    without_group = run_raid(tmp_path / "without-group", death_events=[death])
+    assert without_group.exit_code == 0, without_group.output
+
+    [with_findings_path] = (tmp_path / "with-group" / "out").glob("*.findings.json")
+    [without_findings_path] = (tmp_path / "without-group" / "out").glob("*.findings.json")
+    assert with_findings_path.read_bytes() == without_findings_path.read_bytes()
+
+    [with_html_path] = (tmp_path / "with-group" / "out").glob("*.html")
+    [without_html_path] = (tmp_path / "without-group" / "out").glob("*.html")
+    with_html = with_html_path.read_text(encoding="utf-8")
+    without_html = without_html_path.read_text(encoding="utf-8")
+    assert 'class="avail healers"' in with_html
+    assert with_html != without_html
 
 
 def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path: Path) -> None:
@@ -4073,6 +4145,69 @@ def test_analyze_writes_a_report_whose_icons_address_the_cdn(tmp_path: Path) -> 
     assert "data:image" not in html
 
 
+def test_analyze_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> None:
+    """`roles=roles` reaches `build_report`, so a teammate the real `data/roles.toml`
+    lists as a healer draws the Healers group on the death card of a roster-mate
+    who died -- Bríala, Priest/Holy, survives Emberkin's death here.
+
+    `class="avail healers"` alone would also pass with an empty `Roles()`, which
+    draws the group with no other healer found; the holder label and the
+    absence of that fallback sentence are what only real roles produce.
+    """
+    result = run_analyze(
+        tmp_path,
+        teammates=(("Bríala", "Priest", "Holy"),),
+        death_events=[{"type": "death", "targetID": 693, "timestamp": 4000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert 'class="avail healers"' in html
+    assert "Holy Priest, Bríala" in html
+    assert "No other healer was in the group." not in html
+
+
+def test_analyze_findings_file_is_unaffected_by_the_healers_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Healers group is page-only: proved differentially, not by a substring guess.
+
+    The same fixture is analysed twice, into two separate cache and out
+    directories so the second run reads nothing the first one cached.
+    `wowperf.domain.report.deaths.healer_side` -- the one function
+    `build_deaths` calls to learn who else was healing -- is patched to answer
+    no side at all for the second run, which removes the Healers group from
+    its card without touching anything findings are computed from (`analyse`
+    never calls it). The findings files must then come out byte-identical:
+    if the group ever leaked into a finding, the two runs would disagree on
+    that finding's `detail`, `evidence` or `facts`, since one run's group
+    would have content the other's lacks. The HTML files must differ, which
+    is what proves the patch actually took hold rather than merely doing
+    nothing.
+    """
+    kwargs: dict[str, Any] = {
+        "teammates": (("Bríala", "Priest", "Holy"),),
+        "death_events": [{"type": "death", "targetID": 693, "timestamp": 4000}],
+    }
+    with_group = run_analyze(tmp_path / "with-group", **kwargs)
+    assert with_group.exit_code == 0, with_group.output
+
+    monkeypatch.setattr("wowperf.domain.report.deaths.healer_side", lambda *a, **k: ())
+    without_group = run_analyze(tmp_path / "without-group", **kwargs)
+    assert without_group.exit_code == 0, without_group.output
+
+    with_findings = (tmp_path / "with-group" / "out" / "abc123-36.findings.json").read_bytes()
+    without_findings = (
+        tmp_path / "without-group" / "out" / "abc123-36.findings.json"
+    ).read_bytes()
+    assert with_findings == without_findings
+
+    with_html = (tmp_path / "with-group" / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    without_html = (
+        tmp_path / "without-group" / "out" / "abc123-36.html"
+    ).read_text(encoding="utf-8")
+    assert 'class="avail healers"' in with_html
+    assert with_html != without_html
 
 
 

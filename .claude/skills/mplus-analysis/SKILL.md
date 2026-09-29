@@ -157,6 +157,39 @@ never reaches the Summary.
   casts were read, nobody holds a listed answer, or no window cleared the floor. None of these
   says the fight was clean.
 
+## The Healers group is on the page, not in the findings file
+
+Every death card carries a "Healers" group: one line per other healer in the group — every
+other healer gets one, whatever the log shows for them — stating their side of this player's
+last ten seconds. Each line counts that healer's casts by where they were aimed — at this
+player, at themselves, at another player, at a non-player, untargeted — and then says one of
+three things: the last cast that was aimed at this player, that a cast this window never aimed
+at this player, or that this healer cast nothing at all in the window. A cast's target is where it
+was aimed, not everyone it healed: a smart heal or a heal-over-time can reach this player with
+no cast aimed at them, and a cast at an enemy can still heal, as Discipline's Atonement does. It
+never names the other targets of a healer's casts. A player the log names no specialisation for
+cannot be told a healer from any other role, and the card says so in its note rather than
+silently leaving them out of the group.
+
+A healer who was alive also has a row for each of their listed group healing cooldowns the log
+ever shows pressed, following the same rule `healing.spikes` reads them by: "ready" is
+understated, never invented — a second charge reads as not ready, and cooldowns carry no talent
+reduction — and "not judged" is not a fault, only a base cooldown reaching back before the
+fight's or run's first second. A cooldown never pressed anywhere in the log read draws no row at
+all, the same rule the heaviest moments follow. A healer who was dead when this player died
+carries no cooldown row at all either way, since a dead player presses nothing. Two different
+notes on a line can otherwise look alike but say different things: "No group healing cooldown is
+listed for ..." is a gap in the reference data — that specialisation lists none at all — while
+"None of their group healing cooldowns was pressed ..." is a fact about the log — cooldowns are
+listed, and none of them was pressed anywhere in the read for this fight or run. Neither is a
+verdict on the healer.
+
+The group is descriptive, never a verdict: it never says a healer should have pressed something,
+held in the wrong place, or was too busy elsewhere — the log cannot show a group's plan, and one
+healer holding while another spends is often exactly right. There is no finding behind it, and no
+badge to read from the findings file: it exists only on the page, under every death card, and
+`out/<code>-<fight>.findings.json` says nothing about it at all.
+
 ## The two consumable claims, and which one to lead with
 
 `consumables.never.*` says the player died and drank from a whole category at no point in the run.

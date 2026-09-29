@@ -1710,9 +1710,10 @@ def a_golden_raid_report() -> RaidReport:
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
-        NO_ROLES,
+        load_roles(),
         reference_records=GOLDEN_REFERENCES,
         pace=sample,
+        throughput=load_throughput_cooldowns(),
     )
 
 
@@ -1946,11 +1947,28 @@ def test_a_grid_tint_is_a_class_not_a_colour_word() -> None:
     """A reader who cannot separate two tints, or who printed the page, needs the number.
 
     The same rule `ComparisonRow` already follows: a tint carries no meaning
-    alone.
+    alone. Proved with a grid built directly rather than through
+    `golden_raid_html()`: real roles can leave the golden fixture's own
+    outlier a tank on a given run -- never tinted by `raid_grid.py`'s own
+    rule -- and a test that leaned on that fixture happening to tint a cell
+    would then fail for a reason of its own, unrelated to this one.
     """
-    html = golden_raid_html()
+    grid = RaidGrid(
+        columns=(GridColumn(ability_id=1, ability_name="Venom Bolt"),),
+        rows=(
+            GridRow(
+                player_name="Emberkin",
+                cells=(GridCell(ability_id=1, amount="1,000", multiple="2.0x", tinted=True),),
+            ),
+        ),
+        caption="test caption",
+    )
+    report = a_minimal_raid_report(grid=grid)
+
+    html = render_raid(report)
 
     assert 'class="cell tinted"' in html
+    assert "2.0x" in html
 
 
 def test_a_grid_column_whose_ability_id_appears_nowhere_else_still_draws_its_icon() -> None:

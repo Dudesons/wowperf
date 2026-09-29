@@ -1487,6 +1487,7 @@ def analyze(
                     throughput=throughput,
                     reference_records=reference_records,
                     comparison_measures=tables,
+                    roles=roles,
                 ),
                 icons=build_icons(
                     loaded,
@@ -1738,6 +1739,7 @@ def raid(
                     self_resurrections=self_resurrections,
                     reference_records=reference_records,
                     pace=pace_sample,
+                    throughput=throughput,
                 ),
                 icons=build_icons(
                     loaded,
@@ -2160,6 +2162,7 @@ def night(
                 self_resurrections=load_self_resurrections(),
                 pace_by_fight=pace_by_fight,
                 records_by_fight=records_by_fight,
+                throughput=throughput,
             ),
             # One ability dictionary answers the whole night --
             # `load_night_attempts` fetches it once per report and hands the same

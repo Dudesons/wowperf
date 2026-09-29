@@ -42,7 +42,14 @@ from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
 from wowperf.domain.report.raid_model import RaidReport
 from wowperf.domain.report.raid_players import build_raid_players
-from wowperf.domain.season import Consumables, Defensives, Externals, Roles, SelfResurrections
+from wowperf.domain.season import (
+    Consumables,
+    Defensives,
+    Externals,
+    Roles,
+    SelfResurrections,
+    ThroughputCooldowns,
+)
 
 VERDICT_ID = "wipe.cause"
 """`classify_attempt`'s id for the verdict it reaches, when it reaches one.
@@ -115,6 +122,7 @@ def build_raid_report(
     death_cards: bool = True,
     pace: PaceSample | None = None,
     parse_withheld: str | None = None,
+    throughput: ThroughputCooldowns | None = None,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
 
@@ -136,16 +144,19 @@ def build_raid_report(
     ever being done. `trimmed` is threaded straight through to `build_deaths`
     when cards are built at all.
 
-    Four of `build_report`'s parameters are deliberately absent, and each
+    Three of `build_report`'s parameters are deliberately absent, and each
     absence is a fact about a raid rather than an omission. There is no
     `narrative`: section 11 does not give `raid` that flag. There is no
     `speed`: a boss fight has no route to compare, which is why this page has
-    no Route and tempo tab either. There is no `throughput`:
-    `--throughput-ceiling` is not a raid flag. And there are no
-    `comparison_measures`: a raid card carries no comparison tables, and the
-    measures themselves are computed from a `LoadedRun`, which this path never
-    holds. A parameter accepted and ignored is a lie the type system helps
-    tell.
+    no Route and tempo tab either. And there are no `comparison_measures`: a
+    raid card carries no comparison tables, and the measures themselves are
+    computed from a `LoadedRun`, which this path never holds. A parameter
+    accepted and ignored is a lie the type system helps tell.
+
+    `throughput` draws the Healers group on every death card, together with
+    `roles`: left at `None`, the default, no card carries one -- a group built
+    from `roles` alone would say a group healing cooldown the data file does
+    list was never pressed, when it was simply never read.
 
     `parse_withheld` is why the parse comparison is withheld for every raider
     at once, for a caller that hands no parse subject (`compared_slugs` is
@@ -343,7 +354,9 @@ def build_raid_report(
     # throwing them away: the tier exists so the work is never done.
     deaths = (
         build_deaths(loaded, defensives, consumables, externals, self_resurrections,
-                     trimmed=trimmed)
+                     trimmed=trimmed,
+                     roles=roles if throughput is not None else None,
+                     throughput=throughput or ThroughputCooldowns())
         if death_cards
         else ()
     )

@@ -58,12 +58,18 @@ NIGHT_ROSTER: tuple[dict[str, Any], ...] = (
      "item_level": 700},
     {"actor_id": 102, "name": "Stonewake", "class_name": "Warrior", "spec": "Protection",
      "item_level": 702},
+    {"actor_id": 103, "name": "Bríala", "class_name": "Priest", "spec": "Holy",
+     "item_level": 705},
 )
-"""Two raiders, not none.
+"""Three raiders, not none.
 
 `night_subject` refuses a pull whose roster is empty, and `AuraTable` is
 fetched once per roster player, so a fixture with no roster would make the
-card tier cost nothing and hide exactly the difference `--no-deaths` makes."""
+card tier cost nothing and hide exactly the difference `--no-deaths` makes.
+
+The third, a Holy Priest, is who `data/roles.toml` calls a healer: every
+death dealt below lands on `NIGHT_ROSTER[0]`, so this one always survives to
+draw the Healers group on the card of whoever died."""
 
 FIRST_PULL = 11
 SECOND_PULL = 12
@@ -617,6 +623,60 @@ def test_a_night_writes_both_files_at_the_documented_names(tmp_path: Path) -> No
     html = report_file.read_text(encoding="utf-8")
     assert FIRST_BOSS_NAME in html
     assert SECOND_BOSS_NAME in html
+
+
+def test_night_draws_the_healers_group_on_a_death_card(tmp_path: Path) -> None:
+    """`throughput=throughput` reaches `build_night_report`, so `NIGHT_ROSTER`'s own
+    Holy Priest -- who survives every death dealt below, which always lands on
+    `NIGHT_ROSTER[0]` -- draws the Healers group on that death's card.
+
+    The card's own note must say what only a real, non-empty cooldown list can
+    say: `data/throughput_cooldowns.toml` lists Priest/Holy's own group
+    cooldowns, so the note reads "None of their group healing cooldowns was
+    pressed", never "No group healing cooldown is listed for" -- the sentence
+    an empty list would draw instead."""
+    result = run_night(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    _, report_file = _written(tmp_path)
+    text = report_file.read_text(encoding="utf-8")
+    assert 'class="avail healers"' in text
+    assert "No group healing cooldown is listed for" not in text
+    assert (
+        "None of their group healing cooldowns was pressed in the log read for this fight."
+        in text
+    )
+
+
+def test_night_findings_file_is_unaffected_by_the_healers_group(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Healers group is page-only: proved differentially, not by a substring guess.
+
+    See `test_analyze_findings_file_is_unaffected_by_the_healers_group` (in
+    `tests/test_cli.py`) for the full shape of this proof: the same fixture
+    run twice, into separate cache and out directories, once as is and once
+    with `wowperf.domain.report.deaths.healer_side` patched to answer no side
+    at all. The findings file must come out byte-identical -- the progression
+    and raid analysers never call that function, so nothing it draws can
+    reach a finding -- and the HTML file must differ, proving the patch took
+    hold.
+    """
+    with_group = run_night(tmp_path / "with-group")
+    assert with_group.exit_code == 0, with_group.output
+
+    monkeypatch.setattr("wowperf.domain.report.deaths.healer_side", lambda *a, **k: ())
+    without_group = run_night(tmp_path / "without-group")
+    assert without_group.exit_code == 0, without_group.output
+
+    with_findings, with_report = _written(tmp_path / "with-group")
+    without_findings, without_report = _written(tmp_path / "without-group")
+    assert with_findings.read_bytes() == without_findings.read_bytes()
+
+    with_html = with_report.read_text(encoding="utf-8")
+    without_html = without_report.read_text(encoding="utf-8")
+    assert 'class="avail healers"' in with_html
+    assert with_html != without_html
 
 
 def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(

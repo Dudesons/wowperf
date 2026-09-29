@@ -208,7 +208,7 @@ findings format, report renderer and skills layer, and adds analysers on top.
 | 1. Mythic+ post-mortem | **Shipped** | `analyze` — everything described above |
 | 2. Single-player raid analysis | **Shipped** | `raid` — your own fight, read against kills of the same boss |
 | 3. Raid wipe analysis | **Mostly shipped** | `raid` on a wipe, and `progression` across a night of them |
-| 4. Healer analysis | **Started** | Healing asks different questions and fails in different ways. First sub-slice built: the group's heaviest moments of damage taken, and whether a healing or group-wide defensive cooldown answered each (`analyze`, `raid`, `night`) |
+| 4. Healer analysis | **Started** | Healing asks different questions and fails in different ways. First sub-slice built: the group's heaviest moments of damage taken, and whether a healing or group-wide defensive cooldown answered each. Second sub-slice built: the other healers' side of each death card — where their casts were aimed and which group healing cooldowns the log shows ready (`analyze`, `raid`, `night`) |
 
 Slice 3 still owes the one claim it is deliberately slow about: that one raider's action caused
 another's death. Today the tool measures what happened alongside what, badges it `inferred`, and

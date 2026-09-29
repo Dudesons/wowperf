@@ -40,7 +40,7 @@ from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
 from wowperf.domain.report.raid_build import build_raid_report
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
-from wowperf.domain.season import Consumables, Defensives, Roles
+from wowperf.domain.season import Consumables, Defensives, Roles, ThroughputCooldowns
 
 FETCHED = "2026-09-15T08:00:00Z"
 NO_DEFENSIVES = Defensives()
@@ -84,6 +84,32 @@ def a_raid_fixture(
             kill=kill,
             fight_percentage=0.0 if kill else 12.4,
             boss_percentage=boss_percentage,
+            start_ms=FIGHT_START_MS,
+            end_ms=FIGHT_END_MS,
+        ),
+        deaths=(
+            Death(
+                actor_id=2, player_name="Stonewake", timestamp_ms=DEATH_MS,
+                killing_blow="Ravenous Feast",
+            ),
+        ),
+    )
+    return loaded, EMBERKIN
+
+
+HEALER = Player(actor_id=3, name="Bríala", class_name="Priest", spec="Holy", item_level=690)
+ROLES_WITH_HEALER = Roles(healers=("Priest/Holy",))
+"""A roster where a third raider heals, and the one who dies (Stonewake) does not."""
+
+
+def a_raid_fixture_with_healer() -> tuple[LoadedEncounter, Player]:
+    """`a_raid_fixture`'s own roster, plus a healer who survives the same death."""
+    loaded = LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs",
+            players=(EMBERKIN, STONEWAKE, HEALER),
+            kill=True,
+            fight_percentage=0.0,
             start_ms=FIGHT_START_MS,
             end_ms=FIGHT_END_MS,
         ),
@@ -583,6 +609,29 @@ def test_the_fights_deaths_each_get_a_recap_card() -> None:
     )
 
     assert [card.player for card in report.deaths] == ["Stonewake"]
+
+
+def test_build_raid_report_draws_no_healers_group_without_throughput() -> None:
+    loaded, subject = a_raid_fixture_with_healer()
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, ROLES_WITH_HEALER,
+    )
+
+    assert report.deaths[0].healers is None
+
+
+def test_build_raid_report_draws_a_healers_group_naming_the_healer_when_given_throughput() -> None:
+    loaded, subject = a_raid_fixture_with_healer()
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, ROLES_WITH_HEALER,
+        throughput=ThroughputCooldowns(),
+    )
+
+    [card] = report.deaths
+    assert card.healers is not None
+    assert card.healers.lines[0].holder == "Holy Priest, Bríala"
 
 
 def test_death_cards_false_skips_building_them_entirely() -> None:
