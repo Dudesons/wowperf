@@ -94,19 +94,16 @@ def answers_for(
     return tuple(found)
 
 
-def heaviest_moments(
+def _window_totals(
     damage_taken: Sequence[DamageTakenEvent],
     player_ids: frozenset[int],
     span: tuple[int, int],
     combat: Sequence[tuple[int, int]],
-) -> tuple[Moment, ...]:
-    """The heaviest non-overlapping windows of the group's damage taken, in clock order.
+) -> list[tuple[int, int]]:
+    """Every whole window inside one `combat` stretch, as (total, first second of the span).
 
     Each hit counts what reached health plus what a shield absorbed, less any
     damage past death: what healers had to answer. Only roster players count.
-    A window must sit wholly inside one `combat` stretch -- the fight, or one
-    pull of a key -- so the quiet between pulls neither ranks nor drags the
-    median down.
     """
     start, end = span
     seconds = max(0, ceil((end - start) / 1000))
@@ -125,9 +122,30 @@ def heaviest_moments(
         closes = opens + width * 1000
         if any(low <= opens and closes <= high for low, high in combat):
             windows.append((sum(buckets[first : first + width]), first))
+    return windows
+
+
+def heaviest_moments(
+    damage_taken: Sequence[DamageTakenEvent],
+    player_ids: frozenset[int],
+    span: tuple[int, int],
+    combat: Sequence[tuple[int, int]],
+) -> tuple[Moment, ...]:
+    """The heaviest non-overlapping windows of the group's damage taken, in clock order.
+
+    Each hit counts what reached health plus what a shield absorbed, less any
+    damage past death: what healers had to answer. Only roster players count.
+    A window must sit wholly inside one `combat` stretch -- the fight, or one
+    pull of a key -- so the quiet between pulls neither ranks nor drags the
+    median down.
+    """
+    windows = _window_totals(damage_taken, player_ids, span, combat)
     if not windows:
         return ()
 
+    start, end = span
+    width = SPIKE_WINDOW_SECONDS
+    seconds = max(0, ceil((end - start) / 1000))
     wanted = ceil(seconds / SECONDS_PER_SPIKE)
     typical = median(total for total, _ in windows)
     picked: list[tuple[int, int]] = []
@@ -261,14 +279,16 @@ def analyse_spikes(
         return [_notice(NOT_JUDGED_TITLE, NO_CASTS_DETAIL.format(setting=setting))]
     if not answers:
         return [_notice(NOT_JUDGED_TITLE, NO_ANSWER_DETAIL)]
-    moments = heaviest_moments(
-        damage_taken, frozenset(player.actor_id for player in players), span, combat
-    )
+    player_ids = frozenset(player.actor_id for player in players)
+    moments = heaviest_moments(damage_taken, player_ids, span, combat)
     if not moments:
+        # Two different reasons, and only one of them has a median to name:
+        # when every window totals zero, each sits at twice a median of zero.
+        felt = any(total > 0 for total, _ in _window_totals(damage_taken, player_ids, span, combat))
         return [
             _notice(
                 f"No moment of this {setting} was heavy enough to rank",
-                NO_MOMENT_DETAIL.format(setting=setting),
+                (NO_MOMENT_DETAIL if felt else NO_DAMAGE_DETAIL).format(setting=setting),
             )
         ]
 
@@ -373,8 +393,8 @@ SPIKES_DETAIL = (
     f"second windows. One moment is ranked per started {SECONDS_PER_SPIKE // 60} minutes of the "
     "{setting}, heaviest first and never overlapping, and a window counts only at "
     f"{SPIKE_FLOOR:g} times the median {SPIKE_WINDOW_SECONDS}-second window or above, the median "
-    "taken over the windows that sit inside a pull. A healing or group-wide defensive cooldown "
-    "answers a moment when it was pressed from "
+    "taken over the {setting}'s windows spent in combat. A healing or group-wide defensive "
+    "cooldown answers a moment when it was pressed from "
     f"{ANSWER_LEAD_SECONDS} seconds before the window opened to its close."
 )
 UNANSWERED_DETAIL = (
@@ -395,6 +415,10 @@ NO_ANSWER_DETAIL = (
     "cooldown that this tool lists as answering the whole group's damage."
 )
 NO_MOMENT_DETAIL = (
-    f"No {SPIKE_WINDOW_SECONDS}-second window inside a pull of this {{setting}} reached "
+    f"No {SPIKE_WINDOW_SECONDS}-second window of this {{setting}} spent in combat reached "
     f"{SPIKE_FLOOR:g} times the median of those windows, so none is presented as a heavy moment."
+)
+NO_DAMAGE_DETAIL = (
+    f"No {SPIKE_WINDOW_SECONDS}-second window of this {{setting}} spent in combat took any damage "
+    "that reached health or a shield, so no moment is ranked."
 )

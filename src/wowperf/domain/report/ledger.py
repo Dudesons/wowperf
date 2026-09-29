@@ -44,7 +44,7 @@ PLACEMENTS: tuple[tuple[str, str], ...] = (
     ("consumables.", "death_rows"),
     ("deaths.", "death_rows"),
     ("compare.deaths", "death_rows"),
-    ("healing.", "death_rows"),
+    ("healing.spikes", "death_rows"),
     ("time.gap.", "route_rows"),
     ("compare.downtime", "route_rows"),
     ("compare.route.", "route_rows"),
@@ -68,8 +68,8 @@ this table files on the wrong tab. A finding no prefix matches is not dropped:
 `build_observations` picks up everything unplaced. The player-card families
 (`players.damage.`, `compare.spells.`, `compare.talents`, `compare.uptime.`) are
 placed by `build_players` and are deliberately absent. The group's heaviest
-moments (`healing.`) sit with the deaths they cause on a keystone, which has no
-Mechanics tab; the raid table puts them with what hit the raid instead.
+moments (`healing.spikes`) sit with the deaths they cause on a keystone, which
+has no Mechanics tab; the raid table puts them with what hit the raid instead.
 """
 
 

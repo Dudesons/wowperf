@@ -102,8 +102,8 @@ def test_the_heaviest_moments_sit_beneath_the_deaths_and_nowhere_else() -> None:
 
 
 def test_a_family_the_table_does_not_know_reaches_the_catch_all() -> None:
-    report = a_report_of(a_finding("tanking.threat.0"))
-    assert ids(report.observations) == ["tanking.threat.0"]
+    report = a_report_of(a_finding("healing.overheal.0"))
+    assert ids(report.observations) == ["healing.overheal.0"]
     for field in ROW_FIELDS:
         assert ids(getattr(report, field)) == [], field
 

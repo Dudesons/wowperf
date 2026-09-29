@@ -9,6 +9,7 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html_invariants import FORBIDDEN_IN_SCRIPT, ICON_HOST
 from tests.adapters.render.test_raid_html_invariants import a_minimal_raid_report
+from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
 from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from tests.domain.report.test_night_build import (
@@ -25,6 +26,7 @@ from tests.domain.report.test_night_build import (
 from wowperf.adapters.render.html import render_night, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.progression_service import analyse_progression
+from wowperf.domain.analysis.spikes import SPIKES_ID
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
 from wowperf.domain.comparison.pace import analyse_pace
@@ -1009,6 +1011,41 @@ def test_a_wiped_pulls_own_damage_panel_carries_its_pace_finding_and_chart() -> 
 
     summary = summary_blocks(html)["b0-summary"]
     assert str(escape(boss_line[0].title)) in summary
+
+
+def a_pull_panel(html: str, fight_id: int, panel: str) -> str:
+    """One pull's panel, from its own opening tag to the next panel's."""
+    rest = html.split(f'id="f{fight_id}-tab-{panel}"', 1)[1]
+    return rest.split('<section class="panel"', 1)[0]
+
+
+def test_a_pulls_heaviest_moments_are_drawn_in_that_pulls_mechanics_panel() -> None:
+    """The night page is the raid page per pull, so the block lands where the raid's does."""
+    night = a_night(bosses=(2,))
+    heavy_pull, quiet_pull = (attempt.fight_id for attempt in night.night.bosses[0].attempts)
+    heavy = a_heavy_moment_left_unanswered(setting="fight")
+    spikes = next(finding for finding in heavy if finding.id == SPIKES_ID)
+    boss = night.loaded[0]
+    report = build_night_report(
+        night,
+        {heavy_pull: tuple(heavy)},
+        FETCHED,
+        A_DEFENSIVE,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss={boss.progression.encounter_id: tuple(analyse_progression(boss))},
+    )
+    html = render_night(report)
+
+    drawn = [str(escape(spikes.title)), *(str(escape(line)) for line in spikes.evidence)]
+    for text in drawn:
+        assert text in a_pull_panel(html, heavy_pull, "mechanics"), text
+        assert text not in a_pull_panel(html, heavy_pull, "deaths"), text
+        assert text not in a_pull_panel(html, quiet_pull, "mechanics"), text
+    assert html.count(f"<h3>{escape(spikes.title)}</h3>") == 1
+    assert ">None<" not in html
 
 
 NIGHT_GOLDEN = Path(__file__).parent / "golden" / "night.html"

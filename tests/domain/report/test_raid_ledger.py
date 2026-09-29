@@ -3,12 +3,14 @@
 
 from tests.domain.analysis.test_encounter_service import (
     ARCANE_BLAST,
+    GROUP_EXTERNALS,
     RAID,
     RAID_SLUGS,
     a_parse_subject,
     a_standing,
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -27,7 +29,14 @@ from wowperf.domain.report.raid_ledger import (
     RAID_PLACEMENTS,
     _raid_field_for,
 )
-from wowperf.domain.season import ConsumableCategory, Consumables, DefensiveAbility, Defensives
+from wowperf.domain.season import (
+    ConsumableCategory,
+    Consumables,
+    DefensiveAbility,
+    Defensives,
+    Roles,
+    ThroughputCooldowns,
+)
 
 RAID_FAMILIES = (
     "deaths.total", "deaths.single.0", "deaths.chain.0", "deaths.repeat.emberkin",
@@ -35,6 +44,7 @@ RAID_FAMILIES = (
     "defensives.unused.emberkin", "consumables.never.emberkin",
     "consumables.unused.emberkin", "interrupts.summary", "interrupts.ability.0",
     "mechanics.ability.0", "mechanics.lethal.0", "players.damage.0",
+    "healing.spikes.unavailable",
     "compare.damage.total.emberkin-0", "compare.damage.targets.emberkin-0",
     "compare.rank.emberkin-0", "compare.parse.unavailable.emberkin-0",
     "compare.spells.missing.0.emberkin-0", "compare.spells.rate.0.emberkin-0",
@@ -68,6 +78,7 @@ _FAMILY_PREFIXES = (
     "mechanics.ability.",
     "mechanics.lethal.",
     "players.damage.",
+    "healing.spikes.unavailable",
     "compare.damage.total.",
     "compare.damage.targets.",
     "compare.rank.",
@@ -431,6 +442,10 @@ def a_rich_encounter() -> list[Finding]:
         loaded, RICH_DEFENSIVES, RICH_CONSUMABLES,
         mechanics=MECHANICS_SAMPLE, our_abilities=OUR_ABILITIES_TAKEN,
         parse_subjects=parse_subjects,
+        # Every Mage holds one group answer and the fight has casts, so the
+        # reading gets as far as the windows -- whose hits carry no health or
+        # shield figure, so what it emits is the no-damage notice.
+        answers=answers_for(RICH_PLAYERS, ThroughputCooldowns(), GROUP_EXTERNALS, Roles()),
     )
 
 

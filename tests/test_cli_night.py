@@ -13,7 +13,7 @@ import pytest
 from markupsafe import escape
 from typer.testing import CliRunner
 
-from tests.test_cli import heavy_moment_readings, operation_name, plain, quota_response
+from tests.test_cli import operation_name, plain, quota_response
 from wowperf.adapters.cache.disk import cache_key
 from wowperf.adapters.wcl.client import MAX_WAITS
 from wowperf.adapters.wcl.queries import (
@@ -30,7 +30,7 @@ from wowperf.cli import (
 )
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
-from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, UNAVAILABLE_ID
+from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, SPIKES_ID, UNAVAILABLE_ID
 from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
@@ -46,6 +46,12 @@ NIGHT_SECOND_BOSS = 3493
 NIGHT_DIFFICULTY = 5
 NIGHT_SIZE = 20
 NIGHT_KILLING_BLOW = 900
+RALLYING_CRY = 97462
+"""The Protection Warrior's group answer in `data/externals.toml`, pressed once a pull.
+
+A real cast on the card tier, so a pull read at that tier is never read as one
+whose casts were not fetched, and a group answer so the pull's answer set is
+something the reading can use."""
 
 NIGHT_ROSTER: tuple[dict[str, Any], ...] = (
     {"actor_id": 101, "name": "Emberkin", "class_name": "Mage", "spec": "Arcane",
@@ -403,6 +409,25 @@ def build_night_transport(
             }
         }
 
+    def casts_payload(start_ms: float) -> dict[str, Any]:
+        return {
+            "reportData": {
+                "report": {
+                    "events": {
+                        "data": [
+                            {
+                                "type": "cast",
+                                "sourceID": NIGHT_ROSTER[1]["actor_id"],
+                                "abilityGameID": RALLYING_CRY,
+                                "timestamp": int(start_ms) + 30_000,
+                            }
+                        ],
+                        "nextPageTimestamp": None,
+                    }
+                }
+            }
+        }
+
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json={"access_token": "abc", "expires_in": 3600})
@@ -419,6 +444,8 @@ def build_night_transport(
             return carrying_quota(abilities)
         if name == "Deaths":
             return carrying_quota(deaths_payload(int(variables["fightId"])))
+        if name == "Casts":
+            return carrying_quota(casts_payload(float(variables["startTime"])))
         if name == "DamageTaken":
             if int(variables["fightId"]) in failing:
                 raise httpx.ReadTimeout("damage taken timed out", request=request)
@@ -1033,22 +1060,35 @@ def test_every_pull_reads_its_heaviest_moments_once(tmp_path: Path) -> None:
     pulls = _pulls_by_fight(tmp_path)
     assert sorted(pulls) == sorted(one["id"] for one in A_NIGHT)
     for fight_id, pull in pulls.items():
-        assert len(heavy_moment_readings(pull["findings"])) == 1, fight_id
+        [reading] = [one for one in pull["findings"] if one["id"] in (SPIKES_ID, UNAVAILABLE_ID)]
+        # Reached only past both "not judged" notices: the pull has casts, and
+        # its roster holds a group answer. The fixture's pulls take no damage,
+        # so no window ranks.
+        assert reading["title"] == "No moment of this fight was heavy enough to rank", fight_id
 
 
 def test_a_night_read_with_no_death_cards_says_each_pull_was_read_without_its_casts(
     tmp_path: Path,
 ) -> None:
-    """The cheapest tier fetches no casts, so no press can be seen and none is judged."""
-    result = run_night(tmp_path, "--no-deaths")
+    """The cheapest tier fetches no casts, so no press can be seen and none is judged.
+
+    The default tier, reading the same night, fetches them and says nothing of
+    the kind: the notice follows the tier, not a fixture with no casts in it.
+    """
+    no_casts = "This fight was read without its casts, so no press of any cooldown can be seen."
+    result = run_night(tmp_path / "cheap", "--no-deaths")
 
     assert result.exit_code == 0, result.output
-    for fight_id, pull in _pulls_by_fight(tmp_path).items():
+    for fight_id, pull in _pulls_by_fight(tmp_path / "cheap").items():
         [notice] = [one for one in pull["findings"] if one["id"] == UNAVAILABLE_ID]
         assert notice["title"] == NOT_JUDGED_TITLE, fight_id
-        assert notice["detail"] == (
-            "This fight was read without its casts, so no press of any cooldown can be seen."
-        ), fight_id
+        assert notice["detail"] == no_casts, fight_id
+
+    result = run_night(tmp_path / "cards")
+
+    assert result.exit_code == 0, result.output
+    for fight_id, pull in _pulls_by_fight(tmp_path / "cards").items():
+        assert all(one["detail"] != no_casts for one in pull["findings"]), fight_id
 
 
 def test_a_boss_wide_reference_kill_is_fetched_once_and_shared_across_its_wipes(

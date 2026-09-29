@@ -24,7 +24,7 @@ RAID_PLACEMENTS: tuple[tuple[str, str], ...] = (
     ("deaths.", "death_rows"),
     ("mechanics.", "mechanics_rows"),
     ("players.damage.", "mechanics_rows"),
-    ("healing.", "mechanics_rows"),
+    ("healing.spikes", "mechanics_rows"),
     ("interrupts.", "interrupts"),
     ("compare.pace.", "damage_rows"),
     ("compare.damage.", "damage_rows"),
@@ -42,8 +42,8 @@ to the bare `defensives.`.
 Mythic+: design section 6.9 measures it per ability against the group median,
 which is the same question section 6.8 asks, and the two read together.
 
-The group's heaviest moments (`healing.`) sit with what hit the raid on a boss,
-as the Mythic+ table sits them with the deaths they cause on a keystone.
+The group's heaviest moments (`healing.spikes`) sit with what hit the raid on a
+boss, as the Mythic+ table sits them with the deaths they cause on a keystone.
 
 The per-card families are in `RAID_COMPARISON_PREFIXES` and are deliberately
 absent here, as they are in the Mythic+ table.

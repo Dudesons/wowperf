@@ -107,6 +107,12 @@ def a_heavy_moment_left_unanswered(setting: str = "fight") -> list[Finding]:
     return spikes([*steady(300), *burst(200)], casts, setting=setting)
 
 
+def no_heavy_moment_to_rank(setting: str = "fight") -> Finding:
+    """The `healing.spikes.unavailable` notice for a window short of the floor, as written."""
+    [notice] = spikes([*steady(300), *burst(100, per_second=90)], [FILLER], setting=setting)
+    return notice
+
+
 def the(findings: list[Finding], finding_id: str) -> Finding:
     [one] = [finding for finding in findings if finding.id == finding_id]
     return one
@@ -325,7 +331,7 @@ def test_exact_detail_text_of_spikes_findings() -> None:
         "a shield absorbed, less any damage past death, summed over rolling 5-second windows. One "
         "moment is ranked per started 3 minutes of the fight, heaviest first and never "
         "overlapping, and a window counts only at 2 times the median 5-second window or above, "
-        "the median taken over the windows that sit inside a pull. A healing or group-wide "
+        "the median taken over the fight's windows spent in combat. A healing or group-wide "
         "defensive cooldown answers a moment when it was pressed from 10 seconds before the "
         "window opened to its close."
     )
@@ -343,9 +349,30 @@ def test_exact_detail_text_of_spikes_findings() -> None:
     )
     findings = spikes([*steady(300), *burst(100, per_second=90)], [FILLER])
     assert the(findings, UNAVAILABLE_ID).detail == (
-        "No 5-second window inside a pull of this fight reached 2 times the median of those "
+        "No 5-second window of this fight spent in combat reached 2 times the median of those "
         "windows, so none is presented as a heavy moment."
     )
+
+
+def test_a_fight_whose_windows_took_no_damage_says_so_rather_than_naming_a_median() -> None:
+    """Every window totals zero, so every one sits at 2 times a median of zero: none fell short."""
+    unfelt = [hit(MAGE.actor_id, second, 0) for second in range(300)]
+    findings = spikes([*unfelt, *(hit(PET, 100 + one, 50_000) for one in range(5))], [FILLER])
+    assert [(one.id, one.title, one.detail) for one in findings] == [(
+        UNAVAILABLE_ID,
+        "No moment of this fight was heavy enough to rank",
+        "No 5-second window of this fight spent in combat took any damage that reached health "
+        "or a shield, so no moment is ranked.",
+    )]
+
+
+def test_a_run_too_short_for_one_whole_window_says_no_window_took_damage() -> None:
+    findings = spikes(burst(0, length=4), [FILLER], span=(0, 4_000), setting="run")
+    assert [(one.id, one.detail) for one in findings] == [(
+        UNAVAILABLE_ID,
+        "No 5-second window of this run spent in combat took any damage that reached health "
+        "or a shield, so no moment is ranked.",
+    )]
 
 
 def test_one_title_can_count_all_three_states() -> None:

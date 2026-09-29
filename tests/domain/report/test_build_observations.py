@@ -26,17 +26,17 @@ def a_loaded() -> LoadedRun:
 
 
 def test_a_finding_no_section_claims_reaches_observations() -> None:
-    # "tanking.threat.0" and "dispels.missed.0" match no prefix in PLACEMENTS,
+    # "healing.overheal.0" and "dispels.missed.0" match no prefix in PLACEMENTS,
     # no "players.damage." and no comparison prefix — findings that belong in
     # observations, the catch-all section.
     findings = (
-        a_finding("tanking.threat.0", title="Threat was lost twice"),
+        a_finding("healing.overheal.0", title="Emberkin overhealed by 40%"),
         a_finding("dispels.missed.0", title="Two curses went undispelled"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert [row.finding_id for row in report.observations] == [
-        "tanking.threat.0",
+        "healing.overheal.0",
         "dispels.missed.0",
     ]
 
@@ -79,7 +79,7 @@ def test_every_input_finding_is_placed_exactly_once() -> None:
         # A death-family finding, so the union below covers the Deaths rows too.
         a_finding("defensives.unused.0", title="Emberkin died with Ice Block available"),
         # A finding no PLACEMENTS prefix matches, so the catch-all is exercised too.
-        a_finding("tanking.threat.0", title="Threat was lost"),
+        a_finding("healing.overheal.0", title="Emberkin overhealed"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)

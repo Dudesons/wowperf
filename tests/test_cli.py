@@ -1314,7 +1314,11 @@ def test_raid_reads_the_fights_heaviest_moments_once(tmp_path: Path, fight_id: i
     result = run_raid(tmp_path, fight_id=fight_id)
 
     assert result.exit_code == 0, result.output
-    assert len(heavy_moment_readings(written_raid_findings(tmp_path)["findings"])) == 1
+    findings = written_raid_findings(tmp_path)["findings"]
+    [reading] = [one for one in findings if one["id"] in heavy_moment_readings(findings)]
+    # Past both "not judged" notices, which only a roster holding a group answer
+    # reaches: the Protection Warrior's Rallying Cry, from the real data file.
+    assert reading["title"] == "No moment of this fight was heavy enough to rank"
 
 
 def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:

@@ -11,7 +11,10 @@ from markupsafe import escape
 
 from tests.adapters.render.test_html import a_report
 from tests.adapters.render.test_html_sections import a_drawn_timeline, a_player_card
-from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
+from tests.domain.analysis.test_spikes import (
+    a_heavy_moment_left_unanswered,
+    no_heavy_moment_to_rank,
+)
 from tests.domain.comparison.test_service import a_parse_sample
 from tests.domain.report.test_build_frame import (
     FETCHED,
@@ -1373,6 +1376,23 @@ def test_the_heaviest_moments_are_drawn_on_the_deaths_tab_alone() -> None:
             if name != "tab-deaths":
                 assert text not in markup, (name, text)
     assert html.count(f"<h3>{escape(spikes.title)}</h3>") == 1
+    assert ">None<" not in html
+
+
+def test_a_heavy_moment_notice_is_drawn_on_the_deaths_tab_alone() -> None:
+    notice = no_heavy_moment_to_rank(setting="run")
+    html = render(
+        build_report(
+            minimal_loaded(), (*minimal_findings(), notice), None, COMPARED, SUBJECT, None,
+            FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+        )
+    )
+    panels = panels_of(html)
+    for text in (str(escape(notice.title)), str(escape(notice.detail))):
+        assert text in panels["tab-deaths"], text
+        for name, markup in panels.items():
+            if name != "tab-deaths":
+                assert text not in markup, (name, text)
     assert ">None<" not in html
 
 
