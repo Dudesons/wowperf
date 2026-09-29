@@ -73,7 +73,7 @@ def _damage_section(
     `compare.parse.unavailable` and `analyse_encounter` re-mints it as
     `compare.parse.unavailable.<slug>`, one per raider, so an equality test
     against the bare id matches nothing on any raid page: a wipe would then be
-    withheld under "no reference run was fetched", which is false of an
+    withheld under "no reference was fetched", which is false of an
     analysis that fetched one and was told the boss lived. Every consumer of
     these ids matches by prefix, and a prefix survives a suffix.
 

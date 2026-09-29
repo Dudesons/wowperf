@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for the report's frame: header, narrative, provenance, withholding.
 # ABOUTME: The withheld reason must come from the finding, never from a string in the template.
 
+import re
+
 import pytest
 
 from wowperf.domain.analysis.defensives import _ceiling_withheld
@@ -495,3 +497,11 @@ def test_build_report_passes_measures_through_to_the_card() -> None:
 
     card = next(c for c in report.players if c.slug == "emberkin-0")
     assert [t.heading for t in card.comparison_tables] == ["Casts on boss pulls"]
+
+
+def test_the_no_comparison_notice_names_no_kind_of_reference() -> None:
+    # Every page prints it under --no-compare: a keystone's references are runs,
+    # a boss fight's and a night's are kills, and the line it sits on already
+    # says which comparison it stands for.
+    assert NO_COMPARISON_RAN.startswith("No reference was fetched for this analysis")
+    assert not re.search(r"\b(run|kill)s?\b", NO_COMPARISON_RAN), NO_COMPARISON_RAN

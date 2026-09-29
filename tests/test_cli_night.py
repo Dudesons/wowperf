@@ -1244,7 +1244,7 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
     """Design 14.3: each wipe pull's page is the page `raid --fight N` draws for it.
 
     Every pull here is a wipe handed a pace sample, so none of them may say no
-    reference run was fetched, or that no reference kills were drawn: the
+    reference was fetched, or that no reference kills were drawn: the
     command drew them. The parse axis says the wipe's own sentence, and the
     verdict notice says what the night itself did not draw.
     """

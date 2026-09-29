@@ -13,7 +13,7 @@ PARSE_UNAVAILABLE_ID = "compare.parse.unavailable"
 
 # Said when `--no-compare` skipped the comparison entirely, so no finding explains the absence.
 NO_COMPARISON_RAN = (
-    "No reference run was fetched for this analysis, so there is nothing to compare against."
+    "No reference was fetched for this analysis, so there is nothing to compare against."
 )
 
 # Said when the comparison ran but this player was not among the ones asked for.
