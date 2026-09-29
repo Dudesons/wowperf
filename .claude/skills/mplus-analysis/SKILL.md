@@ -96,6 +96,14 @@ ability with no cast anywhere in the run reads exactly like a talent the player 
 says only "not seen this run" — the log cannot tell a talent not chosen from one chosen and never
 pressed, or from one that was genuinely unavailable the whole time.
 
+A base cooldown reaching back before the log's first second — a keystone's first pull, a boss
+fight's own start — is not judged. The death card lists the ability as "not judged, its base
+cooldown reaches before the run's (or fight's) first second", `defensives.unused.*` does not
+name it, and `progression.repeat.ready.*` leaves that death out of its count and its
+denominator. Read "not judged" as a withheld judgement, never as a fault and never as "it was
+up": a press before the log is invisible, and on a raid a cooldown carries over from the pull
+before.
+
 Silence from either defensives finding means one of two things, and they are not the same:
 the player's spec is absent from `data/defensives.toml`, which covers every specialisation, or it
 checked and found nothing to say. The death cards distinguish them — "Defensives off cooldown: none"

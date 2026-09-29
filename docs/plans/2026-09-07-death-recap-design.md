@@ -256,6 +256,11 @@ A specialisation absent from a data file produces no rows from that file and one
 saying the tool has no data for it — the report design's distinction between "checked, none" and
 "not checked" survives per group.
 
+*Amended 2026-09-29:* a seventh state, `unjudged`, sits between on cooldown and ready: a base
+cooldown reaching before the log's first second is not judged, because a press before the log is
+invisible and a raid cooldown carries over between pulls. See
+`2026-09-29-not-judged-before-the-log-design.md`.
+
 ### 4.4 The return
 
 Exactly one of four lines:

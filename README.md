@@ -132,9 +132,10 @@ place. Every attempt at one boss gets five — Summary, Attempts, Repeats, Best 
 the night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work.
 
 Each death gets a recap: a health curve, a timeline of what hit you, how you came back, and every
-defensive, consumable and teammate external placed in one of six states at the moment you died —
-pressed, ready, on cooldown, or never seen all run, and one of your own defensives you pressed
-refined to held or faded by whether its aura was still up when the killing blow landed.
+defensive, consumable and teammate external placed in one of seven states at the moment you died
+— pressed, ready, on cooldown, not judged where its base cooldown reaches before the log's first
+second, or never seen all run, and one of your own defensives you pressed refined to held or
+faded by whether its aura was still up when the killing blow landed.
 
 The Provenance tab is the one to read when a number looks wrong. It says where each figure came
 from.

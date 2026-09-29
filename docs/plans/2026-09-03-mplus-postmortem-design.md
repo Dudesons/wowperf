@@ -383,6 +383,10 @@ in either place, which is the correct behaviour and also the feature's main limi
 ready, on cooldown with an upper bound, not seen this run — and teammates' externals join it, each
 with its owner named. The finding keeps its wording. See `2026-09-07-death-recap-design.md` §4.3.
 
+*Amended 2026-09-29:* a base cooldown reaching back before the log's first second — a keystone's
+first pull, a boss fight's own start — is not judged. The card lists the ability as "not judged",
+and the finding does not name it. See `2026-09-29-not-judged-before-the-log-design.md`.
+
 ### 5.9 Healing consumables at a death — `inferred`
 
 *Added 2026-09-05.*

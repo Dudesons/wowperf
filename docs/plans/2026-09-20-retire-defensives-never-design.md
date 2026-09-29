@@ -49,6 +49,9 @@ The death card places every defensive in one of six states at the moment of deat
 card's own wording is run-wide, not per-death, which matters: the surviving row is not a
 narrower restatement, it is the identical sentence.
 
+*Amended 2026-09-29:* seven states now — `unjudged` joined them. See
+`2026-09-29-not-judged-before-the-log-design.md`.
+
 Each `defensives.never` finding was matched against the `unseen` rows on its own player's
 death cards, by ability id:
 

@@ -80,6 +80,10 @@ that had nothing up.
   other pull the rule cannot say whether they owned it, so those deaths are unknown, not "not
   up". Each ability carries its own denominator.
 
+*Amended 2026-09-29:* a death whose window reaches back before its own pull's first second is
+left out of both the count and the denominator: a cooldown carries over between pulls, so that
+death is unknown, not "not up". See `2026-09-29-not-judged-before-the-log-design.md`.
+
 **When a player is named.** At least one ability up at two or more of their deaths, on at least
 two different pulls. Two deaths inside one pull (after a battle resurrection) are a claim that
 pull's own `defensives.unused` row already makes; this finding exists to say it kept happening.

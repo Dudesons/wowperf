@@ -173,7 +173,9 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
 
 ## 7. Out of scope, and follow-ups
 
-- **The card's externals overclaim ready early in a fight.** `state_of` reads a teammate's
+- **Closed 2026-09-29** by `2026-09-29-not-judged-before-the-log-design.md`, which widened it to
+  the dying player's own defensives and the defensives findings. **The card's externals overclaim
+  ready early in a fight.** `state_of` reads a teammate's
   external as ready whenever it was not pressed within its base cooldown before the death, in
   a fight's first minutes too, though a press before the log began is invisible. A reset check
   on `cW38jmwdnZfbHVL4`'s fifteen repeated boss pulls (2026-09-29, recorded in sub-slice 1 §5)
