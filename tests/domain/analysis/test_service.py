@@ -162,16 +162,55 @@ def test_an_empty_run_analyses_without_raising() -> None:
 
 
 def test_a_death_with_a_defensive_available_reaches_the_ranked_list() -> None:
-    # Emberkin casts Ice Block at 40s, which proves it is talented, and dies at
-    # 30s with it off cooldown. The availability analyser must contribute
+    # Emberkin dies 180s in, on the boss, and casts Prismatic Barrier 10s later,
+    # which proves it is talented. Its window, (25 + 10) seconds, lies inside the
+    # run, so it was off cooldown -- Ice Block's 250s would reach before the
+    # first pull and not be judged. The availability analyser must contribute
     # alongside the never-pressed one it sits beside.
+    barrier = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
+    loaded = a_loaded_run().model_copy(
+        update={
+            "casts": (
+                CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                          timestamp_ms=190_000, pull_index=1),
+            ),
+            "deaths": (
+                Death(player_name="Emberkin", actor_id=11, timestamp_ms=180_000,
+                      killing_blow="Molten Scar", pull_index=1,
+                      seconds_until_next_action=22.0),
+            ),
+        }
+    )
     ids = {
         finding.id
         for finding in analyse(
-            a_loaded_run(), SEASON, DEFENSIVES, Consumables(), ThroughputCooldowns()
+            loaded, SEASON, Defensives(entries=(("Mage/Arcane", (barrier,)),)), Consumables(),
+            ThroughputCooldowns(),
         )
     }
     assert "defensives.unused.emberkin" in ids
+
+
+def test_a_defensive_whose_window_reaches_before_the_first_pull_is_not_held_against_them() -> None:
+    # The same death 30s in: Prismatic Barrier's (25 + 10) second window reaches
+    # back before the first pull, where a press would be invisible.
+    barrier = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
+    loaded = a_loaded_run().model_copy(
+        update={
+            "casts": (
+                CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                          timestamp_ms=40_000, pull_index=0),
+            ),
+        }
+    )
+    ids = {
+        finding.id
+        for finding in analyse(
+            loaded, SEASON, Defensives(entries=(("Mage/Arcane", (barrier,)),)), Consumables(),
+            ThroughputCooldowns(),
+        )
+    }
+    assert "defensives.unused.emberkin" not in ids
 
 
 CONSUMABLES = Consumables(

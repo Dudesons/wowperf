@@ -139,7 +139,7 @@ def analyse_encounter(
     )
     findings += analyse_defensives_at_death(
         encounter.players, loaded.casts, defensives, loaded.deaths,
-        locate=locate,
+        locate=locate, visible_from_ms=encounter.start_ms, shape="fight",
     )
     findings += analyse_consumables_at_death(
         encounter.players, encounter.start_ms, loaded.casts, consumables, loaded.deaths,

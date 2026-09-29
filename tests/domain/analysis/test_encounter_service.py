@@ -978,3 +978,23 @@ def test_an_answer_set_reads_the_heaviest_moments_of_the_fight() -> None:
     assert "of the fight" in reading.detail
     for text in (reading.title, reading.detail, *reading.evidence):
         assert not re.search(r"\brun\b", text), text
+
+
+def test_a_defensive_is_judged_from_the_fights_own_start() -> None:
+    # The fight starts at 1s. Prismatic Barrier's window is (25 + 10) seconds, so
+    # a death 35s after the start is judged and one half a second earlier is not
+    # -- which only a caller passing the fight's start, not zero, can tell apart.
+    barrier = DefensiveAbility(ability_id=235450, name="Prismatic Barrier", cooldown_seconds=25.0)
+    only_barrier = Defensives(entries=(("Mage/Arcane", (barrier,)),))
+
+    def ids_for(death_ms: int) -> set[str]:
+        loaded = a_loaded_encounter(
+            casts=(CastEvent(actor_id=11, ability_id=235450, ability_name="Prismatic Barrier",
+                             timestamp_ms=200_000),),
+            deaths=(Death(player_name="Emberkin", actor_id=11, timestamp_ms=death_ms,
+                          killing_blow="Venom Bolt"),),
+        )
+        return {finding.id for finding in analyse_encounter(loaded, only_barrier, Consumables())}
+
+    assert "defensives.unused.emberkin" in ids_for(1_000 + 35_000)
+    assert "defensives.unused.emberkin" not in ids_for(1_000 + 34_500)

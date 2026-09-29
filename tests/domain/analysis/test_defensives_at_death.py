@@ -26,6 +26,12 @@ Ice Block's window is (240 + 10) seconds, so it opens at 50_000; Prismatic
 Barrier's is (25 + 10), so it opens at 265_000.
 """
 
+LOG_FROM = 0
+"""The log's first second for every case not about that edge: both windows above open after it.
+
+The cases about the edge itself pass their own origin.
+"""
+
 
 def a_cast(ability: DefensiveAbility, at_ms: int, actor_id: int = 11) -> CastEvent:
     return CastEvent(
@@ -44,12 +50,12 @@ def test_an_ability_the_player_never_cast_is_not_claimed_as_available() -> None:
     # take the talent casts it nowhere, which is indistinguishable from having it
     # and never pressing it. Claiming it was "available" would accuse someone of
     # not pressing a button they do not have.
-    assert defensives_up_at((), ABILITIES, 11, DEATH_MS) == ()
+    assert defensives_up_at((), ABILITIES, 11, DEATH_MS, visible_from_ms=LOG_FROM) == ()
 
 
 def test_an_ability_cast_before_its_window_opened_was_available() -> None:
     casts = (a_cast(ICE_BLOCK, 49_000), a_cast(BARRIER, 1_000))
-    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS, visible_from_ms=LOG_FROM)
 
 
 def test_a_cast_on_the_boundary_counts_against_availability() -> None:
@@ -57,24 +63,33 @@ def test_a_cast_on_the_boundary_counts_against_availability() -> None:
     # cooldown at the very instant the killing damage began is the most doubtful
     # case there is, and doubt here resolves to saying nothing.
     casts = (a_cast(ICE_BLOCK, 50_000),)
-    assert "Ice Block" not in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+    assert "Ice Block" not in defensives_up_at(
+        casts, ABILITIES, 11, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
 
 
 def test_an_ability_still_on_cooldown_was_not_available() -> None:
     casts = (a_cast(ICE_BLOCK, 51_000), a_cast(BARRIER, 1_000))
-    assert defensives_up_at(casts, ABILITIES, 11, DEATH_MS) == ("Prismatic Barrier",)
+    assert defensives_up_at(
+        casts, ABILITIES, 11, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    ) == ("Prismatic Barrier",)
 
 
 def test_an_ability_pressed_during_the_run_up_is_not_called_unused() -> None:
     # They did press it and died anyway. The window covers the run-up precisely
     # so that this case never reads as neglect.
     casts = (a_cast(ICE_BLOCK, 1_000), a_cast(BARRIER, 295_000))
-    assert "Prismatic Barrier" not in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+    assert "Prismatic Barrier" not in defensives_up_at(
+        casts, ABILITIES, 11, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    )
 
 
 def test_a_cast_after_the_death_still_proves_the_player_has_the_ability() -> None:
     casts = (a_cast(ICE_BLOCK, 301_000),)
-    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS, visible_from_ms=LOG_FROM)
 
 
 def test_charges_are_ignored_so_a_second_charge_reads_as_unavailable() -> None:
@@ -85,18 +100,21 @@ def test_charges_are_ignored_so_a_second_charge_reads_as_unavailable() -> None:
         ability_id=108271, name="Astral Shift", cooldown_seconds=90.0, charges=2
     )
     casts = (a_cast(two_charges, 290_000),)
-    assert defensives_up_at(casts, (two_charges,), 11, DEATH_MS) == ()
+    assert defensives_up_at(casts, (two_charges,), 11, DEATH_MS, visible_from_ms=LOG_FROM) == ()
 
 
 def test_only_this_players_casts_count() -> None:
     # Ours proves ownership early; theirs would have blocked the window had the
     # rule read the whole roster's casts.
     casts = owns_both() + (a_cast(ICE_BLOCK, 290_000, actor_id=12),)
-    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS)
+    assert "Ice Block" in defensives_up_at(casts, ABILITIES, 11, DEATH_MS, visible_from_ms=LOG_FROM)
 
 
 def test_the_order_follows_the_ability_list() -> None:
-    assert defensives_up_at(owns_both(), (BARRIER, ICE_BLOCK), 11, DEATH_MS) == (
+    assert defensives_up_at(
+        owns_both(), (BARRIER, ICE_BLOCK), 11, DEATH_MS,
+        visible_from_ms=LOG_FROM,
+    ) == (
         "Prismatic Barrier",
         "Ice Block",
     )
@@ -137,7 +155,8 @@ def locate_in_a_run(death: Death) -> str:
 def test_a_death_with_a_defensive_available_is_a_finding() -> None:
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run
+        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run,
+        visible_from_ms=LOG_FROM, shape="run",
     )
     assert len(findings) == 1
     assert findings[0].id == "defensives.unused.emberkin"
@@ -150,7 +169,8 @@ def test_a_death_with_nothing_available_says_nothing() -> None:
     casts = owns_both() + (a_cast(ICE_BLOCK, 290_000), a_cast(BARRIER, 290_000))
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, casts, DEFENSIVES, (a_death(),), locate=locate_in_a_run
+        run.players, casts, DEFENSIVES, (a_death(),), locate=locate_in_a_run,
+        visible_from_ms=LOG_FROM, shape="run",
     ) == []
 
 
@@ -159,7 +179,8 @@ def test_a_player_who_cast_none_of_their_defensives_says_nothing_here() -> None:
     # missing talent explains it just as well as a missing button press.
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, (), DEFENSIVES, (a_death(),), locate=locate_in_a_run
+        run.players, (), DEFENSIVES, (a_death(),), locate=locate_in_a_run, visible_from_ms=LOG_FROM,
+        shape="run",
     ) == []
 
 
@@ -167,14 +188,16 @@ def test_a_spec_the_data_file_does_not_cover_says_nothing() -> None:
     empty = Defensives(entries=())
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, owns_both(), empty, (a_death(),), locate=locate_in_a_run
+        run.players, owns_both(), empty, (a_death(),), locate=locate_in_a_run,
+        visible_from_ms=LOG_FROM, shape="run",
     ) == []
 
 
 def test_a_player_who_did_not_die_says_nothing() -> None:
     run = a_run()
     assert analyse_defensives_at_death(
-        run.players, owns_both(), DEFENSIVES, (), locate=locate_in_a_run
+        run.players, owns_both(), DEFENSIVES, (), locate=locate_in_a_run, visible_from_ms=LOG_FROM,
+        shape="run",
     ) == []
 
 
@@ -185,7 +208,8 @@ def test_the_title_counts_only_the_deaths_that_qualified() -> None:
     deaths = (a_death(at_ms=300_000), a_death(at_ms=310_000))
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
+        run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run, visible_from_ms=LOG_FROM,
+        shape="run",
     )
     assert "once" in findings[0].title
 
@@ -197,7 +221,8 @@ def test_the_pull_index_comes_from_the_first_qualifying_death() -> None:
     late = a_death(at_ms=380_000).model_copy(update={"pull_index": 9})
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, casts, DEFENSIVES, (early, late), locate=locate_in_a_run
+        run.players, casts, DEFENSIVES, (early, late), locate=locate_in_a_run,
+        visible_from_ms=LOG_FROM, shape="run",
     )
     assert findings[0].pull_index == 9
 
@@ -205,7 +230,8 @@ def test_the_pull_index_comes_from_the_first_qualifying_death() -> None:
 def test_the_evidence_names_the_killing_blow_and_what_was_up() -> None:
     run = a_run()
     findings = analyse_defensives_at_death(
-        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run
+        run.players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run,
+        visible_from_ms=LOG_FROM, shape="run",
     )
     # The class and spec lead, as they do in this module's other findings, so a
     # reader can discount the claim on sight. The death lines follow.
@@ -229,7 +255,8 @@ def test_players_sharing_a_name_get_ids_that_tell_them_apart() -> None:
     ids = {
         finding.id
         for finding in analyse_defensives_at_death(
-            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
+            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run,
+            visible_from_ms=LOG_FROM, shape="run",
         )
     }
     assert ids == {"defensives.unused.emberkin.11", "defensives.unused.emberkin.12"}
@@ -256,7 +283,8 @@ def test_players_whose_names_slug_alike_get_ids_that_tell_them_apart() -> None:
     ids = {
         finding.id
         for finding in analyse_defensives_at_death(
-            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run
+            run.players, casts, DEFENSIVES, deaths, locate=locate_in_a_run,
+            visible_from_ms=LOG_FROM, shape="run",
         )
     }
 
@@ -481,20 +509,18 @@ def test_the_detail_says_it_is_a_question_and_how_it_was_judged() -> None:
     assert "a question to ask, not a mistake to fix" in finding.detail
 
 
-def test_a_late_press_on_one_pull_does_not_bleed_into_the_next_pulls_window() -> None:
-    """Real pulls can restart less than a cooldown after the last one ended.
+def test_a_death_whose_window_reaches_into_the_pull_before_is_left_out_of_both_counts() -> None:
+    """Real pulls can restart less than a cooldown after the last one ended, and cooldowns carry.
 
     Anti-Magic Shell's window is (60 + 10) seconds. Pull 1 presses it at 590s
-    of a 600s pull, and also has an earlier death (100s) where it reads up, so
-    the player qualifies to be named. Pull 2 starts 30s after pull 1 ends --
-    only 40s past that late press -- and the player dies there at 20s in,
-    battle-rezzed, then presses it again at 200s to prove they still own it.
-
-    Judged on pull 2's own casts alone, as the design requires, that death
-    reads up: nothing of the player's own was pressed inside pull 2's window.
-    Handed the night's casts run together instead, pull 1's press at 590s
-    would fall inside pull 2's window (it is only 40s before pull 2's death),
-    and the death would read as not up -- which is the bug this pins.
+    of a 600s pull, after a death at 100s where it reads up. Pull 2 starts 30s
+    after pull 1 ends -- only 40s past that late press -- and the player dies
+    there 20s in, battle-rezzed, then presses it again at 200s to prove they
+    still own it. That death's window reaches 50s back past pull 2's first
+    second, where pull 1's press really did spend the shell: a cooldown carries
+    over between pulls. It is not judged, so it counts neither as up nor as a
+    death judged. Pull 3 dies judged at 100s, so the player is named -- up at
+    two of two deaths, not two of three, and not three of three.
     """
     pull_one = a_pull(
         1,
@@ -507,7 +533,12 @@ def test_a_late_press_on_one_pull_does_not_bleed_into_the_next_pulls_window() ->
         deaths=((EMBERKIN, 20.0),),
         casts=((EMBERKIN, AMS, 200.0),),
     )
-    findings = repeat_defensives_up(a_loaded_series(pull_one, pull_two), BLOOD)
+    pull_three = a_pull(
+        3,
+        deaths=((EMBERKIN, 100.0),),
+        casts=((EMBERKIN, AMS, 200.0),),
+    )
+    findings = repeat_defensives_up(a_loaded_series(pull_one, pull_two, pull_three), BLOOD)
     assert [f.title for f in findings] == ["Emberkin: Anti-Magic Shell up at 2 of 2 deaths"]
 
 
@@ -556,7 +587,8 @@ def test_pooled_counts_equal_the_pull_rows_defensives_up_at_would_give() -> None
                 if death.actor_id != player.actor_id:
                     continue
                 up_now = defensives_up_at(
-                    pull.casts, abilities, player.actor_id, death.timestamp_ms
+                    pull.casts, abilities, player.actor_id, death.timestamp_ms,
+                    visible_from_ms=pull.window_ms[0],
                 )
                 for ability in abilities:
                     if ability.ability_id not in cast_ids:
@@ -576,3 +608,36 @@ def test_pooled_counts_equal_the_pull_rows_defensives_up_at_would_give() -> None
     assert findings["progression.repeat.ready.player"].evidence[1:] == (
         f"Anti-Magic Shell up at {kirillitsa_up} of {kirillitsa_judged} deaths",
     )
+
+
+# --- a window reaching before the log ----------------------------------------
+
+ORIGIN = 4_000_000
+"""The log's first second in the cases below, far from zero as report timestamps are."""
+
+
+def test_a_window_starting_at_the_logs_first_second_is_judged() -> None:
+    # Prismatic Barrier's window is (25 + 10) seconds; cast after the death to prove it is owned.
+    owns = (a_cast(BARRIER, ORIGIN + 100_000),)
+    assert defensives_up_at(
+        owns, (BARRIER,), 11, ORIGIN + 35_000, visible_from_ms=ORIGIN
+    ) == ("Prismatic Barrier",)
+
+
+def test_a_window_reaching_one_millisecond_before_the_log_is_not_judged() -> None:
+    owns = (a_cast(BARRIER, ORIGIN + 100_000),)
+    assert defensives_up_at(
+        owns, (BARRIER,), 11, ORIGIN + 35_000 - 1, visible_from_ms=ORIGIN
+    ) == ()
+
+
+def test_the_finding_says_what_it_does_not_judge_in_its_own_setting() -> None:
+    for shape in ("run", "fight"):
+        [finding] = analyse_defensives_at_death(
+            a_run().players, owns_both(), DEFENSIVES, (a_death(),), locate=locate_in_a_run,
+            visible_from_ms=LOG_FROM, shape=shape,
+        )
+        assert (
+            "An ability whose base cooldown reaches back before the "
+            f"{shape}'s first second is not judged, since a press before it is invisible."
+        ) in finding.detail

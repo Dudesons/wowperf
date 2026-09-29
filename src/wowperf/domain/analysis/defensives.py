@@ -72,6 +72,8 @@ def defensives_up_at(
     abilities: tuple[DefensiveAbility, ...],
     actor_id: int,
     death_ms: int,
+    *,
+    visible_from_ms: int,
 ) -> tuple[str, ...]:
     """Names of `abilities` this player had off cooldown when the killing damage began.
 
@@ -89,12 +91,17 @@ def defensives_up_at(
     death]`.** That one window does two jobs: it excludes an ability still on
     cooldown, and it excludes one they pressed during the run-up and died anyway.
 
+    **And that window must lie inside the log** (`window_inside_log`). Casts
+    are fetched for the fight, so one pressed before `visible_from_ms` is
+    invisible, and on a raid a cooldown carries over from the pull before. A
+    window reaching back past the log's first second could hide the press that
+    spent the ability, so it is not judged, and the ability is not named.
+
     What remains resolves toward saying nothing. Base cooldowns are longer than
     talented ones; charges are ignored, so a spare charge reads as unavailable;
-    the log emits no cooldown reset or reduction events, so a reset reads as
-    unavailable; and casts are fetched for the fight, so one pressed before the
-    timer started is invisible. Each understates what was up, and understating
-    cannot produce a false accusation.
+    and the log emits no cooldown reset or reduction events, so a reset reads as
+    unavailable. Each understates what was up, and understating cannot produce
+    a false accusation.
 
     Returned in the order the abilities were given, so a caller controls the
     reading order rather than inheriting a set's.
@@ -104,6 +111,9 @@ def defensives_up_at(
         ability.name
         for ability in abilities
         if any(cast.ability_id == ability.ability_id for cast in ours)
+        and window_inside_log(
+            death_ms, ability.cooldown_seconds + RUN_UP_SECONDS, visible_from_ms
+        )
         and not any(
             cast.ability_id == ability.ability_id
             and death_ms - (ability.cooldown_seconds + RUN_UP_SECONDS) * 1000
@@ -143,6 +153,8 @@ def analyse_defensives_at_death(
     deaths: tuple[Death, ...],
     *,
     locate: Callable[[Death], str],
+    visible_from_ms: int,
+    shape: str,
 ) -> list[Finding]:
     """Players who died while a personal defensive was off cooldown.
 
@@ -165,7 +177,9 @@ def analyse_defensives_at_death(
 
     `locate` renders where a death happened for the evidence line — a pull
     offset for a keystone, something else for a fight with no pulls to offset
-    against.
+    against. `visible_from_ms` is the log's first second as the card reads it
+    -- a keystone's first pull, a boss fight's own start -- and `shape` names
+    that setting, "run" or "fight", for the sentence saying what is not judged.
     """
     base_ids = _base_ids(players)
 
@@ -181,7 +195,10 @@ def analyse_defensives_at_death(
             (death for death in deaths if death.actor_id == player.actor_id),
             key=lambda death: death.timestamp_ms,
         ):
-            up = defensives_up_at(casts, abilities, player.actor_id, death.timestamp_ms)
+            up = defensives_up_at(
+                casts, abilities, player.actor_id, death.timestamp_ms,
+                visible_from_ms=visible_from_ms,
+            )
             if not up:
                 continue
             if first_pull is None:
@@ -206,7 +223,9 @@ def analyse_defensives_at_death(
                     "them began. Only abilities they cast somewhere in the run count, so "
                     "a talent they never took is never held against them, and spare "
                     "charges and cooldown resets are ignored because the log does not "
-                    "record them. A defensive is pressed into damage rather than on "
+                    "record them. An ability whose base cooldown reaches back before the "
+                    f"{shape}'s first second is not judged, since a press before it is "
+                    "invisible. A defensive is pressed into damage rather than on "
                     "cooldown, so this is a question to ask, not a mistake to fix."
                 ),
                 confidence=Confidence.INFERRED,
@@ -239,7 +258,10 @@ def repeat_defensives_up(series: LoadedProgression, defensives: Defensives) -> l
     Per player and ability, the count is the deaths at which it was up, and the
     denominator is the deaths on pulls where the player cast it at least once:
     on any other pull the rule cannot say whether they owned it, so those
-    deaths are unknown rather than "not up". A player is named when some
+    deaths are unknown rather than "not up". A death whose window reaches back
+    before its own pull's first second is unknown the same way
+    (`window_inside_log`): a cooldown carries over between pulls, so it is
+    left out of both counts rather than read as down. A player is named when some
     ability was up at two or more deaths on two or more pulls -- two deaths
     inside one pull are a claim that pull's own row already makes.
 
@@ -262,6 +284,7 @@ def repeat_defensives_up(series: LoadedProgression, defensives: Defensives) -> l
     judged: Counter[tuple[int, int]] = Counter()
     pulls_up: dict[tuple[int, int], set[int]] = defaultdict(set)
     for one in series.attempts_with_events:
+        pull_start_ms = one.window_ms[0]
         for player in one.players:
             abilities = defensives.for_spec(player.class_name, player.spec)
             cast_ids = {
@@ -271,10 +294,16 @@ def repeat_defensives_up(series: LoadedProgression, defensives: Defensives) -> l
                 if death.actor_id != player.actor_id:
                     continue
                 up_now = defensives_up_at(
-                    one.casts, abilities, player.actor_id, death.timestamp_ms
+                    one.casts, abilities, player.actor_id, death.timestamp_ms,
+                    visible_from_ms=pull_start_ms,
                 )
                 for ability in abilities:
                     if ability.ability_id not in cast_ids:
+                        continue
+                    if not window_inside_log(
+                        death.timestamp_ms, ability.cooldown_seconds + RUN_UP_SECONDS,
+                        pull_start_ms,
+                    ):
                         continue
                     key = (player.actor_id, ability.ability_id)
                     names.setdefault(key, ability.name)
@@ -308,11 +337,13 @@ def repeat_defensives_up(series: LoadedProgression, defensives: Defensives) -> l
                 detail=(
                     "Judged pull by pull from this player's own casts against each "
                     "ability's base cooldown, counting only abilities they cast somewhere "
-                    "in that pull, then added up across the boss's pulls. Every death "
-                    "counts, late wipe deaths included: the share of defensives still up "
-                    "at death was measured not to rise once a wipe comes apart. A "
-                    "defensive is pressed into damage rather than on cooldown, so this is "
-                    "a question to ask, not a mistake to fix."
+                    "in that pull, then added up across the boss's pulls. A death at which "
+                    "an ability's base cooldown reaches back before that pull's first "
+                    "second is not judged or counted for it, since a press before the pull "
+                    "is invisible. Every other death counts, late wipe deaths included: "
+                    "the share of defensives still up at death was measured not to rise "
+                    "once a wipe comes apart. A defensive is pressed into damage rather "
+                    "than on cooldown, so this is a question to ask, not a mistake to fix."
                 ),
                 confidence=Confidence.INFERRED,
                 evidence=(f"{player.class_name} {player.spec}", *lines),
