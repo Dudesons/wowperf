@@ -297,3 +297,22 @@ def _a_fight_where_icebound_was_pressed() -> LoadedEncounter:
             )),
         ),
     )
+
+
+def test_a_boss_card_judges_a_defensive_from_the_fights_own_start() -> None:
+    # Icebound's base cooldown is 120s. A death 60s into the fight reaches back
+    # before its first second, where a press would be invisible -- and a
+    # cooldown carries over from the pull before -- so the row withholds the
+    # judgement; 120s in, the window lies inside the log and it reads ready.
+    owns = (CastEvent(actor_id=1, ability_id=48792, ability_name="Icebound Fortitude",
+                      timestamp_ms=FIGHT_START_MS + 500_000),)
+
+    def own_rows(death_ms: int) -> list[tuple[str, str]]:
+        loaded = a_loaded_fight(deaths=(a_death(death_ms),), casts=owns)
+        group = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0].availability[0]
+        return [(row.state, row.detail) for row in group.rows]
+
+    assert own_rows(FIGHT_START_MS + 60_000) == [
+        ("unjudged", "not judged, its base cooldown reaches before the fight's first second")
+    ]
+    assert own_rows(FIGHT_START_MS + 120_000) == [("ready", "ready")]

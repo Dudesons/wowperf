@@ -385,6 +385,9 @@ The run-up, the reconstructed health curve, and every defensive, consumable and 
 in one of four states at the moment of death. Fully generic already; `visible_from_ms` becomes
 the fight's start rather than the first pull's.
 
+*Amended 2026-09-29:* a seventh state, `unjudged`, now sits between cooldown and ready — see
+`2026-09-29-not-judged-before-the-log-design.md`.
+
 ### 6.12 `defensives.*` — `inferred`
 
 Never pressed, and pressed far below what the cooldown allowed. Exists; `alive_combat_seconds`

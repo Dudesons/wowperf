@@ -592,6 +592,9 @@ asserts that the aura was up and stops there, as §6 requires. One observation f
 a success tint on a row that belongs to a player who died. The prose does not claim sufficiency;
 the colour is one confidence tier away from claiming it.
 
+*Amended 2026-09-29:* a seventh state, `unjudged`, now sits between cooldown and ready — see
+`2026-09-29-not-judged-before-the-log-design.md`.
+
 **Quota: 1.00 point of 3600, fully warm cache** — the two `RateLimit` reads and nothing else. The
 reading is in `.claude/skills/wcl-api/SKILL.md`. Reading the blow adds no query: `DamageTaken` is
 already fetched for every friendly across the whole fight, so §8.1's correction is free.

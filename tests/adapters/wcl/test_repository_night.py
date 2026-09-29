@@ -481,7 +481,7 @@ def test_the_default_tier_sends_the_card_pair_but_no_healing(tmp_path: Path) -> 
 
     The two are asserted as one claim. Casts are where a press is read from
     and the aura table is what refines it into held or faded, so a tier
-    sending one alone draws six availability states and reaches one --
+    sending one alone draws seven availability states and reaches one --
     `UNSEEN` for every ability without the casts, `pressed` for every press
     without the tables. Equality between the fights each covers is what a
     later split would have to break.
@@ -535,7 +535,7 @@ def test_a_fight_named_deep_reaches_the_card_rung_under_no_death_cards(tmp_path:
     no cards, and draw this pull's whole anatomy. The tiers are a ladder, so
     the explicitly named pull wins and reaches every rung below the one it
     named -- the alternative would have the top rung skip the middle one, and
-    a pull drawing six availability states would reach one.
+    a pull drawing seven availability states would reach one.
 
     Without this test `cards = death_cards` leaves the whole suite green while
     that pull's every defensive reads UNSEEN.

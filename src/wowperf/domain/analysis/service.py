@@ -88,6 +88,8 @@ def analyse(
         defensives,
         loaded.deaths,
         locate=lambda death: pull_offset(loaded.run.pulls, death),
+        visible_from_ms=loaded.run.window_ms[0],
+        shape="run",
     )
     findings += analyse_consumables_at_death(
         loaded.run.players,
