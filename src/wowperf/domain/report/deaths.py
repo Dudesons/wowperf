@@ -1,6 +1,9 @@
 # ABOUTME: One recap card per death: what killed the player, what was up, how they came back.
 # ABOUTME: States what was pressed and what was ready, never what should have been pressed.
 
+from wowperf.domain.analysis.cooldown_reading import Reading
+from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
+from wowperf.domain.analysis.healer_side import HealerCooldown, HealerSide, healer_side
 from wowperf.domain.analysis.recap import (
     ABSENT,
     ABSORB,
@@ -27,6 +30,8 @@ from wowperf.domain.analysis.recap import (
 )
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
+from wowperf.domain.comparison.pace import clock_text
+from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.events import Death
 from wowperf.domain.fight import LoadedFight
 from wowperf.domain.findings import Confidence
@@ -37,6 +42,8 @@ from wowperf.domain.report.model import (
     AvailabilityRow,
     Badge,
     DeathCard,
+    HealerGroup,
+    HealerLine,
     RecapRow,
     Tooltip,
 )
@@ -48,7 +55,14 @@ from wowperf.domain.report.tooltip import (
     press_tooltip,
     run_ability_tooltip,
 )
-from wowperf.domain.season import Consumables, Defensives, Externals, SelfResurrections
+from wowperf.domain.season import (
+    Consumables,
+    Defensives,
+    Externals,
+    Roles,
+    SelfResurrections,
+    ThroughputCooldowns,
+)
 
 
 def _when(death: Death, start_ms: int, has_pulls: bool) -> str:
@@ -145,6 +159,32 @@ sentences sit in the same place and mean opposite things.
 """
 
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
+
+NO_OTHER_HEALER = "No other healer was in the group."
+
+HEALER_AIM = (
+    "Casts are counted where they were aimed, not by whom they healed: a smart heal or a heal "
+    "over time can reach this player with no cast aimed at them, and a cast at an enemy can "
+    "still heal, as Discipline's Atonement does."
+)
+HEALER_LANDED = "The heals that landed on this player are in the timeline above, named by caster."
+"""Left out of a trimmed card's note: that card draws no timeline to point at."""
+
+HEALER_COOLDOWNS = (
+    "A group healing cooldown reads as ready only when it was pressed somewhere in the log read "
+    "for this {setting}, not within its base cooldown before the damage began, and that base "
+    "cooldown reaches back no further than the {setting}'s first second. Talents that shorten "
+    "a cooldown are not modelled, a second charge reads as not ready, and a cooldown never "
+    "pressed is not listed, so ready is understated, never invented."
+)
+
+_AIMS = (
+    ("at this player", "at this player"),
+    ("at themselves", "at themselves"),
+    ("at another player", "at other players"),
+    ("at a non-player", "at non-players"),
+    ("untargeted", "untargeted"),
+)
 
 NO_CONSUMABLE_DATA = (
     "No consumable can be judged here: either none is listed for this run, or the death came "
@@ -351,6 +391,106 @@ def _came_back(loaded: LoadedFight, death: Death, self_resurrections: SelfResurr
     return ("Not seen acting again this run.", badge_for(Confidence.MEASURED))
 
 
+def _healer_summary(side: HealerSide, death: Death) -> str:
+    """Alive or dead, the run-up's casts by where they were aimed, and the last at this player."""
+    parts = ["dead when this player died" if side.dead else "alive when this player died"]
+    counts = side.casts
+    window = f"in the last {RUN_UP_SECONDS:g} seconds"
+    if not counts.total:
+        parts.append(f"no cast {window}")
+        return "; ".join(parts)
+    aimed = [
+        f"{count} {one if count == 1 else many}"
+        for count, (one, many) in zip(
+            (counts.at_player, counts.at_self, counts.at_other_players, counts.at_non_players,
+             counts.untargeted),
+            _AIMS,
+            strict=True,
+        )
+        if count
+    ]
+    parts.append(f"{counts.total} {plural(counts.total, 'cast')} {window}: {', '.join(aimed)}")
+    if side.last_at_player_ms is None:
+        parts.append("none at this player")
+    else:
+        seconds = (death.timestamp_ms - side.last_at_player_ms) / 1000
+        parts.append(f"the last at this player {seconds:.1f} s before death")
+    return "; ".join(parts)
+
+
+def _healer_cooldown_row(cooldown: HealerCooldown, death: Death, setting: str) -> AvailabilityRow:
+    """One group healing cooldown, timed back from the death like the rest of the card."""
+    reading = cooldown.reading
+    ability = cooldown.ability
+    if reading.reading is Reading.PRESSED:
+        assert reading.press_ms is not None  # PRESSED always carries its press
+        detail = f"pressed {(death.timestamp_ms - reading.press_ms) / 1000:.1f} s before death"
+    elif reading.reading is Reading.READY:
+        detail = "ready"
+    elif reading.reading is Reading.WITHIN:
+        assert reading.press_ms is not None  # WITHIN always carries its press
+        detail = (
+            f"pressed {clock_text((death.timestamp_ms - reading.press_ms) / 1000)} before death, "
+            f"within its base cooldown of {clock_text(ability.cooldown_seconds)}"
+        )
+    elif reading.reading is Reading.DEAD:
+        detail = "its holder was dead when the damage began"
+    else:
+        detail = f"not judged, its base cooldown reaches before the {setting}'s first second"
+    return AvailabilityRow(
+        ability=ability.name,
+        state=str(reading.reading),
+        detail=detail,
+        ability_id=ability.ability_id,
+    )
+
+
+def _healers(
+    sides: tuple[HealerSide, ...], death: Death, names: dict[int, str], setting: str,
+    trimmed: bool,
+) -> HealerGroup:
+    """The Healers group: one line per other healer, or the one line saying there was none."""
+    if not sides:
+        return HealerGroup(note=NO_OTHER_HEALER)
+    lines = []
+    for side in sides:
+        healer = side.healer
+        label = pair_label(healer.class_name, healer.spec, plural=False)
+        if side.dead:
+            note = ""
+        elif not side.listed:
+            note = f"No group healing cooldown is listed for {label}."
+        elif not side.cooldowns:
+            note = (
+                "None of their group healing cooldowns was pressed in the log read for this "
+                f"{setting}."
+            )
+        else:
+            note = ""
+        lines.append(
+            HealerLine(
+                holder=f"{label}, {names.get(healer.actor_id, healer.name)}",
+                summary=_healer_summary(side, death),
+                cooldowns=tuple(
+                    _healer_cooldown_row(one, death, setting) for one in side.cooldowns
+                ),
+                note=note,
+            )
+        )
+    note = " ".join(
+        [HEALER_AIM, *([] if trimmed else [HEALER_LANDED]),
+         HEALER_COOLDOWNS.format(setting=setting)]
+    )
+    return HealerGroup(
+        lines=tuple(lines),
+        badge=badge_for(Confidence.MEASURED),
+        cooldown_badge=(
+            badge_for(Confidence.DERIVED) if any(line.cooldowns for line in lines) else None
+        ),
+        note=note,
+    )
+
+
 def build_deaths(
     loaded: LoadedFight,
     defensives: Defensives,
@@ -359,6 +499,8 @@ def build_deaths(
     self_resurrections: SelfResurrections = SelfResurrections(),
     *,
     trimmed: bool = False,
+    roles: Roles | None = None,
+    throughput: ThroughputCooldowns = ThroughputCooldowns(),
 ) -> tuple[DeathCard, ...]:
     """One recap per death, oldest first.
 
@@ -373,10 +515,15 @@ def build_deaths(
     timeline this flag skips building. Skipping means what it says -- the
     timeline is never assembled and then discarded, which is the whole point
     of a tier that exists to avoid the work.
+
+    `roles` draws the Healers group: without it nothing says who heals, so no
+    card carries the group. `throughput` names each healer's group healing
+    cooldowns, read by the same rule the heavy-moment finding reads them.
     """
     players_by_id = {player.actor_id: player for player in loaded.players}
     names = display_names(loaded.players)
     start_ms = loaded.window_ms[0]
+    setting = "run" if loaded.has_pulls else "fight"
     cards = []
     for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
         player = players_by_id.get(death.actor_id)
@@ -449,6 +596,17 @@ def build_deaths(
                            CONSUMABLE_CAVEAT),
                     _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS,
                            tooltips),
+                ),
+                healers=(
+                    None
+                    if roles is None
+                    else _healers(
+                        healer_side(
+                            death, loaded.players, loaded.casts, loaded.deaths,
+                            loaded.resurrections, roles, throughput, start_ms,
+                        ),
+                        death, names, setting, trimmed,
+                    )
                 ),
                 slug=slug,
             )
