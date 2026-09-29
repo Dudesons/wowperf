@@ -101,8 +101,8 @@ fight's own start — is not judged. The death card lists the ability as "not ju
 cooldown reaches before the run's (or fight's) first second", `defensives.unused.*` does not
 name it, and `progression.repeat.ready.*` leaves that death out of its count and its
 denominator. Read "not judged" as a withheld judgement, never as a fault and never as "it was
-up": a press before the log is invisible, and on a raid a cooldown carries over from the pull
-before.
+up": the log may not hold a press before that second, and on a raid a cooldown carries over
+from the pull before.
 
 Silence from either defensives finding means one of two things, and they are not the same:
 the player's spec is absent from `data/defensives.toml`, which covers every specialisation, or it

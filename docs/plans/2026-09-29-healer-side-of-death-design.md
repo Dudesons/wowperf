@@ -25,7 +25,8 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   heals, absorbs and the player's own casts, heals named by caster; a health curve; how the
   player came back; and three availability groups -- "Defensives", "Consumables", "Teammates'
   externals" -- each ability in one of six states (`domain/analysis/recap.py` `availability_at`,
-  `state_of`).
+  `state_of`). *Amended 2026-09-29:* a seventh state, `unjudged`, now sits between cooldown and
+  ready -- see `2026-09-29-not-judged-before-the-log-design.md`.
 - Nothing on the card tells a healer from any other teammate (`recap.py` and `deaths.py` never
   read `Roles`), and nothing reads what a healer was casting.
 - **No new query.** Every friendly actor's casts are fetched for the whole fight wherever a
@@ -181,7 +182,8 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   on `cW38jmwdnZfbHVL4`'s fifteen repeated boss pulls (2026-09-29, recorded in sub-slice 1 §5)
   found cooldowns carried over between pulls rather than resetting, so an early "ready" can be
   false. Bringing the externals under the not-judged rule changes every existing card and its
-  goldens, and is a follow-up of its own.
+  goldens, and is a follow-up of its own -- though when it was built, none moved: no golden held
+  a `ready` row.
 - **The triage reading** -- whether the healers were busy elsewhere -- reconsidered once a live
   run shows how often cast targets mislead.
 - **Naming the other targets** of a healer's casts.

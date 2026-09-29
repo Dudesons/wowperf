@@ -1,7 +1,7 @@
 # Not judged before the log
 
-**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live; two outcomes open
-(§4, "Live").
+**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live; three outcomes
+open (§4, "Live").
 **Area:** the death card's availability rows (the dying player's own defensives, teammates'
 externals) and the "defensives off cooldown at a death" finding, per pull and pooled across a
 night. It closes the follow-up `docs/plans/2026-09-29-healer-side-of-death-design.md` §7
@@ -135,16 +135,29 @@ A scratch script then loaded each of the eight fights straight from the cache th
   **open**, though the unit tests already exercise it directly against a clock with a non-zero
   origin.
 - **Card-level, teammates' externals rows: 775** -- 5 pressed, 47 ready, 228 cooldown, 491
-  unseen, 0 held, 0 faded, **4 unjudged** (2 on fight 30, 2 on fight 8). **Ready claims
+  unseen, 0 held, 0 faded, **4 unjudged** (2 on fight 30, 2 on fight 8). The zero held and
+  faded are unreachable by construction, not unexercised: those two refine the dying player's own
+  defensives only, and an external's row reads no aura. **Ready claims
   withdrawn: 4** -- the whole overclaim the guard removed on this sample, entirely on the
   externals group.
 - **The finding, now and before:** `defensives_up_at` named at least one ability at 26 of the 111
   deaths under the new rule and under the old one alike, naming 32 abilities either way.
   **Findings withdrawn: 0** -- the finding-level guard never fired on this sample, dropping no
   ability the old rule would have named -- **open**, the same way the own-defensive row above
-  is: a reachable outcome (Task 2's judgement) that this live sample never exercised.
+  is: a reachable outcome (the finding-level guard) that this live sample never exercised.
+- **The pooled night guard, not run live:** `repeat_defensives_up` leaving an unjudged death out
+  of both its count and its denominator is exercised by the offline tests only, until a `night`
+  run -- **open**.
 - **`defensives.unused.*` findings written, across the eight findings files: 23.**
 - The eight HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
+
+The open card and finding outcomes come from the sample, not from a gap in what was measured.
+On it, 140 own-defensive rows had a base cooldown reaching before the log's first second, and
+every one was pre-empted by an earlier state: `unseen` (125), `cooldown` (13) or a press (2, one
+`held` and one `faded`). Of the 156 death and ability pairs whose finding window reached before
+the log, 139 were never cast and 17 were cast inside the window; none was cast only outside it
+-- after the death, or before the window -- which is all the finding-level guard withdraws.
+(Counted from the same warm cache with the network blocked: no request was made.)
 
 ## 5. Out of scope
 
@@ -154,3 +167,10 @@ A scratch script then loaded each of the eight fights straight from the cache th
 - Modelling talents that shorten a cooldown, charges refreshed early, or cooldown resets.
 - The Healers group's parked items (the measured badge over alive/dead; a dead healer's run-up
   press).
+- **A keystone with no pulls.** `Run.window_ms` is (0, 0) there, so the origin is 0 and the guard
+  withholds nothing. This predates the rule.
+- **Multi-charge abilities.** `state_of` treats charges as recharging independently; in the game
+  they recharge one after another. With a look-back of one base cooldown, a card can read `ready`
+  when no charge is left (Survival Instincts: two charges, 180 s), and the "at most N s left"
+  bound can be understated. This happens inside the log too, so it predates the rule and is a
+  follow-up. It is distinct from "charges refreshed early" above.

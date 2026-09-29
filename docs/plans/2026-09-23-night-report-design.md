@@ -200,6 +200,9 @@ guarded in `_deaths.html.j2` by `{% if death.timeline %}` and `{% if death.healt
 `timeline_note` exists for the absent case — so a trimmed card should be a **builder decision,
 not new markup**.
 
+*Amended 2026-09-29:* a seventh state, `unjudged`, now sits between cooldown and ready — see
+`2026-09-29-not-judged-before-the-log-design.md`.
+
 **Settled 2026-09-23: the trimmed card needs its own note, and must not reuse the existing
 one.** `NO_TIMELINE_EVENT` in `src/wowperf/domain/report/deaths.py:107` reads "No event in the
 last seconds." That is a claim about the log: nothing happened. A trimmed card's timeline is
