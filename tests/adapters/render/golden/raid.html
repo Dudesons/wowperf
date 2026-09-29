@@ -440,13 +440,13 @@ never be summed.</p>
 </thead>
 <tbody>
 <tr><th scope="row">Emberkin</th>
-<td class="cell tinted">420,000<span class="multiple">3.8x</span></td>
+<td class="cell">420,000</td>
 </tr>
 <tr><th scope="row">Stonewake</th>
-<td class="cell">110,000<span class="multiple">1.0x</span></td>
+<td class="cell">110,000</td>
 </tr>
 <tr><th scope="row">Bríala</th>
-<td class="cell">105,000<span class="multiple">1.0x</span></td>
+<td class="cell">105,000</td>
 </tr>
 </tbody>
 </table>
@@ -482,8 +482,11 @@ never be summed.</p>
         <p class="nests">No teammate&#39;s specialisation has externals listed.</p>
       </div>
       <div class="avail healers">
-        <p class="avail-title">Healers</p>
-        <p class="nests">No other healer was in the group.</p>
+        <p class="avail-title">Healers <a class="badge badge-measured"
+             href="#provenance">measured</a></p>
+        <p class="healer-line"><span class="owner">Discipline Priest, Bríala</span>: alive when this player died; no cast in the last 10 seconds</p>
+        <p class="nests">None of their group healing cooldowns was pressed in the log read for this fight.</p>
+        <p class="nests">Casts are counted where they were aimed, not by whom they healed: a smart heal or a heal over time can reach this player with no cast aimed at them, and a cast at an enemy can still heal, as Discipline&#39;s Atonement does. The heals that landed on this player are in the timeline above, named by caster. A group healing cooldown reads as ready only when it was pressed somewhere in the log read for this fight, not within its base cooldown before the damage began, and that base cooldown reaches back no further than the fight&#39;s first second. Talents that shorten a cooldown are not modelled, a second charge reads as not ready, and a cooldown never pressed is not listed, so ready is understated, never invented. The log cannot show the healers&#39; plan: a ready cooldown is a fact about the log, not a verdict on a healer.</p>
       </div>
     </div>
   </div>
