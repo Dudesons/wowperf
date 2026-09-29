@@ -1968,6 +1968,7 @@ def test_a_grid_tint_is_a_class_not_a_colour_word() -> None:
     html = render_raid(report)
 
     assert 'class="cell tinted"' in html
+    assert "2.0x" in html
 
 
 def test_a_grid_column_whose_ability_id_appears_nowhere_else_still_draws_its_icon() -> None:
