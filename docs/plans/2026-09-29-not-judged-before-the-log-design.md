@@ -1,6 +1,6 @@
 # Not judged before the log
 
-**Status:** approved design, 2026-09-29.
+**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live (§4, "Live").
 **Area:** the death card's availability rows (the dying player's own defensives, teammates'
 externals) and the "defensives off cooldown at a death" finding, per pull and pooled across a
 night. It closes the follow-up `docs/plans/2026-09-29-healer-side-of-death-design.md` §7
@@ -111,6 +111,38 @@ line with the same predicate, so they cannot disagree about where "not judged" b
   by state, from the cards; `defensives.unused.*` findings and the abilities they name, from the
   findings files. The design records how many `ready` claims the guard withdrew -- the size of
   the overclaim -- and any state that never occurs, as open.
+
+**Live** (2026-09-29, eight commands, 8.00 points of 3600 as the commands printed them, every one
+against a warm cache):
+
+| Command | Points | Deaths |
+| --- | --- | --- |
+| `raid cW38jmwdnZfbHVL4 --fight 2 --no-compare` | 1.00 | 0 |
+| `raid cW38jmwdnZfbHVL4 --fight 30 --no-compare` | 1.00 | 21 |
+| `raid cW38jmwdnZfbHVL4 --fight 32 --no-compare` | 1.00 | 20 |
+| `raid cW38jmwdnZfbHVL4 --fight 8 --no-compare` | 1.00 | 20 |
+| `raid cW38jmwdnZfbHVL4 --fight 29 --no-compare` | 1.00 | 19 |
+| `raid cW38jmwdnZfbHVL4 --fight 31 --no-compare` | 1.00 | 20 |
+| `analyze 6Kx1P9GbNXrcLdHa --fight 36 --no-compare` | 1.00 | 4 |
+| `analyze 4vFcVAW1PB2CrD9z --fight 72 --no-compare` | 1.00 | 7 |
+
+A scratch script then loaded each of the eight fights straight from the cache through
+`build_repository` and built their death cards directly, reading no network: 111 deaths in all.
+
+- **Card-level, own-defensive rows: 375** -- 3 pressed, 37 ready, 68 cooldown, 248 unseen, 10
+  held, 9 faded, **0 unjudged**. The own-defensive `unjudged` state never fired on this sample --
+  **open**, though the unit tests already exercise it directly against a clock with a non-zero
+  origin.
+- **Card-level, teammates' externals rows: 775** -- 5 pressed, 47 ready, 228 cooldown, 491
+  unseen, 0 held, 0 faded, **4 unjudged** (2 on fight 30, 2 on fight 8). **Ready claims
+  withdrawn: 4** -- the whole overclaim the guard removed on this sample, entirely on the
+  externals group.
+- **The finding, now and before:** `defensives_up_at` named at least one ability at 26 of the 111
+  deaths under the new rule and under the old one alike, naming 32 abilities either way.
+  **Findings withdrawn: 0** -- on this sample the finding-level guard never had to drop an
+  ability the old rule would have named.
+- **`defensives.unused.*` findings written, across the eight findings files: 23.**
+- The eight HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
 
 ## 5. Out of scope
 
