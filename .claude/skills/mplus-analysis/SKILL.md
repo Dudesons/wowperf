@@ -139,8 +139,8 @@ never reaches the Summary.
 - **The judgement is the group's.** Healers plan rotations together, and one holding while
   another spends is usually right. Name the holders the evidence names, but never say one healer
   should have pressed: the file cannot see the plan.
-- **"Ready" is understated, never invented.** A cooldown never pressed in the fight or run is
-  invisible, a second charge reads as not ready, and cooldowns are base values with no talent
+- **"Ready" is understated, never invented.** A cooldown never pressed in the log read for the
+  fight or run is invisible (a press before a key's first pull is in that read, so it counts), a second charge reads as not ready, and cooldowns are base values with no talent
   reduction. Unready, it may still have been usable; ready, it truly was off its base cooldown.
 - **"Not judged" is not a fault.** Early on, a base cooldown reaches back before the first
   second -- the fight's start on a raid page, the first pull's start on a keystone -- so the tool

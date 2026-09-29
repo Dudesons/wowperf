@@ -407,16 +407,17 @@ SPIKES_DETAIL = (
     "taken over the {setting}'s windows spent in combat. A healing or group-wide defensive "
     "cooldown answers a moment when it was pressed from "
     f"{ANSWER_LEAD_SECONDS} seconds before the window opened to its close. A cooldown never "
-    "pressed in the {setting} is not seen, so it is not listed."
+    "pressed in the log read for the {setting} is not seen, so it is not listed."
 )
 UNANSWERED_DETAIL = (
     "Judged for the group, never for one healer: the group may have planned this moment for a "
     "cooldown that came later. A cooldown reads as ready when its holder pressed it somewhere "
-    "in this {setting}, had not pressed it within its base cooldown before the window opened, "
-    "was alive, and that base cooldown reached back no further than the {setting}'s first "
-    "second. Talents that shorten a cooldown are not modelled, a second charge reads as not "
-    "ready, and a cooldown never pressed in the {setting} is not seen at all, so ready is "
-    f"understated, never invented. The {ANSWER_LEAD_SECONDS}-second lead and the floor of "
+    "in the log read for this {setting}, had not pressed it within its base cooldown before the "
+    "window opened, was alive, and that base cooldown reached back no further than the "
+    "{setting}'s first second. Talents that shorten a cooldown are not modelled, a second charge "
+    "reads as not ready, and a cooldown never pressed in the log read for the {setting} is not "
+    f"seen at all, so ready is understated, never invented. The {ANSWER_LEAD_SECONDS}-second "
+    "lead and the floor of "
     f"{SPIKE_FLOOR:g} times the median are chosen numbers, not measured ones."
 )
 NO_CASTS_DETAIL = (

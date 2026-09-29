@@ -358,20 +358,20 @@ def test_exact_detail_text_of_spikes_findings() -> None:
         "overlapping, and a window counts only at 2 times the median 5-second window or above, "
         "the median taken over the fight's windows spent in combat. A healing or group-wide "
         "defensive cooldown answers a moment when it was pressed from 10 seconds before the "
-        "window opened to its close. A cooldown never pressed in the fight is not seen, so it is "
-        "not listed."
+        "window opened to its close. A cooldown never pressed in the log read for the fight is "
+        "not seen, so it is not listed."
     )
     unanswered_casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
     findings = spikes([*steady(300), *burst(200)], unanswered_casts)
     assert the(findings, UNANSWERED_ID).detail == (
         "Judged for the group, never for one healer: the group may have planned this moment for a "
         "cooldown that came later. A cooldown reads as ready when its holder pressed it somewhere "
-        "in this fight, had not pressed it within its base cooldown before the window opened, was "
-        "alive, and that base cooldown reached back no further than the fight's first second. "
-        "Talents that shorten a cooldown are not modelled, a second charge reads as not ready, and "
-        "a cooldown never pressed in the fight is not seen at all, so ready is understated, never "
-        "invented. The 10-second lead and the floor of 2 times the median are chosen numbers, not "
-        "measured ones."
+        "in the log read for this fight, had not pressed it within its base cooldown before the "
+        "window opened, was alive, and that base cooldown reached back no further than the "
+        "fight's first second. Talents that shorten a cooldown are not modelled, a second charge "
+        "reads as not ready, and a cooldown never pressed in the log read for the fight is not "
+        "seen at all, so ready is understated, never invented. The 10-second lead and the floor "
+        "of 2 times the median are chosen numbers, not measured ones."
     )
     findings = spikes([*steady(300), *burst(100, per_second=90)], [FILLER])
     assert the(findings, UNAVAILABLE_ID).detail == (

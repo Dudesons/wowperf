@@ -115,7 +115,10 @@ the gaps are cooldown reductions carried over, not resets. The rule stands, and 
   state held against the group.
 - **Unanswered, no answer shown ready:** stated as a fact, not a fault, with the reason for each
   answer the group held: its holder was dead; it was pressed at a given clock, within its base
-  cooldown; or it was not judged because its base cooldown reaches before the first second. The
+  cooldown; it was pressed before the first second, within its base cooldown (amended
+  2026-09-29: a keystone's casts are read from the fight's start, before the first pull that
+  sets the page's clock, so such a press has no clock to print); or it was not judged because
+  its base cooldown reaches before the first second. The
   page never says a cooldown was "on cooldown": talents shorten some, so it states the press it
   saw and leaves the talent to the reader.
 
