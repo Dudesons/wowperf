@@ -157,6 +157,30 @@ never reaches the Summary.
   casts were read, nobody holds a listed answer, or no window cleared the floor. None of these
   says the fight was clean.
 
+## The Healers group is on the page, not in the findings file
+
+Every death card carries a "Healers" group: one line per other healer in the group, showing
+their side of this player's last ten seconds. Each line counts that healer's casts by where they
+were aimed — at this player, at themselves, at another player, at a non-player, untargeted — and
+states the last one that reached this player, or that none did in the window. A cast's target is
+where it was aimed, not everyone it healed: a smart heal or a heal-over-time can reach this
+player with no cast aimed at them, and a cast at an enemy can still heal, as Discipline's
+Atonement does. It never names the other targets of a healer's casts.
+
+Each line also states where that healer's own group healing cooldowns stood as the run-up
+opened, following the same rule `healing.spikes` reads them by: "ready" is understated, never
+invented — a cooldown never pressed in the log read is invisible, a second charge reads as not
+ready, and cooldowns carry no talent reduction — and "not judged" is not a fault, only a base
+cooldown reaching back before the fight's or run's first second. Read a group's silence the same
+way `defensives.unused.*` teaches: a healer with no line at all is one whose specialisation lists
+no group healing cooldown, not one who held everything back.
+
+The group is descriptive, never a verdict: it never says a healer should have pressed something,
+held in the wrong place, or was too busy elsewhere — the log cannot show a group's plan, and one
+healer holding while another spends is often exactly right. There is no finding behind it, and no
+badge to read from the findings file: it exists only on the page, under every death card, and
+`out/<code>-<fight>.findings.json` says nothing about it at all.
+
 ## The two consumable claims, and which one to lead with
 
 `consumables.never.*` says the player died and drank from a whole category at no point in the run.

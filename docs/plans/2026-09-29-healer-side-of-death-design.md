@@ -1,6 +1,6 @@
 # The healer's side of each death
 
-**Status:** approved design, 2026-09-29.
+**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live (§6, "Live").
 **Area:** slice 4 (healer analysis), its second sub-slice. It adds a "Healers" group to every
 death card: the Mythic+ page (`analyze`), the raid page (`raid`), and every `night` pull drawn
 at the death-card tier or above. It adds no finding and no query.
@@ -120,6 +120,29 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
   and 30, `analyze` on `6Kx1P9GbNXrcLdHa`. A script that prints no name counts, across every
   death: lines alive and dead; each target category; "none in the last 10 seconds"; each
   cooldown state; the "no other healer" line. A state that never occurs is recorded as open.
+
+**Live** (2026-09-29, three commands, 3.00 points of 3600 as the commands printed them):
+
+| Command | Points | Deaths |
+| --- | --- | --- |
+| `raid cW38jmwdnZfbHVL4 --fight 2 --no-compare` | 1.00 | 0 |
+| `raid cW38jmwdnZfbHVL4 --fight 30 --no-compare` | 1.00 | 21 |
+| `analyze 6Kx1P9GbNXrcLdHa --fight 36 --no-compare` | 1.00 | 4 |
+
+- **Fight 2, the canonical kill, drew no death card at all**: a clean kill has no death to build
+  a Healers group under, so every count below rests on the other two fights.
+- **Totals across the three runs, 25 deaths, 84 other-healer lines:** 1 card read "No other
+  healer was in the group." Of the 84 lines, 39 read alive and 45 read dead. Casts in the run-up,
+  by where they were aimed: 11 at this player, 74 at self, 229 at other players, 9 at
+  non-players, 155 untargeted. 40 lines cast something in the window but never at this player; 34
+  cast nothing in the window at all. Of the cooldown rows a line carried: 6 read pressed, 4 read
+  ready, 56 read within their base cooldown, 0 read unjudged, 0 read dead.
+- **Open, never seen live:** the "unjudged" cooldown state (a base cooldown reaching back before
+  the fight's or run's first second); the "dead" cooldown state (an ability's holder dead as the
+  run-up opened, though alive again by the death itself); the line noting that none of a
+  healer's group healing cooldowns was pressed; and the line noting that none is listed for a
+  healer's specialisation at all.
+- The three HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
 
 ## 7. Out of scope, and follow-ups
 
