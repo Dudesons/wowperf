@@ -25,6 +25,7 @@ from tests.domain.report.test_build_frame import (
 )
 from tests.domain.report.test_build_timeline import a_member
 from tests.domain.report.test_model import view_model_types
+from wowperf.adapters.config.toml import load_roles, load_throughput_cooldowns
 from wowperf.adapters.render.html import render
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.spikes import SPIKES_ID
@@ -219,6 +220,8 @@ def minimal_html() -> str:
             minimal_loaded(), minimal_findings(), None, COMPARED, SUBJECT, None, FETCHED,
             NO_DEFENSIVES,
         NO_CONSUMABLES,
+            roles=load_roles(),
+            throughput=load_throughput_cooldowns(),
         )
     )
 

@@ -1713,6 +1713,7 @@ def a_golden_raid_report() -> RaidReport:
         NO_ROLES,
         reference_records=GOLDEN_REFERENCES,
         pace=sample,
+        throughput=load_throughput_cooldowns(),
     )
 
 

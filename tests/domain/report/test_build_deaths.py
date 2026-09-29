@@ -35,11 +35,19 @@ from wowperf.domain.season import (
     Defensives,
     ExternalAbility,
     Externals,
+    Roles,
     SelfResurrections,
 )
 
 NO_EXTERNALS = Externals()
 IRONBARK = ExternalAbility(ability_id=102342, name="Ironbark", cooldown_seconds=90.0)
+
+ROLES = Roles(healers=("Priest/Holy",))
+"""A roster where the roster's second player, not the one who dies, heals."""
+
+
+def a_healer(actor_id: int = 2, name: str = "Bríala") -> Player:
+    return Player(actor_id=actor_id, name=name, class_name="Priest", spec="Holy", item_level=680)
 
 
 def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
@@ -554,6 +562,31 @@ def test_the_provenance_states_the_health_method_only_when_a_card_has_a_health_c
     bare = build_report(a_loaded_with((), ()), (), None, None, a_player(), None, FETCHED,
                         NO_DEFENSIVES, NO_CONSUMABLES)
     assert bare.provenance.methods == ()
+
+
+def a_loaded_with_a_healer(deaths: tuple[Death, ...]) -> LoadedRun:
+    return LoadedRun(
+        run=a_run(players=(a_player(), a_healer()), pulls=(a_pull(0, 0, 120_000),)),
+        deaths=deaths,
+    )
+
+
+def test_build_report_draws_no_healers_group_without_roles() -> None:
+    report = build_report(
+        a_loaded_with_a_healer((a_death(1, 60_000),)), (), None, None, a_player(), None,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES,
+    )
+    assert report.deaths[0].healers is None
+
+
+def test_build_report_draws_a_healers_group_naming_the_other_healer_when_given_roles() -> None:
+    report = build_report(
+        a_loaded_with_a_healer((a_death(1, 60_000),)), (), None, None, a_player(), None,
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, roles=ROLES,
+    )
+    [card] = report.deaths
+    assert card.healers is not None
+    assert card.healers.lines[0].holder == "Holy Priest, Bríala"
 
 
 def test_death_findings_are_placed_under_deaths_not_observations() -> None:

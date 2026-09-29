@@ -448,6 +448,7 @@ def build_raid_transport(
     our_ability_entries: list[dict[str, Any]] | None = None,
     broken_ability_reports: frozenset[tuple[str, int]] = frozenset(),
     broken_parse_reports: frozenset[str] = frozenset(),
+    death_events: list[dict[str, Any]] | None = None,
     calls: list[str] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `raid` issues for report abc123, fight 22 or fight 30.
@@ -477,8 +478,12 @@ def build_raid_transport(
     codes whose `Fights` request answers a null report, so a parse reference can
     fail to load at all.
 
-    `roster` is our own report's roster. `calls` records every operation name
-    this transport answers, in order -- requests, not calls into the
+    `roster` is our own report's roster. `death_events` answers our own
+    report's `Deaths` with the raw events given, in place of the default empty
+    stream -- matching `build_analyze_transport`'s own parameter of the same
+    name -- letting a caller put a real death, with a real killing blow, on
+    the report a death card is built from. `calls` records every operation
+    name this transport answers, in order -- requests, not calls into the
     repository: the reference cache answers a repeated query without one, so a
     count taken here is a count of distinct queries.
     """
@@ -518,6 +523,11 @@ def build_raid_transport(
     }
     empty_events: dict[str, Any] = {
         "reportData": {"report": {"events": {"data": [], "nextPageTimestamp": None}}}
+    }
+    deaths_payload: dict[str, Any] = {
+        "reportData": {
+            "report": {"events": {"data": death_events or [], "nextPageTimestamp": None}}
+        }
     }
     damage_done_graph: dict[str, Any] = {
         "reportData": {
@@ -863,6 +873,8 @@ def build_raid_transport(
                     )
                 },
             )
+        if name == "Deaths":
+            return httpx.Response(200, json={"data": deaths_payload})
         return httpx.Response(200, json={"data": empty_events})
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -1327,6 +1339,31 @@ def test_raid_command_names_both_files_it_wrote(tmp_path: Path) -> None:
 
     assert ".findings.json" in result.output
     assert ".html" in result.output
+
+
+def test_raid_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> None:
+    """`throughput=throughput` reaches `build_raid_report`, so `RAID_ROSTER`'s own
+    Holy Priest -- already in every raid fixture -- draws the Healers group on
+    the death card of the Protection Warrior who dies here."""
+    result = run_raid(
+        tmp_path, death_events=[{"type": "death", "targetID": 12, "timestamp": 200_000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    [html] = (tmp_path / "out").glob("*.html")
+    assert 'class="avail healers"' in html.read_text(encoding="utf-8")
+
+
+def test_raid_findings_file_is_unaffected_by_the_healers_group(tmp_path: Path) -> None:
+    """The Healers group is page-only: the same roster and death that draw it on
+    the HTML must leave the findings JSON exactly as free of it as before."""
+    result = run_raid(
+        tmp_path, death_events=[{"type": "death", "targetID": 12, "timestamp": 200_000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    [findings_path] = (tmp_path / "out").glob("*.findings.json")
+    assert "healer" not in findings_path.read_text(encoding="utf-8").lower()
 
 
 def test_the_parse_axis_reaches_the_findings_file_with_its_own_figures(tmp_path: Path) -> None:
@@ -4073,6 +4110,39 @@ def test_analyze_writes_a_report_whose_icons_address_the_cdn(tmp_path: Path) -> 
     assert "data:image" not in html
 
 
+def test_analyze_draws_the_healers_group_on_the_death_card(tmp_path: Path) -> None:
+    """`roles=roles` reaches `build_report`, so a teammate the real `data/roles.toml`
+    lists as a healer draws the Healers group on the death card of a roster-mate
+    who died -- Bríala, Priest/Holy, survives Emberkin's death here."""
+    result = run_analyze(
+        tmp_path,
+        teammates=(("Bríala", "Priest", "Holy"),),
+        death_events=[{"type": "death", "targetID": 693, "timestamp": 4000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    html = (tmp_path / "out" / "abc123-36.html").read_text(encoding="utf-8")
+    assert 'class="avail healers"' in html
+
+
+def test_analyze_findings_file_is_unaffected_by_the_healers_group(tmp_path: Path) -> None:
+    """The Healers group is page-only: the same roster and death that draw it on
+    the HTML must leave the findings JSON exactly as free of it as before."""
+    result = run_analyze(
+        tmp_path,
+        teammates=(("Bríala", "Priest", "Holy"),),
+        death_events=[{"type": "death", "targetID": 693, "timestamp": 4000}],
+    )
+    assert result.exit_code == 0, result.output
+
+    raw = (tmp_path / "out" / "abc123-36.findings.json").read_text(encoding="utf-8")
+    assert "healer" not in raw.lower()
+    payload = json.loads(raw)
+    for finding in payload["findings"]:
+        assert set(finding.keys()) == {
+            "id", "title", "detail", "confidence", "seconds_lost", "evidence", "facts",
+            "pull_index", "ability_id", "ability_name", "quantifier", "player_slug",
+        }
 
 
 

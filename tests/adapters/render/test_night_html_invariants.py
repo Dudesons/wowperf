@@ -23,6 +23,7 @@ from tests.domain.report.test_night_build import (
     a_night,
     a_reference_record,
 )
+from wowperf.adapters.config.toml import load_throughput_cooldowns
 from wowperf.adapters.render.html import render_night, render_raid
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.progression_service import analyse_progression
@@ -324,6 +325,7 @@ def a_night_report(
             boss.progression.encounter_id: tuple(analyse_progression(boss))
             for boss in night.loaded
         },
+        throughput=load_throughput_cooldowns(),
     )
 
 

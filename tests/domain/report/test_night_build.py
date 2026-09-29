@@ -21,7 +21,7 @@ from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
-from wowperf.domain.season import Consumables, Defensives, Roles
+from wowperf.domain.season import Consumables, Defensives, Roles, ThroughputCooldowns
 
 REPORT_CODE = "TESTCODE00000000"
 FETCHED = "2026-09-24 09:00"
@@ -42,13 +42,20 @@ Index 1 of the roster on purpose. The fallback is index 0, so an owner sitting
 there could not be told apart from a builder that ignores the owner entirely.
 """
 
+HEALER = Player(actor_id=3, name="Bríala", class_name="Priest", spec="Holy", item_level=690)
+ROLES_WITH_HEALER = Roles(healers=("Priest/Holy",))
+ROSTER_WITH_HEALER = (*ROSTER, HEALER)
+"""`ROSTER` plus a healer who is dealt no death: deaths are round-robin from
+index 0, and this roster's index 0 is still Emberkin."""
+
 BOSS_NAMES = ("Ula'tek", "Nek'zali")
 HIT_ABILITY_ID = 445_566
 FAILED_REASON = "the damage-taken stream would not load"
 
 
 def a_pull(
-    fight_id: int, boss_name: str, encounter_id: int, owner_name: str | None
+    fight_id: int, boss_name: str, encounter_id: int, owner_name: str | None,
+    *, roster: tuple[Player, ...] = ROSTER,
 ) -> LoadedEncounter:
     """One deepened pull: one death, and one hit inside its run-up.
 
@@ -60,7 +67,7 @@ def a_pull(
     """
     return a_loaded_attempt(
         fight_id,
-        players=ROSTER,
+        players=roster,
         deaths_after_ms=(10_000,),
         damage_after_ms=((9_000, HIT_ABILITY_ID, None),),
         boss_name=boss_name,
@@ -74,6 +81,7 @@ def a_night(
     bosses: tuple[int, ...],
     owner_name: str | None = OWNER,
     failed: tuple[int, ...] = (),
+    roster: tuple[Player, ...] = ROSTER,
 ) -> LoadedNight:
     """A loaded night with one boss per entry in `bosses`, holding that many pulls.
 
@@ -92,7 +100,7 @@ def a_night(
         boss_name = BOSS_NAMES[index]
         encounter_id = 3490 + index
         pulls = tuple(
-            a_pull((index + 1) * 10 + which, boss_name, encounter_id, owner_name)
+            a_pull((index + 1) * 10 + which, boss_name, encounter_id, owner_name, roster=roster)
             for which in range(count)
         )
         failures.extend(
@@ -283,6 +291,42 @@ def test_the_same_night_does_carry_cards_when_they_are_asked_for() -> None:
     )
 
     assert all(len(pull.report.deaths) == 1 for pull in report.bosses[0].pulls)
+
+
+def test_build_night_report_draws_no_healers_group_without_throughput() -> None:
+    report = build_night_report(
+        a_night(bosses=(1,), roster=ROSTER_WITH_HEALER),
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        ROLES_WITH_HEALER,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+    )
+
+    [pull] = report.bosses[0].pulls
+    assert pull.report.deaths[0].healers is None
+
+
+def test_build_night_report_draws_a_healers_group_naming_the_healer_when_given_throughput() -> None:
+    report = build_night_report(
+        a_night(bosses=(1,), roster=ROSTER_WITH_HEALER),
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        ROLES_WITH_HEALER,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        throughput=ThroughputCooldowns(),
+    )
+
+    [pull] = report.bosses[0].pulls
+    assert pull.report.deaths[0].healers is not None
+    assert pull.report.deaths[0].healers.lines[0].holder == "Holy Priest, Bríala"
 
 
 def test_the_page_carries_the_absent_axis_disclosure_exactly_once() -> None:

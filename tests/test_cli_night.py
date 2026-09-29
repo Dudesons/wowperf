@@ -58,12 +58,18 @@ NIGHT_ROSTER: tuple[dict[str, Any], ...] = (
      "item_level": 700},
     {"actor_id": 102, "name": "Stonewake", "class_name": "Warrior", "spec": "Protection",
      "item_level": 702},
+    {"actor_id": 103, "name": "Bríala", "class_name": "Priest", "spec": "Holy",
+     "item_level": 705},
 )
-"""Two raiders, not none.
+"""Three raiders, not none.
 
 `night_subject` refuses a pull whose roster is empty, and `AuraTable` is
 fetched once per roster player, so a fixture with no roster would make the
-card tier cost nothing and hide exactly the difference `--no-deaths` makes."""
+card tier cost nothing and hide exactly the difference `--no-deaths` makes.
+
+The third, a Holy Priest, is who `data/roles.toml` calls a healer: every
+death dealt below lands on `NIGHT_ROSTER[0]`, so this one always survives to
+draw the Healers group on the card of whoever died."""
 
 FIRST_PULL = 11
 SECOND_PULL = 12
@@ -617,6 +623,27 @@ def test_a_night_writes_both_files_at_the_documented_names(tmp_path: Path) -> No
     html = report_file.read_text(encoding="utf-8")
     assert FIRST_BOSS_NAME in html
     assert SECOND_BOSS_NAME in html
+
+
+def test_night_draws_the_healers_group_on_a_death_card(tmp_path: Path) -> None:
+    """`throughput=throughput` reaches `build_night_report`, so `NIGHT_ROSTER`'s own
+    Holy Priest -- who survives every death dealt below, which always lands on
+    `NIGHT_ROSTER[0]` -- draws the Healers group on that death's card."""
+    result = run_night(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    _, report_file = _written(tmp_path)
+    assert 'class="avail healers"' in report_file.read_text(encoding="utf-8")
+
+
+def test_night_findings_file_is_unaffected_by_the_healers_group(tmp_path: Path) -> None:
+    """The Healers group is page-only: the same roster and death that draw it on
+    the HTML must leave the findings JSON exactly as free of it as before."""
+    result = run_night(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    findings_file, _ = _written(tmp_path)
+    assert "healer" not in findings_file.read_text(encoding="utf-8").lower()
 
 
 def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
