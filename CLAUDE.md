@@ -382,10 +382,11 @@ Summary, Attempts, Repeats, Best attempt, Provenance — the night's shape rathe
 attempt's anatomy, which stays `raid --fight N`'s work. Each death is a recap: a
 health curve reconstructed between the player's own readings, a timeline of what hit them,
 how they came back, and every defensive, consumable and teammate external placed in one of
-seven states at the moment of death — pressed, ready, on cooldown, not judged where its base
-cooldown reaches before the log's first second, or never seen all run, and a press on the
-dying player's own defensive refined to held or faded by whether that ability's aura was
-still up when the killing blow landed. `pressed` is what a press reads as when that
+seven states at the moment of death — pressed, ready, on cooldown, not judged in place of a
+ready whose base cooldown reaches before the log's first second, or never seen all run, with a
+consumable whose window reaches that far left off the card instead, and a press on the dying
+player's own defensive refined to held or faded by whether that ability's aura was still up
+when the killing blow landed. `pressed` is what a press reads as when that
 refinement cannot be made, the explicit unknown rather than a guess. Below those
 sits a Healers group, one line per other healer: alive or dead, where their casts in the last
 ten seconds were aimed, and where each of their group healing cooldowns stood, by the same rule

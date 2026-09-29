@@ -135,8 +135,9 @@ Each death gets a recap: a health curve, a timeline of what hit you, how you cam
 defensive, consumable and teammate external it lists placed in one of seven states at the moment
 you died — pressed, ready, on cooldown, or never seen all run, and one of your own defensives you
 pressed refined to held or faded by whether its aura was still up when the killing blow landed. A
-defensive or external whose base cooldown reaches before the log's first second reads not judged,
-the seventh; a consumable whose window reaches that far is left off the card instead.
+defensive or external that would otherwise read ready, while its base cooldown reaches before
+the log's first second, reads not judged instead — the seventh; a consumable whose window
+reaches that far is left off the card instead.
 
 The Provenance tab is the one to read when a number looks wrong. It says where each figure came
 from.
