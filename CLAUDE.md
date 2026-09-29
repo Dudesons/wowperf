@@ -336,7 +336,9 @@ The project is cut into four slices, each with its own design, plan, and impleme
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
 analysis, and healer analysis. Slices 1 and 2 have shipped. Slice 3 has shipped everything but
 one claim — that one raider's action caused another's death — which stays unbuilt and
-undesigned. Slice 4 has not started.
+undesigned. Slice 4 has shipped its first sub-slice — whether the group answered its heaviest
+moments of damage with a healing or group-wide defensive cooldown; the healer's side of each
+death, its second, is not designed.
 
 **Current state: a fight goes in and a report comes out.** `wowperf fetch` prints a run as
 JSON; `wowperf analyze`, `wowperf raid` and `wowperf progression` each write their findings as
@@ -352,8 +354,9 @@ by printing where the run's points went, dearest operation first.
 The analysers under `src/wowperf/domain/analysis/` produce the findings: time decomposition,
 deaths and what each one cost, missed interrupts, trash efficiency, per-player facts, defensives
 off cooldown at a death and defensives pressed far below what their cooldown allowed, healing
-consumables, throughput cooldowns spent away from the pulls worth spending them on, and the
-recap behind each death card. The class data they read — cooldowns, teammates' externals,
+consumables, throughput cooldowns spent away from the pulls worth spending them on, the group's
+heaviest moments of damage taken and whether a group cooldown answered each, and the recap
+behind each death card. The class data they read — cooldowns, teammates' externals,
 self-resurrections, roles — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
