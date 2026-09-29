@@ -118,6 +118,17 @@ def test_a_cooldown_is_judged_as_the_run_up_opens() -> None:
     assert druid.cooldowns[0].reading == CooldownReading(reading=Reading.WITHIN, press_ms=at(111))
 
 
+def test_a_cast_at_a_dying_player_off_the_roster_counts_once() -> None:
+    ghost_id = 99
+    death = Death(player_name="Ghost", actor_id=ghost_id, timestamp_ms=at(300),
+                  killing_blow="Venom Bolt")
+    side = healer_side(
+        death, ROSTER, [cast(DRUID, 295, ghost_id)], (), (), ROLES, THROUGHPUT, ORIGIN
+    )[0]
+    assert side.casts == TargetCounts(at_player=1)
+    assert side.casts.total == 1
+
+
 def test_a_dead_healer_is_dead_and_lists_no_cooldown() -> None:
     casts = [cast(DRUID, 20, None, ability_id=740), cast(DRUID, 292, WARRIOR.actor_id)]
     sides = healer_side(

@@ -103,7 +103,10 @@ def healer_side(
                 for cast in own
             ),
             at_non_players=sum(
-                cast.target_id is not None and cast.target_id not in roster for cast in own
+                cast.target_id is not None
+                and cast.target_id not in roster
+                and cast.target_id != death.actor_id
+                for cast in own
             ),
             untargeted=sum(cast.target_id is None for cast in own),
         )
