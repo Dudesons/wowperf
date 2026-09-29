@@ -202,8 +202,8 @@ _AIMS = (
 )
 
 NO_CONSUMABLE_DATA = (
-    "No consumable can be judged here: either none is listed for this run, or the death came "
-    "too early for the log to show one's cooldown."
+    "No consumable can be judged here: either none is listed for this {setting}, or the death "
+    "came too early for the log to show one's cooldown."
 )
 
 
@@ -348,7 +348,7 @@ def _availability_row(
     elif state.state == READY:
         detail = "ready"
     elif state.state == UNSEEN:
-        detail = "not seen this run"
+        detail = f"not seen this {setting}"
     elif state.state == UNJUDGED:
         detail = not_judged_detail(setting)
     else:
@@ -387,7 +387,7 @@ def _group(
 
 
 def _came_back(loaded: LoadedFight, death: Death, self_resurrections: SelfResurrections,
-               names: dict[int, str]) -> tuple[str, Badge]:
+               names: dict[int, str], setting: str) -> tuple[str, Badge]:
     back = return_of(loaded.resurrections, loaded.casts, death, self_resurrections)
     if back.kind == RESURRECTED:
         caster_id = back.caster_id
@@ -408,7 +408,7 @@ def _came_back(loaded: LoadedFight, death: Death, self_resurrections: SelfResurr
             badge_for(Confidence.DERIVED),
         )
     assert back.kind == ABSENT
-    return ("Not seen acting again this run.", badge_for(Confidence.MEASURED))
+    return (f"Not seen acting again this {setting}.", badge_for(Confidence.MEASURED))
 
 
 def _healer_summary(side: HealerSide, death: Death) -> str:
@@ -604,7 +604,7 @@ def build_deaths(
             blow_ms=killing_blow_ms(loaded.damage_taken, death),
         )
         spec = f"{player.class_name} {player.spec}" if player else "this player"
-        came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names)
+        came_back, came_back_badge = _came_back(loaded, death, self_resurrections, names, setting)
         tooltips = _availability_tooltips(loaded, death, defensives, externals)
         cards.append(
             DeathCard(
@@ -631,7 +631,8 @@ def build_deaths(
                 availability=(
                     _group("Defensives", at.own, names, f"No data file covers {spec}.", tooltips,
                            setting=setting),
-                    _group("Consumables", at.consumables, names, NO_CONSUMABLE_DATA, tooltips,
+                    _group("Consumables", at.consumables, names,
+                           NO_CONSUMABLE_DATA.format(setting=setting), tooltips,
                            CONSUMABLE_CAVEAT, setting=setting),
                     _group("Teammates' externals", at.externals, names, NO_TEAMMATE_EXTERNALS,
                            tooltips, setting=setting),

@@ -163,7 +163,12 @@ the log, 139 were never cast and 17 were cast inside the window; none was cast o
 
 - The `unseen` row reads "not seen this run", and the card's return line "Not seen acting again
   this run.", on a boss fight too, where there is no run. Both predate this and are recorded,
-  not fixed here.
+  not fixed here. *Closed 2026-09-29:* both, and the empty Consumables note's "listed for this
+  run", now take the card's setting -- "run" on a keystone, "fight" on a boss fight and on each
+  night card -- and a test sweeps every string on a boss card for a standalone "run". Live, warm,
+  one point each: `cW38jmwdnZfbHVL4` fight 30 now prints "this fight" 75 times (48 unseen rows,
+  19 return lines, 8 consumables notes) and "this run" in none of them; `6Kx1P9GbNXrcLdHa` fight
+  36 still prints "this run" (5 unseen rows, 1 consumables note) and "this fight" nowhere.
 - Modelling talents that shorten a cooldown, charges refreshed early, or cooldown resets.
 - The Healers group's parked items (the measured badge over alive/dead; a dead healer's run-up
   press).

@@ -1,6 +1,8 @@
 # ABOUTME: The death recap and the ledger's ability panels, built from a boss fight not a run.
 # ABOUTME: The roster and the window come from whichever fight was handed over, never from a Run.
 
+import re
+
 from tests.domain.report.test_raid_frame import an_encounter
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.encounter import LoadedEncounter
@@ -316,3 +318,31 @@ def test_a_boss_card_judges_a_defensive_from_the_fights_own_start() -> None:
         ("unjudged", "not judged, its base cooldown reaches before the fight's first second")
     ]
     assert own_rows(FIGHT_START_MS + 120_000) == [("ready", "ready")]
+
+
+def _every_string(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [text for item in value.values() for text in _every_string(item)]
+    if isinstance(value, (list, tuple)):
+        return [text for item in value for text in _every_string(item)]
+    return []
+
+
+def test_a_boss_card_calls_its_stretch_of_the_log_a_fight_never_a_run() -> None:
+    # Icebound never pressed, no return, no consumable data: the card's three
+    # sentences that name the stretch of log they read -- the unseen row, the
+    # return line and the empty consumables note -- all on one boss card.
+    loaded = a_loaded_fight(deaths=(a_death(FIGHT_START_MS + 300_000),))
+    card = build_deaths(loaded, BLOOD, NO_CONSUMABLES)[0]
+
+    assert [(row.state, row.detail) for row in card.availability[0].rows] == [
+        ("unseen", "not seen this fight")
+    ]
+    assert card.came_back == "Not seen acting again this fight."
+    assert "none is listed for this fight" in card.availability[1].note
+    # "run-up" is the card's own word for the seconds before a death, on a
+    # keystone and a boss fight alike; "run" on its own names a keystone.
+    for text in _every_string(card.model_dump()):
+        assert not re.search(r"\brun\b(?!-)", text), text
