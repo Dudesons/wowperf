@@ -53,6 +53,7 @@ RAID_FAMILIES = (
     "compare.uptime.unjudged.emberkin-0",
 )
 """Every family `analyse_encounter` can emit from a kill without phases.
+One healing id is here; the other two are pinned in `test_raid_build`'s placement test.
 
 `mechanics.phase.*` and `wipe.cause` are absent because this fixture is a
 kill and names no phases, not because their routing is unchecked: both are

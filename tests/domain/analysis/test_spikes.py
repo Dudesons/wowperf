@@ -47,14 +47,29 @@ EXTERNALS = Externals(entries=(("Druid/Restoration", (IRONBARK,)), ("Warrior/Arm
 ROLES = Roles(healers=("Druid/Restoration",))
 ANSWERS = answers_for(ROSTER, THROUGHPUT, EXTERNALS, ROLES)
 
-FIVE_MINUTES = (0, 300_000)
+ORIGIN = 3_000_000
+"""Where every span here starts, and every helper's second 0: a fight or a key begins well
+into its report's clock, so a clock printed without subtracting the span's start cannot pass."""
+
+
+def span_of(seconds: int) -> tuple[int, int]:
+    return (ORIGIN, ORIGIN + seconds * 1000)
+
+
+FIVE_MINUTES = span_of(300)
+NINE_MINUTES = span_of(540)
+
+
+def at(second: float) -> int:
+    """The log timestamp of `second` seconds into every span here."""
+    return ORIGIN + int(second * 1000)
 
 
 def hit(actor_id: int, second: float, health: int, *, absorbed: int = 0, overkill: int = 0
         ) -> DamageTakenEvent:
     return DamageTakenEvent(
         actor_id=actor_id, ability_id=1, ability_name="Venom Bolt", amount=health + absorbed,
-        timestamp_ms=int(second * 1000), health_damage=health, absorbed=absorbed,
+        timestamp_ms=at(second), health_damage=health, absorbed=absorbed,
         overkill=overkill,
     )
 
@@ -71,7 +86,7 @@ def burst(first: int, *, per_second: int = 1000, length: int = 5) -> list[Damage
 def cast(player: Player, ability: CooldownAbility, second: float) -> CastEvent:
     return CastEvent(
         actor_id=player.actor_id, ability_id=ability.ability_id, ability_name=ability.name,
-        timestamp_ms=int(second * 1000),
+        timestamp_ms=at(second),
     )
 
 
@@ -145,17 +160,17 @@ def test_a_burst_straddling_a_second_boundary_is_one_whole_window() -> None:
     moments = heaviest_moments(
         [*steady(300), *burst(42)], frozenset({MAGE.actor_id}), FIVE_MINUTES, (FIVE_MINUTES,)
     )
-    assert [(one.start_ms, one.end_ms) for one in moments if one.rank == 1] == [(42_000, 47_000)]
+    assert [(one.start_ms, one.end_ms) for one in moments if one.rank == 1] == [(at(42), at(47))]
 
 
 def test_one_moment_per_started_three_minutes_heaviest_first_never_overlapping() -> None:
-    nine_minutes = (0, 540_000)
     damage = [*steady(540), *burst(100, per_second=3000), *burst(102, per_second=2500),
               *burst(300, per_second=2000), *burst(450, per_second=1500)]
     moments = heaviest_moments(
-        damage, frozenset({MAGE.actor_id}), nine_minutes, (nine_minutes,)
+        damage, frozenset({MAGE.actor_id}), NINE_MINUTES, (NINE_MINUTES,)
     )
-    assert [(one.start_ms // 1000, one.rank) for one in moments] == [(100, 1), (300, 2), (450, 3)]
+    starts = [((one.start_ms - ORIGIN) // 1000, one.rank) for one in moments]
+    assert starts == [(100, 1), (300, 2), (450, 3)]
 
 
 def test_a_window_below_twice_the_median_never_ranks() -> None:
@@ -164,8 +179,8 @@ def test_a_window_below_twice_the_median_never_ranks() -> None:
 
 
 def test_a_window_straddling_two_pulls_neither_ranks_nor_weighs() -> None:
-    run = (0, 400_000)
-    pulls = ((0, 100_000), (200_000, 300_000))
+    run = span_of(400)
+    pulls = ((at(0), at(100)), (at(200), at(300)))
     damage = [*(hit(MAGE.actor_id, s, 100) for s in (*range(100), *range(200, 300))),
               *burst(98, per_second=5000, length=4)]
     moments = heaviest_moments(damage, frozenset({MAGE.actor_id}), run, pulls)
@@ -221,6 +236,18 @@ def test_a_cooldown_whose_window_reaches_before_the_fight_is_not_judged() -> Non
     )
 
 
+def test_a_press_before_a_keys_first_pull_prints_no_negative_clock() -> None:
+    """A key's casts are read from the fight's start, its clock from the first pull's."""
+    findings = spikes(
+        [*steady(300), *burst(42)], [FILLER, cast(DRUID, TRANQUILITY, -20)], setting="run"
+    )
+    assert the(findings, SPIKES_ID).evidence == (
+        "0:42 to 0:47, the heaviest (11.0 times the median): nothing pressed, and no answer was "
+        "shown ready; Tranquility (Restoration Druid, Emberkin): pressed before the run's first "
+        "second, within its base cooldown of 3:00",
+    )
+
+
 def test_a_cooldown_never_pressed_all_fight_is_not_seen_at_all() -> None:
     findings = spikes([*steady(300), *burst(200)], [FILLER])
     assert the(findings, SPIKES_ID).evidence == (
@@ -230,7 +257,7 @@ def test_a_cooldown_never_pressed_all_fight_is_not_seen_at_all() -> None:
 
 
 def test_a_holder_dead_when_the_window_opens_is_not_counted_ready() -> None:
-    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=190_000,
+    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=at(190),
                  killing_blow="Venom Bolt")
     casts = [FILLER, cast(DRUID, TRANQUILITY, 5)]
     findings = spikes([*steady(300), *burst(200)], casts, deaths=(died,))
@@ -241,17 +268,17 @@ def test_a_holder_dead_when_the_window_opens_is_not_counted_ready() -> None:
 
 
 def test_a_holder_brought_back_before_the_window_is_alive_again() -> None:
-    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=150_000,
+    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=at(150),
                  killing_blow="Venom Bolt")
     back = Resurrection(actor_id=DRUID.actor_id, caster_id=WARRIOR.actor_id, ability_id=20484,
-                        ability_name="Rebirth", timestamp_ms=170_000)
+                        ability_name="Rebirth", timestamp_ms=at(170))
     casts = [FILLER, cast(DRUID, TRANQUILITY, 5)]
     findings = spikes([*steady(300), *burst(200)], casts, deaths=(died,), resurrections=(back,))
     assert UNANSWERED_ID in [one.id for one in findings]
 
 
 def test_a_cast_after_a_death_is_as_good_a_sign_of_life_as_a_resurrection() -> None:
-    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=150_000,
+    died = Death(player_name=DRUID.name, actor_id=DRUID.actor_id, timestamp_ms=at(150),
                  killing_blow="Venom Bolt")
     casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(DRUID, SWIFTNESS, 180)]
     findings = spikes([*steady(300), *burst(200)], casts, deaths=(died,))
@@ -259,11 +286,10 @@ def test_a_cast_after_a_death_is_as_good_a_sign_of_life_as_a_resurrection() -> N
 
 
 def test_the_title_counts_every_state_that_occurred_in_a_fixed_order() -> None:
-    nine_minutes = (0, 540_000)
     damage = [*steady(540), *burst(100, per_second=3000), *burst(300, per_second=2000),
               *burst(450, per_second=1500)]
     casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60)]
-    findings = spikes(damage, casts, span=nine_minutes)
+    findings = spikes(damage, casts, span=NINE_MINUTES)
     assert the(findings, SPIKES_ID).title == (
         "3 heaviest moments: 1 answered, 2 unanswered while cooldowns were ready"
     )
@@ -292,31 +318,30 @@ def test_a_group_holding_no_answer_says_so() -> None:
 def test_a_median_of_nothing_names_no_multiple() -> None:
     findings = spikes(burst(200), [FILLER, cast(DRUID, TRANQUILITY, 200)])
     assert the(findings, SPIKES_ID).evidence == (
-        "3:20 to 3:25, the heaviest (most of this fight's 5-second windows took no damage): "
-        "answered by Tranquility (Restoration Druid, Emberkin)",
+        "3:20 to 3:25, the heaviest (most of this fight's 5-second windows in combat took no "
+        "damage): answered by Tranquility (Restoration Druid, Emberkin)",
     )
 
 
 def test_no_title_detail_or_evidence_carries_a_raw_damage_figure() -> None:
-    nine_minutes = (0, 540_000)
     damage = [*steady(540, per_second=40_000), *burst(100, per_second=900_000),
               *burst(300, per_second=500_000)]
     casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60)]
-    for finding in spikes(damage, casts, span=nine_minutes):
+    for finding in spikes(damage, casts, span=NINE_MINUTES):
         for text in (finding.title, finding.detail, *finding.evidence):
-            assert not re.search(r"\d{4,}", text), text
+            assert not re.search(r"\d{1,3}(,\d{3})+|\d{4,}", text), text
 
 
 def test_heaviest_first_ranking_and_clock_order_are_independent() -> None:
-    nine_minutes = (0, 540_000)
     damage = [*steady(540), *burst(100, per_second=1500), *burst(300, per_second=3000),
               *burst(450, per_second=2000)]
     moments = heaviest_moments(
-        damage, frozenset({MAGE.actor_id}), nine_minutes, (nine_minutes,)
+        damage, frozenset({MAGE.actor_id}), NINE_MINUTES, (NINE_MINUTES,)
     )
-    assert [(one.start_ms // 1000, one.rank) for one in moments] == [(100, 3), (300, 1), (450, 2)]
+    starts = [((one.start_ms - ORIGIN) // 1000, one.rank) for one in moments]
+    assert starts == [(100, 3), (300, 1), (450, 2)]
     casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60)]
-    findings = spikes(damage, casts, span=nine_minutes)
+    findings = spikes(damage, casts, span=NINE_MINUTES)
     evidence_starts = [line.split(",")[0] for line in the(findings, SPIKES_ID).evidence]
     assert evidence_starts == ["1:40 to 1:45", "5:00 to 5:05", "7:30 to 7:35"]
     assert "the third heaviest" in the(findings, SPIKES_ID).evidence[0]
@@ -333,7 +358,8 @@ def test_exact_detail_text_of_spikes_findings() -> None:
         "overlapping, and a window counts only at 2 times the median 5-second window or above, "
         "the median taken over the fight's windows spent in combat. A healing or group-wide "
         "defensive cooldown answers a moment when it was pressed from 10 seconds before the "
-        "window opened to its close."
+        "window opened to its close. A cooldown never pressed in the fight is not seen, so it is "
+        "not listed."
     )
     unanswered_casts = [FILLER, cast(DRUID, TRANQUILITY, 5), cast(WARRIOR, RALLYING, 100)]
     findings = spikes([*steady(300), *burst(200)], unanswered_casts)
@@ -367,7 +393,7 @@ def test_a_fight_whose_windows_took_no_damage_says_so_rather_than_naming_a_media
 
 
 def test_a_run_too_short_for_one_whole_window_says_no_window_took_damage() -> None:
-    findings = spikes(burst(0, length=4), [FILLER], span=(0, 4_000), setting="run")
+    findings = spikes(burst(0, length=4), [FILLER], span=span_of(4), setting="run")
     assert [(one.id, one.detail) for one in findings] == [(
         UNAVAILABLE_ID,
         "No 5-second window of this run spent in combat took any damage that reached health "
@@ -376,12 +402,11 @@ def test_a_run_too_short_for_one_whole_window_says_no_window_took_damage() -> No
 
 
 def test_one_title_can_count_all_three_states() -> None:
-    nine_minutes = (0, 540_000)
     damage = [*steady(540), *burst(100, per_second=3000), *burst(300, per_second=2000),
               *burst(450, per_second=1500)]
     casts = [FILLER, cast(DRUID, TRANQUILITY, 98), cast(WARRIOR, RALLYING, 60),
              cast(DRUID, TRANQUILITY, 400), cast(WARRIOR, RALLYING, 400)]
-    findings = spikes(damage, casts, span=nine_minutes)
+    findings = spikes(damage, casts, span=NINE_MINUTES)
     assert the(findings, SPIKES_ID).title == (
         "3 heaviest moments: 1 answered, 1 unanswered while cooldowns were ready, "
         "1 unanswered with no answer shown ready"

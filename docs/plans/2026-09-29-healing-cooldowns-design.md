@@ -38,8 +38,10 @@ output, which is the README's own rule: "It is about decisions, not throughput."
   health), `absorbed` what a shield took, and `overkill` the damage past death (amended
   2026-09-29).
 - **Casts**, for every actor (`CASTS_QUERY`, unfiltered by source), in `analyze`'s `parse` and
-  `full` profiles and in `raid`'s `load_encounter`. `analyze`'s `speed` profile fetches no casts;
-  the judgement is then withheld with a notice (§6).
+  `full` profiles and in `raid`'s `load_encounter`. A `night` pull read at the `--no-deaths`
+  tier fetches no casts; the judgement is then withheld with a notice (§6) (amended 2026-09-29:
+  this sentence first named `analyze`'s `speed` profile, but `speed` loads only comparison
+  references, which never reach the analyser, and the analysed run is always loaded `full`).
 
 A `graph(dataType: DamageTaken)` would give the curve directly but is not verified, costs points
 on every fight, and saves only a few lines of summing over events already held.
@@ -150,7 +152,8 @@ an answer sat ready.
 **Notices** (`healing.spikes.unavailable`, `measured`), in place of silence:
 - No window cleared the floor: "No moment of this fight was heavy enough to rank."
 - Nobody in the group holds any answer.
-- Casts were not fetched (`analyze`'s speed profile), so no answer can be read.
+- Casts were not fetched (a `night` pull at the `--no-deaths` tier), so no answer can be read
+  (amended 2026-09-29: first written as `analyze`'s speed profile, which only references use).
 
 ## 7. On the page
 

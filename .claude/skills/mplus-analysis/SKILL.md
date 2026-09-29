@@ -142,10 +142,11 @@ never reaches the Summary.
 - **"Ready" is understated, never invented.** A cooldown never pressed in the fight or run is
   invisible, a second charge reads as not ready, and cooldowns are base values with no talent
   reduction. Unready, it may still have been usable; ready, it truly was off its base cooldown.
-- **"Not judged" is not a fault.** Early in a fight a base cooldown reaches back before the log's
-  first second, so the tool cannot tell whether it was up, and says so. "Unanswered, no answer
-  shown ready" is stated as fact, with a reason per answer -- holder dead, pressed within its base
-  cooldown, or not judged -- and is not held against the group.
+- **"Not judged" is not a fault.** Early on, a base cooldown reaches back before the first
+  second -- the fight's start on a raid page, the first pull's start on a keystone -- so the tool
+  cannot tell whether it was up, and says so. "Unanswered, no answer shown ready" is stated as
+  fact, with a reason per answer -- holder dead, pressed within its base cooldown (at a clock, or
+  before a key's first pull), or not judged -- and is not held against the group.
 - **The 10-second lead and the floor of twice the median are chosen numbers**, not measured
   ones. A window below the floor never ranks, so a gentle fight shows a notice rather than a
   crisis.
@@ -154,7 +155,7 @@ never reaches the Summary.
   `unanswered` list on a keystone is weaker than it looks. Say how many answers the group held.
 - `healing.spikes.unavailable` (`measured`) replaces both when the judgement cannot be made: no
   casts were read, nobody holds a listed answer, or no window cleared the floor. None of these
-  is a clean fight.
+  says the fight was clean.
 
 ## The two consumable claims, and which one to lead with
 

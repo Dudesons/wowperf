@@ -233,7 +233,14 @@ def judge(
             continue
         cooldown_ms = answer.ability.cooldown_seconds * 1000
         recent = [when for when in own if moment.start_ms - cooldown_ms <= when <= moment.start_ms]
-        if recent:
+        # A key's casts are read from the fight's start, but its clock starts at
+        # the first pull: a press between the two has no clock to print.
+        if recent and max(recent) < visible_from_ms:
+            unready.append(
+                f"{name}: pressed before the {setting}'s first second, within its base "
+                f"cooldown of {clock_text(answer.ability.cooldown_seconds)}"
+            )
+        elif recent:
             unready.append(
                 f"{name}: pressed at {clock_text((max(recent) - visible_from_ms) / 1000)}, within "
                 f"its base cooldown of {clock_text(answer.ability.cooldown_seconds)}"
@@ -283,7 +290,8 @@ def analyse_spikes(
     moments = heaviest_moments(damage_taken, player_ids, span, combat)
     if not moments:
         # Two different reasons, and only one of them has a median to name:
-        # when every window totals zero, each sits at twice a median of zero.
+        # when every window totals zero, each sits at twice a median of zero,
+        # and when no whole window fits inside combat there is no median at all.
         felt = any(total > 0 for total, _ in _window_totals(damage_taken, player_ids, span, combat))
         return [
             _notice(
@@ -339,7 +347,7 @@ ORDINALS = ("", "second ", "third ", "fourth ", "fifth ", "sixth ", "seventh ", 
 
 
 def _ordinal(rank: int) -> str:
-    """Return the ordinal suffix for a rank (e.g., '', '2nd ', '21st ')."""
+    """Return the ordinal prefix for a rank (e.g., '', 'second ', '11th ', '21st ')."""
     if 1 <= rank <= len(ORDINALS):
         return ORDINALS[rank - 1]
     suffix = "th"
@@ -362,7 +370,10 @@ def _line(verdict: Verdict, origin_ms: int, setting: str) -> str:
     weight = (
         f"{moment.weight:.1f} times the median"
         if moment.weight is not None
-        else f"most of this {setting}'s {SPIKE_WINDOW_SECONDS}-second windows took no damage"
+        else (
+            f"most of this {setting}'s {SPIKE_WINDOW_SECONDS}-second windows in combat took no "
+            "damage"
+        )
     )
     if verdict.state is State.ANSWERED:
         body = f"answered by {_joined(verdict.pressed)}"
@@ -395,7 +406,8 @@ SPIKES_DETAIL = (
     f"{SPIKE_FLOOR:g} times the median {SPIKE_WINDOW_SECONDS}-second window or above, the median "
     "taken over the {setting}'s windows spent in combat. A healing or group-wide defensive "
     "cooldown answers a moment when it was pressed from "
-    f"{ANSWER_LEAD_SECONDS} seconds before the window opened to its close."
+    f"{ANSWER_LEAD_SECONDS} seconds before the window opened to its close. A cooldown never "
+    "pressed in the {setting} is not seen, so it is not listed."
 )
 UNANSWERED_DETAIL = (
     "Judged for the group, never for one healer: the group may have planned this moment for a "
