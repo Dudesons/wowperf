@@ -4,7 +4,7 @@
 import re
 
 from tests.domain.report.test_build_frame import NO_CONSUMABLES, NO_DEFENSIVES, a_pull, a_run
-from wowperf.domain.events import CastEvent, Death
+from wowperf.domain.events import CastEvent, DamageTakenEvent, Death
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.deaths import (
     HEALER_AIM,
@@ -20,6 +20,8 @@ ORIGIN = 3_000_000
 DRUID = Player(actor_id=1, name="Emberkin", class_name="Druid", spec="Restoration", item_level=690)
 PRIEST = Player(actor_id=2, name="Bríala", class_name="Priest", spec="Holy", item_level=690)
 WARRIOR = Player(actor_id=3, name="Stonewake", class_name="Warrior", spec="Arms", item_level=690)
+UNKNOWN = Player(actor_id=4, name="Кириллица", class_name="Mage", spec="", item_level=690)
+GHOST = Player(actor_id=5, name="Briala", class_name="Rogue", spec="", item_level=690)
 
 TRANQUILITY = CooldownAbility(
     ability_id=740, name="Tranquility", cooldown_seconds=180.0, group=True
@@ -54,12 +56,14 @@ def card_for(
     second: float = 300,
     roles: Roles | None = ROLES,
     trimmed: bool = False,
+    damage_taken: tuple[DamageTakenEvent, ...] = (),
 ) -> DeathCard:
     death = death_of(dying, second)
     loaded = LoadedRun(
         run=a_run(players=roster, pulls=(a_pull(0, ORIGIN, at(600)),)),
         deaths=(*deaths, death),
         casts=tuple(casts),
+        damage_taken=damage_taken,
     )
     cards = build_deaths(
         loaded, NO_DEFENSIVES, NO_CONSUMABLES, roles=roles, throughput=THROUGHPUT,
@@ -175,15 +179,43 @@ def test_with_no_other_healer_the_group_holds_one_sentence() -> None:
     assert (group.lines, group.note, group.badge) == ((), NO_OTHER_HEALER, None)
 
 
+def test_with_no_other_healer_and_an_unknown_specialisation_the_note_says_so() -> None:
+    group = healers_of(card_for([], roster=(DRUID, WARRIOR, UNKNOWN), dying=DRUID))
+    assert (group.lines, group.badge) == ((), None)
+    assert group.note == (
+        "No other player's specialisation reads as a healer's, and the log names no "
+        "specialisation for 1 other player: a healer among them would not be listed."
+    )
+
+
+def test_the_dying_players_own_empty_specialisation_is_not_counted_as_unknown() -> None:
+    group = healers_of(card_for([], roster=(WARRIOR, GHOST), dying=GHOST))
+    assert group.note == NO_OTHER_HEALER
+
+
+def test_a_group_with_other_healers_and_an_unknown_specialisation_appends_a_sentence() -> None:
+    group = healers_of(card_for([], roster=(DRUID, WARRIOR, UNKNOWN)))
+    assert group.note.endswith(
+        "The log names no specialisation for 1 other player, so a healer among them is not "
+        "listed here."
+    )
+
+
 def test_the_group_is_badged_and_its_note_states_the_limits() -> None:
-    group = healers_of(card_for([cast(DRUID, 20, None, ability_id=740)]))
+    hit = DamageTakenEvent(
+        actor_id=WARRIOR.actor_id, ability_id=1, ability_name="Venom Bolt", amount=100,
+        timestamp_ms=at(295),
+    )
+    group = healers_of(
+        card_for([cast(DRUID, 20, None, ability_id=740)], damage_taken=(hit,))
+    )
     assert group.badge is not None and group.badge.label == "measured"
     assert group.cooldown_badge is not None and group.cooldown_badge.label == "derived"
     assert group.note == (
         "Casts are counted where they were aimed, not by whom they healed: a smart heal or a "
         "heal over time can reach this player with no cast aimed at them, and a cast at an "
         "enemy can still heal, as Discipline's Atonement does. The heals that landed on this "
-        "player are in the timeline above, named by caster. A group healing cooldown reads as "
+        "player are in this card's timeline, named by caster. A group healing cooldown reads as "
         "ready only when it was pressed somewhere in the log read for this run, not within its "
         "base cooldown before the damage began, and that base cooldown reaches back no further "
         "than the run's first second. Talents that shorten a cooldown are not modelled, a "
@@ -191,6 +223,23 @@ def test_the_group_is_badged_and_its_note_states_the_limits() -> None:
         "ready is understated, never invented. The log cannot show the healers' plan: a ready "
         "cooldown is a fact about the log, not a verdict on a healer."
     )
+
+
+def test_an_untrimmed_card_with_an_empty_timeline_leaves_the_heals_sentence_out() -> None:
+    group = healers_of(card_for([cast(DRUID, 20, None, ability_id=740)]))
+    assert HEALER_AIM in group.note
+    assert HEALER_LANDED not in group.note
+
+
+def test_a_card_with_a_timeline_row_keeps_the_heals_sentence() -> None:
+    hit = DamageTakenEvent(
+        actor_id=WARRIOR.actor_id, ability_id=1, ability_name="Venom Bolt", amount=100,
+        timestamp_ms=at(295),
+    )
+    group = healers_of(
+        card_for([cast(DRUID, 20, None, ability_id=740)], damage_taken=(hit,))
+    )
+    assert HEALER_LANDED in group.note
 
 
 def test_a_group_listing_no_cooldown_carries_no_derived_badge() -> None:

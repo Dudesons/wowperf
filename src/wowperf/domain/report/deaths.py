@@ -167,8 +167,11 @@ HEALER_AIM = (
     "over time can reach this player with no cast aimed at them, and a cast at an enemy can "
     "still heal, as Discipline's Atonement does."
 )
-HEALER_LANDED = "The heals that landed on this player are in the timeline above, named by caster."
-"""Left out of a trimmed card's note: that card draws no timeline to point at."""
+HEALER_LANDED = "The heals that landed on this player are in this card's timeline, named by caster."
+"""Left out of the note whenever the card draws no timeline row: trimmed, or its timeline is
+empty. `.recap` is a two-column grid, so the Healers group can sit beside the timeline rather
+than below it, and either way a card with no timeline row has nothing for this sentence to
+point at."""
 
 HEALER_COOLDOWNS = (
     "A group healing cooldown reads as ready only when it was pressed somewhere in the log read "
@@ -448,11 +451,24 @@ def _healer_cooldown_row(cooldown: HealerCooldown, death: Death, setting: str) -
 
 def _healers(
     sides: tuple[HealerSide, ...], death: Death, names: dict[int, str], setting: str,
-    trimmed: bool,
+    has_timeline: bool, unknown: int,
 ) -> HealerGroup:
-    """The Healers group: one line per other healer, or the one line saying there was none."""
+    """The Healers group: one line per other healer, or the one line saying there was none.
+
+    `unknown` is how many other roster players carry no specialisation the log
+    named -- `Roles.role_of` reads that as damage, so a healer among them would
+    silently drop out of the group. The note says so instead of staying quiet.
+    """
     if not sides:
-        return HealerGroup(note=NO_OTHER_HEALER)
+        if not unknown:
+            return HealerGroup(note=NO_OTHER_HEALER)
+        return HealerGroup(
+            note=(
+                "No other player's specialisation reads as a healer's, and the log names no "
+                f"specialisation for {unknown} other {plural(unknown, 'player')}: a healer "
+                "among them would not be listed."
+            )
+        )
     lines = []
     for side in sides:
         healer = side.healer
@@ -479,9 +495,14 @@ def _healers(
             )
         )
     note = " ".join(
-        [HEALER_AIM, *([] if trimmed else [HEALER_LANDED]),
+        [HEALER_AIM, *([HEALER_LANDED] if has_timeline else []),
          HEALER_COOLDOWNS.format(setting=setting)]
     )
+    if unknown:
+        note += (
+            f" The log names no specialisation for {unknown} other {plural(unknown, 'player')}, "
+            "so a healer among them is not listed here."
+        )
     return HealerGroup(
         lines=tuple(lines),
         badge=badge_for(Confidence.MEASURED),
@@ -606,7 +627,11 @@ def build_deaths(
                             death, loaded.players, loaded.casts, loaded.deaths,
                             loaded.resurrections, roles, throughput, start_ms,
                         ),
-                        death, names, setting, trimmed,
+                        death, names, setting, bool(timeline),
+                        sum(
+                            1 for mate in loaded.players
+                            if mate.actor_id != death.actor_id and mate.spec == ""
+                        ),
                     )
                 ),
                 slug=slug,
