@@ -428,7 +428,7 @@ def test_an_empty_consumables_group_says_why_instead_of_the_caveat() -> None:
     empty = build_deaths(a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()), NO_DEFENSIVES,
                          NO_CONSUMABLES)[0].availability[1]
     assert empty.rows == ()
-    assert empty.note == NO_CONSUMABLE_DATA
+    assert empty.note == NO_CONSUMABLE_DATA.format(setting="run")
     assert empty.note != CONSUMABLE_CAVEAT
 
     loaded = a_loaded_with((a_death(1, LATE_ENOUGH_MS),), ()).model_copy(
@@ -1201,3 +1201,8 @@ def test_a_card_withholds_a_defensive_whose_base_cooldown_reaches_before_the_fir
         ("Icebound Fortitude", "unjudged",
          "not judged, its base cooldown reaches before the run's first second")
     ]
+
+
+def test_a_keystone_cards_empty_consumables_note_names_the_run() -> None:
+    card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()), BLOOD, NO_CONSUMABLES)[0]
+    assert "none is listed for this run" in card.availability[1].note

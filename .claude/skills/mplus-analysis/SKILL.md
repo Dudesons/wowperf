@@ -93,8 +93,9 @@ judge this", never as "this was used enough" or "this was used too little" — b
 rather than reading it off the log, because the log records no cooldown state to check it
 against. The death card's `unseen` state runs into a different version of that same absence: an
 ability with no cast anywhere in the run reads exactly like a talent the player never took, so it
-says only "not seen this run" — the log cannot tell a talent not chosen from one chosen and never
-pressed, or from one that was genuinely unavailable the whole time.
+says only "not seen this run" ("this fight" on a boss fight's card) — the log cannot tell a talent
+not chosen from one chosen and never pressed, or from one that was genuinely unavailable the whole
+time.
 
 An ability that would otherwise read ready, whose base cooldown reaches back before the log's
 first second — a keystone's first pull, a boss fight's own start — is not judged instead. The
