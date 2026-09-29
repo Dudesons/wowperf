@@ -1,6 +1,7 @@
 # Not judged before the log
 
-**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live (§4, "Live").
+**Status:** approved design, 2026-09-29; built 2026-09-29, and exercised live; two outcomes open
+(§4, "Live").
 **Area:** the death card's availability rows (the dying player's own defensives, teammates'
 externals) and the "defensives off cooldown at a death" finding, per pull and pooled across a
 night. It closes the follow-up `docs/plans/2026-09-29-healer-side-of-death-design.md` §7
@@ -139,8 +140,9 @@ A scratch script then loaded each of the eight fights straight from the cache th
   externals group.
 - **The finding, now and before:** `defensives_up_at` named at least one ability at 26 of the 111
   deaths under the new rule and under the old one alike, naming 32 abilities either way.
-  **Findings withdrawn: 0** -- on this sample the finding-level guard never had to drop an
-  ability the old rule would have named.
+  **Findings withdrawn: 0** -- the finding-level guard never fired on this sample, dropping no
+  ability the old rule would have named -- **open**, the same way the own-defensive row above
+  is: a reachable outcome (Task 2's judgement) that this live sample never exercised.
 - **`defensives.unused.*` findings written, across the eight findings files: 23.**
 - The eight HTML pages carried no `>None<`, `>null<`, `>nan<`, `{{` or `{%`.
 
