@@ -159,21 +159,28 @@ never reaches the Summary.
 
 ## The Healers group is on the page, not in the findings file
 
-Every death card carries a "Healers" group: one line per other healer in the group, showing
-their side of this player's last ten seconds. Each line counts that healer's casts by where they
-were aimed — at this player, at themselves, at another player, at a non-player, untargeted — and
-states the last one that reached this player, or that none did in the window. A cast's target is
-where it was aimed, not everyone it healed: a smart heal or a heal-over-time can reach this
-player with no cast aimed at them, and a cast at an enemy can still heal, as Discipline's
-Atonement does. It never names the other targets of a healer's casts.
+Every death card carries a "Healers" group: one line per other healer in the group — every
+other healer gets one, whatever the log shows for them — stating their side of this player's
+last ten seconds. Each line counts that healer's casts by where they were aimed — at this
+player, at themselves, at another player, at a non-player, untargeted — and then says one of
+three things: the last cast that reached this player, that a cast this window never reached
+this player, or that this healer cast nothing at all in the window. A cast's target is where it
+was aimed, not everyone it healed: a smart heal or a heal-over-time can reach this player with
+no cast aimed at them, and a cast at an enemy can still heal, as Discipline's Atonement does. It
+never names the other targets of a healer's casts.
 
-Each line also states where that healer's own group healing cooldowns stood as the run-up
-opened, following the same rule `healing.spikes` reads them by: "ready" is understated, never
-invented — a cooldown never pressed in the log read is invisible, a second charge reads as not
-ready, and cooldowns carry no talent reduction — and "not judged" is not a fault, only a base
-cooldown reaching back before the fight's or run's first second. Read a group's silence the same
-way `defensives.unused.*` teaches: a healer with no line at all is one whose specialisation lists
-no group healing cooldown, not one who held everything back.
+A healer who was alive also has a row for each of their listed group healing cooldowns the log
+ever shows pressed, following the same rule `healing.spikes` reads them by: "ready" is
+understated, never invented — a second charge reads as not ready, and cooldowns carry no talent
+reduction — and "not judged" is not a fault, only a base cooldown reaching back before the
+fight's or run's first second. A cooldown never pressed anywhere in the log read draws no row at
+all, the same rule the heaviest moments follow. A healer who was dead when this player died
+carries no cooldown row at all either way, since a dead player presses nothing. Two different
+notes on a line can otherwise look alike but say different things: "No group healing cooldown is
+listed for ..." is a gap in the reference data — that specialisation lists none at all — while
+"None of their group healing cooldowns was pressed ..." is a fact about the log — cooldowns are
+listed, and none of them was pressed anywhere in the read for this fight or run. Neither is a
+verdict on the healer.
 
 The group is descriptive, never a verdict: it never says a healer should have pressed something,
 held in the wrong place, or was too busy elsewhere — the log cannot show a group's plan, and one
