@@ -235,7 +235,7 @@ read the boss's own damage as a player's."""
 """The wipe fight's boss (named "Ula'tek", matching `_raid_fights_payload`'s
 own wipe fight) as the pace comparison's own queries find it: one game id
 shared by our actor and the reference kill's, and distinct actor ids on each
-side -- the join `find_boss_actor` and the reference-fight lookup are meant
+side -- the join `find_bosses` and the reference-fight lookup are meant
 to make, not one a shared id could pass by accident."""
 RAID_PARSE_CODES = ("refpa", "refpb", "refpc", "refpd", "refpe")
 RAID_PARSE_FIGHT = 8
@@ -326,6 +326,7 @@ def _raid_fights_payload(roster: tuple[dict[str, Any], ...] = RAID_ROSTER) -> di
                         fightPercentage=16.49,
                         startTime=400_000,
                         endTime=700_000,
+                        enemyNPCs=[{"id": PACE_BOSS_OUR_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID}],
                     ),
                 ],
                 "masterData": {

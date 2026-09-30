@@ -23,17 +23,23 @@ from wowperf.adapters.wcl.ingest import (
 )
 from wowperf.adapters.wcl.pace import (
     BOSS_APPEARS_TWICE,
+    BOSS_NOT_AMONG_ENEMIES,
     FIGHT_NOT_IN_REPORT,
     load_pace_sample,
 )
 from wowperf.adapters.wcl.queries import operation_name
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
-from wowperf.domain.comparison.pace import BOSS_IN_NO_REFERENCE, NO_REFERENCE_KILL, NO_SINGLE_BOSS
+from wowperf.domain.comparison.pace import (
+    BOSS_IN_NO_REFERENCE,
+    GRIDS_DIFFER,
+    NO_BOSS,
+    NO_REFERENCE_KILL,
+)
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage, PlayerSeries
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.encounter import Encounter
-from wowperf.domain.model import Player
+from wowperf.domain.model import EnemyNpc, Player
 
 TOKEN = {"access_token": "t", "expires_in": 86400}
 FIGHT_NAME = "The Test Colossus"
@@ -165,6 +171,7 @@ def _encounter(**overrides: Any) -> Encounter:
         start_ms=0,
         end_ms=300000,
         players=(),
+        enemies=(EnemyNpc(actor_id=OUR_BOSS_ACTOR_ID, game_id=BOSS_GAME_ID),),
     )
     fields.update(overrides)
     return Encounter(**fields)
@@ -271,34 +278,131 @@ def _our_boss_actors() -> list[dict[str, object]]:
     ]
 
 
-def test_a_council_report_finds_no_single_boss_and_asks_for_no_graph(tmp_path: Path) -> None:
+def test_a_fight_with_no_boss_among_its_enemies_asks_for_no_graph(tmp_path: Path) -> None:
     calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        name = operation_name(json.loads(request.content)["query"]) or ""
+        calls.append(name)
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        raise AssertionError(f"unexpected operation: {name}")
+
+    encounter = _encounter(enemies=(EnemyNpc(actor_id=99, game_id=999),))
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        encounter,
+        (ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000),),
+    )
+
+    assert sample.unavailable == NO_BOSS
+    assert records == ()
+    assert "BossDamageGraph" not in calls
+
+
+_COUNCIL_ACTORS: list[dict[str, object]] = [
+    {"id": 10, "gameID": 900, "name": "First Warden", "subType": "Boss"},
+    {"id": 11, "gameID": 901, "name": "Second Warden", "subType": "Boss"},
+]
+
+
+def _council_encounter() -> Encounter:
+    return _encounter(
+        boss_name="The Wardens",
+        enemies=(EnemyNpc(actor_id=10, game_id=900), EnemyNpc(actor_id=11, game_id=901)),
+    )
+
+
+def test_a_council_sums_its_bosses_on_both_sides(tmp_path: Path) -> None:
+    """Two boss-flagged enemies, neither named after the fight: one graph each, summed.
+
+    Our bosses deal 3 and 4 a second, so a sum reads 7 and either boss alone
+    reads 3 or 4. The reference's two bosses sit at actor ids 31 and 32, not
+    ours, so a lookup that reused our actor ids would ask for the wrong graphs.
+    """
+    graphs: list[tuple[str, int]] = []
 
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
             return httpx.Response(200, json=TOKEN)
         body = json.loads(request.content)
         name = operation_name(body["query"]) or ""
-        calls.append(name)
+        variables = body.get("variables") or {}
         if name == "NpcActors":
-            return _npc_actors_response(
-                [
-                    {"id": 10, "gameID": 900, "name": "First Warden", "subType": "Boss"},
-                    {"id": 11, "gameID": 901, "name": "Second Warden", "subType": "Boss"},
-                ]
+            return _npc_actors_response(_COUNCIL_ACTORS)
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                0, 300_000, [{"id": 31, "gameID": 900}, {"id": 32, "gameID": 901}]
             )
+        if name == "BossDamageGraph":
+            target = int(variables["targetId"])
+            graphs.append((str(variables["code"]), target))
+            per_second = {10: 3.0, 11: 4.0, 31: 30.0, 32: 40.0}[target]
+            return _graph_response([per_second] * 300, point_start=0, interval=1000.0)
         raise AssertionError(f"unexpected operation: {name}")
 
-    client = _client(handle)
-    own_cache = DiskCache(tmp_path / "own")
-    reference_cache = DiskCache(tmp_path / "reference")
-    encounter = _encounter(boss_name="The Wardens")
+    row = ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000)
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        _council_encounter(), (row,),
+    )
 
-    sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, ())
+    assert sample.unavailable == ""
+    assert sample.ours is not None and sample.ours.amounts[:2] == (7, 7)
+    [reference] = sample.references
+    assert reference.damage.amounts[:2] == (70, 70)
+    assert sorted(graphs) == [(OUR_REPORT, 10), (OUR_REPORT, 11), ("ref1", 31), ("ref1", 32)]
+    assert [one.loaded for one in records] == [True]
 
-    assert sample.unavailable == NO_SINGLE_BOSS
+
+def test_a_reference_missing_one_of_the_councils_bosses_is_dropped(tmp_path: Path) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        name = operation_name(json.loads(request.content)["query"]) or ""
+        if name == "NpcActors":
+            return _npc_actors_response(_COUNCIL_ACTORS)
+        if name == "BossDamageGraph":
+            return _graph_response([3.0] * 300, point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            return _reference_fight_response(0, 300_000, [{"id": 31, "gameID": 900}])
+        raise AssertionError(f"unexpected operation: {name}")
+
+    row = ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000)
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        _council_encounter(), (row,),
+    )
+
+    [record] = records
+    assert record.loaded is False
+    assert record.reason == BOSS_NOT_AMONG_ENEMIES
+    assert sample.unavailable == BOSS_IN_NO_REFERENCE
+
+
+def test_our_councils_graphs_on_different_grids_withhold_with_that_reason(tmp_path: Path) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        if name == "NpcActors":
+            return _npc_actors_response(_COUNCIL_ACTORS)
+        if name == "BossDamageGraph":
+            interval = 1000.0 if int(body["variables"]["targetId"]) == 10 else 950.0
+            return _graph_response([3.0] * 300, point_start=0, interval=interval)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    row = ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000)
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        _council_encounter(), (row,),
+    )
+
+    assert sample.unavailable == GRIDS_DIFFER
     assert records == ()
-    assert "BossDamageGraph" not in calls
 
 
 def test_no_references_asks_for_no_boss_damage_graph_at_all(tmp_path: Path) -> None:

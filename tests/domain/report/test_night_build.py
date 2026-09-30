@@ -7,7 +7,7 @@ from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
-from wowperf.domain.comparison.pace import NO_SINGLE_BOSS, PACE_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace import NO_BOSS, PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
@@ -371,7 +371,7 @@ def test_a_night_handed_a_pace_sample_says_it_draws_pace_and_no_parses() -> None
         (row,) = (one for one in report.observations if one.finding_id == NOT_DRAWN_ID)
         return row.title
 
-    withheld = disclosure({fight_id: PaceSample(unavailable=NO_SINGLE_BOSS)})
+    withheld = disclosure({fight_id: PaceSample(unavailable=NO_BOSS)})
     assert withheld == "No parse comparison is drawn on this page"
     assert disclosure(None) == "No comparison against other kills is drawn on this page"
     assert disclosure({}) == "No comparison against other kills is drawn on this page"
@@ -793,7 +793,7 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
     night = a_night(bosses=(1,))
     encounter = night.night.bosses[0].attempts[0]
     fight_id = encounter.fight_id
-    sample = PaceSample(unavailable=NO_SINGLE_BOSS)
+    sample = PaceSample(unavailable=NO_BOSS)
     findings = analyse_pace(encounter, sample)
 
     report = build_night_report(
@@ -810,7 +810,7 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
 
     named = [line for line in report.provenance.withheld if line.startswith(f"Fight {fight_id}:")]
     assert named == [
-        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_SINGLE_BOSS}"
+        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_BOSS}"
     ]
 
 
@@ -839,7 +839,7 @@ def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
         findings_by_boss=NO_FINDINGS,
         pace_by_fight={
             compared.fight_id: sample,
-            unavailable.fight_id: PaceSample(unavailable=NO_SINGLE_BOSS),
+            unavailable.fight_id: PaceSample(unavailable=NO_BOSS),
         },
     )
     by_fight = {pull.report.provenance.fight_id: pull.report for pull in report.bosses[0].pulls}

@@ -94,7 +94,7 @@ SECOND_BOSS_GAME_ID = 7002
 """The two bosses' own NPC game ids, for the pace comparison's boss lookup.
 
 Both are always in `NpcActors`' answer, whatever `kill_rankings` says: a wipe
-withholds with `NO_REFERENCE_KILL` rather than `NO_SINGLE_BOSS` unless a test
+withholds with `NO_REFERENCE_KILL` rather than `NO_BOSS` unless a test
 says otherwise, and `NO_REFERENCE_KILL` is what the default empty
 `kill_rankings` promises the existing tests below."""
 
@@ -192,6 +192,11 @@ def _night_fight(
         "friendlyPlayers": [one["actor_id"] for one in NIGHT_ROSTER],
         "friendlySpecs": [one["spec"] for one in NIGHT_ROSTER],
         "friendlyItemLevels": [one["item_level"] for one in NIGHT_ROSTER],
+        "enemyNPCs": [
+            {"id": 8001, "gameID": FIRST_BOSS_GAME_ID}
+            if encounter_id == NIGHT_FIRST_BOSS
+            else {"id": 8002, "gameID": SECOND_BOSS_GAME_ID}
+        ],
     }
 
 
@@ -325,7 +330,7 @@ def build_night_transport(
     # and no other boss's, matching spec 14.2: the sharing holds per boss and
     # size, never across bosses. `npc_actors_payload` always carries both
     # bosses' actors, so a wipe withholds `NO_REFERENCE_KILL` (the empty-board
-    # case) rather than `NO_SINGLE_BOSS` (a boss lookup failure) by default.
+    # case) rather than `NO_BOSS` (a boss lookup failure) by default.
     rankings_by_encounter = kill_rankings if kill_rankings is not None else {}
     npc_actors_payload: dict[str, Any] = {
         "reportData": {

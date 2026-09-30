@@ -5,7 +5,7 @@ import re
 
 from tests.domain.comparison.test_pace_curve import a_kill, steady
 from tests.domain.report.test_raid_frame import an_encounter
-from wowperf.domain.comparison.pace import NO_SINGLE_BOSS, PaceSample
+from wowperf.domain.comparison.pace import NO_BOSS, PaceSample
 from wowperf.domain.comparison.pace_curve import PaceReference
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
 from wowperf.domain.encounter import LoadedEncounter
@@ -85,16 +85,16 @@ def test_the_slowest_kill_fallback_is_named_on_its_line() -> None:
 
 def test_a_withheld_wipe_is_listed_with_its_reason_and_not_counted() -> None:
     pulls = [a_pull(12), a_pull(13), a_pull(14)]
-    samples = {12: a_sample(80), 13: PaceSample(unavailable=NO_SINGLE_BOSS), 14: a_sample(80)}
+    samples = {12: a_sample(80), 13: PaceSample(unavailable=NO_BOSS), 14: a_sample(80)}
     line = the_line(pulls, samples)
     assert line is not None
     assert line.title == "2 of 2 wipes ended behind the kills' pace"
-    assert line.evidence[1] == f"Fight 13: not compared. {NO_SINGLE_BOSS}"
+    assert line.evidence[1] == f"Fight 13: not compared. {NO_BOSS}"
 
 
 def test_one_compared_wipe_draws_no_line() -> None:
     pulls = [a_pull(12), a_pull(13)]
-    samples = {12: a_sample(80), 13: PaceSample(unavailable=NO_SINGLE_BOSS)}
+    samples = {12: a_sample(80), 13: PaceSample(unavailable=NO_BOSS)}
     assert the_line(pulls, samples) is None
 
 

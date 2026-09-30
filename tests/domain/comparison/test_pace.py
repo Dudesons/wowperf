@@ -7,8 +7,8 @@ from tests.domain.comparison.test_pace_curve import a_behind_pattern, a_kill, st
 from tests.domain.report.test_raid_frame import an_encounter
 from wowperf.domain.comparison.pace import (
     BOSS_IN_NO_REFERENCE,
+    NO_BOSS,
     NO_REFERENCE_KILL,
-    NO_SINGLE_BOSS,
     NOTHING_TO_COMPARE,
     PACE_ID,
     PACE_NOT_FETCHED,
@@ -153,7 +153,7 @@ def test_a_kill_is_never_compared() -> None:
 
 def test_each_withhold_is_one_notice_carrying_its_reason() -> None:
     for sample, reason in (
-        (PaceSample(unavailable=NO_SINGLE_BOSS), NO_SINGLE_BOSS),
+        (PaceSample(unavailable=NO_BOSS), NO_BOSS),
         (PaceSample(ours=steady(80, 200), unavailable=BOSS_IN_NO_REFERENCE), BOSS_IN_NO_REFERENCE),
         (PaceSample(ours=steady(80, 200)), NO_REFERENCE_KILL),
         # The shape `load_pace_sample` now returns with no references at all:

@@ -24,9 +24,13 @@ PACE_ID = "compare.pace.boss"
 PROJECTION_ID = "compare.pace.projection"
 UNAVAILABLE_ID = "compare.pace.unavailable"
 
-NO_SINGLE_BOSS = (
-    "This fight has no single boss to compare: the report names no one boss actor after the "
-    "fight, which is what a council encounter looks like."
+NO_BOSS = (
+    "No enemy of this fight could be told apart as its boss: none carries the boss flag, "
+    "or more than one is named after the fight."
+)
+GRIDS_DIFFER = (
+    "This fight's bosses' damage graphs came back on different time grids, so their damage "
+    "could not be added up."
 )
 NO_BOSS_DAMAGE = "The damage graph for this boss held no series to compare."
 NO_REFERENCE_KILL = "No reference kill of this raid size could be loaded to compare against."

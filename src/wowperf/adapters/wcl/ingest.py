@@ -684,7 +684,7 @@ def build_player_boss_damage(
 def build_npc_actors(payload: dict[str, Any]) -> tuple[NpcActor, ...]:
     """Every enemy actor of a report, with its boss flag.
 
-    A row missing `id` or `gameID` is skipped: it names nothing `find_boss_actor`
+    A row missing `id` or `gameID` is skipped: it names nothing `find_bosses`
     or a reference fight's enemy list could ever match against.
     """
     report = (payload.get("reportData") or {}).get("report") or {}
