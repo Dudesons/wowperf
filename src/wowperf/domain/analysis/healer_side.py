@@ -47,18 +47,29 @@ class HealerCooldown(Frozen):
 class HealerSide(Frozen):
     """One other healer at one death.
 
-    `cooldowns` leaves out every cooldown never pressed in the log read, and
-    is empty for a dead healer: a dead player presses nothing. `listed` is how
-    many group healing cooldowns the healer's specialisation lists at all, so
-    a caller can tell "none listed" from "none pressed".
+    `cooldowns` leaves out every cooldown never pressed in the log read. A
+    healer dead at the death is read like any other, as the run-up opens: one
+    who pressed and then died shows the press, one alive as the damage began
+    shows what they held then, and one already dead reads DEAD. `listed` is
+    how many group healing cooldowns the healer's specialisation lists at all,
+    so a caller can tell "none listed" from "none pressed".
+
+    `died_ms` is the healer's last death before this one when `dead_at` reads
+    them dead -- no resurrection and no cast since -- and None otherwise. It is
+    read, not seen: on a key a healer who released is alive at the entrance
+    and reads dead until they cast.
     """
 
     healer: Player
-    dead: bool
+    died_ms: int | None
     casts: TargetCounts
     last_at_player_ms: int | None
     cooldowns: tuple[HealerCooldown, ...] = ()
     listed: int = 0
+
+    @property
+    def dead(self) -> bool:
+        return self.died_ms is not None
 
 
 def healer_side(
@@ -115,25 +126,27 @@ def healer_side(
         marked = [
             one for one in throughput.for_spec(healer.class_name, healer.spec) if one.group
         ]
-        readings = (
-            ()
+        readings = tuple(
+            HealerCooldown(ability=ability, reading=reading)
+            for ability in marked
+            if (reading := read_cooldown(
+                ability, healer.actor_id, casts, deaths, resurrections,
+                pressed_from_ms=opens_ms,
+                judged_at_ms=opens_ms,
+                pressed_until_ms=death_ms,
+                visible_from_ms=visible_from_ms,
+            )).reading is not Reading.UNSEEN
+        )
+        died_ms = (
+            max(one.timestamp_ms for one in deaths
+                if one.actor_id == healer.actor_id and one.timestamp_ms < death_ms)
             if dead
-            else tuple(
-                HealerCooldown(ability=ability, reading=reading)
-                for ability in marked
-                if (reading := read_cooldown(
-                    ability, healer.actor_id, casts, deaths, resurrections,
-                    pressed_from_ms=opens_ms,
-                    judged_at_ms=opens_ms,
-                    pressed_until_ms=death_ms,
-                    visible_from_ms=visible_from_ms,
-                )).reading is not Reading.UNSEEN
-            )
+            else None
         )
         sides.append(
             HealerSide(
                 healer=healer,
-                dead=dead,
+                died_ms=died_ms,
                 casts=counts,
                 last_at_player_ms=max(at_player) if at_player else None,
                 cooldowns=readings,

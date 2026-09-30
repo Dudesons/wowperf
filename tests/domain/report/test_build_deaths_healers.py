@@ -136,11 +136,35 @@ def test_a_press_before_the_first_pull_is_timed_back_from_the_death() -> None:
     ]
 
 
-def test_a_dead_healer_reads_dead_and_lists_no_cooldown() -> None:
+def test_a_dead_healer_says_when_they_died_and_what_they_held_as_the_damage_began() -> None:
+    # "Dead" is read from a death with no resurrection and no cast since, so the
+    # line says that much and no more: on a key a healer who released is back at
+    # the entrance, alive, and reads this way until they cast.
     casts = [cast(DRUID, 20, None, ability_id=740)]
     [line] = healers_of(card_for(casts, deaths=(death_of(DRUID, 250),))).lines
-    assert line.summary == "dead when this player died; no cast in the last 10 seconds"
-    assert (line.cooldowns, line.note) == ((), "")
+    assert line.summary == (
+        "died 50.0 s before this player, not seen acting since; no cast in the last 10 seconds"
+    )
+    assert [(row.ability, row.state, row.detail) for row in line.cooldowns] == [
+        ("Tranquility", "dead", "its holder was dead when the damage began")
+    ]
+    assert line.note == ""
+
+
+def test_a_healer_who_pressed_a_group_cooldown_then_died_shows_the_press() -> None:
+    casts = [cast(DRUID, 292, None, ability_id=740)]
+    [line] = healers_of(card_for(casts, deaths=(death_of(DRUID, 295),))).lines
+    assert line.summary.startswith("died 5.0 s before this player, not seen acting since; ")
+    assert [(row.ability, row.state, row.detail) for row in line.cooldowns] == [
+        ("Tranquility", "pressed", "pressed 8.0 s before death")
+    ]
+
+
+def test_a_dead_healer_whose_cooldowns_were_never_pressed_says_so_as_anyone_would() -> None:
+    [line] = healers_of(card_for([], deaths=(death_of(DRUID, 250),))).lines
+    assert (line.cooldowns, line.note) == (
+        (), "None of their group healing cooldowns was pressed in the log read for this run."
+    )
 
 
 def test_a_cooldown_dead_when_the_run_up_opens_reads_dead_though_its_holder_revived() -> None:

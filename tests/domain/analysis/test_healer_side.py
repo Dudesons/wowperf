@@ -129,15 +129,45 @@ def test_a_cast_at_a_dying_player_off_the_roster_counts_once() -> None:
     assert side.casts.total == 1
 
 
-def test_a_dead_healer_is_dead_and_lists_no_cooldown() -> None:
+def test_a_healer_who_died_inside_the_run_up_keeps_what_they_held_as_it_opened() -> None:
+    # The run-up opens at 290 with the druid alive; they die at 295. Tranquility,
+    # last pressed at 20, was off its 180s cooldown as the damage began -- the
+    # instant every cooldown on the card is read at -- whatever came after.
     casts = [cast(DRUID, 20, None, ability_id=740), cast(DRUID, 292, WARRIOR.actor_id)]
     sides = healer_side(
         death_of(WARRIOR, 300), ROSTER, casts, (death_of(DRUID, 295),), (), ROLES, THROUGHPUT,
         ORIGIN,
     )
     druid = sides[0]
-    assert (druid.dead, druid.cooldowns, druid.listed) == (True, (), 1)
+    assert (druid.dead, druid.died_ms, druid.listed) == (True, at(295), 1)
+    assert [(one.ability.name, one.reading) for one in druid.cooldowns] == [
+        ("Tranquility", CooldownReading(reading=Reading.READY))
+    ]
     assert druid.casts == TargetCounts(at_player=1)
+
+
+def test_a_group_cooldown_pressed_just_before_its_holder_died_is_listed_as_pressed() -> None:
+    casts = [cast(DRUID, 292, None, ability_id=740)]
+    druid = healer_side(
+        death_of(WARRIOR, 300), ROSTER, casts, (death_of(DRUID, 295),), (), ROLES, THROUGHPUT,
+        ORIGIN,
+    )[0]
+    assert druid.dead
+    assert [(one.ability.name, one.reading) for one in druid.cooldowns] == [
+        ("Tranquility", CooldownReading(reading=Reading.PRESSED, press_ms=at(292)))
+    ]
+
+
+def test_a_healer_dead_before_the_run_up_opened_reads_dead() -> None:
+    casts = [cast(DRUID, 20, None, ability_id=740)]
+    druid = healer_side(
+        death_of(WARRIOR, 300), ROSTER, casts, (death_of(DRUID, 250),), (), ROLES, THROUGHPUT,
+        ORIGIN,
+    )[0]
+    assert (druid.dead, druid.died_ms) == (True, at(250))
+    assert [(one.ability.name, one.reading) for one in druid.cooldowns] == [
+        ("Tranquility", CooldownReading(reading=Reading.DEAD))
+    ]
 
 
 def test_a_healer_brought_back_before_the_death_is_alive() -> None:
@@ -147,4 +177,4 @@ def test_a_healer_brought_back_before_the_death_is_alive() -> None:
         death_of(WARRIOR, 300), ROSTER, [cast(DRUID, 20, None, ability_id=740)],
         (death_of(DRUID, 200),), (back,), ROLES, THROUGHPUT, ORIGIN,
     )
-    assert sides[0].dead is False
+    assert (sides[0].dead, sides[0].died_ms) == (False, None)

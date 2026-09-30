@@ -413,7 +413,11 @@ def _came_back(loaded: LoadedFight, death: Death, self_resurrections: SelfResurr
 
 def _healer_summary(side: HealerSide, death: Death) -> str:
     """Alive or dead, the run-up's casts by where they were aimed, and the last at this player."""
-    parts = ["dead when this player died" if side.dead else "alive when this player died"]
+    if side.died_ms is not None:
+        seconds = (death.timestamp_ms - side.died_ms) / 1000
+        parts = [f"died {seconds:.1f} s before this player, not seen acting since"]
+    else:
+        parts = ["alive when this player died"]
     counts = side.casts
     window = f"in the last {RUN_UP_SECONDS:g} seconds"
     if not counts.total:
@@ -489,9 +493,7 @@ def _healers(
     for side in sides:
         healer = side.healer
         label = pair_label(healer.class_name, healer.spec, plural=False)
-        if side.dead:
-            note = ""
-        elif not side.listed:
+        if not side.listed:
             note = f"No group healing cooldown is listed for {label}."
         elif not side.cooldowns:
             note = (

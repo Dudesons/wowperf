@@ -186,8 +186,11 @@ ever shows pressed, following the same rule `healing.spikes` reads them by: "rea
 understated, never invented — a second charge reads as not ready, and cooldowns carry no talent
 reduction — and "not judged" is not a fault, only a base cooldown reaching back before the
 fight's or run's first second. A cooldown never pressed anywhere in the log read draws no row at
-all, the same rule the heaviest moments follow. A healer who was dead when this player died
-carries no cooldown row at all either way, since a dead player presses nothing. Two different
+all, the same rule the heaviest moments follow. A healer who died before this player is read the
+same way, as the run-up opens, so a press just before they died still shows; their line says
+"died N s before this player, not seen acting since", which is what the log shows — a death with
+no resurrection and no cast after it — and not proof they were out of the fight: on a key a
+healer who released is alive at the entrance until they cast. Two different
 notes on a line can otherwise look alike but say different things: "No group healing cooldown is
 listed for ..." is a gap in the reference data — that specialisation lists none at all — while
 "None of their group healing cooldowns was pressed ..." is a fact about the log — cooldowns are
