@@ -1,6 +1,7 @@
 # ABOUTME: Cumulative boss damage per second and where one raid's curve sits in the kills' band.
 # ABOUTME: Pure arithmetic the pace findings and the pace chart both read, cannot disagree.
 
+from collections.abc import Sequence
 from enum import StrEnum
 from statistics import median
 
@@ -21,6 +22,34 @@ class BossDamage(Frozen):
     interval_ms: float
     amounts: tuple[int, ...] = ()
     lead_ms: int = 0
+
+
+def sum_boss_damage(parts: Sequence[BossDamage]) -> BossDamage | None:
+    """Several bosses' damage as one series, bucket by bucket, or None.
+
+    A council's bosses are each read through their own graph. Measured
+    2026-10-01, two such graphs of one fight came back on one grid, so their
+    buckets add directly; parts on different grids are refused rather than
+    resampled, since no fight measured has needed it. A shorter part adds
+    nothing past its end.
+    """
+    if not parts:
+        return None
+    first = parts[0]
+    if any(
+        part.interval_ms != first.interval_ms or part.lead_ms != first.lead_ms
+        for part in parts[1:]
+    ):
+        return None
+    length = max(len(part.amounts) for part in parts)
+    return BossDamage(
+        interval_ms=first.interval_ms,
+        amounts=tuple(
+            sum(part.amounts[index] for part in parts if index < len(part.amounts))
+            for index in range(length)
+        ),
+        lead_ms=first.lead_ms,
+    )
 
 
 class PlayerSeries(Frozen):
