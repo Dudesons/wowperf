@@ -15,8 +15,9 @@
 # and for the same reason. A longer cooldown makes an ability read as unavailable
 # more often, and both claims built on this file are weaker for it, never louder.
 #
-# Every id and cooldown was read from the game's own spell data on the date below,
-# one spell at a time, and the name returned had to match the ability intended.
+# Every cooldown, and every id except that of an entry marked "log id", was read from
+# the game's own spell data on the date below, one spell at a time, and the name
+# returned had to match the ability intended.
 # That check alone is not enough: the spell data still serves abilities removed
 # from the game years ago, so availability was confirmed separately against live
 # talent data and current spec guides. This pass dropped a dozen abilities that
@@ -31,10 +32,14 @@
 # "log id 2026-09-30" was corrected by that check. It keeps the base cooldown read when
 # it was written -- the same ability, and no source this project may script confirms a
 # new id's cooldown (docs/plans/2026-09-30-cast-ids-from-the-log-design.md).
-# Unconfirmed by the same check, left unchanged until a log of that specialisation
-# casts them: Doom Winds (384352; 469270 cast in reference runs), Killing Spree
-# (51690; 474478), Guardian Berserk (50334; 106951, possibly Feral's), and Holy
-# Halo (120517; 120644 is Shadow's, and no Holy priest cast any Halo).
+# Unconfirmed by the same check, and left unchanged until a log of that
+# specialisation settles them: Doom Winds (384352; 469270 cast in reference runs),
+# Killing Spree (51690; 474478), Guardian Berserk (50334; 106951, possibly Feral's).
+# Measured 2026-09-30 with the reference tier (cache/references/) read too, 51690 is
+# itself cast there, so Killing Spree is a weaker suspect and the audit no longer
+# lists it; 384352 and 50334 are still never cast. Holy Halo (120517) is left
+# unchanged too: it is never cast, 120644 is Shadow's, and no Holy priest in the eight
+# fights the design read cast any Halo, which reads as a talent not taken.
 verified = "2026-09-06"
 
 

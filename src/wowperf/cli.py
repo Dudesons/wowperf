@@ -344,7 +344,9 @@ def fetch(
 def audit_data(
     cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="The cache of API responses to read"),
 ) -> None:
-    """Check the ability ids in data/ against the ids the cached logs cast. Offline."""
+    """Check the ability ids in data/defensives.toml, data/externals.toml and
+    data/throughput_cooldowns.toml against the ids the cached logs cast. Offline.
+    """
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     if not cache_dir.is_dir():

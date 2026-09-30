@@ -11,10 +11,11 @@
 # deliberate: a talented shorter cooldown makes the ceiling an underestimate,
 # and an underestimate cannot produce a false accusation.
 #
-# Every ability id and cooldown here was read from the game's own spell data via
-# Wowhead's tooltip endpoint on the date below, one spell at a time, and the name
-# returned had to match the ability intended. An id that matches nothing fails
-# silently forever, so recall is not good enough.
+# Every cooldown here, and every ability id except that of an entry marked "log id",
+# was read from the game's own spell data via Wowhead's tooltip endpoint on the date
+# below, one spell at a time, and the name returned had to match the ability
+# intended. An id that matches nothing fails silently forever, so recall is not good
+# enough.
 #
 # Amended 2026-09-30: an id is the one real logs cast when the ability is pressed, not
 # only one the spell data names correctly. Several ids resolved to the right name and
@@ -23,9 +24,12 @@
 # "log id 2026-09-30" was corrected by that check. It keeps the base cooldown read when
 # it was written -- the same ability, and no source this project may script confirms a
 # new id's cooldown (docs/plans/2026-09-30-cast-ids-from-the-log-design.md).
-# Unconfirmed by the same check, left unchanged until a log of that specialisation
-# casts them: Guardian of Ancient Kings (86659; 212641 cast in reference runs),
-# Vengeance Metamorphosis (187827; 200166 cast, possibly by Havoc).
+# Unconfirmed by the same check, and left unchanged until a log of that
+# specialisation settles them: Guardian of Ancient Kings (86659; 212641 cast in
+# reference runs), Vengeance Metamorphosis (187827; 200166 cast, possibly by Havoc).
+# Measured 2026-09-30 with the reference tier (cache/references/) read too, 86659 is
+# itself cast there, so Guardian of Ancient Kings is a weaker suspect and the audit
+# no longer lists it; 187827 is still never cast.
 verified = "2026-09-05"
 
 
@@ -150,7 +154,7 @@ abilities = [
   { ability_id = 235450, name = "Prismatic Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is most likely the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
@@ -159,7 +163,7 @@ abilities = [
   { ability_id = 235313, name = "Blazing Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is most likely the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
@@ -168,7 +172,7 @@ abilities = [
   { ability_id = 11426, name = "Ice Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is most likely the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 

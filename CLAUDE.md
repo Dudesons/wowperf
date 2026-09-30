@@ -460,14 +460,14 @@ lines are unreliable, so the code is the record.
 | `uv run wowperf raid <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--cache-dir DIR] [--out DIR]` | Analyse a raid boss fight against reference kills and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
 | `uv run wowperf progression <url> [--boss ID] [--difficulty N] [--cache-dir DIR] [--out DIR]` | Read every attempt at one boss from one report and write `<code>-<encounter>.progression.json` and `<code>-<encounter>.progression.html` under `--out` |
 | `uv run wowperf night <url> [--deep FIGHT]... [--no-deaths] [--no-compare] [--difficulty N] [--cache-dir DIR] [--out DIR]` | Analyse every boss and every pull one report holds and write `<code>.night.json` and `<code>.night.html` under `--out` |
-| `uv run wowperf audit-data [--cache-dir DIR]` | Check every ability id in `data/` against the ids the cached logs cast, and print the entries never cast with what their name was cast as instead; offline, spends nothing |
+| `uv run wowperf audit-data [--cache-dir DIR]` | Check the ability ids in `data/defensives.toml`, `data/externals.toml` and `data/throughput_cooldowns.toml` against the ids the cached logs cast, and print the entries never cast with what their name was cast as instead; offline, spends nothing |
 
 The five that read a report take a report URL or a bare report code, and each prints what
 the run spent from the hourly point budget, broken down by operation. `audit-data` reads only
-the local cache and spends nothing. `.github/workflows/gate.yml`
-runs the lint, the type check and the offline suite on every push and pull request, and
-builds the wheel to check it carries the report's templates — none of them is a `.py` file,
-so no test running from the source tree would notice one missing.
+the local cache and spends nothing.
+`.github/workflows/gate.yml` runs the lint, the type check and the offline suite on every push
+and pull request, and builds the wheel to check it carries the report's templates — none of
+them is a `.py` file, so no test running from the source tree would notice one missing.
 
 ---
 

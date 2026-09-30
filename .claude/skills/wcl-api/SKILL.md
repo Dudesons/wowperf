@@ -775,9 +775,9 @@ for `uptime_seconds_in`.
 by name — Alter Time, cast `108978` against aura `342246`, and Greater Invisibility, cast
 `110959` against aura `110960` — while 100 did not appear because they were never cast in that
 run. *Corrected 2026-09-30:* `108978` was the data file's id, not a measured cast. No cached
-page casts it; the log casts Alter Time as `342245` (the press) and `342247` (the early
-return), against the same aura `342246`. The id match failed because the data held the wrong
-id, and the name fallback is what found the aura. See
+page casts it; the log casts Alter Time as `342245` (the press) and `342247` (most likely the
+early return), against the same aura `342246`. The id match fails for either cast id, since
+neither is the aura's `342246`; the name fallback is what found it. See
 `docs/plans/2026-09-30-cast-ids-from-the-log-design.md`.
 
 ## A name does not identify an ability, and an id does not identify a button

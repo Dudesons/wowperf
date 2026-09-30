@@ -16,6 +16,15 @@
 # intended. An id that matches nothing fails silently forever, so recall is not enough.
 #
 # group = true marks an ability that answers the whole group's damage (healing-cooldowns design, 2026-09-29).
+#
+# Amended 2026-09-30: an id is the one real logs cast when the ability is pressed, not
+# only one the spell data names correctly. An id can resolve to the right name and
+# never be cast, because the game logs the press under another id, so the spell-data
+# check above is not enough on its own. `wowperf audit-data` checks every entry against
+# the local cache (docs/plans/2026-09-30-cast-ids-from-the-log-design.md); no entry
+# here was corrected by it. Measured 2026-09-30, it lists two entries never cast,
+# under their own or any other id of that name: Pain Suppression and Power Word:
+# Barrier.
 verified = "2026-09-07"
 
 

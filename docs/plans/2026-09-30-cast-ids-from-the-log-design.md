@@ -32,8 +32,9 @@ ids the log uses date from earlier expansions, so ours were wrong when they were
 The evidence was measured 2026-09-30, offline, from the warm cache, at no quota cost.
 
 **Pass 1 (every id on its own):** across 1171 cached pages, every `type: "cast"` row was
-collected. Each data entry was checked against those ids and against every report's
-`masterData.abilities`.
+collected. These are the top level of the cache; the 55 pages of the reference tier, in
+`cache/references/`, were not read. Each data entry was checked against those ids and against
+every report's `masterData.abilities`.
 
 **Pass 2 (per specialisation):** the eight fights that load with a roster were used:
 - `cW38jmwdnZfbHVL4` fights 2, 30, 32, 8, 29, 31;
@@ -60,10 +61,15 @@ that specialisation casts the ability under another id:
 fights, and the other id was cast only in reference runs, where the pages name the class but
 not the specialisation:
 - Doom Winds, Enhancement: 384352 against 469270, cast 190 times;
-- Killing Spree, Outlaw: 51690 against 474478, cast 5 times;
-- Guardian of Ancient Kings, Protection Paladin: 86659 against 212641, cast 4 times;
+- Killing Spree, Outlaw: 51690 against 474478, cast 5 times. The reference tier casts
+  51690 itself 2 times, so this is a weaker suspect;
+- Guardian of Ancient Kings, Protection Paladin: 86659 against 212641, cast 4 times. The
+  reference tier casts 86659 itself 2 times, so this is a weaker suspect;
 - Metamorphosis, Vengeance: 187827 against 200166, which may be Havoc's;
 - Berserk, Guardian: 50334 against 106951, which may be Feral's.
+
+Read with the reference tier as well (1226 pages), 384352, 187827 and 50334 are still cast
+zero times, and so is Holy's Halo, 120517, below.
 
 **Not suspects:**
 - **Halo for Shadow** (120644) is right; Shadow casts it 47 times.
@@ -94,8 +100,8 @@ in a comment. Casts are **never summed across ids that share a name**: the skill
 and summing would count one press two or three times.
 
 Alter Time is the case the rule has to state outright. Its first press, 342245, starts the
-cooldown, and its second, 342247, ends the effect early. The entry takes 342245, so a press
-counts once per cooldown.
+cooldown, and its second, 342247, most likely ends the effect early. The entry takes 342245, so
+a press counts once per cooldown.
 
 **A corrected id keeps the entry's base cooldown, checked against the log.** *Decided
 2026-09-30, over reading each new id's cooldown by hand.* It is the same ability, and its
@@ -124,6 +130,8 @@ alone in the eight fights, and no other Metamorphosis id is cast by that special
 - **The data files:**
   - the eight confirmed abilities, twelve entries in all, take the log's id and keep their
     base cooldown (§3), with the shortest same-player gap recorded beside each;
+    *amended 2026-09-30: the gaps are recorded once, per corrected id, in §5 Live, not
+    beside each entry;*
   - each file's header gains the rule in §3 and a dated line naming this pass;
   - the five likely ones are not changed. They are listed in the header as unconfirmed, with
     the evidence above, until a log of that specialisation confirms them.
@@ -168,16 +176,21 @@ alone in the eight fights, and no other Metamorphosis id is cast by that special
 - **Goldens:** none should move, because none draws any of these abilities (checked
   2026-09-30).
 
-**Live (2026-09-30, warm cache, offline).** The eight fights of §2 were read twice, once with the
-old `defensives.toml` and `throughput_cooldowns.toml` taken from `main`, once with the corrected
-files.
+**Live (2026-09-30, warm cache; the audit and the row counts offline, the two commands 1.00
+point each).** The eight fights of §2 were read twice, once with the old `defensives.toml` and
+`throughput_cooldowns.toml` taken from `main`, once with the corrected files.
 
 - **The audit.** Before the correction: "defensives: 34 of 139 entries never cast",
   "externals: 2 of 19 entries never cast", "throughput_cooldowns: 39 of 118 entries never cast".
   After: "defensives: 29 of 139 entries never cast", "externals: 2 of 19 entries never cast",
-  "throughput_cooldowns: 32 of 118 entries never cast". Both read 1171 cached pages, and 1159
-  distinct ability ids were cast. The twelve corrected entries left the lists: five in
-  defensives, seven in throughput.
+  "throughput_cooldowns: 32 of 118 entries never cast". Both read the top level of the cache
+  only, 1171 cached pages, and 1159 distinct ability ids were cast. The twelve corrected
+  entries left the lists: five in defensives, seven in throughput.
+- **The audit, with the reference tier read too.** After the correction it prints
+  "defensives: 27 of 139 entries never cast", "externals: 2 of 19 entries never cast",
+  "throughput_cooldowns: 20 of 118 entries never cast", and "Read 1226 cached pages: 1256
+  distinct ability ids cast." None of the twelve corrected entries is listed, and none of
+  their old ids is cast in the reference tier either.
 - **Death-card rows for the eight abilities, by state.** Rows were counted by ability as well as
   by state, and 24 rows carry one of the eight names on both sides. All 24 belong to Alter Time
   (11) and Fortifying Brew (13); no row named Metamorphosis, so Vengeance's unchanged defensive
@@ -206,23 +219,26 @@ files.
   changed.
 - **Two gaps sit under half their cooldown, and neither is explained.** Fortifying Brew's 94.8 s
   is under half of either 420 s or 360 s, so the conclusion holds whichever caster it came from,
-  and Bladestorm's 24.5 s against 90 s is under half as well. Either might be a talent, a reset, or more than
-  one cast row per press; the log cannot say which, and the cooldowns stand. Two more, Breath of
-  Sindragosa and The Hunt, sit under their cooldown but above half of it. What the gaps cannot
-  show is a cooldown set too short, so that half stays unverified (§3).
+  and Bladestorm's 24.5 s against 90 s is under half as well. Each of the two gaps might be a
+  talent, a reset, or more than one cast row per press; the log cannot say which, and the
+  cooldowns stand. Two more, Breath of Sindragosa and The Hunt, sit under their cooldown but
+  above half of it. What the gaps cannot show is a cooldown set too short, so that half stays
+  unverified (§3).
 - **Fortifying Brew** keeps 420 s for Mistweaver and Windwalker beside Brewmaster's 360 s on
   purpose, since §3 keeps each entry's cooldown.
-- **Two warm commands, as a reader sees them.** `wowperf raid` on fight 30 of
-  `cW38jmwdnZfbHVL4` spent 1.00 point, and `wowperf analyze` on fight 36 of `6Kx1P9GbNXrcLdHa`
-  spent 1.00 point. Counting `>None<`, `>null<`, `>nan<`, `{{` and `{%` in the two written pages
-  gave 0 of each in both.
+- **Two warm commands, as a reader sees them.** `wowperf raid --no-compare` on fight 30 of
+  `cW38jmwdnZfbHVL4` spent 1.00 point, and `wowperf analyze --no-compare` on fight 36 of
+  `6Kx1P9GbNXrcLdHa` spent 1.00 point. Counting `>None<`, `>null<`, `>nan<`, `{{` and `{%` in
+  the two written pages gave 0 of each in both.
 
 **Open.** These outcomes came out zero or never occurred, and none is a success:
 - **The card states `held`, `faded` and `not judged`** were reached by no corrected row. Only
   `cooldown`, `pressed`, `ready` and `unseen` occurred, so the refinement of a press into `held`
   or `faded` was not exercised on these ids.
-- **The throughput findings** named none of the eight, before or after, on either key. Nothing
-  here shows that a corrected throughput id changes a throughput finding.
+- **The throughput findings** named none of the eight, before or after, on either key. Only
+  the two key fights, 36 and 72, could produce a throughput finding, since a raid fight
+  computes none. Nothing here shows that a corrected throughput id changes a throughput
+  finding.
 - **17 rows are still `unseen`: 10 for Alter Time and 7 for Fortifying Brew.** The log cannot
   say whether each is a player who never pressed the ability or an id still wrong. The audit no
   longer lists Alter Time or Fortifying Brew, which is the only check made; it still lists
@@ -231,7 +247,9 @@ files.
 ## 6. Out of scope
 
 - The five likely entries and the roughly thirty never named. They need logs from those
-  specialisations. The audit will list them every time it runs.
+  specialisations. The audit lists them every time it runs while their own ids stay uncast;
+  it no longer lists Killing Spree or Guardian of Ancient Kings, whose own ids the reference
+  tier casts.
 - Modelling abilities whose one press logs several ids beyond choosing one.
 - Talents that change an ability's id without changing its name; the audit surfaces them as
   they appear.
