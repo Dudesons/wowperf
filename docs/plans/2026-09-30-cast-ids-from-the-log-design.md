@@ -178,18 +178,23 @@ files.
   "throughput_cooldowns: 32 of 118 entries never cast". Both read 1171 cached pages, and 1159
   distinct ability ids were cast. The twelve corrected entries left the lists: five in
   defensives, seven in throughput.
-- **Death-card rows for the eight abilities, by state.** Only Alter Time and Fortifying Brew are
-  defensives, so only they draw a row on a death card; there were 24 such rows. Old: 24
-  `unseen`. New: 5 `cooldown`, 1 `pressed`, 1 `ready`, 17 `unseen`.
+- **Death-card rows for the eight abilities, by state.** Rows were counted by ability as well as
+  by state, and 24 rows carry one of the eight names on both sides. All 24 belong to Alter Time
+  (11) and Fortifying Brew (13); no row named Metamorphosis, so Vengeance's unchanged defensive
+  entry drew none on these fights, and the six throughput abilities draw no card row. Old: Alter
+  Time 11 `unseen`, Fortifying Brew 13 `unseen`. New: Alter Time 1 `ready` and 10 `unseen`;
+  Fortifying Brew 5 `cooldown`, 1 `pressed` and 7 `unseen`.
 - **Findings naming one of the eight, by kind.** Old: none. New: 5 `defensives.ceiling` and 1
   `defensives.unused`.
 - **Shortest gap between one player's presses of a corrected id, within one fight, against the
-  entry's cooldown.**
+  entry's cooldown.** Each gap is the shortest for that id across every caster of it, whatever
+  the caster's specialisation. An id can be pressed by more than one specialisation, each with
+  its own entry, and the measurement does not say which caster the shortest gap came from.
 
   | Id | Ability | Shortest gap | Data cooldown |
   | --- | --- | --- | --- |
   | 342245 | Alter Time | 1033.4 s | 60 s |
-  | 115203 | Fortifying Brew | 94.8 s | 420 s |
+  | 115203 | Fortifying Brew | 94.8 s | 420 s (Mistweaver, Windwalker) or 360 s (Brewmaster) |
   | 446035 | Bladestorm | 24.5 s | 90 s |
   | 1249658 | Breath of Sindragosa | 112.2 s | 120 s |
   | 385627 | Kingsbane | 60.3 s | 45 s |
@@ -200,7 +205,8 @@ files.
   Every id has a second press in these fights, so none reads "no second press". No cooldown was
   changed.
 - **Two gaps sit under half their cooldown, and neither is explained.** Fortifying Brew's 94.8 s
-  against 420 s and Bladestorm's 24.5 s against 90 s might be a talent, a reset, or more than
+  is under half of either 420 s or 360 s, so the conclusion holds whichever caster it came from,
+  and Bladestorm's 24.5 s against 90 s is under half as well. Either might be a talent, a reset, or more than
   one cast row per press; the log cannot say which, and the cooldowns stand. Two more, Breath of
   Sindragosa and The Hunt, sit under their cooldown but above half of it. What the gaps cannot
   show is a cooldown set too short, so that half stays unverified (§3).
@@ -217,9 +223,10 @@ files.
   or `faded` was not exercised on these ids.
 - **The throughput findings** named none of the eight, before or after, on either key. Nothing
   here shows that a corrected throughput id changes a throughput finding.
-- **17 rows are still `unseen`.** The log cannot say whether each is a player who never pressed
-  the ability or an id still wrong; the audit, which no longer lists either ability, is the
-  only check made.
+- **17 rows are still `unseen`: 10 for Alter Time and 7 for Fortifying Brew.** The log cannot
+  say whether each is a player who never pressed the ability or an id still wrong. The audit no
+  longer lists Alter Time or Fortifying Brew, which is the only check made; it still lists
+  Vengeance Metamorphosis (187827), one of the five likely entries left unchanged.
 
 ## 6. Out of scope
 
