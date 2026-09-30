@@ -321,6 +321,11 @@ def build_encounter(
             for t in fight.get("phaseTransitions") or ()
         ),
         phases=phases,
+        enemies=tuple(
+            EnemyNpc(actor_id=int(npc["id"]), game_id=int(npc["gameID"]))
+            for npc in fight.get("enemyNPCs") or ()
+            if npc.get("id") is not None and npc.get("gameID") is not None
+        ),
         start_ms=int(fight["startTime"]),
         end_ms=int(fight["endTime"]),
         owner_name=(report.get("owner") or {}).get("name"),

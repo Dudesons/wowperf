@@ -95,6 +95,7 @@ query Fights($code: String!) {
         friendlyPlayers
         friendlySpecs
         friendlyItemLevels
+        enemyNPCs { id gameID }
         dungeonPulls {
           id
           name

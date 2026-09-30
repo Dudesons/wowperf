@@ -18,6 +18,7 @@ from wowperf.adapters.wcl.ingest import (
 from wowperf.adapters.wcl.queries import talents_query
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.loadout import Loadout, StatBlock
+from wowperf.domain.model import EnemyNpc
 
 FIXTURE = Path(__file__).parent / "fixtures" / "report_fights.json"
 
@@ -469,6 +470,22 @@ def test_a_missing_difficulty_is_refused_rather_than_defaulted() -> None:
 def test_a_size_the_report_omits_falls_back_to_the_roster() -> None:
     encounter = build_encounter(a_raid_report(), a_raid_fight(size=None), partition=1)
     assert encounter.size == 2
+
+
+def test_a_boss_fight_carries_its_own_enemies_in_the_order_the_log_lists_them() -> None:
+    fight = a_raid_fight(
+        enemyNPCs=[{"id": 203, "gameID": 259181}, {"id": 174, "gameID": 266403}]
+    )
+    encounter = build_encounter(a_raid_report(), fight, partition=1)
+    assert encounter.enemies == (
+        EnemyNpc(actor_id=203, game_id=259181),
+        EnemyNpc(actor_id=174, game_id=266403),
+    )
+
+
+def test_a_boss_fight_without_an_enemy_list_carries_none() -> None:
+    encounter = build_encounter(a_raid_report(), a_raid_fight(), partition=1)
+    assert encounter.enemies == ()
 
 
 def test_a_boss_fights_casts_carry_no_pull_index() -> None:

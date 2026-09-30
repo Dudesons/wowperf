@@ -17,7 +17,7 @@ from wowperf.domain.events import (
     InterruptEvent,
     Resurrection,
 )
-from wowperf.domain.model import DamageDoneSeries, Player
+from wowperf.domain.model import DamageDoneSeries, EnemyNpc, Player
 from wowperf.domain.phases import Phase, PhaseTransition
 
 
@@ -56,6 +56,11 @@ class Encounter(Frozen):
     # `phase_transitions` says when each began; this says what each is called,
     # and a phase claim needs both.
     phases: tuple[Phase, ...] = ()
+    # This fight's own enemy actors, as the log lists them. The boss lookup reads
+    # these rather than the report's whole actor list: a report's `masterData`
+    # spans every fight, and some adds carry a boss frame (wcl-api skill,
+    # 2026-10-01). Empty where the response carried no list.
+    enemies: tuple[EnemyNpc, ...] = ()
     start_ms: int
     end_ms: int
     owner_name: str | None = None

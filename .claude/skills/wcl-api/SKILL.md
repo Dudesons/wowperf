@@ -1355,6 +1355,29 @@ encounters on this report (Entombed Sentinels, The Coiled Altar) each field two 
 neither named after the fight. A reference fight's boss is found by our boss's `gameID` in that
 fight's `enemyNPCs`, 1.00 point each, and was found on all four references read.
 
+## A boss's actor name can differ from its fight's, and a council has no boss named for it
+
+Measured 2026-10-01 against report `6jHcTvtB4XAMGZag`: `REFERENCE_FIGHT_QUERY` on our own
+fights, and `BOSS_DAMAGE_GRAPH_QUERY` on the council fights.
+
+**Fight-level `enemyNPCs { id gameID }` is read on our own report's fights too**, not only on a
+reference's. `FIGHTS_QUERY` now carries it, so an `Encounter` holds the actors this fight fielded.
+
+**A boss-flagged actor's name can differ from the fight's.** Fights 20, 29 and 38, named
+"Vashnik the Malignant", each list one boss-flagged enemy, named "Vashnik" (id 203, gameID
+259181). The exact-name rule above found no boss on every such pull.
+
+**A single-boss fight can list boss-flagged adds.** Fight 3 ("Nek'zali the Soulcoiler") lists
+three boss-flagged enemies: the boss, "Drowned Echo" and "Echo of Jawae".
+
+**A council lists its bosses and no boss-flagged actor named after the fight.** Fights 8 and 15
+("Entombed Sentinels") list "Blood of Ula'tek" (gameID 258558) and "Breath of Ula'tek" (258557).
+Their two boss-scoped graphs came back on one grid: interval 952.2875 ms on fight 8 and
+1657.2875 ms on fight 15, lead 0, 241 buckets each.
+
+**Cost:** the probe spent 17 points: six `ReferenceFight` lookups at 2 points each, and four
+graphs.
+
 ## A reference kill's roster costs one point more, read in the same lookup
 
 Measured 2026-09-28 against the four reference kills the mechanics comparison drew for fight 30 of
