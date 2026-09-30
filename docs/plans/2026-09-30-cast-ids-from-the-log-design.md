@@ -1,6 +1,6 @@
 # Cast ids from the log
 
-**Status:** draft for review, 2026-09-30.
+**Status:** approved and built, 2026-09-30.
 **Area:** the hand-maintained ability data (`data/defensives.toml`,
 `data/throughput_cooldowns.toml`, `data/externals.toml`) and the method that verifies it. The
 analysers are unchanged: they match casts by `ability_id`, correctly. The ids they are handed
@@ -167,6 +167,59 @@ alone in the eight fights, and no other Metamorphosis id is cast by that special
   - any state that never occurs is recorded as open.
 - **Goldens:** none should move, because none draws any of these abilities (checked
   2026-09-30).
+
+**Live (2026-09-30, warm cache, offline).** The eight fights of §2 were read twice, once with the
+old `defensives.toml` and `throughput_cooldowns.toml` taken from `main`, once with the corrected
+files.
+
+- **The audit.** Before the correction: "defensives: 34 of 139 entries never cast",
+  "externals: 2 of 19 entries never cast", "throughput_cooldowns: 39 of 118 entries never cast".
+  After: "defensives: 29 of 139 entries never cast", "externals: 2 of 19 entries never cast",
+  "throughput_cooldowns: 32 of 118 entries never cast". Both read 1171 cached pages, and 1159
+  distinct ability ids were cast. The twelve corrected entries left the lists: five in
+  defensives, seven in throughput.
+- **Death-card rows for the eight abilities, by state.** Only Alter Time and Fortifying Brew are
+  defensives, so only they draw a row on a death card; there were 24 such rows. Old: 24
+  `unseen`. New: 5 `cooldown`, 1 `pressed`, 1 `ready`, 17 `unseen`.
+- **Findings naming one of the eight, by kind.** Old: none. New: 5 `defensives.ceiling` and 1
+  `defensives.unused`.
+- **Shortest gap between one player's presses of a corrected id, within one fight, against the
+  entry's cooldown.**
+
+  | Id | Ability | Shortest gap | Data cooldown |
+  | --- | --- | --- | --- |
+  | 342245 | Alter Time | 1033.4 s | 60 s |
+  | 115203 | Fortifying Brew | 94.8 s | 420 s |
+  | 446035 | Bladestorm | 24.5 s | 90 s |
+  | 1249658 | Breath of Sindragosa | 112.2 s | 120 s |
+  | 385627 | Kingsbane | 60.3 s | 45 s |
+  | 200166 | Metamorphosis | 121.1 s | 120 s |
+  | 385059 | Odyn's Fury | 46.1 s | 45 s |
+  | 370965 | The Hunt | 61.7 s | 90 s |
+
+  Every id has a second press in these fights, so none reads "no second press". No cooldown was
+  changed.
+- **Two gaps sit under half their cooldown, and neither is explained.** Fortifying Brew's 94.8 s
+  against 420 s and Bladestorm's 24.5 s against 90 s might be a talent, a reset, or more than
+  one cast row per press; the log cannot say which, and the cooldowns stand. Two more, Breath of
+  Sindragosa and The Hunt, sit under their cooldown but above half of it. What the gaps cannot
+  show is a cooldown set too short, so that half stays unverified (§3).
+- **Fortifying Brew** keeps 420 s for Mistweaver and Windwalker beside Brewmaster's 360 s on
+  purpose, since §3 keeps each entry's cooldown.
+- **Two warm commands, as a reader sees them.** `wowperf raid` on fight 30 of
+  `cW38jmwdnZfbHVL4` spent 1.00 point, and `wowperf analyze` on fight 36 of `6Kx1P9GbNXrcLdHa`
+  spent 1.00 point. Counting `>None<`, `>null<`, `>nan<`, `{{` and `{%` in the two written pages
+  gave 0 of each in both.
+
+**Open.** These outcomes came out zero or never occurred, and none is a success:
+- **The card states `held`, `faded` and `not judged`** were reached by no corrected row. Only
+  `cooldown`, `pressed`, `ready` and `unseen` occurred, so the refinement of a press into `held`
+  or `faded` was not exercised on these ids.
+- **The throughput findings** named none of the eight, before or after, on either key. Nothing
+  here shows that a corrected throughput id changes a throughput finding.
+- **17 rows are still `unseen`.** The log cannot say whether each is a player who never pressed
+  the ability or an id still wrong; the audit, which no longer lists either ability, is the
+  only check made.
 
 ## 6. Out of scope
 
