@@ -73,9 +73,10 @@ This brings back, per pull:
 The reference sample is drawn once per boss and raid size and shared across that boss's pulls
 through the one-day reference cache. Our own damage-taken table is one query per pull.
 
-The pace comparison takes its reference kills from the mechanics sample's members, as `raid`
-already does, rather than from the night's separate `_pace_references`. One sample per boss, one
-set of reference kills on the page.
+The pace comparison takes its reference kills from the mechanics sample's members first, as
+`raid` does, followed by the rest of the board. Without a failure that is exactly the mechanics
+sample; a member whose pace graph fails is refilled from the rows behind it, as the night
+refills today, rather than shrinking the pace sample.
 
 ### 4.2 Finding the boss by the fight's enemies, not by name
 
@@ -97,6 +98,15 @@ If the probe shows an add with a boss frame inside a single-boss fight, the tie-
 current rule: among the fight's boss-flagged enemies, the one named after the fight, else the one
 whose name the fight's name begins with. The probe decides whether that tie-break is needed at
 all; it is not built speculatively.
+
+**Probe result, 2026-10-01.** It is needed. Each Vashnik fight lists one boss-flagged enemy,
+"Vashnik". The Entombed Sentinels fights list two, Blood and Breath of Ula'tek, neither named
+after the fight. But Nek'zali's fight lists three: the boss and two boss-framed adds ("Drowned
+Echo", "Echo of Jawae"). The rule is therefore: the boss-flagged enemies of this fight; if
+exactly one is named after the fight (equal, or its name followed by a space opens the fight's
+name), that one alone; if several are, none; otherwise all of them, one being a boss under
+another name and several a council. The council's two graphs came back on one grid on both
+fights read.
 
 ### 4.3 Councils: the bosses' damage summed
 
