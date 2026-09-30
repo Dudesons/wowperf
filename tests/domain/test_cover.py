@@ -150,9 +150,10 @@ def test_a_press_inside_two_overlapping_bands_resolves_to_the_one_that_started_l
 # an aura by the id of the buff itself, and `data/defensives.toml` (and
 # `data/throughput_cooldowns.toml` beside it) records the id of the spell
 # *cast* to apply it -- the same spell for most abilities, but not for Alter
-# Time (cast 108978, buff 342246) or Greater Invisibility (cast 110959, buff
+# Time (cast 342245, buff 342246) or Greater Invisibility (cast 110959, buff
 # 110960), measured against the cached aura tables for report
-# `6Kx1P9GbNXrcLdHa` (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11).
+# `6Kx1P9GbNXrcLdHa` (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11, corrected
+# 2026-09-30).
 
 
 def test_resolve_aura_finds_an_aura_by_its_own_id() -> None:
@@ -162,12 +163,12 @@ def test_resolve_aura_finds_an_aura_by_its_own_id() -> None:
 
 
 def test_resolve_aura_falls_back_to_the_name_when_the_id_does_not_match() -> None:
-    # The regression this resolver exists for: the cast id (108978, Alter
+    # The regression this resolver exists for: the cast id (342245, Alter
     # Time's spell) finds nothing in a table keyed by the buff's own id
     # (342246), so the name is what has to bridge the two.
     aura = Aura(ability_id=342246, name="Alter Time", total_uptime_ms=4000, uses=1)
     auras = PlayerAuras(actor_id=1, on_self=(aura,))
-    assert resolve_aura(auras, 108978, "Alter Time") is aura
+    assert resolve_aura(auras, 342245, "Alter Time") is aura
 
 
 def test_resolve_aura_finds_nothing_when_neither_id_nor_name_match() -> None:

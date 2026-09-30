@@ -15,14 +15,31 @@
 # and for the same reason. A longer cooldown makes an ability read as unavailable
 # more often, and both claims built on this file are weaker for it, never louder.
 #
-# Every id and cooldown was read from the game's own spell data on the date below,
-# one spell at a time, and the name returned had to match the ability intended.
+# Every cooldown, and every id except that of an entry marked "log id", was read from
+# the game's own spell data on the date below, one spell at a time, and the name
+# returned had to match the ability intended.
 # That check alone is not enough: the spell data still serves abilities removed
 # from the game years ago, so availability was confirmed separately against live
 # talent data and current spec guides. This pass dropped a dozen abilities that
 # resolved perfectly and no longer exist.
 #
 # group = true marks an ability that answers the whole group's damage (healing-cooldowns design, 2026-09-29).
+#
+# Amended 2026-09-30: an id is the one real logs cast when the ability is pressed, not
+# only one the spell data names correctly. Several ids resolved to the right name and
+# were never cast, because the game now logs the press under another id.
+# `wowperf audit-data` checks every entry against the local cache. An entry marked
+# "log id 2026-09-30" was corrected by that check. It keeps the base cooldown read when
+# it was written -- the same ability, and no source this project may script confirms a
+# new id's cooldown (docs/plans/2026-09-30-cast-ids-from-the-log-design.md).
+# Unconfirmed by the same check, and left unchanged until a log of that
+# specialisation settles them: Doom Winds (384352; 469270 cast in reference runs),
+# Killing Spree (51690; 474478), Guardian Berserk (50334; 106951, possibly Feral's).
+# Measured 2026-09-30 with the reference tier (cache/references/) read too, 51690 is
+# itself cast there, so Killing Spree is a weaker suspect and the audit no longer
+# lists it; 384352 and 50334 are still never cast. Holy Halo (120517) is left
+# unchanged too: it is never cast, 120644 is Shadow's, and no Holy priest in the eight
+# fights the design read cast any Halo, which reads as a talent not taken.
 verified = "2026-09-06"
 
 
@@ -40,7 +57,7 @@ abilities = [
 abilities = [
   { ability_id = 51271, name = "Pillar of Frost", cooldown_seconds = 45.0 },
   { ability_id = 279302, name = "Frostwyrm's Fury", cooldown_seconds = 90.0 },
-  { ability_id = 152279, name = "Breath of Sindragosa", cooldown_seconds = 120.0 },
+  { ability_id = 1249658, name = "Breath of Sindragosa", cooldown_seconds = 120.0 },  # log id 2026-09-30, was 152279
 ]
 
 ["DeathKnight/Unholy"]
@@ -51,8 +68,8 @@ abilities = [
 
 ["DemonHunter/Havoc"]
 abilities = [
-  { ability_id = 191427, name = "Metamorphosis", cooldown_seconds = 120.0 },
-  { ability_id = 323639, name = "The Hunt", cooldown_seconds = 90.0 },
+  { ability_id = 200166, name = "Metamorphosis", cooldown_seconds = 120.0 },  # log id 2026-09-30, was 191427
+  { ability_id = 370965, name = "The Hunt", cooldown_seconds = 90.0 },  # log id 2026-09-30, was 323639; 370966 logs with it
 ]
 
 ["DemonHunter/Vengeance"]
@@ -221,7 +238,7 @@ abilities = [
 ["Rogue/Assassination"]
 abilities = [
   { ability_id = 360194, name = "Deathmark", cooldown_seconds = 120.0 },
-  { ability_id = 192759, name = "Kingsbane", cooldown_seconds = 45.0 },
+  { ability_id = 385627, name = "Kingsbane", cooldown_seconds = 45.0 },  # log id 2026-09-30, was 192759
 ]
 
 ["Rogue/Outlaw"]
@@ -278,7 +295,7 @@ abilities = [
 abilities = [
   { ability_id = 167105, name = "Colossus Smash", cooldown_seconds = 45.0 },
   { ability_id = 107574, name = "Avatar", cooldown_seconds = 90.0 },
-  { ability_id = 227847, name = "Bladestorm", cooldown_seconds = 90.0 },
+  { ability_id = 446035, name = "Bladestorm", cooldown_seconds = 90.0 },  # log id 2026-09-30, was 227847
   { ability_id = 228920, name = "Ravager", cooldown_seconds = 90.0 },
   { ability_id = 376079, name = "Champion's Spear", cooldown_seconds = 90.0 },
   { ability_id = 384110, name = "Wrecking Throw", cooldown_seconds = 45.0 },
@@ -288,8 +305,8 @@ abilities = [
 abilities = [
   { ability_id = 1719, name = "Recklessness", cooldown_seconds = 90.0 },
   { ability_id = 107574, name = "Avatar", cooldown_seconds = 90.0 },
-  { ability_id = 227847, name = "Bladestorm", cooldown_seconds = 90.0 },
-  { ability_id = 205545, name = "Odyn's Fury", cooldown_seconds = 45.0 },
+  { ability_id = 446035, name = "Bladestorm", cooldown_seconds = 90.0 },  # log id 2026-09-30, was 227847
+  { ability_id = 385059, name = "Odyn's Fury", cooldown_seconds = 45.0 },  # log id 2026-09-30, was 205545; 385060 and 385062 log with it
   { ability_id = 376079, name = "Champion's Spear", cooldown_seconds = 90.0 },
   { ability_id = 384110, name = "Wrecking Throw", cooldown_seconds = 45.0 },
 ]
