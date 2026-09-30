@@ -1,5 +1,5 @@
 # ABOUTME: Reads cached Warcraft Logs pages for the ability ids they cast and the names they give.
-# ABOUTME: Only cast rows and ability tables are read; actors, and so player names, never are.
+# ABOUTME: Keeps only cast rows and ability tables; actors, so player names, are never recorded.
 
 import json
 from collections import Counter
@@ -16,7 +16,10 @@ class CachedIds(NamedTuple):
 
 
 def scan_cache(directory: Path) -> CachedIds:
-    """Every cast row and every ability-table entry across the pages under `directory`.
+    """Every cast row and every ability-table entry on every page under `directory`.
+
+    Every `*.json` file at any depth is a page, the reference tier's
+    subdirectory included.
 
     A page is read wherever its rows sit, since a query can nest them under any
     alias: a cast row is any object with `type` "cast" and an integer
@@ -44,7 +47,7 @@ def scan_cache(directory: Path) -> CachedIds:
             for item in node:
                 walk(item, in_abilities)
 
-    for path in sorted(directory.glob("*.json")):
+    for path in sorted(directory.rglob("*.json")):
         walk(json.loads(path.read_text(encoding="utf-8")), False)
         pages += 1
     counts = Counter(ability_id for _fight, _source, ability_id, _at in rows)

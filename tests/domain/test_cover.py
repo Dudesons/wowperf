@@ -152,7 +152,8 @@ def test_a_press_inside_two_overlapping_bands_resolves_to_the_one_that_started_l
 # *cast* to apply it -- the same spell for most abilities, but not for Alter
 # Time (cast 342245, buff 342246) or Greater Invisibility (cast 110959, buff
 # 110960), measured against the cached aura tables for report
-# `6Kx1P9GbNXrcLdHa` (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11).
+# `6Kx1P9GbNXrcLdHa` (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11, corrected
+# 2026-09-30).
 
 
 def test_resolve_aura_finds_an_aura_by_its_own_id() -> None:
