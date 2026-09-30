@@ -88,6 +88,17 @@ Sub-slice 1 is `docs/plans/2026-09-29-healing-cooldowns-design.md`; its §2 name
     cooldowns was ever pressed, the line says so in one clause rather than going silent.
 - **A dead healer's line** reads "dead when this player died" and lists no cooldown state: a
   dead player presses nothing.
+  *Amended 2026-09-30:* both halves were wrong. A healer who pressed a group cooldown and then
+  died inside the run-up had that press hidden, and "dead" is read, not seen -- on a key a healer
+  who released is alive at the entrance and reads dead until they cast. The line now says what
+  the log shows, "died N s before this player, not seen acting since", and a dead healer's
+  cooldowns are read like anyone's, as the run-up opens: pressed, within, ready, dead or not
+  judged. Live, warm, on `cW38jmwdnZfbHVL4` fights 2, 30, 32, 8, 29 and 31, `6Kx1P9GbNXrcLdHa`
+  fight 36 and `4vFcVAW1PB2CrD9z` fight 72: 390 healer lines, 164 of them dead -- 108 of those
+  died inside the run-up -- and every one of the 164 showed no row before; they now carry 242:
+  17 pressed (fights 8 and 29), 136 within, 89 dead. No dead line read ready or not judged, and
+  none carried the never-pressed note: every dead healer had pressed a cooldown somewhere in
+  the log read.
 - **Never** "on cooldown", "should", or a verdict on one healer. The detail says why: talents
   shorten cooldowns and are not modelled, a second charge reads as not ready, the tool cannot
   see the plan, and ready is understated, never invented.
