@@ -13,6 +13,7 @@ import httpx
 import typer
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
+from wowperf.adapters.cache.scan import scan_cache
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
     load_consumable_buffs,
@@ -77,6 +78,7 @@ from wowperf.domain.comparison.service import ComparisonSubject, compare, find_p
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.targets import TargetRow
+from wowperf.domain.data_audit import AuditEntry, audit_lines, never_cast
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -336,6 +338,35 @@ def fetch(
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
     typer.echo(run.model_dump_json(indent=2))
+
+
+@app.command("audit-data")
+def audit_data(
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="The cache of API responses to read"),
+) -> None:
+    """Check the ability ids in data/ against the ids the cached logs cast. Offline."""
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if not cache_dir.is_dir():
+        typer.echo(f"No cache directory at {cache_dir}", err=True)
+        raise typer.Exit(1)
+
+    cached = scan_cache(cache_dir)
+    entries = tuple(
+        AuditEntry(file=file, spec=spec, ability_id=ability.ability_id, name=ability.name)
+        for file, collection in (
+            ("defensives", load_defensives().entries),
+            ("externals", load_externals().entries),
+            ("throughput_cooldowns", load_throughput_cooldowns().entries),
+        )
+        for spec, abilities in collection
+        for ability in abilities
+    )
+    for line in audit_lines(entries, never_cast(entries, cached.casts, cached.named)):
+        typer.echo(line)
+    typer.echo(
+        f"Read {cached.pages} cached pages: {len(cached.casts)} distinct ability ids cast."
+    )
 
 
 def _echo_cost_breakdown(costs: CostLedger) -> None:
