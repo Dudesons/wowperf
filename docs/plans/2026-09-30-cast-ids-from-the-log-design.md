@@ -58,8 +58,8 @@ that specialisation casts the ability under another id:
 | The Hunt | throughput | DemonHunter/Havoc | 323639 | 370965, 370966 (19 each) |
 
 **Likely, not confirmed.** In these cases no specialisation of ours was present in the eight
-fights, and the other id was cast only in reference runs, where the pages name the class but
-not the specialisation:
+fights, and the other id was cast only in other cached reports, outside the eight fights, whose
+pages name the class but not the specialisation:
 - Doom Winds, Enhancement: 384352 against 469270, cast 190 times;
 - Killing Spree, Outlaw: 51690 against 474478, cast 5 times. The reference tier casts
   51690 itself 2 times, so this is a weaker suspect;
@@ -247,9 +247,10 @@ point each).** The eight fights of §2 were read twice, once with the old `defen
 ## 6. Out of scope
 
 - The five likely entries and the roughly thirty never named. They need logs from those
-  specialisations. The audit lists them every time it runs while their own ids stay uncast;
-  it no longer lists Killing Spree or Guardian of Ancient Kings, whose own ids the reference
-  tier casts.
+  specialisations. The audit lists each of them while its own id stays uncast in the cache.
+  On 2026-09-30 it did not list Killing Spree or Guardian of Ancient Kings, because the
+  reference tier then held casts of their own ids. Those pages expire, and the top level casts
+  neither id, so once the tier is purged the audit lists both again.
 - Modelling abilities whose one press logs several ids beyond choosing one.
 - Talents that change an ability's id without changing its name; the audit surfaces them as
   they appear.
