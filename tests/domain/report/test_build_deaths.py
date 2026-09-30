@@ -783,13 +783,13 @@ def test_a_press_with_no_band_in_the_log_draws_no_cover_window() -> None:
 
 
 def test_a_press_whose_cast_id_differs_from_its_auras_id_still_draws_a_cover_window() -> None:
-    # The regression this fix is for: Alter Time casts as 108978 but the aura
+    # The regression this fix is for: Alter Time casts as 342245 but the aura
     # table keys the buff at 342246 (`.claude/skills/wcl-api/SKILL.md`,
-    # 2026-09-11). A lookup keyed only on the cast's own id would find nothing
+    # 2026-09-11, corrected 2026-09-30). A lookup keyed only on the cast's own id would find nothing
     # here forever; the name has to bridge the two.
     loaded = a_loaded_with((a_death(1, 60_000),), ()).model_copy(update={
         "casts": (
-            CastEvent(actor_id=1, ability_id=108_978, ability_name="Alter Time",
+            CastEvent(actor_id=1, ability_id=342_245, ability_name="Alter Time",
                       timestamp_ms=55_000, pull_index=0),
         ),
         "auras": (
@@ -903,14 +903,14 @@ def test_a_defensive_row_with_no_aura_table_carries_no_tooltip() -> None:
 
 ALTER_TIME_DEFENSIVE = Defensives(entries=(
     ("DeathKnight/Blood", (
-        DefensiveAbility(ability_id=108_978, name="Alter Time", cooldown_seconds=60.0),
+        DefensiveAbility(ability_id=342_245, name="Alter Time", cooldown_seconds=60.0),
     )),
 ))
 
 
 def test_an_availability_tooltip_uses_the_resolved_aura_id_not_the_cast_id() -> None:
-    # Alter Time casts as 108978 but the aura table keys the buff at 342246
-    # (`.claude/skills/wcl-api/SKILL.md`, 2026-09-11). A hit's own `buff_ids`
+    # Alter Time casts as 342245 but the aura table keys the buff at 342246
+    # (`.claude/skills/wcl-api/SKILL.md`, corrected 2026-09-30). A hit's own `buff_ids`
     # list carries buff ids, so comparing it against the cast id would silently
     # match nothing and every hit would look like it landed outside the window,
     # which is exactly the bug Task 11 found and fixed for the cover window.
@@ -920,7 +920,7 @@ def test_an_availability_tooltip_uses_the_resolved_aura_id_not_the_cast_id() -> 
         ),
     )).model_copy(update={
         "casts": (
-            CastEvent(actor_id=1, ability_id=108_978, ability_name="Alter Time",
+            CastEvent(actor_id=1, ability_id=342_245, ability_name="Alter Time",
                       timestamp_ms=55_000, pull_index=0),
         ),
         "auras": (

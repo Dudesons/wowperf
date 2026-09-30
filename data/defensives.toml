@@ -15,6 +15,17 @@
 # Wowhead's tooltip endpoint on the date below, one spell at a time, and the name
 # returned had to match the ability intended. An id that matches nothing fails
 # silently forever, so recall is not good enough.
+#
+# Amended 2026-09-30: an id is the one real logs cast when the ability is pressed, not
+# only one the spell data names correctly. Several ids resolved to the right name and
+# were never cast, because the game now logs the press under another id.
+# `wowperf audit-data` checks every entry against the local cache. An entry marked
+# "log id 2026-09-30" was corrected by that check. It keeps the base cooldown read when
+# it was written -- the same ability, and no source this project may script confirms a
+# new id's cooldown (docs/plans/2026-09-30-cast-ids-from-the-log-design.md).
+# Unconfirmed by the same check, left unchanged until a log of that specialisation
+# casts them: Guardian of Ancient Kings (86659; 212641 cast in reference runs),
+# Vengeance Metamorphosis (187827; 200166 cast, possibly by Havoc).
 verified = "2026-09-05"
 
 
@@ -139,7 +150,7 @@ abilities = [
   { ability_id = 235450, name = "Prismatic Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
@@ -148,7 +159,7 @@ abilities = [
   { ability_id = 235313, name = "Blazing Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
@@ -157,7 +168,7 @@ abilities = [
   { ability_id = 11426, name = "Ice Barrier", cooldown_seconds = 30.0 },
   { ability_id = 45438, name = "Ice Block", cooldown_seconds = 240.0 },
   { ability_id = 55342, name = "Mirror Image", cooldown_seconds = 120.0 },
-  { ability_id = 108978, name = "Alter Time", cooldown_seconds = 60.0 },
+  { ability_id = 342245, name = "Alter Time", cooldown_seconds = 60.0 },  # log id 2026-09-30, was 108978; 342247 is the early return
   { ability_id = 110959, name = "Greater Invisibility", cooldown_seconds = 120.0 },
 ]
 
@@ -172,7 +183,7 @@ abilities = [
 
 ["Monk/Mistweaver"]
 abilities = [
-  { ability_id = 243435, name = "Fortifying Brew", cooldown_seconds = 420.0 },
+  { ability_id = 115203, name = "Fortifying Brew", cooldown_seconds = 420.0 },  # log id 2026-09-30, was 243435
   { ability_id = 122783, name = "Diffuse Magic", cooldown_seconds = 90.0 },
   { ability_id = 122278, name = "Dampen Harm", cooldown_seconds = 120.0 },
 ]
@@ -180,7 +191,7 @@ abilities = [
 ["Monk/Windwalker"]
 abilities = [
   { ability_id = 122470, name = "Touch of Karma", cooldown_seconds = 90.0 },
-  { ability_id = 243435, name = "Fortifying Brew", cooldown_seconds = 420.0 },
+  { ability_id = 115203, name = "Fortifying Brew", cooldown_seconds = 420.0 },  # log id 2026-09-30, was 243435
   { ability_id = 122783, name = "Diffuse Magic", cooldown_seconds = 90.0 },
   { ability_id = 122278, name = "Dampen Harm", cooldown_seconds = 120.0 },
 ]
