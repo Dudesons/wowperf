@@ -85,32 +85,45 @@ not the specialisation:
 ## 3. The rule
 
 **An entry's id is the id the log casts when the ability is pressed.** The log is the authority
-on which id; the spell data is the authority on the name and the base cooldown of that id.
-Both checks are recorded, dated, for every changed entry.
+on which id, and the report's own ability table on its name. Both are recorded, dated, for
+every changed entry.
 
 Where one press logs several cast ids at once (Odyn's Fury's three, The Hunt's two, in equal
-counts), the entry takes one of them. It is the one the spell data describes as the castable
-ability with the cooldown, and the others are named in a comment. Casts are **never summed
-across ids that share a name**: the skill records why, and summing would count one press two
-or three times.
+counts), the entry takes the one cast most often, the lowest id on a tie. The others are named
+in a comment. Casts are **never summed across ids that share a name**: the skill records why,
+and summing would count one press two or three times.
 
 Alter Time is the case the rule has to state outright. Its first press, 342245, starts the
 cooldown, and its second, 342247, ends the effect early. The entry takes 342245, so a press
 counts once per cooldown.
 
-**A corrected id takes its own base cooldown from the spell data.** The old entry's cooldown
-is not carried over: a later expansion's version of an ability can have another one.
+**A corrected id keeps the entry's base cooldown, checked against the log.** *Decided
+2026-09-30, over reading each new id's cooldown by hand.* It is the same ability, and its
+cooldown was read from the spell data when the entry was written. No source this project may
+script can confirm a new id's cooldown:
+- **Wowhead's tooltip endpoint** is undocumented, ZAM's EULA prohibits scripted retrieval, and
+  `wowhead.com/robots.txt` disallows `ClaudeBot`
+  (`docs/plans/2026-09-08-icons-and-tooltips-spike.md`).
+- **The Warcraft Logs `gameData`** fields for an ability's cooldown are unverified, and never
+  invented.
 
-**The spell data can overturn a confirmed row.** If it describes the log's id as an effect of
-the press rather than the press itself, the entry is not changed on the log's word alone. One
-example would be Metamorphosis's 200166 turning out to be the leap's landing. Such an entry
-moves to the likely list and the design records why.
+**The log check.** For each corrected entry, the shortest gap between two presses of the new
+id by one player, within one fight, is measured and recorded.
+- **What it can show:** a gap shorter than the cooldown shows the data too long, or a talent
+  shortening it. Both are the safe direction.
+- **What it cannot show:** that the data is too short, the direction that would make a card say
+  ready too early.
+- **So:** that half is recorded as unverified, not assumed.
+
+**The log decides between ids by what it casts.** Metamorphosis for Havoc is cast under 200166
+alone in the eight fights, and no other Metamorphosis id is cast by that specialisation, so
+200166 is what a press logs, whatever the spell data calls it.
 
 ## 4. What changes
 
 - **The data files:**
-  - the eight confirmed abilities, twelve entries in all, take the log's id and that id's
-    base cooldown;
+  - the eight confirmed abilities, twelve entries in all, take the log's id and keep their
+    base cooldown (§3), with the shortest same-player gap recorded beside each;
   - each file's header gains the rule in §3 and a dated line naming this pass;
   - the five likely ones are not changed. They are listed in the header as unconfirmed, with
     the evidence above, until a log of that specialisation confirms them.
@@ -149,6 +162,8 @@ moves to the likely list and the design records why.
     owners, `unseen` before against the new distribution after;
   - the throughput and defensives findings that name them, before and after;
   - the audit's own output after the fix, which should list none of the eight;
+  - for each corrected entry, the shortest gap between two presses of the new id by one
+    player within one fight, against the data's cooldown;
   - any state that never occurs is recorded as open.
 - **Goldens:** none should move, because none draws any of these abilities (checked
   2026-09-30).
