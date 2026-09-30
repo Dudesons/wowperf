@@ -334,11 +334,14 @@ findings, and renders one self-contained HTML report.
 
 The project is cut into four slices, each with its own design, plan, and implementation
 cycle. Slice 1 is the Mythic+ run post-mortem; slices 2 to 4 cover raid analysis, wipe
-analysis, and healer analysis. Slices 1 and 2 have shipped. Slice 3 has shipped everything but
-one claim — that one raider's action caused another's death — which stays unbuilt and
-undesigned. Slice 4 has shipped two sub-slices: whether the group answered its heaviest moments
-of damage with a healing or group-wide defensive cooldown, and the other healers' side of each
-death.
+analysis, and healer analysis. Slices 1 and 2 have shipped. Slice 3 has shipped, and declined
+its one causal claim — that one raider's action caused another's death — after measuring it: the
+log attributes no death to a player, and no mechanic passed between raiders could be told apart
+from class debuffs without encoding boss knowledge (`2026-09-16-progression-analysis-design.md`
+§2.5, §9.1). Slice 4 has shipped as planned, in two sub-slices: whether the group answered its
+heaviest moments of damage with a healing or group-wide defensive cooldown, and the other
+healers' side of each death. Healing throughput and mana stay deliberately undesigned, since
+healing done depends on how much damage the group took.
 
 **Current state: a fight goes in and a report comes out.** `wowperf fetch` prints a run as
 JSON; `wowperf analyze`, `wowperf raid` and `wowperf progression` each write their findings as
