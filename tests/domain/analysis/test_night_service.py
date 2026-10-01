@@ -3,9 +3,10 @@
 
 from tests.domain.analysis.test_defensives_at_death import BLOOD, IBF, owned_and_died
 from tests.domain.comparison.test_pace_night import a_sample
-from tests.domain.progression_fixtures import a_loaded_series
+from tests.domain.progression_fixtures import a_loaded_attempt, a_loaded_series
 from wowperf.domain.analysis.attempt_shape import classify_attempt
 from wowperf.domain.analysis.defensives import REPEAT_READY_PREFIX
+from wowperf.domain.analysis.night_rollups import PULL_NOT_LOADED
 from wowperf.domain.analysis.night_service import analyse_night_boss
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import SEVERITY_BY_FAMILY
@@ -65,6 +66,28 @@ def test_the_boss_rollups_follow_when_pull_findings_are_given() -> None:
     assert found[:-1] == analyse_night_boss(series, BLOOD, death_cards=True)
     assert found[-1].id == "progression.lead.verdicts"
     assert found[-1].title == "No wipe's verdict could be read, of 2 wipes"
+
+
+def test_the_verdict_rollup_counts_a_wipe_whose_pull_did_not_load() -> None:
+    """The series holds a third wipe the night never drew: it is counted, not dropped."""
+    drawn = a_firing_boss()
+    undrawn = a_loaded_attempt(3).encounter
+    series = LoadedProgression(
+        progression=drawn.progression.model_copy(
+            update={"attempts": (*drawn.progression.attempts, undrawn)}
+        ),
+        loaded=drawn.loaded,
+    )
+    withheld = classify_attempt(drawn.attempts_with_events[0].encounter, (), MechanicsSample())
+    assert withheld is not None
+
+    found = analyse_night_boss(
+        series, BLOOD, death_cards=True, pull_findings={1: [withheld], 2: [withheld]}
+    )
+
+    [rollup] = [f for f in found if f.id == "progression.lead.verdicts"]
+    assert rollup.title == "No wipe's verdict could be read, of 3 wipes"
+    assert f"withheld, {PULL_NOT_LOADED}: 1 of 3 wipes (Fight 3)" in rollup.evidence
 
 
 def test_no_pull_findings_carry_no_boss_rollup() -> None:
