@@ -1631,18 +1631,17 @@ def raid(
             mechanics_sample, reference_records = _mechanics_sample(
                 encounter_rankings, repository.client, transient, encounter
             )
-            # A wipe only: kills have the parse comparison, and nothing is fetched for a
-            # comparison the page would not draw. The references are the mechanics
-            # sample's own members, so the page's two comparisons stand on one sample.
-            if not encounter.kill:
-                pace_sample, pace_records = load_pace_sample(
-                    repository.client,
-                    repository.cache,
-                    transient,
-                    encounter,
-                    tuple(member.row for member in mechanics_sample.members),
-                )
-                reference_records += pace_records
+            # A kill and a wipe both read pace, against the mechanics sample's own
+            # members, so the page's comparisons stand on one sample. Per-player
+            # pace stays a wipe's: `pace_player.py` gates it.
+            pace_sample, pace_records = load_pace_sample(
+                repository.client,
+                repository.cache,
+                transient,
+                encounter,
+                tuple(member.row for member in mechanics_sample.members),
+            )
+            reference_records += pace_records
             # Our own report's responses never expire, so this is cached
             # beside every other query `load_encounter` already issued for it,
             # not in the transient store the reference kills' tables share.
