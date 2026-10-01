@@ -75,13 +75,13 @@ class NightProvenance(Frozen):
     `fetched_at` is stated here rather than read off a pull, because a night
     whose every pull failed to load still has to say when it was read.
 
-    `withheld` is prose built from two sources and nothing else:
-    `NightReport.failed_pulls`, for the pulls that never loaded at all, and
-    each drawn pull's own `compare.pace.unavailable` finding, for a pull whose
-    damage pace could not be compared. Each fact still has exactly one
-    source, so the lines cannot drift from what they describe -- two
-    independently gathered representations of the same fact drift, and then
-    the page names one set of pulls in a list and another in a paragraph.
+    `withheld` holds one line per reason a pull failed to load, naming every
+    pull that reason kept out. It is built from `NightReport.failed_pulls`
+    and nothing else, so the lines cannot drift from what they describe --
+    two independently gathered representations of the same fact drift, and
+    then the page names one set of pulls in a list and another in a
+    paragraph. A withheld pace notice is stated only in its own pull's
+    Provenance, never repeated here.
 
     `methods` states what depth the run asked for. It is prose rather than a
     `tier` field because on a `--deep` night the tier is per pull by design,
