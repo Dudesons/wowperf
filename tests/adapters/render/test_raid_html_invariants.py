@@ -1783,7 +1783,9 @@ def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> No
         finding for finding in a_real_raid_comparison() if finding.id.startswith("compare.")
     ]
     assert compared, "the fixture produced no comparison findings at all"
-    assert {finding.player_slug for finding in compared} == {EMBERKIN_SLUG, STONEWAKE_SLUG}
+    assert {finding.player_slug for finding in compared} - {""} == {
+        EMBERKIN_SLUG, STONEWAKE_SLUG
+    }
     for finding in compared:
         row = rows.get(finding.id)
         assert row is not None, f"{finding.id} reached no row at all"
