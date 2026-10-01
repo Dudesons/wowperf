@@ -354,9 +354,9 @@ def test_the_page_carries_the_absent_axis_disclosure_exactly_once() -> None:
     assert ids.count(NOT_DRAWN_ID) == 1
 
 
-def test_a_night_handed_a_pace_sample_says_it_draws_pace_and_no_parses() -> None:
+def test_a_night_handed_a_pace_sample_says_it_compares_against_kills_and_draws_no_parses() -> None:
     """Handed any sample, the night asked a leaderboard for reference kills --
-    even when every wipe then withheld -- so the disclosure may no longer say
+    even when every pull then withheld -- so the disclosure may no longer say
     that no comparison against other kills is drawn. A night handed none, one
     read with `--no-compare`, keeps the sentence it always had.
     """

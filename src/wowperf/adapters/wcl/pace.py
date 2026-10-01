@@ -136,7 +136,7 @@ def load_pace_sample(
     encounter: Encounter,
     references: tuple[ReferenceKillRow, ...],
 ) -> tuple[PaceSample, tuple[ReferenceRecord, ...]]:
-    """Our boss's damage graph and each reference kill's, for one wipe.
+    """Our boss's damage graph and each reference kill's, for one pull, kill or wipe.
 
     The boss is found among the fight's own enemies: one boss, or a council's
     bosses, each read through its own graph and summed onto one series. A

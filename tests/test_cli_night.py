@@ -1224,14 +1224,28 @@ def test_a_boss_wide_reference_kill_is_fetched_once_and_shared_across_its_wipes(
     assert references == PACE_REFERENCE_PAIRS
 
 
-def test_no_compare_fetches_no_reference_kill_and_writes_no_pace_finding(tmp_path: Path) -> None:
-    """Section 14.2: `--no-compare` is the flag's name, and it skips pace alone.
+def test_no_compare_fetches_no_reference_kill_and_writes_no_comparison_finding(
+    tmp_path: Path,
+) -> None:
+    """Section 14.2: `--no-compare` skips every comparison against the reference kills.
 
-    Nothing else this command draws is touched by the flag; only the queries
-    and the findings this task adds are asserted here.
+    What hit the raid against the kills, the damage pace, and a kill's time
+    all stand on reference kills, so the flag fetches none and writes none of
+    their findings. The night holds a kill, so the kill-time finding has a
+    pull it could have been written on. What the command draws from the
+    report itself is untouched by the flag and not asserted here.
     """
+    fights = [
+        A_NIGHT[0],
+        _night_fight(
+            SECOND_PULL, kill=True, fight_percentage=0.01, start_ms=200_000, end_ms=320_000
+        ),
+        A_NIGHT[2],
+    ]
     calls: list[tuple[str, dict[str, Any]]] = []
-    result = run_night(tmp_path, "--no-compare", kill_rankings=PACE_KILL_RANKINGS, calls=calls)
+    result = run_night(
+        tmp_path, "--no-compare", fights=fights, kill_rankings=PACE_KILL_RANKINGS, calls=calls
+    )
 
     assert result.exit_code == 0, result.output
     operations = _operations(calls)
@@ -1243,10 +1257,10 @@ def test_no_compare_fetches_no_reference_kill_and_writes_no_pace_finding(tmp_pat
     for boss in payload["bosses"]:
         assert "progression.attempts.pace" not in _finding_ids(boss["findings"])
         for pull in boss["pulls"]:
-            assert not any(
-                finding_id.startswith("compare.pace.")
-                for finding_id in _finding_ids(pull["findings"])
-            )
+            ids = _finding_ids(pull["findings"])
+            assert not any(finding_id.startswith("compare.pace.") for finding_id in ids)
+            assert not any(finding_id.startswith("mechanics.") for finding_id in ids)
+            assert "compare.kill.time" not in ids
 
 
 def test_a_kill_pull_is_compared_against_the_reference_kills(tmp_path: Path) -> None:

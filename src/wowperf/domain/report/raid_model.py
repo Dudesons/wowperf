@@ -168,8 +168,8 @@ class RaidReport(Frozen):
     provenance: Provenance
     # The players-alive step chart. None where the attempt carries no duration.
     alive_chart: AliveChart | None = None
-    # Our damage pace against the kills' band. None on a kill, on `--no-compare`,
-    # and wherever the comparison itself came back unavailable.
+    # Our damage pace against the kills' band, on a kill as on a wipe. None on
+    # `--no-compare`, and wherever the comparison itself came back unavailable.
     pace_chart: PaceChart | None = None
     # Points at the pace card, set only where the wipe ended behind pace: the
     # one damage-pace fact the Summary is worth interrupting for.
