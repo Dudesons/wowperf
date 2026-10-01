@@ -4,9 +4,9 @@
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, parse_axis_not_drawn
-from wowperf.domain.comparison.pace import UNAVAILABLE_ID, PaceSample
+from wowperf.domain.comparison.pace import PaceSample
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
-from wowperf.domain.findings import Finding
+from wowperf.domain.findings import Finding, fight_ranges
 from wowperf.domain.night import FailedPull, LoadedNight
 from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
@@ -114,28 +114,19 @@ def _card_tier_method(deep_fights: frozenset[int], *, death_cards: bool) -> str:
 
 
 def _withheld(failed_pulls: Sequence[FailedPull]) -> tuple[str, ...]:
-    """One line per pull the night could not load, naming the fight and the reason.
+    """One line per reason a pull is missing from the page, naming every pull it kept out.
 
     Built from the records the report carries rather than beside them, so the
-    list and the paragraph cannot name different pulls.
+    list and the paragraph cannot name different pulls. Reasons keep the order
+    they were first seen in.
     """
+    by_reason: dict[str, list[int]] = {}
+    for one in failed_pulls:
+        by_reason.setdefault(one.reason, []).append(one.fight_id)
     return tuple(
-        f"Fight {one.fight_id} is not on this page: {one.reason}" for one in failed_pulls
+        f"{fight_ranges(ids)} {'is' if len(ids) == 1 else 'are'} not on this page: {reason}"
+        for reason, ids in by_reason.items()
     )
-
-
-def _pace_withheld_line(fight_id: int, findings: Sequence[Finding]) -> str | None:
-    """This pull's own `compare.pace.unavailable` notice, worded for the night's Provenance.
-
-    Read from the same findings that pull's own `RaidReport` is built from, so
-    this line and that pull's Damage tab can never disagree about why its
-    pace was not compared. None where the pull carries no such notice --
-    either its pace was compared, or nothing was asked for it at all.
-    """
-    notice = next((finding for finding in findings if finding.id == UNAVAILABLE_ID), None)
-    if notice is None:
-        return None
-    return f"Fight {fight_id}: damage pace against the kills was not compared. {notice.detail}"
 
 
 def build_night_report(
@@ -210,10 +201,9 @@ def build_night_report(
     `NightProvenance.references` is filled by walking every pull's own records
     in pull order, keeping the first copy seen of each `url`: a later pull's
     copy is the same reference kill read back from cache.
-    `NightProvenance.withheld` gains one line per drawn pull whose own
-    findings carry a `compare.pace.unavailable` notice, read off that pull's
-    own findings so the line can never name a different reason than the
-    pull's own Damage tab did.
+    `NightProvenance.withheld` holds one line per reason a pull failed to
+    load, naming every pull that reason kept out. A withheld pace notice is
+    stated once, in its own pull's Provenance, and is not repeated here.
 
     `throughput`, threaded straight into every pull's `build_raid_report`
     alongside `roles`, draws the Healers group on every pull's death cards;
@@ -221,7 +211,6 @@ def build_night_report(
     """
     bosses: list[BossSection] = []
     reference_records_seen: dict[str, ReferenceRecord] = {}
-    pace_withheld: list[str] = []
     for boss in loaded.loaded:
         drawn = boss.attempts_with_events
         pulls: list[PullSection] = []
@@ -232,9 +221,6 @@ def build_night_report(
             pull_records = (records_by_fight or {}).get(fight_id, ())
             for record in pull_records:
                 reference_records_seen.setdefault(record.url, record)
-            pace_line = _pace_withheld_line(fight_id, pull_findings)
-            if pace_line is not None:
-                pace_withheld.append(pace_line)
             pace_sample = (pace_by_fight or {}).get(fight_id)
             pulls.append(
                 PullSection(
@@ -294,7 +280,7 @@ def build_night_report(
         provenance=NightProvenance(
             fetched_at=fetched_at,
             references=tuple(reference_records_seen.values()),
-            withheld=_withheld(loaded.failed_pulls) + tuple(pace_withheld),
+            withheld=_withheld(loaded.failed_pulls),
             methods=(_card_tier_method(deep_fights, death_cards=death_cards),),
         ),
     )

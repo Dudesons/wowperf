@@ -434,7 +434,7 @@ def test_a_boss_whose_every_pull_failed_is_still_on_the_page() -> None:
     assert [boss.boss_name for boss in report.bosses] == [BOSS_NAMES[0]]
     assert report.bosses[0].pulls == ()
     assert report.total_pulls == 0
-    assert len(report.provenance.withheld) == 2
+    assert report.provenance.withheld == (f"Fights 10–11 are not on this page: {FAILED_REASON}",)
 
 
 def test_the_report_owner_opens_every_pulls_players_tab() -> None:
@@ -797,16 +797,47 @@ def test_two_pulls_sharing_reference_records_are_named_once_each() -> None:
     assert report.provenance.references == first
 
 
-def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
+def test_a_withheld_pace_notice_is_stated_in_its_pull_and_not_again_for_the_night() -> None:
     night = a_night(bosses=(1,))
     encounter = night.night.bosses[0].attempts[0]
     fight_id = encounter.fight_id
     sample = PaceSample(unavailable=NO_BOSS)
-    findings = analyse_pace(encounter, sample)
 
     report = build_night_report(
         night,
-        {fight_id: findings},
+        {fight_id: analyse_pace(encounter, sample)},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={fight_id: sample},
+    )
+
+    assert not [line for line in report.provenance.withheld if NO_BOSS in line]
+    (pull,) = report.bosses[0].pulls
+    assert f"Damage pace against other kills: {NO_BOSS}" in pull.report.provenance.withheld
+
+
+def test_two_failed_pulls_with_one_reason_are_one_provenance_line() -> None:
+    shared = "the damage-taken stream would not load"
+    other = "the death stream would not load"
+    night = a_night(bosses=(3,), failed=(10, 11, 12))
+    night = night.model_copy(
+        update={
+            "failed_pulls": (
+                FailedPull(fight_id=10, reason=shared),
+                FailedPull(fight_id=12, reason=other),
+                FailedPull(fight_id=11, reason=shared),
+            )
+        }
+    )
+
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
         FETCHED,
         NO_DEFENSIVES,
         NO_CONSUMABLES,
@@ -816,10 +847,10 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
         findings_by_boss=NO_FINDINGS,
     )
 
-    named = [line for line in report.provenance.withheld if line.startswith(f"Fight {fight_id}:")]
-    assert named == [
-        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_BOSS}"
-    ]
+    assert report.provenance.withheld == (
+        f"Fights 10–11 are not on this page: {shared}",
+        f"Fight 12 is not on this page: {other}",
+    )
 
 
 def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
