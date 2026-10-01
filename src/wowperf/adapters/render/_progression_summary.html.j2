@@ -5,6 +5,13 @@
 
 <p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
 and Best attempt holds what the deepest attempt did differently.</p>
+{% if report.lead_rows %}
+<div class="findings">
+{% for row in report.lead_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
 
 <h2 id="{{ scope }}observations">Other findings</h2>
 {% if report.observations %}

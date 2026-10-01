@@ -69,6 +69,7 @@ def build_progression_report(
         header=build_progression_header(series),
         chart=build_attempts_chart(series),
         attempts=build_attempt_rows(series),
+        lead_rows=placed["lead_rows"],
         attempt_rows=placed["attempt_rows"],
         repeat_rows=placed["repeat_rows"],
         best_rows=placed["best_rows"],

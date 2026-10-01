@@ -1,9 +1,10 @@
 # ABOUTME: The findings one boss earns on the night page's summary, read from its pulls together.
 # ABOUTME: Progression's own findings, plus what only a night holding every pull's casts can add.
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.defensives import repeat_defensives_up
+from wowperf.domain.analysis.night_rollups import analyse_night_rollups
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.pace import PaceSample
 from wowperf.domain.comparison.pace_night import analyse_night_pace
@@ -18,6 +19,8 @@ def analyse_night_boss(
     *,
     death_cards: bool,
     pace: Mapping[int, PaceSample] | None = None,
+    pull_findings: Mapping[int, Sequence[Finding]] | None = None,
+    mechanics_compared: frozenset[int] = frozenset(),
 ) -> list[Finding]:
     """Every finding one boss's summary carries, in the order they are appended.
 
@@ -29,10 +32,19 @@ def analyse_night_boss(
     ran and found nothing. The pace line reads each wipe pull's own sample, so
     it is only there on a night that fetched them; a kill's sample is handed
     in too, and the line leaves it out.
+
+    The boss-level rollups come last and only with `pull_findings`: they count
+    the pulls' own findings, so they can only be read once every pull has been
+    analysed. `mechanics_compared` names the pulls whose mechanics sample had
+    members, the denominator of what kept over-landing.
     """
     findings = analyse_progression(series)
     if death_cards:
         findings += repeat_defensives_up(series, defensives)
     if pace:
         findings += analyse_night_pace(series.attempts_with_events, pace)
+    if pull_findings is not None:
+        findings += analyse_night_rollups(
+            series.attempts_with_events, pull_findings, mechanics_compared
+        )
     return findings

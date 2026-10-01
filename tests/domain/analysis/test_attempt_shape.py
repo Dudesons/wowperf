@@ -5,6 +5,7 @@ from wowperf.domain.analysis.attempt_shape import (
     NO_REFERENCE_SAMPLE,
     alive_over_time,
     classify_attempt,
+    verdict_kind,
 )
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter
@@ -579,6 +580,58 @@ def test_the_four_withheld_reasons_are_all_different() -> None:
     }
 
     assert len(reasons) == 3, reasons
+
+
+def test_each_verdict_title_reads_back_as_its_kind() -> None:
+    """`verdict_kind` inverts the title `classify_attempt` writes, shape by shape.
+
+    The titles are pinned to the letter as well: the boss-level rollup reads a
+    verdict back from its title, and a reworded headline would leave the
+    rollup counting nothing while every verdict still read correctly alone.
+    """
+    shapes = {
+        "execution": (40.0, 200.0, _deaths(14)),
+        "throughput": (45.0, 400.0, _deaths(1)),
+        "both": (45.0, 400.0, _deaths(14)),
+    }
+    titles = {
+        "execution": "This attempt failed on execution: the raid was taken apart",
+        "throughput": (
+            "This attempt failed on throughput: the raid held and the damage was not enough"
+        ),
+        "both": (
+            "This attempt failed on both: the raid came apart, and the damage never caught up"
+        ),
+    }
+    for kind, (boss_percentage, seconds, deaths) in shapes.items():
+        finding = classify_attempt(
+            _encounter(kill=False, boss_percentage=boss_percentage, seconds=seconds),
+            deaths,
+            _sample(seconds=300.0, deaths=1),
+        )
+        assert finding is not None
+        assert finding.title == titles[kind]
+        assert verdict_kind(finding) == kind
+
+
+def test_a_withheld_verdict_reads_as_withheld_and_any_other_finding_as_nothing() -> None:
+    withheld = classify_attempt(
+        _encounter(kill=False, boss_percentage=2.0, seconds=250.0),
+        _deaths(3),
+        _sample(seconds=300.0, deaths=1),
+    )
+    assert withheld is not None
+    assert verdict_kind(withheld) == "withheld"
+
+    other = Finding(
+        id="deaths.total",
+        title="This attempt failed on execution: the raid was taken apart",
+        detail="A death toll whose title happens to read like a verdict.",
+        confidence=Confidence.MEASURED,
+    )
+    assert verdict_kind(other) == ""
+    unread = withheld.model_copy(update={"id": "wipe.cause", "title": "A verdict nobody wrote"})
+    assert verdict_kind(unread) == ""
 
 
 def test_the_alive_series_starts_with_the_whole_raid_standing() -> None:

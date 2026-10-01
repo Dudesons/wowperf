@@ -98,6 +98,9 @@ class ProgressionReport(Frozen):
     header: ProgressionHeader
     chart: AttemptsChart
     attempts: tuple[AttemptRow, ...] = ()
+    # The boss-level rollups a night summary opens on: kill speed, why wipes
+    # ended, what kept over-landing. Empty on the standalone progression page.
+    lead_rows: tuple[LedgerRow, ...] = ()
     # Where attempts sat: the cluster, the movement, what was discarded.
     attempt_rows: tuple[LedgerRow, ...] = ()
     # What repeated: the phase, who fell first, what kept landing, the collapse.
@@ -119,6 +122,7 @@ def all_progression_ledger_rows(report: ProgressionReport) -> Iterator[LedgerRow
     and lose the fifth in silence: a row whose ability reaches the page without
     reaching the icon resolver draws nothing and reports nothing.
     """
+    yield from report.lead_rows
     yield from report.attempt_rows
     yield from report.repeat_rows
     yield from report.best_rows

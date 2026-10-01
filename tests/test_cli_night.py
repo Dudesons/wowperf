@@ -931,9 +931,24 @@ def test_each_boss_summary_asks_for_the_pooled_finding_only_with_death_cards(
 
     seen: list[bool] = []
 
-    def recording(series: Any, defensives: Any, *, death_cards: bool, pace: Any = None) -> Any:
+    def recording(
+        series: Any,
+        defensives: Any,
+        *,
+        death_cards: bool,
+        pace: Any = None,
+        pull_findings: Any = None,
+        mechanics_compared: frozenset[int] = frozenset(),
+    ) -> Any:
         seen.append(death_cards)
-        return analyse_night_boss(series, defensives, death_cards=death_cards, pace=pace)
+        return analyse_night_boss(
+            series,
+            defensives,
+            death_cards=death_cards,
+            pace=pace,
+            pull_findings=pull_findings,
+            mechanics_compared=mechanics_compared,
+        )
 
     monkeypatch.setattr(cli, "analyse_night_boss", recording)
     result = run_night(tmp_path, *flags)
@@ -1146,6 +1161,38 @@ def test_two_wipes_at_one_boss_each_carry_the_pace_comparison_and_pool_a_boss_li
 
     assert "progression.attempts.pace" in _finding_ids(payload["bosses"][0]["findings"])
     assert "progression.attempts.pace" not in _finding_ids(payload["bosses"][1]["findings"])
+
+
+def test_a_bosss_rollups_are_written_under_the_boss(tmp_path: Path) -> None:
+    """Design 5.2: a rollup counts its pulls' findings, so it belongs to the boss, not a pull.
+
+    The first boss was pulled twice and both wipes carry a verdict, so its
+    verdict rollup is written; it is computed from the pulls' own findings,
+    which only exist once every pull has been analysed.
+    """
+    result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_written(tmp_path)[0].read_text(encoding="utf-8"))
+
+    first = payload["bosses"][0]
+    assert [pull["fight_id"] for pull in first["pulls"]] == [FIRST_PULL, SECOND_PULL]
+    [verdicts] = [one for one in first["findings"] if one["id"] == "progression.lead.verdicts"]
+    # The harness's fights carry no boss health, so each wipe's verdict is withheld.
+    assert verdicts["title"] == "No wipe's verdict could be read, of 2"
+    assert verdicts["evidence"] == [
+        "withheld, the report carried no boss health: 2 of 2 wipes (Fights 11–12)"
+    ]
+    # Both wipes drew reference kills, so both are in the over-landing
+    # rollup's denominator, and each names the harness's one hostile ability.
+    [overlanding] = [
+        one for one in first["findings"] if one["id"] == "progression.lead.overlanding"
+    ]
+    assert overlanding["title"] == "Venom Bolt over-landed in 2 of 2 compared attempts"
+    for boss in payload["bosses"]:
+        for pull in boss["pulls"]:
+            ids = _finding_ids(pull["findings"])
+            assert not any(one.startswith("progression.lead.") for one in ids), pull["fight_id"]
 
 
 def test_every_pull_reads_its_heaviest_moments_once(tmp_path: Path) -> None:
