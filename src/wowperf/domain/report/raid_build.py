@@ -216,7 +216,8 @@ def build_raid_report(
     decides which card the Players tab opens on, nothing else: which card a
     comparison row reaches is decided by the slug the finding carries.
     `compared_slugs` is who a comparison was asked for, and `None` means none
-    was asked for at all.
+    was asked for at all; the Damage tab and the Provenance then say so, and
+    no card does.
 
     `trimmed` and `death_cards` are the night command's tier ladder for the
     Deaths tab, not a raid-page concern: a raid fight always wants full cards,
@@ -366,7 +367,9 @@ def build_raid_report(
     # a fact about the attempt and not about any of them -- and the Damage tab
     # prints it, as its withheld reason or as its note, so restating it on every
     # card would print the same paragraph twice per raider on a twenty-player
-    # page: as the card's withheld line and as the card's own row.
+    # page: as the card's withheld line and as the card's own row. A page read
+    # with `--no-compare` is the same case, kill or wipe: nothing was fetched
+    # for anyone, the Damage tab says `NO_COMPARISON_RAN`, and no card repeats it.
     #
     # `build_report` does restate it per card, and this is the one place the
     # two siblings deliberately differ: the rule was always "say it once when

@@ -140,14 +140,17 @@ def _comparison_section(
     the tab open, as its note. A player whose own
     `compare.parse.unavailable` finding gives that very reason is withheld
     with no reason of their own; one whose reason differs keeps it, because
-    the fight-wide statement does not cover it. The empty default silences
-    only a finding whose own reason is empty, which the card would have
-    printed as an empty line anyway.
+    the fight-wide statement does not cover it. The same holds where no
+    subject was handed: `raid --no-compare`'s Damage tab says
+    `NO_COMPARISON_RAN`, so no card says it again. The empty default silences
+    only a reason that is itself empty, which the card would have printed as
+    an empty line anyway -- so the Mythic+ page, which passes none, keeps
+    `NO_COMPARISON_RAN` on every card.
     """
     if compared_slugs is None:
+        reason = parse_withheld if parse_withheld is not None else NO_COMPARISON_RAN
         return Section(
-            state=SectionState.WITHHELD,
-            reason=parse_withheld if parse_withheld is not None else NO_COMPARISON_RAN,
+            state=SectionState.WITHHELD, reason="" if reason == stated_once else reason
         )
     if slug not in compared_slugs:
         return Section(state=SectionState.WITHHELD, reason=NOT_REQUESTED)

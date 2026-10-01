@@ -863,22 +863,54 @@ def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
     assert report.damage.reason == NO_COMPARISON_RAN
 
 
-def test_a_raid_read_with_no_compare_keeps_its_reason_on_every_card() -> None:
-    """Only a caller that states the parse axis's absence elsewhere silences the cards.
+@pytest.mark.parametrize("kill", [True, False], ids=["kill", "wipe"])
+def test_a_raid_read_with_no_compare_states_its_reason_on_the_damage_tab_and_no_card(
+    kill: bool,
+) -> None:
+    """Ruling R32: nothing compared is a fact about the fight, so it is said once.
 
-    `raid --no-compare` hands no parse subject and states the absence nowhere
-    else for a whole page, so each card still says no reference was fetched.
+    `raid --no-compare` hands no parse subject. The withheld Damage tab says
+    no reference was fetched, the Provenance keeps its one spell-and-talent
+    line, and no card repeats it: a twenty-raider page would otherwise print
+    the same paragraph twenty times. A kill and a wipe alike, since neither
+    outcome changes that nothing was fetched.
     """
-    loaded, subject = a_raid_fixture(kill=True)
+    loaded, subject = a_raid_fixture(kill=kill)
 
     report = build_raid_report(
         loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
-    assert len(report.players) == 2, "the fixture built no cards to check the reason on"
-    assert [card.spell_and_talent.reason for card in report.players] == [
-        NO_COMPARISON_RAN, NO_COMPARISON_RAN
-    ]
+    assert report.damage.state is SectionState.WITHHELD
+    assert report.damage.reason == NO_COMPARISON_RAN
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
+        assert card.spell_and_talent.reason == "", card.slug
+    assert [
+        line for line in report.provenance.withheld
+        if line.startswith("Spell and talent comparison")
+    ] == [f"Spell and talent comparison: {NO_COMPARISON_RAN}"]
+
+
+def test_a_raid_read_with_no_compare_whose_damage_tab_is_open_notes_the_reason_once() -> None:
+    """Rows of another comparison open the tab, so the reason is its note, and no card's.
+
+    No `raid` run hands a pace sample without a parse subject, but the rule is
+    what the tab prints: open, the tab's note is the one place it is said.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)
+
+    report = build_raid_report(
+        loaded, analyse_pace(loaded.encounter, sample), subject, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == NO_COMPARISON_RAN
+    for card in report.players:
+        assert card.spell_and_talent.reason == "", card.slug
 
 
 def test_the_withheld_damage_tab_is_named_in_the_provenance() -> None:

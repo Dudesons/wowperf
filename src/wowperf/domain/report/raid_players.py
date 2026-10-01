@@ -61,6 +61,8 @@ def build_raid_players(
     `compare.parse.unavailable` notice carrying that very reason is said
     there, so it is neither the card's withheld line nor one of its rows; a
     notice whose reason differs is about that raider and stays on their card.
+    With no parse subject handed, `NO_COMPARISON_RAN` is that reason on a
+    `raid --no-compare` page, so no card states it either.
     Empty, the default, states nothing and drops nothing.
     """
     players = loaded.encounter.players

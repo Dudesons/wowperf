@@ -202,7 +202,9 @@ names what the night does compare instead — what hit and killed the raid, each
 pace, each kill's time. A pull's Damage tab with no row of its own points to that finding, and to
 the pull's Provenance where its pace was withheld, instead of restating either. `raid --fight N`
 states it itself, once: on a wipe, as the Damage tab's withheld reason or, where other rows open
-that tab, as a note on it — never on each card. `raid --no-compare` cards still carry their reason.
+that tab, as a note on it — never on each card. `raid --no-compare` is the same, kill or wipe: the
+Damage tab says no reference was fetched, the Provenance says it once for the spell and talent
+comparison, and no player card repeats it.
 
 What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws no death card at all,
 the cheapest tier a pull can be read at; left unset, the default trims every card to what each
