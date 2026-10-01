@@ -228,10 +228,10 @@ this order and each only where it fires: kill speed (`progression.lead.kill_spee
 and pace, on a boss that died), why the wipes ended (`progression.lead.verdicts`), what kept
 landing that no reference kill took (`progression.lead.never_taken`), and what kept landing harder
 than it did for the reference kills (`progression.lead.overlanding`), both counted across the
-compared pulls. Under them, "What kept
-repeating" points at the Repeats tab's killing-blow, first-death and ability cards, and any
-finding no tab claimed closes the panel. A boss drawn once has the same summary; its cluster
-finding is the median of one attempt, and its movement finding says the night is not compared.
+compared pulls. Under them, "What kept repeating" points at the Repeats tab's killing-blow,
+first-death and ability cards, and any finding no tab claimed closes the panel. A boss drawn once
+has the same summary; its cluster finding is the median of one attempt, and its movement finding
+says the night is not compared.
 
 The Attempts tab's table has one row per attempt: the number, how deep it got, how long it ran,
 where it ended, and its deaths; then, on a compared night only, the wipe's verdict and its last

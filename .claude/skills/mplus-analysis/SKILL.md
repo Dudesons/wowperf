@@ -76,16 +76,16 @@ included.
   denominator.
 - `progression.lead.never_taken`, what kept landing that no reference kill took. It counts, by
   compared pull and never by hit, the abilities that every compared pull reporting them read as
-  ones no reference kill took at all. The bar is more than half of the compared pulls reporting the
-  ability, and it never fires on fewer than two compared pulls. It is `derived`. Its title counts
-  every qualifying ability; its evidence lists only the most reported, and a last line says so
-  wherever that list was cut. A pull whose sample drew no member compared nothing and is outside
-  the denominator. Its quantifier is the most-reported ability's, even where the title names
-  several abilities, so it is only ever `most` or `every`. An ability whose record is mixed (some
-  pulls read it as one no reference kill took, others as one some reference kill took)
-  goes to `overlanding`, as does one read against a single reference, which counts no references.
-  Write "no reference kill took it" and never "avoidable": it states what the log shows, not that
-  a landing could have been prevented, which is not in the log.
+  ones no reference kill took at all. It names an ability only where more than half of all the
+  compared pulls reported it, and it never fires on fewer than two compared pulls. It is
+  `derived`. Its title counts every qualifying ability; its evidence lists only the most reported,
+  and a last line says so wherever that list was cut. A pull whose sample drew no member compared
+  nothing and is outside the denominator. Its quantifier is the most-reported ability's, even where
+  the title names several abilities, so it is only ever `most` or `every`. An ability whose record
+  is mixed (some pulls read it as one no reference kill took, others as one some reference kill
+  took) goes to `overlanding`, as does one read against a single reference, which counts no
+  references. Write "no reference kill took it" and never "avoidable": it states what the log
+  shows, not that a landing could have been prevented, which is not in the log.
 - `progression.lead.overlanding`, what kept over-landing. It counts, by compared pull and never by
   hit, every other ability that more than half of the compared pulls reported as far above the
   reference kills' rate, and it never fires on fewer than two compared pulls. It is `derived`. Its
