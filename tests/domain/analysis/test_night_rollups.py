@@ -26,8 +26,9 @@ _SHAPES = {
     "throughput": (45.0, 400.0, 1),
     "both": (45.0, 400.0, 14),
     "neither": (2.0, 250.0, 3),
+    "no boss health": (None, 400.0, 1),
 }
-"""Boss health, seconds and deaths that put `classify_attempt` on each shape."""
+"""Boss health, seconds and deaths that put `classify_attempt` on each shape or notice."""
 
 
 def a_verdict(shape: str) -> Finding:
@@ -116,19 +117,40 @@ def test_the_both_verdict_is_named_in_full_in_the_title_and_bare_in_the_evidence
 
 def test_a_boss_whose_every_verdict_was_withheld_says_so_as_measured() -> None:
     attempts = [a_wipe(5), a_wipe(6)]
-    no_health = a_verdict("execution").model_copy(
-        update={"id": "wipe.cause.withheld", "evidence": ("the report carried no boss health",)}
-    )
-    pull_findings = {5: [a_verdict("neither")], 6: [no_health]}
+    pull_findings = {5: [a_verdict("neither")], 6: [a_verdict("no boss health")]}
 
     rollup = the_rollup(analyse_night_rollups(attempts, pull_findings, frozenset()), VERDICTS)
 
-    assert rollup.title == "No wipe's verdict could be read, of 2"
+    assert rollup.title == "No wipe's verdict could be read, of 2 wipes"
     assert rollup.confidence is Confidence.MEASURED
     assert rollup.quantifier == "none"
     assert rollup.evidence == (
         "withheld, neither shape fit this attempt: 1 of 2 wipes (Fight 5)",
         "withheld, the report carried no boss health: 1 of 2 wipes (Fight 6)",
+    )
+
+
+def test_a_boss_with_one_wipe_counts_it_in_the_singular() -> None:
+    """A boss killed on its second pull has one wipe, and "1 of 1 wipes" misreads it."""
+    kill = a_kill(9)
+    attempts = [a_wipe(8), kill]
+    pull_findings = {8: [a_verdict("execution")], 9: list(the_kill_readings(kill))}
+
+    rollup = the_rollup(analyse_night_rollups(attempts, pull_findings, frozenset()), VERDICTS)
+
+    assert rollup.title == "1 of 1 wipe ended on execution"
+    assert rollup.evidence == ("execution: 1 of 1 wipe (Fight 8)",)
+
+
+def test_a_lone_wipe_whose_verdict_was_withheld_is_counted_in_the_singular() -> None:
+    rollup = the_rollup(
+        analyse_night_rollups([a_wipe(8)], {8: [a_verdict("no boss health")]}, frozenset()),
+        VERDICTS,
+    )
+
+    assert rollup.title == "No wipe's verdict could be read, of 1 wipe"
+    assert rollup.evidence == (
+        "withheld, the report carried no boss health: 1 of 1 wipe (Fight 8)",
     )
 
 
@@ -195,10 +217,11 @@ def test_an_ability_reported_in_one_pull_does_not_repeat() -> None:
 
 
 def test_a_pull_not_compared_is_not_in_the_denominator() -> None:
+    """Nor among the pulls counted: fight 4 names the ability, and its sample drew no member."""
     attempts = [a_wipe(3), a_wipe(4), a_wipe(5)]
     pull_findings = {
         3: [over_landing(0, 9001, "Brinecoil Lash")],
-        4: [],
+        4: [over_landing(0, 9001, "Brinecoil Lash")],
         5: [over_landing(0, 9001, "Brinecoil Lash")],
     }
 
@@ -274,7 +297,8 @@ def test_kill_speed_with_only_a_pace_reading_takes_its_title() -> None:
     rollup = the_rollup(analyse_night_rollups([kill], {9: [pace]}, frozenset()), KILL_SPEED)
 
     assert rollup.title == pace.title
-    assert rollup.evidence == ("On the kill, fight 9",)
+    assert rollup.evidence == ("On the kill, fight 9", *pace.evidence)
+    assert pace.evidence, "a pace reading with no evidence pins nothing"
     assert rollup.confidence is Confidence.DERIVED
 
 

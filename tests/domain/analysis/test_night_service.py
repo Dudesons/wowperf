@@ -64,7 +64,7 @@ def test_the_boss_rollups_follow_when_pull_findings_are_given() -> None:
 
     assert found[:-1] == analyse_night_boss(series, BLOOD, death_cards=True)
     assert found[-1].id == "progression.lead.verdicts"
-    assert found[-1].title == "No wipe's verdict could be read, of 2"
+    assert found[-1].title == "No wipe's verdict could be read, of 2 wipes"
 
 
 def test_no_pull_findings_carry_no_boss_rollup() -> None:

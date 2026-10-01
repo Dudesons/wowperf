@@ -1179,7 +1179,7 @@ def test_a_bosss_rollups_are_written_under_the_boss(tmp_path: Path) -> None:
     assert [pull["fight_id"] for pull in first["pulls"]] == [FIRST_PULL, SECOND_PULL]
     [verdicts] = [one for one in first["findings"] if one["id"] == "progression.lead.verdicts"]
     # The harness's fights carry no boss health, so each wipe's verdict is withheld.
-    assert verdicts["title"] == "No wipe's verdict could be read, of 2"
+    assert verdicts["title"] == "No wipe's verdict could be read, of 2 wipes"
     assert verdicts["evidence"] == [
         "withheld, the report carried no boss health: 2 of 2 wipes (Fights 11–12)"
     ]

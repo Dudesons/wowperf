@@ -9,7 +9,13 @@ from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.pace import PACE_ID
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.findings import Confidence, Finding, fight_ranges, quantifier_for
+from wowperf.domain.findings import (
+    Confidence,
+    Finding,
+    fight_ranges,
+    quantifier_for,
+    quantity,
+)
 
 KILL_SPEED_ID = "progression.lead.kill_speed"
 VERDICTS_ID = "progression.lead.verdicts"
@@ -72,11 +78,12 @@ def _kill_speed(
     if lead is None:
         return None
 
-    evidence = [f"On the kill, fight {fight_id}"]
-    if kill_time is not None:
-        evidence.extend(kill_time.evidence)
-        if pace is not None:
-            evidence.append(f"Damage pace: {pace.title}")
+    # Whichever reading titles the rollup brings its own evidence along; a
+    # pace beside a kill time is named by its title, which the rollup does
+    # not otherwise carry.
+    evidence = [f"On the kill, fight {fight_id}", *lead.evidence]
+    if kill_time is not None and pace is not None:
+        evidence.append(f"Damage pace: {pace.title}")
     return Finding(
         id=KILL_SPEED_ID,
         title=lead.title,
@@ -114,23 +121,24 @@ def _verdicts(
     )
     if total == 0:
         return None
+    wipes = quantity(total, "wipe", "wipes")
 
     kinds = sorted(by_kind.items(), key=lambda pair: (-len(pair[1]), pair[0]))
     reasons = sorted(by_reason.items(), key=lambda pair: (-len(pair[1]), pair[0]))
     evidence = tuple(
-        f"{kind}: {len(ids)} of {total} wipes ({fight_ranges(ids)})" for kind, ids in kinds
+        f"{kind}: {len(ids)} of {wipes} ({fight_ranges(ids)})" for kind, ids in kinds
     ) + tuple(
-        f"withheld, {reason}: {len(ids)} of {total} wipes ({fight_ranges(ids)})"
+        f"withheld, {reason}: {len(ids)} of {wipes} ({fight_ranges(ids)})"
         for reason, ids in reasons
     )
 
     if kinds:
         kind, ids = kinds[0]
         top = len(ids)
-        title = f"{top} of {total} wipes ended on {_TITLE_KINDS.get(kind, kind)}"
+        title = f"{top} of {wipes} ended on {_TITLE_KINDS.get(kind, kind)}"
     else:
         top = 0
-        title = f"No wipe's verdict could be read, of {total}"
+        title = f"No wipe's verdict could be read, of {wipes}"
     return Finding(
         id=VERDICTS_ID,
         title=title,
