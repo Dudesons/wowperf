@@ -3,7 +3,7 @@
 
 import math
 
-from wowperf.domain.comparison.pace_curve import PaceReading, final_behind_start
+from wowperf.domain.comparison.pace_curve import PaceReading, final_behind_start, pace_end
 from wowperf.domain.findings import Confidence
 from wowperf.domain.report.alive_chart import (
     BASELINE_Y,
@@ -87,7 +87,8 @@ def build_pace_chart(reading: PaceReading, duration_seconds: float) -> PaceChart
 
     behind_start = final_behind_start(reading)
     behind_x = _x(behind_start) if behind_start is not None else None
-    cut_x = _x(reading.seconds[-1].second) if reading.band_cut else None
+    _, cut = pace_end(reading)
+    cut_x = _x(cut) if cut is not None else None
 
     legend = SINGLE_LEGEND if reading.single else BAND_LEGEND
     if reading.band_cut and not reading.single:
