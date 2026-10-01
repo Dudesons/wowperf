@@ -449,6 +449,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # Every summary opens on its headline, and the boss rollups are written
     # under the boss and never under a pull. Shapes only: a rollup's title and
     # evidence name abilities and fights, so no message carries either.
+    ability_rollup_fired = False
     for index, boss in enumerate(payload["bosses"]):
         opening = re.search(
             rf'<section class="pull" data-night-pull-panel id="b{index}-summary">'
@@ -478,6 +479,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
                 "progression.lead.overlanding",
             ):
                 continue
+            ability_rollup_fired = True
             assert lead["confidence"] == "derived", (
                 f"boss {index}'s {lead['id']} is not derived"
             )
@@ -514,6 +516,15 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
             for pull in boss["pulls"] for f in pull["findings"]
         )
         assert not under_a_pull, f"a pull of boss {index} carries a boss rollup"
+    # The shape checks above run only where an ability rollup is present, so
+    # both ids going quiet everywhere would still pass them. One of the two is
+    # asserted, not each: the reference board behind them is re-fetched daily,
+    # and which side of the line an ability falls on moves with it, while the
+    # night's repeated landings do not. The message carries the ids only.
+    assert ability_rollup_fired, (
+        "neither progression.lead.never_taken nor progression.lead.overlanding "
+        "fired on any boss"
+    )
 
     # Every attempt row that opens a pull names one that is on the page, and
     # every drawn pull is opened by exactly one row.
