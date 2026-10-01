@@ -203,6 +203,7 @@ def test_a_bosss_summary_rows_are_walked_too() -> None:
             difficulty="Mythic",
             size=20,
             outcome="No kill in 7 attempts",
+            headline="No kill in 7 attempts; the deepest left 16.5% encounter progress",
             attempts_counted=7,
             attempts_discarded=1,
             depth_label="encounter progress",

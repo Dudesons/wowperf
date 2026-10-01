@@ -302,6 +302,47 @@ def test_every_finding_appears_exactly_once() -> None:
         assert ids.count(finding.id) == 1, finding.id
 
 
+def summary_tab(html: str) -> str:
+    """The Summary panel: from its own tag to the next panel's."""
+    return html.split('id="tab-summary"', 1)[1].split('<section class="panel"', 1)[0]
+
+
+def test_the_summary_carries_the_headline_as_its_first_heading() -> None:
+    report = a_progression_report()
+    html = render_progression(report)
+
+    assert "the deepest left 16.5% encounter progress" in report.header.headline
+    first = re.search(r"<h2[^>]*>(.*?)</h2>", summary_tab(html), re.S)
+    assert first is not None
+    assert first.group(1) == str(escape(report.header.headline))
+    assert "Nothing else measured" not in html
+
+
+def test_a_summary_with_no_findings_still_opens_on_its_headline_and_says_nothing_empty() -> None:
+    """The fixture's findings fill the catch-all; with none the tab does not announce it."""
+    report = build_progression_report(a_progression_series(), (), FETCHED_AT)
+    html = render_progression(report)
+
+    first = re.search(r"<h2[^>]*>(.*?)</h2>", summary_tab(html), re.S)
+    assert first is not None
+    assert first.group(1) == str(escape(report.header.headline))
+    assert "Nothing else measured" not in html
+    assert "Other findings" not in summary_tab(html)
+
+
+def test_the_summary_points_at_the_repeats_cards_it_names() -> None:
+    """A pointer is a link, never a second card: each lands on a card on the Repeats tab."""
+    html = a_progression_page()
+    summary = summary_tab(html)
+    repeats = html.split('id="tab-repeats"', 1)[1].split('<section class="panel"', 1)[0]
+
+    targets = re.findall(r'<a class="pointer" href="#([^"]+)"', summary)
+    assert targets == ["finding-progression.repeat.killing_blow"]
+    for target in targets:
+        assert f'id="{target}"' in repeats
+    assert "<h3>" not in re.findall(r'<a class="pointer"[^>]*>(.*?)</a>', summary, re.S)[0]
+
+
 def test_a_title_containing_markup_is_escaped() -> None:
     # Autoescaping is the only thing standing between an API-sourced string --
     # a boss name or a phase name Warcraft Logs supplied -- and the reader's

@@ -50,8 +50,8 @@ the exception a sentence later would have told a reader something false about a
 card on the very same page.
 """
 
-MIN_PULLS_FOR_SUMMARY = 2
-"""Below this many drawn pulls a boss gets no summary: there is nothing to compare."""
+MIN_PULLS_FOR_SUMMARY = 1
+"""Below this many drawn pulls a boss gets no summary: with none there is nothing to read."""
 
 CARD_TIER_NONE = (
     "No death card was drawn on any pull: this night was read with death cards off, so the "
@@ -252,7 +252,15 @@ def build_night_report(
         )
         bosses.append(
             BossSection(
-                boss_name=boss.progression.boss_name, pulls=tuple(pulls), summary=summary
+                boss_name=boss.progression.boss_name,
+                pulls=tuple(pulls),
+                summary=summary,
+                summary_label=(
+                    f"Summary: {summary.provenance.attempts_deepened} "
+                    f"{plural(summary.provenance.attempts_deepened, 'pull')}"
+                    if summary
+                    else ""
+                ),
             )
         )
 

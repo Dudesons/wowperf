@@ -49,8 +49,8 @@ collide, one pull control per boss, an icon map gathered past the first pull.
 A fixture of one boss with one pull passes every one of them against an
 implementation that handles only the first thing it is given, and two bosses
 holding two pulls each passes a control that renders the first boss's count
-twice. The single-pull boss is what puts a boss with no summary on the page
-beside two that carry one, so both shapes are drawn -- and still no two
+twice. The single-pull boss is what shows a summary built from one attempt
+beside two built from several, so each shape is drawn -- and still no two
 bosses share a count.
 """
 
@@ -379,7 +379,7 @@ def test_the_fixture_draws_more_than_one_pull_and_more_than_one_boss() -> None:
     assert len(ABILITY_IDS) == report.total_pulls
 
     html = a_night_page()
-    assert summaries_on(report) == sum(1 for count in PULLS_PER_BOSS if count >= 2)
+    assert summaries_on(report) == len(PULLS_PER_BOSS)
     assert html.count('<section class="panel"') == (
         PANELS_PER_PULL * report.total_pulls + PANELS_PER_SUMMARY * summaries_on(report)
     )
@@ -469,7 +469,8 @@ def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
     Three bosses holding one, two and three pulls, so a control that offered
     every pull to every boss would read six three times, and one that offered
     the first boss's count to all would read one three times. A boss with a
-    summary offers it as one more option beside its pulls.
+    summary offers it as one more option beside its pulls, and every boss here
+    has pulls to summarise.
     """
     report = a_night_report()
     html = render_night(report)
@@ -477,10 +478,7 @@ def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
     offered = {
         int(index): body.count("<option") for index, body in PULL_CONTROL.findall(html)
     }
-    assert offered == {
-        index: count + (1 if boss.summary else 0)
-        for index, (count, boss) in enumerate(zip(PULLS_PER_BOSS, report.bosses, strict=True))
-    }
+    assert offered == {index: count + 1 for index, count in enumerate(PULLS_PER_BOSS)}
 
 
 def test_every_pull_is_its_own_tab_group() -> None:
@@ -579,26 +577,51 @@ def summary_blocks(html: str) -> dict[str, str]:
     return blocks
 
 
-def test_a_boss_pulled_more_than_once_opens_on_its_summary() -> None:
+def test_every_boss_with_a_drawn_pull_opens_on_its_summary() -> None:
     """The summary is the first option, so a fresh page, and a boss not yet visited, opens on it."""
     html = a_night_page()
-    for index, count in enumerate(PULLS_PER_BOSS):
+    for index in range(len(PULLS_PER_BOSS)):
         control = re.search(
             rf'<select id="night-pull-b{index}" data-night-pull>(.*?)</select>', html, re.S
         )
         assert control is not None
         first = re.search(r'<option value="([^"]+)"', control.group(1))
         assert first is not None
-        if count >= 2:
-            assert first.group(1) == f"b{index}-summary"
-        else:
-            assert first.group(1).endswith("-pull"), "a single-pull boss opens on its pull"
+        assert first.group(1) == f"b{index}-summary"
 
 
-def test_exactly_the_bosses_pulled_more_than_once_carry_a_summary_section() -> None:
+def test_every_boss_with_a_drawn_pull_carries_a_summary_section() -> None:
     html = a_night_page()
-    expected = {f"b{i}-summary" for i, count in enumerate(PULLS_PER_BOSS) if count >= 2}
+    expected = {f"b{i}-summary" for i in range(len(PULLS_PER_BOSS))}
     assert set(summary_blocks(html)) == expected
+
+
+def summary_tab(block: str, scope: str) -> str:
+    """One boss summary's Summary tab: from its panel's own tag to the next panel's."""
+    rest = block.split(f'id="{scope}tab-summary"', 1)[1]
+    return rest.split('<section class="panel"', 1)[0]
+
+
+def test_a_summary_opens_on_its_headline_and_never_on_nothing_else_measured() -> None:
+    """The Summary tab's first heading is the boss's headline, for every boss on the page.
+
+    The assertion on the empty-state sentence is scoped to each boss's Summary
+    tab: a pull's own Summary, drawn on the same page, legitimately says it.
+    """
+    report = a_night_report()
+    blocks = summary_blocks(render_night(report))
+    assert len(blocks) == len(report.bosses)
+
+    for index, boss in enumerate(report.bosses):
+        assert boss.summary is not None
+        assert "the deepest left" in boss.summary.header.headline, (
+            "a wipe fixture whose headline names no depth pins nothing about the headline"
+        )
+        tab = summary_tab(blocks[f"b{index}-summary"], f"b{index}-")
+        first = re.search(r"<h2[^>]*>(.*?)</h2>", tab, re.S)
+        assert first is not None, index
+        assert first.group(1) == str(escape(boss.summary.header.headline))
+        assert "Nothing else measured" not in tab
 
 
 def test_a_summary_draws_the_progression_tabs_under_its_own_scope() -> None:
@@ -619,8 +642,6 @@ def test_a_summary_draws_every_progression_finding_its_boss_earned() -> None:
     html = a_night_page()
     blocks = summary_blocks(html)
     for index, boss in enumerate(night.loaded):
-        if len(boss.attempts_with_events) < 2:
-            continue
         ids = {finding.id for finding in analyse_progression(boss)}
         assert ids, "a fixture boss with no progression finding pins nothing"
         drawn = set(re.findall(rf'id="b{index}-finding-([^"]+)"', blocks[f"b{index}-summary"]))
@@ -796,28 +817,40 @@ def test_a_boss_whose_every_pull_failed_still_gets_a_control_and_says_so() -> No
         assert line in html
 
 
-def test_the_summary_option_counts_deepened_pulls_not_attempts() -> None:
-    """Three attempts, one failed: counted 3, deepened 2, and the label reads the smaller figure.
-
-    `night.html.j2` reads `attempts_deepened` for the option text. Both figures
-    live on the same `provenance` object, so a swap to `attempts_counted` would
-    still render a page -- just the wrong number on it, one no other test here
-    reads closely enough to catch.
-    """
-    report = a_night_report(a_night(bosses=(3,), failed=(12,)))
-    html = render_night(report)
-
-    assert report.bosses[0].summary is not None
-    assert report.bosses[0].summary.provenance.attempts_counted == 3
-    assert report.bosses[0].summary.provenance.attempts_deepened == 2
-
+def first_pull_option(html: str, boss_index: int) -> tuple[str, str]:
+    """A boss's pull control's first option: its value and the text a reader sees."""
     control = re.search(
-        r'<select id="night-pull-b0" data-night-pull>(.*?)</select>', html, re.S
+        rf'<select id="night-pull-b{boss_index}" data-night-pull>(.*?)</select>', html, re.S
     )
     assert control is not None
     first = re.search(r'<option value="([^"]+)">([^<]*)</option>', control.group(1))
     assert first is not None
-    assert first.group(2) == "Summary: 2 pulls"
+    return first.group(1), first.group(2)
+
+
+def test_the_summary_option_counts_deepened_pulls_not_attempts() -> None:
+    """Three attempts, two failed: counted 3, deepened 1, and the label reads the smaller figure.
+
+    The label is the builder's `summary_label`, which reads `attempts_deepened`.
+    Both figures live on the same `provenance` object, so a swap to
+    `attempts_counted` would still render a page -- just the wrong number on it,
+    one no other test here reads closely enough to catch. One pull, so the
+    singular is what is on the page.
+    """
+    report = a_night_report(a_night(bosses=(3,), failed=(11, 12)))
+    html = render_night(report)
+
+    assert report.bosses[0].summary is not None
+    assert report.bosses[0].summary.provenance.attempts_counted == 3
+    assert report.bosses[0].summary.provenance.attempts_deepened == 1
+
+    assert first_pull_option(html, 0) == ("b0-summary", "Summary: 1 pull")
+
+
+def test_the_summary_option_is_plural_beyond_one_pull() -> None:
+    report = a_night_report(a_night(bosses=(3,), failed=(12,)))
+
+    assert first_pull_option(render_night(report), 0) == ("b0-summary", "Summary: 2 pulls")
 
 
 BOSS_OPTION = re.compile(r'<select id="night-boss"[^>]*>(.*?)</select>', re.DOTALL)

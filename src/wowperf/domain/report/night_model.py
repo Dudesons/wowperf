@@ -49,14 +49,19 @@ class BossSection(Frozen):
     `LoadedNight` already makes one layer down, in `night.py`.
 
     `summary` is the progression page for this boss, built whole by
-    `build_progression_report`, or None when fewer than two pulls were drawn:
-    nearly every progression finding compares attempts with each other, and one
-    attempt leaves nothing to compare.
+    `build_progression_report`, or None when no pull was drawn: a boss with one
+    drawn pull still has an outcome, a kill speed and a verdict to lead with,
+    though the findings that compare attempts have nothing to compare.
+
+    `summary_label` is the text of the pull control's Summary option, a count
+    of the pulls the summary was built from, in the singular for one. "" where
+    there is no summary.
     """
 
     boss_name: str
     pulls: tuple[PullSection, ...] = ()
     summary: ProgressionReport | None = None
+    summary_label: str = ""
 
 
 class NightProvenance(Frozen):

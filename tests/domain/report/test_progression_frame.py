@@ -54,6 +54,57 @@ def test_the_header_says_which_attempt_killed_it() -> None:
     assert build_progression_header(survived).outcome == "No kill in 2 attempts"
 
 
+def test_a_killed_boss_headline_is_its_outcome() -> None:
+    killed = a_loaded_series(
+        a_loaded_attempt(1, remaining=50.0),
+        a_loaded_attempt(2, remaining=0.01, kill=True),
+        a_loaded_attempt(3, remaining=40.0),
+    )
+
+    header = build_progression_header(killed)
+
+    assert header.headline == "Killed on attempt 2 of 3"
+    assert header.headline == header.outcome
+
+
+def test_an_unkilled_boss_headline_names_its_deepest_attempt() -> None:
+    survived = a_loaded_series(
+        a_loaded_attempt(1, remaining=50.0, boss_percentage=61.0),
+        a_loaded_attempt(2, remaining=40.0, boss_percentage=23.4),
+        a_loaded_attempt(3, remaining=45.0, boss_percentage=37.0),
+        a_loaded_attempt(4, remaining=55.0, boss_percentage=48.0),
+    )
+
+    header = build_progression_header(survived)
+
+    assert header.headline == "No kill in 4 attempts; the deepest left 23.4% boss health"
+    assert header.outcome == "No kill in 4 attempts"
+
+
+def test_an_unkilled_boss_headline_names_the_scale_the_series_is_on() -> None:
+    """Without a boss-health reading on every attempt, the figure is encounter progress."""
+    survived = a_loaded_series(
+        a_loaded_attempt(1, remaining=50.0),
+        a_loaded_attempt(2, remaining=12.0),
+    )
+
+    header = build_progression_header(survived)
+
+    assert header.headline == "No kill in 2 attempts; the deepest left 12.0% encounter progress"
+
+
+def test_an_unkilled_boss_with_no_reading_has_its_outcome_for_a_headline() -> None:
+    """Nothing to name a depth from: the outcome alone, never a figure invented for it."""
+    unread = a_loaded_series(
+        a_loaded_attempt(1, remaining=50.0, fight_percentage=None),
+        a_loaded_attempt(2, remaining=50.0, fight_percentage=None),
+    )
+
+    header = build_progression_header(unread)
+
+    assert header.headline == "No kill in 2 attempts"
+
+
 def test_a_row_per_attempt_in_pull_order_marks_the_deepest() -> None:
     series = a_loaded_series(
         a_loaded_attempt(1, remaining=60.0, seconds=204.0, deaths_after_ms=(1_000, 2_000)),

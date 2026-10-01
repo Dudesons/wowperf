@@ -571,12 +571,12 @@ def a_report(night: LoadedNight, *, death_cards: bool = True) -> NightReport:
     )
 
 
-def test_a_boss_pulled_once_has_no_summary_and_a_boss_pulled_twice_has_one() -> None:
-    """One and two, side by side, so the threshold is pinned from both sides at once."""
+def test_every_boss_with_a_drawn_pull_has_a_summary() -> None:
+    """One drawn pull and two, side by side: a boss pulled once has a story to lead with."""
     report = a_report(a_night(bosses=(1, 2)))
 
-    assert report.bosses[0].summary is None
-    assert report.bosses[1].summary is not None
+    assert [len(boss.pulls) for boss in report.bosses] == [1, 2]
+    assert [boss.summary is not None for boss in report.bosses] == [True, True]
 
 
 def test_a_boss_with_no_drawn_pull_has_no_summary() -> None:
@@ -586,12 +586,20 @@ def test_a_boss_with_no_drawn_pull_has_no_summary() -> None:
     assert report.bosses[0].summary is None
 
 
-def test_the_threshold_counts_drawn_pulls_not_attempts() -> None:
-    """Three attempts, two failed: one drawn pull, so no summary -- though three were pulled."""
-    report = a_report(a_night(bosses=(3,), failed=(11, 12)))
+def test_the_summary_follows_drawn_pulls_not_attempts() -> None:
+    """Three attempts, all failed: nothing drawn, so no summary -- though three were pulled.
 
-    assert len(report.bosses[0].pulls) == 1
-    assert report.bosses[0].summary is None
+    One of three drawn still has one, which `test_every_boss_with_a_drawn_pull_has_a_summary`
+    and the single drawn pull below pin from the other side.
+    """
+    all_failed = a_report(a_night(bosses=(3,), failed=(10, 11, 12)))
+    one_left = a_report(a_night(bosses=(3,), failed=(11, 12)))
+
+    assert all_failed.bosses[0].pulls == ()
+    assert all_failed.bosses[0].summary is None
+    assert len(one_left.bosses[0].pulls) == 1
+    assert one_left.bosses[0].summary is not None
+    assert one_left.bosses[0].summary.provenance.attempts_counted == 3
 
 
 def test_a_summary_is_the_progression_page_for_that_boss_and_nothing_else() -> None:
@@ -613,6 +621,25 @@ def test_a_summary_with_a_failed_pull_says_how_many_were_counted_and_how_many_de
     assert summary is not None
     assert summary.provenance.attempts_counted == 3
     assert summary.provenance.attempts_deepened == 2
+
+
+def test_the_summary_label_counts_deepened_pulls_in_the_singular_and_the_plural() -> None:
+    """One pull and two; a third boss, one attempt of three failed, counts what was deepened."""
+    once_and_twice = a_report(a_night(bosses=(1, 2)))
+    one_failed_of_three = a_report(a_night(bosses=(3,), failed=(12,)))
+
+    assert [boss.summary_label for boss in once_and_twice.bosses] == [
+        "Summary: 1 pull",
+        "Summary: 2 pulls",
+    ]
+    assert one_failed_of_three.bosses[0].summary_label == "Summary: 2 pulls"
+
+
+def test_a_boss_with_no_summary_has_no_summary_label() -> None:
+    report = a_report(a_night(bosses=(2,), failed=(10, 11)))
+
+    assert report.bosses[0].summary is None
+    assert report.bosses[0].summary_label == ""
 
 
 def test_a_summary_does_not_depend_on_the_death_card_tier() -> None:

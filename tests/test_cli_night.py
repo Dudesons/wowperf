@@ -712,8 +712,8 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
 ) -> None:
     """One findings object, two readers: a summary drawn from another list is a defect.
 
-    The first boss was pulled twice and has a summary; the second was pulled
-    once and has none, so its findings are in the file and on no summary.
+    The first boss was pulled twice and the second once, and each has a
+    summary: the drawn ids of each equal the ids the file writes for that boss.
 
     The id-set check alone would pass on a summary drawn from a *different*
     boss whose findings happen to carry the same ids -- `analyse_progression`
@@ -736,7 +736,10 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
     assert written, "a boss with no finding pins nothing"
     drawn = set(re.findall(r'id="b0-finding-([^"]+)"', html))
     assert drawn == written
-    assert 'id="b1-summary"' not in html
+    assert 'id="b1-summary"' in html
+    written_by_the_second = {finding["id"] for finding in boss1_findings}
+    assert written_by_the_second, "a boss with no finding pins nothing"
+    assert set(re.findall(r'id="b1-finding-([^"]+)"', html)) == written_by_the_second
 
     # Precondition: the two bosses' titles must differ, or the check below
     # would pass even if boss 0's summary drew boss 1's findings by mistake.
@@ -757,6 +760,16 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
     boss0_summary_block = match.group(0)
     for finding in boss0_findings:
         assert str(escape(finding["title"])) in boss0_summary_block
+
+    second = re.search(
+        r'<section class="pull" data-night-pull-panel id="b1-summary">.*?'
+        r'(?=<section class="pull"|<section class="night-notes")',
+        html,
+        re.DOTALL,
+    )
+    assert second, "boss 1's summary section is not on the page"
+    for finding in boss1_findings:
+        assert str(escape(finding["title"])) in second.group(0)
 
 
 def test_deep_and_no_deaths_together_is_refused_naming_both(tmp_path: Path) -> None:

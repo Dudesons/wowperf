@@ -10,6 +10,12 @@ from wowperf.domain.report.progression_model import (
     all_progression_ledger_rows,
 )
 
+POINTER_FIELDS = {"repeat_pointers"}
+"""The row-holding fields `all_progression_ledger_rows` deliberately leaves unwalked.
+
+Each repeats a card a tab's own field already carries, as a link to it.
+"""
+
 
 def a_section(state: SectionState = SectionState.PRESENT, reason: str = "") -> Section:
     return Section(state=state, reason=reason)
@@ -32,6 +38,7 @@ def a_progression_header(**changes: object) -> ProgressionHeader:
         difficulty="Mythic",
         size=20,
         outcome="No kill in 7 attempts",
+        headline="No kill in 7 attempts; the deepest left 16.5% encounter progress",
         attempts_counted=7,
         attempts_discarded=1,
         depth_label="encounter progress",
@@ -80,14 +87,18 @@ def test_every_field_holding_rows_is_walked() -> None:
     row-bearing field added later shows up here automatically, tagged and
     walked, with no line in this test to remember to update.
     """
-    row_fields = {
+    tuple_fields = {
         name
         for name, field in ProgressionReport.model_fields.items()
         if field.annotation == tuple[LedgerRow, ...]
     }
-    assert row_fields, "no field on the model holds rows at all"
+    assert tuple_fields, "no field on the model holds rows at all"
+    assert POINTER_FIELDS <= tuple_fields, "a field named as a pointer holds no rows"
+    row_fields = tuple_fields - POINTER_FIELDS
 
-    report = a_progression_report_with_one_row_in_every_field(row_fields)
+    report = a_progression_report_with_one_row_in_every_field(tuple_fields)
     walked = {row.finding_id for row in all_progression_ledger_rows(report)}
 
+    # A pointer repeats a row another field carries, so walking it would count
+    # that row twice; it is left out by name and nothing else is.
     assert walked == {f"finding-in-{name}" for name in row_fields}

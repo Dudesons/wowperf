@@ -13,12 +13,17 @@ class ProgressionHeader(Frozen):
     `depth_label` names the scale every percentage on this page is on, once,
     where a reader meets it first. Section 2.4: a printed percentage that does
     not say which one it is, is a figure nobody can act on.
+
+    `outcome` is the fact alone ("Killed on attempt 3 of 7"). `headline` is what
+    the Summary opens on: the same sentence for a kill, and for a boss not yet
+    killed the outcome followed by how deep the deepest attempt got.
     """
 
     boss: str
     difficulty: str
     size: int
     outcome: str
+    headline: str
     attempts_counted: int
     attempts_discarded: int
     depth_label: str
@@ -105,6 +110,10 @@ class ProgressionReport(Frozen):
     attempt_rows: tuple[LedgerRow, ...] = ()
     # What repeated: the phase, who fell first, what kept landing, the collapse.
     repeat_rows: tuple[LedgerRow, ...] = ()
+    # Points at the killing-blow, first-death and ability cards on the Repeats
+    # tab, in that order and each only if the night carries it. The cards stay
+    # on Repeats; the Summary links to them. Each equals its card.
+    repeat_pointers: tuple[LedgerRow, ...] = ()
     # What the deepest attempt did differently, and which attempt it was.
     best_rows: tuple[LedgerRow, ...] = ()
     # Withheld when no attempt was deepened, with the reason a reader needs.
@@ -121,6 +130,10 @@ def all_progression_ledger_rows(report: ProgressionReport) -> Iterator[LedgerRow
     One place names the fields, so a caller cannot reach four of the five tabs
     and lose the fifth in silence: a row whose ability reaches the page without
     reaching the icon resolver draws nothing and reports nothing.
+
+    `report.repeat_pointers` is the deliberate exception: it repeats cards
+    `repeat_rows` already carries, as links, so walking it would count each of
+    those rows twice for every caller, including the once-only checks.
     """
     yield from report.lead_rows
     yield from report.attempt_rows

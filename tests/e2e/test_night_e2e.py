@@ -207,10 +207,9 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
 
     assert tuple(len(boss.pulls) for boss in report.bosses) == PULLS_PER_BOSS
     assert report.total_pulls == sum(PULLS_PER_BOSS)
-    # A summary sits exactly where the pull counts say two or more: the two
-    # 2-pull bosses and the 7-pull boss, and nowhere else.
+    # A summary sits on every boss with a drawn pull, the single-pull ones too.
     assert tuple(boss.summary is not None for boss in report.bosses) == tuple(
-        count >= 2 for count in PULLS_PER_BOSS
+        count >= 1 for count in PULLS_PER_BOSS
     )
     for boss in report.bosses:
         for pull in boss.pulls:
@@ -383,14 +382,11 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
         assert control is not None
         first = re.search(r'<option value="([^"]+)"', control.group(1))
         assert first is not None
-        if boss.summary is not None:
-            assert first.group(1) == f"b{index}-summary"
-            drawn_ids = set(re.findall(rf'id="b{index}-finding-([^"]+)"', html))
-            written_ids = {finding["id"] for finding in payload["bosses"][index]["findings"]}
-            assert drawn_ids == written_ids
-        else:
-            assert first.group(1).endswith("-pull"), "a single-pull boss opens on its pull"
-            assert f'id="b{index}-summary"' not in html
+        assert boss.summary is not None
+        assert first.group(1) == f"b{index}-summary"
+        drawn_ids = set(re.findall(rf'id="b{index}-finding-([^"]+)"', html))
+        written_ids = {finding["id"] for finding in payload["bosses"][index]["findings"]}
+        assert drawn_ids == written_ids
 
     # Every one of a boss's finding titles, escaped as the page escapes them,
     # is drawn inside that boss's own summary block -- not merely somewhere on

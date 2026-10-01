@@ -13,6 +13,13 @@ from wowperf.domain.report.progression_frame import build_attempt_rows, build_pr
 from wowperf.domain.report.progression_ledger import PROGRESSION_PLACEMENTS
 from wowperf.domain.report.progression_model import ProgressionProvenance, ProgressionReport
 
+REPEAT_POINTER_IDS = (
+    "progression.repeat.killing_blow",
+    "progression.repeat.first_death",
+    "progression.repeat.ability",
+)
+"""The Repeats cards the Summary points at, in the order it points at them."""
+
 NOTHING_DEEPENED = (
     "No attempt was deepened, so there is nothing to compare the best one against."
 )
@@ -65,6 +72,12 @@ def build_progression_report(
     )
 
     placed_ids = placed_finding_ids((), placed, ())
+    # Each pointer is the Repeats card itself, so it can never say what its card
+    # does not; the order is the table's, whatever order the findings came in.
+    repeat_pointers = tuple(
+        row for wanted in REPEAT_POINTER_IDS for row in placed["repeat_rows"]
+        if row.finding_id == wanted
+    )
     return ProgressionReport(
         header=build_progression_header(series),
         chart=build_attempts_chart(series),
@@ -72,6 +85,7 @@ def build_progression_report(
         lead_rows=placed["lead_rows"],
         attempt_rows=placed["attempt_rows"],
         repeat_rows=placed["repeat_rows"],
+        repeat_pointers=repeat_pointers,
         best_rows=placed["best_rows"],
         best=best,
         observations=build_observations(findings, placed_ids, titles_by_id, {}),

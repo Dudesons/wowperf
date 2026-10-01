@@ -21,6 +21,28 @@ def depth_label(uses_boss_health: bool) -> str:
     return "boss health" if uses_boss_health else "encounter progress"
 
 
+def _headline(outcome: str, series: LoadedProgression) -> str:
+    """What the Summary opens on: the outcome, and for a boss not killed how deep it got.
+
+    A kill's outcome already says everything a headline should. Otherwise the
+    deepest attempt's own figure follows it, on the scale the header names;
+    with no attempt carrying a reading there is no depth to name, so the
+    outcome stands alone rather than carry a figure made up for it.
+    """
+    progression = series.progression
+    if any(attempt.kill for attempt in progression.attempts):
+        return outcome
+    deepest = progression.deepest
+    left = (
+        None
+        if deepest is None
+        else remaining_percent(deepest, uses_boss_health=progression.uses_boss_health)
+    )
+    if left is None:
+        return outcome
+    return f"{outcome}; the deepest left {left:.1f}% {depth_label(progression.uses_boss_health)}"
+
+
 def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
     progression = series.progression
     attempts = progression.attempts
@@ -36,6 +58,7 @@ def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
         ),
         size=progression.size,
         outcome=outcome,
+        headline=_headline(outcome, series),
         attempts_counted=len(attempts),
         attempts_discarded=len(progression.discarded),
         depth_label=depth_label(progression.uses_boss_health),
