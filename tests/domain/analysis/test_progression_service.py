@@ -159,6 +159,34 @@ def test_movement_is_withheld_when_too_few_attempts_qualify() -> None:
     assert movement.seconds_lost is None
 
 
+def test_a_night_of_one_attempt_counts_it_in_the_singular() -> None:
+    """One qualifying attempt is reachable (a boss pulled once) and "1 attempts" reads as a slip."""
+    progression = build_progression(
+        [an_attempt(1, 50.0, 200.0)], encounter_id=3492, difficulty=5
+    )
+
+    findings = analyse_progression(not_deepened(progression))
+    cluster = one(findings, "progression.cluster")
+    movement = one(findings, "progression.movement")
+
+    assert cluster.detail.startswith("Across 1 attempt the observed range")
+    assert "1 attempt counted" in cluster.evidence
+    assert movement.detail.startswith("1 attempt qualified and at least ")
+
+
+def test_a_night_of_several_attempts_counts_them_in_the_plural() -> None:
+    few = [an_attempt(i, 80.0 - i, 200.0) for i in range(1, 4)]
+    progression = build_progression(few, encounter_id=3492, difficulty=5)
+
+    findings = analyse_progression(not_deepened(progression))
+
+    assert one(findings, "progression.cluster").detail.startswith(
+        "Across 3 attempts the observed range"
+    )
+    assert "3 attempts counted" in one(findings, "progression.cluster").evidence
+    assert one(findings, "progression.movement").detail.startswith("3 attempts qualified")
+
+
 def test_discarded_attempts_are_reported_with_their_count() -> None:
     progression = build_progression(a_measured_night(), encounter_id=3492, difficulty=5)
 

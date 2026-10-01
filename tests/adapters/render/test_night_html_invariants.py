@@ -624,6 +624,17 @@ def test_a_summary_opens_on_its_headline_and_never_on_nothing_else_measured() ->
         assert "Nothing else measured" not in tab
 
 
+def test_a_once_pulled_boss_summary_never_counts_one_in_the_plural() -> None:
+    """The first boss is pulled once: its summary reads "1 attempt" on every tab."""
+    report = a_night_report()
+    assert report.bosses[0].summary is not None
+    assert report.bosses[0].summary.provenance.attempts_counted == 1
+    block = summary_blocks(render_night(report))["b0-summary"]
+
+    assert "1 attempt read" in block
+    assert re.search(r"\b1 attempts\b", block) is None
+
+
 def test_a_summary_draws_the_progression_tabs_under_its_own_scope() -> None:
     """Five tabs, each button naming a panel inside the same summary."""
     blocks = summary_blocks(a_night_page())
@@ -1097,10 +1108,10 @@ def test_the_rendered_night_page_matches_the_golden_file(pytestconfig: pytest.Co
     )
 
 
-TRIMMED_NIGHT_BUDGET_BYTES = 95_000
-"""Measured 91,642 bytes from `golden_night_html()` on 2026-09-26 -- three bosses,
-six pulls, one death apiece, all trimmed, and two boss summaries -- rounded up by
-roughly 4%. The same fixture read deep is 116,987 bytes, well past this budget: a
+TRIMMED_NIGHT_BUDGET_BYTES = 101_000
+"""Measured 97,317 bytes from `golden_night_html()` on 2026-10-01 -- three bosses,
+six pulls, one death apiece, all trimmed, and three boss summaries -- rounded up by
+roughly 4%. The same fixture read deep is 122,662 bytes, well past this budget: a
 budget with room to spare is a test that cannot fail until the damage is done, so
 this one sits close enough to the real figure that a card regaining a field it
 lost, or a tier check that stopped trimming, moves it.

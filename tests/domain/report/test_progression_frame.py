@@ -40,6 +40,33 @@ def test_the_header_counts_what_was_excluded() -> None:
     assert header.size == 20
 
 
+def test_the_header_states_how_many_attempts_were_read_in_the_singular_and_the_plural() -> None:
+    one_attempt = a_loaded_series(a_loaded_attempt(1, remaining=50.0))
+    three = a_loaded_series(
+        a_loaded_attempt(1, remaining=50.0),
+        a_loaded_attempt(2, remaining=40.0),
+        a_loaded_attempt(3, remaining=45.0),
+    )
+
+    assert build_progression_header(one_attempt).read_line == "1 attempt read"
+    assert build_progression_header(three).read_line == "3 attempts read"
+
+
+def test_the_header_read_line_counts_what_was_excluded() -> None:
+    progression = Progression(
+        report_code="abc123",
+        encounter_id=3492,
+        boss_name="Emberkin",
+        difficulty=5,
+        size=20,
+        attempts=(an_attempt(1, 50.0, 200.0),),
+        discarded=(an_attempt(2, 100.0, 15.8),),
+    )
+    header = build_progression_header(LoadedProgression(progression=progression))
+
+    assert header.read_line == "1 attempt read, 1 excluded as too short"
+
+
 def test_the_header_says_which_attempt_killed_it() -> None:
     killed = a_loaded_series(
         a_loaded_attempt(1, remaining=50.0),

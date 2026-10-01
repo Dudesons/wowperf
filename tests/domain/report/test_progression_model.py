@@ -39,6 +39,7 @@ def a_progression_header(**changes: object) -> ProgressionHeader:
         size=20,
         outcome="No kill in 7 attempts",
         headline="No kill in 7 attempts; the deepest left 16.5% encounter progress",
+        read_line="7 attempts read, 1 excluded as too short",
         attempts_counted=7,
         attempts_discarded=1,
         depth_label="encounter progress",
@@ -50,6 +51,7 @@ def a_progression_provenance(**changes: object) -> ProgressionProvenance:
     provenance = ProgressionProvenance(
         report_code="abc123",
         encounter_id=3492,
+        read_line="7 attempts read and 3 deepened",
         attempts_counted=7,
         attempts_deepened=3,
         fetched_at="2026-09-16 08:14",

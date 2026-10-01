@@ -217,8 +217,9 @@ Provenance — behind two dropdowns, a boss and then a pull within it. A boss wi
 drawn pull opens on a summary before any pull: the page `wowperf progression` draws for that boss,
 opening on its outcome — killed on attempt N, or how deep the deepest attempt got — then its
 attempts, what kept repeating across them and what the best one did differently, built from the
-same findings the night's JSON writes under that boss. A boss pulled once has a summary too; the
-findings that compare attempts with each other have nothing to compare there, and say so.
+same findings the night's JSON writes under that boss. A boss pulled once has a summary too, with
+little to compare: its cluster finding is the median of one attempt, and its movement finding
+says the night is not compared.
 
 A pull drawn at less than the
 deep tier still has its full death anatomy on hand elsewhere: `--deep` buys it back here for a

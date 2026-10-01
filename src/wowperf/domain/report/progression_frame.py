@@ -2,6 +2,7 @@
 # ABOUTME: Every percentage here is on the scale the header names, and never on the other.
 
 from wowperf.domain.analysis.progression_best import roster_deaths
+from wowperf.domain.findings import quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.frame import format_seconds
 from wowperf.domain.report.progression_model import AttemptRow, ProgressionHeader
@@ -43,6 +44,12 @@ def _headline(outcome: str, series: LoadedProgression) -> str:
     return f"{outcome}; the deepest left {left:.1f}% {depth_label(progression.uses_boss_health)}"
 
 
+def _read_line(counted: int, discarded: int) -> str:
+    """How many attempts were read, and how many left out for being too short."""
+    line = f"{quantity(counted, 'attempt', 'attempts')} read"
+    return f"{line}, {discarded} excluded as too short" if discarded else line
+
+
 def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
     progression = series.progression
     attempts = progression.attempts
@@ -59,6 +66,7 @@ def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
         size=progression.size,
         outcome=outcome,
         headline=_headline(outcome, series),
+        read_line=_read_line(len(attempts), len(progression.discarded)),
         attempts_counted=len(attempts),
         attempts_discarded=len(progression.discarded),
         depth_label=depth_label(progression.uses_boss_health),

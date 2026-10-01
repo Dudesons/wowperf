@@ -53,12 +53,13 @@ Measured 2026-10-01 against a cold cache: **83.08 points**, against 26.98 for wi
 `RateLimit` 2 for 1.00 in the command's own breakdown, and the other 2.00 the quota reads it
 leaves unpriced: this test's own reading of `after` and the command's closing read.
 
-**Verified live 2026-09-26.** The boss summaries this plan built draw on the same report: a
-summary sits on exactly the two 2-pull bosses and the 7-pull boss, nowhere else, at the same
-`--no-deaths` tier and the same cost as before -- summaries fetch nothing, being built from
-streams every tier already reads. Each summary's control opens on its own `b{i}-summary`
-option first, each summary's finding ids match what the command wrote for that boss in the
-findings file, and each summary's own titles are drawn inside its own block.
+**Verified live 2026-09-26, when a summary needed two drawn pulls.** The boss summaries this
+plan built draw on the same report, at the same `--no-deaths` tier and the same cost as before --
+summaries fetch nothing, being built from streams every tier already reads. A summary now sits
+on every boss with a drawn pull, the single-pull bosses included, and this suite asserts that;
+only the 2026-09-26 measurements are older than the rule. Each summary's control opens on its
+own `b{i}-summary` option first, each summary's finding ids match what the command wrote for
+that boss in the findings file, and each summary's own titles are drawn inside its own block.
 """
 
 import json
@@ -121,10 +122,10 @@ TIER = "none"
 """The tier `--no-deaths` draws every pull at; see the header on why this suite runs there."""
 
 FIRING_BOSS = 7
-"""The night index of the one summary boss the pooled defensives finding fires on.
+"""The night index of the one boss the pooled defensives finding fires on.
 
-Measured 2026-09-26 over the default tier: of the three summary bosses (night
-indices 1, 6 and 7), only the 7-pull boss names anyone -- eight players. On
+Measured 2026-09-26 over the default tier: of the three bosses pulled more than
+once (night indices 1, 6 and 7), only the 7-pull boss names anyone -- eight players. On
 each 2-pull boss no ability was up at a death on both pulls, so nobody
 qualifies there, and the cheapest boss that exercises the finding is this one.
 """
@@ -394,9 +395,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # rule out: `analyse_progression` mints boss-agnostic ids
     # (`progression.best`, `.cluster`, `.movement`), so two different bosses'
     # findings can share an id set even though nothing else about them agrees.
-    for index, boss in enumerate(report.bosses):
-        if boss.summary is None:
-            continue
+    for index in range(len(report.bosses)):
         match = re.search(
             rf'<section class="pull" data-night-pull-panel id="b{index}-summary">.*?'
             r'(?=<section class="pull"|<section class="night-notes")',
@@ -413,9 +412,7 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # this asserts what any correct run must satisfy regardless of which
     # ability actually named itself on this report.
     killing_blow_fired = False
-    for index, boss in enumerate(report.bosses):
-        if boss.summary is None:
-            continue
+    for index in range(len(report.bosses)):
         blow = next(
             (f for f in payload["bosses"][index]["findings"]
              if f["id"] == "progression.repeat.killing_blow"),

@@ -153,6 +153,20 @@ def test_a_duplicate_finding_id_is_refused() -> None:
         )
 
 
+def test_the_provenance_states_what_was_read_and_deepened_in_the_right_number() -> None:
+    once = build_progression_report(
+        a_loaded_series(a_loaded_attempt(1, remaining=60.0)), [], fetched_at="x"
+    )
+    twice = build_progression_report(
+        a_loaded_series(a_loaded_attempt(1, remaining=60.0), a_loaded_attempt(2, remaining=20.0)),
+        [],
+        fetched_at="x",
+    )
+
+    assert once.provenance.read_line == "1 attempt read and 1 deepened"
+    assert twice.provenance.read_line == "2 attempts read and 2 deepened"
+
+
 def test_the_provenance_counts_what_was_read_and_carries_no_reference_field() -> None:
     series = a_loaded_series(
         a_loaded_attempt(1, remaining=60.0), a_loaded_attempt(2, remaining=20.0)

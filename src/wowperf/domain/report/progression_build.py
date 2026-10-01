@@ -3,7 +3,7 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.findings import Finding
+from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression
 from wowperf.domain.report.build import _check_unique_finding_ids
 from wowperf.domain.report.ledger import build_observations, place_rows, placed_finding_ids
@@ -92,6 +92,10 @@ def build_progression_report(
         provenance=ProgressionProvenance(
             report_code=series.progression.report_code,
             encounter_id=series.progression.encounter_id,
+            read_line=(
+                f"{quantity(len(series.progression.attempts), 'attempt', 'attempts')} read "
+                f"and {deepened} deepened"
+            ),
             attempts_counted=len(series.progression.attempts),
             attempts_deepened=deepened,
             fetched_at=fetched_at,

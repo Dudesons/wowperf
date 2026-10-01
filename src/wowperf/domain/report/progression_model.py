@@ -17,6 +17,8 @@ class ProgressionHeader(Frozen):
     `outcome` is the fact alone ("Killed on attempt 3 of 7"). `headline` is what
     the Summary opens on: the same sentence for a kill, and for a boss not yet
     killed the outcome followed by how deep the deepest attempt got.
+    `read_line` is how many attempts were read and how many left out, already
+    in the right number, for the line under the title.
     """
 
     boss: str
@@ -24,6 +26,7 @@ class ProgressionHeader(Frozen):
     size: int
     outcome: str
     headline: str
+    read_line: str
     attempts_counted: int
     attempts_discarded: int
     depth_label: str
@@ -92,6 +95,9 @@ class ProgressionProvenance(Frozen):
 
     report_code: str
     encounter_id: int
+    # How many attempts were read and how many deepened, already in the right
+    # number, for the line the Provenance tab opens on.
+    read_line: str
     attempts_counted: int
     attempts_deepened: int
     fetched_at: str

@@ -11,7 +11,7 @@ from wowperf.domain.analysis.progression_repeats import (
     repeat_killing_blow,
     repeat_phase,
 )
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.progression import LoadedProgression, Progression, remaining_percent
 
 MIN_ATTEMPTS_FOR_MOVEMENT = 6
@@ -100,14 +100,15 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
                 id="progression.cluster",
                 title=f"Attempts sat at a median of {median(depths):.1f}% ({label})",
                 detail=(
-                    f"Across {len(depths)} attempts the observed range ran "
+                    f"Across {quantity(len(depths), 'attempt', 'attempts')} the observed "
+                    "range ran "
                     f"{min(depths):.1f}% to {max(depths):.1f}%. A median and a range, "
                     "never an average: one attempt that went deep does not move a median, "
                     "but it would drag an average down."
                 ),
                 confidence=Confidence.MEASURED,
                 evidence=(
-                    f"{len(depths)} attempts counted",
+                    f"{quantity(len(depths), 'attempt', 'attempts')} counted",
                     f"range {min(depths):.1f}% to {max(depths):.1f}%",
                 ),
             )
@@ -167,7 +168,7 @@ def _movement(progression: Progression, depths: list[float], label: str) -> Find
             id="progression.movement",
             title="Movement across the night is not compared",
             detail=(
-                f"{len(depths)} attempts qualified and at least "
+                f"{quantity(len(depths), 'attempt', 'attempts')} qualified and at least "
                 f"{MIN_ATTEMPTS_FOR_MOVEMENT} are needed to split a night into halves "
                 "worth comparing. Below that the two sides are anecdotes."
             ),
