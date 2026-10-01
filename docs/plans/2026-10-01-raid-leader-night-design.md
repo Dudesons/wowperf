@@ -3,7 +3,8 @@
 **Status:** approved design; both sub-slices built and exercised live, 2026-10-01. Sub-slice 1
 (§4) planned in `docs/plans/2026-10-01-raid-leader-night-coverage-plan.md`, shipped in #47 with
 #48 and #49. Sub-slice 2 (§5) planned in `docs/plans/2026-10-01-raid-leader-night-page-plan.md`,
-shipped in #50 with #52.
+shipped in #50 with #52. §10, which splits what keeps over-landing in two, approved 2026-10-01
+and not yet planned.
 **Area:** `wowperf night`, and through the builders it shares, `wowperf raid --fight N` and
 `wowperf progression`. It amends `docs/plans/2026-09-23-night-report-design.md` (§5, restoring
 what the shipped code dropped), `docs/plans/2026-09-27-wipe-damage-pace-design.md` (§4, §7, §11,
@@ -180,6 +181,10 @@ strongest findings in a fixed order:
 3. **What keeps over-landing** — a new boss-level rollup of `mechanics.ability.*`: an ability
    reported in more than one compared pull, with the count of pulls it appeared in and a
    quantifier. The threshold mirrors the existing `progression.repeat.*` findings.
+
+   > **Amended 2026-10-01.** Split in two, each counted only past more than half the compared
+   > pulls: abilities no reference kill took at all, then abilities taken more often than the
+   > kills took them. Section 10 holds the rule and the live readings that called for it.
 4. **The existing repeats** — `progression.repeat.killing_blow`, `progression.repeat.first_death`,
    `progression.repeat.ability`.
 
@@ -268,3 +273,75 @@ Done means a live run of `wowperf night 6jHcTvtB4XAMGZag` reports how often each
 occurred across its 21 pulls: each `wipe.cause` verdict, pace behind / on pace / ahead, each
 kill-speed reading, and the boss lookup's outcome per boss. A state that never occurs is
 investigated, not accepted.
+
+## 10. What keeps over-landing, split (amended 2026-10-01)
+
+### 10.1 Why
+
+As built, `progression.lead.overlanding` counted an ability once per compared pull that reported
+it, and named it at two such pulls. On the live runs of 2026-10-01 it named five abilities, the cap,
+on every boss with compared pulls, and its single-ability title never occurred. The rule is
+loose for a reason the per-pull finding explains: each pull's `mechanics.ability.*` is itself
+capped at five, ranked by how far our rate sits above the reference median, so on a boss with
+around ten abilities two appearances in those lists is close to automatic.
+
+The same runs showed the repeats are two different things. On `6jHcTvtB4XAMGZag` the three most
+repeated abilities on the thirteen-pull boss (10, 8 and 7 pulls) were taken by none of the
+reference kills; the two taken by the references at a lower rate sat at 6 and 6. On the seven-pull
+boss three of its five repeats were of the first kind, and on `cW38jmwdnZfbHVL4`'s seven-pull boss
+four of seven. The per-pull finding's own count of references that took the ability at all
+was two-valued on every boss that repeated anything: none of them, or most to every one.
+
+### 10.2 The rule
+
+Two boss-level findings replace the one, both in `night_rollups.py`, both over the boss's compared
+pulls (`mechanics_compared`, the denominator §5.2 already uses), both counting pulls and never
+hits:
+
+- **`progression.lead.never_taken`**: an ability no reference kill took at all. An ability belongs
+  here only when every compared pull that reported it says no reference took it -- the per-pull
+  finding's `quantifier` is `"none"` exactly when zero of its references carried the ability.
+- **`progression.lead.overlanding`** (same id, narrower): every other ability a compared pull
+  reported, taken by the references and by us at `MECHANIC_MULTIPLE` their median rate or more.
+
+An ability whose pulls disagree -- never taken on one, taken on another -- goes to the second
+finding: a mixed record never earns the stronger claim. So does one reported against a single
+reference, whose `quantifier` is empty, there being no count of references to read.
+
+Each fires for the abilities reported in **more than half** the compared pulls: the rule
+`progression.repeat.ability` already applies, and the one the `most` quantifier names, so no new
+threshold is introduced. Each title counts every qualifying ability, the evidence lists at most
+`MAX_REPEAT_ABILITIES` with `capped_line` closing a cut list, and each takes its top ability's
+`quantifier_for(n, compared)`, which can now read only `most` or `every`. Both are `derived`, the
+confidence of the findings they count.
+
+The titles:
+
+- one ability never taken: "<ability> landed in 10 of 13 compared attempts, where no reference
+  kill took it"; several: "3 abilities no reference kill took landed in most compared attempts";
+- one ability taken more often: "<ability> over-landed in 6 of 7 compared attempts"; several:
+  "2 abilities over-landed in most compared attempts".
+
+Each detail states a difference, not a mistake, as the per-pull finding does. "No reference kill
+took it" is stated as what the log shows; neither finding says the ability was avoidable or names
+a mechanic as failed, which the log cannot show (§8).
+
+### 10.3 On the page
+
+The boss summary's lead reads: kill speed, why attempts ended, **never taken**, **taken more
+often**, then the existing repeats. A boss with nothing past the bar in a category draws no line
+for it. `progression.lead.` already places both on `lead_rows`, so the change is the fixed order
+`analyse_night_rollups` returns.
+
+### 10.4 Testing and done
+
+Unit tests cover the majority bar at exactly half (not counted) and just over it, the mixed record,
+the single reference, the cap with a true count, not-compared pulls outside the denominator, and
+the order. The night end-to-end test asserts the new id's shape. The `mplus-analysis` skill names
+both ids, their rule and badges; `analyzing-a-run` and the README give the summary's order.
+
+Done means a live run of `wowperf night` on `6jHcTvtB4XAMGZag` and `cW38jmwdnZfbHVL4` reports, per
+boss with compared pulls, how many abilities each finding names and its quantifier. The 2026-10-01
+readings predict 3 never taken and 1 taken more often on the Mythic seven-pull boss, 3 and none on
+the Mythic thirteen-pull boss, and 4 and 1 on the Heroic seven-pull boss. A state that never occurs
+is investigated, not accepted.
