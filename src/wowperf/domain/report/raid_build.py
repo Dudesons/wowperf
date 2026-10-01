@@ -366,8 +366,8 @@ def build_raid_report(
     # chart's own coordinates both read, so the two can never disagree about
     # what "behind" meant. `pace_finding` gates the chart on the finding
     # actually being on the page rather than only on `pace` being given, so a
-    # sample that could not be read (`pace_reading` returning `None`, e.g. a
-    # kill) draws no orphaned chart with no card to badge it from.
+    # sample that could not be read (`pace_reading` returning `None`, e.g. one
+    # with no reference kill) draws no orphaned chart with no card to badge it from.
     reading = pace_reading(loaded.encounter, pace) if pace is not None else None
     pace_finding = next((one for one in findings if one.id == PACE_ID), None)
     pace_chart = (

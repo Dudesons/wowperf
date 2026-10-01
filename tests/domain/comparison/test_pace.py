@@ -1,4 +1,4 @@
-# ABOUTME: The two pace findings and the notice, from one wipe and its reference kills.
+# ABOUTME: The two pace findings and the notice, from one fight and its reference kills.
 # ABOUTME: Pins the titles, evidence, badges and every withhold the design names.
 
 import re
@@ -6,7 +6,9 @@ import re
 from tests.domain.comparison.test_pace_curve import a_behind_pattern, a_kill, steady
 from tests.domain.report.test_raid_frame import an_encounter
 from wowperf.domain.comparison.pace import (
+    BOSS_DETAIL,
     BOSS_IN_NO_REFERENCE,
+    KILL_DETAIL,
     NO_BOSS,
     NO_REFERENCE_KILL,
     NOTHING_TO_COMPARE,
@@ -17,6 +19,7 @@ from wowperf.domain.comparison.pace import (
     PaceSample,
     analyse_pace,
     not_fetched,
+    pace_reading,
 )
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import Confidence, Finding
@@ -146,9 +149,52 @@ def test_zero_boss_damage_gets_no_projection() -> None:
     assert "No projection: the raid dealt the boss no damage" in found[PACE_ID].evidence
 
 
-def test_a_kill_is_never_compared() -> None:
-    kill = an_encounter(kill=True, start_ms=0, end_ms=200_000)
-    assert analyse_pace(kill, PaceSample(ours=steady(80, 200), references=THREE_KILLS)) == []
+KILL_SAMPLE = PaceSample(
+    ours=steady(10, 200),
+    references=tuple(a_kill(amount, 300) for amount in (18, 20, 22)),
+)
+"""Our kill at 10 a second over 200 s against three kills at 18, 20 and 22 over 300 s.
+
+The references outlast our kill, so the band is never cut and the comparison runs through
+our own last second; 20 is the median and neither end, so the share names the median."""
+
+
+def a_kill_fight(seconds: int) -> Encounter:
+    return an_encounter(kill=True, start_ms=0, end_ms=seconds * 1000)
+
+
+def test_a_kill_is_compared_through_its_last_second_with_the_kill_wording() -> None:
+    [finding] = analyse_pace(a_kill_fight(200), KILL_SAMPLE)
+    assert finding.id == PACE_ID
+    assert finding.title == "Behind the kills' pace: 50% of their median boss damage by 3:20"
+    assert finding.confidence is Confidence.DERIVED
+    assert "Compared through the kill at 3:20" in finding.evidence
+    assert finding.detail == KILL_DETAIL
+
+
+def test_a_kill_draws_no_projection() -> None:
+    ids = [one.id for one in analyse_pace(a_kill_fight(200), KILL_SAMPLE)]
+    assert ids == [PACE_ID]
+    assert PROJECTION_ID not in ids
+
+
+def test_a_wipe_keeps_the_wipe_wording_and_its_projection() -> None:
+    findings = analyse_pace(a_wipe(200), KILL_SAMPLE)
+    assert [one.id for one in findings] == [PACE_ID, PROJECTION_ID]
+    assert "Compared through the wipe at 3:20" in findings[0].evidence
+    assert findings[0].detail == BOSS_DETAIL
+
+
+def test_a_kill_with_nothing_to_compare_against_gets_the_notice() -> None:
+    [notice] = analyse_pace(
+        a_kill_fight(200), PaceSample(ours=steady(10, 200), unavailable=NO_REFERENCE_KILL)
+    )
+    assert notice.id == UNAVAILABLE_ID
+    assert notice.detail == NO_REFERENCE_KILL
+
+
+def test_pace_reading_reads_a_kill() -> None:
+    assert pace_reading(a_kill_fight(200), KILL_SAMPLE) is not None
 
 
 def test_each_withhold_is_one_notice_carrying_its_reason() -> None:
