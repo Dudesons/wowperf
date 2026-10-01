@@ -302,6 +302,26 @@ def test_each_attempt_row_carries_its_verdict_pace_first_death_and_hold() -> Non
     ]
 
 
+def test_the_verdict_cell_names_both_in_full_and_the_other_kinds_bare() -> None:
+    """"both" alone leaves a reader to ask both of what; the rollup's title says it in full."""
+    series = a_loaded_series(
+        a_loaded_attempt(1, remaining=40.0),
+        a_loaded_attempt(2, remaining=30.0),
+        a_loaded_attempt(3, remaining=20.0),
+    )
+
+    rows = build_attempt_rows(
+        series,
+        pull_findings={
+            1: (a_verdict("both"),), 2: (a_verdict("execution"),), 3: (a_verdict("throughput"),)
+        },
+    )
+
+    assert [row.verdict for row in rows] == [
+        "both execution and throughput", "execution", "throughput"
+    ]
+
+
 def test_the_pace_cell_reads_each_state_at_the_attempts_end() -> None:
     """On pace and ahead as well as behind, each read at the last second compared.
 

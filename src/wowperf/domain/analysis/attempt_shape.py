@@ -224,6 +224,19 @@ One table both ways: `classify_attempt` writes its titles from it and
 boss-level rollup counting verdicts it no longer recognises.
 """
 
+VERDICT_KIND_WORDS = {"both": "both execution and throughput"}
+"""How a verdict kind reads where it stands alone, and the bare word would not.
+
+"ended on both" leaves a reader to ask both of what. The rollup's title and
+the attempt table's Verdict cell read it from here; the rollup's evidence
+lines keep the bare kind, beside each verdict's own headline on the pull page.
+"""
+
+
+def verdict_words(kind: str) -> str:
+    """`kind` as a reader sees it on its own: in full where `VERDICT_KIND_WORDS` has it."""
+    return VERDICT_KIND_WORDS.get(kind, kind)
+
 
 def verdict_kind(finding: Finding) -> str:
     """Which verdict a finding states: a `VERDICT_HEADLINES` kind, "withheld", or "".

@@ -4,7 +4,7 @@
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 
-from wowperf.domain.analysis.attempt_shape import verdict_kind
+from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
 from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.pace import PACE_ID
@@ -45,13 +45,6 @@ OVERLANDING_DETAIL = (
 
 _CERTAINTY = (Confidence.INFERRED, Confidence.DERIVED, Confidence.MEASURED)
 """Least certain first, so the lowest index is the weakest claim."""
-
-_TITLE_KINDS = {"both": "both execution and throughput"}
-"""How a verdict kind reads in the rollup's title, where the bare word would not.
-
-"ended on both" leaves a reader to ask both of what; the evidence lines keep
-the bare kind, beside each verdict's own headline on the pull page.
-"""
 
 
 def _least_certain(confidences: Iterable[Confidence]) -> Confidence:
@@ -135,7 +128,7 @@ def _verdicts(
     if kinds:
         kind, ids = kinds[0]
         top = len(ids)
-        title = f"{top} of {wipes} ended on {_TITLE_KINDS.get(kind, kind)}"
+        title = f"{top} of {wipes} ended on {verdict_words(kind)}"
     else:
         top = 0
         title = f"No wipe's verdict could be read, of {wipes}"

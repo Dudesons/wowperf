@@ -3,7 +3,7 @@
 
 from collections.abc import Mapping, Sequence
 
-from wowperf.domain.analysis.attempt_shape import verdict_kind
+from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
 from wowperf.domain.analysis.progression_best import roster_deaths
 from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
 from wowperf.domain.comparison.pace import PaceSample, pace_reading, withheld_reason
@@ -95,10 +95,15 @@ def _verdict(kill: bool, findings: Sequence[Finding]) -> str:
     The first finding that states a verdict, so the pull's other findings are
     passed over; a pull carrying none -- never drawn, or one the verdict was
     not minted for -- has no reading rather than a verdict made up for it.
+    The kind is printed in the words the boss rollup's title uses, so "both"
+    names what it is both of.
     """
     if kill:
         return KILL_VERDICT
-    return next((kind for finding in findings if (kind := verdict_kind(finding))), NO_READING)
+    return next(
+        (verdict_words(kind) for finding in findings if (kind := verdict_kind(finding))),
+        NO_READING,
+    )
 
 
 def _pace(encounter: Encounter, sample: PaceSample | None) -> str:
