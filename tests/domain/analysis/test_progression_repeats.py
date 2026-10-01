@@ -548,10 +548,68 @@ def test_caps_at_five_abilities() -> None:
         for fight_id in (1, 2, 3)
     ), a_control_attempt(999)))
     assert finding is not None
-    assert "5 abilities" in finding.title
+    assert "6 abilities" in finding.title      # every qualifying ability, not the listed five
     for name in ("Ability A", "Ability B", "Ability C", "Ability D", "Ability E"):
         assert name in finding.detail
     assert "Ability F" not in finding.detail    # sixth-place tie, dropped by the cap
+
+
+def test_a_capped_ability_list_counts_every_ability_and_says_it_was_cut() -> None:
+    """Seven abilities qualify, two more than the cap: the title counts seven.
+
+    Ability G lands in all four attempts and the other six in three, each more
+    than half of the five windows the control makes, so the evidence lists G
+    first, the rest by name, and closes on the line saying the list was cut.
+    """
+    names = {810 + index: f"Ability {letter}" for index, letter in enumerate("ABCDEFG")}
+    every = tuple((60_000, ability_id, ENEMY_SOURCE) for ability_id in names)
+    only_g = ((60_000, 816, ENEMY_SOURCE),)
+    finding = repeat_ability(a_loaded_series(
+        *(
+            a_loaded_attempt(
+                fight_id, seconds=100.0, deaths_after_ms=(50_000,),
+                damage_after_ms=every, ability_names=names,
+            )
+            for fight_id in (1, 2, 3)
+        ),
+        a_loaded_attempt(
+            4, seconds=100.0, deaths_after_ms=(50_000,),
+            damage_after_ms=only_g, ability_names=names,
+        ),
+        a_control_attempt(999),
+    ))
+    assert finding is not None
+    assert finding.title == "7 abilities kept landing as attempts fell apart"
+    assert finding.evidence == (
+        "Ability G landed in 4 of 5 attempts",
+        "Ability A landed in 3 of 5 attempts",
+        "Ability B landed in 3 of 5 attempts",
+        "Ability C landed in 3 of 5 attempts",
+        "Ability D landed in 3 of 5 attempts",
+        "The evidence lists the 5 abilities most reported",
+    )
+    assert "the 5 most frequent of 7 abilities" in finding.detail
+    assert "Ability E" not in finding.detail
+
+
+def test_an_ability_list_the_cap_does_not_cut_carries_no_line_about_the_cap() -> None:
+    names = {830 + index: f"Ability {letter}" for index, letter in enumerate("ABCDE")}
+    every = tuple((60_000, ability_id, ENEMY_SOURCE) for ability_id in names)
+    finding = repeat_ability(a_loaded_series(
+        *(
+            a_loaded_attempt(
+                fight_id, seconds=100.0, deaths_after_ms=(50_000,),
+                damage_after_ms=every, ability_names=names,
+            )
+            for fight_id in (1, 2)
+        ),
+        a_control_attempt(999),
+    ))
+    assert finding is not None
+    assert finding.title == "5 abilities kept landing as attempts fell apart"
+    assert len(finding.evidence) == 5
+    assert not any("most reported" in line for line in finding.evidence)
+    assert "most frequent" not in finding.detail
 
 
 def test_titles_a_single_qualifying_ability_in_the_singular() -> None:
@@ -741,7 +799,51 @@ def test_caps_the_named_abilities_at_five() -> None:
     ]
     finding = repeat_killing_blow(series_of(*attempts))
     assert finding is not None
+    assert finding.title == "6 abilities dealt the first death in more than one attempt"
+    assert len(finding.evidence) == 6
+    assert finding.evidence[-1] == "The evidence lists the 5 abilities most reported"
+
+
+def test_a_capped_killing_blow_list_counts_every_ability_and_says_it_was_cut() -> None:
+    """Seven abilities repeat, two more than the cap: the title counts seven.
+
+    Rite A opens three attempts and the other six two each, so the evidence
+    lists the most frequent first, ties by name, and closes on the line saying
+    the list was cut -- a title counting the listed lines would claim five.
+    """
+    attempts = [first_death_by(fight, 441_000, "Rite A") for fight in (1, 2, 3)] + [
+        first_death_by(10 * n + k, 441_000 + n, f"Rite {letter}")
+        for n, letter in enumerate("BCDEFG", start=1)
+        for k in (0, 1)
+    ]
+    finding = repeat_killing_blow(series_of(*attempts))
+    assert finding is not None
+    assert finding.title == "7 abilities dealt the first death in more than one attempt"
+    assert finding.ability_id is None
+    assert finding.evidence == (
+        "Rite A dealt the first death in 3 of 15 attempts",
+        "Rite B dealt the first death in 2 of 15 attempts",
+        "Rite C dealt the first death in 2 of 15 attempts",
+        "Rite D dealt the first death in 2 of 15 attempts",
+        "Rite E dealt the first death in 2 of 15 attempts",
+        "The evidence lists the 5 abilities most reported",
+    )
+    assert "the 5 most frequent of 7 abilities" in finding.detail
+    assert "Rite F" not in finding.detail
+
+
+def test_a_killing_blow_list_the_cap_does_not_cut_carries_no_line_about_the_cap() -> None:
+    attempts = [
+        first_death_by(10 * n + k, 441_000 + n, f"Rite {letter}")
+        for n, letter in enumerate("ABCDE", start=1)
+        for k in (0, 1)
+    ]
+    finding = repeat_killing_blow(series_of(*attempts))
+    assert finding is not None
+    assert finding.title == "5 abilities dealt the first death in more than one attempt"
     assert len(finding.evidence) == 5
+    assert not any("most reported" in line for line in finding.evidence)
+    assert "most frequent" not in finding.detail
 
 
 def test_is_silent_below_two_qualifying_attempts() -> None:

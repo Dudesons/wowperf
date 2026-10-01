@@ -228,6 +228,21 @@ def repeat_first_death(series: LoadedProgression) -> Finding | None:
 MAX_REPEAT_ABILITIES = 5
 
 
+def capped_line(count: int) -> str | None:
+    """The line a capped ability list ends on, or None when the cap cut nothing.
+
+    `count` is every ability that qualified, never the listed ones. A finding
+    titles that count and lists at most `MAX_REPEAT_ABILITIES`, so a list the
+    cap cut says so, and a reader never takes the lines for the count.
+    """
+    if count <= MAX_REPEAT_ABILITIES:
+        return None
+    return (
+        "The evidence lists the "
+        f"{quantity(MAX_REPEAT_ABILITIES, 'ability', 'abilities')} most reported"
+    )
+
+
 def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
     """Which abilities dealt each attempt's first death, counted across the night.
 
@@ -249,6 +264,10 @@ def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
     this death is more reason to name it, not less. Measured: the log names the
     death and its blow, and the rest is counting. Names no player and no
     specialisation; who died first is `repeat_first_death`'s claim.
+
+    The title counts every ability reaching two; the evidence lists at most
+    `MAX_REPEAT_ABILITIES` of them and, when that cut some, ends on
+    `capped_line`.
     """
     names: dict[int, str] = {}
     counts: Counter[int] = Counter()
@@ -269,29 +288,37 @@ def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
 
     if qualifying < 2:
         return None
-    named = sorted(
+    repeated = sorted(
         (ability_id for ability_id, count in counts.items() if count >= 2),
         key=lambda ability_id: (-counts[ability_id], names[ability_id]),
-    )[:MAX_REPEAT_ABILITIES]
-    if not named:
+    )
+    if not repeated:
         return None
+    named = repeated[:MAX_REPEAT_ABILITIES]
+    cut = capped_line(len(repeated))
 
     lines = tuple(
         f"{names[ability_id]} dealt the first death in {counts[ability_id]} of "
         f"{qualifying} attempts"
         for ability_id in named
     )
-    single = named[0] if len(named) == 1 else None
+    single = repeated[0] if len(repeated) == 1 else None
     return Finding(
         id="progression.repeat.killing_blow",
         title=(
             lines[0]
             if single is not None
-            else f"{len(named)} abilities dealt the first death in more than one attempt"
+            else f"{len(repeated)} abilities dealt the first death in more than one attempt"
         ),
         detail=(
             f"Across the {qualifying} attempts whose first death was a roster player "
-            "killed by an ability the log named: "
+            "killed by an ability the log named"
+            + (
+                ""
+                if cut is None
+                else f", the {MAX_REPEAT_ABILITIES} most frequent of {len(repeated)} abilities"
+            )
+            + ": "
             + "; ".join(lines)
             + ". Only each attempt's first death is read -- the one the rest of a wipe "
             "cannot swamp -- and an attempt whose first death a raider dealt is left out. "
@@ -299,7 +326,7 @@ def repeat_killing_blow(series: LoadedProgression) -> Finding | None:
             "avoided."
         ),
         confidence=Confidence.MEASURED,
-        evidence=lines,
+        evidence=lines if cut is None else (*lines, cut),
         ability_id=single,
         ability_name=names[single] if single is not None else "",
     )
@@ -359,8 +386,10 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
     everything rather than staying quiet.
 
     Counts attempts an ability appeared in, never hits, and reports only
-    abilities present in more than half the attempts with a window, capped at
-    five. Confidence is derived rather than measured: which hits fall inside
+    abilities present in more than half the attempts with a window. The title
+    counts every such ability; the evidence lists at most
+    `MAX_REPEAT_ABILITIES` and, when that cut some, ends on `capped_line`.
+    Confidence is derived rather than measured: which hits fall inside
     the window is a modelling choice, not a fact the log states outright.
     """
     deepest = series.deepest_loaded
@@ -397,6 +426,7 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
 
     qualifying.sort(key=lambda pair: (-pair[1], ability_names[pair[0]]))
     top = qualifying[:MAX_REPEAT_ABILITIES]
+    cut = capped_line(len(qualifying))
 
     lines = tuple(
         f"{ability_names[ability_id]} landed in {count} of {attempts_with_window} attempts"
@@ -405,11 +435,20 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
 
     return Finding(
         id="progression.repeat.ability",
-        title=f"{quantity(len(top), 'ability', 'abilities')} kept landing as attempts fell apart",
+        title=(
+            f"{quantity(len(qualifying), 'ability', 'abilities')} kept landing as attempts "
+            "fell apart"
+        ),
         detail=(
             f"Across the {attempts_with_window} attempts carrying a window from the first "
             "death to the end, these abilities kept landing on someone after the raid "
-            "started coming apart: "
+            "started coming apart"
+            + (
+                ""
+                if cut is None
+                else f", the {MAX_REPEAT_ABILITIES} most frequent of {len(qualifying)} abilities"
+            )
+            + ": "
             + "; ".join(lines)
             + ". This counts the attempts each ability appeared in, not hits, and excludes "
             "any hit a roster player dealt, self-damage included, along with any ability "
@@ -420,5 +459,5 @@ def repeat_ability(series: LoadedProgression) -> Finding | None:
             "only what kept landing, nothing about why an attempt ended."
         ),
         confidence=Confidence.DERIVED,
-        evidence=lines,
+        evidence=lines if cut is None else (*lines, cut),
     )

@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
-from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES
+from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES, capped_line
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.pace import PACE_ID
 from wowperf.domain.encounter import LoadedEncounter
@@ -182,14 +182,8 @@ def _overlanding(
     # The title counts every ability that repeated; only the evidence is capped,
     # and a capped list says so, so a reader never takes the lines for the count.
     named = repeated[:MAX_REPEAT_ABILITIES]
-    cut = (
-        (
-            "The evidence lists the "
-            f"{quantity(MAX_REPEAT_ABILITIES, 'ability', 'abilities')} most reported",
-        )
-        if len(repeated) > len(named)
-        else ()
-    )
+    cut_line = capped_line(len(repeated))
+    cut = () if cut_line is None else (cut_line,)
 
     total = len(compared)
     heads = tuple(
