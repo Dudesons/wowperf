@@ -318,10 +318,17 @@ confidence of the findings they count.
 
 The titles:
 
-- one ability never taken: "<ability> landed in 10 of 13 compared attempts, where no reference
-  kill took it"; several: "3 abilities no reference kill took landed in most compared attempts";
-- one ability taken more often: "<ability> over-landed in 6 of 7 compared attempts"; several:
-  "2 abilities over-landed in most compared attempts".
+- one ability never taken: "<ability> landed in at least 10 of 13 compared attempts, where no
+  reference kill took it"; several: "3 abilities no reference kill took landed in most compared
+  attempts";
+- one ability taken more often: "<ability> over-landed in at least 6 of 7 compared attempts";
+  several: "2 abilities over-landed in most compared attempts".
+
+A count is a floor, and the titles say "at least" for it: each pull's `mechanics.ability.*` list
+is capped at `MAX_MECHANICS_REPORTED`, so an ability can land in a pull whose list does not name
+it. Each detail says so. The several-ability titles need no such word, since "most" is already
+true of a floor. (Amended 2026-10-01 at the final review, which found the bare count read as a
+landing count the capped lists cannot support.)
 
 Each detail states a difference, not a mistake, as the per-pull finding does. "No reference kill
 took it" is stated as what the log shows; neither finding says the ability was avoidable or names

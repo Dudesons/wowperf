@@ -84,16 +84,19 @@ included.
   the title names several abilities, so it is only ever `most` or `every`. An ability whose record
   is mixed (some pulls read it as one no reference kill took, others as one some reference kill
   took) goes to `overlanding`, as does one read against a single reference, which counts no
-  references. Write "no reference kill took it" and never "avoidable": it states what the log
-  shows, not that a landing could have been prevented, which is not in the log.
+  references. Its counts are floors, and its title says "at least": each pull names only its
+  widest gaps, so an ability can land in a pull that does not name it. Write "no reference kill
+  took it" and never "avoidable": it states what the log shows, not that a landing could have been
+  prevented, which is not in the log.
 - `progression.lead.overlanding`, what kept over-landing. It counts, by compared pull and never by
   hit, every other ability that more than half of the compared pulls reported as far above the
   reference kills' rate, and it never fires on fewer than two compared pulls. It is `derived`. Its
   title counts every such ability; its evidence lists only the most reported, and a last line says
   so wherever that list was cut. A pull whose sample drew no member compared nothing and is
   outside the denominator. Its quantifier is the most-reported ability's, even where the title
-  names several abilities, so it is only ever `most` or `every`. It states a difference, not a
-  mistake: whether a landing could have been prevented is not in the log.
+  names several abilities, so it is only ever `most` or `every`. Its counts are floors for the
+  same reason, and its title says "at least". It states a difference, not a mistake: whether a
+  landing could have been prevented is not in the log.
 
 ## What each confidence badge licenses you to say
 

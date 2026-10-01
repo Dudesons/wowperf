@@ -274,13 +274,13 @@ def test_an_ability_over_landing_in_two_compared_pulls_is_named_once() -> None:
         analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5})), OVERLANDING
     )
 
-    assert rollup.title == "Brinecoil Lash over-landed in 2 of 3 compared attempts"
+    assert rollup.title == "Brinecoil Lash over-landed in at least 2 of 3 compared attempts"
     assert rollup.quantifier == "most"
     assert rollup.confidence is Confidence.DERIVED
     assert rollup.ability_id == 9001
     assert rollup.ability_name == "Brinecoil Lash"
     assert rollup.evidence == (
-        "Brinecoil Lash over-landed in 2 of 3 compared attempts (Fights 3 and 5)",
+        "Brinecoil Lash over-landed in at least 2 of 3 compared attempts (Fights 3 and 5)",
     )
 
 
@@ -310,7 +310,7 @@ def test_a_pull_not_compared_is_not_in_the_denominator() -> None:
         analyse_night_rollups(attempts, pull_findings, frozenset({3, 5})), OVERLANDING
     )
 
-    assert rollup.title == "Brinecoil Lash over-landed in 2 of 2 compared attempts"
+    assert rollup.title == "Brinecoil Lash over-landed in at least 2 of 2 compared attempts"
     assert rollup.quantifier == "every"
 
 
@@ -338,11 +338,11 @@ def test_several_abilities_are_all_counted_and_the_most_repeated_listed_first() 
     assert rollup.ability_name == ""
     assert rollup.quantifier == "every"
     assert rollup.evidence == (
-        "Ability G over-landed in 3 of 3 compared attempts (Fights 3–5)",
-        "Ability A over-landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability B over-landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability C over-landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability D over-landed in 2 of 3 compared attempts (Fights 3–4)",
+        "Ability G over-landed in at least 3 of 3 compared attempts (Fights 3–5)",
+        "Ability A over-landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability B over-landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability C over-landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability D over-landed in at least 2 of 3 compared attempts (Fights 3–4)",
         "The evidence lists the 5 abilities most reported",
     )
 
@@ -377,10 +377,11 @@ def test_an_ability_no_reference_took_in_most_compared_pulls_is_never_taken() ->
     rollup = the_rollup(found, NEVER_TAKEN)
 
     assert rollup.title == (
-        "Brinecoil Lash landed in 2 of 3 compared attempts, where no reference kill took it"
+        "Brinecoil Lash landed in at least 2 of 3 compared attempts, "
+        "where no reference kill took it"
     )
     assert rollup.evidence == (
-        "Brinecoil Lash landed in 2 of 3 compared attempts (Fights 3 and 5)",
+        "Brinecoil Lash landed in at least 2 of 3 compared attempts (Fights 3 and 5)",
     )
     assert rollup.quantifier == "most"
     assert rollup.confidence is Confidence.DERIVED
@@ -428,7 +429,7 @@ def test_a_mixed_record_never_earns_the_stronger_claim() -> None:
 
     assert NEVER_TAKEN not in [finding.id for finding in found]
     assert the_rollup(found, OVERLANDING).title == (
-        "Brinecoil Lash over-landed in 3 of 3 compared attempts"
+        "Brinecoil Lash over-landed in at least 3 of 3 compared attempts"
     )
 
 
@@ -444,7 +445,7 @@ def test_a_single_reference_reading_goes_to_taken_more_often() -> None:
 
     assert NEVER_TAKEN not in [finding.id for finding in found]
     assert the_rollup(found, OVERLANDING).title == (
-        "Brinecoil Lash over-landed in 2 of 2 compared attempts"
+        "Brinecoil Lash over-landed in at least 2 of 2 compared attempts"
     )
 
 
@@ -469,6 +470,23 @@ def test_one_boss_splits_its_abilities_between_the_two_findings() -> None:
     assert the_rollup(found, NEVER_TAKEN).quantifier == "every"
 
 
+def test_both_details_say_why_a_count_is_a_floor() -> None:
+    """A pull names only its widest gaps, so a title's count reads "at least"."""
+    attempts = [a_wipe(3), a_wipe(4)]
+    pull_findings = {
+        fight: [
+            over_landing(0, 9001, "Brinecoil Lash", references_took="none"),
+            over_landing(1, 9002, "Marrow Squall", references_took="every"),
+        ]
+        for fight in (3, 4)
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4}))
+
+    for one in (NEVER_TAKEN, OVERLANDING):
+        assert "so the count is a floor" in the_rollup(found, one).detail
+
+
 def test_several_abilities_no_reference_took_are_all_counted_and_capped() -> None:
     names = [f"Ability {letter}" for letter in "ABCDEFG"]
     attempts = [a_wipe(fight) for fight in (3, 4, 5)]
@@ -486,11 +504,11 @@ def test_several_abilities_no_reference_took_are_all_counted_and_capped() -> Non
     assert rollup.title == "7 abilities no reference kill took landed in most compared attempts"
     assert rollup.ability_id is None
     assert rollup.evidence == (
-        "Ability G landed in 3 of 3 compared attempts (Fights 3–5)",
-        "Ability A landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability B landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability C landed in 2 of 3 compared attempts (Fights 3–4)",
-        "Ability D landed in 2 of 3 compared attempts (Fights 3–4)",
+        "Ability G landed in at least 3 of 3 compared attempts (Fights 3–5)",
+        "Ability A landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability B landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability C landed in at least 2 of 3 compared attempts (Fights 3–4)",
+        "Ability D landed in at least 2 of 3 compared attempts (Fights 3–4)",
         "The evidence lists the 5 abilities most reported",
     )
 

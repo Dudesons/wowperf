@@ -59,16 +59,19 @@ NEVER_TAKEN_DETAIL = (
     "Each compared pull names the abilities it took far more often than the reference kills "
     "did, and how many of those kills took each one at all. This counts the compared pulls "
     "naming an ability no reference kill took, never its hits, and names one only where more "
-    "than half of them reported it. It states a difference, not a mistake: whether any landing "
-    "could have been prevented is not something the log records."
+    "than half of them reported it. A pull names only its widest gaps, so the count is a floor: "
+    "an ability can land in a pull that does not name it. It states a difference, not a "
+    "mistake: whether any landing could have been prevented is not something the log records."
 )
 
 OVERLANDING_DETAIL = (
     "Each compared pull names the abilities it took far more often than the reference kills "
     "did. This counts the compared pulls naming each ability, never its hits, and names one "
     "only where more than half of them reported it; one that every report said no reference "
-    "kill took at all is named under its own finding instead. It states a difference, not a "
-    "mistake: whether any landing could have been prevented is not something the log records."
+    "kill took at all is named under its own finding instead. A pull names only its widest "
+    "gaps, so the count is a floor: an ability can land in a pull that does not name it. It "
+    "states a difference, not a mistake: whether any landing could have been prevented is not "
+    "something the log records."
 )
 
 _CERTAINTY = (Confidence.INFERRED, Confidence.DERIVED, Confidence.MEASURED)
@@ -285,9 +288,10 @@ def _over_landing(
         names,
         pulls,
         total,
-        head=lambda name, n, of: f"{name} landed in {n} of {of} compared attempts",
+        head=lambda name, n, of: f"{name} landed in at least {n} of {of} compared attempts",
         single=lambda name, n, of: (
-            f"{name} landed in {n} of {of} compared attempts, where no reference kill took it"
+            f"{name} landed in at least {n} of {of} compared attempts, where no reference "
+            "kill took it"
         ),
         several=lambda count: (
             f"{quantity(count, 'ability', 'abilities')} no reference kill took landed in "
@@ -301,8 +305,12 @@ def _over_landing(
         names,
         pulls,
         total,
-        head=lambda name, n, of: f"{name} over-landed in {n} of {of} compared attempts",
-        single=lambda name, n, of: f"{name} over-landed in {n} of {of} compared attempts",
+        head=lambda name, n, of: (
+            f"{name} over-landed in at least {n} of {of} compared attempts"
+        ),
+        single=lambda name, n, of: (
+            f"{name} over-landed in at least {n} of {of} compared attempts"
+        ),
         several=lambda count: (
             f"{quantity(count, 'ability', 'abilities')} over-landed in most compared attempts"
         ),
