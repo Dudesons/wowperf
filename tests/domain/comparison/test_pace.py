@@ -172,6 +172,33 @@ def test_a_kill_is_compared_through_its_last_second_with_the_kill_wording() -> N
     assert finding.detail == KILL_DETAIL
 
 
+def test_a_kill_that_outlasts_the_kills_says_where_the_band_was_cut() -> None:
+    """Our kill runs 200 s; two of the four references end at 100 s.
+
+    From 1:41 fewer than three kills are still fighting, so the comparison
+    stops at 1:40, before our own last second: the line says where the kills
+    ran out, and names neither the kill's end nor a wipe.
+    """
+    kills = (a_kill(100, 100), a_kill(100, 100), a_kill(100, 400), a_kill(100, 400))
+    [finding] = analyse_pace(a_kill_fight(200), PaceSample(ours=steady(100, 200), references=kills))
+    assert (
+        "Compared through 1:40, after which fewer than three kills were still fighting"
+        in finding.evidence
+    )
+    assert not any("wipe" in line for line in finding.evidence)
+    assert not any(line.startswith("Compared through the kill") for line in finding.evidence)
+
+
+def test_a_kill_that_outlasts_the_one_reference_says_when_that_kill_ended() -> None:
+    """Our kill runs 300 s against one reference kill of 200 s: cut where it ended."""
+    [finding] = analyse_pace(
+        a_kill_fight(300), PaceSample(ours=steady(80, 300), references=(a_kill(100, 200),))
+    )
+    assert "Compared through 3:20, when the reference kill ended" in finding.evidence
+    assert not any("wipe" in line for line in finding.evidence)
+    assert not any(line.startswith("Compared through the kill") for line in finding.evidence)
+
+
 def test_a_kill_draws_no_projection() -> None:
     ids = [one.id for one in analyse_pace(a_kill_fight(200), KILL_SAMPLE)]
     assert ids == [PACE_ID]

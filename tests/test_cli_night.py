@@ -1296,6 +1296,7 @@ def test_a_compared_wipe_reads_its_verdict_against_the_reference_kills(tmp_path:
     [pull] = _pulls_by_fight(tmp_path).values()
     [verdict] = [one for one in pull["findings"] if one["id"].startswith("wipe.cause")]
     assert verdict["id"] == "wipe.cause"
+    assert verdict["title"].startswith("This attempt failed on throughput:")
 
 
 def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path: Path) -> None:

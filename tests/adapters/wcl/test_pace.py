@@ -25,6 +25,7 @@ from wowperf.adapters.wcl.pace import (
     BOSS_APPEARS_TWICE,
     BOSS_NOT_AMONG_ENEMIES,
     FIGHT_NOT_IN_REPORT,
+    GRIDS_DIFFER_REASON,
     load_pace_sample,
 )
 from wowperf.adapters.wcl.queries import operation_name
@@ -495,6 +496,45 @@ def test_our_councils_graphs_on_different_grids_withhold_with_that_reason(tmp_pa
 
     assert sample.unavailable == GRIDS_DIFFER
     assert records == ()
+
+
+def test_a_reference_councils_graphs_on_different_grids_drop_that_reference(
+    tmp_path: Path,
+) -> None:
+    """Ours sum fine; the reference's two bosses come back on different intervals.
+
+    That reference cannot be summed, so it is dropped with its own reason, not
+    the one for a graph with no boss series, and our side is never withheld
+    for it.
+    """
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        if name == "NpcActors":
+            return _npc_actors_response(_COUNCIL_ACTORS)
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                0, 300_000, [{"id": 31, "gameID": 900}, {"id": 32, "gameID": 901}]
+            )
+        if name == "BossDamageGraph":
+            interval = 950.0 if int(body["variables"]["targetId"]) == 32 else 1000.0
+            return _graph_response([3.0] * 300, point_start=0, interval=interval)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    row = ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000)
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        _council_encounter(), (row,),
+    )
+
+    [record] = records
+    assert record.loaded is False
+    assert record.reason == GRIDS_DIFFER_REASON
+    assert sample.ours is not None
+    assert sample.unavailable == NO_REFERENCE_KILL
 
 
 def test_no_references_asks_for_no_boss_damage_graph_at_all(tmp_path: Path) -> None:

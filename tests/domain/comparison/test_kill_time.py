@@ -43,6 +43,18 @@ def test_a_kill_is_read_against_the_kills_median_and_range() -> None:
     assert finding.detail == KILL_TIME_DETAIL
 
 
+def test_four_kills_read_the_mean_of_their_middle_two_as_the_median() -> None:
+    # Sorted, 240, 300, 330 and 500 s: the median is 315 s, the lower middle
+    # 300 s, the upper middle 330 s and the mean 342.5 s, so only the median of
+    # an even count prints 5:15.
+    [finding] = analyse_kill_time(_encounter(), _sample(330, 240, 500, 300))
+    assert finding.title == "The kill took 6:37 against the kills' median of 5:15"
+    assert finding.evidence == (
+        "Against 4 reference kills of this raid size",
+        "Their range: 4:00 to 8:20",
+    )
+
+
 def test_below_three_kills_the_slowest_stands_alone() -> None:
     [finding] = analyse_kill_time(_encounter(), _sample(250, 300))
     assert finding.title == "The kill took 6:37 against the slowest reference kill's 5:00"
