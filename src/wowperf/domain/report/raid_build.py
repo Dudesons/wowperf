@@ -33,6 +33,7 @@ from wowperf.domain.report.frame import (
     PARSE_UNAVAILABLE_ID,
     finding_by_id,
     format_seconds,
+    stated_elsewhere,
 )
 from wowperf.domain.report.ledger import (
     build_observations,
@@ -435,8 +436,7 @@ def build_raid_report(
     placed_ids |= {
         finding.id
         for finding in findings
-        if finding.id.startswith(PARSE_UNAVAILABLE_ID)
-        and finding.detail == stated_for_the_whole_fight
+        if stated_elsewhere(finding, stated_for_the_whole_fight)
     }
 
     withheld: list[str] = []

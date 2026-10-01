@@ -23,6 +23,7 @@ from wowperf.domain.report.frame import (
     format_seconds,
     parse_unavailable_id,
     section_for,
+    stated_elsewhere,
 )
 from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import (
@@ -155,7 +156,7 @@ def _comparison_section(
         return Section(state=SectionState.WITHHELD, reason=NOT_REQUESTED)
     unavailable_id = parse_unavailable_id(slug)
     unavailable = finding_by_id(findings, unavailable_id)
-    if unavailable is not None and unavailable.detail == stated_once:
+    if unavailable is not None and stated_elsewhere(unavailable, stated_once):
         return Section(state=SectionState.WITHHELD, reason="")
     return section_for(findings, unavailable_id, present=unavailable is None)
 

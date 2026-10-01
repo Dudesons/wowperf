@@ -30,6 +30,22 @@ def parse_unavailable_id(slug: str) -> str:
     return f"{PARSE_UNAVAILABLE_ID}.{slug}"
 
 
+def stated_elsewhere(finding: Finding, stated_once: str) -> bool:
+    """Whether `finding` is a parse notice whose reason the page already states once.
+
+    A `compare.parse.unavailable` notice whose reason the page states once for
+    the whole fight is said there, not per card: neither as a card's withheld
+    line nor as one of its rows. A notice whose reason differs is about that
+    player and stays on their card. An empty `stated_once` states nothing and
+    silences nothing.
+    """
+    return (
+        bool(stated_once)
+        and finding.id.startswith(PARSE_UNAVAILABLE_ID)
+        and finding.detail == stated_once
+    )
+
+
 def plural(count: int, singular: str) -> str:
     """`singular` unless `count` is not one: the noun alone, for a sentence that does not print
     the count right before it.
