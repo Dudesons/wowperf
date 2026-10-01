@@ -8,7 +8,7 @@ from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
-from wowperf.domain.report.frame import format_seconds, plural
+from wowperf.domain.report.frame import PARSE_UNAVAILABLE_ID, format_seconds, plural
 from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard, Tooltip
 from wowperf.domain.report.players import _comparison_section, class_colour, slugs_by_actor
@@ -24,6 +24,7 @@ def build_raid_players(
     tooltips: Mapping[str, Tooltip] = NO_TOOLTIPS,
     *,
     parse_withheld: str | None = None,
+    stated_once: str = "",
 ) -> tuple[PlayerCard, ...]:
     """One card per raider.
 
@@ -50,9 +51,19 @@ def build_raid_players(
     `compare.pace.` prefix would otherwise take them onto the Damage tab; this
     function still receives every finding and routes them here instead.
 
-    `parse_withheld` is `build_raid_report`'s own parameter, handed to every
-    card's comparison section: the reason each card states in place of
-    `NO_COMPARISON_RAN` when no parse subject was handed at all.
+    `parse_withheld` is handed to every card's comparison section: the reason
+    each card states in place of `NO_COMPARISON_RAN` when no parse subject was
+    handed at all, and the empty string when the page states it once for
+    every card.
+
+    `stated_once` is the reason the page's Damage tab prints for the whole
+    fight, as its withheld reason or as its note. A raider's
+    `compare.parse.unavailable` notice carrying that very reason is said
+    there, so it is neither the card's withheld line nor one of its rows; a
+    notice whose reason differs is about that raider and stays on their card.
+    With no parse subject handed, `NO_COMPARISON_RAN` is that reason on a
+    `raid --no-compare` page, so no card states it either.
+    Empty, the default, states nothing and drops nothing.
     """
     players = loaded.encounter.players
     names_by_actor = display_names(players)
@@ -63,6 +74,11 @@ def build_raid_players(
         finding
         for finding in untimed
         if any(finding.id.startswith(prefix) for prefix in RAID_COMPARISON_PREFIXES)
+        and not (
+            stated_once
+            and finding.id.startswith(PARSE_UNAVAILABLE_ID)
+            and finding.detail == stated_once
+        )
     ]
     pace = [finding for finding in untimed if finding.id.startswith(PLAYER_PACE_PREFIX)]
 
@@ -79,7 +95,8 @@ def build_raid_players(
                 colour=class_colour(player.class_name),
                 stats_line=_stats_line(loaded, player.actor_id),
                 spell_and_talent=_comparison_section(
-                    findings, slug, compared_slugs, parse_withheld=parse_withheld
+                    findings, slug, compared_slugs,
+                    parse_withheld=parse_withheld, stated_once=stated_once,
                 ),
                 spell_and_talent_rows=collapse_repeated_details(
                     [

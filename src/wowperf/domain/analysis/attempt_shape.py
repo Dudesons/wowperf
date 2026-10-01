@@ -212,6 +212,49 @@ def _ordering_clause(encounter: Encounter, deaths: tuple[Death, ...]) -> str:
     return ""
 
 
+VERDICT_HEADLINES = {
+    "both": "both: the raid came apart, and the damage never caught up",
+    "execution": "execution: the raid was taken apart",
+    "throughput": "throughput: the raid held and the damage was not enough",
+}
+"""Each verdict's kind and the headline its title ends on.
+
+One table both ways: `classify_attempt` writes its titles from it and
+`verdict_kind` reads them back, so a reworded headline cannot leave the
+boss-level rollup counting verdicts it no longer recognises.
+"""
+
+VERDICT_KIND_WORDS = {"both": "both execution and throughput"}
+"""How a verdict kind reads where it stands alone, and the bare word would not.
+
+"ended on both" leaves a reader to ask both of what. The rollup's title and
+the attempt table's Verdict cell read it from here; the rollup's evidence
+lines keep the bare kind, beside each verdict's own headline on the pull page.
+"""
+
+
+def verdict_words(kind: str) -> str:
+    """`kind` as a reader sees it on its own: in full where `VERDICT_KIND_WORDS` has it."""
+    return VERDICT_KIND_WORDS.get(kind, kind)
+
+
+def verdict_kind(finding: Finding) -> str:
+    """Which verdict a finding states: a `VERDICT_HEADLINES` kind, "withheld", or "".
+
+    "" for any finding that is not a verdict, and for a `wipe.cause` whose
+    title ends on no headline in the table -- a verdict nobody here wrote.
+    """
+    if finding.id == WITHHELD_ID:
+        return "withheld"
+    if finding.id != "wipe.cause":
+        return ""
+    return next(
+        (kind for kind, headline in VERDICT_HEADLINES.items()
+         if finding.title.endswith(headline)),
+        "",
+    )
+
+
 def classify_attempt(
     encounter: Encounter,
     deaths: tuple[Death, ...],
@@ -268,7 +311,7 @@ def classify_attempt(
     )
 
     if dismantled and stalled:
-        headline = "both: the raid came apart, and the damage never caught up"
+        headline = VERDICT_HEADLINES["both"]
         story = (
             f"{died} of {size} died, and the attempt still ran "
             f"{encounter.duration_seconds:.0f}s against the reference kills' "
@@ -276,7 +319,7 @@ def classify_attempt(
             "left."
         ) + _ordering_clause(encounter, deaths)
     elif dismantled:
-        headline = "execution: the raid was taken apart"
+        headline = VERDICT_HEADLINES["execution"]
         # The second clause appears only where the two counts differ, which is
         # where a battle rez put somebody in the tally twice. Stating it on
         # every attempt would print the same number twice in one sentence.
@@ -291,7 +334,7 @@ def classify_attempt(
             "be asked."
         )
     elif stalled and alive / size >= INTACT_SHARE:
-        headline = "throughput: the raid held and the damage was not enough"
+        headline = VERDICT_HEADLINES["throughput"]
         # This branch admits a raid that lost up to a fifth of itself, so the
         # design's own sentence for it -- "nobody died and it still was not
         # enough" -- is true of the branch's cleanest case and false of the

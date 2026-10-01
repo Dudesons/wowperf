@@ -73,6 +73,7 @@ def a_pull(fight_id: int, tier: str = "deep") -> PullSection:
             ),
         ),
         tier=tier,
+        label=f"Pull {fight_id}",
     )
 
 
@@ -175,10 +176,12 @@ def test_a_pulls_own_rows_are_walked_too() -> None:
     first_pull = PullSection(
         report=a_raid_report(observations=(first_row,)),
         tier="deep",
+        label="Pull 1",
     )
     second_pull = PullSection(
         report=a_raid_report(death_rows=(second_row,)),
         tier="none",
+        label="Pull 2",
     )
     report = a_night_report(
         bosses=(
@@ -203,6 +206,8 @@ def test_a_bosss_summary_rows_are_walked_too() -> None:
             difficulty="Mythic",
             size=20,
             outcome="No kill in 7 attempts",
+            headline="No kill in 7 attempts; the deepest left 16.5% encounter progress",
+            read_line="7 attempts read, 1 excluded as too short",
             attempts_counted=7,
             attempts_discarded=1,
             depth_label="encounter progress",
@@ -216,6 +221,7 @@ def test_a_bosss_summary_rows_are_walked_too() -> None:
         provenance=ProgressionProvenance(
             report_code="abc123",
             encounter_id=3492,
+            read_line="7 attempts read and 3 deepened",
             attempts_counted=7,
             attempts_deepened=3,
             fetched_at="2026-09-16 08:14",

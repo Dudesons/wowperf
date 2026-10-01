@@ -29,7 +29,7 @@
   {% endfor %}
   </div>
   {% endif %}
-  {% if player.spell_and_talent.state.value == "withheld" %}
+  {% if player.spell_and_talent.state.value == "withheld" and player.spell_and_talent.reason %}
   <p class="withheld">{{ player.spell_and_talent.reason }}</p>
   {% endif %}
   {% if player.spell_and_talent_rows %}

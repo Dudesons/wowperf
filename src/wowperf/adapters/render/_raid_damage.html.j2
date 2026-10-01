@@ -7,6 +7,9 @@
 {% if report.damage.state.value == "withheld" %}
 <p class="withheld">{{ report.damage.reason }}</p>
 {% else %}
+{% if report.damage_note %}
+<p class="withheld">{{ report.damage_note }}</p>
+{% endif %}
 {% if report.pace_chart %}
 <h3 id="{{ scope }}pace">Damage to the boss against the kills
   <a class="badge {{ report.pace_chart.badge.tint }}" href="#{{ scope }}provenance">{{ report.pace_chart.badge.label }}</a></h3>

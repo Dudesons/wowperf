@@ -34,10 +34,15 @@ class PullSection(Frozen):
     values reaches both. A reader comparing two pulls needs to know they were
     not drawn at the same depth before reading anything into a difference
     between them, which is a fact a bare `RaidReport` cannot state on its own.
+
+    `label` is what the pull control names it by: its attempt's number, the
+    one the boss summary's attempt row prints, and its outcome. A pull that
+    failed to load still holds its number, so the two never disagree.
     """
 
     report: RaidReport
     tier: str
+    label: str
 
 
 class BossSection(Frozen):
@@ -49,14 +54,19 @@ class BossSection(Frozen):
     `LoadedNight` already makes one layer down, in `night.py`.
 
     `summary` is the progression page for this boss, built whole by
-    `build_progression_report`, or None when fewer than two pulls were drawn:
-    nearly every progression finding compares attempts with each other, and one
-    attempt leaves nothing to compare.
+    `build_progression_report`, or None when no pull was drawn: a boss with one
+    drawn pull still has an outcome, a kill speed and a verdict to lead with,
+    though the findings that compare attempts have nothing to compare.
+
+    `summary_label` is the text of the pull control's Summary option, a count
+    of the pulls the summary was built from, in the singular for one. "" where
+    there is no summary.
     """
 
     boss_name: str
     pulls: tuple[PullSection, ...] = ()
     summary: ProgressionReport | None = None
+    summary_label: str = ""
 
 
 class NightProvenance(Frozen):
@@ -75,13 +85,13 @@ class NightProvenance(Frozen):
     `fetched_at` is stated here rather than read off a pull, because a night
     whose every pull failed to load still has to say when it was read.
 
-    `withheld` is prose built from two sources and nothing else:
-    `NightReport.failed_pulls`, for the pulls that never loaded at all, and
-    each drawn pull's own `compare.pace.unavailable` finding, for a pull whose
-    damage pace could not be compared. Each fact still has exactly one
-    source, so the lines cannot drift from what they describe -- two
-    independently gathered representations of the same fact drift, and then
-    the page names one set of pulls in a list and another in a paragraph.
+    `withheld` holds one line per reason a pull failed to load, naming every
+    pull that reason kept out. It is built from `NightReport.failed_pulls`
+    and nothing else, so the lines cannot drift from what they describe --
+    two independently gathered representations of the same fact drift, and
+    then the page names one set of pulls in a list and another in a
+    paragraph. A withheld pace notice is stated only in its own pull's
+    Provenance, never repeated here.
 
     `methods` states what depth the run asked for. It is prose rather than a
     `tier` field because on a `--deep` night the tier is per pull by design,

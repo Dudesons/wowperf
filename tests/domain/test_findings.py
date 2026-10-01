@@ -8,6 +8,7 @@ from wowperf.domain.findings import (
     Confidence,
     Finding,
     FindingFact,
+    fight_ranges,
     quantifier_for,
     rank_findings,
 )
@@ -92,3 +93,23 @@ def test_a_finding_carries_no_quantifier_unless_it_is_given_one() -> None:
         confidence=Confidence.MEASURED,
     )
     assert finding.quantifier == ""
+
+
+def test_one_fight_is_named_alone() -> None:
+    assert fight_ranges([8]) == "Fight 8"
+
+
+def test_consecutive_fights_read_as_a_range() -> None:
+    assert fight_ranges([10, 8, 9, 11, 12, 13]) == "Fights 8–13"
+
+
+def test_runs_and_strays_are_listed_in_order() -> None:
+    assert fight_ranges([15, 8, 9, 10, 12]) == "Fights 8–10, 12 and 15"
+
+
+def test_two_apart_fights_are_two_names_not_a_range() -> None:
+    assert fight_ranges([3, 5]) == "Fights 3 and 5"
+
+
+def test_a_repeated_id_is_named_once() -> None:
+    assert fight_ranges([4, 4, 5]) == "Fights 4–5"

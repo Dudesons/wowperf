@@ -64,8 +64,10 @@ RAID_COMPARISON_PREFIXES = (
 Which card is decided by the slug the finding carries, never by who the
 subject is -- Task 2 is what puts a slug on every one of them.
 `compare.parse.unavailable` is here rather than in the Mythic+ table's
-`group_rows`, because on a wipe every raider gets one and a single shared row
-beneath the cards would say it once for twenty people.
+`group_rows`, because its reason can be one raider's own -- a leaderboard that
+had nothing for their specialisation -- and belongs on their card. A reason the
+whole fight shares, such as a wipe's, is printed once by the Damage tab
+instead, and `build_raid_players` leaves that notice off every card.
 """
 
 

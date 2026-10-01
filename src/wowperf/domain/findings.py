@@ -111,3 +111,22 @@ def rank_findings(findings: Iterable[Finding]) -> list[Finding]:
         findings,
         key=lambda finding: (finding.seconds_lost is None, -(finding.seconds_lost or 0.0)),
     )
+
+
+def fight_ranges(ids: Iterable[int]) -> str:
+    """Fight ids as a reader scans them: "Fight 8", "Fights 8–13", "Fights 8–10, 12 and 15".
+
+    A run of consecutive ids reads as one range; ids are sorted and named once.
+    """
+    ordered = sorted(set(ids))
+    runs: list[tuple[int, int]] = []
+    for one in ordered:
+        if runs and one == runs[-1][1] + 1:
+            runs[-1] = (runs[-1][0], one)
+        else:
+            runs.append((one, one))
+    parts = [str(first) if first == last else f"{first}–{last}" for first, last in runs]
+    if len(ordered) == 1:
+        return f"Fight {parts[0]}"
+    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f"Fights {listed}"

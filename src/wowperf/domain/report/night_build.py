@@ -3,10 +3,9 @@
 
 from collections.abc import Mapping, Sequence
 
-from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, parse_axis_not_drawn
-from wowperf.domain.comparison.pace import UNAVAILABLE_ID, PaceSample
-from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
-from wowperf.domain.findings import Finding
+from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
+from wowperf.domain.comparison.pace import PaceSample
+from wowperf.domain.findings import Finding, fight_ranges
 from wowperf.domain.night import FailedPull, LoadedNight
 from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
@@ -51,8 +50,11 @@ the exception a sentence later would have told a reader something false about a
 card on the very same page.
 """
 
-MIN_PULLS_FOR_SUMMARY = 2
-"""Below this many drawn pulls a boss gets no summary: there is nothing to compare."""
+PULL_LABEL = "Pull {number} — {outcome}"
+"""How the pull control names a pull: its attempt's number, as its attempt row prints it."""
+
+MIN_PULLS_FOR_SUMMARY = 1
+"""Below this many drawn pulls a boss gets no summary: with none there is nothing to read."""
 
 CARD_TIER_NONE = (
     "No death card was drawn on any pull: this night was read with death cards off, so the "
@@ -114,28 +116,19 @@ def _card_tier_method(deep_fights: frozenset[int], *, death_cards: bool) -> str:
 
 
 def _withheld(failed_pulls: Sequence[FailedPull]) -> tuple[str, ...]:
-    """One line per pull the night could not load, naming the fight and the reason.
+    """One line per reason a pull is missing from the page, naming every pull it kept out.
 
     Built from the records the report carries rather than beside them, so the
-    list and the paragraph cannot name different pulls.
+    list and the paragraph cannot name different pulls. Reasons keep the order
+    they were first seen in.
     """
+    by_reason: dict[str, list[int]] = {}
+    for one in failed_pulls:
+        by_reason.setdefault(one.reason, []).append(one.fight_id)
     return tuple(
-        f"Fight {one.fight_id} is not on this page: {one.reason}" for one in failed_pulls
+        f"{fight_ranges(ids)} {'is' if len(ids) == 1 else 'are'} not on this page: {reason}"
+        for reason, ids in by_reason.items()
     )
-
-
-def _pace_withheld_line(fight_id: int, findings: Sequence[Finding]) -> str | None:
-    """This pull's own `compare.pace.unavailable` notice, worded for the night's Provenance.
-
-    Read from the same findings that pull's own `RaidReport` is built from, so
-    this line and that pull's Damage tab can never disagree about why its
-    pace was not compared. None where the pull carries no such notice --
-    either its pace was compared, or nothing was asked for it at all.
-    """
-    notice = next((finding for finding in findings if finding.id == UNAVAILABLE_ID), None)
-    if notice is None:
-        return None
-    return f"Fight {fight_id}: damage pace against the kills was not compared. {notice.detail}"
 
 
 def build_night_report(
@@ -176,17 +169,16 @@ def build_night_report(
     for that pull, read back from the one-day reference cache the command
     shares across every pull at one boss and size.
 
-    `parse_withheld` is set for every pull `pace_by_fight` names, and for no
-    other. The command fetched reference kills for such a pull, so
-    `NO_COMPARISON_RAN` -- no reference was fetched -- would be false of it.
-    On a wipe it is `WITHHELD_DETAIL`, the sentence `raid --fight N` prints
-    for that wipe, whose parse comparison it withholds because the boss
-    lived. On a kill that sentence would be false, and `raid` does draw the
-    parse axis there; the night does not, so a kill says the night's own
-    reason, `NOT_DRAWN_COMPARED_DETAIL`. Either way the pull says it where
-    `raid` says its own: on every card, in the Damage tab's fallback, and
-    once in its Provenance. Any pull of a `--no-compare` night fetched
-    nothing and keeps `NO_COMPARISON_RAN`.
+    `parse_stated_elsewhere` is set for every pull. The parse axis's absence
+    is the night's, not any pull's: `compare.parse.not_drawn` states it once
+    for the page, worded for whether the night was compared against the
+    reference kills. So no pull's card says it, no pull's Provenance repeats
+    it, and no open Damage tab notes it. A pull whose Damage tab has no row
+    points instead: a pull handed a pace sample says `PULL_DAMAGE_NOT_DRAWN`,
+    naming the night's finding and its own Provenance, where its pace notice
+    is; a pull handed none -- every pull of a `--no-compare` night -- says
+    `PULL_DAMAGE_NOTHING_COMPARED`, naming the night's finding alone, since its
+    Provenance carries no pace line to point to.
 
     Walks `loaded.loaded` rather than `loaded.night.bosses`: the two run
     parallel by `LoadedNight`'s own contract, and each `LoadedProgression`
@@ -207,13 +199,14 @@ def build_night_report(
     mapping is `None`: a night read with `--no-compare`, or a fight neither
     mapping names, falls back to no sample and no records the same way
     `findings_by_fight` falls back above.
+    Each boss summary is handed `findings_by_fight` and `pace_by_fight` whole,
+    so its attempt rows read each pull's own verdict and pace by fight id.
     `NightProvenance.references` is filled by walking every pull's own records
     in pull order, keeping the first copy seen of each `url`: a later pull's
     copy is the same reference kill read back from cache.
-    `NightProvenance.withheld` gains one line per drawn pull whose own
-    findings carry a `compare.pace.unavailable` notice, read off that pull's
-    own findings so the line can never name a different reason than the
-    pull's own Damage tab did.
+    `NightProvenance.withheld` holds one line per reason a pull failed to
+    load, naming every pull that reason kept out. A withheld pace notice is
+    stated once, in its own pull's Provenance, and is not repeated here.
 
     `throughput`, threaded straight into every pull's `build_raid_report`
     alongside `roles`, draws the Healers group on every pull's death cards;
@@ -221,9 +214,15 @@ def build_night_report(
     """
     bosses: list[BossSection] = []
     reference_records_seen: dict[str, ReferenceRecord] = {}
-    pace_withheld: list[str] = []
     for boss in loaded.loaded:
         drawn = boss.attempts_with_events
+        # Numbered the way the summary's attempt rows number them, over every
+        # attempt and not only the drawn ones, so a row opens the pull its own
+        # number names even after a pull that failed to load.
+        attempt_numbers = {
+            one.fight_id: number
+            for number, one in enumerate(boss.progression.attempts, start=1)
+        }
         pulls: list[PullSection] = []
         for attempt in drawn:
             fight_id = attempt.encounter.fight_id
@@ -232,47 +231,56 @@ def build_night_report(
             pull_records = (records_by_fight or {}).get(fight_id, ())
             for record in pull_records:
                 reference_records_seen.setdefault(record.url, record)
-            pace_line = _pace_withheld_line(fight_id, pull_findings)
-            if pace_line is not None:
-                pace_withheld.append(pace_line)
             pace_sample = (pace_by_fight or {}).get(fight_id)
+            report = build_raid_report(
+                attempt,
+                pull_findings,
+                night_subject(attempt.encounter),
+                None,
+                fetched_at,
+                defensives,
+                consumables,
+                roles,
+                externals,
+                self_resurrections,
+                reference_records=pull_records,
+                trimmed=tier == TRIMMED,
+                death_cards=tier != NO_CARDS,
+                pace=pace_sample,
+                parse_stated_elsewhere=True,
+                throughput=throughput,
+            )
             pulls.append(
                 PullSection(
-                    report=build_raid_report(
-                        attempt,
-                        pull_findings,
-                        night_subject(attempt.encounter),
-                        None,
-                        fetched_at,
-                        defensives,
-                        consumables,
-                        roles,
-                        externals,
-                        self_resurrections,
-                        reference_records=pull_records,
-                        trimmed=tier == TRIMMED,
-                        death_cards=tier != NO_CARDS,
-                        pace=pace_sample,
-                        parse_withheld=(
-                            None if pace_sample is None
-                            else NOT_DRAWN_COMPARED_DETAIL if attempt.encounter.kill
-                            else WITHHELD_DETAIL
-                        ),
-                        throughput=throughput,
-                    ),
+                    report=report,
                     tier=tier,
+                    label=PULL_LABEL.format(
+                        number=attempt_numbers[fight_id], outcome=report.header.outcome
+                    ),
                 )
             )
         summary = (
             build_progression_report(
-                boss, findings_by_boss.get(boss.progression.encounter_id, ()), fetched_at
+                boss,
+                findings_by_boss.get(boss.progression.encounter_id, ()),
+                fetched_at,
+                pull_findings=findings_by_fight,
+                pace=pace_by_fight,
             )
             if len(drawn) >= MIN_PULLS_FOR_SUMMARY
             else None
         )
         bosses.append(
             BossSection(
-                boss_name=boss.progression.boss_name, pulls=tuple(pulls), summary=summary
+                boss_name=boss.progression.boss_name,
+                pulls=tuple(pulls),
+                summary=summary,
+                summary_label=(
+                    f"Summary: {summary.provenance.attempts_deepened} "
+                    f"{plural(summary.provenance.attempts_deepened, 'pull')}"
+                    if summary
+                    else ""
+                ),
             )
         )
 
@@ -294,7 +302,7 @@ def build_night_report(
         provenance=NightProvenance(
             fetched_at=fetched_at,
             references=tuple(reference_records_seen.values()),
-            withheld=_withheld(loaded.failed_pulls) + tuple(pace_withheld),
+            withheld=_withheld(loaded.failed_pulls),
             methods=(_card_tier_method(deep_fights, death_cards=death_cards),),
         ),
     )

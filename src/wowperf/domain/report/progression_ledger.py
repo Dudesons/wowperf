@@ -2,6 +2,7 @@
 # ABOUTME: A family absent from the table reaches the Summary's catch-all, never nowhere.
 
 PROGRESSION_PLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("progression.lead.", "lead_rows"),
     ("progression.best.", "best_rows"),
     ("progression.best", "best_rows"),
     ("progression.repeat.", "repeat_rows"),
@@ -18,6 +19,9 @@ tables beside this one. `progression.best.` and `progression.best` name the
 same field today, so reversing them changes nothing -- they are written in
 that order anyway, because the day a Layer 3 finding wants a tab of its own is
 the day an unordered table quietly sends it to the wrong one.
+
+`progression.lead.` is the night's boss-level rollups, which the Summary opens
+on; `wowperf progression` mints none of them.
 
 `progression.best` -- Layer 1's "which attempt went deepest" -- sits on the
 Best attempt tab rather than with the cluster, so that tab always opens on the

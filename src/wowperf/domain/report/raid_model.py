@@ -129,6 +129,21 @@ class PaceChart(Frozen):
     tick_label_x: float
 
 
+class WipeOpening(Frozen):
+    """How a wipe started: its first death, how long the raid held after it, and that death's card.
+
+    `line` is the whole sentence the Summary prints, composed by the builder
+    from the other two so the template joins nothing. `held` is "" when nobody
+    died, and `chain` is None then, or when the deaths finding holding the
+    first death is not on the page.
+    """
+
+    first_death: str
+    line: str
+    held: str = ""
+    chain: LedgerRow | None = None
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     verdict: LedgerRow | None = None
@@ -136,16 +151,25 @@ class RaidReport(Frozen):
     and on a withheld wipe, whose reason is disclosed in Provenance instead:
     a landing tab whose first line announces that nothing was concluded is the
     complaint design section 11 exists to fix."""
-    # Figures that contain others, heading the Summary.
+    # How a wipe started, beneath the verdict. None on a kill.
+    opening: WipeOpening | None = None
+    # Figures that contain others, heading the Summary. Empty on a wipe, whose
+    # `deaths.total` sits with the death cards instead: a wipe is not a race.
     ledger_decomposition: tuple[LedgerRow, ...]
     # The biggest findings, in ranked order. Each equals its card on another
-    # tab; the Summary renders a link to that card, never a second card.
+    # tab; the Summary renders a link to that card, never a second card. Empty
+    # on a wipe, for the same reason as `ledger_decomposition`.
     summary_pointers: tuple[LedgerRow, ...] = ()
     # The external frame's throughput half: damage against the sample, where it
     # went, and the percentile. Design section 6.1, 6.2 and 6.7.
     damage_rows: tuple[LedgerRow, ...] = ()
     # Withheld on an attempt that did not kill, with the reason the reader needs.
     damage: Section
+    # Why the parse comparison is withheld, on a Damage tab that other rows --
+    # pace, kill time -- keep open. Empty when the tab is withheld (its own
+    # reason says it), when the parse comparison drew rows, and on a page that
+    # states the parse axis's absence once for every pull (the night's).
+    damage_note: str = ""
     # What hit the raid, and who took more of it than the rest. Sections 6.8 and 6.9.
     mechanics_rows: tuple[LedgerRow, ...] = ()
     # The per-player damage grid: one row per player, one column per ability
@@ -171,9 +195,21 @@ class RaidReport(Frozen):
     # Our damage pace against the kills' band, on a kill as on a wipe. None on
     # `--no-compare`, and wherever the comparison itself came back unavailable.
     pace_chart: PaceChart | None = None
-    # Points at the pace card, set only where the wipe ended behind pace: the
-    # one damage-pace fact the Summary is worth interrupting for.
-    pace_warning: LedgerRow | None = None
+    # Points at the pace card on a wipe that has a pace reading, whatever state
+    # it ended in: where a wipe stood against the kills is a question the raid
+    # leader asks of every wipe. None on a kill, which is read against the best
+    # kills, so ending behind them is the expected result.
+    pace_pointer: LedgerRow | None = None
+    # The whole sentence heading `pace_pointer`: the state the wipe ended in,
+    # or, where the band ran out first, the state and clock where the
+    # comparison stopped. "" wherever `pace_pointer` is None.
+    pace_line: str = ""
+    # Points at a kill's `compare.kill.time` and `compare.pace.boss` cards, in
+    # that order and each only if the kill carries it. The cards stay on the
+    # Damage tab; the Summary opens on these pointers because how fast the kill
+    # was against other kills is the first question asked of one. () on a wipe,
+    # whose pace is `pace_pointer`, and on a kill with no reference kill.
+    kill_speed: tuple[LedgerRow, ...] = ()
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
@@ -191,18 +227,22 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     `PLAYER_PACE_PREFIX`) lands on `pace_rows`; both are icons the resolver
     would otherwise never see.
 
-    `report.verdict` and `report.pace_warning` are the two deliberate
-    exceptions. `report.verdict` heads Summary as its own headline rather than
-    sitting in a tab's list, and `build_raid_report` already keeps its finding
+    `report.verdict`, `report.pace_pointer`, `report.kill_speed` and
+    `report.opening` are the deliberate exceptions. `report.verdict` heads Summary as its own
+    headline rather than sitting in a tab's list, and `build_raid_report` already keeps its finding
     from also reaching `observations` -- walking it here too would count the
     same row twice for every caller of this function, including the
     once-only checks in the render invariants. `classify_attempt` never puts
     an ability on the verdict finding, so today's icon resolver loses nothing
     by not seeing it; a future verdict that named one would need its own arm
-    in `_icon_addresses` instead. `report.pace_warning` is not a second finding
+    in `_icon_addresses` instead. `report.pace_pointer` is not a second finding
     to walk at all: it repeats a row `damage_rows` already carries (the same
     `compare.pace.boss` finding, wrapped as a pointer rather than a card), so
-    walking it here would count that one row twice.
+    walking it here would count that one row twice, and `report.kill_speed`
+    repeats the `compare.kill.time` and `compare.pace.boss` rows
+    `damage_rows` carries for the same reason. `report.opening.chain` is
+    the same kind of pointer, to the `deaths.chain.N` or `deaths.single.N` card
+    `death_rows` already carries.
     """
     yield from report.ledger_decomposition
     yield from report.summary_pointers

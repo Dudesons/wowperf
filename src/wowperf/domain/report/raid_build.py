@@ -1,11 +1,17 @@
 # ABOUTME: Turns a loaded boss fight and its findings into the value the raid template renders.
 # ABOUTME: A sibling of build.py: no route and no timeline, and a Damage tab a wipe withholds.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
+from wowperf.domain.analysis.deaths import numbered_chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
-from wowperf.domain.comparison.kill_time import KILL_PREFIX
+from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
+from wowperf.domain.comparison.kill_time import KILL_PREFIX, KILL_TIME_ID
+from wowperf.domain.comparison.night_axis import (
+    PULL_DAMAGE_NOT_DRAWN,
+    PULL_DAMAGE_NOTHING_COMPARED,
+)
 from wowperf.domain.comparison.pace import (
     PACE_ID,
     PACE_PREFIX,
@@ -13,16 +19,22 @@ from wowperf.domain.comparison.pace import (
     PaceSample,
     pace_reading,
 )
-from wowperf.domain.comparison.pace_curve import PaceState
+from wowperf.domain.comparison.pace_curve import PaceReading, PaceState, pace_end
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids, ceiling_withheld_line
 from wowperf.domain.report.deaths import HEALTH_METHOD, NO_CARDS_ASKED, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
-from wowperf.domain.report.frame import NO_COMPARISON_RAN, PARSE_UNAVAILABLE_ID
+from wowperf.domain.report.frame import (
+    NO_COMPARISON_RAN,
+    PARSE_UNAVAILABLE_ID,
+    finding_by_id,
+    format_seconds,
+)
 from wowperf.domain.report.ledger import (
     build_observations,
     build_summary_pointers,
@@ -36,12 +48,13 @@ from wowperf.domain.report.model import (
     ReferenceRecord,
     Section,
     SectionState,
+    Tooltip,
 )
 from wowperf.domain.report.pace_chart import build_pace_chart
 from wowperf.domain.report.raid_frame import build_raid_header
 from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
-from wowperf.domain.report.raid_model import RaidReport
+from wowperf.domain.report.raid_model import RaidReport, WipeOpening
 from wowperf.domain.report.raid_players import build_raid_players
 from wowperf.domain.season import (
     Consumables,
@@ -61,12 +74,97 @@ does not already have, and would silently widen to any future `wipe.cause.*`
 sibling that is not the verdict itself.
 """
 
+FIRST_DEATH = "{who} died first, to {ability}, at {clock}"
+HELD = "The raid held {clock} after the first death"
+NOBODY_DIED = "Nobody died in this attempt"
+PACE_LEADS = {
+    PaceState.BEHIND: "Ended behind the reference kills' pace.",
+    PaceState.ON_PACE: "Ended on the reference kills' pace.",
+    PaceState.AHEAD: "Ended ahead of the reference kills' pace.",
+}
+"""What a wipe's Summary says of a pace reading that ran to the wipe's end, by its last state."""
+PACE_CUT_LEADS = {
+    PaceState.BEHIND: "Behind the reference kills' pace when the comparison stopped, at {clock}.",
+    PaceState.ON_PACE: "On the reference kills' pace when the comparison stopped, at {clock}.",
+    PaceState.AHEAD: "Ahead of the reference kills' pace when the comparison stopped, at {clock}.",
+}
+"""The same, for a reading whose band ran out before the wipe ended (`PaceReading.band_cut`,
+the chart's cut mark): its last state is where the comparison stopped, not where the wipe did."""
+PACE_CHART_IS_ELSEWHERE = "The chart is on the Damage tab."
+
+
+def _clock(seconds: float) -> str:
+    """`format_seconds` for a figure that exists: it returns None only when handed None."""
+    clock = format_seconds(seconds)
+    assert clock is not None
+    return clock
+
+
+def _pace_line(reading: PaceReading) -> str:
+    """The Summary's whole sentence above the pace pointer, for a reading with seconds."""
+    state, cut = pace_end(reading)
+    lead = PACE_LEADS[state] if cut is None else PACE_CUT_LEADS[state].format(clock=_clock(cut))
+    return f"{lead} {PACE_CHART_IS_ELSEWHERE}"
+
+
+def first_death_named(loaded: LoadedEncounter) -> tuple[Death, str] | None:
+    """The attempt's first roster death and who died, as "name (spec class)"; None if nobody did.
+
+    One reading for every sentence that names the first death -- the pull's
+    Summary and the attempt table's cell -- so the two cannot name different
+    raiders or spell one raider two ways; each keeps its own wording around it.
+    """
+    death = first_roster_death(loaded)
+    if death is None:
+        return None
+    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
+    return death, f"{player.name} ({player.spec} {player.class_name})"
+
+
+def _wipe_opening(
+    loaded: LoadedEncounter,
+    findings: Sequence[Finding],
+    titles_by_id: dict[str, str],
+    tooltips: Mapping[str, Tooltip],
+) -> WipeOpening:
+    """Who died first, to what and when, how long the raid held, and that death's card.
+
+    The first death is `first_roster_death`'s, the one `collapse_seconds`,
+    the `progression.collapse` finding and `repeat_ability`'s window all start
+    from, so the hold printed here is the window those read. `chain` is None
+    when the card it would point at is not among `findings`: a pointer to a
+    card the page does not draw is worse than none.
+    """
+    named = first_death_named(loaded)
+    if named is None:
+        return WipeOpening(first_death=NOBODY_DIED, line=f"{NOBODY_DIED}.")
+    death, who = named
+    first_death = FIRST_DEATH.format(
+        who=who,
+        ability=death.killing_blow,
+        clock=_clock((death.timestamp_ms - loaded.encounter.start_ms) / 1000),
+    )
+    # `collapse_seconds` is None only when `first_roster_death` is, ruled out above.
+    since_first = collapse_seconds(loaded)
+    assert since_first is not None
+    held = HELD.format(clock=_clock(since_first))
+    finding_id = next(
+        (one for one, group in numbered_chains(loaded.deaths) if death in group), None
+    )
+    card = finding_by_id(findings, finding_id) if finding_id else None
+    return WipeOpening(
+        first_death=first_death,
+        line=f"{first_death}. {held}.",
+        held=held,
+        chain=ledger_row(card, titles_by_id, tooltips) if card else None,
+    )
+
 
 def _damage_section(
     findings: Sequence[Finding],
     rows: tuple[LedgerRow, ...],
     *,
-    parse_withheld: str | None = None,
+    fallback: str = NO_COMPARISON_RAN,
 ) -> Section:
     """The Damage tab: present when it has rows, withheld with the comparison's own reason.
 
@@ -88,18 +186,16 @@ def _damage_section(
     through `finding_by_id`, an exact match, which is the half that cannot
     hold here.
 
-    `parse_withheld` is what the fallback states when neither a row nor a
-    `compare.parse.unavailable` finding is found and it is given --
-    `build_raid_report`'s own parameter of the same name. Left at `None`, the
-    fallback is `NO_COMPARISON_RAN`, which is what that absence means on every
-    page but the night's.
+    `fallback` is what the tab states when neither a row nor a
+    `compare.parse.unavailable` finding is found. `NO_COMPARISON_RAN`, the
+    default, is what that absence means on every page but the night's, whose
+    pulls point to where the night states its reasons instead.
     """
     if rows:
         return Section(state=SectionState.PRESENT)
     unavailable = next(
         (finding for finding in findings if finding.id.startswith(PARSE_UNAVAILABLE_ID)), None
     )
-    fallback = NO_COMPARISON_RAN if parse_withheld is None else parse_withheld
     return Section(
         state=SectionState.WITHHELD,
         reason=unavailable.detail if unavailable else fallback,
@@ -122,7 +218,7 @@ def build_raid_report(
     trimmed: bool = False,
     death_cards: bool = True,
     pace: PaceSample | None = None,
-    parse_withheld: str | None = None,
+    parse_stated_elsewhere: bool = False,
     throughput: ThroughputCooldowns | None = None,
 ) -> RaidReport:
     """Everything the raid page shows, decided here so the template decides nothing.
@@ -135,7 +231,8 @@ def build_raid_report(
     decides which card the Players tab opens on, nothing else: which card a
     comparison row reaches is decided by the slug the finding carries.
     `compared_slugs` is who a comparison was asked for, and `None` means none
-    was asked for at all.
+    was asked for at all; the Damage tab and the Provenance then say so, and
+    no card does.
 
     `trimmed` and `death_cards` are the night command's tier ladder for the
     Deaths tab, not a raid-page concern: a raid fight always wants full cards,
@@ -159,16 +256,17 @@ def build_raid_report(
     from `roles` alone would say a group healing cooldown the data file does
     list was never pressed, when it was simply never read.
 
-    `parse_withheld` is why the parse comparison is withheld for every raider
-    at once, for a caller that hands no parse subject (`compared_slugs` is
-    `None`) and for whom `NO_COMPARISON_RAN` would be false: the night page,
-    on a wipe it fetched a pace sample for, which fetched a reference kill for
-    that pull. Given, it stands where `NO_COMPARISON_RAN` would -- on every
-    card and in the Damage tab's fallback -- and is stated once in Provenance,
-    on the Damage line, with no "Spell and talent comparison" line repeating
-    it: exactly how `raid` states `WITHHELD_DETAIL` on a wipe it compared
-    every raider for. `None`, the default, is the page `raid` has always
-    drawn, so `raid` itself passes nothing here.
+    `parse_stated_elsewhere` is for a caller that states the parse
+    comparison's absence once for a page holding many pulls: the night page,
+    whose `compare.parse.not_drawn` finding says it for every pull at once.
+    True, every card is withheld with no reason of its own, an open Damage
+    tab carries no parse note, the Damage tab's fallback points to where the
+    reasons are rather than restating them -- `PULL_DAMAGE_NOT_DRAWN` when
+    `pace` was handed, `PULL_DAMAGE_NOTHING_COMPARED` when it was not -- and
+    the Provenance carries neither a "Damage against other kills" nor a
+    "Spell and talent comparison" line.
+    False, the default, is the page `raid` draws, so `raid` itself passes
+    nothing here.
     """
     _check_unique_finding_ids(findings)
 
@@ -210,9 +308,103 @@ def build_raid_report(
     verdict = (
         ledger_row(verdict_finding, titles_by_id, tooltips) if verdict_finding else None
     )
+    # A wipe is not a race, so its Summary ranks nothing in seconds: with no
+    # decomposition, `deaths.total` falls through to the Deaths tab with the
+    # death costs beside it, and the Summary opens on how the wipe started.
+    wiped = not loaded.encounter.kill
+    ledger_decomposition = () if wiped else tuple(
+        ledger_row(finding, titles_by_id, tooltips)
+        for finding in findings
+        if finding.seconds_lost is not None and finding.id in RAID_DECOMPOSITION_IDS
+    )
+    decomposition_ids = {row.finding_id for row in ledger_decomposition}
+    opening = _wipe_opening(loaded, findings, titles_by_id, tooltips) if wiped else None
+    # A per-player pace reading lands on that raider's card via `build_raid_players`'
+    # `pace_rows`, never here: `RAID_PLACEMENTS`' `("compare.pace.", "damage_rows")`
+    # matches by prefix, so `compare.pace.player.*` would otherwise also land on
+    # the Damage tab beside the fight-wide reading it is not. `build_raid_players`,
+    # below, is handed the unfiltered `findings` and places these.
+    findings_for_tabs = [
+        finding for finding in findings if not finding.id.startswith(PLAYER_PACE_PREFIX)
+    ]
+    placed_rows = place_rows(
+        findings_for_tabs, titles_by_id, decomposition_ids, tooltips, placements=RAID_PLACEMENTS
+    )
+
+    # Pace rows and the kill-time row would otherwise make the Damage tab
+    # present on a wipe, or on a page whose parse axis was withheld or never
+    # drawn, and turn the parse comparison's own withheld reason -- stated once
+    # below for the whole fight -- into a claim that pace or kill time was
+    # withheld for the same reason, which it never is: each is withheld
+    # independently. `parse_damage` is read on the rows the parse comparison
+    # itself placed, with the pace and kill-time rows filtered back out, so the
+    # Provenance line and the per-card silence below both stay about the
+    # parse comparison alone; `damage`, the tab's own section, opens whenever
+    # any comparison left a row to show.
+    #
+    # Read before the cards are built, because what the Damage tab states is
+    # what every card that would say the same thing leaves unsaid.
+    parse_rows = tuple(
+        row
+        for row in placed_rows["damage_rows"]
+        if not row.finding_id.startswith((PACE_PREFIX, KILL_PREFIX))
+    )
+    # A night pull's fallback points to where the night states its reasons. A
+    # pull handed a pace sample carries its pace notice in its own Provenance,
+    # and the sentence says so; a pull handed none carries no pace line at all,
+    # so its sentence points to the night's finding alone.
+    parse_damage = _damage_section(
+        findings, parse_rows,
+        fallback=(
+            NO_COMPARISON_RAN if not parse_stated_elsewhere
+            else PULL_DAMAGE_NOT_DRAWN if pace is not None
+            else PULL_DAMAGE_NOTHING_COMPARED
+        ),
+    )
+    damage = (
+        Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
+    )
+    # A tab that pace or kill-time rows keep open never prints its withheld
+    # paragraph, so the parse comparison's own withheld reason is its note
+    # instead: on a raid wipe that draws a pace row, the tab is still where the
+    # boss-lived reason is said, once. Empty wherever the parse comparison drew
+    # rows (`parse_damage.reason` is "" then), wherever the tab is withheld (its
+    # reason is the same sentence, already printed), and on a page that states
+    # the parse axis's absence once for every pull.
+    damage_note = (
+        parse_damage.reason
+        if damage.state is SectionState.PRESENT and not parse_stated_elsewhere
+        else ""
+    )
+
+    # Said once for the whole fight, never once per raider. A wipe withholds
+    # every raider's comparison for the same reason -- the boss lived, which is
+    # a fact about the attempt and not about any of them -- and the Damage tab
+    # prints it, as its withheld reason or as its note, so restating it on every
+    # card would print the same paragraph twice per raider on a twenty-player
+    # page: as the card's withheld line and as the card's own row. A page read
+    # with `--no-compare` is the same case, kill or wipe: nothing was fetched
+    # for anyone, the Damage tab says `NO_COMPARISON_RAN`, and no card repeats it.
+    #
+    # `build_report` does restate it per card, and this is the one place the
+    # two siblings deliberately differ: the rule was always "say it once when
+    # the reason is about the whole fight, per card when it is about that
+    # card", and a keystone roster of five made the repetition read as emphasis
+    # rather than as the bug it is at twenty. Do not fix this back.
+    #
+    # A raider whose reason differs is untouched: that reason is about them,
+    # and the fight-wide statement does not cover it, so it stays on their card
+    # and gets its own Provenance line below.
+    #
+    # What silences a card is exactly what the tab prints: its withheld reason,
+    # or its note. A tab open on the parse comparison's own rows prints neither
+    # and silences nothing -- which is what keeps a kill where one raider's
+    # leaderboard answered from dropping another raider's own reason.
+    stated_for_the_whole_fight = damage.reason or damage_note
     players = build_raid_players(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips,
-        parse_withheld=parse_withheld,
+        parse_withheld="" if parse_stated_elsewhere else None,
+        stated_once=stated_for_the_whole_fight,
     )
     grid = build_raid_grid(loaded.players, loaded.damage_taken, roles, findings)
     # `Death.timestamp_ms` and `Resurrection.timestamp_ms` sit on the report's
@@ -239,24 +431,7 @@ def build_raid_report(
         boss_percentage=loaded.encounter.boss_percentage,
     )
 
-    ledger_decomposition = tuple(
-        ledger_row(finding, titles_by_id, tooltips)
-        for finding in findings
-        if finding.seconds_lost is not None and finding.id in RAID_DECOMPOSITION_IDS
-    )
-    decomposition_ids = {row.finding_id for row in ledger_decomposition}
-    # A per-player pace reading lands on that raider's card via `build_raid_players`'
-    # `pace_rows`, never here: `RAID_PLACEMENTS`' `("compare.pace.", "damage_rows")`
-    # matches by prefix, so `compare.pace.player.*` would otherwise also land on
-    # the Damage tab beside the fight-wide reading it is not. `build_raid_players`,
-    # above, was handed the unfiltered `findings` and already placed these.
-    findings_for_tabs = [
-        finding for finding in findings if not finding.id.startswith(PLAYER_PACE_PREFIX)
-    ]
-    placed_rows = place_rows(
-        findings_for_tabs, titles_by_id, decomposition_ids, tooltips, placements=RAID_PLACEMENTS
-    )
-    summary_pointers = build_summary_pointers(
+    summary_pointers = () if wiped else build_summary_pointers(
         findings, titles_by_id, decomposition_ids, tooltips
     )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
@@ -267,26 +442,17 @@ def build_raid_report(
     # catch-all and draw the same finding a second time under "Other findings".
     if verdict_finding:
         placed_ids.add(verdict_finding.id)
-
-    # Pace rows and the kill-time row would otherwise make the Damage tab
-    # present on a wipe, or on a page whose parse axis was withheld or never
-    # drawn, and turn the parse comparison's own withheld reason -- stated once
-    # below for the whole fight -- into a claim that pace or kill time was
-    # withheld for the same reason, which it never is: each is withheld
-    # independently. `parse_damage` is read on the rows the parse comparison
-    # itself placed, with the pace and kill-time rows filtered back out, so the
-    # Provenance line and the per-card suppression below both stay about the
-    # parse comparison alone; `damage`, the tab's own section, opens whenever
-    # any comparison left a row to show.
-    parse_rows = tuple(
-        row
-        for row in placed_rows["damage_rows"]
-        if not row.finding_id.startswith((PACE_PREFIX, KILL_PREFIX))
-    )
-    parse_damage = _damage_section(findings, parse_rows, parse_withheld=parse_withheld)
-    damage = (
-        Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
-    )
+    # The per-raider parse notices the Damage tab prints for the whole fight,
+    # as its withheld reason or as its note, are claimed by that tab, for the
+    # same reason: `build_raid_players` leaves
+    # them off every card, so no field reads them back, and the catch-all would
+    # otherwise draw the paragraph once per raider under "Other findings".
+    placed_ids |= {
+        finding.id
+        for finding in findings
+        if finding.id.startswith(PARSE_UNAVAILABLE_ID)
+        and finding.detail == stated_for_the_whole_fight
+    }
 
     withheld: list[str] = []
     for notice in verdict_notices:
@@ -301,34 +467,10 @@ def build_raid_report(
     # here and not repeated on every card it explains.
     if any(finding.id.startswith(PLAYER_PACE_PREFIX) for finding in findings):
         withheld.append(SCOPE_LINE)
-    if parse_damage.state is SectionState.WITHHELD:
+    # A caller that states the parse axis's absence for the whole page states
+    # it there, once, and this pull's Provenance does not repeat it.
+    if parse_damage.state is SectionState.WITHHELD and not parse_stated_elsewhere:
         withheld.append(f"Damage against other kills: {parse_damage.reason}")
-
-    # One line per distinct reason, never one per raider. A wipe withholds
-    # every raider's comparison for the same reason -- the boss lived, which is
-    # a fact about the attempt and not about any of them -- and the Damage line
-    # above has already given it, so restating it once per card would print the
-    # same paragraph twenty-one times on a twenty-player page.
-    #
-    # `build_report` does restate it per card, and this is the one place the
-    # two siblings deliberately differ: the rule was always "say it once when
-    # the reason is about the whole fight, per card when it is about that
-    # card", and a keystone roster of five made the repetition read as emphasis
-    # rather than as the bug it is at twenty. Do not fix this back.
-    #
-    # A raider whose reason differs is untouched: that reason is about them,
-    # and the fight-wide line does not cover it. And the suppression is on this
-    # list alone -- every card keeps its own withheld reason on the card, where
-    # a reader looking at one raider needs it without scrolling here.
-    #
-    # No branch on the Damage section's own state is needed: `Section.reason` is
-    # "" unless a section was withheld, so a present Damage tab has stated
-    # nothing and suppresses nothing.
-    #
-    # Read off `parse_damage` rather than `damage`: `damage` also opens on
-    # pace rows alone, and pace being present says nothing about whether the
-    # parse comparison itself had anything to withhold.
-    stated_for_the_whole_fight = parse_damage.reason
 
     # `--no-compare` fetched no reference at all, so the whole fight gets one
     # report-level line rather than one per card -- a line per raider here
@@ -337,18 +479,18 @@ def build_raid_report(
     # asked for is left off this list for the same reason: their comparison
     # was not withheld, it was not requested.
     #
-    # `parse_withheld` is a reason the whole attempt shares, so it is stated
-    # once, by the Damage line above, and never repeated here -- the same
-    # suppression a wipe's per-card lines get below.
+    # A card withheld with no reason of its own is one whose reason the Damage
+    # line above, or the page that states it once, already gave, so it gets
+    # no line here either.
     if compared_slugs is None:
-        if parse_withheld is None:
+        if not parse_stated_elsewhere:
             withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
     else:
         for card in players:
             if (
                 card.spell_and_talent.state is SectionState.WITHHELD
                 and card.slug in compared_slugs
-                and card.spell_and_talent.reason != stated_for_the_whole_fight
+                and card.spell_and_talent.reason
             ):
                 withheld.append(
                     f"Spell and talent comparison for {card.name}: {card.spell_and_talent.reason}"
@@ -379,25 +521,36 @@ def build_raid_report(
         if reading and pace_finding
         else None
     )
-    # The Summary warns of a pace only on a wipe. A kill is read against the
-    # execution leaderboard's best kills, so ending behind them is the expected
-    # result and no cause for a warning; its card and chart stay on the Damage
-    # tab, and its Summary belongs to the kill-speed findings.
-    pace_warning = (
+    # The Summary states a pace only on a wipe, and in whatever state it
+    # ended: where a wipe stood against the kills is a question asked of every
+    # wipe, not only a slow one. A kill is read against the execution
+    # leaderboard's best kills, so ending behind them is the expected result;
+    # its card and chart stay on the Damage tab, and its Summary belongs to
+    # the kill-speed findings.
+    pace_pointer = (
         ledger_row(pace_finding, titles_by_id, tooltips)
-        if pace_finding and reading and reading.seconds
-        and not loaded.encounter.kill
-        and reading.seconds[-1].state is PaceState.BEHIND
+        if pace_finding and reading and reading.seconds and wiped
         else None
+    )
+    pace_line = _pace_line(reading) if pace_pointer and reading else ""
+    # A kill's own pointers: its kill time, then its pace, in that order whatever
+    # order the findings came in. Each is the Damage tab's card wrapped as a pointer.
+    kill_speed = tuple(
+        ledger_row(finding, titles_by_id, tooltips)
+        for wanted in (KILL_TIME_ID, PACE_ID)
+        for finding in findings
+        if loaded.encounter.kill and finding.id == wanted
     )
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
         verdict=verdict,
+        opening=opening,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
         damage_rows=placed_rows["damage_rows"],
         damage=damage,
+        damage_note=damage_note,
         mechanics_rows=placed_rows["mechanics_rows"],
         grid=grid,
         deaths=deaths,
@@ -420,5 +573,7 @@ def build_raid_report(
         ),
         alive_chart=alive_chart,
         pace_chart=pace_chart,
-        pace_warning=pace_warning,
+        pace_pointer=pace_pointer,
+        pace_line=pace_line,
+        kill_speed=kill_speed,
     )
