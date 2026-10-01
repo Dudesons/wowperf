@@ -233,7 +233,12 @@ def test_a_pull_not_compared_is_not_in_the_denominator() -> None:
     assert rollup.quantifier == "every"
 
 
-def test_several_abilities_are_counted_together_most_repeated_first_and_capped() -> None:
+def test_several_abilities_are_all_counted_and_the_most_repeated_listed_first() -> None:
+    """The title counts every ability that repeated; only the evidence is capped, and says so.
+
+    Seven abilities repeat, two more than `MAX_REPEAT_ABILITIES`: a title that
+    counted the listed lines would claim five, and miss the two the cap left out.
+    """
     names = [f"Ability {letter}" for letter in "ABCDEFG"]
     attempts = [a_wipe(fight) for fight in (3, 4, 5)]
     # Ability G lands in all three pulls; A to F in two each.
@@ -246,9 +251,8 @@ def test_several_abilities_are_counted_together_most_repeated_first_and_capped()
         analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5})), OVERLANDING
     )
 
-    assert rollup.title == (
-        f"{MAX_REPEAT_ABILITIES} abilities over-landed in more than one compared attempt"
-    )
+    assert MAX_REPEAT_ABILITIES == 5, "the evidence below lists five lines"
+    assert rollup.title == "7 abilities over-landed in more than one compared attempt"
     assert rollup.ability_id is None
     assert rollup.ability_name == ""
     assert rollup.quantifier == "every"
@@ -258,7 +262,26 @@ def test_several_abilities_are_counted_together_most_repeated_first_and_capped()
         "Ability B over-landed in 2 of 3 compared attempts (Fights 3–4)",
         "Ability C over-landed in 2 of 3 compared attempts (Fights 3–4)",
         "Ability D over-landed in 2 of 3 compared attempts (Fights 3–4)",
+        "The evidence lists the 5 abilities most reported",
     )
+
+
+def test_abilities_the_cap_does_not_cut_carry_no_line_about_the_cap() -> None:
+    """Exactly `MAX_REPEAT_ABILITIES` repeating abilities are all listed, so nothing is cut."""
+    names = [f"Ability {letter}" for letter in "ABCDE"]
+    attempts = [a_wipe(fight) for fight in (3, 4)]
+    pull_findings: dict[int, list[Finding]] = {3: [], 4: []}
+    for index, name in enumerate(names):
+        for fight in (3, 4):
+            pull_findings[fight].append(over_landing(index, 100 + index, name))
+
+    rollup = the_rollup(
+        analyse_night_rollups(attempts, pull_findings, frozenset({3, 4})), OVERLANDING
+    )
+
+    assert rollup.title == "5 abilities over-landed in more than one compared attempt"
+    assert len(rollup.evidence) == MAX_REPEAT_ABILITIES
+    assert not any("most reported" in line for line in rollup.evidence)
 
 
 def test_kill_speed_reads_the_kill_pulls_time_and_pace() -> None:

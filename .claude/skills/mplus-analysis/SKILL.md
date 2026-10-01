@@ -75,8 +75,9 @@ included.
   denominator.
 - `progression.lead.overlanding`, what kept over-landing. It counts, by compared pull and never by
   hit, the abilities that two or more compared pulls reported as far above the reference kills'
-  rate. It is `derived`. A pull whose sample drew no member compared nothing and is outside the
-  denominator. Its quantifier is the most-reported ability's, even where the title names several
+  rate. It is `derived`. Its title counts every such ability; its evidence lists only the most
+  reported, and a last line says so wherever that list was cut. A pull whose sample drew no member
+  compared nothing and is outside the denominator. Its quantifier is the most-reported ability's, even where the title names several
   abilities. It states a difference, not a mistake: whether a landing could have been prevented is
   not in the log.
 

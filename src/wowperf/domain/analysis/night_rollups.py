@@ -159,7 +159,8 @@ def _overlanding(
     """Abilities more than one compared pull reported as over-landing, counted by pull.
 
     The threshold is `repeat_killing_blow`'s: an ability reported in two or more
-    pulls, capped at `MAX_REPEAT_ABILITIES`. Each pull counts once, however many
+    pulls, its evidence capped at `MAX_REPEAT_ABILITIES` while its title counts
+    every such ability. Each pull counts once, however many
     of its findings name the ability, so two pulls reporting it are also the
     two compared pulls that rule asks for. A pull whose sample drew no member
     compared nothing, so it is left out of the denominator rather than counted
@@ -179,12 +180,23 @@ def _overlanding(
             names.setdefault(ability_id, name)
             pulls_by_ability[ability_id].append(fight_id)
 
-    named = sorted(
+    repeated = sorted(
         (ability_id for ability_id, ids in pulls_by_ability.items() if len(ids) >= 2),
         key=lambda ability_id: (-len(pulls_by_ability[ability_id]), names[ability_id]),
-    )[:MAX_REPEAT_ABILITIES]
-    if not named:
+    )
+    if not repeated:
         return None
+    # The title counts every ability that repeated; only the evidence is capped,
+    # and a capped list says so, so a reader never takes the lines for the count.
+    named = repeated[:MAX_REPEAT_ABILITIES]
+    cut = (
+        (
+            "The evidence lists the "
+            f"{quantity(MAX_REPEAT_ABILITIES, 'ability', 'abilities')} most reported",
+        )
+        if len(repeated) > len(named)
+        else ()
+    )
 
     total = len(compared)
     heads = tuple(
@@ -192,20 +204,20 @@ def _overlanding(
         "compared attempts"
         for ability_id in named
     )
-    single = named[0] if len(named) == 1 else None
+    single = named[0] if len(repeated) == 1 else None
     return Finding(
         id=OVERLANDING_ID,
         title=(
             heads[0]
             if single is not None
-            else f"{len(named)} abilities over-landed in more than one compared attempt"
+            else f"{len(repeated)} abilities over-landed in more than one compared attempt"
         ),
         detail=OVERLANDING_DETAIL,
         confidence=Confidence.DERIVED,
         evidence=tuple(
             f"{head} ({fight_ranges(pulls_by_ability[ability_id])})"
             for head, ability_id in zip(heads, named, strict=True)
-        ),
+        ) + cut,
         ability_id=single,
         ability_name=names[single] if single is not None else "",
         quantifier=quantifier_for(len(pulls_by_ability[named[0]]), total),
