@@ -375,9 +375,14 @@ def build_raid_report(
         if reading and pace_finding
         else None
     )
+    # The Summary warns of a pace only on a wipe. A kill is read against the
+    # execution leaderboard's best kills, so ending behind them is the expected
+    # result and no cause for a warning; its card and chart stay on the Damage
+    # tab, and its Summary belongs to the kill-speed findings.
     pace_warning = (
         ledger_row(pace_finding, titles_by_id, tooltips)
         if pace_finding and reading and reading.seconds
+        and not loaded.encounter.kill
         and reading.seconds[-1].state is PaceState.BEHIND
         else None
     )
