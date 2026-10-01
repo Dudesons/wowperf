@@ -267,7 +267,7 @@ def _over_landing(
     pull_findings: Mapping[int, Sequence[Finding]],
     mechanics_compared: frozenset[int],
 ) -> tuple[Finding | None, Finding | None]:
-    """What kept landing that no reference kill took, then what landed more often than theirs.
+    """What kept landing that no reference kill took, then every other ability a pull reported.
 
     Both count the compared pulls only: a pull whose sample drew no member
     compared nothing, so it is left out of the denominator rather than counted
