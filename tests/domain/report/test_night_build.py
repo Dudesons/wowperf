@@ -687,7 +687,7 @@ def test_a_pull_given_a_pace_sample_draws_its_chart_row_and_pointer() -> None:
 
 
 def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
-    """A pull nobody asked about draws no chart, no row and no warning.
+    """A pull nobody asked about draws no chart, no row and no Summary pointer.
 
     The lone pull below has neither a finding nor a `pace_by_fight` entry --
     the simplest shape, and one a builder that stopped threading `pace`

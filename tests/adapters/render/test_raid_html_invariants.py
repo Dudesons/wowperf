@@ -601,6 +601,20 @@ def test_a_band_cut_short_of_the_wipe_draws_the_cut_mark() -> None:
     assert '<line class="pace-cut"' in html
 
 
+def test_a_band_cut_short_of_the_wipe_says_where_the_comparison_stopped() -> None:
+    """The Summary names the second the band ran out, not the wipe's end."""
+    html = render_raid(a_wiped_raid_report_with_cut_pace())
+    summary = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    line = (
+        "Behind the reference kills' pace when the comparison stopped, at 1:40. "
+        "The chart is on the Damage tab."
+    )
+    assert str(escape(line)) in summary
+    assert f'href="#finding-{PACE_ID}"' in summary
+    assert "Ended behind" not in html
+
+
 def a_wiped_raid_report_with_unavailable_pace() -> RaidReport:
     loaded = a_raid_fight(kill=False)
     sample = PaceSample(unavailable="No boss actor could be found for this fight.")

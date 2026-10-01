@@ -1,7 +1,12 @@
 # ABOUTME: Behaviour tests for what deaths actually cost and which ones caused others.
 # ABOUTME: A death with no measured cost must stay uncounted rather than get a default.
 
-from wowperf.domain.analysis.deaths import analyse_deaths, fight_offset, pull_offset
+from wowperf.domain.analysis.deaths import (
+    analyse_deaths,
+    fight_offset,
+    numbered_chains,
+    pull_offset,
+)
 from wowperf.domain.events import Death
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
@@ -135,6 +140,47 @@ def test_deaths_far_apart_are_reported_separately() -> None:
     )
     assert [f.id for f in findings if f.id.startswith("deaths.chain.")] == []
     assert len([f for f in findings if f.id.startswith("deaths.single.")]) == 2
+
+
+COST_ORDER_IS_NOT_TIME_ORDER = (
+    # Given out of time order, so a numbering that kept the stream's order fails too.
+    a_death("Stonewake", 12, 200_000, 90.0),
+    a_death("Emberkin", 11, 1_000, 5.0),
+    a_death("Emberkin", 11, 100_000, 3.0),
+    a_death("Stonewake", 12, 103_000, 4.0),
+    a_death("Bríala", 13, 300_000, 60.0),
+    a_death("Bríala", 13, 302_000, 70.0),
+)
+"""Two singles and two chains, each earlier group costing less than the later one
+of its kind, so time order and cost order disagree within both kinds."""
+
+
+def test_each_kind_is_numbered_from_zero_in_time_order_not_cost_order() -> None:
+    findings = analyse_deaths(COST_ORDER_IS_NOT_TIME_ORDER, locate_in_a_run, SCOPE_A_RUN)
+    by_id = {finding.id: finding for finding in findings}
+
+    assert by_id["deaths.single.0"].seconds_lost == 5.0
+    assert by_id["deaths.single.1"].seconds_lost == 90.0
+    assert by_id["deaths.chain.0"].seconds_lost == 7.0
+    assert by_id["deaths.chain.1"].seconds_lost == 130.0
+
+
+def test_numbered_chains_gives_each_group_the_id_its_finding_carries() -> None:
+    """The one numbering `analyse_deaths` mints from and a caller looks a card up by."""
+    numbered = numbered_chains(COST_ORDER_IS_NOT_TIME_ORDER)
+    findings = analyse_deaths(COST_ORDER_IS_NOT_TIME_ORDER, locate_in_a_run, SCOPE_A_RUN)
+
+    assert [(finding_id, [death.timestamp_ms for death in group])
+            for finding_id, group in numbered] == [
+        ("deaths.single.0", [1_000]),
+        ("deaths.chain.0", [100_000, 103_000]),
+        ("deaths.single.1", [200_000]),
+        ("deaths.chain.1", [300_000, 302_000]),
+    ]
+    minted = [finding.id for finding in findings if finding.id.startswith(
+        ("deaths.single.", "deaths.chain.")
+    )]
+    assert minted == [finding_id for finding_id, _ in numbered]
 
 
 def test_a_repeat_dier_is_named() -> None:

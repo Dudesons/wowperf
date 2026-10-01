@@ -200,9 +200,10 @@ class RaidReport(Frozen):
     # leader asks of every wipe. None on a kill, which is read against the best
     # kills, so ending behind them is the expected result.
     pace_pointer: LedgerRow | None = None
-    # The sentence heading `pace_pointer`, naming the state the wipe ended in.
-    # "" wherever `pace_pointer` is None.
-    pace_lead: str = ""
+    # The whole sentence heading `pace_pointer`: the state the wipe ended in,
+    # or, where the band ran out first, the state and clock where the
+    # comparison stopped. "" wherever `pace_pointer` is None.
+    pace_line: str = ""
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:

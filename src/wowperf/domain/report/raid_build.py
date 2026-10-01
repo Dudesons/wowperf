@@ -1,11 +1,10 @@
 # ABOUTME: Turns a loaded boss fight and its findings into the value the raid template renders.
 # ABOUTME: A sibling of build.py: no route and no timeline, and a Damage tab a wipe withholds.
 
-from collections import Counter
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
-from wowperf.domain.analysis.deaths import chains
+from wowperf.domain.analysis.deaths import numbered_chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
 from wowperf.domain.comparison.kill_time import KILL_PREFIX
@@ -20,10 +19,9 @@ from wowperf.domain.comparison.pace import (
     PaceSample,
     pace_reading,
 )
-from wowperf.domain.comparison.pace_curve import PaceState
+from wowperf.domain.comparison.pace_curve import PaceReading, PaceState
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
@@ -83,25 +81,33 @@ PACE_LEADS = {
     PaceState.ON_PACE: "Ended on the reference kills' pace.",
     PaceState.AHEAD: "Ended ahead of the reference kills' pace.",
 }
-"""What a wipe's Summary says above its pointer to the pace card, by the state it ended in."""
+"""What a wipe's Summary says of a pace reading that ran to the wipe's end, by its last state."""
+PACE_CUT_LEADS = {
+    PaceState.BEHIND: "Behind the reference kills' pace when the comparison stopped, at {clock}.",
+    PaceState.ON_PACE: "On the reference kills' pace when the comparison stopped, at {clock}.",
+    PaceState.AHEAD: "Ahead of the reference kills' pace when the comparison stopped, at {clock}.",
+}
+"""The same, for a reading whose band ran out before the wipe ended (`PaceReading.band_cut`,
+the chart's cut mark): its last state is where the comparison stopped, not where the wipe did."""
+PACE_CHART_IS_ELSEWHERE = "The chart is on the Damage tab."
 
 
-def _deaths_finding_id(loaded: LoadedEncounter, death: Death) -> str | None:
-    """The id `analyse_deaths` gives the group of deaths that holds `death`.
+def _clock(seconds: float) -> str:
+    """`format_seconds` for a figure that exists: it returns None only when handed None."""
+    clock = format_seconds(seconds)
+    assert clock is not None
+    return clock
 
-    Numbered the way `analyse_deaths` numbers them: each kind, chain or
-    single, counts from 0 in time order. The group is looked for rather than
-    taken first, because the analyser numbers every death the log holds, a
-    pet's or an unidentified actor's too, and one of those dying alone before
-    the first roster death would make the first group its card.
-    """
-    ranks: Counter[str] = Counter()
-    for group in chains(loaded.deaths):
-        kind = "chain" if len(group) > 1 else "single"
-        if death in group:
-            return f"deaths.{kind}.{ranks[kind]}"
-        ranks[kind] += 1
-    return None
+
+def _pace_line(reading: PaceReading) -> str:
+    """The Summary's whole sentence above the pace pointer, for a reading with seconds."""
+    last = reading.seconds[-1]
+    lead = (
+        PACE_CUT_LEADS[last.state].format(clock=_clock(last.second))
+        if reading.band_cut
+        else PACE_LEADS[last.state]
+    )
+    return f"{lead} {PACE_CHART_IS_ELSEWHERE}"
 
 
 def _wipe_opening(
@@ -112,11 +118,11 @@ def _wipe_opening(
 ) -> WipeOpening:
     """Who died first, to what and when, how long the raid held, and that death's card.
 
-    The first death is `first_roster_death`'s and the hold is
-    `collapse_seconds`', the two the progression analysers read, so this
-    Summary and the night's repeats never name different deaths. `chain` is
-    None when the card it would point at is not among `findings`: a pointer
-    to a card the page does not draw is worse than none.
+    The first death is `first_roster_death`'s, the one `collapse_seconds`,
+    the `progression.collapse` finding and `repeat_ability`'s window all start
+    from, so the hold printed here is the window those read. `chain` is None
+    when the card it would point at is not among `findings`: a pointer to a
+    card the page does not draw is worse than none.
     """
     death = first_roster_death(loaded)
     if death is None:
@@ -125,10 +131,15 @@ def _wipe_opening(
     first_death = FIRST_DEATH.format(
         name=player.name, spec=player.spec, class_name=player.class_name,
         ability=death.killing_blow,
-        clock=format_seconds((death.timestamp_ms - loaded.encounter.start_ms) / 1000),
+        clock=_clock((death.timestamp_ms - loaded.encounter.start_ms) / 1000),
     )
-    held = HELD.format(clock=format_seconds(collapse_seconds(loaded)))
-    finding_id = _deaths_finding_id(loaded, death)
+    # `collapse_seconds` is None only when `first_roster_death` is, ruled out above.
+    since_first = collapse_seconds(loaded)
+    assert since_first is not None
+    held = HELD.format(clock=_clock(since_first))
+    finding_id = next(
+        (one for one, group in numbered_chains(loaded.deaths) if death in group), None
+    )
     card = finding_by_id(findings, finding_id) if finding_id else None
     return WipeOpening(
         first_death=first_death,
@@ -507,7 +518,7 @@ def build_raid_report(
         if pace_finding and reading and reading.seconds and wiped
         else None
     )
-    pace_lead = PACE_LEADS[reading.seconds[-1].state] if pace_pointer and reading else ""
+    pace_line = _pace_line(reading) if pace_pointer and reading else ""
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
@@ -541,5 +552,5 @@ def build_raid_report(
         alive_chart=alive_chart,
         pace_chart=pace_chart,
         pace_pointer=pace_pointer,
-        pace_lead=pace_lead,
+        pace_line=pace_line,
     )

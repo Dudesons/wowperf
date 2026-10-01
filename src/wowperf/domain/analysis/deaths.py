@@ -78,6 +78,24 @@ def chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
     return [tuple(group) for group in groups]
 
 
+def numbered_chains(deaths: tuple[Death, ...]) -> list[tuple[str, tuple[Death, ...]]]:
+    """Each group of `chains`, in time order, beside the id its finding carries.
+
+    A group of more than one death is `deaths.chain.N` and a lone death
+    `deaths.single.N`; each kind counts from 0 in time order, never by cost.
+    The one place those ids are numbered: `analyse_deaths` mints its findings
+    from it, and a caller looking for the card that holds a given death reads
+    the same pairs rather than numbering the groups again.
+    """
+    numbered: list[tuple[str, tuple[Death, ...]]] = []
+    ranks = {"chain": 0, "single": 0}
+    for group in chains(deaths):
+        kind = "chain" if len(group) > 1 else "single"
+        numbered.append((f"deaths.{kind}.{ranks[kind]}", group))
+        ranks[kind] += 1
+    return numbered
+
+
 def analyse_deaths(
     deaths: tuple[Death, ...],
     locate: Callable[[Death], str],
@@ -135,8 +153,7 @@ def analyse_deaths(
         )
     ]
 
-    chain_rank = single_rank = 0
-    for group in chains(deaths):
+    for finding_id, group in numbered_chains(deaths):
         first = group[0]
         seconds_lost, unmeasured_count = _measured_cost(group)
         if len(group) > 1:
@@ -159,7 +176,7 @@ def analyse_deaths(
                 group_evidence = group_evidence + (_unmeasured_evidence(unmeasured_count),)
             findings.append(
                 Finding(
-                    id=f"deaths.chain.{chain_rank}",
+                    id=finding_id,
                     title=f"{len(group)} deaths within {CHAIN_WINDOW_MS // 1000}s",
                     detail=detail,
                     confidence=Confidence.MEASURED,
@@ -168,7 +185,6 @@ def analyse_deaths(
                     pull_index=first.pull_index,
                 )
             )
-            chain_rank += 1
         else:
             if seconds_lost is None:
                 detail = (
@@ -179,7 +195,7 @@ def analyse_deaths(
                 detail = f"Cost {seconds_lost:.0f}s of play."
             findings.append(
                 Finding(
-                    id=f"deaths.single.{single_rank}",
+                    id=finding_id,
                     title=f"{first.player_name} died to {first.killing_blow}",
                     detail=detail,
                     confidence=Confidence.MEASURED,
@@ -190,7 +206,6 @@ def analyse_deaths(
                     ability_name=first.killing_blow,
                 )
             )
-            single_rank += 1
 
     # Two players can share a display name; group by actor id so their deaths are
     # never mixed into one finding, and disambiguate the id with the actor id only

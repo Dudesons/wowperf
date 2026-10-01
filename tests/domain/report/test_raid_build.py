@@ -446,9 +446,9 @@ def test_a_wipe_summary_ranks_no_losses_in_seconds() -> None:
 @pytest.mark.parametrize(
     ("per_second", "lead"),
     [
-        (100, "Ended on the reference kills' pace."),
-        (80, "Ended behind the reference kills' pace."),
-        (120, "Ended ahead of the reference kills' pace."),
+        (100, "Ended on the reference kills' pace. The chart is on the Damage tab."),
+        (80, "Ended behind the reference kills' pace. The chart is on the Damage tab."),
+        (120, "Ended ahead of the reference kills' pace. The chart is on the Damage tab."),
     ],
 )
 def test_a_wipe_summary_states_its_pace_in_any_state(per_second: int, lead: str) -> None:
@@ -457,7 +457,7 @@ def test_a_wipe_summary_states_its_pace_in_any_state(per_second: int, lead: str)
         a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample(per_second)
     )
 
-    assert report.pace_lead == lead
+    assert report.pace_line == lead
     assert report.pace_pointer is not None
     assert report.pace_pointer.finding_id == PACE_ID
 
@@ -479,7 +479,68 @@ def test_a_wipe_summary_states_the_pace_it_ended_in() -> None:
 
     report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=sample)
 
-    assert report.pace_lead == "Ended behind the reference kills' pace."
+    assert report.pace_line == (
+        "Ended behind the reference kills' pace. The chart is on the Damage tab."
+    )
+
+
+def a_pace_sample_cut_at_100s(per_second: int) -> PaceSample:
+    """Four kills, two of them over at 100 s: the band falls below three kills at 101 s,
+    so the comparison stops at 1:40, long before the 300 s wipe ends."""
+    seconds = int(PACE_DURATION) + 60
+    kills = (a_kill(100, 100), a_kill(100, 100), a_kill(100, seconds), a_kill(100, seconds))
+    return PaceSample(ours=steady(per_second, seconds), references=kills)
+
+
+@pytest.mark.parametrize(
+    ("per_second", "line"),
+    [
+        (80, "Behind the reference kills' pace when the comparison stopped, at 1:40."),
+        (100, "On the reference kills' pace when the comparison stopped, at 1:40."),
+        (120, "Ahead of the reference kills' pace when the comparison stopped, at 1:40."),
+    ],
+)
+def test_a_wipe_whose_pace_was_cut_short_says_where_it_stopped(
+    per_second: int, line: str
+) -> None:
+    """"Ended" would be false: the reading stops where the band does, not where the wipe did."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample_cut_at_100s(per_second)
+    )
+
+    assert report.pace_chart is not None and report.pace_chart.cut_x is not None
+    assert report.pace_line == f"{line} The chart is on the Damage tab."
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_a_wipe_points_at_its_first_deaths_card_in_time_order_not_cost_order() -> None:
+    """The first death's card is the earlier single, though the later one cost more.
+
+    The findings arrive ranked by cost, as `rank_raid_findings` hands them to
+    the builder, so neither the arrival order nor the cost names the card.
+    """
+    loaded = a_wipe_that_started_with(
+        a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast").model_copy(
+            update={"seconds_until_next_action": 5.0}
+        ),
+        a_death(STONEWAKE, FIRST_DEATH_MS + 100_000).model_copy(
+            update={"seconds_until_next_action": 90.0}
+        ),
+    )
+    findings = sorted(
+        the_deaths_findings(loaded), key=lambda finding: -(finding.seconds_lost or 0.0)
+    )
+    assert [one.id for one in findings][1:3] == ["deaths.single.1", "deaths.single.0"]
+
+    report = build_raid_report(
+        loaded, findings, EMBERKIN, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.0"
+    assert report.opening.chain.seconds == "0:05"
 
 
 def test_a_wipe_whose_first_death_was_alone_points_at_that_single() -> None:
@@ -571,7 +632,7 @@ def test_a_kill_summary_is_left_to_its_own_task() -> None:
     assert [row.finding_id for row in report.ledger_decomposition] == ["deaths.total"]
     assert report.summary_pointers, "a kill's losses are still ranked until its own task"
     assert report.pace_pointer is None
-    assert report.pace_lead == ""
+    assert report.pace_line == ""
 
 
 def test_every_finding_on_a_wipe_reaches_exactly_one_field() -> None:
@@ -1295,7 +1356,9 @@ def test_a_behind_wipe_draws_the_pace_rows_the_chart_and_the_summary_pointer() -
     assert report.pace_chart is not None
     assert report.pace_pointer is not None
     assert report.pace_pointer.finding_id == PACE_ID
-    assert report.pace_lead == "Ended behind the reference kills' pace."
+    assert report.pace_line == (
+        "Ended behind the reference kills' pace. The chart is on the Damage tab."
+    )
 
 
 def test_an_on_pace_wipe_draws_the_chart_and_states_it_ended_on_pace() -> None:
@@ -1311,7 +1374,7 @@ def test_an_on_pace_wipe_draws_the_chart_and_states_it_ended_on_pace() -> None:
     assert report.pace_chart is not None
     assert report.pace_pointer is not None
     assert report.pace_pointer.finding_id == PACE_ID
-    assert report.pace_lead == "Ended on the reference kills' pace."
+    assert report.pace_line == "Ended on the reference kills' pace. The chart is on the Damage tab."
 
 
 def test_a_pace_comparison_that_found_nothing_is_disclosed_in_the_provenance_alone() -> None:
