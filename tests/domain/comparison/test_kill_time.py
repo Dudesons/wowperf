@@ -36,7 +36,10 @@ def test_a_kill_is_read_against_the_kills_median_and_range() -> None:
     assert finding.id == KILL_TIME_ID
     assert finding.confidence is Confidence.MEASURED
     assert finding.title == "The kill took 6:37 against the kills' median of 5:00"
-    assert finding.evidence == ("Against 5 reference kills", "Their range: 4:00 to 8:20")
+    assert finding.evidence == (
+        "Against 5 reference kills of this raid size",
+        "Their range: 4:00 to 8:20",
+    )
     assert finding.detail == KILL_TIME_DETAIL
 
 
@@ -44,7 +47,8 @@ def test_below_three_kills_the_slowest_stands_alone() -> None:
     [finding] = analyse_kill_time(_encounter(), _sample(250, 300))
     assert finding.title == "The kill took 6:37 against the slowest reference kill's 5:00"
     assert finding.evidence == (
-        "Against the slowest of 2 reference kills: fewer than three were available",
+        "Against the slowest of 2 reference kills of this raid size: fewer than three were "
+        "available",
     )
 
 

@@ -42,13 +42,13 @@ def analyse_kill_time(encounter: Encounter, sample: MechanicsSample) -> list[Fin
         evidence: tuple[str, ...] = (
             "Against the one reference kill of this raid size: fewer than three were available"
             if len(durations) == 1
-            else f"Against the slowest of {len(durations)} reference kills: fewer than three "
-            "were available",
+            else f"Against the slowest of {len(durations)} reference kills of this raid size: "
+            "fewer than three were available",
         )
     else:
         title = f"The kill took {ours} against the kills' median of {clock_text(median(durations))}"
         evidence = (
-            f"Against {len(durations)} reference kills",
+            f"Against {len(durations)} reference kills of this raid size",
             f"Their range: {clock_text(durations[0])} to {clock_text(durations[-1])}",
         )
     return [
