@@ -1096,6 +1096,59 @@ def test_a_wipe_with_pace_rows_still_states_the_parse_reason_once() -> None:
     assert not [line for line in withheld if line.startswith("Spell and talent comparison for ")]
 
 
+def test_a_wipe_with_pace_rows_states_the_parse_reason_on_its_open_damage_tab() -> None:
+    """Design 5.5: on a raid wipe the reason stays, once, on the Damage tab.
+
+    A pace row opens the tab, so its withheld paragraph never prints; the
+    parse reason is then the tab's note beside the pace reading, and the cards
+    that leave it unsaid are covered by what the tab does print.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)
+    findings = (*analyse_pace(loaded.encounter, sample), *a_wipes_findings())
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == WITHHELD_DETAIL
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.reason == "", card.slug
+        assert not [
+            row for row in card.spell_and_talent_rows
+            if row.finding_id.startswith("compare.parse.unavailable.")
+        ], card.slug
+
+
+def test_an_open_damage_tab_with_parse_rows_carries_no_note() -> None:
+    """The note is the parse comparison's withheld reason; a drawn comparison has none."""
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == ""
+
+
+def test_a_withheld_damage_tab_carries_its_reason_once_and_no_note() -> None:
+    """A withheld tab prints its reason as the tab; a note beside it would say it twice."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.reason == WITHHELD_DETAIL
+    assert report.damage_note == ""
+
+
 def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
     """A kill-time row opens the Damage tab, but it is not a parse row.
 

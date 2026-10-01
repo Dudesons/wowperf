@@ -135,8 +135,9 @@ def _comparison_section(
     its parse axis's absence is stated once for the whole page, so the card
     is withheld and says nothing.
 
-    `stated_once` is a reason the page states once for the whole fight -- the
-    raid page's withheld Damage tab. A player whose own
+    `stated_once` is a reason the page prints once for the whole fight -- the
+    raid page's Damage tab, as its withheld reason or, when other rows keep
+    the tab open, as its note. A player whose own
     `compare.parse.unavailable` finding gives that very reason is withheld
     with no reason of their own; one whose reason differs keeps it, because
     the fight-wide statement does not cover it. The empty default silences

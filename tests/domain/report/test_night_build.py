@@ -11,6 +11,7 @@ from wowperf.domain.comparison.night_axis import (
     NOT_DRAWN_DETAIL,
     NOT_DRAWN_ID,
     PULL_DAMAGE_NOT_DRAWN,
+    PULL_DAMAGE_NOTHING_COMPARED,
 )
 from wowperf.domain.comparison.pace import NO_BOSS, PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
@@ -942,19 +943,23 @@ def test_a_pull_handed_a_pace_sample_states_no_parse_reason_in_its_provenance() 
         assert not any(NO_COMPARISON_RAN in line for line in withheld), role
 
 
-def test_a_pull_handed_no_pace_sample_keeps_no_comparison_ran_at_every_site() -> None:
+def test_a_pull_handed_no_pace_sample_points_its_damage_tab_to_the_night_alone() -> None:
     """A `--no-compare` pull: silent cards, a Damage tab that points, and no parse lines.
 
-    The night-level finding is what says the parse axis is not drawn; on a night
-    handed no pace sample at all it says so in `NOT_DRAWN_DETAIL`'s words.
+    Handed no pace sample, the pull's Provenance carries no pace line, so its
+    Damage tab points only to the night's finding -- never to a Provenance that
+    says nothing about pace. That finding is what says the parse axis is not
+    drawn; on a night handed no pace sample at all it says so in
+    `NOT_DRAWN_DETAIL`'s words.
     """
     pulls = three_wipes_one_handed_no_sample()
     untouched = pulls["untouched"]
 
     assert [card.spell_and_talent.reason for card in untouched.players] == [""] * 2
     assert untouched.damage.state is SectionState.WITHHELD
-    assert untouched.damage.reason == PULL_DAMAGE_NOT_DRAWN
+    assert untouched.damage.reason == PULL_DAMAGE_NOTHING_COMPARED
     withheld = untouched.provenance.withheld
+    assert not any(line.startswith("Damage pace against other kills") for line in withheld)
     assert not any(line.startswith("Damage against other kills") for line in withheld)
     assert not any(line.startswith("Spell and talent comparison") for line in withheld)
     assert not any(NO_COMPARISON_RAN in line for line in withheld)
@@ -1005,6 +1010,18 @@ def test_a_night_pull_says_nothing_of_the_parse_comparison_on_its_cards() -> Non
             assert card.spell_and_talent.reason == "", role
 
 
+def test_an_open_night_damage_tab_carries_no_parse_note() -> None:
+    """The night states the parse axis's absence once for the page, so no pull's tab notes it.
+
+    The compared wipe's tab opens on its pace row; on `raid --fight N` that tab
+    would carry the parse reason as its note, and on the night it must not.
+    """
+    compared = three_wipes_one_handed_no_sample()["compared"]
+
+    assert compared.damage.state is SectionState.PRESENT
+    assert compared.damage_note == ""
+
+
 def test_a_night_pull_with_no_damage_row_points_to_where_the_reasons_are() -> None:
     """A pull whose pace sample withheld has no Damage row, and the tab says where to look.
 
@@ -1037,7 +1054,7 @@ def test_a_night_pull_with_no_damage_row_points_to_where_the_reasons_are() -> No
     assert f"Damage pace against other kills: {NO_BOSS}" in withheld
 
 
-def test_a_kill_handed_a_pace_sample_states_the_nights_own_reason_for_its_parse_line() -> None:
+def test_a_compared_kill_leaves_its_parse_line_to_the_night() -> None:
     """A compared kill's pull says nothing of the parse axis: the night says it, once.
 
     The night's own reason -- it never asks a parse leaderboard, on a kill or on

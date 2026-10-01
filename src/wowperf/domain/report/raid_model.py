@@ -146,6 +146,11 @@ class RaidReport(Frozen):
     damage_rows: tuple[LedgerRow, ...] = ()
     # Withheld on an attempt that did not kill, with the reason the reader needs.
     damage: Section
+    # Why the parse comparison is withheld, on a Damage tab that other rows --
+    # pace, kill time -- keep open. Empty when the tab is withheld (its own
+    # reason says it), when the parse comparison drew rows, and on a page that
+    # states the parse axis's absence once for every pull (the night's).
+    damage_note: str = ""
     # What hit the raid, and who took more of it than the rest. Sections 6.8 and 6.9.
     mechanics_rows: tuple[LedgerRow, ...] = ()
     # The per-player damage grid: one row per player, one column per ability

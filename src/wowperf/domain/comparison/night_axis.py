@@ -59,6 +59,21 @@ PULL_DAMAGE_NOT_DRAWN = (
 The parse axis's absence is the night's, stated once by `parse_axis_not_drawn`;
 a pace notice is the pull's own, stated once in its Provenance. A tab that
 restated either would print it once per pull.
+
+This sentence is for a pull the night handed a pace sample, whose Provenance
+says why the pace was not compared wherever it was not.
+"""
+
+PULL_DAMAGE_NOTHING_COMPARED = (
+    "No damage comparison stands on this pull. Why no comparison was drawn is stated once, "
+    "under Findings about the night."
+)
+"""A night pull's Damage tab with no row, on a pull the night handed no pace sample.
+
+Such a pull -- every pull of a `--no-compare` night -- carries no pace line in
+its Provenance, so pointing there as `PULL_DAMAGE_NOT_DRAWN` does would send a
+reader to a list that says nothing about pace. The night's own finding is the
+one place that says why nothing was compared.
 """
 
 TITLE = "No comparison against other kills is drawn on this page"

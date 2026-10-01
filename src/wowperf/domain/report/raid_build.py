@@ -6,7 +6,10 @@ from collections.abc import Sequence
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.comparison.kill_time import KILL_PREFIX
-from wowperf.domain.comparison.night_axis import PULL_DAMAGE_NOT_DRAWN
+from wowperf.domain.comparison.night_axis import (
+    PULL_DAMAGE_NOT_DRAWN,
+    PULL_DAMAGE_NOTHING_COMPARED,
+)
 from wowperf.domain.comparison.pace import (
     PACE_ID,
     PACE_PREFIX,
@@ -161,10 +164,12 @@ def build_raid_report(
     `parse_stated_elsewhere` is for a caller that states the parse
     comparison's absence once for a page holding many pulls: the night page,
     whose `compare.parse.not_drawn` finding says it for every pull at once.
-    True, every card is withheld with no reason of its own, the Damage tab's
-    fallback is `PULL_DAMAGE_NOT_DRAWN` -- which points to where the reasons
-    are rather than restating them -- and the Provenance carries neither a
-    "Damage against other kills" nor a "Spell and talent comparison" line.
+    True, every card is withheld with no reason of its own, an open Damage
+    tab carries no parse note, the Damage tab's fallback points to where the
+    reasons are rather than restating them -- `PULL_DAMAGE_NOT_DRAWN` when
+    `pace` was handed, `PULL_DAMAGE_NOTHING_COMPARED` when it was not -- and
+    the Provenance carries neither a "Damage against other kills" nor a
+    "Spell and talent comparison" line.
     False, the default, is the page `raid` draws, so `raid` itself passes
     nothing here.
     """
@@ -244,20 +249,40 @@ def build_raid_report(
         for row in placed_rows["damage_rows"]
         if not row.finding_id.startswith((PACE_PREFIX, KILL_PREFIX))
     )
+    # A night pull's fallback points to where the night states its reasons. A
+    # pull handed a pace sample carries its pace notice in its own Provenance,
+    # and the sentence says so; a pull handed none carries no pace line at all,
+    # so its sentence points to the night's finding alone.
     parse_damage = _damage_section(
         findings, parse_rows,
-        fallback=PULL_DAMAGE_NOT_DRAWN if parse_stated_elsewhere else NO_COMPARISON_RAN,
+        fallback=(
+            NO_COMPARISON_RAN if not parse_stated_elsewhere
+            else PULL_DAMAGE_NOT_DRAWN if pace is not None
+            else PULL_DAMAGE_NOTHING_COMPARED
+        ),
     )
     damage = (
         Section(state=SectionState.PRESENT) if placed_rows["damage_rows"] else parse_damage
+    )
+    # A tab that pace or kill-time rows keep open never prints its withheld
+    # paragraph, so the parse comparison's own withheld reason is its note
+    # instead: on a raid wipe that draws a pace row, the tab is still where the
+    # boss-lived reason is said, once. Empty wherever the parse comparison drew
+    # rows (`parse_damage.reason` is "" then), wherever the tab is withheld (its
+    # reason is the same sentence, already printed), and on a page that states
+    # the parse axis's absence once for every pull.
+    damage_note = (
+        parse_damage.reason
+        if damage.state is SectionState.PRESENT and not parse_stated_elsewhere
+        else ""
     )
 
     # Said once for the whole fight, never once per raider. A wipe withholds
     # every raider's comparison for the same reason -- the boss lived, which is
     # a fact about the attempt and not about any of them -- and the Damage tab
-    # states it, so restating it on every card would print the same paragraph
-    # twice per raider on a twenty-player page: as the card's withheld line and
-    # as the card's own row.
+    # prints it, as its withheld reason or as its note, so restating it on every
+    # card would print the same paragraph twice per raider on a twenty-player
+    # page: as the card's withheld line and as the card's own row.
     #
     # `build_report` does restate it per card, and this is the one place the
     # two siblings deliberately differ: the rule was always "say it once when
@@ -269,15 +294,11 @@ def build_raid_report(
     # and the fight-wide statement does not cover it, so it stays on their card
     # and gets its own Provenance line below.
     #
-    # No branch on the Damage section's own state is needed: `Section.reason` is
-    # "" unless a section was withheld, so a present Damage tab has stated
-    # nothing and silences nothing -- which is what keeps a kill where one
-    # raider's leaderboard answered from dropping another raider's own reason.
-    #
-    # Read off `parse_damage` rather than `damage`: `damage` also opens on
-    # pace rows alone, and pace being present says nothing about whether the
-    # parse comparison itself had anything to withhold.
-    stated_for_the_whole_fight = parse_damage.reason
+    # What silences a card is exactly what the tab prints: its withheld reason,
+    # or its note. A tab open on the parse comparison's own rows prints neither
+    # and silences nothing -- which is what keeps a kill where one raider's
+    # leaderboard answered from dropping another raider's own reason.
+    stated_for_the_whole_fight = damage.reason or damage_note
     players = build_raid_players(
         loaded, findings, subject, compared_slugs, titles_by_id, tooltips,
         parse_withheld="" if parse_stated_elsewhere else None,
@@ -319,8 +340,9 @@ def build_raid_report(
     # catch-all and draw the same finding a second time under "Other findings".
     if verdict_finding:
         placed_ids.add(verdict_finding.id)
-    # The per-raider parse notices the Damage tab states for the whole fight
-    # are claimed by that tab, for the same reason: `build_raid_players` leaves
+    # The per-raider parse notices the Damage tab prints for the whole fight,
+    # as its withheld reason or as its note, are claimed by that tab, for the
+    # same reason: `build_raid_players` leaves
     # them off every card, so no field reads them back, and the catch-all would
     # otherwise draw the paragraph once per raider under "Other findings".
     placed_ids |= {
@@ -416,6 +438,7 @@ def build_raid_report(
         summary_pointers=summary_pointers,
         damage_rows=placed_rows["damage_rows"],
         damage=damage,
+        damage_note=damage_note,
         mechanics_rows=placed_rows["mechanics_rows"],
         grid=grid,
         deaths=deaths,

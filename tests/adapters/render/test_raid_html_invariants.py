@@ -1063,6 +1063,23 @@ def test_a_wipes_parse_reason_is_on_the_page_once() -> None:
     assert html.count(reason) == 2
 
 
+def test_a_wipe_with_pace_rows_prints_its_parse_reason_on_the_open_damage_tab() -> None:
+    """Design 5.5 on a wipe whose Damage tab opens on its pace reading.
+
+    The tab is present, so its withheld paragraph is not drawn; the parse
+    reason must still stand on it, once, and on no player card.
+    """
+    html = a_wiped_raid_page_with_pace()
+    reason = str(escape(WITHHELD_DETAIL))
+    damage = html[html.index('id="tab-damage"'):html.index('id="tab-mechanics"')]
+    players = html[html.index('id="tab-players"'):html.index('id="tab-provenance"')]
+
+    assert 'class="pace-chart"' in damage, "the fixture's Damage tab did not open on pace"
+    assert 'id="player-' in players, "the fixture drew no player card to check"
+    assert damage.count(reason) == 1
+    assert players.count(reason) == 0
+
+
 def test_a_raid_report_with_no_mechanics_rows_states_nothing_to_report() -> None:
     """`mechanics_rows` empties out for real: `--no-compare` guarantees no
     reference sample, and a fight with no damage outlier emits no row either.

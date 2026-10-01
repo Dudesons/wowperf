@@ -56,11 +56,12 @@ def build_raid_players(
     handed at all, and the empty string when the page states it once for
     every card.
 
-    `stated_once` is the reason the page's withheld Damage tab states for the
-    whole fight. A raider's `compare.parse.unavailable` notice carrying that
-    very reason is said there, so it is neither the card's withheld line nor
-    one of its rows; a notice whose reason differs is about that raider and
-    stays on their card. Empty, the default, states nothing and drops nothing.
+    `stated_once` is the reason the page's Damage tab prints for the whole
+    fight, as its withheld reason or as its note. A raider's
+    `compare.parse.unavailable` notice carrying that very reason is said
+    there, so it is neither the card's withheld line nor one of its rows; a
+    notice whose reason differs is about that raider and stays on their card.
+    Empty, the default, states nothing and drops nothing.
     """
     players = loaded.encounter.players
     names_by_actor = display_names(players)

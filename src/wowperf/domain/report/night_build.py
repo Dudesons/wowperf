@@ -170,8 +170,12 @@ def build_night_report(
     is the night's, not any pull's: `compare.parse.not_drawn` states it once
     for the page, worded for whether the night was compared against the
     reference kills. So no pull's card says it, no pull's Provenance repeats
-    it, and a pull whose Damage tab has no row says `PULL_DAMAGE_NOT_DRAWN`,
-    which points to where the reasons are.
+    it, and no open Damage tab notes it. A pull whose Damage tab has no row
+    points instead: a pull handed a pace sample says `PULL_DAMAGE_NOT_DRAWN`,
+    naming the night's finding and its own Provenance, where its pace notice
+    is; a pull handed none -- every pull of a `--no-compare` night -- says
+    `PULL_DAMAGE_NOTHING_COMPARED`, naming the night's finding alone, since its
+    Provenance carries no pace line to point to.
 
     Walks `loaded.loaded` rather than `loaded.night.bosses`: the two run
     parallel by `LoadedNight`'s own contract, and each `LoadedProgression`
