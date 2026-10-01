@@ -47,7 +47,7 @@
     <option value="{{ boss_scopes[loop.index0] }}summary">{{ boss.summary_label }}</option>
 {% endif %}
 {% for pull in boss.pulls %}
-    <option value="{{ scopes[pull.report.provenance.fight_id] }}pull">Pull {{ loop.index }} &mdash; {{ pull.report.header.outcome }}</option>
+    <option value="{{ scopes[pull.report.provenance.fight_id] }}pull">{{ pull.label }}</option>
 {% endfor %}
 {% if not boss.pulls %}
     <option value="b{{ loop.index0 }}-none-pull">Nothing to show</option>

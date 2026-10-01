@@ -624,6 +624,24 @@ def test_a_summary_with_a_failed_pull_says_how_many_were_counted_and_how_many_de
     assert summary.provenance.attempts_deepened == 2
 
 
+def test_a_pulls_label_carries_the_attempt_number_its_row_opens_it_from() -> None:
+    """The second of three attempts failed, so the third drawn pull is attempt 3, not pull 2.
+
+    The attempts table numbers every attempt, failed or not; a label counting
+    only the drawn pulls would have row 3 open "Pull 2".
+    """
+    report = a_report(a_night(bosses=(3,), failed=(11,)))
+
+    boss = report.bosses[0]
+    assert boss.summary is not None
+    row_index = {row.fight_id: row.index for row in boss.summary.attempts}
+    assert row_index == {10: 1, 11: 2, 12: 3}
+    assert [pull.report.provenance.fight_id for pull in boss.pulls] == [10, 12]
+    for pull in boss.pulls:
+        index = row_index[pull.report.provenance.fight_id]
+        assert pull.label == f"Pull {index} — {pull.report.header.outcome}"
+
+
 def test_the_summary_label_counts_deepened_pulls_in_the_singular_and_the_plural() -> None:
     """One pull and two; a third boss, one attempt of three failed, counts what was deepened."""
     once_and_twice = a_report(a_night(bosses=(1, 2)))

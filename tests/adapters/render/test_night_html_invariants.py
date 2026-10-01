@@ -1134,6 +1134,27 @@ def test_every_drawn_attempt_row_opens_its_pull() -> None:
     assert "f11-pull" not in render_night(a_night_report(one_failed))
 
 
+def test_a_pull_option_names_the_number_of_the_row_that_opens_it() -> None:
+    """After a failed pull, the option a row opens still carries that row's number.
+
+    The second of three attempts failed: the third row opens fight 12, and its
+    option must read "Pull 3", where a count of drawn pulls would print 2.
+    """
+    html = render_night(a_night_report(a_night(bosses=(3,), failed=(11,))))
+
+    numbers = dict(
+        (target, number)
+        for target, number in re.findall(
+            r'data-night-show="([^"]+)">(\d+)</a>', html
+        )
+    )
+    options = dict(re.findall(r'<option value="(f\d+-pull)">([^<]*)</option>', html))
+    assert set(numbers) == set(options) == {"f10-pull", "f12-pull"}
+    for target, number in numbers.items():
+        assert options[target].startswith(f"Pull {number} "), (target, options[target])
+    assert numbers["f12-pull"] == "3"
+
+
 def test_the_script_opens_a_pull_from_its_row() -> None:
     """The script finds every row link by its attribute and reads the pull it names from it.
 

@@ -50,6 +50,9 @@ the exception a sentence later would have told a reader something false about a
 card on the very same page.
 """
 
+PULL_LABEL = "Pull {number} — {outcome}"
+"""How the pull control names a pull: its attempt's number, as its attempt row prints it."""
+
 MIN_PULLS_FOR_SUMMARY = 1
 """Below this many drawn pulls a boss gets no summary: with none there is nothing to read."""
 
@@ -213,6 +216,13 @@ def build_night_report(
     reference_records_seen: dict[str, ReferenceRecord] = {}
     for boss in loaded.loaded:
         drawn = boss.attempts_with_events
+        # Numbered the way the summary's attempt rows number them, over every
+        # attempt and not only the drawn ones, so a row opens the pull its own
+        # number names even after a pull that failed to load.
+        attempt_numbers = {
+            one.fight_id: number
+            for number, one in enumerate(boss.progression.attempts, start=1)
+        }
         pulls: list[PullSection] = []
         for attempt in drawn:
             fight_id = attempt.encounter.fight_id
@@ -222,27 +232,31 @@ def build_night_report(
             for record in pull_records:
                 reference_records_seen.setdefault(record.url, record)
             pace_sample = (pace_by_fight or {}).get(fight_id)
+            report = build_raid_report(
+                attempt,
+                pull_findings,
+                night_subject(attempt.encounter),
+                None,
+                fetched_at,
+                defensives,
+                consumables,
+                roles,
+                externals,
+                self_resurrections,
+                reference_records=pull_records,
+                trimmed=tier == TRIMMED,
+                death_cards=tier != NO_CARDS,
+                pace=pace_sample,
+                parse_stated_elsewhere=True,
+                throughput=throughput,
+            )
             pulls.append(
                 PullSection(
-                    report=build_raid_report(
-                        attempt,
-                        pull_findings,
-                        night_subject(attempt.encounter),
-                        None,
-                        fetched_at,
-                        defensives,
-                        consumables,
-                        roles,
-                        externals,
-                        self_resurrections,
-                        reference_records=pull_records,
-                        trimmed=tier == TRIMMED,
-                        death_cards=tier != NO_CARDS,
-                        pace=pace_sample,
-                        parse_stated_elsewhere=True,
-                        throughput=throughput,
-                    ),
+                    report=report,
                     tier=tier,
+                    label=PULL_LABEL.format(
+                        number=attempt_numbers[fight_id], outcome=report.header.outcome
+                    ),
                 )
             )
         summary = (

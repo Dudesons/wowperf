@@ -34,10 +34,15 @@ class PullSection(Frozen):
     values reaches both. A reader comparing two pulls needs to know they were
     not drawn at the same depth before reading anything into a difference
     between them, which is a fact a bare `RaidReport` cannot state on its own.
+
+    `label` is what the pull control names it by: its attempt's number, the
+    one the boss summary's attempt row prints, and its outcome. A pull that
+    failed to load still holds its number, so the two never disagree.
     """
 
     report: RaidReport
     tier: str
+    label: str
 
 
 class BossSection(Frozen):

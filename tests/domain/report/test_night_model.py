@@ -73,6 +73,7 @@ def a_pull(fight_id: int, tier: str = "deep") -> PullSection:
             ),
         ),
         tier=tier,
+        label=f"Pull {fight_id}",
     )
 
 
@@ -175,10 +176,12 @@ def test_a_pulls_own_rows_are_walked_too() -> None:
     first_pull = PullSection(
         report=a_raid_report(observations=(first_row,)),
         tier="deep",
+        label="Pull 1",
     )
     second_pull = PullSection(
         report=a_raid_report(death_rows=(second_row,)),
         tier="none",
+        label="Pull 2",
     )
     report = a_night_report(
         bosses=(
