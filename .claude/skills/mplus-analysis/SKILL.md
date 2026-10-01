@@ -53,6 +53,33 @@ to stop.
 An empty quantifier means the finding is not an aggregate over a sample at all — one reference's
 own figure, say — and there is no "how many agreed" to have an opinion about. Say nothing.
 
+## The night's three boss rollups
+
+On a night page each boss's Summary leads with up to three rollups, each only where it fires. A
+rollup counts findings the boss's pulls already carry and reads the log nowhere. It takes the
+confidence of what it counts, the least certain where they differ, and its `quantifier` is the only
+count a narrative may echo: the title and evidence carry the digits, so name a rollup by its
+quantifier and its subject, and never carry its word onto another finding, the other rollups
+included.
+
+- `progression.lead.kill_speed`, on a boss that died. It lifts the kill's own time and pace
+  findings, so its badge is the less certain of the two, and it has no quantifier: it is one kill,
+  not a count. The reference kills are among the best of the boss, so a slower kill is the expected
+  result; the finding offers where the gap opened, not that one exists.
+- `progression.lead.verdicts`, why the wipes ended. It counts each wipe's own verdict, and a
+  withheld verdict is counted under its reason rather than dropped. It is `inferred` where any
+  verdict was read, because each is an inference, so write "suggests". It is `measured` where every
+  one was withheld, since it then states only what the report lacked; its quantifier reads `none`
+  there, meaning no verdict could be read, not that nothing ended the wipes. Otherwise the
+  quantifier is how much of all the wipes the commonest verdict covered, withheld ones in the
+  denominator.
+- `progression.lead.overlanding`, what kept over-landing. It counts, by compared pull and never by
+  hit, the abilities that two or more compared pulls reported as far above the reference kills'
+  rate. It is `derived`. A pull whose sample drew no member compared nothing and is outside the
+  denominator. Its quantifier is the most-reported ability's, even where the title names several
+  abilities. It states a difference, not a mistake: whether a landing could have been prevented is
+  not in the log.
+
 ## What each confidence badge licenses you to say
 
 Every finding carries one. It is the difference between a report that is trusted and one that is
