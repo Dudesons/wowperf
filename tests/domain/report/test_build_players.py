@@ -170,11 +170,11 @@ def test_two_players_sharing_a_name_get_disambiguated_card_names() -> None:
     # Two visually identical cards for two different people is exactly what a
     # shared display name must not produce; the actor id disambiguates both,
     # the same way `display_names` disambiguates the finding titles that name them.
-    loaded = a_loaded(players=(a_player(1, "Sublime"), a_player(5, "Sublime")))
+    loaded = a_loaded(players=(a_player(1, "Bríala"), a_player(5, "Bríala")))
     cards = build_players(
-        loaded, (), None, a_player(1, "Sublime"), {}, Defensives(), ThroughputCooldowns()
+        loaded, (), None, a_player(1, "Bríala"), {}, Defensives(), ThroughputCooldowns()
     )
-    assert [card.name for card in cards] == ["Sublime (actor 1)", "Sublime (actor 5)"]
+    assert [card.name for card in cards] == ["Bríala (actor 1)", "Bríala (actor 5)"]
 
 
 def test_a_card_names_the_class_in_text_beside_its_colour() -> None:

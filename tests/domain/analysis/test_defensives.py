@@ -66,7 +66,7 @@ def a_run() -> Run:
         players=(
             Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
-            Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
+            Player(actor_id=12, name="Stonewake", class_name="Shaman", spec="Elemental",
                    item_level=311),
         ),
         pulls=pulls,
@@ -133,10 +133,10 @@ def findings_by_prefix(findings: list[Finding], prefix: str) -> list[Finding]:
 
 
 def test_a_spec_absent_from_the_list_produces_nothing() -> None:
-    # Sublime is an Elemental Shaman and the fixture only knows Arcane Mages.
+    # Stonewake is an Elemental Shaman and the fixture only knows Arcane Mages.
     # Anchored on casts that do produce findings for the Mage, so the Shaman's
     # absence is this analyser declining to judge an unlisted spec rather than
-    # the call having produced nothing for anybody. Sublime presses the Mage's
+    # the call having produced nothing for anybody. Stonewake presses the Mage's
     # two abilities as well, because the ceiling branch needs at least one cast
     # to reach a title: without them a `for_spec` that wrongly matched an
     # unlisted spec would still mint no Shaman row and the assertion would hold.
@@ -148,7 +148,7 @@ def test_a_spec_absent_from_the_list_produces_nothing() -> None:
         combat_description=run_combat_description(run.total_pull_seconds),
     )
     assert ceiling_ids(findings)
-    assert all("Sublime" not in finding.title for finding in findings)
+    assert all("Stonewake" not in finding.title for finding in findings)
 
 
 def test_a_cast_outside_every_pull_still_counts_as_used() -> None:

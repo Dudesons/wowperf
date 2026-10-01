@@ -134,7 +134,7 @@ Players tab through the existing `COMPARISON_PREFIXES` match on `compare.spells.
 
 **`compare.spells.trash.rate`** — the gap row.
 
-> 3 top parses cast Blood Boil a median 9.1 times a minute across 4 aligned packs; Dudesons
+> 3 top parses cast Blood Boil a median 9.1 times a minute across 4 aligned packs; Stonewake
 > casts it 6.0
 
 The pack count sits **in the title**, not in the evidence. This is the whole mitigation for the

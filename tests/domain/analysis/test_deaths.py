@@ -24,7 +24,7 @@ def a_run() -> Run:
         players=(
             Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
-            Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
+            Player(actor_id=12, name="Stonewake", class_name="Shaman", spec="Elemental",
                    item_level=311),
         ),
         pulls=pulls,
@@ -73,7 +73,7 @@ def test_the_scope_phrase_reaches_the_evidence_verbatim() -> None:
 
 def test_the_total_cost_is_the_measured_time_not_played() -> None:
     findings = analyse_deaths(
-        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, 12.5)),
+        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Stonewake", 12, 40_000, 12.5)),
         locate_in_a_run,
         SCOPE_A_RUN,
     )
@@ -84,7 +84,7 @@ def test_the_total_cost_is_the_measured_time_not_played() -> None:
 
 def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
     findings = analyse_deaths(
-        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, None)),
+        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Stonewake", 12, 40_000, None)),
         locate_in_a_run,
         SCOPE_A_RUN,
     )
@@ -95,7 +95,7 @@ def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
 
 def test_a_wholly_unmeasured_run_of_deaths_reports_no_total_cost_rather_than_zero() -> None:
     findings = analyse_deaths(
-        (a_death("Emberkin", 11, 1_000, None), a_death("Sublime", 12, 40_000, None)),
+        (a_death("Emberkin", 11, 1_000, None), a_death("Stonewake", 12, 40_000, None)),
         locate_in_a_run,
         SCOPE_A_RUN,
     )
@@ -113,7 +113,7 @@ def test_deaths_close_together_are_reported_as_one_chain() -> None:
     findings = analyse_deaths(
         (
             a_death("Emberkin", 11, 30_000, 10.0),
-            a_death("Sublime", 12, 33_000, 8.0),
+            a_death("Stonewake", 12, 33_000, 8.0),
         ),
         locate_in_a_run,
         SCOPE_A_RUN,
@@ -125,7 +125,7 @@ def test_deaths_close_together_are_reported_as_one_chain() -> None:
     # Pull 0 starts at 0ms: 30_000ms and 33_000ms are 30s and 33s into it.
     assert chain.evidence == (
         "Emberkin at pull 0, 30s in to Molten Scar",
-        "Sublime at pull 0, 33s in to Molten Scar",
+        "Stonewake at pull 0, 33s in to Molten Scar",
     )
 
 
@@ -133,7 +133,7 @@ def test_deaths_far_apart_are_reported_separately() -> None:
     findings = analyse_deaths(
         (
             a_death("Emberkin", 11, 1_000, 10.0),
-            a_death("Sublime", 12, 200_000, 8.0),
+            a_death("Stonewake", 12, 200_000, 8.0),
         ),
         locate_in_a_run,
         SCOPE_A_RUN,
@@ -244,7 +244,7 @@ def test_a_chain_of_wholly_unmeasured_deaths_reports_no_seconds_lost() -> None:
     findings = analyse_deaths(
         (
             a_death("Emberkin", 11, 30_000, None),
-            a_death("Sublime", 12, 33_000, None),
+            a_death("Stonewake", 12, 33_000, None),
         ),
         locate_in_a_run,
         SCOPE_A_RUN,
@@ -292,7 +292,7 @@ def test_a_transitive_chain_groups_all_three_deaths() -> None:
     findings = analyse_deaths(
         (
             a_death("Emberkin", 11, 0, 10.0),
-            a_death("Sublime", 12, 9_000, 8.0),
+            a_death("Stonewake", 12, 9_000, 8.0),
             a_death("Emberkin", 11, 17_000, 5.0),
         ),
         locate_in_a_run,
