@@ -25,8 +25,8 @@ PROJECTION_ID = "compare.pace.projection"
 UNAVAILABLE_ID = "compare.pace.unavailable"
 
 NO_BOSS = (
-    "No enemy of this fight could be told apart as its boss: none carries the boss flag, "
-    "or more than one is named after the fight."
+    "No enemy of this fight could be told apart as its boss: the log listed none for it, "
+    "none carries the boss flag, or more than one is named after the fight."
 )
 GRIDS_DIFFER = (
     "This fight's bosses' damage graphs came back on different time grids, so their damage "

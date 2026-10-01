@@ -302,6 +302,35 @@ def test_a_fight_with_no_boss_among_its_enemies_asks_for_no_graph(tmp_path: Path
     assert "BossDamageGraph" not in calls
 
 
+def test_a_fight_whose_log_listed_no_enemy_withholds_saying_so(tmp_path: Path) -> None:
+    """A fight's response can list no enemy at all, and then no boss can be found.
+
+    The reason the reader is given must cover that cause too, not only a
+    missing boss flag or two actors named after the fight.
+    """
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        name = operation_name(json.loads(request.content)["query"]) or ""
+        calls.append(name)
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        raise AssertionError(f"unexpected operation: {name}")
+
+    sample, records = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        _encounter(enemies=()),
+        (ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000),),
+    )
+
+    assert sample.unavailable == NO_BOSS
+    assert "the log listed none for it" in sample.unavailable
+    assert records == ()
+    assert calls == ["NpcActors"]
+
+
 _COUNCIL_ACTORS: list[dict[str, object]] = [
     {"id": 10, "gameID": 900, "name": "First Warden", "subType": "Boss"},
     {"id": 11, "gameID": 901, "name": "Second Warden", "subType": "Boss"},
