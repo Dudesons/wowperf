@@ -100,7 +100,8 @@ def quantity(n: int, singular: str, plural: str) -> str:
     Titles that state a count over a set read it back to a reader, and "1
     abilities" is the kind of slip that gets noticed before the finding does.
     Both forms are passed in rather than derived: English pluralisation is not
-    a rule worth implementing for the two nouns this has to spell.
+    a rule worth implementing, and "ability"/"abilities" is among the nouns
+    every count in the findings goes through here to spell.
     """
     return f"{n} {singular}" if n == 1 else f"{n} {plural}"
 
