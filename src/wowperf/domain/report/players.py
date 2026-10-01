@@ -142,9 +142,13 @@ def _comparison_section(
     with no reason of their own; one whose reason differs keeps it, because
     the fight-wide statement does not cover it. The same holds where no
     subject was handed: `raid --no-compare`'s Damage tab says
-    `NO_COMPARISON_RAN`, so no card says it again. The empty default silences
-    only a reason that is itself empty, which the card would have printed as
-    an empty line anyway -- so the Mythic+ page, which passes none, keeps
+    `NO_COMPARISON_RAN`, so no card says it again. The empty default means
+    nothing is stated once, and the two branches read it differently. Where no
+    subject was handed, a reason is silenced when it equals `stated_once`, so
+    the empty default silences only a reason that is itself empty, which the
+    card would have printed as an empty line anyway. For a player's own
+    notice it silences nothing, not even a notice whose detail is empty
+    (`stated_elsewhere`). The Mythic+ page, which passes none, therefore keeps
     `NO_COMPARISON_RAN` on every card.
     """
     if compared_slugs is None:
