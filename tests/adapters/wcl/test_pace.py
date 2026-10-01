@@ -357,6 +357,69 @@ def test_a_council_sums_its_bosses_on_both_sides(tmp_path: Path) -> None:
     assert [one.loaded for one in records] == [True]
 
 
+def test_a_council_sums_each_players_part_of_every_boss_graph(tmp_path: Path) -> None:
+    """A player on both bosses' graphs reads their sum; one on a single graph, that part.
+
+    Ours: the Mage hits both bosses (5 and 2, so 7) and the Warrior only the
+    first (3). The reference's roster: the first member hits both (4 and 10,
+    so 14) and the second only the first boss (1). Either boss's graph alone,
+    or only the last one read, gives a figure no other reading does.
+    """
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body.get("variables") or {}
+        if name == "NpcActors":
+            return _npc_actors_response(_COUNCIL_ACTORS)
+        if name == "ReferenceFight":
+            return _reference_fight_response(
+                1000,
+                301_000,
+                [{"id": 31, "gameID": 900}, {"id": 32, "gameID": 901}],
+                friendly_players=[40, 41],
+                friendly_specs=["Frost", "Fury"],
+                player_actors=[{"id": 40, "subType": "Mage"}, {"id": 41, "subType": "Warrior"}],
+            )
+        if name == "BossDamageGraph":
+            start = 0 if variables["code"] == OUR_REPORT else 1000
+            by_boss = {
+                10: ({7: [5.0], 8: [3.0]}, [8.0]),
+                11: ({7: [2.0]}, [2.0]),
+                31: ({40: [4.0], 41: [1.0]}, [5.0]),
+                32: ({40: [10.0]}, [10.0]),
+            }
+            players, total = by_boss[int(variables["targetId"])]
+            return _player_graph_response(players, total, point_start=start, interval=1000.0)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    encounter = _encounter(
+        boss_name="The Wardens",
+        enemies=(EnemyNpc(actor_id=10, game_id=900), EnemyNpc(actor_id=11, game_id=901)),
+        players=(
+            Player(actor_id=7, name="Emberkin", class_name="Mage", spec="Frost", item_level=0),
+            Player(actor_id=8, name="Stonewake", class_name="Warrior", spec="Fury", item_level=0),
+        ),
+    )
+    row = ReferenceKillRow(report_code="ref1", fight_id=1, size=20, duration_ms=300_000)
+    sample, _ = load_pace_sample(
+        _client(handle), DiskCache(tmp_path / "own"), DiskCache(tmp_path / "ref"),
+        encounter, (row,),
+    )
+
+    assert [(one.actor_id, one.damage.amounts) for one in sample.our_players] == [
+        (7, (7,)),
+        (8, (3,)),
+    ]
+    [reference] = sample.references
+    assert [(one.actor_id, one.damage.amounts) for one in reference.players] == [
+        (40, (14,)),
+        (41, (1,)),
+    ]
+
+
 def test_a_reference_missing_one_of_the_councils_bosses_is_dropped(tmp_path: Path) -> None:
     def handle(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
