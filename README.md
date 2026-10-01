@@ -104,12 +104,13 @@ offered, and the page says so once instead of leaving those families silently mi
 death cards from the whole page instead, and the two together are a contradiction the command
 refuses. It writes `<code>.night.json` and `<code>.night.html`.
 
-Every boss opens on a summary, led by how the night went at it: killed on which attempt, or how
-deep the deepest attempt got. Under that come how fast the kill was against other kills, why the
-wipes ended, which abilities kept landing harder than they did for the reference kills, and what
-kept repeating across attempts. Each attempt is a row saying how deep it got, how it ended, who
-died first and how long the raid held after; a row opens its pull. A wipe's own page opens on how
-it started rather than on its death toll, and a kill's on its speed.
+Every boss with at least one pull on the page opens on a summary, led by how the night went at it:
+killed on which attempt, or how deep the deepest attempt got. Under that come how fast the kill
+was against other kills, why the wipes ended, which abilities kept landing harder than they did
+for the reference kills, and what kept repeating across attempts. Each attempt is a row saying how
+deep it got, how it ended, who died first and how long the raid held after; a row opens its pull.
+A wipe's own page opens on why it ended, where a verdict was reached, then on how it started
+rather than on its death toll; a kill's opens on its speed wherever the night was compared.
 
 ## Asking Claude to coach you
 

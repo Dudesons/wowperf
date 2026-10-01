@@ -378,7 +378,7 @@ def test_an_attempt_nobody_fetched_events_for_has_no_reading_in_any_new_cell() -
     assert new_cells(rows)[1] == (NO_READING, NO_READING, NO_READING, NO_READING)
 
 
-def test_a_series_given_no_pull_findings_is_not_compared() -> None:
+def test_a_series_given_no_pace_samples_is_not_compared() -> None:
     series, _, _ = a_night_of_three()
 
     assert build_progression_report(series, (), "2026-10-01 09:00").compared is False

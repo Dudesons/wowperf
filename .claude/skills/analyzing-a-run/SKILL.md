@@ -243,7 +243,9 @@ raid held, and a pointer to that death's card. The pace line follows — ended b
 the reference kills' pace, or the same stated at the clock where the comparison stopped when the
 band ran out before the wipe did — and then the alive chart. It does not lead with the death count
 or rank losses in seconds; those stay on the Deaths tab, and `raid --fight N` on a wipe reads the
-same. A kill's pull Summary opens on kill speed: pointers to the kill time and the damage pace.
+same. A kill's pull Summary opens on kill speed, pointers to the kill time and the damage pace,
+wherever either was compared; read with `--no-compare`, or where neither comparison drew a
+reference kill, it has no kill speed to open on and starts at the alive chart.
 The night's Provenance groups the pulls that failed to load by reason, one line per reason naming
 every fight it kept out, and does not repeat a pull's withheld pace notice, which stays in that
 pull's own Provenance.

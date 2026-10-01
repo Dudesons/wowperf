@@ -634,8 +634,8 @@ def test_a_deathless_wipe_says_nobody_died() -> None:
     assert report.opening.chain is None
 
 
-def test_a_kill_summary_is_left_to_its_own_task() -> None:
-    """A kill keeps its decomposition and draws no opening; its Summary is the kill speed's."""
+def test_a_kill_summary_ranks_its_losses_and_draws_no_wipe_opening_or_pace_line() -> None:
+    """A kill keeps its decomposition and ranked losses; a wipe's opening and pace line are not."""
     loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
     killed = loaded.model_copy(
         update={"encounter": loaded.encounter.model_copy(update={"kill": True})}
@@ -648,7 +648,7 @@ def test_a_kill_summary_is_left_to_its_own_task() -> None:
 
     assert report.opening is None
     assert [row.finding_id for row in report.ledger_decomposition] == ["deaths.total"]
-    assert report.summary_pointers, "a kill's losses are still ranked until its own task"
+    assert report.summary_pointers, "a kill's Summary ranks its losses"
     assert report.pace_pointer is None
     assert report.pace_line == ""
 
