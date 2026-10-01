@@ -1198,10 +1198,13 @@ def test_a_bosss_rollups_are_written_under_the_boss(tmp_path: Path) -> None:
     ]
     # Both wipes drew reference kills, so both are in the over-landing
     # rollup's denominator, and each names the harness's one hostile ability.
+    # Every reference kill's damage-taken table carries that ability too, so it
+    # is one the references took, never one none of them did.
     [overlanding] = [
         one for one in first["findings"] if one["id"] == "progression.lead.overlanding"
     ]
     assert overlanding["title"] == "Venom Bolt over-landed in 2 of 2 compared attempts"
+    assert "progression.lead.never_taken" not in _finding_ids(first["findings"])
     for boss in payload["bosses"]:
         for pull in boss["pulls"]:
             ids = _finding_ids(pull["findings"])

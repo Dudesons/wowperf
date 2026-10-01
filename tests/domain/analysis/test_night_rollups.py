@@ -19,6 +19,7 @@ from wowperf.domain.findings import Confidence, Finding
 
 KILL_SPEED = "progression.lead.kill_speed"
 VERDICTS = "progression.lead.verdicts"
+NEVER_TAKEN = "progression.lead.never_taken"
 OVERLANDING = "progression.lead.overlanding"
 
 _SHAPES = {
@@ -58,8 +59,15 @@ def the_kill_readings(kill: Encounter) -> tuple[Finding, Finding]:
     return kill_time, pace
 
 
-def over_landing(rank: int, ability_id: int, name: str) -> Finding:
-    """A `mechanics.ability.*` finding in the shape `compare_mechanics` writes it."""
+def over_landing(
+    rank: int, ability_id: int, name: str, *, references_took: str = ""
+) -> Finding:
+    """A `mechanics.ability.*` finding in the shape `compare_mechanics` writes it.
+
+    `references_took` is the finding's quantifier, `quantifier_for(carrying,
+    total)` over the references that took the ability at all: "none" for one no
+    reference took, "" for a single-reference reading.
+    """
     return Finding(
         id=f"mechanics.ability.{rank}",
         title=(
@@ -70,6 +78,7 @@ def over_landing(rank: int, ability_id: int, name: str) -> Finding:
         confidence=Confidence.DERIVED,
         ability_id=ability_id,
         ability_name=name,
+        quantifier=references_took,
     )
 
 
@@ -323,7 +332,7 @@ def test_several_abilities_are_all_counted_and_the_most_repeated_listed_first() 
     )
 
     assert MAX_REPEAT_ABILITIES == 5, "the evidence below lists five lines"
-    assert rollup.title == "7 abilities over-landed in more than one compared attempt"
+    assert rollup.title == "7 abilities over-landed in most compared attempts"
     assert rollup.ability_id is None
     assert rollup.ability_name == ""
     assert rollup.quantifier == "every"
@@ -350,9 +359,139 @@ def test_abilities_the_cap_does_not_cut_carry_no_line_about_the_cap() -> None:
         analyse_night_rollups(attempts, pull_findings, frozenset({3, 4})), OVERLANDING
     )
 
-    assert rollup.title == "5 abilities over-landed in more than one compared attempt"
+    assert rollup.title == "5 abilities over-landed in most compared attempts"
     assert len(rollup.evidence) == MAX_REPEAT_ABILITIES
     assert not any("most reported" in line for line in rollup.evidence)
+
+
+def test_an_ability_no_reference_took_in_most_compared_pulls_is_never_taken() -> None:
+    attempts = [a_wipe(3), a_wipe(4), a_wipe(5)]
+    pull_findings = {
+        3: [over_landing(0, 9001, "Brinecoil Lash", references_took="none")],
+        4: [],
+        5: [over_landing(1, 9001, "Brinecoil Lash", references_took="none")],
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5}))
+    rollup = the_rollup(found, NEVER_TAKEN)
+
+    assert rollup.title == (
+        "Brinecoil Lash landed in 2 of 3 compared attempts, where no reference kill took it"
+    )
+    assert rollup.evidence == (
+        "Brinecoil Lash landed in 2 of 3 compared attempts (Fights 3 and 5)",
+    )
+    assert rollup.quantifier == "most"
+    assert rollup.confidence is Confidence.DERIVED
+    assert rollup.ability_id == 9001
+    assert rollup.ability_name == "Brinecoil Lash"
+    assert OVERLANDING not in [finding.id for finding in found]
+
+
+def test_exactly_half_the_compared_pulls_is_not_most() -> None:
+    """Two of four is about half: the bar is more than half, the rule `most` names."""
+    attempts = [a_wipe(fight) for fight in (3, 4, 5, 6)]
+    pull_findings = {
+        3: [over_landing(0, 9001, "Brinecoil Lash", references_took="none")],
+        4: [over_landing(0, 9002, "Marrow Squall")],
+        5: [over_landing(1, 9001, "Brinecoil Lash", references_took="none")],
+        6: [over_landing(1, 9002, "Marrow Squall")],
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5, 6}))
+
+    assert [finding.id for finding in found] == []
+
+
+def test_one_compared_pull_keeps_nothing() -> None:
+    """What keeps landing needs two attempts, as `repeat_ability` requires."""
+    attempts = [a_wipe(3)]
+    pull_findings = {3: [over_landing(0, 9001, "Brinecoil Lash", references_took="none")]}
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3}))
+
+    assert NEVER_TAKEN not in [finding.id for finding in found]
+    assert OVERLANDING not in [finding.id for finding in found]
+
+
+def test_a_mixed_record_never_earns_the_stronger_claim() -> None:
+    """No reference took it on two pulls, most did on the third: it goes to taken more often."""
+    attempts = [a_wipe(3), a_wipe(4), a_wipe(5)]
+    pull_findings = {
+        3: [over_landing(0, 9001, "Brinecoil Lash", references_took="none")],
+        4: [over_landing(0, 9001, "Brinecoil Lash", references_took="none")],
+        5: [over_landing(0, 9001, "Brinecoil Lash", references_took="most")],
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5}))
+
+    assert NEVER_TAKEN not in [finding.id for finding in found]
+    assert the_rollup(found, OVERLANDING).title == (
+        "Brinecoil Lash over-landed in 3 of 3 compared attempts"
+    )
+
+
+def test_a_single_reference_reading_goes_to_taken_more_often() -> None:
+    """A reading against one reference carries no count of references, so no "none"."""
+    attempts = [a_wipe(3), a_wipe(4)]
+    pull_findings = {
+        3: [over_landing(0, 9001, "Brinecoil Lash")],
+        4: [over_landing(0, 9001, "Brinecoil Lash")],
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4}))
+
+    assert NEVER_TAKEN not in [finding.id for finding in found]
+    assert the_rollup(found, OVERLANDING).title == (
+        "Brinecoil Lash over-landed in 2 of 2 compared attempts"
+    )
+
+
+def test_one_boss_splits_its_abilities_between_the_two_findings() -> None:
+    """Each finding counts only its own abilities, and never taken comes first."""
+    attempts = [a_wipe(3), a_wipe(4), a_wipe(5)]
+    never = "Brinecoil Lash"
+    taken = "Marrow Squall"
+    pull_findings = {
+        fight: [
+            over_landing(0, 9001, never, references_took="none"),
+            over_landing(1, 9002, taken, references_took="every"),
+        ]
+        for fight in (3, 4, 5)
+    }
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5}))
+
+    assert [finding.id for finding in found] == [NEVER_TAKEN, OVERLANDING]
+    assert the_rollup(found, NEVER_TAKEN).ability_name == never
+    assert the_rollup(found, OVERLANDING).ability_name == taken
+    assert the_rollup(found, NEVER_TAKEN).quantifier == "every"
+
+
+def test_several_abilities_no_reference_took_are_all_counted_and_capped() -> None:
+    names = [f"Ability {letter}" for letter in "ABCDEFG"]
+    attempts = [a_wipe(fight) for fight in (3, 4, 5)]
+    pull_findings: dict[int, list[Finding]] = {3: [], 4: [], 5: []}
+    for index, name in enumerate(names):
+        for fight in ((3, 4, 5) if name == "Ability G" else (3, 4)):
+            pull_findings[fight].append(
+                over_landing(index, 100 + index, name, references_took="none")
+            )
+
+    rollup = the_rollup(
+        analyse_night_rollups(attempts, pull_findings, frozenset({3, 4, 5})), NEVER_TAKEN
+    )
+
+    assert rollup.title == "7 abilities no reference kill took landed in most compared attempts"
+    assert rollup.ability_id is None
+    assert rollup.evidence == (
+        "Ability G landed in 3 of 3 compared attempts (Fights 3–5)",
+        "Ability A landed in 2 of 3 compared attempts (Fights 3–4)",
+        "Ability B landed in 2 of 3 compared attempts (Fights 3–4)",
+        "Ability C landed in 2 of 3 compared attempts (Fights 3–4)",
+        "Ability D landed in 2 of 3 compared attempts (Fights 3–4)",
+        "The evidence lists the 5 abilities most reported",
+    )
 
 
 def test_kill_speed_reads_the_kill_pulls_time_and_pace() -> None:
@@ -414,18 +553,26 @@ def test_the_rollups_come_in_their_fixed_order() -> None:
     """Fixed by the rollup itself, and kept by the ranking the night writes them through.
 
     `rank_raid_findings` sorts the `progression` family on severity and seconds
-    alone, and none of the three costs a second, so only a stable sort keeps
+    alone, and none of the four costs a second, so only a stable sort keeps
     the order `analyse_night_rollups` set.
     """
     kill = a_kill(9)
     attempts = [a_wipe(7), a_wipe(8), kill]
     pull_findings = {
-        7: [a_verdict("execution"), over_landing(0, 9001, "Brinecoil Lash")],
-        8: [a_verdict("execution"), over_landing(0, 9001, "Brinecoil Lash")],
+        7: [
+            a_verdict("execution"),
+            over_landing(0, 9001, "Brinecoil Lash"),
+            over_landing(1, 9002, "Marrow Squall", references_took="none"),
+        ],
+        8: [
+            a_verdict("execution"),
+            over_landing(0, 9001, "Brinecoil Lash"),
+            over_landing(1, 9002, "Marrow Squall", references_took="none"),
+        ],
         9: [*the_kill_readings(kill)],
     }
     compared = frozenset({7, 8, 9})
-    order = [KILL_SPEED, VERDICTS, OVERLANDING]
+    order = [KILL_SPEED, VERDICTS, NEVER_TAKEN, OVERLANDING]
 
     found = analyse_night_rollups(attempts, pull_findings, compared)
     assert [finding.id for finding in found] == order

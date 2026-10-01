@@ -2,7 +2,7 @@
 # ABOUTME: Each rollup counts findings the pulls already carry; none reads the log a second time.
 
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
 from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES, capped_line
@@ -19,9 +19,19 @@ from wowperf.domain.findings import (
 
 KILL_SPEED_ID = "progression.lead.kill_speed"
 VERDICTS_ID = "progression.lead.verdicts"
+NEVER_TAKEN_ID = "progression.lead.never_taken"
 OVERLANDING_ID = "progression.lead.overlanding"
 
 MECHANICS_ABILITY_PREFIX = "mechanics.ability."
+
+NO_REFERENCE_TOOK_IT = "none"
+"""A per-pull `mechanics.ability.*` quantifier when no reference kill took the ability at all.
+
+`compare_mechanics` sets that finding's quantifier to `quantifier_for(carrying,
+total)` over the references that took the ability, so this is the one value
+meaning none of them did. A single-reference reading carries no count of
+references, so it never reads this.
+"""
 
 PULL_NOT_LOADED = "its pull did not load"
 """The reason a wipe whose pull was never drawn is counted under, read after "withheld, ".
@@ -44,11 +54,20 @@ VERDICTS_DETAIL = (
     "Each verdict is a judgement on one attempt; this counts them and judges nothing again."
 )
 
+NEVER_TAKEN_DETAIL = (
+    "Each compared pull names the abilities it took far more often than the reference kills "
+    "did, and how many of those kills took each one at all. This counts the compared pulls "
+    "naming an ability no reference kill took, never its hits, and names one only where more "
+    "than half of them reported it. It states a difference, not a mistake: whether any landing "
+    "could have been prevented is not something the log records."
+)
+
 OVERLANDING_DETAIL = (
     "Each compared pull names the abilities it took far more often than the reference kills "
-    "did. This counts the compared pulls naming each ability, never its hits, and names only "
-    "an ability more than one of them reported. It states a difference, not a mistake: "
-    "whether any landing could have been prevented is not something the log records."
+    "did. This counts the compared pulls naming each ability, never its hits, and names one "
+    "only where more than half of them reported it; one that every report said no reference "
+    "kill took at all is named under its own finding instead. It states a difference, not a "
+    "mistake: whether any landing could have been prevented is not something the log records."
 )
 
 _CERTAINTY = (Confidence.INFERRED, Confidence.DERIVED, Confidence.MEASURED)
@@ -163,38 +182,55 @@ def _verdicts(
     )
 
 
-def _overlanding(
-    attempts: Sequence[Encounter],
-    pull_findings: Mapping[int, Sequence[Finding]],
-    mechanics_compared: frozenset[int],
-) -> Finding | None:
-    """Abilities more than one compared pull reported as over-landing, counted by pull.
+def _reported(
+    compared: Sequence[Encounter], pull_findings: Mapping[int, Sequence[Finding]]
+) -> tuple[dict[int, str], dict[int, list[int]], set[int]]:
+    """Each ability's name and compared pulls, and those not reported never taken every time.
 
-    The threshold is `repeat_killing_blow`'s: an ability reported in two or more
-    pulls, its evidence capped at `MAX_REPEAT_ABILITIES` while its title counts
-    every such ability. Each pull counts once, however many
-    of its findings name the ability, so two pulls reporting it are also the
-    two compared pulls that rule asks for. A pull whose sample drew no member
-    compared nothing, so it is left out of the denominator rather than counted
-    as a pull where nothing over-landed.
+    Each pull counts once, however many of its findings name the ability. The
+    returned set holds every ability some report did not read as one no
+    reference took -- a single-reference reading, which counts no references,
+    among them -- so an ability outside it was reported, every time, as one no
+    reference took.
     """
-    compared = [one for one in attempts if one.fight_id in mechanics_compared]
     names: dict[int, str] = {}
-    pulls_by_ability: dict[int, list[int]] = defaultdict(list)
+    pulls: dict[int, list[int]] = defaultdict(list)
+    taken: set[int] = set()
     for one in compared:
-        fight_id = one.fight_id
-        reported = {
-            found.ability_id: found.ability_name
-            for found in pull_findings.get(fight_id, ())
-            if found.id.startswith(MECHANICS_ABILITY_PREFIX) and found.ability_id is not None
-        }
-        for ability_id, name in reported.items():
-            names.setdefault(ability_id, name)
-            pulls_by_ability[ability_id].append(fight_id)
+        seen: set[int] = set()
+        for found in pull_findings.get(one.fight_id, ()):
+            if not found.id.startswith(MECHANICS_ABILITY_PREFIX) or found.ability_id is None:
+                continue
+            names.setdefault(found.ability_id, found.ability_name)
+            if found.quantifier != NO_REFERENCE_TOOK_IT:
+                taken.add(found.ability_id)
+            if found.ability_id not in seen:
+                seen.add(found.ability_id)
+                pulls[found.ability_id].append(one.fight_id)
+    return names, pulls, taken
 
+
+def _kept_landing(
+    finding_id: str,
+    detail: str,
+    ability_ids: Iterable[int],
+    names: Mapping[int, str],
+    pulls: Mapping[int, list[int]],
+    total: int,
+    *,
+    head: Callable[[str, int, int], str],
+    single: Callable[[str, int, int], str],
+    several: Callable[[int], str],
+) -> Finding | None:
+    """The abilities among `ability_ids` reported in more than half of `total` compared pulls.
+
+    The bar is `progression.repeat.ability`'s, and the one `quantifier_for`'s
+    "most" names. The title counts every qualifying ability; only the evidence
+    is capped at `MAX_REPEAT_ABILITIES`, and a cut list says so.
+    """
     repeated = sorted(
-        (ability_id for ability_id, ids in pulls_by_ability.items() if len(ids) >= 2),
-        key=lambda ability_id: (-len(pulls_by_ability[ability_id]), names[ability_id]),
+        (one for one in ability_ids if len(pulls[one]) * 2 > total),
+        key=lambda one: (-len(pulls[one]), names[one]),
     )
     if not repeated:
         return None
@@ -202,32 +238,75 @@ def _overlanding(
     # and a capped list says so, so a reader never takes the lines for the count.
     named = repeated[:MAX_REPEAT_ABILITIES]
     cut_line = capped_line(len(repeated))
-    cut = () if cut_line is None else (cut_line,)
-
-    total = len(compared)
-    heads = tuple(
-        f"{names[ability_id]} over-landed in {len(pulls_by_ability[ability_id])} of {total} "
-        "compared attempts"
-        for ability_id in named
-    )
-    single = named[0] if len(repeated) == 1 else None
+    lone = named[0] if len(repeated) == 1 else None
+    top = len(pulls[named[0]])
     return Finding(
-        id=OVERLANDING_ID,
+        id=finding_id,
         title=(
-            heads[0]
-            if single is not None
-            else f"{len(repeated)} abilities over-landed in more than one compared attempt"
+            single(names[lone], top, total) if lone is not None else several(len(repeated))
         ),
-        detail=OVERLANDING_DETAIL,
+        detail=detail,
         confidence=Confidence.DERIVED,
         evidence=tuple(
-            f"{head} ({fight_ranges(pulls_by_ability[ability_id])})"
-            for head, ability_id in zip(heads, named, strict=True)
-        ) + cut,
-        ability_id=single,
-        ability_name=names[single] if single is not None else "",
-        quantifier=quantifier_for(len(pulls_by_ability[named[0]]), total),
+            f"{head(names[one], len(pulls[one]), total)} ({fight_ranges(pulls[one])})"
+            for one in named
+        )
+        + (() if cut_line is None else (cut_line,)),
+        ability_id=lone,
+        ability_name=names[lone] if lone is not None else "",
+        quantifier=quantifier_for(top, total),
     )
+
+
+def _over_landing(
+    attempts: Sequence[Encounter],
+    pull_findings: Mapping[int, Sequence[Finding]],
+    mechanics_compared: frozenset[int],
+) -> tuple[Finding | None, Finding | None]:
+    """What kept landing that no reference kill took, then what landed more often than theirs.
+
+    Both count the compared pulls only: a pull whose sample drew no member
+    compared nothing, so it is left out of the denominator rather than counted
+    as a pull where nothing over-landed. With fewer than two compared pulls
+    nothing can be said to keep landing, so neither fires. An ability whose
+    reports disagree goes to the second: a mixed record never earns the
+    stronger claim.
+    """
+    compared = [one for one in attempts if one.fight_id in mechanics_compared]
+    if len(compared) < 2:
+        return None, None
+    names, pulls, taken = _reported(compared, pull_findings)
+    total = len(compared)
+    never_taken = _kept_landing(
+        NEVER_TAKEN_ID,
+        NEVER_TAKEN_DETAIL,
+        (one for one in pulls if one not in taken),
+        names,
+        pulls,
+        total,
+        head=lambda name, n, of: f"{name} landed in {n} of {of} compared attempts",
+        single=lambda name, n, of: (
+            f"{name} landed in {n} of {of} compared attempts, where no reference kill took it"
+        ),
+        several=lambda count: (
+            f"{quantity(count, 'ability', 'abilities')} no reference kill took landed in "
+            "most compared attempts"
+        ),
+    )
+    over_landing = _kept_landing(
+        OVERLANDING_ID,
+        OVERLANDING_DETAIL,
+        (one for one in pulls if one in taken),
+        names,
+        pulls,
+        total,
+        head=lambda name, n, of: f"{name} over-landed in {n} of {of} compared attempts",
+        single=lambda name, n, of: f"{name} over-landed in {n} of {of} compared attempts",
+        several=lambda count: (
+            f"{quantity(count, 'ability', 'abilities')} over-landed in most compared attempts"
+        ),
+    )
+    return never_taken, over_landing
 
 
 def analyse_night_rollups(
@@ -235,20 +314,23 @@ def analyse_night_rollups(
     pull_findings: Mapping[int, Sequence[Finding]],
     mechanics_compared: frozenset[int],
 ) -> list[Finding]:
-    """Kill speed, then why wipes ended, then what kept over-landing: each where it fires.
+    """Kill speed, then why wipes ended, then what no reference took, then what
+    over-landed: each where it fires.
 
-    The order is design section 5.2's and is fixed here. `attempts` are every
-    attempt the boss's series holds, drawn or not, `pull_findings` every drawn
-    pull's findings by fight id, and `mechanics_compared` the fight ids whose
-    mechanics sample had members.
+    The order is the one design sections 5.2 and 10.3 set, and is fixed here.
+    `attempts` are every attempt the boss's series holds, drawn or not,
+    `pull_findings` every drawn pull's findings by fight id, and
+    `mechanics_compared` the fight ids whose mechanics sample had members.
 
     A pull is drawn when its fight id is a key of `pull_findings`: `wowperf
     night` writes one for every pull it drew, an empty list included, so an
     attempt missing from it is one whose pull did not load.
     """
+    never_taken, over_landing = _over_landing(attempts, pull_findings, mechanics_compared)
     candidates = (
         _kill_speed(attempts, pull_findings),
         _verdicts(attempts, pull_findings),
-        _overlanding(attempts, pull_findings, mechanics_compared),
+        never_taken,
+        over_landing,
     )
     return [one for one in candidates if one is not None]
