@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
 from wowperf.domain.analysis.progression_best import roster_deaths
-from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
+from wowperf.domain.analysis.progression_repeats import collapse_seconds
 from wowperf.domain.comparison.pace import PaceSample, pace_reading, withheld_reason
 from wowperf.domain.comparison.pace_curve import pace_end
 from wowperf.domain.encounter import Encounter, LoadedEncounter
@@ -13,6 +13,7 @@ from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.frame import format_seconds
 from wowperf.domain.report.progression_model import AttemptRow, ProgressionHeader
+from wowperf.domain.report.raid_build import first_death_named
 from wowperf.domain.report.raid_frame import DIFFICULTY_NAMES
 
 NO_READING = "—"
@@ -132,13 +133,11 @@ def _pace(encounter: Encounter, sample: PaceSample | None) -> str:
 
 def _first_death(loaded: LoadedEncounter | None) -> str:
     """Who died first, as what, and to which ability; no reading when nobody did."""
-    if loaded is None:
+    named = first_death_named(loaded) if loaded is not None else None
+    if named is None:
         return NO_READING
-    death = first_roster_death(loaded)
-    if death is None:
-        return NO_READING
-    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
-    return f"{player.name} ({player.spec} {player.class_name}), to {death.killing_blow}"
+    death, who = named
+    return f"{who}, to {death.killing_blow}"
 
 
 def build_attempt_rows(

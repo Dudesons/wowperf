@@ -42,7 +42,7 @@ from wowperf.domain.report.build import ceiling_withheld_line
 from wowperf.domain.report.deaths import NO_CARDS_ASKED
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
-from wowperf.domain.report.raid_build import build_raid_report
+from wowperf.domain.report.raid_build import build_raid_report, first_death_named
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles, ThroughputCooldowns
 
@@ -605,6 +605,23 @@ def test_a_wipe_whose_first_deaths_card_is_absent_points_at_nothing() -> None:
     assert report.opening is not None
     assert report.opening.first_death.startswith("Emberkin (Arcane Mage) died first")
     assert report.opening.chain is None
+
+
+def test_the_first_death_is_the_first_raider_to_die_named_with_spec_and_class() -> None:
+    """A pet's earlier death is passed over: the first death is a raider's, by roster."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    loaded = a_wipe_that_started_with(pet, *A_CHAIN_OF_THREE)
+
+    named = first_death_named(loaded)
+
+    assert named is not None
+    death, who = named
+    assert who == "Emberkin (Arcane Mage)"
+    assert death.actor_id == EMBERKIN.actor_id
+    assert first_death_named(a_wipe_that_started_with()) is None
 
 
 def test_a_deathless_wipe_says_nobody_died() -> None:

@@ -22,6 +22,7 @@ from wowperf.domain.comparison.pace import (
 from wowperf.domain.comparison.pace_curve import PaceReading, PaceState, pace_end
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
@@ -73,7 +74,7 @@ does not already have, and would silently widen to any future `wipe.cause.*`
 sibling that is not the verdict itself.
 """
 
-FIRST_DEATH = "{name} ({spec} {class_name}) died first, to {ability}, at {clock}"
+FIRST_DEATH = "{who} died first, to {ability}, at {clock}"
 HELD = "The raid held {clock} after the first death"
 NOBODY_DIED = "Nobody died in this attempt"
 PACE_LEADS = {
@@ -106,6 +107,20 @@ def _pace_line(reading: PaceReading) -> str:
     return f"{lead} {PACE_CHART_IS_ELSEWHERE}"
 
 
+def first_death_named(loaded: LoadedEncounter) -> tuple[Death, str] | None:
+    """The attempt's first roster death and who died, as "name (spec class)"; None if nobody did.
+
+    One reading for every sentence that names the first death -- the pull's
+    Summary and the attempt table's cell -- so the two cannot name different
+    raiders or spell one raider two ways; each keeps its own wording around it.
+    """
+    death = first_roster_death(loaded)
+    if death is None:
+        return None
+    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
+    return death, f"{player.name} ({player.spec} {player.class_name})"
+
+
 def _wipe_opening(
     loaded: LoadedEncounter,
     findings: Sequence[Finding],
@@ -120,12 +135,12 @@ def _wipe_opening(
     when the card it would point at is not among `findings`: a pointer to a
     card the page does not draw is worse than none.
     """
-    death = first_roster_death(loaded)
-    if death is None:
+    named = first_death_named(loaded)
+    if named is None:
         return WipeOpening(first_death=NOBODY_DIED, line=f"{NOBODY_DIED}.")
-    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
+    death, who = named
     first_death = FIRST_DEATH.format(
-        name=player.name, spec=player.spec, class_name=player.class_name,
+        who=who,
         ability=death.killing_blow,
         clock=_clock((death.timestamp_ms - loaded.encounter.start_ms) / 1000),
     )
