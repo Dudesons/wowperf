@@ -1509,17 +1509,17 @@ Read the report design §5 amendment first.
 ```python
 def test_death_findings_are_placed_under_deaths_not_observations() -> None:
     findings = (
-        a_finding("defensives.unused.Uglymage", title="Uglymage died once with a defensive available"),
-        a_finding("consumables.unused.Uglymage", title="Uglymage died once with no healing consumable on cooldown"),
-        a_finding("consumables.never.Uglymage", title="Uglymage died once and used no health potion"),
+        a_finding("defensives.unused.Emberkin", title="Emberkin died once with a defensive available"),
+        a_finding("consumables.unused.Emberkin", title="Emberkin died once with no healing consumable on cooldown"),
+        a_finding("consumables.never.Emberkin", title="Emberkin died once and used no health potion"),
         a_finding("trash.pull.0", title="Pull 4 bought 0.0 forces per second"),
     )
     report = build_report(a_loaded(), findings, None, None, SUBJECT, None, FETCHED,
         NO_DEFENSIVES, NO_CONSUMABLES)
     assert [row.finding_id for row in report.death_findings] == [
-        "defensives.unused.Uglymage",
-        "consumables.unused.Uglymage",
-        "consumables.never.Uglymage",
+        "defensives.unused.Emberkin",
+        "consumables.unused.Emberkin",
+        "consumables.never.Emberkin",
     ]
     assert [row.finding_id for row in report.observations] == ["trash.pull.0"]
 ```
@@ -1531,11 +1531,11 @@ Reuse `a_finding`, `a_loaded`, `SUBJECT` from `test_build_observations.py` (impo
 ```python
 def test_death_findings_render_inside_the_deaths_section() -> None:
     html = render(build_report(a_loaded(), (
-        a_finding("defensives.unused.Uglymage", title="Uglymage died once with a defensive available"),
+        a_finding("defensives.unused.Emberkin", title="Emberkin died once with a defensive available"),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     deaths_start = html.index('<h2 id="deaths">')
     interrupts_start = html.index('<h2 id="interrupts">')
-    title_at = html.index("Uglymage died once with a defensive available")
+    title_at = html.index("Emberkin died once with a defensive available")
     assert deaths_start < title_at < interrupts_start
 ```
 
@@ -1617,7 +1617,7 @@ Open `out/6Kx1P9GbNXrcLdHa-36.findings.json` and confirm, one line each in the f
 
 - D1: no `compare.route.skipped.*` prices pull 10; either the pulls aligned and the skipped list is short and plausible, or `compare.route.unaligned` states the share.
 - D2: any skipped pack's forces equal the `trash.pull.*` forces for the same pull.
-- D3: `deaths.total` is not "15s"; Milkmystiel's and Uglymage's deaths cost over twenty seconds each; the detail no longer mentions the timer penalty.
+- D3: `deaths.total` is not "15s"; Milkmystiel's and Emberkin's deaths cost over twenty seconds each; the detail no longer mentions the timer penalty.
 - D5: the HTML header reads "Tyrannical, Fortified, Xal'atath's Guile", not "9, 10, 147".
 - D6: no `players.damage.*` names Dudesons taking melee.
 - D7: the stderr sentence reports points spent.

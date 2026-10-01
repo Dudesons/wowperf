@@ -150,7 +150,7 @@ Replace `test_a_spec_absent_from_the_list_produces_nothing` (currently at `:125`
 
 ```python
 def test_a_spec_absent_from_the_list_produces_nothing() -> None:
-    # Sublime is an Elemental Shaman and the fixture only knows Arcane Mages.
+    # Stonewake is an Elemental Shaman and the fixture only knows Arcane Mages.
     # Anchored on casts that do produce findings for the Mage, so the Shaman's
     # absence is this analyser declining to judge an unlisted spec rather than
     # the call having produced nothing for anybody.
@@ -160,7 +160,7 @@ def test_a_spec_absent_from_the_list_produces_nothing() -> None:
         DEFENSIVES, ()
     )
     assert ceiling_ids(findings)
-    assert all("Sublime" not in finding.title for finding in findings)
+    assert all("Stonewake" not in finding.title for finding in findings)
 ```
 
 Replace `test_same_named_players_get_distinct_finding_ids` (`:173`):

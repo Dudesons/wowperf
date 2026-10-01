@@ -179,7 +179,7 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import PLACEMENTS, build_report, place_rows
 from wowperf.domain.report.model import LedgerRow, Report
 
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 
 def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -> Finding:
@@ -224,7 +224,7 @@ FAMILY_HOMES = {
     "compare.confound.affixes": "route_rows",
     "deaths.single.0": "death_rows",
     "deaths.chain.0": "death_rows",
-    "deaths.repeat.Uglymage": "death_rows",
+    "deaths.repeat.Emberkin": "death_rows",
     "defensives.unused.45438": "death_rows",
     "consumables.unused.6262": "death_rows",
     "consumables.never.6262": "death_rows",
@@ -233,7 +233,7 @@ FAMILY_HOMES = {
     "interrupts.summary": "interrupts",
     "compare.interrupts": "interrupts",
     "compare.parse.unavailable": "group_rows",
-    "defensives.Uglymage.45438": "group_rows",
+    "defensives.Emberkin.45438": "group_rows",
     "defensives.ceiling.45438": "group_rows",
     "throughput.alignment.12345": "group_rows",
     "throughput.ceiling.12345": "group_rows",
@@ -568,7 +568,7 @@ Update the template's second ABOUTME line to name the route section:
 `tests/domain/report/test_build_ledger.py`: every `report.ledger_losses` becomes `report.route_rows` (all nine occurrences use `time.gap.0`, `compare.downtime` or `trash.overage`, which are route families). Rename `test_a_ranked_loss_goes_to_the_losses` to `test_a_ranked_loss_goes_to_the_tab_that_owns_its_family`. In `test_a_finding_with_no_seconds_never_reaches_the_ledger`, replace `assert ids(report.ledger_losses) == []` with `assert ids(report.route_rows) == []`. Update the file's first ABOUTME line to `# ABOUTME: Behaviour tests for the seconds ledger: decomposition rows, nesting stated, never a total.`
 
 `tests/domain/report/test_build_observations.py`:
-- `test_a_finding_no_section_claims_reaches_observations`: both ids now have homes. Replace the two findings with `a_finding("healing.overheal.0", title="Uglymage overhealed by 40%")` and `a_finding("dispels.missed.0", title="Two curses went undispelled")`, update the comment to say these match no prefix in `PLACEMENTS`, and assert `["healing.overheal.0", "dispels.missed.0"]`.
+- `test_a_finding_no_section_claims_reaches_observations`: both ids now have homes. Replace the two findings with `a_finding("healing.overheal.0", title="Emberkin overhealed by 40%")` and `a_finding("dispels.missed.0", title="Two curses went undispelled")`, update the comment to say these match no prefix in `PLACEMENTS`, and assert `["healing.overheal.0", "dispels.missed.0"]`.
 - `test_every_input_finding_is_placed_exactly_once`: replace the `placed_ids` collection with
 
 ```python
@@ -584,7 +584,7 @@ Update the template's second ABOUTME line to name the route section:
     placed_ids += [row.finding_id for row in report.observations]
 ```
 
-  and add one unknown-family finding, `a_finding("healing.overheal.0", title="Uglymage overhealed")`, to its input so the catch-all is exercised.
+  and add one unknown-family finding, `a_finding("healing.overheal.0", title="Emberkin overhealed")`, to its input so the catch-all is exercised.
 - `test_a_death_family_finding_carrying_seconds_goes_to_the_ledger_alone`: rename to `test_a_death_family_finding_carrying_seconds_stays_beneath_the_deaths`, keep the docstring's first line and replace the rest with "A timed row keeps its seconds where its family lives; there is no separate list of losses for it to appear in twice.", and assert `[row.finding_id for row in report.death_rows] == ["defensives.unused.0"]`, `report.death_rows[0].seconds == "0:12"`, `report.observations == ()`.
 
 `tests/domain/report/test_build_deaths.py:293-320`: `report.death_findings` becomes `report.death_rows`; the last assertion becomes `assert [row.finding_id for row in report.route_rows] == ["trash.pull.0"]` and `assert report.observations == ()`.
@@ -632,11 +632,11 @@ def test_a_withheld_route_states_its_reason_and_still_shows_the_gaps() -> None:
 
 def test_group_rows_render_inside_the_players_section() -> None:
     html = render(build_report(a_loaded(), (
-        a_finding("throughput.alignment.1", title="Uglymage had a cooldown ready and unpressed"),
+        a_finding("throughput.alignment.1", title="Emberkin had a cooldown ready and unpressed"),
     ), None, None, SUBJECT, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES))
     players_start = html.index('<h2 id="players">')
     observations_start = html.index('<h2 id="observations">')
-    title_at = html.index("Uglymage had a cooldown ready and unpressed")
+    title_at = html.index("Emberkin had a cooldown ready and unpressed")
     assert players_start < title_at < observations_start
 ```
 
@@ -693,7 +693,7 @@ from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.build import POINTER_COUNT, build_report
 from wowperf.domain.report.model import LedgerRow, Report
 
-SUBJECT = Player(actor_id=1, name="Uglymage", class_name="Mage", spec="Arcane", item_level=680)
+SUBJECT = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Arcane", item_level=680)
 
 
 def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -> Finding:

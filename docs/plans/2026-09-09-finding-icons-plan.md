@@ -493,24 +493,24 @@ In `tests/domain/report/test_ledger.py` (create it if that path does not exist; 
 ```python
 def test_a_title_is_cut_at_the_ability_it_names() -> None:
     row = ledger_row(
-        a_finding(title="Uglymage never cast Ice Block",
+        a_finding(title="Emberkin never cast Ice Block",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
     assert (row.title_before, row.title_ability, row.title_after) == (
-        "Uglymage never cast ", "Ice Block", ""
+        "Emberkin never cast ", "Ice Block", ""
     )
     assert row.ability_id == 45438
 
 
 def test_a_title_whose_ability_is_not_in_it_is_left_whole() -> None:
     row = ledger_row(
-        a_finding(title="Uglymage pressed nothing",
+        a_finding(title="Emberkin pressed nothing",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
     assert (row.title_before, row.title_ability, row.title_after) == (
-        "Uglymage pressed nothing", "", ""
+        "Emberkin pressed nothing", "", ""
     )
     assert row.ability_id is None
 
@@ -519,7 +519,7 @@ def test_a_title_naming_its_ability_twice_is_left_whole() -> None:
     # Two occurrences and no way to say which one the reader means, so the row
     # keeps its whole title and draws no icon.
     row = ledger_row(
-        a_finding(title="Ice Block was ready; Uglymage never cast Ice Block",
+        a_finding(title="Ice Block was ready; Emberkin never cast Ice Block",
                   ability_id=45438, ability_name="Ice Block"),
         {},
     )
@@ -668,25 +668,25 @@ In `tests/adapters/render/test_html_sections.py`. `FakeIcons` already exists in 
 ```python
 def test_an_icon_is_drawn_at_the_ability_inside_a_findings_sentence() -> None:
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,)),
                   icons=FakeIcons({45438: "data:image/jpeg;base64,AAA"}))
-    assert 'Uglymage never cast <span class="icon i-45438" aria-hidden="true"></span>Ice Block' in html
+    assert 'Emberkin never cast <span class="icon i-45438" aria-hidden="true"></span>Ice Block' in html
 
 
 def test_a_finding_whose_ability_has_no_icon_still_reads_as_a_sentence() -> None:
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
     html = render(a_report(interrupts=(row,)), icons=FakeIcons({}))
-    assert "Uglymage never cast Ice Block" in html
+    assert "Emberkin never cast Ice Block" in html
     assert 'class="icon' not in html
 
 
@@ -694,8 +694,8 @@ def test_a_summary_pointer_names_the_finding_without_an_icon() -> None:
     # A pointer is a one-line cross-reference into another section; the icon
     # belongs at the finding itself, not at every mention of it.
     row = a_ledger_row(
-        title="Uglymage never cast Ice Block",
-        title_before="Uglymage never cast ",
+        title="Emberkin never cast Ice Block",
+        title_before="Emberkin never cast ",
         title_ability="Ice Block",
         ability_id=45438,
     )
@@ -840,8 +840,8 @@ In `tests/adapters/render/test_html_sections.py`:
 
 ```python
 def test_an_ability_named_only_by_a_finding_is_embedded() -> None:
-    row = a_ledger_row(title="Uglymage never cast Ice Block",
-                       title_before="Uglymage never cast ",
+    row = a_ledger_row(title="Emberkin never cast Ice Block",
+                       title_before="Emberkin never cast ",
                        title_ability="Ice Block", ability_id=45438)
     icons = FakeIcons({45438: "data:image/jpeg;base64,AAA"})
     html = render(a_report(interrupts=(row,)), icons=icons)

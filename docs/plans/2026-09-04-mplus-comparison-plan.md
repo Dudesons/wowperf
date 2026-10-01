@@ -1136,7 +1136,7 @@ Append to `tests/adapters/wcl/test_ingest.py`:
 def test_a_player_has_no_talent_string_until_one_is_fetched() -> None:
     report = {
         "code": "abc123",
-        "masterData": {"actors": [{"id": 693, "name": "Uglymage", "subType": "Mage"}]},
+        "masterData": {"actors": [{"id": 693, "name": "Emberkin", "subType": "Mage"}]},
     }
     fight = a_minimal_fight()
     fight["friendlyPlayers"] = [693]
@@ -1151,7 +1151,7 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
         "code": "abc123",
         "masterData": {
             "actors": [
-                {"id": 693, "name": "Uglymage", "subType": "Mage"},
+                {"id": 693, "name": "Emberkin", "subType": "Mage"},
                 {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
             ]
         },
@@ -1164,7 +1164,7 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
     run = build_run(report, fight, talents={693: "C4DAAAAA", 7: "CoPAAAAA"})
 
     by_name = {player.name: player for player in run.players}
-    assert by_name["Uglymage"].talent_import_string == "C4DAAAAA"
+    assert by_name["Emberkin"].talent_import_string == "C4DAAAAA"
     assert by_name["Dudesons"].talent_import_string == "CoPAAAAA"
 ```
 
@@ -1997,7 +1997,7 @@ def a_loaded(
         if n < kicked:
             interrupts.append(
                 InterruptEvent(
-                    player_name="Uglymage",
+                    player_name="Emberkin",
                     actor_id=693,
                     interrupted_ability_id=1000,
                     target_id=500 + n,
@@ -2008,7 +2008,7 @@ def a_loaded(
     return LoadedRun(
         run=run,
         deaths=tuple(
-            Death(player_name="Uglymage", actor_id=693, timestamp_ms=n, killing_blow="X")
+            Death(player_name="Emberkin", actor_id=693, timestamp_ms=n, killing_blow="X")
             for n in range(deaths)
         ),
         enemy_cast_rows=tuple(rows),
@@ -2311,7 +2311,7 @@ from wowperf.domain.events import CastEvent
 from wowperf.domain.findings import Confidence
 from wowperf.domain.model import LoadedRun, Player, Pull, Run
 
-OURS = Player(actor_id=693, name="Uglymage", class_name="Mage", spec="Arcane", item_level=318)
+OURS = Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane", item_level=318)
 THEIRS = Player(
     actor_id=11,
     name="Críms",
@@ -2816,7 +2816,7 @@ def a_loaded(players: tuple[Player, ...], level: int = 16) -> LoadedRun:
 
 ROSTER = (
     player("Dudesons", "DeathKnight", "Blood"),
-    player("Uglymage", "Mage", "Arcane"),
+    player("Emberkin", "Mage", "Arcane"),
 )
 
 
@@ -2873,7 +2873,7 @@ def test_a_small_item_level_gap_is_not_worth_a_banner() -> None:
 
 
 def test_a_different_group_composition_is_declared() -> None:
-    theirs = (player("Dudesons", "Warrior", "Protection"), player("Uglymage", "Mage", "Arcane"))
+    theirs = (player("Dudesons", "Warrior", "Protection"), player("Emberkin", "Mage", "Arcane"))
 
     findings = declare_confounds(a_loaded(ROSTER), a_loaded(theirs), SAME_LEVEL)
 
@@ -3084,7 +3084,7 @@ from wowperf.domain.model import EnemyNpc, LoadedRun, Player, Pull, Run
 
 OURS = Player(
     actor_id=693,
-    name="Uglymage",
+    name="Emberkin",
     class_name="Mage",
     spec="Arcane",
     item_level=318,
@@ -3131,7 +3131,7 @@ def a_loaded(players: tuple[Player, ...], pulls: tuple[Pull, ...], level: int = 
             npc_counts=((2, 12),),
             players=players,
             pulls=pulls,
-            owner_name="uglymage",
+            owner_name="emberkin",
         )
     )
 
@@ -3170,8 +3170,8 @@ def a_parse_reference() -> ParseReference:
 
 
 def test_a_player_is_found_whatever_the_case() -> None:
-    assert find_player(our_run().run, "uglymage") is OURS
-    assert find_player(our_run().run, "UGLYMAGE") is OURS
+    assert find_player(our_run().run, "emberkin") is OURS
+    assert find_player(our_run().run, "EMBERKIN") is OURS
     assert find_player(our_run().run, "Nobody") is None
 
 
@@ -3362,7 +3362,7 @@ The JSON is the contract Plan D's report reads and the narrative layer interpret
   "keystone_level": 16,
   "keystone_time_seconds": 1908.976,
   "in_time": true,
-  "player": "Uglymage",
+  "player": "Emberkin",
   "comparison": {
     "compared": true,
     "speed_reference": {
@@ -3393,11 +3393,11 @@ Append to `tests/test_cli.py`, reusing the file's existing mock-transport helper
 
 ```python
 def test_analyze_writes_a_comparison_block(tmp_path: Path) -> None:
-    result = run_analyze(tmp_path, ["--player", "Uglymage"])
+    result = run_analyze(tmp_path, ["--player", "Emberkin"])
 
     assert result.exit_code == 0
     payload = written_payload(tmp_path)
-    assert payload["player"] == "Uglymage"
+    assert payload["player"] == "Emberkin"
     assert payload["comparison"]["compared"] is True
     assert payload["comparison"]["speed_reference"]["report_code"]
     assert any(f["id"].startswith("compare.") for f in payload["findings"])
@@ -3417,7 +3417,7 @@ def test_an_unknown_player_exits_and_lists_the_roster(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, ["--player", "Nobody"])
 
     assert result.exit_code == 1
-    assert "Uglymage" in result.output
+    assert "Emberkin" in result.output
 
 
 def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
@@ -3425,7 +3425,7 @@ def test_the_player_defaults_to_the_report_owner(tmp_path: Path) -> None:
     result = run_analyze(tmp_path, [])
 
     assert result.exit_code == 0
-    assert written_payload(tmp_path)["player"] == "Uglymage"
+    assert written_payload(tmp_path)["player"] == "Emberkin"
 
 
 def test_a_bracket_that_lies_stops_the_command(tmp_path: Path) -> None:

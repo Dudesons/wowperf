@@ -2319,7 +2319,7 @@ def minimal_loaded() -> LoadedRun:
             players=(
                 Player(
                     actor_id=1,
-                    name="Uglymage",
+                    name="Emberkin",
                     class_name="Mage",
                     spec="Arcane",
                     item_level=680,
@@ -2329,7 +2329,7 @@ def minimal_loaded() -> LoadedRun:
         ),
         casts=(CastEvent(actor_id=1, ability_id=1, ability_name="Arcane Blast",
                          timestamp_ms=10_000, pull_index=0),),
-        deaths=(Death(player_name="Uglymage", actor_id=1, timestamp_ms=50_000,
+        deaths=(Death(player_name="Emberkin", actor_id=1, timestamp_ms=50_000,
                       killing_blow="Frigid Roar", pull_index=0),),
         damage_taken=(DamageTakenEvent(actor_id=1, ability_id=2, ability_name="Snowdrift",
                                        amount=82_410, timestamp_ms=45_000, pull_index=0),),

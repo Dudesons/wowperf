@@ -347,7 +347,7 @@ def test_an_enemy_cast_that_was_kicked_names_the_interrupter() -> None:
         ability_id=1238440,
         ability_name="Molten Scar",
         started_ms=1000,
-        interrupted_by="Uglymage",
+        interrupted_by="Emberkin",
     )
     assert cast.was_kicked is True
     assert cast.landed is False
@@ -605,7 +605,7 @@ from wowperf.adapters.wcl.ingest import (
 from wowperf.domain.model import EnemyNpc, Player, Pull, Run
 
 ABILITY_NAMES = {1238440: "Molten Scar", 1241214: "Searing Wave", 47528: "Kick"}
-PLAYERS = {693: "Uglymage"}
+PLAYERS = {693: "Emberkin"}
 
 
 def a_run() -> Run:
@@ -621,7 +621,7 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(9, 10, 147), keystone_time_ms=1_909_000,
         keystone_bonus=1, count_reached=744, count_required=729,
         npc_counts=((241874, 5), (244889, 35)),
-        players=(Player(actor_id=693, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=693, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -657,7 +657,7 @@ def test_only_interrupt_rows_become_interrupts() -> None:
     ]
     interrupts = build_interrupts(events, a_run(), PLAYERS)
     assert len(interrupts) == 1
-    assert interrupts[0].player_name == "Uglymage"
+    assert interrupts[0].player_name == "Emberkin"
     assert interrupts[0].interrupted_ability_id == 1241214
     assert interrupts[0].target_instance == 1
     assert interrupts[0].pull_index == 1
@@ -1004,14 +1004,14 @@ def a_run(keystone_level: int = 16) -> Run:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
         keystone_level=keystone_level, affix_ids=(), keystone_time_ms=300_000,
         keystone_bonus=1, count_reached=744, count_required=729, npc_counts=(),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
 
 
 def a_death(timestamp_ms: int) -> Death:
-    return Death(player_name="Uglymage", actor_id=11, timestamp_ms=timestamp_ms,
+    return Death(player_name="Emberkin", actor_id=11, timestamp_ms=timestamp_ms,
                  killing_blow="Molten Scar")
 
 
@@ -1217,9 +1217,9 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=744, count_required=729, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
-            Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
+            Player(actor_id=12, name="Stonewake", class_name="Shaman", spec="Elemental",
                    item_level=311),
         ),
         pulls=pulls,
@@ -1235,7 +1235,7 @@ def a_death(name: str, actor_id: int, at: int, cost: float | None) -> Death:
 def test_the_total_cost_is_the_measured_time_not_played() -> None:
     findings = analyse_deaths(
         a_run(),
-        (a_death("Uglymage", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, 12.5)),
+        (a_death("Emberkin", 11, 1_000, 20.0), a_death("Stonewake", 12, 40_000, 12.5)),
     )
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.seconds_lost == 32.5
@@ -1244,7 +1244,7 @@ def test_the_total_cost_is_the_measured_time_not_played() -> None:
 
 def test_a_death_with_no_measured_cost_is_excluded_and_said_so() -> None:
     findings = analyse_deaths(
-        a_run(), (a_death("Uglymage", 11, 1_000, 20.0), a_death("Sublime", 12, 40_000, None))
+        a_run(), (a_death("Emberkin", 11, 1_000, 20.0), a_death("Stonewake", 12, 40_000, None))
     )
     total = next(f for f in findings if f.id == "deaths.total")
     assert total.seconds_lost == 20.0
@@ -1259,13 +1259,13 @@ def test_deaths_close_together_are_reported_as_one_chain() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 30_000, 10.0),
-            a_death("Sublime", 12, 33_000, 8.0),
+            a_death("Emberkin", 11, 30_000, 10.0),
+            a_death("Stonewake", 12, 33_000, 8.0),
         ),
     )
     chain = next(f for f in findings if f.id.startswith("deaths.chain."))
     assert chain.seconds_lost == 18.0
-    assert "Uglymage" in chain.detail
+    assert "Emberkin" in chain.detail
     assert chain.confidence is Confidence.MEASURED
 
 
@@ -1273,8 +1273,8 @@ def test_deaths_far_apart_are_reported_separately() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 1_000, 10.0),
-            a_death("Sublime", 12, 200_000, 8.0),
+            a_death("Emberkin", 11, 1_000, 10.0),
+            a_death("Stonewake", 12, 200_000, 8.0),
         ),
     )
     assert [f.id for f in findings if f.id.startswith("deaths.chain.")] == []
@@ -1285,11 +1285,11 @@ def test_a_repeat_dier_is_named() -> None:
     findings = analyse_deaths(
         a_run(),
         (
-            a_death("Uglymage", 11, 1_000, 10.0),
-            a_death("Uglymage", 11, 200_000, 8.0),
+            a_death("Emberkin", 11, 1_000, 10.0),
+            a_death("Emberkin", 11, 200_000, 8.0),
         ),
     )
-    repeat = next(f for f in findings if f.id == "deaths.repeat.Uglymage")
+    repeat = next(f for f in findings if f.id == "deaths.repeat.Emberkin")
     assert repeat.seconds_lost == 18.0
     assert "2" in repeat.detail
 ```
@@ -1486,7 +1486,7 @@ def row(at: int, is_start: bool, instance: int = 0, ability: int = SPELL) -> Ene
 
 
 def kick(at: int, instance: int = 0, ability: int = SPELL) -> InterruptEvent:
-    return InterruptEvent(player_name="Uglymage", actor_id=693,
+    return InterruptEvent(player_name="Emberkin", actor_id=693,
                           interrupted_ability_id=ability, target_id=699,
                           target_instance=instance, timestamp_ms=at, pull_index=0)
 
@@ -1506,7 +1506,7 @@ def test_a_start_followed_by_a_completion_landed() -> None:
 def test_a_start_followed_by_a_kick_was_interrupted() -> None:
     casts = reconstruct_enemy_casts((row(1000, True),), (kick(1800),))
     assert casts[0].was_kicked is True
-    assert casts[0].interrupted_by == "Uglymage"
+    assert casts[0].interrupted_by == "Emberkin"
     assert casts[0].landed is False
 
 
@@ -1853,7 +1853,7 @@ def a_run(reached: int, required: int = 100) -> Run:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=reached, count_required=required, npc_counts=(),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -2453,9 +2453,9 @@ def a_run() -> Run:
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=100, count_required=100, npc_counts=(),
         players=(
-            Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+            Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                    item_level=318),
-            Player(actor_id=12, name="Sublime", class_name="Shaman", spec="Elemental",
+            Player(actor_id=12, name="Stonewake", class_name="Shaman", spec="Elemental",
                    item_level=311),
         ),
         pulls=pulls,
@@ -2488,9 +2488,9 @@ def test_the_finding_admits_the_ability_may_have_been_unavailable() -> None:
 
 
 def test_a_spec_absent_from_the_list_produces_nothing() -> None:
-    # Sublime is an Elemental Shaman and the fixture only knows Arcane Mages.
+    # Stonewake is an Elemental Shaman and the fixture only knows Arcane Mages.
     findings = analyse_defensives(a_run(), (), DEFENSIVES)
-    assert all("Sublime" not in finding.title for finding in findings)
+    assert all("Stonewake" not in finding.title for finding in findings)
 
 
 def test_another_players_cast_does_not_excuse_this_player() -> None:
@@ -2696,7 +2696,7 @@ def a_loaded_run() -> LoadedRun:
         report_code="abc123", fight_id=36, dungeon_name="Den of Nalorakk",
         keystone_level=16, affix_ids=(), keystone_time_ms=300_000, keystone_bonus=1,
         count_reached=120, count_required=100, npc_counts=((100, 60),),
-        players=(Player(actor_id=11, name="Uglymage", class_name="Mage", spec="Arcane",
+        players=(Player(actor_id=11, name="Emberkin", class_name="Mage", spec="Arcane",
                         item_level=318),),
         pulls=pulls,
     )
@@ -2704,7 +2704,7 @@ def a_loaded_run() -> LoadedRun:
         run=run,
         casts=(CastEvent(actor_id=11, ability_id=1, ability_name="Frostbolt",
                          timestamp_ms=1_000, pull_index=0),),
-        deaths=(Death(player_name="Uglymage", actor_id=11, timestamp_ms=30_000,
+        deaths=(Death(player_name="Emberkin", actor_id=11, timestamp_ms=30_000,
                       killing_blow="Molten Scar", pull_index=0,
                       seconds_until_next_action=22.0),),
         enemy_cast_rows=(
