@@ -326,6 +326,22 @@ def test_the_pace_cell_reads_each_state_at_the_attempts_end() -> None:
     assert [row.pace for row in rows] == ["on pace", "ahead", "behind"]
 
 
+def test_the_pace_cell_of_a_cut_reading_names_where_the_comparison_stopped() -> None:
+    """The kills end at 400 s and the wipe at 430 s: its last state is the comparison's end.
+
+    The uncut attempt beside it keeps the bare state, so a cell that appended
+    the clock to every reading would fail on it.
+    """
+    series = a_loaded_series(
+        a_loaded_attempt(1, remaining=40.0, seconds=430.0),
+        a_loaded_attempt(2, remaining=30.0, seconds=200.0),
+    )
+
+    rows = build_attempt_rows(series, pace={1: a_sample(80, 430), 2: a_sample(80)})
+
+    assert [row.pace for row in rows] == ["behind, stopped at 6:40", "behind"]
+
+
 def test_an_attempt_nobody_fetched_events_for_has_no_reading_in_any_new_cell() -> None:
     """Pulled, never drawn: no findings, no sample and no deaths reach it, so nothing is claimed."""
     drawn = a_loaded_attempt(1, remaining=60.0, deaths_after_ms=(1_000,))

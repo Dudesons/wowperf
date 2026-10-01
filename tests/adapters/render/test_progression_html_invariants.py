@@ -525,7 +525,7 @@ def test_the_standalone_page_names_each_first_death_and_draws_no_comparison_colu
     assert "<th>First death</th>" in table
     assert "<th>Held after it</th>" in table
     assert "<th>Verdict</th>" not in table
-    assert "<th>Pace at the end</th>" not in table
+    assert "<th>Last pace reading</th>" not in table
     # Fight 30's first death came 400 seconds into a 480-second attempt.
     assert "<td>Emberkin (Holy Paladin), to x</td><td>1:20</td>" in table
     assert "data-night-show" not in html

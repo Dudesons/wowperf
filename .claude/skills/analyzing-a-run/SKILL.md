@@ -228,8 +228,9 @@ finding no tab claimed closes the panel. A boss drawn once has the same summary;
 finding is the median of one attempt, and its movement finding says the night is not compared.
 
 The Attempts tab's table has one row per attempt: the number, how deep it got, how long it ran,
-where it ended, and its deaths; then, on a compared night only, the wipe's verdict and its pace at
-the end; then the first death (who, as what, to which ability) and how long the raid held after
+where it ended, and its deaths; then, on a compared night only, the wipe's verdict and its last
+pace reading, which names the clock the comparison stopped at where the reference kills' band ran
+out before the attempt did; then the first death (who, as what, to which ability) and how long the raid held after
 it. On the night page a row's number opens that pull. The standalone `wowperf progression` page
 has the first death and the hold but no verdict or pace column, and its rows open nothing.
 

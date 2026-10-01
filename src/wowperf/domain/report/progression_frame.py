@@ -7,6 +7,7 @@ from wowperf.domain.analysis.attempt_shape import verdict_kind
 from wowperf.domain.analysis.progression_best import roster_deaths
 from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
 from wowperf.domain.comparison.pace import PaceSample, pace_reading, withheld_reason
+from wowperf.domain.comparison.pace_curve import pace_end
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
@@ -23,6 +24,9 @@ KILL_VERDICT = "kill"
 
 NOT_COMPARED = "not compared"
 """The Pace cell of a pull handed a sample its own pace comparison withheld."""
+
+PACE_CUT_CELL = "{state}, stopped at {clock}"
+"""The Pace cell of a reading whose band ran out before the attempt ended (`pace_end`)."""
 
 
 def depth_label(uses_boss_health: bool) -> str:
@@ -104,6 +108,10 @@ def _pace(encounter: Encounter, sample: PaceSample | None) -> str:
     comparison withheld reads "not compared": `withheld_reason` is the
     predicate the pull's `compare.pace.unavailable` notice is minted from, so
     the cell and the pull's own panel cannot disagree about whether it ran.
+
+    A reading whose band ran out before the attempt did names the clock it
+    stopped at, read by `pace_end` exactly as the pull's own Summary line reads
+    it, so a state the comparison left early is never taken for the attempt's end.
     """
     if sample is None:
         return NO_READING
@@ -111,7 +119,10 @@ def _pace(encounter: Encounter, sample: PaceSample | None) -> str:
         return NOT_COMPARED
     reading = pace_reading(encounter, sample)
     assert reading is not None  # withheld_reason("") guarantees a usable reading
-    return reading.seconds[-1].state.value
+    state, cut = pace_end(reading)
+    if cut is None:
+        return state.value
+    return PACE_CUT_CELL.format(state=state.value, clock=format_seconds(cut))
 
 
 def _first_death(loaded: LoadedEncounter | None) -> str:

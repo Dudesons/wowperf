@@ -24,7 +24,7 @@
 
 <table class="attempts">
 <thead>
-<tr><th>#</th><th>Depth left ({{ report.header.depth_label }})</th><th>Duration</th><th>Ended in</th><th>Deaths</th>{% if report.compared %}<th>Verdict</th><th>Pace at the end</th>{% endif %}<th>First death</th><th>Held after it</th></tr>
+<tr><th>#</th><th>Depth left ({{ report.header.depth_label }})</th><th>Duration</th><th>Ended in</th><th>Deaths</th>{% if report.compared %}<th>Verdict</th><th>Last pace reading</th>{% endif %}<th>First death</th><th>Held after it</th></tr>
 </thead>
 <tbody>
 {% for row in report.attempts %}

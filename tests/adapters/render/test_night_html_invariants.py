@@ -1174,11 +1174,11 @@ def test_only_a_compared_night_draws_the_verdict_and_pace_columns() -> None:
     assert len(compared) == len(uncompared) == len(PULLS_PER_BOSS)
 
     for table in compared:
-        assert "<th>Verdict</th><th>Pace at the end</th>" in table
+        assert "<th>Verdict</th><th>Last pace reading</th>" in table
         assert "<td>behind</td>" in table
     for table in uncompared:
         assert "<th>Verdict</th>" not in table
-        assert "<th>Pace at the end</th>" not in table
+        assert "<th>Last pace reading</th>" not in table
     for table in (*compared, *uncompared):
         assert "<th>First death</th><th>Held after it</th>" in table
         # Every row draws exactly the cells its header names: a gate on the

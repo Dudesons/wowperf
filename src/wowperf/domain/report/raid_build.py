@@ -19,7 +19,7 @@ from wowperf.domain.comparison.pace import (
     PaceSample,
     pace_reading,
 )
-from wowperf.domain.comparison.pace_curve import PaceReading, PaceState
+from wowperf.domain.comparison.pace_curve import PaceReading, PaceState, pace_end
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Finding
@@ -101,12 +101,8 @@ def _clock(seconds: float) -> str:
 
 def _pace_line(reading: PaceReading) -> str:
     """The Summary's whole sentence above the pace pointer, for a reading with seconds."""
-    last = reading.seconds[-1]
-    lead = (
-        PACE_CUT_LEADS[last.state].format(clock=_clock(last.second))
-        if reading.band_cut
-        else PACE_LEADS[last.state]
-    )
+    state, cut = pace_end(reading)
+    lead = PACE_LEADS[state] if cut is None else PACE_CUT_LEADS[state].format(clock=_clock(cut))
     return f"{lead} {PACE_CHART_IS_ELSEWHERE}"
 
 
