@@ -23,11 +23,12 @@ OVERLANDING_ID = "progression.lead.overlanding"
 
 MECHANICS_ABILITY_PREFIX = "mechanics.ability."
 
-PULL_NOT_LOADED = "its pull did not load, and the night's Provenance says why"
+PULL_NOT_LOADED = "its pull did not load"
 """The reason a wipe whose pull was never drawn is counted under, read after "withheld, ".
 
 The night's Provenance names each pull that failed and the failure itself, so
-this points there rather than repeating a transport error in a summary line.
+this says only that the pull did not load rather than repeating a transport
+error in a summary line.
 """
 
 KILL_SPEED_DETAIL = (

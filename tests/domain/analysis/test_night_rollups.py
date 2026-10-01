@@ -195,7 +195,7 @@ def test_a_wipe_whose_pull_did_not_load_is_counted_as_withheld() -> None:
     assert rollup.confidence is Confidence.INFERRED
     assert rollup.evidence == (
         "execution: 3 of 4 wipes (Fights 20–22)",
-        "withheld, its pull did not load, and the night's Provenance says why: "
+        "withheld, its pull did not load: "
         "1 of 4 wipes (Fight 23)",
     )
 
@@ -209,7 +209,7 @@ def test_a_boss_whose_every_wipe_failed_to_load_says_so_as_measured() -> None:
     assert rollup.confidence is Confidence.MEASURED
     assert rollup.quantifier == "none"
     assert rollup.evidence == (
-        "withheld, its pull did not load, and the night's Provenance says why: "
+        "withheld, its pull did not load: "
         "3 of 3 wipes (Fights 5–7)",
     )
 

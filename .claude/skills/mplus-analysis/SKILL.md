@@ -67,7 +67,8 @@ included.
   not a count. The reference kills are among the best of the boss, so a slower kill is the expected
   result; the finding offers where the gap opened, not that one exists.
 - `progression.lead.verdicts`, why the wipes ended. It counts each wipe's own verdict, and a
-  withheld verdict is counted under its reason rather than dropped. It is `inferred` where any
+  withheld verdict is counted under its reason rather than dropped, as is a wipe whose pull
+  did not load (the night's Provenance names that failure). It is `inferred` where any
   verdict was read, because each is an inference, so write "suggests". It is `measured` where every
   one was withheld, since it then states only what the report lacked; its quantifier reads `none`
   there, meaning no verdict could be read, not that nothing ended the wipes. Otherwise the
