@@ -81,6 +81,7 @@ from wowperf.adapters.config.toml import (
 from wowperf.cli import app, build_repository
 from wowperf.domain.analysis.defensives import repeat_defensives_up
 from wowperf.domain.analysis.encounter_service import analyse_encounter
+from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES, capped_line
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
@@ -421,14 +422,22 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
         if blow is not None:
             killing_blow_fired = True
             # Between one and five abilities, each at two or more attempts and
-            # never more than the boss was pulled.
+            # never more than the boss was pulled. A list the cap cut ends on
+            # the cap line, which names no ability and is matched on its own:
+            # it may only close a full list, and every other line must parse.
+            cut = capped_line(MAX_REPEAT_ABILITIES + 1)
+            lines = list(blow["evidence"])
+            if lines and lines[-1] == cut:
+                lines.pop()
+                assert len(lines) == MAX_REPEAT_ABILITIES
+            assert cut not in lines
             counts = [
                 int(m.group(1)) for m in
                 (re.search(r"dealt the first death in (\d+) of \d+ attempts", line)
-                 for line in blow["evidence"])
+                 for line in lines)
                 if m
             ]
-            assert 1 <= len(counts) == len(blow["evidence"]) <= 5
+            assert 1 <= len(counts) == len(lines) <= MAX_REPEAT_ABILITIES
             assert all(2 <= count <= PULLS_PER_BOSS[index] for count in counts)
             assert blow["confidence"] == "measured"
     # A regression that stopped the finding from firing at all would still pass

@@ -5,10 +5,10 @@ from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
-from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES
+from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES, capped_line
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.pace import PACE_ID
-from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.encounter import Encounter
 from wowperf.domain.findings import (
     Confidence,
     Finding,
@@ -22,6 +22,14 @@ VERDICTS_ID = "progression.lead.verdicts"
 OVERLANDING_ID = "progression.lead.overlanding"
 
 MECHANICS_ABILITY_PREFIX = "mechanics.ability."
+
+PULL_NOT_LOADED = "its pull did not load"
+"""The reason a wipe whose pull was never drawn is counted under, read after "withheld, ".
+
+The night's Provenance names each pull that failed and the failure itself, so
+this says only that the pull did not load rather than repeating a transport
+error in a summary line.
+"""
 
 KILL_SPEED_DETAIL = (
     "Read off the kill's own findings: its duration against the reference kills of this raid "
@@ -52,18 +60,19 @@ def _least_certain(confidences: Iterable[Confidence]) -> Confidence:
 
 
 def _kill_speed(
-    attempts: Sequence[LoadedEncounter], pull_findings: Mapping[int, Sequence[Finding]]
+    attempts: Sequence[Encounter], pull_findings: Mapping[int, Sequence[Finding]]
 ) -> Finding | None:
     """The kill's time and pace, lifted to the boss, or nothing on a boss that never died.
 
-    Only the first kill is read: a boss is killed once a night. A pull's pace
+    Only the first drawn kill is read: a boss is killed once a night, and a
+    kill whose pull did not load has no findings to read. A pull's pace
     carries the same id on a wipe, so the kill is found by the encounter, never
     by the findings.
     """
-    kill = next((one for one in attempts if one.encounter.kill), None)
+    kill = next((one for one in attempts if one.kill and one.fight_id in pull_findings), None)
     if kill is None:
         return None
-    fight_id = kill.encounter.fight_id
+    fight_id = kill.fight_id
     found = pull_findings.get(fight_id, ())
     kill_time = next((one for one in found if one.id == KILL_TIME_ID), None)
     pace = next((one for one in found if one.id == PACE_ID), None)
@@ -87,19 +96,29 @@ def _kill_speed(
 
 
 def _verdicts(
-    attempts: Sequence[LoadedEncounter], pull_findings: Mapping[int, Sequence[Finding]]
+    attempts: Sequence[Encounter], pull_findings: Mapping[int, Sequence[Finding]]
 ) -> Finding | None:
-    """How many of the boss's wipes each verdict covered, withheld ones by their reason."""
+    """How many of the boss's wipes each verdict covered, withheld ones by their reason.
+
+    A wipe whose pull was never drawn wrote no verdict to count, and is counted
+    as withheld under `PULL_NOT_LOADED` rather than dropped, so the rollup's
+    denominator is every wipe the boss had.
+    """
     by_kind: dict[str, list[int]] = defaultdict(list)
     by_reason: dict[str, list[int]] = defaultdict(list)
     for one in attempts:
-        if one.encounter.kill:
+        if one.kill:
             continue
-        fight_id = one.encounter.fight_id
-        verdict = next(
-            (found for found in pull_findings.get(fight_id, ()) if verdict_kind(found)), None
-        )
+        fight_id = one.fight_id
+        if fight_id not in pull_findings:
+            by_reason[PULL_NOT_LOADED].append(fight_id)
+            continue
+        verdict = next((found for found in pull_findings[fight_id] if verdict_kind(found)), None)
         if verdict is None:
+            # Not reached from `wowperf night`: `analyse_encounter` hands every
+            # drawn wipe `classify_attempt`'s verdict or its withheld notice. A
+            # caller passing a drawn wipe's findings without either has given
+            # this nothing to count, and it counts nothing.
             continue
         kind = verdict_kind(verdict)
         if kind == "withheld":
@@ -145,7 +164,7 @@ def _verdicts(
 
 
 def _overlanding(
-    attempts: Sequence[LoadedEncounter],
+    attempts: Sequence[Encounter],
     pull_findings: Mapping[int, Sequence[Finding]],
     mechanics_compared: frozenset[int],
 ) -> Finding | None:
@@ -159,11 +178,11 @@ def _overlanding(
     compared nothing, so it is left out of the denominator rather than counted
     as a pull where nothing over-landed.
     """
-    compared = [one for one in attempts if one.encounter.fight_id in mechanics_compared]
+    compared = [one for one in attempts if one.fight_id in mechanics_compared]
     names: dict[int, str] = {}
     pulls_by_ability: dict[int, list[int]] = defaultdict(list)
     for one in compared:
-        fight_id = one.encounter.fight_id
+        fight_id = one.fight_id
         reported = {
             found.ability_id: found.ability_name
             for found in pull_findings.get(fight_id, ())
@@ -182,14 +201,8 @@ def _overlanding(
     # The title counts every ability that repeated; only the evidence is capped,
     # and a capped list says so, so a reader never takes the lines for the count.
     named = repeated[:MAX_REPEAT_ABILITIES]
-    cut = (
-        (
-            "The evidence lists the "
-            f"{quantity(MAX_REPEAT_ABILITIES, 'ability', 'abilities')} most reported",
-        )
-        if len(repeated) > len(named)
-        else ()
-    )
+    cut_line = capped_line(len(repeated))
+    cut = () if cut_line is None else (cut_line,)
 
     total = len(compared)
     heads = tuple(
@@ -218,15 +231,20 @@ def _overlanding(
 
 
 def analyse_night_rollups(
-    attempts: Sequence[LoadedEncounter],
+    attempts: Sequence[Encounter],
     pull_findings: Mapping[int, Sequence[Finding]],
     mechanics_compared: frozenset[int],
 ) -> list[Finding]:
     """Kill speed, then why wipes ended, then what kept over-landing: each where it fires.
 
-    The order is design section 5.2's and is fixed here. `attempts` are one
-    boss's drawn pulls, `pull_findings` every drawn pull's findings by fight id,
-    and `mechanics_compared` the fight ids whose mechanics sample had members.
+    The order is design section 5.2's and is fixed here. `attempts` are every
+    attempt the boss's series holds, drawn or not, `pull_findings` every drawn
+    pull's findings by fight id, and `mechanics_compared` the fight ids whose
+    mechanics sample had members.
+
+    A pull is drawn when its fight id is a key of `pull_findings`: `wowperf
+    night` writes one for every pull it drew, an empty list included, so an
+    attempt missing from it is one whose pull did not load.
     """
     candidates = (
         _kill_speed(attempts, pull_findings),

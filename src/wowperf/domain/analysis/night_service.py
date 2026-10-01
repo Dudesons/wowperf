@@ -35,8 +35,10 @@ def analyse_night_boss(
 
     The boss-level rollups come last and only with `pull_findings`: they count
     the pulls' own findings, so they can only be read once every pull has been
-    analysed. `mechanics_compared` names the pulls whose mechanics sample had
-    members, the denominator of what kept over-landing.
+    analysed. They are handed every attempt the series holds, not only the
+    drawn ones, so a wipe whose pull did not load is still counted among the
+    boss's wipes. `mechanics_compared` names the pulls whose mechanics sample
+    had members, the denominator of what kept over-landing.
     """
     findings = analyse_progression(series)
     if death_cards:
@@ -45,6 +47,6 @@ def analyse_night_boss(
         findings += analyse_night_pace(series.attempts_with_events, pace)
     if pull_findings is not None:
         findings += analyse_night_rollups(
-            series.attempts_with_events, pull_findings, mechanics_compared
+            series.progression.attempts, pull_findings, mechanics_compared
         )
     return findings

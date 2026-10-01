@@ -14,7 +14,7 @@ from wowperf.domain.analysis.progression_repeats import MAX_REPEAT_ABILITIES
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.pace import analyse_pace
-from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
 
 KILL_SPEED = "progression.lead.kill_speed"
@@ -43,18 +43,18 @@ def a_verdict(shape: str) -> Finding:
     return finding
 
 
-def a_wipe(fight_id: int) -> LoadedEncounter:
-    return a_loaded_attempt(fight_id)
+def a_wipe(fight_id: int) -> Encounter:
+    return a_loaded_attempt(fight_id).encounter
 
 
-def a_kill(fight_id: int) -> LoadedEncounter:
-    return a_loaded_attempt(fight_id, remaining=0.0, kill=True)
+def a_kill(fight_id: int) -> Encounter:
+    return a_loaded_attempt(fight_id, remaining=0.0, kill=True).encounter
 
 
-def the_kill_readings(kill: LoadedEncounter) -> tuple[Finding, Finding]:
+def the_kill_readings(kill: Encounter) -> tuple[Finding, Finding]:
     """The kill's own `compare.kill.time` and `compare.pace.boss`, from their analysers."""
-    [kill_time] = analyse_kill_time(kill.encounter, _sample(seconds=300.0, deaths=1))
-    [pace] = analyse_pace(kill.encounter, a_sample(80))
+    [kill_time] = analyse_kill_time(kill, _sample(seconds=300.0, deaths=1))
+    [pace] = analyse_pace(kill, a_sample(80))
     return kill_time, pace
 
 
@@ -173,6 +173,77 @@ def test_kills_are_not_counted_among_the_wipes() -> None:
 
     assert rollup.title == "2 of 2 wipes ended on execution"
     assert rollup.evidence == ("execution: 2 of 2 wipes (Fights 7–8)",)
+
+
+def test_a_wipe_whose_pull_did_not_load_is_counted_as_withheld() -> None:
+    """Spec section 5.2: a withheld verdict is counted and named, not dropped.
+
+    Fight 23 is one of the boss's attempts, and its pull never loaded, so no
+    findings were ever written for it. Leaving it out would put "of 3 wipes"
+    under a headline counting four.
+    """
+    attempts = [a_wipe(20), a_wipe(21), a_wipe(22), a_wipe(23)]
+    pull_findings = {
+        20: [a_verdict("execution")],
+        21: [a_verdict("execution")],
+        22: [a_verdict("execution")],
+    }
+
+    rollup = the_rollup(analyse_night_rollups(attempts, pull_findings, frozenset()), VERDICTS)
+
+    assert rollup.title == "3 of 4 wipes ended on execution"
+    assert rollup.confidence is Confidence.INFERRED
+    assert rollup.evidence == (
+        "execution: 3 of 4 wipes (Fights 20–22)",
+        "withheld, its pull did not load: "
+        "1 of 4 wipes (Fight 23)",
+    )
+
+
+def test_a_boss_whose_every_wipe_failed_to_load_says_so_as_measured() -> None:
+    attempts = [a_wipe(5), a_wipe(6), a_wipe(7)]
+
+    rollup = the_rollup(analyse_night_rollups(attempts, {}, frozenset()), VERDICTS)
+
+    assert rollup.title == "No wipe's verdict could be read, of 3 wipes"
+    assert rollup.confidence is Confidence.MEASURED
+    assert rollup.quantifier == "none"
+    assert rollup.evidence == (
+        "withheld, its pull did not load: "
+        "3 of 3 wipes (Fights 5–7)",
+    )
+
+
+def test_a_drawn_wipe_carrying_no_verdict_is_not_counted() -> None:
+    """Drawn, so not a pull that failed to load; with no verdict, nothing to count.
+
+    `wowperf night` never hands such a wipe -- every drawn wipe carries a
+    verdict or its withheld notice -- so this pins what the rollup does for a
+    caller that does, rather than a state a live night reaches.
+    """
+    attempts = [a_wipe(7), a_wipe(8)]
+    pull_findings: dict[int, list[Finding]] = {7: [a_verdict("execution")], 8: []}
+
+    rollup = the_rollup(analyse_night_rollups(attempts, pull_findings, frozenset()), VERDICTS)
+
+    assert rollup.title == "1 of 1 wipe ended on execution"
+
+
+def test_a_kill_whose_pull_did_not_load_is_neither_a_wipe_nor_a_kill_speed() -> None:
+    """An undrawn kill has nothing to read, so the drawn kill after it is the one read.
+
+    A report holding two kills of one boss is rare, but the rule is the
+    rollup's: kill speed reads a drawn kill's findings, never a kill that
+    carries none.
+    """
+    kill = a_kill(10)
+    attempts = [a_wipe(8), a_kill(9), kill]
+    pull_findings = {8: [a_verdict("execution")], 10: list(the_kill_readings(kill))}
+
+    found = analyse_night_rollups(attempts, pull_findings, frozenset())
+
+    assert the_rollup(found, VERDICTS).title == "1 of 1 wipe ended on execution"
+    assert the_rollup(found, KILL_SPEED).evidence[0] == "On the kill, fight 10"
 
 
 def test_a_boss_killed_on_its_first_pull_has_no_verdict_rollup() -> None:
@@ -334,7 +405,7 @@ def test_kill_speed_is_absent_when_the_kill_carries_neither_reading() -> None:
 def test_kill_speed_is_absent_on_a_boss_that_never_died() -> None:
     """A wipe's pace reading is not a kill's speed, though it carries the same id."""
     wipe = a_wipe(8)
-    [pace, *_] = analyse_pace(wipe.encounter, a_sample(80))
+    [pace, *_] = analyse_pace(wipe, a_sample(80))
     found = analyse_night_rollups([wipe], {8: [pace]}, frozenset())
     assert KILL_SPEED not in [finding.id for finding in found]
 
@@ -361,7 +432,7 @@ def test_the_rollups_come_in_their_fixed_order() -> None:
 
     ranked = rank_raid_findings(
         analyse_night_boss(
-            a_loaded_series(*attempts),
+            a_loaded_series(*(LoadedEncounter(encounter=one) for one in attempts)),
             BLOOD,
             death_cards=False,
             pull_findings=pull_findings,
