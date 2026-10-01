@@ -887,10 +887,11 @@ def test_a_raid_read_with_no_compare_states_its_reason_on_the_damage_tab_and_no_
     """Ruling R32: nothing compared is a fact about the fight, so it is said once.
 
     `raid --no-compare` hands no parse subject. The withheld Damage tab says
-    no reference was fetched, the Provenance keeps its one spell-and-talent
+    no reference was fetched, the Provenance says it once, on the Damage
     line, and no card repeats it: a twenty-raider page would otherwise print
-    the same paragraph twenty times. A kill and a wipe alike, since neither
-    outcome changes that nothing was fetched.
+    the same paragraph twenty times. A spell-and-talent line giving the same
+    reason would only say it a second time. A kill and a wipe alike, since
+    neither outcome changes that nothing was fetched.
     """
     loaded, subject = a_raid_fixture(kill=kill)
 
@@ -904,10 +905,32 @@ def test_a_raid_read_with_no_compare_states_its_reason_on_the_damage_tab_and_no_
     for card in report.players:
         assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
         assert card.spell_and_talent.reason == "", card.slug
-    assert [
-        line for line in report.provenance.withheld
-        if line.startswith("Spell and talent comparison")
-    ] == [f"Spell and talent comparison: {NO_COMPARISON_RAN}"]
+    assert [line for line in report.provenance.withheld if NO_COMPARISON_RAN in line] == [
+        f"Damage against other kills: {NO_COMPARISON_RAN}"
+    ]
+
+
+def test_a_spell_and_talent_line_whose_reason_the_damage_line_did_not_give_stays() -> None:
+    """Only the same sentence twice is dropped; a Damage line saying something else is not it.
+
+    No `raid` run hands a parse notice without a parse subject, but the rule
+    is about the two lines' reasons, not about which run produced them.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    notice = Finding(
+        id=f"compare.parse.unavailable.{STONEWAKE_SLUG}",
+        title="No ranked parse was available for Stonewake",
+        detail=ONE_RAIDERS_REASON,
+        confidence=Confidence.MEASURED,
+        player_slug=STONEWAKE_SLUG,
+    )
+
+    report = build_raid_report(
+        loaded, (notice,), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert f"Damage against other kills: {ONE_RAIDERS_REASON}" in report.provenance.withheld
+    assert f"Spell and talent comparison: {NO_COMPARISON_RAN}" in report.provenance.withheld
 
 
 def test_a_raid_read_with_no_compare_whose_damage_tab_is_open_notes_the_reason_once() -> None:

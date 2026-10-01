@@ -469,7 +469,9 @@ def build_raid_report(
         withheld.append(SCOPE_LINE)
     # A caller that states the parse axis's absence for the whole page states
     # it there, once, and this pull's Provenance does not repeat it.
+    damage_line_reason = ""
     if parse_damage.state is SectionState.WITHHELD and not parse_stated_elsewhere:
+        damage_line_reason = parse_damage.reason
         withheld.append(f"Damage against other kills: {parse_damage.reason}")
 
     # `--no-compare` fetched no reference at all, so the whole fight gets one
@@ -481,9 +483,12 @@ def build_raid_report(
     #
     # A card withheld with no reason of its own is one whose reason the Damage
     # line above, or the page that states it once, already gave, so it gets
-    # no line here either.
+    # no line here either. The report-level line follows the same rule: on a
+    # `--no-compare` page the Damage line already says no reference was
+    # fetched, and saying it again under another heading is the same sentence
+    # twice.
     if compared_slugs is None:
-        if not parse_stated_elsewhere:
+        if not parse_stated_elsewhere and damage_line_reason != NO_COMPARISON_RAN:
             withheld.append(f"Spell and talent comparison: {NO_COMPARISON_RAN}")
     else:
         for card in players:
