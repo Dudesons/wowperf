@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 
 from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
+from tests.domain.report.test_progression_frame import a_verdict, a_withheld_verdict
 from wowperf.domain.analysis.progression_service import analyse_progression
 from wowperf.domain.comparison.night_axis import (
     NOT_DRAWN_COMPARED_DETAIL,
@@ -649,6 +650,41 @@ def test_a_summary_does_not_depend_on_the_death_card_tier() -> None:
     assert a_report(night, death_cards=True).bosses[0].summary == a_report(
         night, death_cards=False
     ).bosses[0].summary
+
+
+def test_each_attempt_row_reads_its_own_pulls_verdict_and_pace() -> None:
+    """The night hands every pull's findings and sample on, keyed by the pull's own fight.
+
+    Two pulls given different verdicts and different pace states, so a builder
+    that handed the summary one pull's findings for both, or none at all, reads
+    one row wrong.
+    """
+    night = a_night(bosses=(2,))
+    first, second = (attempt.fight_id for attempt in night.night.bosses[0].attempts)
+    findings_by_fight = {
+        first: (a_verdict("execution"),),
+        second: (a_withheld_verdict(),),
+    }
+    pace_by_fight = {first: a_sample(80), second: a_sample(130)}
+
+    compared = build_night_report(
+        night, findings_by_fight, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+        deep_fights=frozenset(), death_cards=True, findings_by_boss=NO_FINDINGS,
+        pace_by_fight=pace_by_fight,
+    ).bosses[0].summary
+    uncompared = build_night_report(
+        night, findings_by_fight, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+        deep_fights=frozenset(), death_cards=True, findings_by_boss=NO_FINDINGS,
+    ).bosses[0].summary
+
+    assert compared is not None
+    assert compared.compared is True
+    assert [(row.verdict, row.pace) for row in compared.attempts] == [
+        ("execution", "behind"),
+        ("withheld", "ahead"),
+    ]
+    assert uncompared is not None
+    assert uncompared.compared is False
 
 
 PACE_REFERENCE_CODE = "REFCODE0000000A"

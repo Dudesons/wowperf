@@ -380,11 +380,11 @@ attempt what the deepest one did differently.</p>
 
 <table class="attempts">
 <thead>
-<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th><th>First death</th><th>Held after it</th></tr>
 </thead>
 <tbody>
 <tr class="best">
-<td>1</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f10-pull" data-night-show="f10-pull">1</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 </tbody>
 </table>
 
@@ -692,13 +692,13 @@ attempt what the deepest one did differently.</p>
 
 <table class="attempts">
 <thead>
-<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th><th>First death</th><th>Held after it</th></tr>
 </thead>
 <tbody>
 <tr class="best">
-<td>1</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f20-pull" data-night-show="f20-pull">1</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 <tr>
-<td>2</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f21-pull" data-night-show="f21-pull">2</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 </tbody>
 </table>
 
@@ -1202,15 +1202,15 @@ attempt what the deepest one did differently.</p>
 
 <table class="attempts">
 <thead>
-<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+<tr><th>#</th><th>Depth left (encounter progress)</th><th>Duration</th><th>Ended in</th><th>Deaths</th><th>First death</th><th>Held after it</th></tr>
 </thead>
 <tbody>
 <tr class="best">
-<td>1</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f30-pull" data-night-show="f30-pull">1</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 <tr>
-<td>2</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f31-pull" data-night-show="f31-pull">2</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 <tr>
-<td>3</td><td>50.0%</td><td>3:20</td><td></td><td>1</td></tr>
+<td><a class="open-pull" href="#f32-pull" data-night-show="f32-pull">3</a></td><td>50.0%</td><td>3:20</td><td></td><td>1</td><td>Emberkin (Arcane Mage), to x</td><td>3:10</td></tr>
 </tbody>
 </table>
 
@@ -1983,6 +1983,18 @@ fetched 2026-09-24 09:00.</p>
   for (var p = 0; p < picks.length; p++) {
     picks[p].addEventListener("change", function (event) {
       showPull(event.currentTarget.value);
+    });
+  }
+
+  // An attempt row names its pull: open it, and set the pull control to match.
+  var opens = document.querySelectorAll("[data-night-show]");
+  for (var o = 0; o < opens.length; o++) {
+    opens[o].addEventListener("click", function (event) {
+      var id = event.currentTarget.getAttribute("data-night-show");
+      var shown = document.querySelector("[data-night-for].active select");
+      if (shown) { shown.value = id; }
+      showPull(id);
+      event.preventDefault();
     });
   }
 

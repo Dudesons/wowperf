@@ -37,5 +37,17 @@
     });
   }
 
+  // An attempt row names its pull: open it, and set the pull control to match.
+  var opens = document.querySelectorAll("[data-night-show]");
+  for (var o = 0; o < opens.length; o++) {
+    opens[o].addEventListener("click", function (event) {
+      var id = event.currentTarget.getAttribute("data-night-show");
+      var shown = document.querySelector("[data-night-for].active select");
+      if (shown) { shown.value = id; }
+      showPull(id);
+      event.preventDefault();
+    });
+  }
+
   showBoss(boss.value);
 })();

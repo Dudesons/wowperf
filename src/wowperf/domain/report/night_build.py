@@ -196,6 +196,8 @@ def build_night_report(
     mapping is `None`: a night read with `--no-compare`, or a fight neither
     mapping names, falls back to no sample and no records the same way
     `findings_by_fight` falls back above.
+    Each boss summary is handed `findings_by_fight` and `pace_by_fight` whole,
+    so its attempt rows read each pull's own verdict and pace by fight id.
     `NightProvenance.references` is filled by walking every pull's own records
     in pull order, keeping the first copy seen of each `url`: a later pull's
     copy is the same reference kill read back from cache.
@@ -245,7 +247,11 @@ def build_night_report(
             )
         summary = (
             build_progression_report(
-                boss, findings_by_boss.get(boss.progression.encounter_id, ()), fetched_at
+                boss,
+                findings_by_boss.get(boss.progression.encounter_id, ()),
+                fetched_at,
+                pull_findings=findings_by_fight,
+                pace=pace_by_fight,
             )
             if len(drawn) >= MIN_PULLS_FOR_SUMMARY
             else None

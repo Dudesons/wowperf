@@ -39,9 +39,10 @@ FETCHED_AT = "2026-09-16 08:14"
 BOSS_NAME = "The Hollow Choir"
 """Deliberately not `an_attempt`'s own default ("Emberkin"): that default is also
 the name on `progression_fixtures._DEFAULT_PLAYER`'s one roster member, and the
-golden file below is read by eye for "no player name appears anywhere". Naming
-the boss something else keeps that reading unambiguous -- every "Emberkin" a
-regression could introduce would be a raider's name and nothing else.
+golden file below is read by eye for where a player name appears: in the
+attempts table's First death column and nowhere else. Naming the boss something
+else keeps that reading unambiguous -- every "Emberkin" on the page is a
+raider's name and nothing else.
 """
 
 
@@ -500,6 +501,40 @@ def test_the_ended_in_column_is_empty_when_the_series_does_not_separate_wipes() 
     html = a_progression_page_without_phase_separation()
     for cell in attempts_phase_column(html):
         assert cell == ""
+
+
+ATTEMPTS_TABLE = re.compile(r'<table class="attempts">(.*?)</table>', re.DOTALL)
+
+
+def attempts_table(html: str) -> str:
+    table = ATTEMPTS_TABLE.search(html)
+    assert table is not None, "the page drew no attempts table"
+    return table.group(1)
+
+
+def test_the_standalone_page_names_each_first_death_and_draws_no_comparison_column() -> None:
+    """First death and Held read the attempt's own deaths, which this command fetches.
+
+    The verdict and the pace need the pulls' findings and reference kills, which
+    this command never reads, so their columns are not drawn at all rather than
+    drawn full of dashes; and no row opens a pull, since this page holds none.
+    """
+    html = a_progression_page()
+    table = attempts_table(html)
+
+    assert "<th>First death</th>" in table
+    assert "<th>Held after it</th>" in table
+    assert "<th>Verdict</th>" not in table
+    assert "<th>Pace at the end</th>" not in table
+    # Fight 30's first death came 400 seconds into a 480-second attempt.
+    assert "<td>Emberkin (Holy Paladin), to x</td><td>1:20</td>" in table
+    assert "data-night-show" not in html
+    # And no row draws a cell its header does not name.
+    widths = {
+        row.count("<th>") + row.count("<td>")
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.S)
+    }
+    assert widths == {7}
 
 
 PROGRESSION_GOLDEN = Path(__file__).parent / "golden" / "progression.html"

@@ -39,6 +39,11 @@ class AttemptRow(Frozen):
     honest empty state -- an attempt the report gave no percentage for, and an
     attempt that was never deepened -- and a zero standing in for either would
     read as a measurement.
+
+    `verdict`, `pace`, `first_death` and `held` are how the attempt ended: the
+    pull's own wipe verdict, its pace state at the end, who died first and to
+    what, and how long the raid held after that death. The page draws the first
+    two only when `ProgressionReport.compared` says a comparison ran.
     """
 
     index: int
@@ -47,6 +52,10 @@ class AttemptRow(Frozen):
     duration: str
     phase: str = ""
     deaths: str
+    verdict: str = ""
+    pace: str = ""
+    first_death: str = ""
+    held: str = ""
     is_best: bool = False
     is_kill: bool = False
 
@@ -109,6 +118,10 @@ class ProgressionReport(Frozen):
     header: ProgressionHeader
     chart: AttemptsChart
     attempts: tuple[AttemptRow, ...] = ()
+    # Whether the attempts were read against reference kills: true on a night
+    # page drawn with comparison on, and the only thing that draws the Verdict
+    # and Pace columns. The standalone progression page compares nothing.
+    compared: bool = False
     # The boss-level rollups a night summary opens on: kill speed, why wipes
     # ended, what kept over-landing. Empty on the standalone progression page.
     lead_rows: tuple[LedgerRow, ...] = ()

@@ -565,6 +565,8 @@ def pull_blocks(html: str) -> list[str]:
 
 
 SUMMARY_ID = re.compile(r'<section class="pull" data-night-pull-panel id="(b\d+-summary)">')
+PULL_SECTION_ID = re.compile(r'<section class="pull" data-night-pull-panel id="(f\d+-pull)">')
+ROW_LINK = re.compile(r'<a class="open-pull" href="#([^"]*)" data-night-show="([^"]*)">')
 
 
 def summary_blocks(html: str) -> dict[str, str]:
@@ -704,23 +706,36 @@ def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
     `#icon-<id>` is the one fragment that legitimately leaves the pull: those
     are the shared SVG symbols in the page's own icon table, defined once for
     every pull to draw from, which is the whole point of a symbol.
+
+    A boss summary is one of these blocks, and its attempt rows are the other
+    exception: each opens a pull, so it lands outside the summary by design.
+    Those links are told apart by their `data-night-show` attribute, never by
+    where they point, and each must land on a pull section of the page.
     """
-    blocks = pull_blocks(a_deep_night_page_with_icons())
+    html = a_deep_night_page_with_icons()
+    blocks = pull_blocks(html)
     assert len(blocks) == sum(PULLS_PER_BOSS) + summaries_on(a_night_report(deep_every_pull=True))
+    pull_sections = set(PULL_SECTION_ID.findall(html))
 
     checked = 0
+    opened = 0
     for index, block in enumerate(blocks):
         inside = set(re.findall(r'\sid="([^"]+)"', block))
-        targets = [
-            href[1:]
-            for href in re.findall(r'href="([^"]*)"', block)
-            if href.startswith("#") and not href.startswith("#icon-")
-        ]
+        targets: list[str] = []
+        for tag in re.findall(r'<[^>]*\shref="#[^"]*"[^>]*>', block):
+            href = re.search(r'\shref="#([^"]*)"', tag)
+            assert href is not None
+            if "data-night-show=" in tag:
+                assert href.group(1) in pull_sections, f"pull {index} opens {href.group(1)}"
+                opened += 1
+            elif not href.group(1).startswith("icon-"):
+                targets.append(href.group(1))
         assert targets, f"pull {index} drew no fragment link, so it proves nothing"
         checked += len(targets)
         for target in targets:
             assert target in inside, f"pull {index} links out to {target}"
     assert checked
+    assert opened == sum(PULLS_PER_BOSS), "every drawn pull's row link was met and checked"
 
 
 def test_a_trimmed_card_says_it_was_trimmed_instead_of_claiming_no_events() -> None:
@@ -1091,6 +1106,87 @@ def test_a_pulls_heaviest_moments_are_drawn_in_that_pulls_mechanics_panel() -> N
         assert text not in a_pull_panel(html, quiet_pull, "mechanics"), text
     assert html.count(f"<h3>{escape(spikes.title)}</h3>") == 1
     assert ">None<" not in html
+
+
+def test_every_drawn_attempt_row_opens_its_pull() -> None:
+    """One row link per drawn pull, each naming a pull section that exists, and no other.
+
+    The second night has a pull that failed to load: its attempt is still a row,
+    and there is no pull section for it to open, so it carries no link.
+    """
+    one_failed = a_night(bosses=(3,), failed=(11,))
+    for night in (a_loaded_night(), one_failed):
+        report = a_night_report(night)
+        html = render_night(report)
+        links = ROW_LINK.findall(html)
+        assert links, "the page drew no row link, so this proves nothing"
+        assert all(href == shown for href, shown in links)
+
+        shown = sorted(target for _, target in links)
+        sections = sorted(PULL_SECTION_ID.findall(html))
+        drawn = sorted(
+            f"f{pull.report.provenance.fight_id}-pull"
+            for boss in report.bosses
+            for pull in boss.pulls
+        )
+        assert shown == sections == drawn
+
+    assert "f11-pull" not in render_night(a_night_report(one_failed))
+
+
+def test_the_script_opens_a_pull_from_its_row() -> None:
+    """The script finds every row link by its attribute and reads the pull it names from it.
+
+    Read as text: nothing here runs the script, so this pins the two places it
+    meets the attribute rather than what a click does.
+    """
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", a_night_page(), flags=re.S | re.I)[0]
+
+    assert 'querySelectorAll("[data-night-show]")' in body
+    assert 'getAttribute("data-night-show")' in body
+
+
+def a_compared_night_page() -> str:
+    """The fixture night, every pull handed a sample behind the kills' pace."""
+    night = a_loaded_night()
+    samples = {
+        attempt.encounter.fight_id: a_sample(80, int(attempt.encounter.duration_seconds))
+        for boss in night.loaded
+        for attempt in boss.attempts_with_events
+    }
+    return render_night(build_night_report(
+        night, a_nights_findings(night), FETCHED, A_DEFENSIVE, NO_CONSUMABLES, NO_ROLES,
+        deep_fights=frozenset(), death_cards=True,
+        findings_by_boss={
+            boss.progression.encounter_id: tuple(analyse_progression(boss))
+            for boss in night.loaded
+        },
+        pace_by_fight=samples,
+    ))
+
+
+ATTEMPTS_TABLE = re.compile(r'<table class="attempts">(.*?)</table>', re.DOTALL)
+
+
+def test_only_a_compared_night_draws_the_verdict_and_pace_columns() -> None:
+    compared = ATTEMPTS_TABLE.findall(a_compared_night_page())
+    uncompared = ATTEMPTS_TABLE.findall(a_night_page())
+    assert len(compared) == len(uncompared) == len(PULLS_PER_BOSS)
+
+    for table in compared:
+        assert "<th>Verdict</th><th>Pace at the end</th>" in table
+        assert "<td>behind</td>" in table
+    for table in uncompared:
+        assert "<th>Verdict</th>" not in table
+        assert "<th>Pace at the end</th>" not in table
+    for table in (*compared, *uncompared):
+        assert "<th>First death</th><th>Held after it</th>" in table
+        # Every row draws exactly the cells its header names: a gate on the
+        # header alone would leave the rows of an uncompared night two cells long.
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.S)
+        assert len(rows) > 1, "a table with no attempt row proves nothing about its rows"
+        widths = {row.count("<th>") + row.count("<td>") for row in rows}
+        assert len(widths) == 1, widths
 
 
 NIGHT_GOLDEN = Path(__file__).parent / "golden" / "night.html"

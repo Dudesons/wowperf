@@ -1,10 +1,24 @@
 # ABOUTME: The progression header and one row per attempt, in the words the page prints.
 # ABOUTME: Every percentage on the page names its scale, and the header is where it is named.
 
+from tests.domain.comparison.test_pace_night import THREE_KILLS, a_sample
 from tests.domain.progression_fixtures import PHASES, a_loaded_attempt, a_loaded_series, a_series
 from tests.domain.test_progression import an_attempt
+from wowperf.domain.analysis.attempt_shape import VERDICT_HEADLINES, WITHHELD_ID
+from wowperf.domain.comparison.pace import NO_BOSS, PaceSample
+from wowperf.domain.comparison.pace_curve import BossDamage
+from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
+from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.model import Player
 from wowperf.domain.progression import LoadedProgression, Progression
-from wowperf.domain.report.progression_frame import build_attempt_rows, build_progression_header
+from wowperf.domain.report.progression_build import build_progression_report
+from wowperf.domain.report.progression_frame import (
+    NO_READING,
+    build_attempt_rows,
+    build_progression_header,
+)
+from wowperf.domain.report.progression_model import AttemptRow
 
 
 def test_the_header_names_the_scale_the_page_is_on() -> None:
@@ -211,3 +225,146 @@ def test_a_discarded_attempt_gets_no_row() -> None:
     rows = build_attempt_rows(LoadedProgression(progression=progression))
 
     assert [row.fight_id for row in rows] == [1]
+
+
+FROST_MAGE = Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Frost", item_level=600)
+KILLING_ABILITY = "Glacial Sweep"
+"""An invented ability, named by no other test, so the cell can only have read it off the death."""
+
+
+def a_verdict(kind: str) -> Finding:
+    """A pull's `wipe.cause`, worded the way `classify_attempt` words its title."""
+    return Finding(
+        id="wipe.cause",
+        title=f"This attempt ended on {VERDICT_HEADLINES[kind]}",
+        detail="d",
+        confidence=Confidence.INFERRED,
+    )
+
+
+def a_withheld_verdict() -> Finding:
+    return Finding(
+        id=WITHHELD_ID, title="Why this attempt ended is not said", detail="d",
+        confidence=Confidence.MEASURED,
+    )
+
+
+def first_death_at(one: LoadedEncounter, offset_ms: int) -> LoadedEncounter:
+    """`one` with a single roster death at `offset_ms`, dealt by `KILLING_ABILITY`."""
+    death = Death(
+        player_name=FROST_MAGE.name,
+        actor_id=FROST_MAGE.actor_id,
+        timestamp_ms=one.encounter.start_ms + offset_ms,
+        killing_blow=KILLING_ABILITY,
+    )
+    return one.model_copy(update={"deaths": (death,)})
+
+
+def a_night_of_three() -> tuple[LoadedProgression, dict[int, tuple[Finding, ...]],
+                                dict[int, PaceSample]]:
+    """An execution wipe behind pace, a withheld wipe with no sample, and a kill.
+
+    The kill is handed a sample that could not be read, the one state the
+    other two leave out. Each pull also carries a finding that is no verdict,
+    which a cell reading the first finding it is handed would print instead.
+    """
+    series = a_loaded_series(
+        first_death_at(
+            a_loaded_attempt(1, remaining=40.0, seconds=120.0, players=(FROST_MAGE,)), 42_000
+        ),
+        a_loaded_attempt(2, remaining=30.0, seconds=150.0, players=(FROST_MAGE,)),
+        a_loaded_attempt(3, remaining=0.01, seconds=180.0, players=(FROST_MAGE,), kill=True),
+    )
+    other = Finding(id="deaths.total", title="t", detail="d", confidence=Confidence.MEASURED)
+    pull_findings = {
+        1: (other, a_verdict("execution")),
+        2: (other, a_withheld_verdict()),
+        3: (other,),
+    }
+    pace = {1: a_sample(80, 120), 3: PaceSample(unavailable=NO_BOSS)}
+    return series, pull_findings, pace
+
+
+def new_cells(rows: tuple[AttemptRow, ...]) -> list[tuple[str, str, str, str]]:
+    """The four cells this table reads off a pull's findings, its sample and its deaths."""
+    return [(row.verdict, row.pace, row.first_death, row.held) for row in rows]
+
+
+def test_each_attempt_row_carries_its_verdict_pace_first_death_and_hold() -> None:
+    series, pull_findings, pace = a_night_of_three()
+
+    rows = build_attempt_rows(series, pull_findings=pull_findings, pace=pace)
+
+    assert new_cells(rows) == [
+        ("execution", "behind", f"Emberkin (Frost Mage), to {KILLING_ABILITY}", "1:18"),
+        ("withheld", NO_READING, NO_READING, NO_READING),
+        ("kill", "not compared", NO_READING, NO_READING),
+    ]
+
+
+def test_the_pace_cell_reads_each_state_at_the_attempts_end() -> None:
+    """On pace and ahead as well as behind, each read at the last second compared.
+
+    The third attempt is ahead of the kills for its first hundred seconds and
+    deals nothing after, so it ends behind: a cell read at any second but the
+    last would print "ahead" for it.
+    """
+    series = a_loaded_series(
+        a_loaded_attempt(1, remaining=40.0, seconds=200.0),
+        a_loaded_attempt(2, remaining=30.0, seconds=200.0),
+        a_loaded_attempt(3, remaining=20.0, seconds=200.0),
+    )
+    fell_away = PaceSample(
+        ours=BossDamage(interval_ms=1000.0, amounts=(130,) * 100 + (0,) * 100),
+        references=THREE_KILLS,
+    )
+
+    rows = build_attempt_rows(
+        series, pace={1: a_sample(110), 2: a_sample(130), 3: fell_away}
+    )
+
+    assert [row.pace for row in rows] == ["on pace", "ahead", "behind"]
+
+
+def test_an_attempt_nobody_fetched_events_for_has_no_reading_in_any_new_cell() -> None:
+    """Pulled, never drawn: no findings, no sample and no deaths reach it, so nothing is claimed."""
+    drawn = a_loaded_attempt(1, remaining=60.0, deaths_after_ms=(1_000,))
+    never = a_loaded_attempt(2, remaining=50.0, deaths_after_ms=(1_000,))
+    series = LoadedProgression(
+        progression=a_series(drawn.encounter, never.encounter), loaded=(drawn,)
+    )
+
+    rows = build_attempt_rows(
+        series, pull_findings={1: (a_verdict("throughput"),)}, pace={1: a_sample(80)}
+    )
+
+    assert new_cells(rows)[0] == ("throughput", "behind", "Emberkin (Holy Paladin), to x", "3:19")
+    assert new_cells(rows)[1] == (NO_READING, NO_READING, NO_READING, NO_READING)
+
+
+def test_a_series_given_no_pull_findings_is_not_compared() -> None:
+    series, _, _ = a_night_of_three()
+
+    assert build_progression_report(series, (), "2026-10-01 09:00").compared is False
+
+
+def test_a_series_given_pace_samples_is_compared() -> None:
+    series, pull_findings, pace = a_night_of_three()
+
+    report = build_progression_report(
+        series, (), "2026-10-01 09:00", pull_findings=pull_findings, pace=pace
+    )
+
+    assert report.compared is True
+    assert new_cells(report.attempts)[0][:2] == ("execution", "behind")
+
+
+def test_a_series_handed_an_empty_pace_mapping_is_not_compared() -> None:
+    """A `--no-compare` night hands no sample at all: an empty mapping compares nothing."""
+    series, pull_findings, _ = a_night_of_three()
+
+    report = build_progression_report(
+        series, (), "2026-10-01 09:00", pull_findings=pull_findings, pace={}
+    )
+
+    assert report.compared is False
