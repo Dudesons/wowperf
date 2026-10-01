@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
+from wowperf.domain.comparison.kill_time import KILL_PREFIX
 from wowperf.domain.comparison.pace import (
     PACE_ID,
     PACE_PREFIX,
@@ -267,17 +268,20 @@ def build_raid_report(
     if verdict_finding:
         placed_ids.add(verdict_finding.id)
 
-    # Pace rows would otherwise make the Damage tab present on a wipe and turn
-    # the parse comparison's own withheld reason -- stated once below for the
-    # whole fight -- into a claim that pace was withheld for the same reason,
-    # which it never is: pace and the parse comparison are withheld
+    # Pace rows and the kill-time row would otherwise make the Damage tab
+    # present on a wipe, or on a page whose parse axis was withheld or never
+    # drawn, and turn the parse comparison's own withheld reason -- stated once
+    # below for the whole fight -- into a claim that pace or kill time was
+    # withheld for the same reason, which it never is: each is withheld
     # independently. `parse_damage` is read on the rows the parse comparison
-    # itself placed, with the pace rows filtered back out, so the Provenance
-    # line and the per-card suppression below both stay about the parse
-    # comparison alone; `damage`, the tab's own section, opens whenever either
-    # comparison left a row to show.
+    # itself placed, with the pace and kill-time rows filtered back out, so the
+    # Provenance line and the per-card suppression below both stay about the
+    # parse comparison alone; `damage`, the tab's own section, opens whenever
+    # any comparison left a row to show.
     parse_rows = tuple(
-        row for row in placed_rows["damage_rows"] if not row.finding_id.startswith(PACE_PREFIX)
+        row
+        for row in placed_rows["damage_rows"]
+        if not row.finding_id.startswith((PACE_PREFIX, KILL_PREFIX))
     )
     parse_damage = _damage_section(findings, parse_rows, parse_withheld=parse_withheld)
     damage = (

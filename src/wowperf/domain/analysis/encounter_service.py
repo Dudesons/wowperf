@@ -17,6 +17,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import Answer, analyse_spikes
+from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsSample,
@@ -160,6 +161,7 @@ def analyse_encounter(
         phase_shares=phase_shares,
     )
     findings += compare_lethal_abilities(loaded.deaths, mechanics)
+    findings += analyse_kill_time(encounter, mechanics)
     findings += compare_phase_cost(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )

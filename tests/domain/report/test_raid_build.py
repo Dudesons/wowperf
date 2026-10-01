@@ -21,6 +21,7 @@ from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
 from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNANSWERED_ID
+from wowperf.domain.comparison.kill_time import KILL_TIME_ID, analyse_kill_time
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_player import (
@@ -966,6 +967,39 @@ def test_a_wipe_with_pace_rows_still_states_the_parse_reason_once() -> None:
         f"Damage against other kills: {WITHHELD_DETAIL}"
     ]
     assert not [line for line in withheld if line.startswith("Spell and talent comparison for ")]
+
+
+def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
+    """A kill-time row opens the Damage tab, but it is not a parse row.
+
+    On a page whose parse axis was not drawn, `parse_withheld` is the reason the
+    Provenance states for it. Counting the kill-time row as one of the parse
+    comparison's own would read that axis as present and drop the line.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    sample = MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code=f"ref{one}", fight_id=1, size=20, duration_ms=300_000
+                ),
+                abilities=(),
+            )
+            for one in range(3)
+        )
+    )
+    findings = tuple(analyse_kill_time(loaded.encounter, sample))
+    assert [finding.id for finding in findings] == [KILL_TIME_ID]
+    reason = "The night page draws no parse comparison."
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, parse_withheld=reason,
+    )
+
+    assert [row.finding_id for row in report.damage_rows] == [KILL_TIME_ID]
+    assert report.damage.state is SectionState.PRESENT
+    assert f"Damage against other kills: {reason}" in report.provenance.withheld
 
 
 def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:

@@ -858,6 +858,29 @@ def test_a_wipe_with_no_pace_sample_carries_no_pace_finding() -> None:
     assert not any(one.startswith(PACE_PREFIX) for one in ids), ids
 
 
+def test_a_kill_with_three_reference_kills_carries_the_kill_time_finding() -> None:
+    """The sample `compare_mechanics` already reads is the one the kill time reads."""
+    sample = MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code=f"ref{one}", fight_id=1, size=20, duration_ms=seconds * 1000
+                ),
+                abilities=(),
+            )
+            for one, seconds in enumerate((310, 240, 500))
+        )
+    )
+
+    findings = analyse_encounter(
+        a_loaded_encounter(), DEFENSIVES, Consumables(), mechanics=sample,
+    )
+
+    [finding] = [one for one in findings if one.id == "compare.kill.time"]
+    assert finding.confidence is Confidence.MEASURED
+    assert "against the kills' median of 5:10" in finding.title
+
+
 def a_raid_wipe_encounter() -> Encounter:
     """`a_raid_encounter`'s own roster and duration, but a wipe rather than a kill.
 
