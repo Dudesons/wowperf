@@ -174,10 +174,12 @@ holds. There is no `--fight`, because covering every fight is the point.
 It draws no parse axis — the per-player comparison `raid` draws for a single kill. The parse axis
 is per player per boss, and across a whole report it would cost an order of magnitude more than
 everything else here put together, so `--player` and `--all-players` do not apply and are not
-offered; there is no per-player reference for them to widen. The page states that absence once, as
-the night's own finding (`compare.parse.not_drawn`), naming the families it leaves out — damage
-against the board, damage by target, casts a minute, talents, buff uptime, the percentile — rather
-than leaving them silently missing or repeating it on every pull and every player card.
+offered; there is no per-player reference for them to widen. The page states that absence once,
+under Findings about the night, as a `compare.parse.not_drawn` row naming the families it leaves
+out — damage against the board, damage by target, casts a minute, talents, buff uptime, the
+percentile — rather than leaving them silently missing or repeating it on every pull and every
+player card. That row is on the page only: `<code>.night.json` does not carry it, so a reading of
+the findings file finds no such finding.
 `wowperf raid --fight N` is what draws the parse axis, for one kill; on a wipe `raid` withholds it
 too.
 `--narrative` is not offered either, for the reason `raid` and `progression` do not take it: this
@@ -193,7 +195,7 @@ compared wipes at one boss also add one line to that boss's Attempts tab, counti
 behind the kills' pace. `--no-compare` skips every comparison and analyses every pull in isolation.
 
 Every pull's spell-and-talent section and every player card is therefore empty, and the page says
-why once, in `compare.parse.not_drawn`, rather than on each of them. Its wording follows the night:
+why once, in that `compare.parse.not_drawn` row, rather than on each of them. Its wording follows the night:
 read with `--no-compare` it says nothing was compared against other kills, and each wipe's verdict
 notice says no reference kills were drawn; read compared, it says no parse comparison is drawn and
 names what the night does compare instead — what hit and killed the raid, each attempt's damage
