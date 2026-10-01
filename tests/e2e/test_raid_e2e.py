@@ -817,6 +817,8 @@ def test_a_real_kill_is_read_against_the_kills_time_and_pace(tmp_path: Path) -> 
     paces = [f for f in findings if f["id"] == "compare.pace.boss"]
     assert len(paces) == 1, "compare.pace.boss did not appear exactly once on a kill"
     assert paces[0]["confidence"] == "derived", "compare.pace.boss was not badged derived"
+    one_boss = not any(line.startswith("Summed over") for line in paces[0]["evidence"])
+    assert one_boss, "the kill's pace summed its framed adds with the boss named after the fight"
     no_projection = "compare.pace.projection" not in ids
     assert no_projection, "a kill was projected, though it already dealt the boss its health"
     no_player_pace = not any(one.startswith("compare.pace.player.") for one in ids)
@@ -833,10 +835,10 @@ def test_a_real_council_wipe_sums_its_bosses_damage_pace(tmp_path: Path) -> None
     points of 3600; `BossDamageGraph` 12 calls -- two of our own and two for
     each of 5 reference kills -- for 12.00, and `ReferenceFight` 5 for 10.00.
 
-    The pace finding alone cannot tell a summed council from one boss read
-    alone, so the graph count is what proves the summing: two graphs for our
-    own fight and two for every reference whose graphs were fetched, where a
-    single boss would cost one each. A reference whose graphs were fetched is
+    The pace finding names how many bosses it summed, which is what was chosen,
+    not what was read, so the graph count is what proves the summing: two graphs
+    for our own fight and two for every reference whose graphs were fetched,
+    where a single boss would cost one each. A reference whose graphs were fetched is
     one that loaded, or one dropped for what its graphs held.
     """
     live = invoke_raid_live(tmp_path, COUNCIL_WIPE)
@@ -850,6 +852,8 @@ def test_a_real_council_wipe_sums_its_bosses_damage_pace(tmp_path: Path) -> None
     [pace] = [f for f in findings if f["id"] == "compare.pace.boss"]
     against = [line for line in pace["evidence"] if re.match(r"Against \d+ reference kills", line)]
     assert against, "the council's pace stood on fewer than three reference kills"
+    summed = "Summed over 2 boss-flagged enemies of this fight" in pace["evidence"]
+    assert summed, "the council's pace did not say it summed two bosses"
 
     pace_references = [
         one for one in live.payload["comparison"]["references"] if one["axis"] == "pace"

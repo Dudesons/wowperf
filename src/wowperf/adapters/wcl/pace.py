@@ -139,8 +139,9 @@ def load_pace_sample(
     """Our boss's damage graph and each reference kill's, for one pull, kill or wipe.
 
     The boss is found among the fight's own enemies: one boss, or a council's
-    bosses, each read through its own graph and summed onto one series. A
-    reference fight must field every one of our bosses, found by game id.
+    bosses, each read through its own graph and summed onto one series, and
+    `bosses_read` records how many. A reference fight must field every one of
+    our bosses, found by game id.
 
     Our report's responses go in `own_cache`, which never expires; the
     reference kills' in `reference_cache`, which does -- other players' logs,
@@ -299,11 +300,18 @@ def load_pace_sample(
             if references and boss_absent_count == len(references)
             else NO_REFERENCE_KILL
         )
-        return PaceSample(ours=ours, unavailable=unavailable, our_players=our_players), tuple(
-            records
+        return (
+            PaceSample(
+                ours=ours, unavailable=unavailable, our_players=our_players,
+                bosses_read=len(bosses),
+            ),
+            tuple(records),
         )
 
     return (
-        PaceSample(ours=ours, references=tuple(members), our_players=our_players),
+        PaceSample(
+            ours=ours, references=tuple(members), our_players=our_players,
+            bosses_read=len(bosses),
+        ),
         tuple(records),
     )

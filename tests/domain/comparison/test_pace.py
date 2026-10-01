@@ -284,3 +284,32 @@ def test_a_withheld_wipe_carries_the_not_fetched_reason_verbatim() -> None:
     reason = not_fetched("timed out")
     [notice] = analyse_pace(encounter, PaceSample(unavailable=reason))
     assert (notice.id, notice.detail) == (UNAVAILABLE_ID, reason)
+
+
+def test_a_sum_over_several_bosses_says_how_many_it_read() -> None:
+    """A council, or a boss under another name beside a boss-framed add, is summed.
+
+    Nothing else on the finding says so, and BOSS_DETAIL speaks of "the boss",
+    so the count is stated on a wipe and on a kill alike.
+    """
+    wipe = by_id(
+        analyse_pace(
+            a_wipe(200),
+            PaceSample(ours=steady(80, 200), references=THREE_KILLS, bosses_read=2),
+        )
+    )
+    [kill] = analyse_pace(
+        a_kill_fight(200),
+        PaceSample(ours=KILL_SAMPLE.ours, references=KILL_SAMPLE.references, bosses_read=3),
+    )
+    assert "Summed over 2 boss-flagged enemies of this fight" in wipe[PACE_ID].evidence
+    assert "Summed over 3 boss-flagged enemies of this fight" in kill.evidence
+
+
+def test_a_single_boss_says_nothing_of_a_sum() -> None:
+    wipe = by_id(
+        analyse_pace(a_wipe(200), PaceSample(ours=steady(80, 200), references=THREE_KILLS))
+    )
+    [kill] = analyse_pace(a_kill_fight(200), KILL_SAMPLE)
+    for finding in (wipe[PACE_ID], kill):
+        assert not any(line.startswith("Summed over") for line in finding.evidence)

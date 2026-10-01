@@ -380,6 +380,7 @@ def test_a_council_sums_its_bosses_on_both_sides(tmp_path: Path) -> None:
     )
 
     assert sample.unavailable == ""
+    assert sample.bosses_read == 2
     assert sample.ours is not None and sample.ours.amounts[:2] == (7, 7)
     [reference] = sample.references
     assert reference.damage.amounts[:2] == (70, 70)
@@ -608,6 +609,7 @@ def test_three_references_load_as_pace_references_with_their_leaderboard_duratio
     sample, records = load_pace_sample(client, own_cache, reference_cache, encounter, references)
 
     assert sample.unavailable == ""
+    assert sample.bosses_read == 1
     assert len(sample.references) == 3
     assert sorted(one.duration_seconds for one in sample.references) == [200.0, 210.0, 220.0]
     assert len([one for one in records if one.loaded]) == 3
