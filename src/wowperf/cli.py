@@ -564,7 +564,10 @@ def _samples(
     recorded rather than silently dropped: it is our own report and fight
     (comparing a run against itself would report a perfect route and teach the
     reader nothing); its report failed to load — deleted, private, an
-    unfinished fight, or a roster gap in its master data; or, once loaded, its
+    unfinished fight, a roster gap in its master data, or a transport error
+    (`RateLimitExceeded` alone is re-raised: the client raises it only once its
+    own waits for the reset are spent, so it is every later request's failure,
+    not this row's); or, once loaded, its
     roster names one of our own characters. That last check can only run after
     the load, because the roster arrives with the run and not with the
     leaderboard row — so a self-match still costs one fetch. The alternative is
@@ -594,7 +597,9 @@ def _samples(
             continue
         try:
             theirs, from_cache = runs.load_speed_reference(row.report_code, row.fight_id)
-        except (IngestError, WclError) as error:
+        except RateLimitExceeded:
+            raise
+        except (IngestError, WclError, httpx.HTTPError) as error:
             records.append(_record(row, "speed", loaded=False, reason=str(error)))
             continue
         if any(player.name.casefold() in our_names for player in theirs.run.players):
@@ -654,7 +659,9 @@ def _samples(
                 theirs, from_cache = runs.load_parse_reference(
                     parse_row.report_code, parse_row.fight_id
                 )
-            except (IngestError, WclError) as error:
+            except RateLimitExceeded:
+                raise
+            except (IngestError, WclError, httpx.HTTPError) as error:
                 records.append(
                     _record(
                         parse_row,
@@ -900,8 +907,9 @@ def _compare_night_pull(
         row for row in _pace_references(rankings, encounter) if row not in members
     )
     try:
-        # A reference kill that fails never raises here -- `load_pace_sample`
-        # records it and tries the next.
+        # A reference kill that fails does not raise here -- `load_pace_sample`
+        # records it and tries the next -- except on a spent hourly budget,
+        # whose `RateLimitExceeded` it lets through to the clause below.
         pace, pace_records = load_pace_sample(
             repository.client, repository.cache, transient, encounter, references
         )
@@ -1010,7 +1018,9 @@ def _draw_spec_references(
 
     Mirrors `_samples`' parse half, and skips a row for the same three reasons,
     each recorded rather than silently dropped: it is our own report and fight,
-    its report failed to load, or its roster names one of our own characters.
+    its report failed to load -- a transport error included, though never a
+    spent hourly budget, which `_samples` re-raises and so does this -- or its
+    roster names one of our own characters.
     That last check can only run after the load, because the roster arrives with
     the fight and not with the leaderboard row -- so a self-match still costs
     one fetch, and the alternative is comparing a raid against itself.
@@ -1049,7 +1059,9 @@ def _draw_spec_references(
             theirs, from_cache = references.load_raid_parse_reference(
                 row.report_code, row.fight_id
             )
-        except (IngestError, WclError) as error:
+        except RateLimitExceeded:
+            raise
+        except (IngestError, WclError, httpx.HTTPError) as error:
             records.append(_parse_record(row, loaded=False, reason=str(error)))
             continue
         if any(player.name.casefold() in our_names for player in theirs.players):
@@ -1117,6 +1129,8 @@ def _reference_targets(
     A failure is not fatal and is not recorded as a lost reference either: the
     member is still compared on every other family, and `compare_targets` reads
     an empty table as a reference with no boss row rather than as a zero share.
+    `RateLimitExceeded` alone is re-raised, for `_auras`' reason: a spent
+    budget is every later member's failure too.
     """
     their_player = _reference_actor(row, theirs)
     if their_player is None:
@@ -1126,6 +1140,8 @@ def _reference_targets(
             references.client, references.cache,
             row.report_code, row.fight_id, their_player.actor_id,
         )
+    except RateLimitExceeded:
+        raise
     except (IngestError, WclError, httpx.HTTPError):
         return ()
     return rows
@@ -1224,11 +1240,15 @@ def _auras(runs: WclRunRepository, code: str, fight_id: int, actor_id: int) -> P
     the gap rather than hiding it. `httpx.HTTPError` covers a non-2xx aura
     response that is not itself a rate limit: `WclClient.execute` raises
     `RateLimitExceeded` (a `WclError`) for 429 before it ever calls
-    `raise_for_status`, so that deliberate handling still goes through the
-    `WclError` branch above and is untouched by the wider catch here.
+    `raise_for_status`. That one alone is re-raised: the client raises it only
+    once its own waits for the reset are spent, so it is every later player's
+    failure too, and swallowing it would send each of them into the same
+    refusal after the same waits.
     """
     try:
         return runs.auras(code, fight_id, actor_id)
+    except RateLimitExceeded:
+        raise
     except (IngestError, WclError, httpx.HTTPError):
         return None
 
@@ -1242,7 +1262,9 @@ def load_run_with_auras(
     (`.claude/skills/wcl-api/SKILL.md`). A player whose parse comparison
     already fetched theirs costs nothing the second time: our own run's cached
     responses never expire. A player whose fetch fails simply has no bands, and
-    the drawings that read them draw nothing rather than guessing a window.
+    the drawings that read them draw nothing rather than guessing a window. A
+    spent hourly budget is the one failure that stops the loop, for the reason
+    `_auras` gives.
     """
     fetched = tuple(
         one
@@ -1268,7 +1290,9 @@ def load_encounter_with_auras(
     A player whose fetch fails simply has no bands, and the states that read
     them say `pressed` rather than guessing. `_auras` already swallows the
     failure for the same reason on the Mythic+ side: a report that has been
-    fetched and paid for is not discarded over one player's table.
+    fetched and paid for is not discarded over one player's table. A spent
+    hourly budget is the one failure it lets through, because it is every
+    later player's failure as well.
     """
     fetched = tuple(
         one
@@ -1303,6 +1327,9 @@ def _fetch_parse_auras(
     `compare_uptime_sample` — not a per-member fetch — so it is fetched
     exactly once, the first time any counterpart resolves at all. A sample in
     which no member's counterpart resolves fetches it not at all.
+
+    A spent hourly budget is not one member's missing aura data: `_auras`
+    re-raises `RateLimitExceeded`, and so the loop stops there.
     """
     our_auras: PlayerAuras | None = None
     our_auras_fetched = False
