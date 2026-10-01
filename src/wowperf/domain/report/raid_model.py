@@ -204,6 +204,12 @@ class RaidReport(Frozen):
     # or, where the band ran out first, the state and clock where the
     # comparison stopped. "" wherever `pace_pointer` is None.
     pace_line: str = ""
+    # Points at a kill's `compare.kill.time` and `compare.pace.boss` cards, in
+    # that order and each only if the kill carries it. The cards stay on the
+    # Damage tab; the Summary opens on these pointers because how fast the kill
+    # was against other kills is the first question asked of one. () on a wipe,
+    # whose pace is `pace_pointer`, and on a kill with no reference kill.
+    kill_speed: tuple[LedgerRow, ...] = ()
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
@@ -221,9 +227,9 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     `PLAYER_PACE_PREFIX`) lands on `pace_rows`; both are icons the resolver
     would otherwise never see.
 
-    `report.verdict`, `report.pace_pointer` and `report.opening` are the
-    deliberate exceptions. `report.verdict` heads Summary as its own headline
-    rather than sitting in a tab's list, and `build_raid_report` already keeps its finding
+    `report.verdict`, `report.pace_pointer`, `report.kill_speed` and
+    `report.opening` are the deliberate exceptions. `report.verdict` heads Summary as its own
+    headline rather than sitting in a tab's list, and `build_raid_report` already keeps its finding
     from also reaching `observations` -- walking it here too would count the
     same row twice for every caller of this function, including the
     once-only checks in the render invariants. `classify_attempt` never puts
@@ -232,7 +238,9 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     in `_icon_addresses` instead. `report.pace_pointer` is not a second finding
     to walk at all: it repeats a row `damage_rows` already carries (the same
     `compare.pace.boss` finding, wrapped as a pointer rather than a card), so
-    walking it here would count that one row twice. `report.opening.chain` is
+    walking it here would count that one row twice, and `report.kill_speed`
+    repeats the `compare.kill.time` and `compare.pace.boss` rows
+    `damage_rows` carries for the same reason. `report.opening.chain` is
     the same kind of pointer, to the `deaths.chain.N` or `deaths.single.N` card
     `death_rows` already carries.
     """

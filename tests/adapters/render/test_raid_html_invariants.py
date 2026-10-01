@@ -1855,6 +1855,32 @@ def test_a_kill_with_a_pace_sample_draws_the_chart_and_card_but_no_summary_warni
     assert "The chart is on the Damage tab." not in golden_raid_html()
 
 
+def test_a_kill_summary_draws_kill_speed_first() -> None:
+    """The golden kill carries a kill time (its mechanics sample) and a pace, so the
+    Summary opens on both, ahead of every other heading, each a link and not a card."""
+    html = golden_raid_html()
+    panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    headings = re.findall(r"<h2[^>]*>(.*?)</h2>", panel, flags=re.S)
+    assert headings, "the Summary draws no heading at all"
+    assert headings[0].strip() == "Kill speed"
+    first_h2 = panel.index("<h2")
+    assert 'id="kill-speed"' in panel[first_h2:panel.index("</h2>", first_h2)]
+    next_h2 = panel.index("<h2", first_h2 + 1)
+    kill_time_at = panel.index(f'href="#finding-{KILL_TIME_ID}"')
+    pace_at = panel.index(f'href="#finding-{PACE_ID}"')
+    assert first_h2 < kill_time_at < pace_at < next_h2
+    assert f'id="finding-{PACE_ID}"' not in panel
+
+
+def test_a_summary_with_no_kill_speed_draws_no_kill_speed_heading() -> None:
+    """A wipe, and a kill with no reference kill, have nothing to point at."""
+    for html in (a_wiped_raid_page(), render_raid(a_minimal_raid_report())):
+        panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+        assert "Kill speed" not in panel
+        assert 'id="kill-speed"' not in panel
+
+
 def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> None:
     """The other half of the guard above: what the page did with the comparison.
 

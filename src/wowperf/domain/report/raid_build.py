@@ -7,7 +7,7 @@ from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.deaths import numbered_chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
-from wowperf.domain.comparison.kill_time import KILL_PREFIX
+from wowperf.domain.comparison.kill_time import KILL_PREFIX, KILL_TIME_ID
 from wowperf.domain.comparison.night_axis import (
     PULL_DAMAGE_NOT_DRAWN,
     PULL_DAMAGE_NOTHING_COMPARED,
@@ -519,6 +519,14 @@ def build_raid_report(
         else None
     )
     pace_line = _pace_line(reading) if pace_pointer and reading else ""
+    # A kill's own pointers: its kill time, then its pace, in that order whatever
+    # order the findings came in. Each is the Damage tab's card wrapped as a pointer.
+    kill_speed = tuple(
+        ledger_row(finding, titles_by_id, tooltips)
+        for wanted in (KILL_TIME_ID, PACE_ID)
+        for finding in findings
+        if loaded.encounter.kill and finding.id == wanted
+    )
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
@@ -553,4 +561,5 @@ def build_raid_report(
         pace_chart=pace_chart,
         pace_pointer=pace_pointer,
         pace_line=pace_line,
+        kill_speed=kill_speed,
     )

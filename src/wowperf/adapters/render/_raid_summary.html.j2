@@ -1,7 +1,14 @@
-{# ABOUTME: The raid Summary panel: the verdict, how a wipe started, its pace, and what's left. #}
+{# ABOUTME: The raid Summary panel: a kill's speed, the verdict, how a wipe started, its pace, and what's left. #}
 {# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-summary">
+{% if report.kill_speed %}
+<h2 id="{{ scope }}kill-speed">Kill speed</h2>
+<p class="sub">Against the execution leaderboard's kills. Each line opens its card on the Damage tab.</p>
+{% for row in report.kill_speed %}
+{{ pointer(row) }}
+{% endfor %}
+{% endif %}
 {% if report.verdict %}
 <h2 id="{{ scope }}verdict">Why this attempt ended</h2>
 <div class="findings verdict">

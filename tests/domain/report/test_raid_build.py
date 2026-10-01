@@ -295,7 +295,8 @@ def test_every_finding_reaches_exactly_one_field() -> None:
         f"placed twice: {sorted(one for one, count in Counter(placed).items() if count > 1)}; "
         f"placed nowhere: {sorted({finding.id for finding in findings} - set(placed))}"
     )
-    for pointer in report.summary_pointers:
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID]
+    for pointer in (*report.summary_pointers, *report.kill_speed):
         assert pointer.finding_id in placed, (
             f"{pointer.finding_id} heads the Summary and no tab carries the card it points at"
         )
@@ -633,6 +634,104 @@ def test_a_kill_summary_is_left_to_its_own_task() -> None:
     assert report.summary_pointers, "a kill's losses are still ranked until its own task"
     assert report.pace_pointer is None
     assert report.pace_line == ""
+
+
+def three_reference_kills() -> MechanicsSample:
+    """The leaderboard rows `analyse_kill_time` reads: three kills, so a median and a range."""
+    return MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code=f"ref{one}", fight_id=1, size=20, duration_ms=300_000
+                ),
+                abilities=(),
+            )
+            for one in range(3)
+        )
+    )
+
+
+def a_kills_speed_report(
+    *, kill_time: bool = True, pace: bool = True, pace_first: bool = False
+) -> RaidReport:
+    """A kill built from the real kill-time and pace analysers, in the order asked for.
+
+    `pace_first` hands the builder the pace finding ahead of the kill time, so a
+    kill-speed order read off the findings' own order and not the builder's is caught.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    sample = a_pace_sample(per_second=80)
+    kill_time_findings = (
+        analyse_kill_time(loaded.encounter, three_reference_kills()) if kill_time else []
+    )
+    pace_findings = analyse_pace(loaded.encounter, sample) if pace else []
+    findings = (
+        (*pace_findings, *kill_time_findings) if pace_first
+        else (*kill_time_findings, *pace_findings)
+    )
+    return build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample if pace else None,
+    )
+
+
+def test_a_kill_summary_opens_on_its_kill_speed() -> None:
+    """The kill time, then the pace: both cards stay on the Damage tab, pointed at once."""
+    report = a_kills_speed_report()
+
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID, PACE_ID]
+    assert {KILL_TIME_ID, PACE_ID} <= {row.finding_id for row in report.damage_rows}
+
+
+def test_a_kills_speed_pointers_keep_their_order_whatever_order_the_findings_came_in() -> None:
+    report = a_kills_speed_report(pace_first=True)
+
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID, PACE_ID]
+
+
+@pytest.mark.parametrize(
+    ("kill_time", "pace", "expected"),
+    [(True, False, [KILL_TIME_ID]), (False, True, [PACE_ID])],
+)
+def test_a_kill_points_only_at_the_kill_speed_cards_it_has(
+    kill_time: bool, pace: bool, expected: list[str]
+) -> None:
+    report = a_kills_speed_report(kill_time=kill_time, pace=pace)
+
+    assert [row.finding_id for row in report.kill_speed] == expected
+
+
+def test_a_kill_with_no_reference_kill_has_no_kill_speed_pointers() -> None:
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.kill_speed == ()
+
+
+def test_a_wipe_has_no_kill_speed_pointers() -> None:
+    """A wipe is not a race against other kills: its pace is `pace_pointer`, on its own line."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample(80)
+    )
+
+    assert report.kill_speed == ()
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_every_finding_on_a_kill_with_kill_speed_reaches_exactly_one_field() -> None:
+    """The kill-speed pointers repeat two Damage-tab cards, and `all_raid_ledger_rows` walks
+    neither, so each must point at a card some field does place, once."""
+    report = a_kills_speed_report()
+    findings_ids = [KILL_TIME_ID, PACE_ID]
+
+    assert sorted(placements(report)) == sorted(findings_ids)
+    for pointer in report.kill_speed:
+        assert pointer.finding_id in placements(report), f"{pointer.finding_id} points at no card"
 
 
 def test_every_finding_on_a_wipe_reaches_exactly_one_field() -> None:
