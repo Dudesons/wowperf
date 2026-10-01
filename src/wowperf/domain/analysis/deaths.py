@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Callable
 
 from wowperf.domain.events import Death
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import Pull
 
 CHAIN_WINDOW_MS = 10_000
@@ -34,7 +34,7 @@ def _measured_cost(deaths: tuple[Death, ...]) -> tuple[float | None, int]:
 def _unmeasured_evidence(unmeasured_count: int) -> str:
     """The disclosure line for a partially-unmeasured group, matching deaths.total."""
     return (
-        f"{unmeasured_count} death{'s' if unmeasured_count > 1 else ''} not measured: "
+        f"{quantity(unmeasured_count, 'death', 'deaths')} not measured: "
         "the player never acted again"
     )
 
@@ -127,14 +127,14 @@ def analyse_deaths(
         evidence.append(_unmeasured_evidence(unmeasured_count))
 
     if total_cost is None:
-        title = f"{len(deaths)} death{'s' if len(deaths) > 1 else ''}, cost not measured"
+        title = f"{quantity(len(deaths), 'death', 'deaths')}, cost not measured"
         detail = (
             f"None of these {len(deaths)} deaths were followed by another action, so the "
             "cost cannot be measured."
         )
     else:
         title = (
-            f"{len(deaths)} death{'s' if len(deaths) > 1 else ''} cost "
+            f"{quantity(len(deaths), 'death', 'deaths')} cost "
             f"{total_cost:.0f}s of play"
         )
         detail = (

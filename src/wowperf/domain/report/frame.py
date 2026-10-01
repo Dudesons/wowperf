@@ -4,7 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.model import Badge, Header, Section, SectionState
 
@@ -30,9 +30,30 @@ def parse_unavailable_id(slug: str) -> str:
     return f"{PARSE_UNAVAILABLE_ID}.{slug}"
 
 
+def stated_elsewhere(finding: Finding, stated_once: str) -> bool:
+    """Whether `finding` is a parse notice whose reason the page already states once.
+
+    A `compare.parse.unavailable` notice whose reason the page states once for
+    the whole fight is said there, not per card: neither as a card's withheld
+    line nor as one of its rows. A notice whose reason differs is about that
+    player and stays on their card. An empty `stated_once` states nothing and
+    silences nothing.
+    """
+    return (
+        bool(stated_once)
+        and finding.id.startswith(PARSE_UNAVAILABLE_ID)
+        and finding.detail == stated_once
+    )
+
+
 def plural(count: int, singular: str) -> str:
-    """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
-    return singular if count == 1 else f"{singular}s"
+    """`singular` unless `count` is not one: the noun alone, for a sentence that does not print
+    the count right before it.
+
+    A count and its noun together are `quantity`'s, and this reads the same rule
+    from it, so the noun alone and the noun after its count cannot disagree.
+    """
+    return quantity(count, singular, f"{singular}s").removeprefix(f"{count} ")
 
 
 def badge_for(confidence: Confidence) -> Badge:

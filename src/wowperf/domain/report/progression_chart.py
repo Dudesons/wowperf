@@ -1,6 +1,7 @@
 # ABOUTME: The night's shape as one bar per attempt, in viewBox units the template prints.
 # ABOUTME: Depth counts down and the chart counts up, so every height here is an inversion.
 
+from wowperf.domain.findings import quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.model import Section, SectionState
 from wowperf.domain.report.progression_frame import depth_label
@@ -126,7 +127,7 @@ def build_attempts_chart(series: LoadedProgression) -> AttemptsChart:
     legend = _legend(label)
     if missing:
         legend = (
-            f"{legend} {missing} attempt{'' if missing == 1 else 's'} "
+            f"{legend} {quantity(missing, 'attempt', 'attempts')} "
             f"carr{'ies' if missing == 1 else 'y'} no depth reading and draw"
             f"{'s' if missing == 1 else ''} no bar."
         )

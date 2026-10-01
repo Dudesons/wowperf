@@ -9,7 +9,7 @@ from wowperf.domain.events import (
     EnemyCastRow,
     InterruptEvent,
 )
-from wowperf.domain.findings import Confidence, Finding, FindingFact
+from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
 
 FOLLOW_WINDOW_MS = 3_000
 """Damage from a spell lands within a few seconds of the cast completing."""
@@ -142,7 +142,7 @@ def _interruptible(kicks: int, shape: str) -> tuple[str, FindingFact]:
     same scope two ways depending on whether anybody kicked the spell.
     """
     if kicks:
-        claim = f"kicked {kicks} time{'s' if kicks != 1 else ''} this {shape}"
+        claim = f"kicked {quantity(kicks, 'time', 'times')} this {shape}"
         return (
             f"interruptible: {claim}",
             FindingFact(label="Interruptible", value=claim,
@@ -180,7 +180,7 @@ def analyse_interrupts(
     kicked = [cast for cast in casts if cast.was_kicked]
     excluded = [cast for cast in casts if not cast.outcome_known]
 
-    landed_phrase = f"{len(landed)} cast{'s' if len(landed) != 1 else ''} landed"
+    landed_phrase = f"{quantity(len(landed), 'cast', 'casts')} landed"
     summary_evidence = (
         f"{len(landed)} landed",
         f"{len(kicked)} kicked",

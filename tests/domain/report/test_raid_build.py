@@ -42,7 +42,8 @@ from wowperf.domain.report.build import ceiling_withheld_line
 from wowperf.domain.report.deaths import NO_CARDS_ASKED
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
-from wowperf.domain.report.raid_build import build_raid_report, first_death_named
+from wowperf.domain.report.raid_build import build_raid_report
+from wowperf.domain.report.raid_frame import first_death_named
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles, ThroughputCooldowns
 

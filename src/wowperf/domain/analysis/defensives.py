@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable, Iterable
 
 from wowperf.domain.events import CastEvent, Death
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import Player
 from wowperf.domain.progression import LoadedProgression
 from wowperf.domain.season import CooldownAbility, DefensiveAbility, Defensives
@@ -484,8 +484,8 @@ def _ceiling_withheld(
     return Finding(
         id=CEILING_WITHHELD_ID,
         title=(
-            f"This {shape} was too short to judge {count} "
-            f"pressed defensive{'s' if count != 1 else ''}"
+            f"This {shape} was too short to judge "
+            f"{quantity(count, 'pressed defensive', 'pressed defensives')}"
         ),
         detail=(
             "A ceiling claim needs an ability to fit more than five uses into "
@@ -593,7 +593,7 @@ def analyse_defensive_ceiling(
                     evidence=(
                         f"{player.class_name} {player.spec}",
                         f"ability {ability.ability_id}",
-                        f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
+                        f"{quantity(uses, 'cast', 'casts')} in {alive:.0f}s alive",
                     ),
                     ability_id=ability.ability_id,
                     ability_name=ability.name,

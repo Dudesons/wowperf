@@ -122,7 +122,7 @@ def analyse_progression(series: LoadedProgression) -> list[Finding]:
             Finding(
                 id="progression.attempts.discarded",
                 title=(
-                    f"{n} attempt{'' if n == 1 else 's'} excluded as too short to read"
+                    f"{quantity(n, 'attempt', 'attempts')} excluded as too short to read"
                 ),
                 detail=(
                     "An attempt that ends in seconds is a reset or an instant disaster "

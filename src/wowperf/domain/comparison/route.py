@@ -7,7 +7,7 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
 from wowperf.domain.comparison.sample import SpeedMember, SpeedSample, too_few
 from wowperf.domain.comparison.statistics import count_phrase, observed_range
-from wowperf.domain.findings import Confidence, Finding, quantifier_for
+from wowperf.domain.findings import Confidence, Finding, quantifier_for, quantity
 from wowperf.domain.model import Pull, Run
 
 MAX_PACKS_REPORTED = 5
@@ -34,13 +34,12 @@ def compare_route(
         Finding(
             id="compare.route.summary",
             title=(
-                f"Our route was {len(ours.pulls)} "
-                f"pull{'s' if len(ours.pulls) != 1 else ''}, "
+                f"Our route was {quantity(len(ours.pulls), 'pull', 'pulls')}, "
                 f"the reference's {len(theirs.pulls)}"
             ),
             detail=(
-                f"{matched_packs} of {pack_count} trash "
-                f"pack{'s' if pack_count != 1 else ''} found a counterpart. "
+                f"{matched_packs} of {quantity(pack_count, 'trash pack', 'trash packs')} "
+                "found a counterpart. "
                 "Packs are matched by which enemies they contain, not by when either group "
                 "fought them, so this comparison holds across a keystone-level difference. A "
                 "stretch fought without a break is one pull to Warcraft Logs, and it matches "
@@ -49,7 +48,7 @@ def compare_route(
             confidence=Confidence.MEASURED,
             seconds_lost=None,
             evidence=(
-                f"{in_common} pull{'s' if in_common != 1 else ''} in common",
+                f"{quantity(in_common, 'pull', 'pulls')} in common",
                 f"{len(alignment.only_ours)} only ours",
                 f"{len(alignment.only_theirs)} only theirs",
                 f"{len(alignment.out_of_order)} reordered",
@@ -107,7 +106,7 @@ def compare_route(
                 evidence=(
                     pull.name,
                     f"{forces_awarded} enemy forces",
-                    f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
+                    quantity(len(pull.enemies), "enemy", "enemies"),
                 ),
                 pull_index=pull.index,
             )
@@ -137,7 +136,7 @@ def compare_route(
                 seconds_lost=None,
                 evidence=(
                     pull.name,
-                    f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
+                    quantity(len(pull.enemies), "enemy", "enemies"),
                 ),
             )
         )
@@ -314,7 +313,7 @@ def _extra_from(member: SpeedMember, ours: Run) -> list[Finding]:
                 seconds_lost=None,
                 evidence=(
                     pull.name,
-                    f"{len(pull.enemies)} enem{'y' if len(pull.enemies) == 1 else 'ies'}",
+                    quantity(len(pull.enemies), "enemy", "enemies"),
                 ),
             )
         )

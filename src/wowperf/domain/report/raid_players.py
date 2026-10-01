@@ -6,9 +6,9 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.findings import Finding
+from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.model import Player
-from wowperf.domain.report.frame import PARSE_UNAVAILABLE_ID, format_seconds, plural
+from wowperf.domain.report.frame import format_seconds, stated_elsewhere
 from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
 from wowperf.domain.report.model import PlayerCard, Tooltip
 from wowperf.domain.report.players import _comparison_section, class_colour, slugs_by_actor
@@ -74,11 +74,7 @@ def build_raid_players(
         finding
         for finding in untimed
         if any(finding.id.startswith(prefix) for prefix in RAID_COMPARISON_PREFIXES)
-        and not (
-            stated_once
-            and finding.id.startswith(PARSE_UNAVAILABLE_ID)
-            and finding.detail == stated_once
-        )
+        and not stated_elsewhere(finding, stated_once)
     ]
     pace = [finding for finding in untimed if finding.id.startswith(PLAYER_PACE_PREFIX)]
 
@@ -131,7 +127,7 @@ def _stats_line(loaded: LoadedEncounter, actor_id: int) -> str:
     duration = format_seconds(loaded.encounter.duration_seconds)
     assert duration is not None  # a float input always formats to a string
     return (
-        f"{casts} {plural(casts, 'cast')} in {duration} of the fight · "
-        f"{deaths} {plural(deaths, 'death')} · "
-        f"{interrupts} {plural(interrupts, 'interrupt')}"
+        f"{quantity(casts, 'cast', 'casts')} in {duration} of the fight · "
+        f"{quantity(deaths, 'death', 'deaths')} · "
+        f"{quantity(interrupts, 'interrupt', 'interrupts')}"
     )

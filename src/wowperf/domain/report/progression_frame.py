@@ -13,8 +13,7 @@ from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.frame import format_seconds
 from wowperf.domain.report.progression_model import AttemptRow, ProgressionHeader
-from wowperf.domain.report.raid_build import first_death_named
-from wowperf.domain.report.raid_frame import DIFFICULTY_NAMES
+from wowperf.domain.report.raid_frame import DIFFICULTY_NAMES, first_death_named
 
 NO_READING = "—"
 """What an attempt with no figure prints. A zero would read as a kill, and an
@@ -74,7 +73,7 @@ def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
     if killed is not None:
         outcome = f"Killed on attempt {killed} of {len(attempts)}"
     else:
-        outcome = f"No kill in {len(attempts)} attempt{'' if len(attempts) == 1 else 's'}"
+        outcome = f"No kill in {quantity(len(attempts), 'attempt', 'attempts')}"
     return ProgressionHeader(
         boss=progression.boss_name,
         difficulty=DIFFICULTY_NAMES.get(

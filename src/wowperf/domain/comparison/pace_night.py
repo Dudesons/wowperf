@@ -4,7 +4,12 @@
 from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.pace import PaceSample, clock_text, pace_reading, withheld_reason
-from wowperf.domain.comparison.pace_curve import PaceReading, PaceState, final_behind_start
+from wowperf.domain.comparison.pace_curve import (
+    PaceReading,
+    PaceState,
+    final_behind_start,
+    pace_end,
+)
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.findings import Confidence, Finding
 
@@ -51,7 +56,8 @@ def analyse_night_pace(
         reading = pace_reading(encounter, sample)
         assert reading is not None  # withheld_reason("") guarantees a usable reading
         compared += 1
-        if reading.seconds[-1].state is PaceState.BEHIND:
+        state, _ = pace_end(reading)
+        if state is PaceState.BEHIND:
             behind += 1
         lines.append(_pull_line(encounter.fight_id, reading))
     if compared < MIN_COMPARED_PULLS:
