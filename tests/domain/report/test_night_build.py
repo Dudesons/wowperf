@@ -683,7 +683,7 @@ def test_a_pull_given_a_pace_sample_draws_its_chart_row_and_pointer() -> None:
     pull = report.bosses[0].pulls[0].report
     assert pull.pace_chart is not None
     assert any(row.finding_id == PACE_ID for row in pull.damage_rows)
-    assert pull.pace_warning is not None
+    assert pull.pace_pointer is not None
 
 
 def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
@@ -717,7 +717,7 @@ def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
     pull = report.bosses[0].pulls[0].report
     assert pull.pace_chart is None
     assert not any(row.finding_id == PACE_ID for row in pull.damage_rows)
-    assert pull.pace_warning is None
+    assert pull.pace_pointer is None
 
     two_pulls = a_night(bosses=(2,))
     fight_a, fight_b = (attempt.fight_id for attempt in two_pulls.night.bosses[0].attempts)
@@ -753,7 +753,7 @@ def test_a_pull_with_no_sample_draws_none_of_the_three() -> None:
         if one.report.provenance.fight_id == fight_b
     )
     assert pull_b.pace_chart is None
-    assert pull_b.pace_warning is None
+    assert pull_b.pace_pointer is None
 
 
 def test_a_pulls_own_provenance_carries_the_records_handed_for_it() -> None:

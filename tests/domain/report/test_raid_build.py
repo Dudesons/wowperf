@@ -19,11 +19,13 @@ from tests.domain.comparison.test_pace_player import a_wipe as a_player_pace_wip
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
+from wowperf.domain.analysis.deaths import analyse_deaths, fight_offset
 from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNANSWERED_ID
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID, analyse_kill_time
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace_curve import BossDamage
 from wowperf.domain.comparison.pace_player import (
     PLAYER_PACE_PREFIX,
     PLAYER_UNAVAILABLE_PREFIX,
@@ -347,6 +349,261 @@ def test_the_only_raid_decomposition_heads_the_summary_and_is_not_drawn_twice() 
     assert report.death_rows, "the death tab drew no rows to check the exclusion against"
     assert "deaths.total" not in [row.finding_id for row in report.death_rows]
     assert "deaths.total" not in [row.finding_id for row in report.summary_pointers]
+
+
+FIRST_DEATH_MS = FIGHT_START_MS + 42_000
+"""Emberkin's death in `a_wipe_that_started_with`, 0:42 into the fight."""
+
+
+def a_wipe_that_started_with(*deaths: Death) -> LoadedEncounter:
+    """`a_raid_fixture`'s wipe, with a healer on the roster and the deaths given."""
+    return LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs",
+            players=(EMBERKIN, STONEWAKE, HEALER),
+            kill=False,
+            fight_percentage=12.4,
+            start_ms=FIGHT_START_MS,
+            end_ms=FIGHT_END_MS,
+        ),
+        deaths=deaths,
+    )
+
+
+def a_death(player: Player, at_ms: int, killing_blow: str = "Shadow Torrent") -> Death:
+    """One death that cost 20 s of play, so every deaths finding carries a figure."""
+    return Death(
+        actor_id=player.actor_id, player_name=player.name, timestamp_ms=at_ms,
+        killing_blow=killing_blow, seconds_until_next_action=20.0,
+    )
+
+
+A_CHAIN_OF_THREE = (
+    a_death(EMBERKIN, FIRST_DEATH_MS, killing_blow="Ravenous Feast"),
+    a_death(STONEWAKE, FIRST_DEATH_MS + 3_000),
+    a_death(HEALER, FIRST_DEATH_MS + 8_000),
+)
+"""Emberkin first, at 0:42, and the other two within the chain window after."""
+
+
+def the_deaths_findings(loaded: LoadedEncounter) -> tuple[Finding, ...]:
+    """What `analyse_encounter` mints for these deaths, from the analyser itself.
+
+    Never hand-typed: the opening's pointer names a `deaths.chain.N` or
+    `deaths.single.N` id by the analyser's own numbering, and only the real
+    minting can tell a pointer that follows it from one that guesses.
+    """
+    return tuple(
+        analyse_deaths(
+            loaded.deaths, lambda death: fight_offset(FIGHT_START_MS, death),
+            "in 300s of The Twin Fangs", cost_detail_suffix="",
+        )
+    )
+
+
+def a_wipes_report(
+    loaded: LoadedEncounter, pace: PaceSample | None = None
+) -> RaidReport:
+    findings = the_deaths_findings(loaded)
+    if pace is not None:
+        findings = (*findings, *analyse_pace(loaded.encounter, pace))
+    return build_raid_report(
+        loaded, findings, EMBERKIN, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=pace,
+    )
+
+
+def test_a_wipe_summary_opens_on_how_it_started() -> None:
+    """Design 5.4: who died first, to what and when, how long the raid held, and the card.
+
+    The fight runs 300 s and the first death lands at 42 s, so the raid held
+    258 s, 4:18.
+    """
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE))
+
+    assert report.opening is not None
+    assert report.opening.first_death == (
+        "Emberkin (Arcane Mage) died first, to Ravenous Feast, at 0:42"
+    )
+    assert report.opening.held == "The raid held 4:18 after the first death"
+    assert report.opening.line == (
+        "Emberkin (Arcane Mage) died first, to Ravenous Feast, at 0:42. "
+        "The raid held 4:18 after the first death."
+    )
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.chain.0"
+
+
+def test_a_wipe_summary_ranks_no_losses_in_seconds() -> None:
+    """A wipe is not a race: `deaths.total` stays with the death cards, and nothing is ranked."""
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE))
+
+    assert report.ledger_decomposition == ()
+    assert report.summary_pointers == ()
+    assert "deaths.total" in [row.finding_id for row in report.death_rows]
+
+
+@pytest.mark.parametrize(
+    ("per_second", "lead"),
+    [
+        (100, "Ended on the reference kills' pace."),
+        (80, "Ended behind the reference kills' pace."),
+        (120, "Ended ahead of the reference kills' pace."),
+    ],
+)
+def test_a_wipe_summary_states_its_pace_in_any_state(per_second: int, lead: str) -> None:
+    """Every state is said, not only behind: the raid leader asks where the wipe stood."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample(per_second)
+    )
+
+    assert report.pace_lead == lead
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_a_wipe_summary_states_the_pace_it_ended_in() -> None:
+    """Ahead of the kills for the first half, then nothing: the wipe ended behind.
+
+    Every steady sample above holds one state from its first second to its
+    last, so none of them can tell the state the wipe ended in from the one it
+    started in.
+    """
+    seconds = int(PACE_DURATION) + 60
+    half = int(PACE_DURATION) // 2
+    ours = BossDamage(
+        interval_ms=1000.0, amounts=tuple(150 if second < half else 0 for second in range(seconds))
+    )
+    kills = tuple(a_kill(100, seconds) for _ in range(3))
+    sample = PaceSample(ours=ours, references=kills)
+
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=sample)
+
+    assert report.pace_lead == "Ended behind the reference kills' pace."
+
+
+def test_a_wipe_whose_first_death_was_alone_points_at_that_single() -> None:
+    loaded = a_wipe_that_started_with(a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast"))
+
+    report = a_wipes_report(loaded)
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.0"
+
+
+def test_a_wipe_points_at_the_group_holding_the_first_roster_death() -> None:
+    """An actor off the roster dying alone first is `deaths.single.0`, and not the card.
+
+    The analyser numbers every death the log holds, a pet's too, so the first
+    group is not always the one the first roster death sits in.
+    """
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    report = a_wipes_report(a_wipe_that_started_with(pet, *A_CHAIN_OF_THREE))
+
+    assert report.opening is not None
+    assert report.opening.first_death.startswith("Emberkin (Arcane Mage) died first")
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.chain.0"
+
+
+def test_a_wipe_counts_the_singles_before_the_first_roster_death() -> None:
+    """Each kind counts on from the groups before it, so a lone pet death makes Emberkin's 1."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    loaded = a_wipe_that_started_with(
+        pet, a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast")
+    )
+
+    report = a_wipes_report(loaded)
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.1"
+
+
+def test_a_wipe_whose_first_deaths_card_is_absent_points_at_nothing() -> None:
+    """The opening never points at a card the page does not draw.
+
+    Other findings are on the page, so a pointer that fell back to any of them
+    would be caught.
+    """
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), EMBERKIN, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.opening is not None
+    assert report.opening.first_death.startswith("Emberkin (Arcane Mage) died first")
+    assert report.opening.chain is None
+
+
+def test_a_deathless_wipe_says_nobody_died() -> None:
+    report = a_wipes_report(a_wipe_that_started_with())
+
+    assert report.opening is not None
+    assert report.opening.first_death == "Nobody died in this attempt"
+    assert report.opening.held == ""
+    assert report.opening.line == "Nobody died in this attempt."
+    assert report.opening.chain is None
+
+
+def test_a_kill_summary_is_left_to_its_own_task() -> None:
+    """A kill keeps its decomposition and draws no opening; its Summary is the kill speed's."""
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+    killed = loaded.model_copy(
+        update={"encounter": loaded.encounter.model_copy(update={"kill": True})}
+    )
+
+    report = build_raid_report(
+        killed, the_deaths_findings(killed), EMBERKIN, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=a_pace_sample(80),
+    )
+
+    assert report.opening is None
+    assert [row.finding_id for row in report.ledger_decomposition] == ["deaths.total"]
+    assert report.summary_pointers, "a kill's losses are still ranked until its own task"
+    assert report.pace_pointer is None
+    assert report.pace_lead == ""
+
+
+def test_every_finding_on_a_wipe_reaches_exactly_one_field() -> None:
+    """The wipe half of the rule above: no decomposition and no ranked loss on a wipe,
+    so `deaths.total` has to land on the Deaths tab rather than nowhere.
+
+    The opening's card and the pace card are pointers to cards placed on other
+    tabs, and `all_raid_ledger_rows` walks neither, so each must point at a card
+    some field does place.
+    """
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+    sample = a_pace_sample(80)
+    findings = (
+        *one_of_every_raid_family(),
+        *(one for one in analyse_pace(loaded.encounter, sample)
+          if one.id not in {finding.id for finding in one_of_every_raid_family()}),
+    )
+
+    report = build_raid_report(
+        loaded, findings, EMBERKIN, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    placed = placements(report) + stated_by_the_damage_tab(report, findings)
+    assert sorted(placed) == sorted(finding.id for finding in findings), (
+        f"placed twice: {sorted(one for one, count in Counter(placed).items() if count > 1)}; "
+        f"placed nowhere: {sorted({finding.id for finding in findings} - set(placed))}"
+    )
+    assert report.opening is not None and report.opening.chain is not None
+    assert report.pace_pointer is not None
+    for pointer in (report.opening.chain, report.pace_pointer):
+        assert pointer.finding_id in placed, f"{pointer.finding_id} points at no card"
 
 
 def test_a_wipe_withholds_the_damage_tab_and_says_why() -> None:
@@ -1036,11 +1293,12 @@ def test_a_behind_wipe_draws_the_pace_rows_the_chart_and_the_summary_pointer() -
     assert {PACE_ID, PROJECTION_ID} <= placed_ids
     assert report.damage.state is SectionState.PRESENT
     assert report.pace_chart is not None
-    assert report.pace_warning is not None
-    assert report.pace_warning.finding_id == PACE_ID
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+    assert report.pace_lead == "Ended behind the reference kills' pace."
 
 
-def test_an_on_pace_wipe_draws_the_chart_but_raises_no_warning() -> None:
+def test_an_on_pace_wipe_draws_the_chart_and_states_it_ended_on_pace() -> None:
     loaded, subject = a_raid_fixture(kill=False)
     sample = a_pace_sample(per_second=100)  # matches the kills' own rate: on pace
     findings = analyse_pace(loaded.encounter, sample)
@@ -1051,7 +1309,9 @@ def test_an_on_pace_wipe_draws_the_chart_but_raises_no_warning() -> None:
     )
 
     assert report.pace_chart is not None
-    assert report.pace_warning is None
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+    assert report.pace_lead == "Ended on the reference kills' pace."
 
 
 def test_a_pace_comparison_that_found_nothing_is_disclosed_in_the_provenance_alone() -> None:
@@ -1190,7 +1450,7 @@ def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:
     )
 
     assert report.pace_chart is None
-    assert report.pace_warning is None
+    assert report.pace_pointer is None
     assert report.damage_rows, "an open damage tab with no rows on it"
 
 

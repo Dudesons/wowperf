@@ -66,7 +66,7 @@ def fight_offset(start_ms: int, death: Death) -> str:
     return f"{(death.timestamp_ms - start_ms) / 1000:.0f}s in"
 
 
-def _chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
+def chains(deaths: tuple[Death, ...]) -> list[tuple[Death, ...]]:
     """Group deaths into runs of deaths separated by less than the chain window."""
     ordered = sorted(deaths, key=lambda death: death.timestamp_ms)
     groups: list[list[Death]] = []
@@ -136,7 +136,7 @@ def analyse_deaths(
     ]
 
     chain_rank = single_rank = 0
-    for group in _chains(deaths):
+    for group in chains(deaths):
         first = group[0]
         seconds_lost, unmeasured_count = _measured_cost(group)
         if len(group) > 1:

@@ -1,10 +1,13 @@
 # ABOUTME: Turns a loaded boss fight and its findings into the value the raid template renders.
 # ABOUTME: A sibling of build.py: no route and no timeline, and a Damage tab a wipe withholds.
 
-from collections.abc import Sequence
+from collections import Counter
+from collections.abc import Mapping, Sequence
 
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
+from wowperf.domain.analysis.deaths import chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
+from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
 from wowperf.domain.comparison.kill_time import KILL_PREFIX
 from wowperf.domain.comparison.night_axis import (
     PULL_DAMAGE_NOT_DRAWN,
@@ -20,13 +23,19 @@ from wowperf.domain.comparison.pace import (
 from wowperf.domain.comparison.pace_curve import PaceState
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
+from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids, ceiling_withheld_line
 from wowperf.domain.report.deaths import HEALTH_METHOD, NO_CARDS_ASKED, build_deaths
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
-from wowperf.domain.report.frame import NO_COMPARISON_RAN, PARSE_UNAVAILABLE_ID
+from wowperf.domain.report.frame import (
+    NO_COMPARISON_RAN,
+    PARSE_UNAVAILABLE_ID,
+    finding_by_id,
+    format_seconds,
+)
 from wowperf.domain.report.ledger import (
     build_observations,
     build_summary_pointers,
@@ -40,12 +49,13 @@ from wowperf.domain.report.model import (
     ReferenceRecord,
     Section,
     SectionState,
+    Tooltip,
 )
 from wowperf.domain.report.pace_chart import build_pace_chart
 from wowperf.domain.report.raid_frame import build_raid_header
 from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
-from wowperf.domain.report.raid_model import RaidReport
+from wowperf.domain.report.raid_model import RaidReport, WipeOpening
 from wowperf.domain.report.raid_players import build_raid_players
 from wowperf.domain.season import (
     Consumables,
@@ -64,6 +74,68 @@ re-minted per raider, so a prefix match would buy nothing a whole-id match
 does not already have, and would silently widen to any future `wipe.cause.*`
 sibling that is not the verdict itself.
 """
+
+FIRST_DEATH = "{name} ({spec} {class_name}) died first, to {ability}, at {clock}"
+HELD = "The raid held {clock} after the first death"
+NOBODY_DIED = "Nobody died in this attempt"
+PACE_LEADS = {
+    PaceState.BEHIND: "Ended behind the reference kills' pace.",
+    PaceState.ON_PACE: "Ended on the reference kills' pace.",
+    PaceState.AHEAD: "Ended ahead of the reference kills' pace.",
+}
+"""What a wipe's Summary says above its pointer to the pace card, by the state it ended in."""
+
+
+def _deaths_finding_id(loaded: LoadedEncounter, death: Death) -> str | None:
+    """The id `analyse_deaths` gives the group of deaths that holds `death`.
+
+    Numbered the way `analyse_deaths` numbers them: each kind, chain or
+    single, counts from 0 in time order. The group is looked for rather than
+    taken first, because the analyser numbers every death the log holds, a
+    pet's or an unidentified actor's too, and one of those dying alone before
+    the first roster death would make the first group its card.
+    """
+    ranks: Counter[str] = Counter()
+    for group in chains(loaded.deaths):
+        kind = "chain" if len(group) > 1 else "single"
+        if death in group:
+            return f"deaths.{kind}.{ranks[kind]}"
+        ranks[kind] += 1
+    return None
+
+
+def _wipe_opening(
+    loaded: LoadedEncounter,
+    findings: Sequence[Finding],
+    titles_by_id: dict[str, str],
+    tooltips: Mapping[str, Tooltip],
+) -> WipeOpening:
+    """Who died first, to what and when, how long the raid held, and that death's card.
+
+    The first death is `first_roster_death`'s and the hold is
+    `collapse_seconds`', the two the progression analysers read, so this
+    Summary and the night's repeats never name different deaths. `chain` is
+    None when the card it would point at is not among `findings`: a pointer
+    to a card the page does not draw is worse than none.
+    """
+    death = first_roster_death(loaded)
+    if death is None:
+        return WipeOpening(first_death=NOBODY_DIED, line=f"{NOBODY_DIED}.")
+    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
+    first_death = FIRST_DEATH.format(
+        name=player.name, spec=player.spec, class_name=player.class_name,
+        ability=death.killing_blow,
+        clock=format_seconds((death.timestamp_ms - loaded.encounter.start_ms) / 1000),
+    )
+    held = HELD.format(clock=format_seconds(collapse_seconds(loaded)))
+    finding_id = _deaths_finding_id(loaded, death)
+    card = finding_by_id(findings, finding_id) if finding_id else None
+    return WipeOpening(
+        first_death=first_death,
+        line=f"{first_death}. {held}.",
+        held=held,
+        chain=ledger_row(card, titles_by_id, tooltips) if card else None,
+    )
 
 
 def _damage_section(
@@ -213,12 +285,17 @@ def build_raid_report(
     verdict = (
         ledger_row(verdict_finding, titles_by_id, tooltips) if verdict_finding else None
     )
-    ledger_decomposition = tuple(
+    # A wipe is not a race, so its Summary ranks nothing in seconds: with no
+    # decomposition, `deaths.total` falls through to the Deaths tab with the
+    # death costs beside it, and the Summary opens on how the wipe started.
+    wiped = not loaded.encounter.kill
+    ledger_decomposition = () if wiped else tuple(
         ledger_row(finding, titles_by_id, tooltips)
         for finding in findings
         if finding.seconds_lost is not None and finding.id in RAID_DECOMPOSITION_IDS
     )
     decomposition_ids = {row.finding_id for row in ledger_decomposition}
+    opening = _wipe_opening(loaded, findings, titles_by_id, tooltips) if wiped else None
     # A per-player pace reading lands on that raider's card via `build_raid_players`'
     # `pace_rows`, never here: `RAID_PLACEMENTS`' `("compare.pace.", "damage_rows")`
     # matches by prefix, so `compare.pace.player.*` would otherwise also land on
@@ -329,7 +406,7 @@ def build_raid_report(
         boss_percentage=loaded.encounter.boss_percentage,
     )
 
-    summary_pointers = build_summary_pointers(
+    summary_pointers = () if wiped else build_summary_pointers(
         findings, titles_by_id, decomposition_ids, tooltips
     )
     placed_ids = placed_finding_ids(ledger_decomposition, placed_rows, players)
@@ -419,21 +496,23 @@ def build_raid_report(
         if reading and pace_finding
         else None
     )
-    # The Summary warns of a pace only on a wipe. A kill is read against the
-    # execution leaderboard's best kills, so ending behind them is the expected
-    # result and no cause for a warning; its card and chart stay on the Damage
-    # tab, and its Summary belongs to the kill-speed findings.
-    pace_warning = (
+    # The Summary states a pace only on a wipe, and in whatever state it
+    # ended: where a wipe stood against the kills is a question asked of every
+    # wipe, not only a slow one. A kill is read against the execution
+    # leaderboard's best kills, so ending behind them is the expected result;
+    # its card and chart stay on the Damage tab, and its Summary belongs to
+    # the kill-speed findings.
+    pace_pointer = (
         ledger_row(pace_finding, titles_by_id, tooltips)
-        if pace_finding and reading and reading.seconds
-        and not loaded.encounter.kill
-        and reading.seconds[-1].state is PaceState.BEHIND
+        if pace_finding and reading and reading.seconds and wiped
         else None
     )
+    pace_lead = PACE_LEADS[reading.seconds[-1].state] if pace_pointer and reading else ""
 
     return RaidReport(
         header=build_raid_header(loaded.encounter),
         verdict=verdict,
+        opening=opening,
         ledger_decomposition=ledger_decomposition,
         summary_pointers=summary_pointers,
         damage_rows=placed_rows["damage_rows"],
@@ -461,5 +540,6 @@ def build_raid_report(
         ),
         alive_chart=alive_chart,
         pace_chart=pace_chart,
-        pace_warning=pace_warning,
+        pace_pointer=pace_pointer,
+        pace_lead=pace_lead,
     )

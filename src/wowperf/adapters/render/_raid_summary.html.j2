@@ -1,4 +1,4 @@
-{# ABOUTME: The raid Summary panel: the decomposition ledger, the biggest losses, and what's left. #}
+{# ABOUTME: The raid Summary panel: the verdict, how a wipe started, its pace, and what's left. #}
 {# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-summary">
@@ -8,9 +8,14 @@
 {{ ledger_row(report.verdict) }}
 </div>
 {% endif %}
-{% if report.pace_warning %}
-<p class="sub">Behind the reference kills' pace. The chart is on the Damage tab.</p>
-{{ pointer(report.pace_warning) }}
+{% if report.opening %}
+<h2 id="{{ scope }}opening">How it started</h2>
+<p class="sub">{{ report.opening.line }}</p>
+{% if report.opening.chain %}{{ pointer(report.opening.chain) }}{% endif %}
+{% endif %}
+{% if report.pace_pointer %}
+<p class="sub">{{ report.pace_lead }} The chart is on the Damage tab.</p>
+{{ pointer(report.pace_pointer) }}
 {% endif %}
 
 {% if report.alive_chart %}

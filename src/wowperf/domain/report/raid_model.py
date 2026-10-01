@@ -129,6 +129,21 @@ class PaceChart(Frozen):
     tick_label_x: float
 
 
+class WipeOpening(Frozen):
+    """How a wipe started: its first death, how long the raid held after it, and that death's card.
+
+    `line` is the whole sentence the Summary prints, composed by the builder
+    from the other two so the template joins nothing. `held` is "" when nobody
+    died, and `chain` is None then, or when the deaths finding holding the
+    first death is not on the page.
+    """
+
+    first_death: str
+    line: str
+    held: str = ""
+    chain: LedgerRow | None = None
+
+
 class RaidReport(Frozen):
     header: RaidHeader
     verdict: LedgerRow | None = None
@@ -136,10 +151,14 @@ class RaidReport(Frozen):
     and on a withheld wipe, whose reason is disclosed in Provenance instead:
     a landing tab whose first line announces that nothing was concluded is the
     complaint design section 11 exists to fix."""
-    # Figures that contain others, heading the Summary.
+    # How a wipe started, beneath the verdict. None on a kill.
+    opening: WipeOpening | None = None
+    # Figures that contain others, heading the Summary. Empty on a wipe, whose
+    # `deaths.total` sits with the death cards instead: a wipe is not a race.
     ledger_decomposition: tuple[LedgerRow, ...]
     # The biggest findings, in ranked order. Each equals its card on another
-    # tab; the Summary renders a link to that card, never a second card.
+    # tab; the Summary renders a link to that card, never a second card. Empty
+    # on a wipe, for the same reason as `ledger_decomposition`.
     summary_pointers: tuple[LedgerRow, ...] = ()
     # The external frame's throughput half: damage against the sample, where it
     # went, and the percentile. Design section 6.1, 6.2 and 6.7.
@@ -176,9 +195,14 @@ class RaidReport(Frozen):
     # Our damage pace against the kills' band, on a kill as on a wipe. None on
     # `--no-compare`, and wherever the comparison itself came back unavailable.
     pace_chart: PaceChart | None = None
-    # Points at the pace card, set only where the wipe ended behind pace: the
-    # one damage-pace fact the Summary is worth interrupting for.
-    pace_warning: LedgerRow | None = None
+    # Points at the pace card on a wipe that has a pace reading, whatever state
+    # it ended in: where a wipe stood against the kills is a question the raid
+    # leader asks of every wipe. None on a kill, which is read against the best
+    # kills, so ending behind them is the expected result.
+    pace_pointer: LedgerRow | None = None
+    # The sentence heading `pace_pointer`, naming the state the wipe ended in.
+    # "" wherever `pace_pointer` is None.
+    pace_lead: str = ""
 
 
 def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
@@ -196,18 +220,20 @@ def all_raid_ledger_rows(report: RaidReport) -> Iterator[LedgerRow]:
     `PLAYER_PACE_PREFIX`) lands on `pace_rows`; both are icons the resolver
     would otherwise never see.
 
-    `report.verdict` and `report.pace_warning` are the two deliberate
-    exceptions. `report.verdict` heads Summary as its own headline rather than
-    sitting in a tab's list, and `build_raid_report` already keeps its finding
+    `report.verdict`, `report.pace_pointer` and `report.opening` are the
+    deliberate exceptions. `report.verdict` heads Summary as its own headline
+    rather than sitting in a tab's list, and `build_raid_report` already keeps its finding
     from also reaching `observations` -- walking it here too would count the
     same row twice for every caller of this function, including the
     once-only checks in the render invariants. `classify_attempt` never puts
     an ability on the verdict finding, so today's icon resolver loses nothing
     by not seeing it; a future verdict that named one would need its own arm
-    in `_icon_addresses` instead. `report.pace_warning` is not a second finding
+    in `_icon_addresses` instead. `report.pace_pointer` is not a second finding
     to walk at all: it repeats a row `damage_rows` already carries (the same
     `compare.pace.boss` finding, wrapped as a pointer rather than a card), so
-    walking it here would count that one row twice.
+    walking it here would count that one row twice. `report.opening.chain` is
+    the same kind of pointer, to the `deaths.chain.N` or `deaths.single.N` card
+    `death_rows` already carries.
     """
     yield from report.ledger_decomposition
     yield from report.summary_pointers

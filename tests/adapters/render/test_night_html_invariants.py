@@ -241,7 +241,7 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
     )
 
 
-REPEATED_FINDING_ID = "night.pull.repeated"
+REPEATED_FINDING_ID = "deaths.single.0"
 """One finding id, handed to every pull, because that is the shape a real night has.
 
 `night` runs the same analysers over every pull, so the id a finding carries on
@@ -251,9 +251,10 @@ that handed each pull no finding at all, or a differently named one, would draw
 no colliding card and leave the whole of `_macros.html.j2`'s scoping untested.
 Measured: with `NO_FINDINGS`, unscoping the finding card id fails nothing.
 
-The id is one no placement family claims, so it lands in the Summary's
-catch-all and is drawn on every pull rather than only on the pulls whose tab
-its family belongs to.
+The id is the card `analyse_deaths` mints for each pull's one death, so it is
+drawn on every pull's Deaths tab, and every pull is a wipe whose Summary opens
+on that death with a pointer at the card: the card and the pointer at it, on
+every pull, under one id.
 """
 
 
@@ -282,10 +283,8 @@ def a_nights_findings(night: LoadedNight) -> dict[int, tuple[Finding, ...]]:
                 ability_name=name,
                 detail="Drawn on every pull, under the id every pull mints.",
                 confidence=Confidence.MEASURED,
-                # A loss, so the Summary draws a pointer at the card as well as
-                # the card itself. The pointer's href is the other place a
-                # finding id becomes a fragment, and a finding with no loss
-                # renders no pointer for it to be wrong in.
+                # A loss, as `analyse_deaths` measures one for a death the
+                # player came back from.
                 seconds_lost=12.0,
             ),
         )
