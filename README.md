@@ -110,7 +110,8 @@ was against other kills, why the wipes ended, which abilities kept landing harde
 for the reference kills, and what kept repeating across attempts. Each attempt is a row saying how
 deep it got, how it ended, who died first and how long the raid held after; a row opens its pull.
 A wipe's own page opens on why it ended, where a verdict was reached, then on how it started
-rather than on its death toll; a kill's opens on its speed wherever the night was compared.
+rather than on its death toll; a kill's opens on its speed wherever a reference kill was drawn to
+compare it with.
 
 ## Asking Claude to coach you
 
