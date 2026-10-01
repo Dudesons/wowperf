@@ -11,7 +11,7 @@ import pytest
 
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.ingest import (
     IngestError,
     RosterEntry,
@@ -784,6 +784,50 @@ def test_a_reference_answering_with_an_http_error_is_recorded_not_raised(tmp_pat
     failed = [one for one in records if not one.loaded]
     assert len(failed) == 1
     assert failed[0].report_code == "reffails000000A"
+
+
+def test_a_spent_budget_on_a_reference_is_raised_not_recorded(tmp_path: Path) -> None:
+    """`RateLimitExceeded` is a `WclError`, but it is no one reference's failure.
+
+    The client raises it only once its waits for the reset are spent, so
+    recording it against the first reference and asking for the second would
+    spend the rest of the loop on refusals. The second reference is never
+    asked for; the first is asked for as often as the client retries it.
+    """
+    references = (
+        ReferenceKillRow(report_code="refrefused0000A", fight_id=30, size=20, duration_ms=200000),
+        ReferenceKillRow(report_code="refloads0000000B", fight_id=31, size=20, duration_ms=210000),
+    )
+    asked: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/token":
+            return httpx.Response(200, json=TOKEN)
+        body = json.loads(request.content)
+        name = operation_name(body["query"]) or ""
+        variables = body["variables"]
+        if name == "NpcActors":
+            return _npc_actors_response(_our_boss_actors())
+        if name == "BossDamageGraph" and variables["code"] == OUR_REPORT:
+            return _graph_response([10.0], point_start=0, interval=1000.0)
+        if name == "ReferenceFight":
+            asked.append(variables["code"])
+            if variables["code"] == "refrefused0000A":
+                return httpx.Response(429)
+            return _reference_fight_response(1000, 211000, [{"id": 40, "gameID": BOSS_GAME_ID}])
+        if name == "BossDamageGraph":
+            return _graph_response([5.0], point_start=1000, interval=1000.0)
+        raise AssertionError(f"unexpected operation: {name}")
+
+    http = httpx.Client(transport=httpx.MockTransport(handle), base_url="https://x")
+    client = WclClient(TokenProvider("id", "secret", http), http, sleep=lambda _seconds: None)
+
+    with pytest.raises(RateLimitExceeded):
+        load_pace_sample(
+            client, DiskCache(tmp_path / "own"), DiskCache(tmp_path / "reference"),
+            _encounter(), references,
+        )
+    assert set(asked) == {"refrefused0000A"}
 
 
 def _candidates(count: int) -> tuple[ReferenceKillRow, ...]:

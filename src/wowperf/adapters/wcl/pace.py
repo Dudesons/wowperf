@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
@@ -163,7 +163,10 @@ def load_pace_sample(
     missing, when one of our bosses' game ids names no actor in it or more than
     one, when its graphs carry no boss series, or when they sit on different
     time grids. Never fatal: a `WclError`, `IngestError` or `httpx.HTTPError`
-    on one reference is recorded and the loop moves on.
+    on one reference is recorded and the loop moves on. `RateLimitExceeded`
+    alone is raised: the client raises it only once its own waits for the
+    reset are spent, so it is every later request's failure, not one
+    reference's.
     """
     actors_payload, _ = _fetch(
         client, own_cache, NPC_ACTORS_QUERY, {"code": encounter.report_code}
@@ -284,6 +287,8 @@ def load_pace_sample(
                 )
             )
             records.append(_record(row, loaded=True, from_cache=fight_hit and damage_hit))
+        except RateLimitExceeded:
+            raise
         except (WclError, IngestError, httpx.HTTPError) as error:
             records.append(_record(row, loaded=False, reason=str(error)))
             continue

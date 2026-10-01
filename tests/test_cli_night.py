@@ -281,12 +281,13 @@ def build_night_transport(
     `broken_ability_reports` answers it with a GraphQL error instead, which is
     how one reference kill drops out of the mechanics sample alone.
 
-    `pace_errors` answers one pace request with a bare HTTP status instead:
-    keyed by operation and `encounterId` for `EncounterKillRankings`, by
-    operation and report code for `ReferenceFight` and a reference's
-    `BossDamageGraph`, and by operation and fight id for our own report's
-    `BossDamageGraph`. A 500 is how one boss's board or one pull's graph
-    fails; a 429 is how the hourly budget runs out.
+    `pace_errors` answers one comparison request with a bare HTTP status
+    instead: keyed by operation and `encounterId` for `EncounterKillRankings`,
+    by operation and report code for `ReferenceFight`, `AbilityTakenTable` and
+    a reference's `BossDamageGraph`, and by operation and fight id for our own
+    report's `BossDamageGraph`. A 500 is how one boss's board, one reference
+    kill's table or one pull's graph fails; a 429 is how the hourly budget
+    runs out.
     """
     running = 100.0
     quota = [100.0, 140.0]
@@ -474,6 +475,14 @@ def build_night_transport(
             return carrying_quota(graph)
         if name == "AuraTable":
             return carrying_quota(auras)
+        if name == "EncounterKillRankings":
+            key = str(variables["encounterId"])
+        elif name == "BossDamageGraph" and variables.get("code") == NIGHT_REPORT_CODE:
+            key = str(variables["fightId"])
+        else:
+            key = str(variables.get("code"))
+        if (name, key) in errors:
+            return httpx.Response(errors[(name, key)])
         if name == "AbilityTakenTable" and variables.get("code") in broken_ability_reports:
             return httpx.Response(
                 200, json={"errors": [{"message": "no damage-taken table for this report"}]}
@@ -484,14 +493,6 @@ def build_night_transport(
                 {"guid": NIGHT_KILLING_BLOW, "name": "Venom Bolt", "hitCount": hits,
                  "sources": [{"type": "Boss"}]},
             ]}}}}})
-        if name == "EncounterKillRankings":
-            key = str(variables["encounterId"])
-        elif name == "BossDamageGraph" and variables.get("code") == NIGHT_REPORT_CODE:
-            key = str(variables["fightId"])
-        else:
-            key = str(variables.get("code"))
-        if (name, key) in errors:
-            return httpx.Response(errors[(name, key)])
         if name == "EncounterKillRankings":
             encounter_id = int(variables["encounterId"])
             rows = rankings_by_encounter.get(encounter_id, [])
@@ -1591,3 +1592,83 @@ def test_a_pulls_pace_reads_the_mechanics_samples_members_first(tmp_path: Path) 
     paced = [variables["code"] for name, variables in calls if name == "ReferenceFight"]
     assert len(paced) == SAMPLE_SIZE
     assert dropped not in paced
+
+
+def _seven_kill_board() -> dict[int, list[dict[str, Any]]]:
+    """The first boss's board with four kills behind its three, so a dropped one is refilled."""
+    return {
+        **PACE_KILL_RANKINGS,
+        NIGHT_FIRST_BOSS: [
+            *PACE_KILL_RANKINGS[NIGHT_FIRST_BOSS],
+            *(_pace_reference_row(code, fight) for code, fight in EXTRA_FIRST_BOSS_REFERENCES),
+        ],
+    }
+
+
+def test_a_reference_kill_whose_table_answers_a_server_error_is_dropped_and_refilled(
+    tmp_path: Path,
+) -> None:
+    """Design section 6: a reference that fails to load is dropped and listed in Provenance.
+
+    A transport error on one reference kill's damage-taken table is that
+    kill's failure, not the pull's: the next kill on the board takes its
+    place, the pull still reads its pace, and its verdict may not say that no
+    reference kill was drawn.
+    """
+    dropped = FIRST_BOSS_REFERENCE_CODES[0]
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    result = run_night(
+        tmp_path,
+        fights=[_night_fight(FIRST_PULL)],
+        kill_rankings=_seven_kill_board(),
+        calls=calls,
+        pace_errors={("AbilityTakenTable", dropped): 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    tables = [
+        variables["code"]
+        for name, variables in calls
+        if name == "AbilityTakenTable" and variables["code"] != NIGHT_REPORT_CODE
+    ]
+    assert tables[0] == dropped
+    assert len(tables) == SAMPLE_SIZE + 1
+
+    pull = _pulls_by_fight(tmp_path)[FIRST_PULL]
+    ids = _finding_ids(pull["findings"])
+    assert any(one.startswith("mechanics.ability.") for one in ids)
+    assert "compare.pace.boss" in ids
+    [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
+    assert notice["detail"] != NO_REFERENCE_SAMPLE
+
+    html = _written(tmp_path)[1].read_text(encoding="utf-8")
+    start = html.index(
+        f"Mechanics candidate (report {dropped}, fight {FIRST_BOSS_REFERENCE_FIGHTS[0]})"
+    )
+    line = html[start:html.index("</p>", start)]
+    assert "not used:" in line
+    assert "500 Internal Server Error" in line
+
+
+def test_a_spent_budget_on_a_reference_kills_table_stops_the_night(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal that outlasts the client's waits is every remaining pull's failure.
+
+    `RateLimitExceeded` is a `WclError`, so a per-reference guard catching
+    `WclError` would record it as one kill's failure and walk on into every
+    later request; it must stop the night instead, as it does on the board.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = run_night(
+        tmp_path,
+        fights=[_night_fight(FIRST_PULL)],
+        kill_rankings=_seven_kill_board(),
+        pace_errors={("AbilityTakenTable", FIRST_BOSS_REFERENCE_CODES[0]): 429},
+    )
+
+    assert result.exit_code == 1
+    assert "hourly point budget is spent" in plain(result.output)
+    assert not _written(tmp_path)[0].exists()

@@ -800,8 +800,11 @@ def _mechanics_sample(
     Mirrors `_samples`: a row naming our own report and fight is never a
     reference for it (comparing a kill against itself would report a perfect
     match and teach the reader nothing), and a row whose ability table failed
-    to load is skipped, never fatal, with the reason recorded rather than
-    silently dropped.
+    to load -- a GraphQL error, a malformed table, or a transport error -- is
+    skipped, never fatal, with the reason recorded rather than silently
+    dropped. `RateLimitExceeded` alone is re-raised: the client raises it
+    only once its own waits for the reset are spent, so it is every later
+    request's failure, not this row's.
 
     Every size-matching row is offered to the loop, which breaks once it holds
     `SAMPLE_SIZE` members -- `_samples`' own shape, and for its reason: slicing
@@ -831,7 +834,9 @@ def _mechanics_sample(
             continue
         try:
             abilities, from_cache = _ability_taken(client, cache, row.report_code, row.fight_id)
-        except (IngestError, WclError) as error:
+        except RateLimitExceeded:
+            raise
+        except (IngestError, WclError, httpx.HTTPError) as error:
             records.append(_mechanics_record(row, loaded=False, reason=str(error)))
             continue
         records.append(_mechanics_record(row, loaded=True, from_cache=from_cache))
