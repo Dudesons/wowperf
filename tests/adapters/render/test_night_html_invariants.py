@@ -49,8 +49,8 @@ collide, one pull control per boss, an icon map gathered past the first pull.
 A fixture of one boss with one pull passes every one of them against an
 implementation that handles only the first thing it is given, and two bosses
 holding two pulls each passes a control that renders the first boss's count
-twice. The single-pull boss is what puts a boss with no summary on the page
-beside two that carry one, so both shapes are drawn -- and still no two
+twice. The single-pull boss is what shows a summary built from one attempt
+beside two built from several, so each shape is drawn -- and still no two
 bosses share a count.
 """
 
@@ -241,7 +241,7 @@ def a_loaded_night(counts: tuple[int, ...] = PULLS_PER_BOSS) -> LoadedNight:
     )
 
 
-REPEATED_FINDING_ID = "night.pull.repeated"
+REPEATED_FINDING_ID = "deaths.single.0"
 """One finding id, handed to every pull, because that is the shape a real night has.
 
 `night` runs the same analysers over every pull, so the id a finding carries on
@@ -251,9 +251,10 @@ that handed each pull no finding at all, or a differently named one, would draw
 no colliding card and leave the whole of `_macros.html.j2`'s scoping untested.
 Measured: with `NO_FINDINGS`, unscoping the finding card id fails nothing.
 
-The id is one no placement family claims, so it lands in the Summary's
-catch-all and is drawn on every pull rather than only on the pulls whose tab
-its family belongs to.
+The id is the card `analyse_deaths` mints for each pull's one death, so it is
+drawn on every pull's Deaths tab, and every pull is a wipe whose Summary opens
+on that death with a pointer at the card: the card and the pointer at it, on
+every pull, under one id.
 """
 
 
@@ -282,10 +283,8 @@ def a_nights_findings(night: LoadedNight) -> dict[int, tuple[Finding, ...]]:
                 ability_name=name,
                 detail="Drawn on every pull, under the id every pull mints.",
                 confidence=Confidence.MEASURED,
-                # A loss, so the Summary draws a pointer at the card as well as
-                # the card itself. The pointer's href is the other place a
-                # finding id becomes a fragment, and a finding with no loss
-                # renders no pointer for it to be wrong in.
+                # A loss, as `analyse_deaths` measures one for a death the
+                # player came back from.
                 seconds_lost=12.0,
             ),
         )
@@ -380,7 +379,7 @@ def test_the_fixture_draws_more_than_one_pull_and_more_than_one_boss() -> None:
     assert len(ABILITY_IDS) == report.total_pulls
 
     html = a_night_page()
-    assert summaries_on(report) == sum(1 for count in PULLS_PER_BOSS if count >= 2)
+    assert summaries_on(report) == len(PULLS_PER_BOSS)
     assert html.count('<section class="panel"') == (
         PANELS_PER_PULL * report.total_pulls + PANELS_PER_SUMMARY * summaries_on(report)
     )
@@ -470,7 +469,8 @@ def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
     Three bosses holding one, two and three pulls, so a control that offered
     every pull to every boss would read six three times, and one that offered
     the first boss's count to all would read one three times. A boss with a
-    summary offers it as one more option beside its pulls.
+    summary offers it as one more option beside its pulls, and every boss here
+    has pulls to summarise.
     """
     report = a_night_report()
     html = render_night(report)
@@ -478,10 +478,7 @@ def test_each_pull_control_offers_its_own_bosss_pulls_and_no_others() -> None:
     offered = {
         int(index): body.count("<option") for index, body in PULL_CONTROL.findall(html)
     }
-    assert offered == {
-        index: count + (1 if boss.summary else 0)
-        for index, (count, boss) in enumerate(zip(PULLS_PER_BOSS, report.bosses, strict=True))
-    }
+    assert offered == {index: count + 1 for index, count in enumerate(PULLS_PER_BOSS)}
 
 
 def test_every_pull_is_its_own_tab_group() -> None:
@@ -568,6 +565,8 @@ def pull_blocks(html: str) -> list[str]:
 
 
 SUMMARY_ID = re.compile(r'<section class="pull" data-night-pull-panel id="(b\d+-summary)">')
+PULL_SECTION_ID = re.compile(r'<section class="pull" data-night-pull-panel id="(f\d+-pull)">')
+ROW_LINK = re.compile(r'<a class="open-pull" href="#([^"]*)" data-night-show="([^"]*)">')
 
 
 def summary_blocks(html: str) -> dict[str, str]:
@@ -580,26 +579,62 @@ def summary_blocks(html: str) -> dict[str, str]:
     return blocks
 
 
-def test_a_boss_pulled_more_than_once_opens_on_its_summary() -> None:
+def test_every_boss_with_a_drawn_pull_opens_on_its_summary() -> None:
     """The summary is the first option, so a fresh page, and a boss not yet visited, opens on it."""
     html = a_night_page()
-    for index, count in enumerate(PULLS_PER_BOSS):
+    for index in range(len(PULLS_PER_BOSS)):
         control = re.search(
             rf'<select id="night-pull-b{index}" data-night-pull>(.*?)</select>', html, re.S
         )
         assert control is not None
         first = re.search(r'<option value="([^"]+)"', control.group(1))
         assert first is not None
-        if count >= 2:
-            assert first.group(1) == f"b{index}-summary"
-        else:
-            assert first.group(1).endswith("-pull"), "a single-pull boss opens on its pull"
+        assert first.group(1) == f"b{index}-summary"
 
 
-def test_exactly_the_bosses_pulled_more_than_once_carry_a_summary_section() -> None:
+def test_every_boss_with_a_drawn_pull_carries_a_summary_section() -> None:
     html = a_night_page()
-    expected = {f"b{i}-summary" for i, count in enumerate(PULLS_PER_BOSS) if count >= 2}
+    expected = {f"b{i}-summary" for i in range(len(PULLS_PER_BOSS))}
     assert set(summary_blocks(html)) == expected
+
+
+def summary_tab(block: str, scope: str) -> str:
+    """One boss summary's Summary tab: from its panel's own tag to the next panel's."""
+    rest = block.split(f'id="{scope}tab-summary"', 1)[1]
+    return rest.split('<section class="panel"', 1)[0]
+
+
+def test_a_summary_opens_on_its_headline_and_never_on_nothing_else_measured() -> None:
+    """The Summary tab's first heading is the boss's headline, for every boss on the page.
+
+    The assertion on the empty-state sentence is scoped to each boss's Summary
+    tab: a pull's own Summary, drawn on the same page, legitimately says it.
+    """
+    report = a_night_report()
+    blocks = summary_blocks(render_night(report))
+    assert len(blocks) == len(report.bosses)
+
+    for index, boss in enumerate(report.bosses):
+        assert boss.summary is not None
+        assert "the deepest left" in boss.summary.header.headline, (
+            "a wipe fixture whose headline names no depth pins nothing about the headline"
+        )
+        tab = summary_tab(blocks[f"b{index}-summary"], f"b{index}-")
+        first = re.search(r"<h2[^>]*>(.*?)</h2>", tab, re.S)
+        assert first is not None, index
+        assert first.group(1) == str(escape(boss.summary.header.headline))
+        assert "Nothing else measured" not in tab
+
+
+def test_a_once_pulled_boss_summary_never_counts_one_in_the_plural() -> None:
+    """The first boss is pulled once: its summary reads "1 attempt" on every tab."""
+    report = a_night_report()
+    assert report.bosses[0].summary is not None
+    assert report.bosses[0].summary.provenance.attempts_counted == 1
+    block = summary_blocks(render_night(report))["b0-summary"]
+
+    assert "1 attempt read" in block
+    assert re.search(r"\b1 attempts\b", block) is None
 
 
 def test_a_summary_draws_the_progression_tabs_under_its_own_scope() -> None:
@@ -620,8 +655,6 @@ def test_a_summary_draws_every_progression_finding_its_boss_earned() -> None:
     html = a_night_page()
     blocks = summary_blocks(html)
     for index, boss in enumerate(night.loaded):
-        if len(boss.attempts_with_events) < 2:
-            continue
         ids = {finding.id for finding in analyse_progression(boss)}
         assert ids, "a fixture boss with no progression finding pins nothing"
         drawn = set(re.findall(rf'id="b{index}-finding-([^"]+)"', blocks[f"b{index}-summary"]))
@@ -673,23 +706,36 @@ def test_a_fragment_link_inside_a_pull_lands_inside_that_same_pull() -> None:
     `#icon-<id>` is the one fragment that legitimately leaves the pull: those
     are the shared SVG symbols in the page's own icon table, defined once for
     every pull to draw from, which is the whole point of a symbol.
+
+    A boss summary is one of these blocks, and its attempt rows are the other
+    exception: each opens a pull, so it lands outside the summary by design.
+    Those links are told apart by their `data-night-show` attribute, never by
+    where they point, and each must land on a pull section of the page.
     """
-    blocks = pull_blocks(a_deep_night_page_with_icons())
+    html = a_deep_night_page_with_icons()
+    blocks = pull_blocks(html)
     assert len(blocks) == sum(PULLS_PER_BOSS) + summaries_on(a_night_report(deep_every_pull=True))
+    pull_sections = set(PULL_SECTION_ID.findall(html))
 
     checked = 0
+    opened = 0
     for index, block in enumerate(blocks):
         inside = set(re.findall(r'\sid="([^"]+)"', block))
-        targets = [
-            href[1:]
-            for href in re.findall(r'href="([^"]*)"', block)
-            if href.startswith("#") and not href.startswith("#icon-")
-        ]
+        targets: list[str] = []
+        for tag in re.findall(r'<[^>]*\shref="#[^"]*"[^>]*>', block):
+            href = re.search(r'\shref="#([^"]*)"', tag)
+            assert href is not None
+            if "data-night-show=" in tag:
+                assert href.group(1) in pull_sections, f"pull {index} opens {href.group(1)}"
+                opened += 1
+            elif not href.group(1).startswith("icon-"):
+                targets.append(href.group(1))
         assert targets, f"pull {index} drew no fragment link, so it proves nothing"
         checked += len(targets)
         for target in targets:
             assert target in inside, f"pull {index} links out to {target}"
     assert checked
+    assert opened == sum(PULLS_PER_BOSS), "every drawn pull's row link was met and checked"
 
 
 def test_a_trimmed_card_says_it_was_trimmed_instead_of_claiming_no_events() -> None:
@@ -797,28 +843,40 @@ def test_a_boss_whose_every_pull_failed_still_gets_a_control_and_says_so() -> No
         assert line in html
 
 
-def test_the_summary_option_counts_deepened_pulls_not_attempts() -> None:
-    """Three attempts, one failed: counted 3, deepened 2, and the label reads the smaller figure.
-
-    `night.html.j2` reads `attempts_deepened` for the option text. Both figures
-    live on the same `provenance` object, so a swap to `attempts_counted` would
-    still render a page -- just the wrong number on it, one no other test here
-    reads closely enough to catch.
-    """
-    report = a_night_report(a_night(bosses=(3,), failed=(12,)))
-    html = render_night(report)
-
-    assert report.bosses[0].summary is not None
-    assert report.bosses[0].summary.provenance.attempts_counted == 3
-    assert report.bosses[0].summary.provenance.attempts_deepened == 2
-
+def first_pull_option(html: str, boss_index: int) -> tuple[str, str]:
+    """A boss's pull control's first option: its value and the text a reader sees."""
     control = re.search(
-        r'<select id="night-pull-b0" data-night-pull>(.*?)</select>', html, re.S
+        rf'<select id="night-pull-b{boss_index}" data-night-pull>(.*?)</select>', html, re.S
     )
     assert control is not None
     first = re.search(r'<option value="([^"]+)">([^<]*)</option>', control.group(1))
     assert first is not None
-    assert first.group(2) == "Summary: 2 pulls"
+    return first.group(1), first.group(2)
+
+
+def test_the_summary_option_counts_deepened_pulls_not_attempts() -> None:
+    """Three attempts, two failed: counted 3, deepened 1, and the label reads the smaller figure.
+
+    The label is the builder's `summary_label`, which reads `attempts_deepened`.
+    Both figures live on the same `provenance` object, so a swap to
+    `attempts_counted` would still render a page -- just the wrong number on it,
+    one no other test here reads closely enough to catch. One pull, so the
+    singular is what is on the page.
+    """
+    report = a_night_report(a_night(bosses=(3,), failed=(11, 12)))
+    html = render_night(report)
+
+    assert report.bosses[0].summary is not None
+    assert report.bosses[0].summary.provenance.attempts_counted == 3
+    assert report.bosses[0].summary.provenance.attempts_deepened == 1
+
+    assert first_pull_option(html, 0) == ("b0-summary", "Summary: 1 pull")
+
+
+def test_the_summary_option_is_plural_beyond_one_pull() -> None:
+    report = a_night_report(a_night(bosses=(3,), failed=(12,)))
+
+    assert first_pull_option(render_night(report), 0) == ("b0-summary", "Summary: 2 pulls")
 
 
 BOSS_OPTION = re.compile(r'<select id="night-boss"[^>]*>(.*?)</select>', re.DOTALL)
@@ -1050,6 +1108,108 @@ def test_a_pulls_heaviest_moments_are_drawn_in_that_pulls_mechanics_panel() -> N
     assert ">None<" not in html
 
 
+def test_every_drawn_attempt_row_opens_its_pull() -> None:
+    """One row link per drawn pull, each naming a pull section that exists, and no other.
+
+    The second night has a pull that failed to load: its attempt is still a row,
+    and there is no pull section for it to open, so it carries no link.
+    """
+    one_failed = a_night(bosses=(3,), failed=(11,))
+    for night in (a_loaded_night(), one_failed):
+        report = a_night_report(night)
+        html = render_night(report)
+        links = ROW_LINK.findall(html)
+        assert links, "the page drew no row link, so this proves nothing"
+        assert all(href == shown for href, shown in links)
+
+        shown = sorted(target for _, target in links)
+        sections = sorted(PULL_SECTION_ID.findall(html))
+        drawn = sorted(
+            f"f{pull.report.provenance.fight_id}-pull"
+            for boss in report.bosses
+            for pull in boss.pulls
+        )
+        assert shown == sections == drawn
+
+    assert "f11-pull" not in render_night(a_night_report(one_failed))
+
+
+def test_a_pull_option_names_the_number_of_the_row_that_opens_it() -> None:
+    """After a failed pull, the option a row opens still carries that row's number.
+
+    The second of three attempts failed: the third row opens fight 12, and its
+    option must read "Pull 3", where a count of drawn pulls would print 2.
+    """
+    html = render_night(a_night_report(a_night(bosses=(3,), failed=(11,))))
+
+    numbers = dict(
+        (target, number)
+        for target, number in re.findall(
+            r'data-night-show="([^"]+)">(\d+)</a>', html
+        )
+    )
+    options = dict(re.findall(r'<option value="(f\d+-pull)">([^<]*)</option>', html))
+    assert set(numbers) == set(options) == {"f10-pull", "f12-pull"}
+    for target, number in numbers.items():
+        assert options[target].startswith(f"Pull {number} "), (target, options[target])
+    assert numbers["f12-pull"] == "3"
+
+
+def test_the_script_opens_a_pull_from_its_row() -> None:
+    """The script finds every row link by its attribute and reads the pull it names from it.
+
+    Read as text: nothing here runs the script, so this pins the two places it
+    meets the attribute rather than what a click does.
+    """
+    body = re.findall(r"<script\b[^>]*>(.*?)</script>", a_night_page(), flags=re.S | re.I)[0]
+
+    assert 'querySelectorAll("[data-night-show]")' in body
+    assert 'getAttribute("data-night-show")' in body
+
+
+def a_compared_night_page() -> str:
+    """The fixture night, every pull handed a sample behind the kills' pace."""
+    night = a_loaded_night()
+    samples = {
+        attempt.encounter.fight_id: a_sample(80, int(attempt.encounter.duration_seconds))
+        for boss in night.loaded
+        for attempt in boss.attempts_with_events
+    }
+    return render_night(build_night_report(
+        night, a_nights_findings(night), FETCHED, A_DEFENSIVE, NO_CONSUMABLES, NO_ROLES,
+        deep_fights=frozenset(), death_cards=True,
+        findings_by_boss={
+            boss.progression.encounter_id: tuple(analyse_progression(boss))
+            for boss in night.loaded
+        },
+        pace_by_fight=samples,
+    ))
+
+
+ATTEMPTS_TABLE = re.compile(r'<table class="attempts">(.*?)</table>', re.DOTALL)
+
+
+def test_only_a_compared_night_draws_the_verdict_and_pace_columns() -> None:
+    compared = ATTEMPTS_TABLE.findall(a_compared_night_page())
+    uncompared = ATTEMPTS_TABLE.findall(a_night_page())
+    assert len(compared) == len(uncompared) == len(PULLS_PER_BOSS)
+
+    for table in compared:
+        assert "<th>Verdict</th><th>Last pace reading</th>" in table
+        assert "<td>behind</td>" in table
+    for table in uncompared:
+        assert "<th>Verdict</th>" not in table
+        assert "<th>Last pace reading</th>" not in table
+    for table in (*compared, *uncompared):
+        assert "<th>First death</th><th>Held after it</th>" in table
+        # Every row draws exactly the cells its header names: a gate on the
+        # header alone would leave the rows of an uncompared night two cells long.
+        rows = re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.S)
+        assert len(rows) > 1, "a table with no attempt row proves nothing about its rows"
+        widths = {row.count("<th>") + row.count("<td>") for row in rows}
+        assert len(widths) == 1, widths
+
+
 NIGHT_GOLDEN = Path(__file__).parent / "golden" / "night.html"
 
 
@@ -1065,10 +1225,10 @@ def test_the_rendered_night_page_matches_the_golden_file(pytestconfig: pytest.Co
     )
 
 
-TRIMMED_NIGHT_BUDGET_BYTES = 95_000
-"""Measured 91,642 bytes from `golden_night_html()` on 2026-09-26 -- three bosses,
-six pulls, one death apiece, all trimmed, and two boss summaries -- rounded up by
-roughly 4%. The same fixture read deep is 116,987 bytes, well past this budget: a
+TRIMMED_NIGHT_BUDGET_BYTES = 101_000
+"""Measured 97,317 bytes from `golden_night_html()` on 2026-10-01 -- three bosses,
+six pulls, one death apiece, all trimmed, and three boss summaries -- rounded up by
+roughly 4%. The same fixture read deep is 122,662 bytes, well past this budget: a
 budget with room to spare is a test that cannot fail until the damage is done, so
 this one sits close enough to the real figure that a card regaining a field it
 lost, or a tier check that stopped trimming, moves it.

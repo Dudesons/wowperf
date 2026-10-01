@@ -123,6 +123,18 @@ class PaceReading(Frozen):
     reference_durations: tuple[float, ...]
 
 
+def pace_end(reading: PaceReading) -> tuple[PaceState, int | None]:
+    """The state a reading ends on, and the second it stopped at when its band ran out.
+
+    A cut reading's last state is where the comparison stopped, not where the
+    attempt did, so every sentence that states it names that second; the
+    second is None on a reading that ran to the attempt's end. Read only on a
+    reading with seconds.
+    """
+    last = reading.seconds[-1]
+    return last.state, last.second if reading.band_cut else None
+
+
 def cumulative_at(series: BossDamage, second: float) -> float:
     """Damage dealt by `second` from the pull: whole buckets, plus the covered part of one."""
     elapsed_ms = second * 1000 - series.lead_ms

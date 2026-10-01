@@ -24,7 +24,7 @@
 <main>
 
 <h1>{{ report.header.boss }} {{ report.header.difficulty }}</h1>
-<p class="sub">{{ report.header.outcome }} &middot; {{ report.header.attempts_counted }} attempts read{% if report.header.attempts_discarded %}, {{ report.header.attempts_discarded }} excluded as too short{% endif %} &middot; depth is {{ report.header.depth_label }}</p>
+<p class="sub">{{ report.header.outcome }} &middot; {{ report.header.read_line }} &middot; depth is {{ report.header.depth_label }}</p>
 
 <nav class="tabs" data-tab-group="{{ scope }}main" aria-label="Sections">
   <button type="button" class="tab" data-tab-for="{{ scope }}tab-summary">Summary</button>

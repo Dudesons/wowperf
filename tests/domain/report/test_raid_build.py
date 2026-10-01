@@ -19,11 +19,13 @@ from tests.domain.comparison.test_pace_player import a_wipe as a_player_pace_wip
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_ledger import RAID_FAMILIES
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, WITHHELD_ID, classify_attempt
+from wowperf.domain.analysis.deaths import analyse_deaths, fight_offset
 from wowperf.domain.analysis.defensives import _ceiling_withheld
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNANSWERED_ID
 from wowperf.domain.comparison.kill_time import KILL_TIME_ID, analyse_kill_time
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.comparison.pace import PACE_ID, PROJECTION_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace_curve import BossDamage
 from wowperf.domain.comparison.pace_player import (
     PLAYER_PACE_PREFIX,
     PLAYER_UNAVAILABLE_PREFIX,
@@ -40,7 +42,7 @@ from wowperf.domain.report.build import ceiling_withheld_line
 from wowperf.domain.report.deaths import NO_CARDS_ASKED
 from wowperf.domain.report.frame import NO_COMPARISON_RAN
 from wowperf.domain.report.model import SectionState
-from wowperf.domain.report.raid_build import build_raid_report
+from wowperf.domain.report.raid_build import build_raid_report, first_death_named
 from wowperf.domain.report.raid_model import RaidReport, all_raid_ledger_rows
 from wowperf.domain.season import Consumables, Defensives, Roles, ThroughputCooldowns
 
@@ -274,7 +276,9 @@ def test_every_finding_reaches_exactly_one_field() -> None:
 
     The page renders each field in turn, so a finding in two fields is drawn
     twice under two headings and a finding in none is measured and never
-    shown.
+    shown. A per-raider parse notice the withheld Damage tab states for the
+    whole fight is counted as stated there: this kill's tab is open, so none
+    of this fixture's is, and its notice has to reach its card.
     """
     loaded, subject = a_raid_fixture()
     findings = one_of_every_raid_family()
@@ -284,14 +288,15 @@ def test_every_finding_reaches_exactly_one_field() -> None:
         NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
-    placed = placements(report)
+    placed = placements(report) + stated_by_the_damage_tab(report, findings)
     assert placed, "the report drew no rows at all"
     assert report.summary_pointers, "no Summary pointer, so pointers and placements read alike"
     assert sorted(placed) == sorted(finding.id for finding in findings), (
         f"placed twice: {sorted(one for one, count in Counter(placed).items() if count > 1)}; "
         f"placed nowhere: {sorted({finding.id for finding in findings} - set(placed))}"
     )
-    for pointer in report.summary_pointers:
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID]
+    for pointer in (*report.summary_pointers, *report.kill_speed):
         assert pointer.finding_id in placed, (
             f"{pointer.finding_id} heads the Summary and no tab carries the card it points at"
         )
@@ -347,6 +352,437 @@ def test_the_only_raid_decomposition_heads_the_summary_and_is_not_drawn_twice() 
     assert "deaths.total" not in [row.finding_id for row in report.summary_pointers]
 
 
+FIRST_DEATH_MS = FIGHT_START_MS + 42_000
+"""Emberkin's death in `a_wipe_that_started_with`, 0:42 into the fight."""
+
+
+def a_wipe_that_started_with(*deaths: Death) -> LoadedEncounter:
+    """`a_raid_fixture`'s wipe, with a healer on the roster and the deaths given."""
+    return LoadedEncounter(
+        encounter=an_encounter(
+            boss_name="The Twin Fangs",
+            players=(EMBERKIN, STONEWAKE, HEALER),
+            kill=False,
+            fight_percentage=12.4,
+            start_ms=FIGHT_START_MS,
+            end_ms=FIGHT_END_MS,
+        ),
+        deaths=deaths,
+    )
+
+
+def a_death(player: Player, at_ms: int, killing_blow: str = "Shadow Torrent") -> Death:
+    """One death that cost 20 s of play, so every deaths finding carries a figure."""
+    return Death(
+        actor_id=player.actor_id, player_name=player.name, timestamp_ms=at_ms,
+        killing_blow=killing_blow, seconds_until_next_action=20.0,
+    )
+
+
+A_CHAIN_OF_THREE = (
+    a_death(EMBERKIN, FIRST_DEATH_MS, killing_blow="Ravenous Feast"),
+    a_death(STONEWAKE, FIRST_DEATH_MS + 3_000),
+    a_death(HEALER, FIRST_DEATH_MS + 8_000),
+)
+"""Emberkin first, at 0:42, and the other two within the chain window after."""
+
+
+def the_deaths_findings(loaded: LoadedEncounter) -> tuple[Finding, ...]:
+    """What `analyse_encounter` mints for these deaths, from the analyser itself.
+
+    Never hand-typed: the opening's pointer names a `deaths.chain.N` or
+    `deaths.single.N` id by the analyser's own numbering, and only the real
+    minting can tell a pointer that follows it from one that guesses.
+    """
+    return tuple(
+        analyse_deaths(
+            loaded.deaths, lambda death: fight_offset(FIGHT_START_MS, death),
+            "in 300s of The Twin Fangs", cost_detail_suffix="",
+        )
+    )
+
+
+def a_wipes_report(
+    loaded: LoadedEncounter, pace: PaceSample | None = None
+) -> RaidReport:
+    findings = the_deaths_findings(loaded)
+    if pace is not None:
+        findings = (*findings, *analyse_pace(loaded.encounter, pace))
+    return build_raid_report(
+        loaded, findings, EMBERKIN, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=pace,
+    )
+
+
+def test_a_wipe_summary_opens_on_how_it_started() -> None:
+    """Design 5.4: who died first, to what and when, how long the raid held, and the card.
+
+    The fight runs 300 s and the first death lands at 42 s, so the raid held
+    258 s, 4:18.
+    """
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE))
+
+    assert report.opening is not None
+    assert report.opening.first_death == (
+        "Emberkin (Arcane Mage) died first, to Ravenous Feast, at 0:42"
+    )
+    assert report.opening.held == "The raid held 4:18 after the first death"
+    assert report.opening.line == (
+        "Emberkin (Arcane Mage) died first, to Ravenous Feast, at 0:42. "
+        "The raid held 4:18 after the first death."
+    )
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.chain.0"
+
+
+def test_a_wipe_summary_ranks_no_losses_in_seconds() -> None:
+    """A wipe is not a race: `deaths.total` stays with the death cards, and nothing is ranked."""
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE))
+
+    assert report.ledger_decomposition == ()
+    assert report.summary_pointers == ()
+    assert "deaths.total" in [row.finding_id for row in report.death_rows]
+
+
+@pytest.mark.parametrize(
+    ("per_second", "lead"),
+    [
+        (100, "Ended on the reference kills' pace. The chart is on the Damage tab."),
+        (80, "Ended behind the reference kills' pace. The chart is on the Damage tab."),
+        (120, "Ended ahead of the reference kills' pace. The chart is on the Damage tab."),
+    ],
+)
+def test_a_wipe_summary_states_its_pace_in_any_state(per_second: int, lead: str) -> None:
+    """Every state is said, not only behind: the raid leader asks where the wipe stood."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample(per_second)
+    )
+
+    assert report.pace_line == lead
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_a_wipe_summary_states_the_pace_it_ended_in() -> None:
+    """Ahead of the kills for the first half, then nothing: the wipe ended behind.
+
+    Every steady sample above holds one state from its first second to its
+    last, so none of them can tell the state the wipe ended in from the one it
+    started in.
+    """
+    seconds = int(PACE_DURATION) + 60
+    half = int(PACE_DURATION) // 2
+    ours = BossDamage(
+        interval_ms=1000.0, amounts=tuple(150 if second < half else 0 for second in range(seconds))
+    )
+    kills = tuple(a_kill(100, seconds) for _ in range(3))
+    sample = PaceSample(ours=ours, references=kills)
+
+    report = a_wipes_report(a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=sample)
+
+    assert report.pace_line == (
+        "Ended behind the reference kills' pace. The chart is on the Damage tab."
+    )
+
+
+def a_pace_sample_cut_at_100s(per_second: int) -> PaceSample:
+    """Four kills, two of them over at 100 s: the band falls below three kills at 101 s,
+    so the comparison stops at 1:40, long before the 300 s wipe ends."""
+    seconds = int(PACE_DURATION) + 60
+    kills = (a_kill(100, 100), a_kill(100, 100), a_kill(100, seconds), a_kill(100, seconds))
+    return PaceSample(ours=steady(per_second, seconds), references=kills)
+
+
+@pytest.mark.parametrize(
+    ("per_second", "line"),
+    [
+        (80, "Behind the reference kills' pace when the comparison stopped, at 1:40."),
+        (100, "On the reference kills' pace when the comparison stopped, at 1:40."),
+        (120, "Ahead of the reference kills' pace when the comparison stopped, at 1:40."),
+    ],
+)
+def test_a_wipe_whose_pace_was_cut_short_says_where_it_stopped(
+    per_second: int, line: str
+) -> None:
+    """"Ended" would be false: the reading stops where the band does, not where the wipe did."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample_cut_at_100s(per_second)
+    )
+
+    assert report.pace_chart is not None and report.pace_chart.cut_x is not None
+    assert report.pace_line == f"{line} The chart is on the Damage tab."
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_a_wipe_points_at_its_first_deaths_card_in_time_order_not_cost_order() -> None:
+    """The first death's card is the earlier single, though the later one cost more.
+
+    The findings arrive ranked by cost, as `rank_raid_findings` hands them to
+    the builder, so neither the arrival order nor the cost names the card.
+    """
+    loaded = a_wipe_that_started_with(
+        a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast").model_copy(
+            update={"seconds_until_next_action": 5.0}
+        ),
+        a_death(STONEWAKE, FIRST_DEATH_MS + 100_000).model_copy(
+            update={"seconds_until_next_action": 90.0}
+        ),
+    )
+    findings = sorted(
+        the_deaths_findings(loaded), key=lambda finding: -(finding.seconds_lost or 0.0)
+    )
+    assert [one.id for one in findings][1:3] == ["deaths.single.1", "deaths.single.0"]
+
+    report = build_raid_report(
+        loaded, findings, EMBERKIN, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.0"
+    assert report.opening.chain.seconds == "0:05"
+
+
+def test_a_wipe_whose_first_death_was_alone_points_at_that_single() -> None:
+    loaded = a_wipe_that_started_with(a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast"))
+
+    report = a_wipes_report(loaded)
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.0"
+
+
+def test_a_wipe_points_at_the_group_holding_the_first_roster_death() -> None:
+    """An actor off the roster dying alone first is `deaths.single.0`, and not the card.
+
+    The analyser numbers every death the log holds, a pet's too, so the first
+    group is not always the one the first roster death sits in.
+    """
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    report = a_wipes_report(a_wipe_that_started_with(pet, *A_CHAIN_OF_THREE))
+
+    assert report.opening is not None
+    assert report.opening.first_death.startswith("Emberkin (Arcane Mage) died first")
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.chain.0"
+
+
+def test_a_wipe_counts_the_singles_before_the_first_roster_death() -> None:
+    """Each kind counts on from the groups before it, so a lone pet death makes Emberkin's 1."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    loaded = a_wipe_that_started_with(
+        pet, a_death(EMBERKIN, FIRST_DEATH_MS, "Ravenous Feast")
+    )
+
+    report = a_wipes_report(loaded)
+
+    assert report.opening is not None
+    assert report.opening.chain is not None
+    assert report.opening.chain.finding_id == "deaths.single.1"
+
+
+def test_a_wipe_whose_first_deaths_card_is_absent_points_at_nothing() -> None:
+    """The opening never points at a card the page does not draw.
+
+    Other findings are on the page, so a pointer that fell back to any of them
+    would be caught.
+    """
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), EMBERKIN, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.opening is not None
+    assert report.opening.first_death.startswith("Emberkin (Arcane Mage) died first")
+    assert report.opening.chain is None
+
+
+def test_the_first_death_is_the_first_raider_to_die_named_with_spec_and_class() -> None:
+    """A pet's earlier death is passed over: the first death is a raider's, by roster."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIGHT_START_MS + 10_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+    loaded = a_wipe_that_started_with(pet, *A_CHAIN_OF_THREE)
+
+    named = first_death_named(loaded)
+
+    assert named is not None
+    death, who = named
+    assert who == "Emberkin (Arcane Mage)"
+    assert death.actor_id == EMBERKIN.actor_id
+    assert first_death_named(a_wipe_that_started_with()) is None
+
+
+def test_a_deathless_wipe_says_nobody_died() -> None:
+    report = a_wipes_report(a_wipe_that_started_with())
+
+    assert report.opening is not None
+    assert report.opening.first_death == "Nobody died in this attempt"
+    assert report.opening.held == ""
+    assert report.opening.line == "Nobody died in this attempt."
+    assert report.opening.chain is None
+
+
+def test_a_kill_summary_ranks_its_losses_and_draws_no_wipe_opening_or_pace_line() -> None:
+    """A kill keeps its decomposition and ranked losses; a wipe's opening and pace line are not."""
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+    killed = loaded.model_copy(
+        update={"encounter": loaded.encounter.model_copy(update={"kill": True})}
+    )
+
+    report = build_raid_report(
+        killed, the_deaths_findings(killed), EMBERKIN, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=a_pace_sample(80),
+    )
+
+    assert report.opening is None
+    assert [row.finding_id for row in report.ledger_decomposition] == ["deaths.total"]
+    assert report.summary_pointers, "a kill's Summary ranks its losses"
+    assert report.pace_pointer is None
+    assert report.pace_line == ""
+
+
+def three_reference_kills() -> MechanicsSample:
+    """The leaderboard rows `analyse_kill_time` reads: three kills, so a median and a range."""
+    return MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code=f"ref{one}", fight_id=1, size=20, duration_ms=300_000
+                ),
+                abilities=(),
+            )
+            for one in range(3)
+        )
+    )
+
+
+def a_kills_speed_report(
+    *, kill_time: bool = True, pace: bool = True, pace_first: bool = False
+) -> RaidReport:
+    """A kill built from the real kill-time and pace analysers, in the order asked for.
+
+    `pace_first` hands the builder the pace finding ahead of the kill time, so a
+    kill-speed order read off the findings' own order and not the builder's is caught.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    sample = a_pace_sample(per_second=80)
+    kill_time_findings = (
+        analyse_kill_time(loaded.encounter, three_reference_kills()) if kill_time else []
+    )
+    pace_findings = analyse_pace(loaded.encounter, sample) if pace else []
+    findings = (
+        (*pace_findings, *kill_time_findings) if pace_first
+        else (*kill_time_findings, *pace_findings)
+    )
+    return build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample if pace else None,
+    )
+
+
+def test_a_kill_summary_opens_on_its_kill_speed() -> None:
+    """The kill time, then the pace: both cards stay on the Damage tab, pointed at once."""
+    report = a_kills_speed_report()
+
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID, PACE_ID]
+    assert {KILL_TIME_ID, PACE_ID} <= {row.finding_id for row in report.damage_rows}
+
+
+def test_a_kills_speed_pointers_keep_their_order_whatever_order_the_findings_came_in() -> None:
+    report = a_kills_speed_report(pace_first=True)
+
+    assert [row.finding_id for row in report.kill_speed] == [KILL_TIME_ID, PACE_ID]
+
+
+@pytest.mark.parametrize(
+    ("kill_time", "pace", "expected"),
+    [(True, False, [KILL_TIME_ID]), (False, True, [PACE_ID])],
+)
+def test_a_kill_points_only_at_the_kill_speed_cards_it_has(
+    kill_time: bool, pace: bool, expected: list[str]
+) -> None:
+    report = a_kills_speed_report(kill_time=kill_time, pace=pace)
+
+    assert [row.finding_id for row in report.kill_speed] == expected
+
+
+def test_a_kill_with_no_reference_kill_has_no_kill_speed_pointers() -> None:
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.kill_speed == ()
+
+
+def test_a_wipe_has_no_kill_speed_pointers() -> None:
+    """A wipe is not a race against other kills: its pace is `pace_pointer`, on its own line."""
+    report = a_wipes_report(
+        a_wipe_that_started_with(*A_CHAIN_OF_THREE), pace=a_pace_sample(80)
+    )
+
+    assert report.kill_speed == ()
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+
+
+def test_every_finding_on_a_kill_with_kill_speed_reaches_exactly_one_field() -> None:
+    """The kill-speed pointers repeat two Damage-tab cards, and `all_raid_ledger_rows` walks
+    neither, so each must point at a card some field does place, once."""
+    report = a_kills_speed_report()
+    findings_ids = [KILL_TIME_ID, PACE_ID]
+
+    assert sorted(placements(report)) == sorted(findings_ids)
+    for pointer in report.kill_speed:
+        assert pointer.finding_id in placements(report), f"{pointer.finding_id} points at no card"
+
+
+def test_every_finding_on_a_wipe_reaches_exactly_one_field() -> None:
+    """The wipe half of the rule above: no decomposition and no ranked loss on a wipe,
+    so `deaths.total` has to land on the Deaths tab rather than nowhere.
+
+    The opening's card and the pace card are pointers to cards placed on other
+    tabs, and `all_raid_ledger_rows` walks neither, so each must point at a card
+    some field does place.
+    """
+    loaded = a_wipe_that_started_with(*A_CHAIN_OF_THREE)
+    sample = a_pace_sample(80)
+    findings = (
+        *one_of_every_raid_family(),
+        *(one for one in analyse_pace(loaded.encounter, sample)
+          if one.id not in {finding.id for finding in one_of_every_raid_family()}),
+    )
+
+    report = build_raid_report(
+        loaded, findings, EMBERKIN, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    placed = placements(report) + stated_by_the_damage_tab(report, findings)
+    assert sorted(placed) == sorted(finding.id for finding in findings), (
+        f"placed twice: {sorted(one for one, count in Counter(placed).items() if count > 1)}; "
+        f"placed nowhere: {sorted({finding.id for finding in findings} - set(placed))}"
+    )
+    assert report.opening is not None and report.opening.chain is not None
+    assert report.pace_pointer is not None
+    for pointer in (report.opening.chain, report.pace_pointer):
+        assert pointer.finding_id in placed, f"{pointer.finding_id} points at no card"
+
+
 def test_a_wipe_withholds_the_damage_tab_and_says_why() -> None:
     """Design section 13, and the risk it names: an empty section teaches nothing."""
     loaded, subject = a_raid_fixture(kill=False)
@@ -397,6 +833,36 @@ def test_a_kill_one_raider_had_no_leaderboard_for_still_opens_the_damage_tab() -
     assert report.damage.state is SectionState.PRESENT
 
 
+def test_a_kill_whose_damage_tab_is_open_keeps_a_raiders_reason_on_their_card() -> None:
+    """An open Damage tab states no reason, so it cannot stand in for a card's.
+
+    The fight-wide reason a card may leave unsaid is the one the withheld Damage
+    tab prints. On a kill where one raider's leaderboard answered, the tab is
+    open on that raider's rows and says nothing; the other raider's own reason,
+    which is the first `compare.parse.unavailable` finding on the page, would be
+    stated nowhere if the card dropped it too.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    own = Finding(
+        id=f"compare.parse.unavailable.{STONEWAKE_SLUG}",
+        title="No ranked parse was available for Stonewake",
+        detail=ONE_RAIDERS_REASON,
+        confidence=Confidence.MEASURED,
+        player_slug=STONEWAKE_SLUG,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_kills_findings(), own), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    cards = {card.slug: card for card in report.players}
+    assert cards[STONEWAKE_SLUG].spell_and_talent.reason == ONE_RAIDERS_REASON
+    assert own.id in [row.finding_id for row in cards[STONEWAKE_SLUG].spell_and_talent_rows]
+
+
 def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
     """`--no-compare` withholds the same tab for a different reason, and says which.
 
@@ -412,6 +878,56 @@ def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
 
     assert report.damage.state is SectionState.WITHHELD
     assert report.damage.reason == NO_COMPARISON_RAN
+
+
+@pytest.mark.parametrize("kill", [True, False], ids=["kill", "wipe"])
+def test_a_raid_read_with_no_compare_states_its_reason_on_the_damage_tab_and_no_card(
+    kill: bool,
+) -> None:
+    """Ruling R32: nothing compared is a fact about the fight, so it is said once.
+
+    `raid --no-compare` hands no parse subject. The withheld Damage tab says
+    no reference was fetched, the Provenance keeps its one spell-and-talent
+    line, and no card repeats it: a twenty-raider page would otherwise print
+    the same paragraph twenty times. A kill and a wipe alike, since neither
+    outcome changes that nothing was fetched.
+    """
+    loaded, subject = a_raid_fixture(kill=kill)
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.state is SectionState.WITHHELD
+    assert report.damage.reason == NO_COMPARISON_RAN
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
+        assert card.spell_and_talent.reason == "", card.slug
+    assert [
+        line for line in report.provenance.withheld
+        if line.startswith("Spell and talent comparison")
+    ] == [f"Spell and talent comparison: {NO_COMPARISON_RAN}"]
+
+
+def test_a_raid_read_with_no_compare_whose_damage_tab_is_open_notes_the_reason_once() -> None:
+    """Rows of another comparison open the tab, so the reason is its note, and no card's.
+
+    No `raid` run hands a pace sample without a parse subject, but the rule is
+    what the tab prints: open, the tab's note is the one place it is said.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)
+
+    report = build_raid_report(
+        loaded, analyse_pace(loaded.encounter, sample), subject, None, FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == NO_COMPARISON_RAN
+    for card in report.players:
+        assert card.spell_and_talent.reason == "", card.slug
 
 
 def test_the_withheld_damage_tab_is_named_in_the_provenance() -> None:
@@ -442,10 +958,9 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
     times. The Mythic+ sibling repeats it per card because a keystone roster is
     five and five copies read as emphasis; twenty read as a bug.
 
-    The suppression is on this list alone. Each card still carries its own
-    reason, which is the half a reader looking at one raider needs without
-    scrolling to Provenance, and the second assertion is what keeps the fix
-    from being made in the wrong place.
+    The cards say nothing of it either: the Damage tab states the reason the
+    whole attempt shares, and a card restating it is the same repetition one
+    card at a time.
     """
     loaded, subject = a_raid_fixture(kill=False)
 
@@ -460,9 +975,87 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
         f"Damage against other kills: {WITHHELD_DETAIL}"
     ]
     assert report.players, "the fixture built no cards to check the reason survived on"
-    assert [card.spell_and_talent.reason for card in report.players] == [
-        WITHHELD_DETAIL, WITHHELD_DETAIL
+    assert [card.spell_and_talent.reason for card in report.players] == ["", ""]
+
+
+def test_a_wipe_states_the_parse_reason_on_its_damage_tab_and_on_no_card() -> None:
+    """Section 5.5: on a `raid --fight N` wipe the absence is stated once, on the Damage tab.
+
+    The reason is the attempt's -- the boss lived -- and not any raider's, so a
+    card that restated it would print the Damage tab's paragraph once per
+    raider: twice as the card's withheld line and its per-slug row, on every card.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.reason == WITHHELD_DETAIL
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
+        assert card.spell_and_talent.reason == "", card.slug
+        assert not [
+            row for row in card.spell_and_talent_rows
+            if row.finding_id.startswith("compare.parse.unavailable.")
+        ], card.slug
+    assert [
+        line for line in report.provenance.withheld
+        if line.startswith("Damage against other kills: ")
+    ] == [f"Damage against other kills: {WITHHELD_DETAIL}"]
+    assert not [
+        line for line in report.provenance.withheld
+        if line.startswith("Spell and talent comparison")
     ]
+
+
+def stated_by_the_damage_tab(report: RaidReport, findings: tuple[Finding, ...]) -> list[str]:
+    """The per-raider parse notices the Damage tab states for everyone at once.
+
+    A `compare.parse.unavailable.<slug>` finding whose detail is the very reason
+    the withheld Damage tab prints is said there, once, and reaches no ledger
+    field of its own. Read off the report's own Damage section, so a builder
+    that dropped such a finding from its card while the tab stood open --
+    saying nothing -- accounts for nothing here and is caught as placed nowhere.
+    """
+    if report.damage.state is not SectionState.WITHHELD:
+        return []
+    return [
+        finding.id
+        for finding in findings
+        if finding.id.startswith("compare.parse.unavailable.")
+        and finding.detail == report.damage.reason
+    ]
+
+
+def test_a_parse_reason_shared_by_the_fight_is_placed_once_not_per_raider() -> None:
+    """The per-raider notices the Damage tab states are reached by no ledger field.
+
+    Not on a card, and not under "Other findings" either: a notice taken off
+    the cards and left to `build_observations`' catch-all would be the same
+    paragraph moved, twice, to the bottom of the Summary. A timed finding and
+    a family nothing places ride along so the accounting is not vacuous.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    findings = (
+        *a_wipes_findings(),
+        a_finding("deaths.total", seconds=30.0),
+        a_finding(AN_UNPLACED_FAMILY),
+    )
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    stated = stated_by_the_damage_tab(report, findings)
+    assert sorted(stated) == sorted(one.id for one in a_wipes_findings())
+    placed = placements(report)
+    assert not set(placed) & set(stated), f"stated by the Damage tab and placed too: {placed}"
+    assert [row.finding_id for row in report.observations] == [AN_UNPLACED_FAMILY]
+    assert sorted(placed + stated) == sorted(finding.id for finding in findings)
 
 
 ONE_RAIDERS_REASON = (
@@ -909,11 +1502,14 @@ def test_a_behind_wipe_draws_the_pace_rows_the_chart_and_the_summary_pointer() -
     assert {PACE_ID, PROJECTION_ID} <= placed_ids
     assert report.damage.state is SectionState.PRESENT
     assert report.pace_chart is not None
-    assert report.pace_warning is not None
-    assert report.pace_warning.finding_id == PACE_ID
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+    assert report.pace_line == (
+        "Ended behind the reference kills' pace. The chart is on the Damage tab."
+    )
 
 
-def test_an_on_pace_wipe_draws_the_chart_but_raises_no_warning() -> None:
+def test_an_on_pace_wipe_draws_the_chart_and_states_it_ended_on_pace() -> None:
     loaded, subject = a_raid_fixture(kill=False)
     sample = a_pace_sample(per_second=100)  # matches the kills' own rate: on pace
     findings = analyse_pace(loaded.encounter, sample)
@@ -924,7 +1520,9 @@ def test_an_on_pace_wipe_draws_the_chart_but_raises_no_warning() -> None:
     )
 
     assert report.pace_chart is not None
-    assert report.pace_warning is None
+    assert report.pace_pointer is not None
+    assert report.pace_pointer.finding_id == PACE_ID
+    assert report.pace_line == "Ended on the reference kills' pace. The chart is on the Damage tab."
 
 
 def test_a_pace_comparison_that_found_nothing_is_disclosed_in_the_provenance_alone() -> None:
@@ -969,11 +1567,64 @@ def test_a_wipe_with_pace_rows_still_states_the_parse_reason_once() -> None:
     assert not [line for line in withheld if line.startswith("Spell and talent comparison for ")]
 
 
+def test_a_wipe_with_pace_rows_states_the_parse_reason_on_its_open_damage_tab() -> None:
+    """Design 5.5: on a raid wipe the reason stays, once, on the Damage tab.
+
+    A pace row opens the tab, so its withheld paragraph never prints; the
+    parse reason is then the tab's note beside the pace reading, and the cards
+    that leave it unsaid are covered by what the tab does print.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    sample = a_pace_sample(per_second=80)
+    findings = (*analyse_pace(loaded.encounter, sample), *a_wipes_findings())
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, pace=sample,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == WITHHELD_DETAIL
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.reason == "", card.slug
+        assert not [
+            row for row in card.spell_and_talent_rows
+            if row.finding_id.startswith("compare.parse.unavailable.")
+        ], card.slug
+
+
+def test_an_open_damage_tab_with_parse_rows_carries_no_note() -> None:
+    """The note is the parse comparison's withheld reason; a drawn comparison has none."""
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, a_kills_findings(), subject, frozenset({EMBERKIN_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    assert report.damage_note == ""
+
+
+def test_a_withheld_damage_tab_carries_its_reason_once_and_no_note() -> None:
+    """A withheld tab prints its reason as the tab; a note beside it would say it twice."""
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.reason == WITHHELD_DETAIL
+    assert report.damage_note == ""
+
+
 def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
     """A kill-time row opens the Damage tab, but it is not a parse row.
 
-    On a page whose parse axis was not drawn, `parse_withheld` is the reason the
-    Provenance states for it. Counting the kill-time row as one of the parse
+    On a page whose parse comparison left no row, the Provenance states why on
+    its Damage line. Counting the kill-time row as one of the parse
     comparison's own would read that axis as present and drop the line.
     """
     loaded, subject = a_raid_fixture(kill=True)
@@ -990,16 +1641,15 @@ def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
     )
     findings = tuple(analyse_kill_time(loaded.encounter, sample))
     assert [finding.id for finding in findings] == [KILL_TIME_ID]
-    reason = "The night page draws no parse comparison."
 
     report = build_raid_report(
         loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, parse_withheld=reason,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [row.finding_id for row in report.damage_rows] == [KILL_TIME_ID]
     assert report.damage.state is SectionState.PRESENT
-    assert f"Damage against other kills: {reason}" in report.provenance.withheld
+    assert f"Damage against other kills: {NO_COMPARISON_RAN}" in report.provenance.withheld
 
 
 def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:
@@ -1011,7 +1661,7 @@ def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:
     )
 
     assert report.pace_chart is None
-    assert report.pace_warning is None
+    assert report.pace_pointer is None
     assert report.damage_rows, "an open damage tab with no rows on it"
 
 

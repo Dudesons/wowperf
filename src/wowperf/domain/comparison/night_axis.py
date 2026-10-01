@@ -42,11 +42,38 @@ would both be false on it. It names what the night does compare against those
 kills, so the parse axis's absence is not read as the absence of every
 comparison. The parse half stays, and so do the six families and the pointer
 to `raid` -- which draws them for one kill, not one pull: on a wipe `raid`
-withholds all six, which is also what this night's own wipe pulls say on their
-cards.
+withholds all six.
 
-It is also each compared kill's own parse line, on its cards and its Damage
-tab: `WITHHELD_DETAIL` opens by saying the boss lived, false of a kill.
+It is said once for the page and on no pull: `WITHHELD_DETAIL` opens by saying
+the boss lived, false of a kill, and this sentence repeated on every pull's
+cards and Damage tab would be the same paragraph once per raider per pull.
+"""
+
+PULL_DAMAGE_NOT_DRAWN = (
+    "No damage comparison stands on this pull. Why the parse comparison is not drawn is stated "
+    "once, under Findings about the night; why this pull's damage pace was not compared, where "
+    "it was not, is in this pull's Provenance."
+)
+"""What a night pull's Damage tab says when it has no row: where the reasons are, not them.
+
+The parse axis's absence is the night's, stated once by `parse_axis_not_drawn`;
+a pace notice is the pull's own, stated once in its Provenance. A tab that
+restated either would print it once per pull.
+
+This sentence is for a pull the night handed a pace sample, whose Provenance
+says why the pace was not compared wherever it was not.
+"""
+
+PULL_DAMAGE_NOTHING_COMPARED = (
+    "No damage comparison stands on this pull. Why no comparison was drawn is stated once, "
+    "under Findings about the night."
+)
+"""A night pull's Damage tab with no row, on a pull the night handed no pace sample.
+
+Such a pull -- every pull of a `--no-compare` night -- carries no pace line in
+its Provenance, so pointing there as `PULL_DAMAGE_NOT_DRAWN` does would send a
+reader to a list that says nothing about pace. The night's own finding is the
+one place that says why nothing was compared.
 """
 
 TITLE = "No comparison against other kills is drawn on this page"

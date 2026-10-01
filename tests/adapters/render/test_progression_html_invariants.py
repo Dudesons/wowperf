@@ -39,9 +39,10 @@ FETCHED_AT = "2026-09-16 08:14"
 BOSS_NAME = "The Hollow Choir"
 """Deliberately not `an_attempt`'s own default ("Emberkin"): that default is also
 the name on `progression_fixtures._DEFAULT_PLAYER`'s one roster member, and the
-golden file below is read by eye for "no player name appears anywhere". Naming
-the boss something else keeps that reading unambiguous -- every "Emberkin" a
-regression could introduce would be a raider's name and nothing else.
+golden file below is read by eye for where a player name appears: in the
+attempts table's First death column and nowhere else. Naming the boss something
+else keeps that reading unambiguous -- every "Emberkin" on the page is a
+raider's name and nothing else.
 """
 
 
@@ -302,6 +303,47 @@ def test_every_finding_appears_exactly_once() -> None:
         assert ids.count(finding.id) == 1, finding.id
 
 
+def summary_tab(html: str) -> str:
+    """The Summary panel: from its own tag to the next panel's."""
+    return html.split('id="tab-summary"', 1)[1].split('<section class="panel"', 1)[0]
+
+
+def test_the_summary_carries_the_headline_as_its_first_heading() -> None:
+    report = a_progression_report()
+    html = render_progression(report)
+
+    assert "the deepest left 16.5% encounter progress" in report.header.headline
+    first = re.search(r"<h2[^>]*>(.*?)</h2>", summary_tab(html), re.S)
+    assert first is not None
+    assert first.group(1) == str(escape(report.header.headline))
+    assert "Nothing else measured" not in html
+
+
+def test_a_summary_with_no_findings_still_opens_on_its_headline_and_says_nothing_empty() -> None:
+    """The fixture's findings fill the catch-all; with none the tab does not announce it."""
+    report = build_progression_report(a_progression_series(), (), FETCHED_AT)
+    html = render_progression(report)
+
+    first = re.search(r"<h2[^>]*>(.*?)</h2>", summary_tab(html), re.S)
+    assert first is not None
+    assert first.group(1) == str(escape(report.header.headline))
+    assert "Nothing else measured" not in html
+    assert "Other findings" not in summary_tab(html)
+
+
+def test_the_summary_points_at_the_repeats_cards_it_names() -> None:
+    """A pointer is a link, never a second card: each lands on a card on the Repeats tab."""
+    html = a_progression_page()
+    summary = summary_tab(html)
+    repeats = html.split('id="tab-repeats"', 1)[1].split('<section class="panel"', 1)[0]
+
+    targets = re.findall(r'<a class="pointer" href="#([^"]+)"', summary)
+    assert targets == ["finding-progression.repeat.killing_blow"]
+    for target in targets:
+        assert f'id="{target}"' in repeats
+    assert "<h3>" not in re.findall(r'<a class="pointer"[^>]*>(.*?)</a>', summary, re.S)[0]
+
+
 def test_a_title_containing_markup_is_escaped() -> None:
     # Autoescaping is the only thing standing between an API-sourced string --
     # a boss name or a phase name Warcraft Logs supplied -- and the reader's
@@ -459,6 +501,40 @@ def test_the_ended_in_column_is_empty_when_the_series_does_not_separate_wipes() 
     html = a_progression_page_without_phase_separation()
     for cell in attempts_phase_column(html):
         assert cell == ""
+
+
+ATTEMPTS_TABLE = re.compile(r'<table class="attempts">(.*?)</table>', re.DOTALL)
+
+
+def attempts_table(html: str) -> str:
+    table = ATTEMPTS_TABLE.search(html)
+    assert table is not None, "the page drew no attempts table"
+    return table.group(1)
+
+
+def test_the_standalone_page_names_each_first_death_and_draws_no_comparison_column() -> None:
+    """First death and Held read the attempt's own deaths, which this command fetches.
+
+    The verdict and the pace need the pulls' findings and reference kills, which
+    this command never reads, so their columns are not drawn at all rather than
+    drawn full of dashes; and no row opens a pull, since this page holds none.
+    """
+    html = a_progression_page()
+    table = attempts_table(html)
+
+    assert "<th>First death</th>" in table
+    assert "<th>Held after it</th>" in table
+    assert "<th>Verdict</th>" not in table
+    assert "<th>Last pace reading</th>" not in table
+    # Fight 30's first death came 400 seconds into a 480-second attempt.
+    assert "<td>Emberkin (Holy Paladin), to x</td><td>1:20</td>" in table
+    assert "data-night-show" not in html
+    # And no row draws a cell its header does not name.
+    widths = {
+        row.count("<th>") + row.count("<td>")
+        for row in re.findall(r"<tr[^>]*>(.*?)</tr>", table, re.S)
+    }
+    assert widths == {7}
 
 
 PROGRESSION_GOLDEN = Path(__file__).parent / "golden" / "progression.html"

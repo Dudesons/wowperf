@@ -174,9 +174,12 @@ holds. There is no `--fight`, because covering every fight is the point.
 It draws no parse axis — the per-player comparison `raid` draws for a single kill. The parse axis
 is per player per boss, and across a whole report it would cost an order of magnitude more than
 everything else here put together, so `--player` and `--all-players` do not apply and are not
-offered; there is no per-player reference for them to widen. The page states that absence once, on
-its own, naming the families it leaves out — damage against the board, damage by target, casts a
-minute, talents, buff uptime, the percentile — rather than leaving them silently missing.
+offered; there is no per-player reference for them to widen. The page states that absence once,
+under Findings about the night, as a `compare.parse.not_drawn` row naming the families it leaves
+out — damage against the board, damage by target, casts a minute, talents, buff uptime, the
+percentile — rather than leaving them silently missing or repeating it on every pull and every
+player card. That row is on the page only: `<code>.night.json` does not carry it, so a reading of
+the findings file finds no such finding.
 `wowperf raid --fight N` is what draws the parse axis, for one kill; on a wipe `raid` withholds it
 too.
 `--narrative` is not offered either, for the reason `raid` and `progression` do not take it: this
@@ -191,15 +194,17 @@ through the one-day reference cache; our own damage-taken table is one query per
 compared wipes at one boss also add one line to that boss's Attempts tab, counting how many ended
 behind the kills' pace. `--no-compare` skips every comparison and analyses every pull in isolation.
 
-Every pull's spell-and-talent section is therefore empty, and why it is differs. On a night read
-with `--no-compare` it reads "No reference was fetched for this analysis, so there is nothing to
-compare against" — the same line `raid --no-compare` prints — and each wipe's verdict notice says
-no reference kills were drawn. A compared wipe reads the sentence `raid --fight N` prints for that
-wipe: the attempt did not kill the boss, so no parse leaderboard sample stands beside it and every
-parse family is withheld. A compared kill reads the night's own sentence instead, that this page
-never asks a parse leaderboard, since `raid` would draw the axis for that kill. Either way it says
-so where `raid` does — on every card, on the Damage tab when no other row opens it, and once in the
-pull's Provenance.
+Every pull's spell-and-talent section and every player card is therefore empty, and the page says
+why once, in that `compare.parse.not_drawn` row, rather than on each of them. Its wording follows the night:
+read with `--no-compare` it says nothing was compared against other kills, and each wipe's verdict
+notice says no reference kills were drawn; read compared, it says no parse comparison is drawn and
+names what the night does compare instead — what hit and killed the raid, each attempt's damage
+pace, each kill's time. A pull's Damage tab with no row of its own points to that finding, and to
+the pull's Provenance where its pace was withheld, instead of restating either. `raid --fight N`
+states it itself, once: on a wipe, as the Damage tab's withheld reason or, where other rows open
+that tab, as a note on it — never on each card. `raid --no-compare` is the same, kill or wipe: the
+Damage tab says no reference was fetched, the Provenance says it once for the spell and talent
+comparison, and no player card repeats it.
 
 What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws no death card at all,
 the cheapest tier a pull can be read at; left unset, the default trims every card to what each
@@ -213,11 +218,37 @@ the response cache and the output files, the same shapes the other three offer.
 It writes `<code>.night.json` and `<code>.night.html` — no fight or encounter id in either name,
 because the whole report is what `--out` writes for. The page draws every pull with the same
 seven panels `raid` draws for one — Summary, Damage, Mechanics, Deaths, Interrupts, Players,
-Provenance — behind two dropdowns, a boss and then a pull within it. A boss pulled two or more
-times opens on a summary before any pull: the page `wowperf progression` draws for that boss —
-its attempts, what kept repeating across them and what the best one did differently — built from
-the same findings the night's JSON writes under that boss. A boss pulled once has no summary,
-since one attempt leaves nothing to compare, and opens on its pull.
+Provenance — behind two dropdowns, a boss and then a pull within it.
+
+Every boss with at least one drawn pull opens on a summary before any pull: the page `wowperf
+progression` draws for that boss, built from the same findings the night's JSON writes under it.
+It opens on a headline, the outcome — killed on attempt N, or no kill and how far the deepest
+attempt got, as a percentage of boss health or of encounter progress. Then come the lead rows, in
+this order and each only where it fires: kill speed (`progression.lead.kill_speed`, a kill's time
+and pace, on a boss that died), why the wipes ended (`progression.lead.verdicts`), and what kept
+over-landing across the compared pulls (`progression.lead.overlanding`). Under them, "What kept
+repeating" points at the Repeats tab's killing-blow, first-death and ability cards, and any
+finding no tab claimed closes the panel. A boss drawn once has the same summary; its cluster
+finding is the median of one attempt, and its movement finding says the night is not compared.
+
+The Attempts tab's table has one row per attempt: the number, how deep it got, how long it ran,
+where it ended, and its deaths; then, on a compared night only, the wipe's verdict and its last
+pace reading, which names the clock the comparison stopped at where the reference kills' band ran
+out before the attempt did; then the first death (who, as what, to which ability) and how long the raid held after
+it. On the night page a row's number opens that pull. The standalone `wowperf progression` page
+has the first death and the hold but no verdict or pace column, and its rows open nothing.
+
+A wipe's pull Summary opens on its verdict, then on how it started: the first death, how long the
+raid held, and a pointer to that death's card. The pace line follows — ended behind, on or ahead of
+the reference kills' pace, or the same stated at the clock where the comparison stopped when the
+band ran out before the wipe did — and then the alive chart. It does not lead with the death count
+or rank losses in seconds; those stay on the Deaths tab, and `raid --fight N` on a wipe reads the
+same. A kill's pull Summary opens on kill speed, pointers to the kill time and the damage pace,
+wherever either was compared; read with `--no-compare`, or where neither comparison drew a
+reference kill, it has no kill speed to open on and starts at the alive chart.
+The night's Provenance groups the pulls that failed to load by reason, one line per reason naming
+every fight it kept out, and does not repeat a pull's withheld pace notice, which stays in that
+pull's own Provenance.
 
 A pull drawn at less than the
 deep tier still has its full death anatomy on hand elsewhere: `--deep` buys it back here for a

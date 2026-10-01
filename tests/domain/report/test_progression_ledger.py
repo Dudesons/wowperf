@@ -12,6 +12,9 @@ from wowperf.domain.report.progression_ledger import (
 @pytest.mark.parametrize(
     ("finding_id", "field"),
     [
+        ("progression.lead.kill_speed", "lead_rows"),
+        ("progression.lead.verdicts", "lead_rows"),
+        ("progression.lead.overlanding", "lead_rows"),
         ("progression.best", "best_rows"),
         ("progression.best.deaths", "best_rows"),
         ("progression.cluster", "attempt_rows"),

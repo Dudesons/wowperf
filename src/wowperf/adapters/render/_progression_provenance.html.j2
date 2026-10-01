@@ -3,7 +3,7 @@
 <section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-provenance">
 
 <h2 id="{{ scope }}provenance">Provenance</h2>
-<p class="sub">Report {{ report.provenance.report_code }}, encounter {{ report.provenance.encounter_id }}, {{ report.provenance.attempts_counted }} attempts read and {{ report.provenance.attempts_deepened }} deepened, fetched {{ report.provenance.fetched_at }}.</p>
+<p class="sub">Report {{ report.provenance.report_code }}, encounter {{ report.provenance.encounter_id }}, {{ report.provenance.read_line }}, fetched {{ report.provenance.fetched_at }}.</p>
 <p class="sub">No reference run of any kind was fetched: this page compares a night against itself.</p>
 {% for line in report.provenance.withheld %}
 <p class="withheld">{{ line }}</p>

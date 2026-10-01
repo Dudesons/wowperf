@@ -32,6 +32,7 @@ from wowperf.cli import (
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
 from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, SPIKES_ID, UNAVAILABLE_ID
+from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, NOT_DRAWN_DETAIL
 from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
@@ -711,8 +712,8 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
 ) -> None:
     """One findings object, two readers: a summary drawn from another list is a defect.
 
-    The first boss was pulled twice and has a summary; the second was pulled
-    once and has none, so its findings are in the file and on no summary.
+    The first boss was pulled twice and the second once, and each has a
+    summary: the drawn ids of each equal the ids the file writes for that boss.
 
     The id-set check alone would pass on a summary drawn from a *different*
     boss whose findings happen to carry the same ids -- `analyse_progression`
@@ -735,7 +736,10 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
     assert written, "a boss with no finding pins nothing"
     drawn = set(re.findall(r'id="b0-finding-([^"]+)"', html))
     assert drawn == written
-    assert 'id="b1-summary"' not in html
+    assert 'id="b1-summary"' in html
+    written_by_the_second = {finding["id"] for finding in boss1_findings}
+    assert written_by_the_second, "a boss with no finding pins nothing"
+    assert set(re.findall(r'id="b1-finding-([^"]+)"', html)) == written_by_the_second
 
     # Precondition: the two bosses' titles must differ, or the check below
     # would pass even if boss 0's summary drew boss 1's findings by mistake.
@@ -756,6 +760,16 @@ def test_each_boss_summary_draws_the_findings_the_file_writes_for_that_boss(
     boss0_summary_block = match.group(0)
     for finding in boss0_findings:
         assert str(escape(finding["title"])) in boss0_summary_block
+
+    second = re.search(
+        r'<section class="pull" data-night-pull-panel id="b1-summary">.*?'
+        r'(?=<section class="pull"|<section class="night-notes")',
+        html,
+        re.DOTALL,
+    )
+    assert second, "boss 1's summary section is not on the page"
+    for finding in boss1_findings:
+        assert str(escape(finding["title"])) in second.group(0)
 
 
 def test_deep_and_no_deaths_together_is_refused_naming_both(tmp_path: Path) -> None:
@@ -930,9 +944,24 @@ def test_each_boss_summary_asks_for_the_pooled_finding_only_with_death_cards(
 
     seen: list[bool] = []
 
-    def recording(series: Any, defensives: Any, *, death_cards: bool, pace: Any = None) -> Any:
+    def recording(
+        series: Any,
+        defensives: Any,
+        *,
+        death_cards: bool,
+        pace: Any = None,
+        pull_findings: Any = None,
+        mechanics_compared: frozenset[int] = frozenset(),
+    ) -> Any:
         seen.append(death_cards)
-        return analyse_night_boss(series, defensives, death_cards=death_cards, pace=pace)
+        return analyse_night_boss(
+            series,
+            defensives,
+            death_cards=death_cards,
+            pace=pace,
+            pull_findings=pull_findings,
+            mechanics_compared=mechanics_compared,
+        )
 
     monkeypatch.setattr(cli, "analyse_night_boss", recording)
     result = run_night(tmp_path, *flags)
@@ -1147,6 +1176,38 @@ def test_two_wipes_at_one_boss_each_carry_the_pace_comparison_and_pool_a_boss_li
     assert "progression.attempts.pace" not in _finding_ids(payload["bosses"][1]["findings"])
 
 
+def test_a_bosss_rollups_are_written_under_the_boss(tmp_path: Path) -> None:
+    """Design 5.2: a rollup counts its pulls' findings, so it belongs to the boss, not a pull.
+
+    The first boss was pulled twice and both wipes carry a verdict, so its
+    verdict rollup is written; it is computed from the pulls' own findings,
+    which only exist once every pull has been analysed.
+    """
+    result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(_written(tmp_path)[0].read_text(encoding="utf-8"))
+
+    first = payload["bosses"][0]
+    assert [pull["fight_id"] for pull in first["pulls"]] == [FIRST_PULL, SECOND_PULL]
+    [verdicts] = [one for one in first["findings"] if one["id"] == "progression.lead.verdicts"]
+    # The harness's fights carry no boss health, so each wipe's verdict is withheld.
+    assert verdicts["title"] == "No wipe's verdict could be read, of 2 wipes"
+    assert verdicts["evidence"] == [
+        "withheld, the report carried no boss health: 2 of 2 wipes (Fights 11–12)"
+    ]
+    # Both wipes drew reference kills, so both are in the over-landing
+    # rollup's denominator, and each names the harness's one hostile ability.
+    [overlanding] = [
+        one for one in first["findings"] if one["id"] == "progression.lead.overlanding"
+    ]
+    assert overlanding["title"] == "Venom Bolt over-landed in 2 of 2 compared attempts"
+    for boss in payload["bosses"]:
+        for pull in boss["pulls"]:
+            ids = _finding_ids(pull["findings"])
+            assert not any(one.startswith("progression.lead.") for one in ids), pull["fight_id"]
+
+
 def test_every_pull_reads_its_heaviest_moments_once(tmp_path: Path) -> None:
     result = run_night(tmp_path)
 
@@ -1304,9 +1365,10 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
 
     Every pull here is a wipe compared against the reference kills, so none of
     them may say no reference was fetched, or that no reference kills were
-    drawn: the command drew them. The parse axis says the wipe's own
-    sentence. The verdict reads the same sample `raid` reads, so its notice
-    is never one about a sample the page did not draw.
+    drawn: the command drew them. The parse axis's absence is said once, for
+    the page, in the compared night's words (design 5.5), and not in the
+    wipe's on any pull. The verdict reads the same sample `raid` reads, so its
+    notice is never one about a sample the page did not draw.
     """
     result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
 
@@ -1324,13 +1386,18 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
     assert str(escape(NO_COMPARISON_RAN)) not in html
     assert str(escape(NO_REFERENCE_SAMPLE)) not in html
     assert "draws no mechanics sample" not in html
-    assert str(escape(WITHHELD_DETAIL)) in html
+    assert str(escape(WITHHELD_DETAIL)) not in html
+    assert html.count(str(escape(NOT_DRAWN_COMPARED_DETAIL))) == 1
 
 
 def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_nothing(
     tmp_path: Path,
 ) -> None:
-    """The other half: `--no-compare` fetched nothing, and the page still says so."""
+    """The other half: `--no-compare` fetched nothing, and the page says so once.
+
+    The night's own finding says it, in `NOT_DRAWN_DETAIL`'s words; no pull
+    repeats that no reference was fetched, on its cards or its Damage tab.
+    """
     result = run_night(tmp_path, "--no-compare", kill_rankings=PACE_KILL_RANKINGS)
 
     assert result.exit_code == 0, result.output
@@ -1342,7 +1409,8 @@ def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_
             assert notice["detail"] == NO_REFERENCE_SAMPLE, pull["fight_id"]
 
     html = page_file.read_text(encoding="utf-8")
-    assert str(escape(NO_COMPARISON_RAN)) in html
+    assert html.count(str(escape(NOT_DRAWN_DETAIL))) == 1
+    assert str(escape(NO_COMPARISON_RAN)) not in html
     assert str(escape(WITHHELD_DETAIL)) not in html
 
 

@@ -1,21 +1,35 @@
-{# ABOUTME: The progression Summary panel: what the other tabs hold, and what none of them claimed. #}
-{# ABOUTME: No decomposition ledger and no pointer list -- a progression finding costs no seconds. #}
-{% from "_macros.html.j2" import ledger_row with context %}
+{# ABOUTME: The progression Summary panel: it opens on the headline, then the boss-level rollups. #}
+{# ABOUTME: Pointers open the Repeats cards; findings no tab claimed close the panel. #}
+{% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-summary">
 
-<p class="sub">Attempts holds the night's shape, Repeats holds what kept happening across it,
-and Best attempt holds what the deepest attempt did differently.</p>
+<h2 id="{{ scope }}headline">{{ report.header.headline }}</h2>
 
-<h2 id="{{ scope }}observations">Other findings</h2>
+{% if report.lead_rows %}
+<div class="findings">
+{% for row in report.lead_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
+
+{% if report.repeat_pointers %}
+<h2 id="{{ scope }}repeating">What kept repeating</h2>
+<p class="sub">Each line opens its card on the Repeats tab.</p>
+{% for row in report.repeat_pointers %}{{ pointer(row) }}{% endfor %}
+{% endif %}
+
 {% if report.observations %}
+<h2 id="{{ scope }}observations">Other findings</h2>
 <p class="sub">Findings no other section claimed.</p>
 <div class="findings">
 {% for row in report.observations %}
 {{ ledger_row(row) }}
 {% endfor %}
 </div>
-{% else %}
-<p class="sub">Nothing else measured.</p>
 {% endif %}
+
+<p class="sub">Attempts holds every attempt, Repeats what kept happening across them, and Best
+attempt what the deepest one did differently.</p>
 
 </section>

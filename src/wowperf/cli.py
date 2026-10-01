@@ -2146,17 +2146,6 @@ def night(
         pace_by_fight = {fight_id: one.pace for fight_id, one in comparisons.items()}
         records_by_fight = {fight_id: one.records for fight_id, one in comparisons.items()}
 
-        # Two lists, not one. A boss's findings read its attempts' metadata and
-        # a pull's read that pull's own streams; neither is a summary of the
-        # other, and section 9 writes both out under the boss they belong to.
-        # A boss's list also pools each player's defensives across that boss's
-        # pulls, which only the death-card tier has the casts for.
-        boss_findings = {
-            boss.progression.encounter_id: rank_raid_findings(
-                analyse_night_boss(boss, defensives, death_cards=death_cards, pace=pace_by_fight)
-            )
-            for boss in loaded.loaded
-        }
         # No parse subject: this command compares no player's parse, so
         # handing the analyser none is what leaves that axis undrawn rather
         # than drawn from nothing. Everything else `raid` compares, each pull
@@ -2179,6 +2168,29 @@ def night(
                 pace=comparison.pace if comparison else None,
                 answers=answers_for(attempt.encounter.players, throughput, externals, roles),
             )
+        # Two lists, not one. A boss's findings read its attempts' metadata and
+        # a pull's read that pull's own streams; neither is a summary of the
+        # other, and section 9 writes both out under the boss they belong to.
+        # A boss's list also pools each player's defensives across that boss's
+        # pulls, which only the death-card tier has the casts for, and closes
+        # on the rollups that count the pulls' own findings -- which is why it
+        # is built after them.
+        mechanics_compared = frozenset(
+            fight_id for fight_id, one in comparisons.items() if one.mechanics.members
+        )
+        boss_findings = {
+            boss.progression.encounter_id: rank_raid_findings(
+                analyse_night_boss(
+                    boss,
+                    defensives,
+                    death_cards=death_cards,
+                    pace=pace_by_fight,
+                    pull_findings=findings_by_fight,
+                    mechanics_compared=mechanics_compared,
+                )
+            )
+            for boss in loaded.loaded
+        }
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")

@@ -28,6 +28,7 @@ from tests.domain.report.test_raid_model import raid_view_model_types
 from wowperf.adapters.config.toml import load_externals, load_roles, load_throughput_cooldowns
 from wowperf.adapters.render.html import render_raid
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.domain.analysis.deaths import analyse_deaths, fight_offset
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.spikes import SPIKES_ID, answers_for
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
@@ -499,10 +500,11 @@ def test_a_behind_wipe_draws_the_pace_chart_and_the_summary_pointer() -> None:
     assert '<polyline class="pace-median"' in html
     assert '<polyline class="pace-ours"' in html
     assert '<line class="pace-mark"' in html
-    assert report.pace_warning is not None
+    assert report.pace_pointer is not None
     assert f'id="finding-{PACE_ID}"' in html
     assert f'href="#finding-{PACE_ID}"' in html
-    assert "Behind the reference kills' pace. The chart is on the Damage tab." in html
+    lead = "Ended behind the reference kills' pace. The chart is on the Damage tab."
+    assert str(escape(lead)) in html
 
 
 def test_the_page_carries_no_literal_none() -> None:
@@ -515,17 +517,59 @@ def test_the_page_carries_no_literal_none() -> None:
     assert ">None<" not in html
 
 
-def test_an_on_pace_wipe_draws_no_mark_and_no_pointer() -> None:
+def test_an_on_pace_wipe_draws_no_mark_and_states_it_ended_on_pace() -> None:
     """The other half of the behind page above: on pace draws the same chart
-    with neither the behind mark nor the Summary paragraph that only a
-    behind reading earns."""
+    without the behind mark, and the Summary says where the wipe stood all the
+    same -- a raid leader asks it of every wipe, not only a slow one."""
     report = a_wiped_raid_report_with_pace(per_second=100)
     html = render_raid(report)
+    summary = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
 
     assert 'class="pace-chart"' in html
-    assert report.pace_warning is None
+    assert report.pace_pointer is not None
     assert '<line class="pace-mark"' not in html
-    assert "Behind the reference kills' pace." not in html
+    lead = "Ended on the reference kills' pace. The chart is on the Damage tab."
+    assert str(escape(lead)) in summary
+    assert f'href="#finding-{PACE_ID}"' in summary
+    assert "behind the reference kills" not in html
+
+
+def test_a_wipes_summary_draws_how_it_started_and_no_decomposition() -> None:
+    """Design 5.4 at the render layer: a wipe's Summary opens on its first death.
+
+    The deaths findings come from `analyse_deaths` itself, and `deaths.total`
+    carries a figure, so the decomposition and the ranked losses would both
+    draw here if a wipe still earned them.
+    """
+    start = FIGHT_START_MS + 42_000
+    loaded = a_raid_fight(kill=False).model_copy(update={"deaths": tuple(
+        Death(
+            actor_id=player.actor_id, player_name=player.name, timestamp_ms=start + offset,
+            killing_blow="Ravenous Feast", killing_blow_id=KILLING_BLOW_ID,
+            seconds_until_next_action=20.0,
+        )
+        for player, offset in ((EMBERKIN, 0), (STONEWAKE, 3_000), (BRIALA, 8_000))
+    )})
+    deaths = analyse_deaths(
+        loaded.deaths, lambda death: fight_offset(FIGHT_START_MS, death),
+        "in 300s of The Twin Fangs", cost_detail_suffix="",
+    )
+    findings = (
+        *(one for one in a_wipes_findings() if not one.id.startswith("deaths.")),
+        *deaths,
+    )
+    html = render_raid(build_raid_report(
+        loaded, findings, EMBERKIN, COMPARED, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    ))
+    summary = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    assert (
+        "Emberkin (Arcane Mage) died first, to Ravenous Feast, at 0:42. "
+        "The raid held 4:18 after the first death."
+    ) in summary
+    assert 'href="#finding-deaths.chain.0"' in summary
+    assert "Figures that contain others" not in summary
+    assert "Biggest losses" not in summary
 
 
 def a_pace_sample_cut_short_of_the_wipe() -> PaceSample:
@@ -555,6 +599,20 @@ def test_a_band_cut_short_of_the_wipe_draws_the_cut_mark() -> None:
     assert report.pace_chart is not None
     assert report.pace_chart.cut_x is not None
     assert '<line class="pace-cut"' in html
+
+
+def test_a_band_cut_short_of_the_wipe_says_where_the_comparison_stopped() -> None:
+    """The Summary names the second the band ran out, not the wipe's end."""
+    html = render_raid(a_wiped_raid_report_with_cut_pace())
+    summary = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    line = (
+        "Behind the reference kills' pace when the comparison stopped, at 1:40. "
+        "The chart is on the Damage tab."
+    )
+    assert str(escape(line)) in summary
+    assert f'href="#finding-{PACE_ID}"' in summary
+    assert "Ended behind" not in html
 
 
 def a_wiped_raid_report_with_unavailable_pace() -> RaidReport:
@@ -1041,6 +1099,43 @@ def test_every_withheld_section_gives_a_reason() -> None:
     withheld = re.search(r'<p class="withheld">(.*?)</p>', panel, flags=re.S)
     assert withheld is not None, "the Damage tab was withheld and said nothing"
     assert withheld.group(1).strip() == str(escape(WITHHELD_DETAIL))
+
+
+def test_a_wipes_parse_reason_is_on_the_page_once() -> None:
+    """Design 5.5: a `raid --fight N` wipe states the parse axis's absence once.
+
+    Once on the Damage tab, and once more in the Provenance list, whose job is
+    to name every withheld section in one place -- and on no player card,
+    where it would be the same paragraph twice per raider.
+    """
+    html = a_wiped_raid_page()
+    reason = str(escape(WITHHELD_DETAIL))
+    damage = html[html.index('id="tab-damage"'):html.index('id="tab-mechanics"')]
+    players = html[html.index('id="tab-players"'):html.index('id="tab-provenance"')]
+    provenance = html[html.index('id="tab-provenance"'):]
+
+    assert 'id="player-' in players, "the fixture drew no player card to check"
+    assert damage.count(reason) == 1
+    assert players.count(reason) == 0
+    assert provenance.count(reason) == 1
+    assert html.count(reason) == 2
+
+
+def test_a_wipe_with_pace_rows_prints_its_parse_reason_on_the_open_damage_tab() -> None:
+    """Design 5.5 on a wipe whose Damage tab opens on its pace reading.
+
+    The tab is present, so its withheld paragraph is not drawn; the parse
+    reason must still stand on it, once, and on no player card.
+    """
+    html = a_wiped_raid_page_with_pace()
+    reason = str(escape(WITHHELD_DETAIL))
+    damage = html[html.index('id="tab-damage"'):html.index('id="tab-mechanics"')]
+    players = html[html.index('id="tab-players"'):html.index('id="tab-provenance"')]
+
+    assert 'class="pace-chart"' in damage, "the fixture's Damage tab did not open on pace"
+    assert 'id="player-' in players, "the fixture drew no player card to check"
+    assert damage.count(reason) == 1
+    assert players.count(reason) == 0
 
 
 def test_a_raid_report_with_no_mechanics_rows_states_nothing_to_report() -> None:
@@ -1755,9 +1850,35 @@ def test_a_kill_with_a_pace_sample_draws_the_chart_and_card_but_no_summary_warni
     rows = {row.finding_id: row for row in all_raid_ledger_rows(report)}
     assert rows[PACE_ID].detail == KILL_DETAIL
     assert PROJECTION_ID not in rows
-    assert report.pace_warning is None
+    assert report.pace_pointer is None
     assert "a kill behind their pace is the expected result" in golden_raid_html()
-    assert "Behind the reference kills' pace." not in golden_raid_html()
+    assert "The chart is on the Damage tab." not in golden_raid_html()
+
+
+def test_a_kill_summary_draws_kill_speed_first() -> None:
+    """The golden kill carries a kill time (its mechanics sample) and a pace, so the
+    Summary opens on both, ahead of every other heading, each a link and not a card."""
+    html = golden_raid_html()
+    panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+
+    headings = re.findall(r"<h2[^>]*>(.*?)</h2>", panel, flags=re.S)
+    assert headings, "the Summary draws no heading at all"
+    assert headings[0].strip() == "Kill speed"
+    first_h2 = panel.index("<h2")
+    assert 'id="kill-speed"' in panel[first_h2:panel.index("</h2>", first_h2)]
+    next_h2 = panel.index("<h2", first_h2 + 1)
+    kill_time_at = panel.index(f'href="#finding-{KILL_TIME_ID}"')
+    pace_at = panel.index(f'href="#finding-{PACE_ID}"')
+    assert first_h2 < kill_time_at < pace_at < next_h2
+    assert f'id="finding-{PACE_ID}"' not in panel
+
+
+def test_a_summary_with_no_kill_speed_draws_no_kill_speed_heading() -> None:
+    """A wipe, and a kill with no reference kill, have nothing to point at."""
+    for html in (a_wiped_raid_page(), render_raid(a_minimal_raid_report())):
+        panel = html[html.index('id="tab-summary"'):html.index('id="tab-damage"')]
+        assert "Kill speed" not in panel
+        assert 'id="kill-speed"' not in panel
 
 
 def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> None:

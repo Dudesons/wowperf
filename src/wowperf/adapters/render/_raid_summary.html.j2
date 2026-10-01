@@ -1,16 +1,28 @@
-{# ABOUTME: The raid Summary panel: the decomposition ledger, the biggest losses, and what's left. #}
+{# ABOUTME: The raid Summary panel: a kill's speed, the verdict, how a wipe started, its pace, and what's left. #}
 {# ABOUTME: A pointer is a link to a card on another tab, never a second copy of it. #}
 {% from "_macros.html.j2" import ledger_row, pointer with context %}
 <section class="panel" data-tab-panel="{{ scope }}main" id="{{ scope }}tab-summary">
+{% if report.kill_speed %}
+<h2 id="{{ scope }}kill-speed">Kill speed</h2>
+<p class="sub">Against the execution leaderboard's kills. Each line opens its card on the Damage tab.</p>
+{% for row in report.kill_speed %}
+{{ pointer(row) }}
+{% endfor %}
+{% endif %}
 {% if report.verdict %}
 <h2 id="{{ scope }}verdict">Why this attempt ended</h2>
 <div class="findings verdict">
 {{ ledger_row(report.verdict) }}
 </div>
 {% endif %}
-{% if report.pace_warning %}
-<p class="sub">Behind the reference kills' pace. The chart is on the Damage tab.</p>
-{{ pointer(report.pace_warning) }}
+{% if report.opening %}
+<h2 id="{{ scope }}opening">How it started</h2>
+<p class="sub">{{ report.opening.line }}</p>
+{% if report.opening.chain %}{{ pointer(report.opening.chain) }}{% endif %}
+{% endif %}
+{% if report.pace_pointer %}
+<p class="sub">{{ report.pace_line }}</p>
+{{ pointer(report.pace_pointer) }}
 {% endif %}
 
 {% if report.alive_chart %}

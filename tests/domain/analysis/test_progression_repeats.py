@@ -7,6 +7,7 @@ from tests.domain.test_progression import an_attempt
 from wowperf.domain.analysis.progression_repeats import (
     collapse,
     collapse_seconds,
+    first_roster_death,
     repeat_ability,
     repeat_first_death,
     repeat_killing_blow,
@@ -162,6 +163,46 @@ def test_collapse_seconds_ignores_a_death_outside_the_roster() -> None:
     # From the roster death at 30s to the 100s end -- 70s -- never from the
     # pet/unidentified death at 10s, which would read 90s instead.
     assert collapse_seconds(one) == 70.0
+
+
+def test_the_first_roster_death_is_the_earliest_death_of_a_rostered_player() -> None:
+    """A pet or an unidentified actor dying first is not the attempt's first death.
+
+    The roster death is also not the last one in the stream, so a function that
+    took the latest death, or the first in stream order, could not pass.
+    """
+    roster = (
+        Player(actor_id=1, name="Emberkin", class_name="Mage", spec="Frost", item_level=600),
+        Player(actor_id=2, name="Stonewake", class_name="Shaman", spec="Elemental", item_level=600),
+    )
+    encounter = an_attempt(1, 50.0, 100.0, players=roster)
+    start = encounter.start_ms
+    later = Death(
+        player_name="Stonewake", actor_id=2, timestamp_ms=start + 50_000, killing_blow="x",
+    )
+    first = Death(
+        player_name="Emberkin", actor_id=1, timestamp_ms=start + 30_000, killing_blow="x",
+    )
+    pet = Death(
+        player_name="Unidentified", actor_id=999, timestamp_ms=start + 10_000, killing_blow="x",
+    )
+    one = LoadedEncounter(encounter=encounter, deaths=(later, pet, first))
+
+    assert first_roster_death(one) == first
+
+
+def test_the_first_roster_death_breaks_a_tie_by_actor_id() -> None:
+    """The tie rule `_earliest_death` applies, so the two never name different deaths."""
+    forwards = first_roster_death(tied_attempt(1, order="forwards"))
+    backwards = first_roster_death(tied_attempt(1, order="backwards"))
+
+    assert forwards is not None and backwards is not None
+    assert forwards.actor_id == backwards.actor_id == ROSTER[0].actor_id
+
+
+def test_no_roster_death_is_none() -> None:
+    assert first_roster_death(loaded_attempt_with_roster(1, first_dead_index=None)) is None
+    assert first_roster_death(a_loaded_attempt(1, seconds=100.0, deaths_after_ms=())) is None
 
 
 # --- progression.repeat.first_death ---

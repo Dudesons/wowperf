@@ -24,12 +24,16 @@
 
 <table class="attempts">
 <thead>
-<tr><th>#</th><th>Depth left ({{ report.header.depth_label }})</th><th>Duration</th><th>Ended in</th><th>Deaths</th></tr>
+<tr><th>#</th><th>Depth left ({{ report.header.depth_label }})</th><th>Duration</th><th>Ended in</th><th>Deaths</th>{% if report.compared %}<th>Verdict</th><th>Last pace reading</th>{% endif %}<th>First death</th><th>Held after it</th></tr>
 </thead>
 <tbody>
 {% for row in report.attempts %}
 <tr{% if row.is_best %} class="best"{% endif %}>
-<td>{{ row.index }}</td><td>{{ row.depth }}</td><td>{{ row.duration }}</td><td>{{ row.phase }}</td><td>{{ row.deaths }}</td></tr>
+{# A row opens its pull only where the page holds one: the night page passes #}
+{# `scopes`, naming every drawn pull, and the standalone page passes none. #}
+{% if scopes is defined and row.fight_id in scopes %}
+<td><a class="open-pull" href="#{{ scopes[row.fight_id] }}pull" data-night-show="{{ scopes[row.fight_id] }}pull">{{ row.index }}</a></td>{% else %}
+<td>{{ row.index }}</td>{% endif %}<td>{{ row.depth }}</td><td>{{ row.duration }}</td><td>{{ row.phase }}</td><td>{{ row.deaths }}</td>{% if report.compared %}<td>{{ row.verdict }}</td><td>{{ row.pace }}</td>{% endif %}<td>{{ row.first_death }}</td><td>{{ row.held }}</td></tr>
 {% endfor %}
 </tbody>
 </table>

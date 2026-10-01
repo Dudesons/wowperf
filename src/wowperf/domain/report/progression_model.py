@@ -13,12 +13,20 @@ class ProgressionHeader(Frozen):
     `depth_label` names the scale every percentage on this page is on, once,
     where a reader meets it first. Section 2.4: a printed percentage that does
     not say which one it is, is a figure nobody can act on.
+
+    `outcome` is the fact alone ("Killed on attempt 3 of 7"). `headline` is what
+    the Summary opens on: the same sentence for a kill, and for a boss not yet
+    killed the outcome followed by how deep the deepest attempt got.
+    `read_line` is how many attempts were read and how many left out, already
+    in the right number, for the line under the title.
     """
 
     boss: str
     difficulty: str
     size: int
     outcome: str
+    headline: str
+    read_line: str
     attempts_counted: int
     attempts_discarded: int
     depth_label: str
@@ -31,6 +39,11 @@ class AttemptRow(Frozen):
     honest empty state -- an attempt the report gave no percentage for, and an
     attempt that was never deepened -- and a zero standing in for either would
     read as a measurement.
+
+    `verdict`, `pace`, `first_death` and `held` are how the attempt ended: the
+    pull's own wipe verdict, its pace state at the end, who died first and to
+    what, and how long the raid held after that death. The page draws the first
+    two only when `ProgressionReport.compared` says a comparison ran.
     """
 
     index: int
@@ -39,6 +52,10 @@ class AttemptRow(Frozen):
     duration: str
     phase: str = ""
     deaths: str
+    verdict: str = ""
+    pace: str = ""
+    first_death: str = ""
+    held: str = ""
     is_best: bool = False
     is_kill: bool = False
 
@@ -87,6 +104,9 @@ class ProgressionProvenance(Frozen):
 
     report_code: str
     encounter_id: int
+    # How many attempts were read and how many deepened, already in the right
+    # number, for the line the Provenance tab opens on.
+    read_line: str
     attempts_counted: int
     attempts_deepened: int
     fetched_at: str
@@ -98,10 +118,21 @@ class ProgressionReport(Frozen):
     header: ProgressionHeader
     chart: AttemptsChart
     attempts: tuple[AttemptRow, ...] = ()
+    # Whether the attempts were read against reference kills: true on a night
+    # page drawn with comparison on, and the only thing that draws the Verdict
+    # and Pace columns. The standalone progression page compares nothing.
+    compared: bool = False
+    # The boss-level rollups a night summary opens on: kill speed, why wipes
+    # ended, what kept over-landing. Empty on the standalone progression page.
+    lead_rows: tuple[LedgerRow, ...] = ()
     # Where attempts sat: the cluster, the movement, what was discarded.
     attempt_rows: tuple[LedgerRow, ...] = ()
     # What repeated: the phase, who fell first, what kept landing, the collapse.
     repeat_rows: tuple[LedgerRow, ...] = ()
+    # Points at the killing-blow, first-death and ability cards on the Repeats
+    # tab, in that order and each only if the night carries it. The cards stay
+    # on Repeats; the Summary links to them. Each equals its card.
+    repeat_pointers: tuple[LedgerRow, ...] = ()
     # What the deepest attempt did differently, and which attempt it was.
     best_rows: tuple[LedgerRow, ...] = ()
     # Withheld when no attempt was deepened, with the reason a reader needs.
@@ -118,7 +149,12 @@ def all_progression_ledger_rows(report: ProgressionReport) -> Iterator[LedgerRow
     One place names the fields, so a caller cannot reach four of the five tabs
     and lose the fifth in silence: a row whose ability reaches the page without
     reaching the icon resolver draws nothing and reports nothing.
+
+    `report.repeat_pointers` is the deliberate exception: it repeats cards
+    `repeat_rows` already carries, as links, so walking it would count each of
+    those rows twice for every caller, including the once-only checks.
     """
+    yield from report.lead_rows
     yield from report.attempt_rows
     yield from report.repeat_rows
     yield from report.best_rows

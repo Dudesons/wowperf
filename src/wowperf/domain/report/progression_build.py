@@ -1,9 +1,10 @@
 # ABOUTME: Turns a night of attempts and its findings into the value the page renders.
 # ABOUTME: A sibling of raid_build.py with no death cards, no subject and no reference.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from wowperf.domain.findings import Finding
+from wowperf.domain.comparison.pace import PaceSample
+from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression
 from wowperf.domain.report.build import _check_unique_finding_ids
 from wowperf.domain.report.ledger import build_observations, place_rows, placed_finding_ids
@@ -12,6 +13,13 @@ from wowperf.domain.report.progression_chart import build_attempts_chart
 from wowperf.domain.report.progression_frame import build_attempt_rows, build_progression_header
 from wowperf.domain.report.progression_ledger import PROGRESSION_PLACEMENTS
 from wowperf.domain.report.progression_model import ProgressionProvenance, ProgressionReport
+
+REPEAT_POINTER_IDS = (
+    "progression.repeat.killing_blow",
+    "progression.repeat.first_death",
+    "progression.repeat.ability",
+)
+"""The Repeats cards the Summary points at, in the order it points at them."""
 
 NOTHING_DEEPENED = (
     "No attempt was deepened, so there is nothing to compare the best one against."
@@ -35,6 +43,9 @@ def build_progression_report(
     series: LoadedProgression,
     findings: Sequence[Finding],
     fetched_at: str,
+    *,
+    pull_findings: Mapping[int, Sequence[Finding]] | None = None,
+    pace: Mapping[int, PaceSample] | None = None,
 ) -> ProgressionReport:
     """Everything the progression page shows, decided here so the template decides nothing.
 
@@ -49,6 +60,12 @@ def build_progression_report(
     forbids this page from redrawing one fight's anatomy. There are no
     `reference_records` and no `compared_slugs`: this command draws no external
     sample at all, which is what makes it an order of magnitude cheaper.
+
+    `pull_findings` and `pace` are each pull's own findings and pace sample,
+    keyed by fight id, which the night page holds and hands on so each attempt
+    row can say how that pull ended. The page is `compared` exactly when it is
+    handed a pace sample: a night read with comparison on hands every drawn
+    pull one, and the standalone page and a `--no-compare` night hand none.
     """
     _check_unique_finding_ids(findings)
     titles_by_id = {finding.id: finding.title for finding in findings}
@@ -65,18 +82,31 @@ def build_progression_report(
     )
 
     placed_ids = placed_finding_ids((), placed, ())
+    # Each pointer is the Repeats card itself, so it can never say what its card
+    # does not; the order is the table's, whatever order the findings came in.
+    repeat_pointers = tuple(
+        row for wanted in REPEAT_POINTER_IDS for row in placed["repeat_rows"]
+        if row.finding_id == wanted
+    )
     return ProgressionReport(
         header=build_progression_header(series),
         chart=build_attempts_chart(series),
-        attempts=build_attempt_rows(series),
+        attempts=build_attempt_rows(series, pull_findings=pull_findings, pace=pace),
+        compared=bool(pace),
+        lead_rows=placed["lead_rows"],
         attempt_rows=placed["attempt_rows"],
         repeat_rows=placed["repeat_rows"],
+        repeat_pointers=repeat_pointers,
         best_rows=placed["best_rows"],
         best=best,
         observations=build_observations(findings, placed_ids, titles_by_id, {}),
         provenance=ProgressionProvenance(
             report_code=series.progression.report_code,
             encounter_id=series.progression.encounter_id,
+            read_line=(
+                f"{quantity(len(series.progression.attempts), 'attempt', 'attempts')} read "
+                f"and {deepened} deepened"
+            ),
             attempts_counted=len(series.progression.attempts),
             attempts_deepened=deepened,
             fetched_at=fetched_at,

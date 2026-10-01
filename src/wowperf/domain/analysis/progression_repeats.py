@@ -94,23 +94,33 @@ def repeat_phase(progression: Progression) -> Finding | None:
     )
 
 
+def first_roster_death(one: LoadedEncounter) -> Death | None:
+    """The earliest death of a player on this attempt's roster, or None.
+
+    A pet or an unidentified actor dying first is not a roster player's death.
+    Ties break on the lowest actor id, the rule `_earliest_death` applies, so a
+    stream listing two simultaneous deaths in either order names the same one.
+    """
+    roster_ids = {player.actor_id for player in one.players}
+    deaths = [death for death in one.deaths if death.actor_id in roster_ids]
+    return min(deaths, key=lambda death: (death.timestamp_ms, death.actor_id), default=None)
+
+
 def _first_death_ms(one: LoadedEncounter) -> int | None:
     """The timestamp of an attempt's first roster death, or None if no roster
     player died.
 
     The one figure `collapse_seconds` and `repeat_ability` both build their
     window from, so the two findings cannot disagree about when an attempt
-    started falling apart. Filtered to `one.players` for the same reason
-    `repeat_first_death` matches its own earliest death against the roster: a
-    pet or an unidentified actor dying first is not a roster player's death,
-    and letting one anchor this window would let the three analysers disagree
-    about which death started an attempt's collapse.
+    started falling apart. Read off `first_roster_death`, which filters to
+    `one.players` for the same reason `repeat_first_death` matches its own
+    earliest death against the roster: a pet or an unidentified actor dying
+    first is not a roster player's death, and letting one anchor this window
+    would let the three analysers disagree about which death started an
+    attempt's collapse.
     """
-    roster_ids = {player.actor_id for player in one.players}
-    deaths = [death for death in one.deaths if death.actor_id in roster_ids]
-    if not deaths:
-        return None
-    return min(death.timestamp_ms for death in deaths)
+    death = first_roster_death(one)
+    return None if death is None else death.timestamp_ms
 
 
 def collapse_seconds(one: LoadedEncounter) -> float | None:

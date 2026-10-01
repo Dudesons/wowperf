@@ -12,6 +12,7 @@ from wowperf.domain.comparison.pace_curve import (
     earlier_behind,
     final_behind_start,
     lag_against,
+    pace_end,
     read_pace,
     sum_boss_damage,
 )
@@ -110,6 +111,21 @@ def test_the_single_kill_ending_first_cuts_the_comparison() -> None:
 
 def test_no_reference_reads_nothing() -> None:
     assert read_pace(steady(100, 30), (), 30.0) is None
+
+
+def test_a_reading_run_to_the_wipes_end_ends_on_its_last_state_and_no_cut() -> None:
+    kills = (a_kill(100, 60), a_kill(100, 60), a_kill(100, 60))
+    reading = read_pace(steady(80, 30), kills, 30.0)
+    assert reading is not None
+    assert pace_end(reading) == (PaceState.BEHIND, None)
+
+
+def test_a_cut_reading_ends_on_the_second_the_comparison_stopped() -> None:
+    """Two kills end at 20 s, so the comparison stops there and not at the wipe's 40 s."""
+    kills = (a_kill(100, 20), a_kill(100, 20), a_kill(100, 60), a_kill(100, 60))
+    reading = read_pace(steady(140, 40), kills, 40.0)
+    assert reading is not None
+    assert pace_end(reading) == (PaceState.AHEAD, 20)
 
 
 def test_the_target_is_the_median_of_the_kills_totals_at_their_own_ends() -> None:

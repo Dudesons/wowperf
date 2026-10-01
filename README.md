@@ -104,6 +104,15 @@ offered, and the page says so once instead of leaving those families silently mi
 death cards from the whole page instead, and the two together are a contradiction the command
 refuses. It writes `<code>.night.json` and `<code>.night.html`.
 
+Every boss with at least one pull on the page opens on a summary, led by how the night went at it:
+killed on which attempt, or how deep the deepest attempt got. Under that come how fast the kill
+was against other kills, why the wipes ended, which abilities kept landing harder than they did
+for the reference kills, and what kept repeating across attempts. Each attempt is a row saying how
+deep it got, how it ended, who died first and how long the raid held after; a row opens its pull.
+A wipe's own page opens on why it ended, where a verdict was reached, then on how it started
+rather than on its death toll; a kill's opens on its speed wherever a reference kill was drawn to
+compare it with.
+
 ## Asking Claude to coach you
 
 The tool gives you a report. The skills give you someone to read it with.
@@ -131,7 +140,9 @@ Without Claude Code, everything above still works. You read the report yourself.
 A key gets six tabs — Summary, Route & tempo, Deaths, Interrupts, Players, Provenance. A boss
 fight gets seven: Route & tempo gives way to Damage and Mechanics, the two axes a boss has in its
 place. Every attempt at one boss gets five — Summary, Attempts, Repeats, Best attempt, Provenance —
-the night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work.
+the night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work. A whole
+report is one page behind two dropdowns, a boss and then a pull, with a summary for each boss and
+the raid page's seven tabs for each pull.
 
 Each death gets a recap: a health curve, a timeline of what hit you, how you came back, and every
 defensive, consumable and teammate external it lists placed in one of seven states at the moment
