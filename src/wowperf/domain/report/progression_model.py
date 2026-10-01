@@ -123,7 +123,8 @@ class ProgressionReport(Frozen):
     # and Pace columns. The standalone progression page compares nothing.
     compared: bool = False
     # The boss-level rollups a night summary opens on: kill speed, why wipes
-    # ended, what kept over-landing. Empty on the standalone progression page.
+    # ended, what kept landing that no reference kill took, what kept
+    # over-landing. Empty on the standalone progression page.
     lead_rows: tuple[LedgerRow, ...] = ()
     # Where attempts sat: the cluster, the movement, what was discarded.
     attempt_rows: tuple[LedgerRow, ...] = ()

@@ -38,7 +38,8 @@ def analyse_night_boss(
     analysed. They are handed every attempt the series holds, not only the
     drawn ones, so a wipe whose pull did not load is still counted among the
     boss's wipes. `mechanics_compared` names the pulls whose mechanics sample
-    had members, the denominator of what kept over-landing.
+    had members, the denominator of what kept landing and of what kept
+    over-landing.
     """
     findings = analyse_progression(series)
     if death_cards:

@@ -464,10 +464,39 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
             one for one in (
                 "progression.lead.kill_speed",
                 "progression.lead.verdicts",
+                "progression.lead.never_taken",
                 "progression.lead.overlanding",
             ) if one in lead_ids
         ]
         assert fixed_order, f"boss {index}'s rollups are out of their fixed order"
+        # The two ability rollups share one shape. Their messages carry the
+        # finding id and the boss index only, never an ability name.
+        cut = capped_line(MAX_REPEAT_ABILITIES + 1)
+        for lead in leads:
+            if lead["id"] not in (
+                "progression.lead.never_taken",
+                "progression.lead.overlanding",
+            ):
+                continue
+            assert lead["confidence"] == "derived", (
+                f"boss {index}'s {lead['id']} is not derived"
+            )
+            assert lead["quantifier"] in {"most", "every"}, (
+                f"boss {index}'s {lead['id']} carries a quantifier it cannot reach"
+            )
+            lines = list(lead["evidence"])
+            if lines and lines[-1] == cut:
+                lines.pop()
+                assert len(lines) == MAX_REPEAT_ABILITIES, (
+                    f"boss {index}'s {lead['id']} is cut short of a full list"
+                )
+            assert cut not in lines, f"boss {index}'s {lead['id']} carries a cut line mid-list"
+            assert 1 <= len(lines) <= MAX_REPEAT_ABILITIES, (
+                f"boss {index}'s {lead['id']} lists a count of abilities it cannot"
+            )
+            assert (lead["ability_id"] is not None) == (len(lines) == 1), (
+                f"boss {index}'s {lead['id']} names an ability only when it lists exactly one"
+            )
         wiped = any(not pull["kill"] for pull in boss["pulls"])
         assert ("progression.lead.verdicts" in lead_ids) == wiped, (
             f"boss {index}'s verdict rollup does not match whether it wiped"

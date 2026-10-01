@@ -53,9 +53,9 @@ to stop.
 An empty quantifier means the finding is not an aggregate over a sample at all — one reference's
 own figure, say — and there is no "how many agreed" to have an opinion about. Say nothing.
 
-## The night's three boss rollups
+## The night's four boss rollups
 
-On a night page each boss's Summary leads with up to three rollups, each only where it fires. A
+On a night page each boss's Summary leads with up to four rollups, each only where it fires. A
 rollup counts findings the boss's pulls already carry and reads the log nowhere. It takes the
 confidence of what it counts, the least certain where they differ, and its `quantifier` is the only
 count a narrative may echo: the title and evidence carry the digits, so name a rollup by its
@@ -74,13 +74,29 @@ included.
   there, meaning no verdict could be read, not that nothing ended the wipes. Otherwise the
   quantifier is how much of all the wipes the commonest verdict covered, withheld ones in the
   denominator.
+- `progression.lead.never_taken`, what kept landing that no reference kill took. It counts, by
+  compared pull and never by hit, the abilities that every compared pull reporting them read as
+  ones no reference kill took at all. It names an ability only where more than half of all the
+  compared pulls reported it, and it never fires on fewer than two compared pulls. It is
+  `derived`. Its title counts every qualifying ability; its evidence lists only the most reported,
+  and a last line says so wherever that list was cut. A pull whose sample drew no member compared
+  nothing and is outside the denominator. Its quantifier is the most-reported ability's, even where
+  the title names several abilities, so it is only ever `most` or `every`. An ability whose record
+  is mixed (some pulls read it as one no reference kill took, others as one some reference kill
+  took) goes to `overlanding`, as does one read against a single reference, which counts no
+  references. Its counts are floors, and its title says "at least": each pull names only its
+  widest gaps, so an ability can land in a pull that does not name it. Write "no reference kill
+  took it" and never "avoidable": it states what the log shows, not that a landing could have been
+  prevented, which is not in the log.
 - `progression.lead.overlanding`, what kept over-landing. It counts, by compared pull and never by
-  hit, the abilities that two or more compared pulls reported as far above the reference kills'
-  rate. It is `derived`. Its title counts every such ability; its evidence lists only the most
-  reported, and a last line says so wherever that list was cut. A pull whose sample drew no member
-  compared nothing and is outside the denominator. Its quantifier is the most-reported ability's, even where the title names several
-  abilities. It states a difference, not a mistake: whether a landing could have been prevented is
-  not in the log.
+  hit, every other ability that more than half of the compared pulls reported as far above the
+  reference kills' rate, and it never fires on fewer than two compared pulls. It is `derived`. Its
+  title counts every such ability; its evidence lists only the most reported, and a last line says
+  so wherever that list was cut. A pull whose sample drew no member compared nothing and is
+  outside the denominator. Its quantifier is the most-reported ability's, even where the title
+  names several abilities, so it is only ever `most` or `every`. Its counts are floors for the
+  same reason, and its title says "at least". It states a difference, not a mistake: whether a
+  landing could have been prevented is not in the log.
 
 ## What each confidence badge licenses you to say
 
