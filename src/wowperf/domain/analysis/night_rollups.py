@@ -28,7 +28,8 @@ NO_REFERENCE_TOOK_IT = "none"
 """A per-pull `mechanics.ability.*` quantifier when no reference kill took the ability at all.
 
 `compare_mechanics` sets that finding's quantifier to `quantifier_for(carrying,
-total)` over the references that took the ability, so this is the one value
+total)`, where `carrying` is how many of the pull's references took the ability
+at all and `total` is all of the pull's references, so this is the one value
 meaning none of them did. A single-reference reading carries no count of
 references, so it never reads this.
 """
@@ -185,7 +186,7 @@ def _verdicts(
 def _reported(
     compared: Sequence[Encounter], pull_findings: Mapping[int, Sequence[Finding]]
 ) -> tuple[dict[int, str], dict[int, list[int]], set[int]]:
-    """Each ability's name and compared pulls, and those not reported never taken every time.
+    """Each ability's name, reporting pulls, and the abilities not always read as never taken.
 
     Each pull counts once, however many of its findings name the ability. The
     returned set holds every ability some report did not read as one no

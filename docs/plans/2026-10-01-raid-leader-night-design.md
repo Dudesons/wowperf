@@ -3,8 +3,9 @@
 **Status:** approved design; both sub-slices built and exercised live, 2026-10-01. Sub-slice 1
 (§4) planned in `docs/plans/2026-10-01-raid-leader-night-coverage-plan.md`, shipped in #47 with
 #48 and #49. Sub-slice 2 (§5) planned in `docs/plans/2026-10-01-raid-leader-night-page-plan.md`,
-shipped in #50 with #52. §10, which splits what keeps over-landing in two, approved 2026-10-01
-and not yet planned.
+shipped in #50 with #52. §10, which splits what keeps over-landing in two, approved 2026-10-01,
+planned in `docs/plans/2026-10-01-over-landing-split-plan.md`, built, and exercised live on
+2026-10-01.
 **Area:** `wowperf night`, and through the builders it shares, `wowperf raid --fight N` and
 `wowperf progression`. It amends `docs/plans/2026-09-23-night-report-design.md` (§5, restoring
 what the shipped code dropped), `docs/plans/2026-09-27-wipe-damage-pace-design.md` (§4, §7, §11,
@@ -302,7 +303,7 @@ hits:
   here only when every compared pull that reported it says no reference took it -- the per-pull
   finding's `quantifier` is `"none"` exactly when zero of its references carried the ability.
 - **`progression.lead.overlanding`** (same id, narrower): every other ability a compared pull
-  reported, taken by the references and by us at `MECHANIC_MULTIPLE` their median rate or more.
+  reported.
 
 An ability whose pulls disagree -- never taken on one, taken on another -- goes to the second
 finding: a mixed record never earns the stronger claim. So does one reported against a single

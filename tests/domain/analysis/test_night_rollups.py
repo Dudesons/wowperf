@@ -65,8 +65,9 @@ def over_landing(
     """A `mechanics.ability.*` finding in the shape `compare_mechanics` writes it.
 
     `references_took` is the finding's quantifier, `quantifier_for(carrying,
-    total)` over the references that took the ability at all: "none" for one no
-    reference took, "" for a single-reference reading.
+    total)`, where `carrying` is how many of the pull's references took the
+    ability at all and `total` is all of the pull's references: "none" for one
+    no reference took, "" for a single-reference reading.
     """
     return Finding(
         id=f"mechanics.ability.{rank}",
