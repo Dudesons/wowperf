@@ -1350,7 +1350,9 @@ groupCount petOwner }`, and `encounterID` is not an NPC `gameID` (3492 against 2
 and 12 actors on this report). `subType: Boss` alone over-selects: on Ula'tek it also marks Gore
 Rattle and Venomous Heart, adds with a boss frame, while a second actor named Ula'tek carries
 `subType: NPC` and took no player damage. **`subType == "Boss"` and `name` equal to the fight's
-`name` together picked exactly one actor on every single-boss fight read.** The two council
+`name` together picked exactly one actor on every single-boss fight read.** *(Superseded 2026-10-01 by the section below: on another report the exact
+name found no boss where the actor's name is shorter than the fight's, and the lookup now reads
+the fight's own `enemyNPCs`.)* The two council
 encounters on this report (Entombed Sentinels, The Coiled Altar) each field two `Boss` actors,
 neither named after the fight. A reference fight's boss is found by our boss's `gameID` in that
 fight's `enemyNPCs`, 1.00 point each, and was found on all four references read.
@@ -1377,6 +1379,25 @@ Their two boss-scoped graphs came back on one grid: interval 952.2875 ms on figh
 
 **Cost:** the probe spent 17 points: six `ReferenceFight` lookups at 2 points each, and four
 graphs.
+
+## A night compared on every pull costs about 130 points more, measured cold
+
+Measured 2026-10-01 against report `6jHcTvtB4XAMGZag` (Mythic, 3 bosses, 21 pulls, twenty
+players), `wowperf night` at the default tier with a fresh `--cache-dir`: **705.41 points**,
+against **575.80** for the same command on the same report earlier that day, before every pull
+drew the mechanics sample and pace (+129.61). The operations the comparison added: `BossDamageGraph`
+48 calls for 48.00 (two per council pull on each side), `AbilityTakenTable` 36 for 42.94 (21 of
+our own, one per pull, plus each reference kill's), `ReferenceFight` 15 for 30.00, and one more
+`EncounterKillRankings` (3 for 3.03, against 2 for 2.02). The other ~7.7 points are drift across
+the streams both runs fetched (`AuraTable` 420 calls read 423.21 against 420.00). **`Fights` cost
+2.01 for its one call both times**, so the fight-level `enemyNPCs` selection it now carries costs
+nothing measurable. The design estimated about 100 points (`2026-10-01-raid-leader-night-design.md`
+section 7).
+
+The same day, `wowperf night cW38jmwdnZfbHVL4 --no-deaths` (Heroic, 8 bosses, 16 pulls) spent
+186.09 points cold, and its comparison half alone 83.08 (`tests/e2e/test_night_e2e.py` records
+the breakdown). Heroic boards offered no reference kill at size 20 for five of its eight bosses,
+so most of its pulls withheld pace with no reference kill rather than reading one.
 
 ## A reference kill's roster costs one point more, read in the same lookup
 

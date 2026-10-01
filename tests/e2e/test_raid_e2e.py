@@ -727,3 +727,93 @@ def test_a_real_wipe_is_compared_against_the_kills_pace(tmp_path: Path) -> None:
     # `Deaths` call, our own. The bound leaves headroom over that figure
     # without hiding a real regression.
     assert spent <= 120.0, "the run spent more than the bound this test allows"
+
+
+COUNCIL_WIPE = "https://www.warcraftlogs.com/reports/6jHcTvtB4XAMGZag#fight=8"
+"""A wipe at a council: two boss-flagged enemies, neither named after the fight.
+
+Fight 8 of `cW38jmwdnZfbHVL4` is the same council at Heroic, but its board offered no
+reference kill at our size of 20 on 2026-10-01, so its pace withheld before any graph was
+summed. A Mythic board holds only 20-player kills, so this Mythic wipe is the one that
+reaches the summing. Its twenty players are real people too: assert on shapes only.
+"""
+
+
+def run_raid_live(tmp_path: Path, url: str) -> tuple[float, list[dict[str, Any]]]:
+    """`wowperf raid <url>` against the live API with a fresh cache: points spent, findings.
+
+    The command's own output is printed as ASCII so the run's cost reaches the
+    log; nothing a finding says is echoed.
+    """
+    out = tmp_path / "out"
+    result = CliRunner().invoke(
+        app, ["raid", url, "--cache-dir", str(tmp_path / "cache"), "--out", str(out)]
+    )
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+    stderr_ascii = result.stderr.encode("ascii", "backslashreplace").decode("ascii")
+    print(stderr_ascii)
+    spent_match = re.search(r"Rate limit: ([\d.]+) points spent", stderr_ascii)
+    assert spent_match is not None, "no rate-limit line in the command's own output"
+    [written] = out.glob("*.findings.json")
+    payload = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
+    return float(spent_match.group(1)), cast(list[dict[str, Any]], payload["findings"])
+
+
+@pytest.mark.e2e
+def test_a_real_kill_is_read_against_the_kills_time_and_pace(tmp_path: Path) -> None:
+    """A kill's time and damage pace against the reference kills, on a boss with framed adds.
+
+    The canonical kill's fight lists three boss-flagged enemies -- the boss and
+    two adds carrying a boss frame -- so its pace is only drawn if the boss is
+    told apart by being named after the fight.
+
+    Measured 2026-10-01 with a fresh cache, one player, comparison on: 101.12
+    points of 3600, of which the kill's pace added `NpcActors` 1, `ReferenceFight`
+    4 for 8.00 and `BossDamageGraph` 5 for 5.00. The time came from 4 reference
+    kills. The bound leaves headroom over that figure without hiding a real
+    regression.
+    """
+    if not KILL:
+        pytest.fail(
+            "Set WOWPERF_E2E_RAID_KILL to a public report URL naming a boss kill "
+            "(include the #fight=N fragment) to run this"
+        )
+    spent, findings = run_raid_live(tmp_path, KILL)
+    ids = [f["id"] for f in findings]
+
+    kill_times = [f for f in findings if f["id"] == "compare.kill.time"]
+    assert len(kill_times) == 1, "compare.kill.time did not appear exactly once on a kill"
+    assert kill_times[0]["confidence"] == "measured", "compare.kill.time was not badged measured"
+    reads_a_clock = re.search(r"took \d+:\d{2} against ", cast(str, kill_times[0]["title"]))
+    assert reads_a_clock is not None, "the kill-time title did not set two clocks side by side"
+
+    paces = [f for f in findings if f["id"] == "compare.pace.boss"]
+    assert len(paces) == 1, "compare.pace.boss did not appear exactly once on a kill"
+    assert paces[0]["confidence"] == "derived", "compare.pace.boss was not badged derived"
+    no_projection = "compare.pace.projection" not in ids
+    assert no_projection, "a kill was projected, though it already dealt the boss its health"
+    no_player_pace = not any(one.startswith("compare.pace.player.") for one in ids)
+    assert no_player_pace, "a kill carried a per-player pace reading, which stays a wipe's"
+
+    assert spent <= 140.0, "the run spent more than the bound this test allows"
+
+
+@pytest.mark.e2e
+def test_a_real_council_wipe_sums_its_bosses_damage_pace(tmp_path: Path) -> None:
+    """A council's damage pace, each boss's graph read and summed, on both sides.
+
+    Measured 2026-10-01 with a fresh cache, one player, comparison on: 90.06
+    points of 3600; `BossDamageGraph` 12 calls -- two of our own and two for
+    each of 5 reference kills -- for 12.00, and `ReferenceFight` 5 for 10.00.
+    """
+    spent, findings = run_raid_live(tmp_path, COUNCIL_WIPE)
+    ids = [f["id"] for f in findings]
+
+    assert "compare.pace.boss" in ids, "the council's pace was not compared"
+    withheld = "compare.pace.unavailable" in ids
+    assert not withheld, "the council's pace was withheld"
+    [pace] = [f for f in findings if f["id"] == "compare.pace.boss"]
+    against = [line for line in pace["evidence"] if re.match(r"Against \d+ reference kills", line)]
+    assert against, "the council's pace stood on fewer than three reference kills"
+
+    assert spent <= 130.0, "the run spent more than the bound this test allows"

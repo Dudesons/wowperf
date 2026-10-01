@@ -96,8 +96,10 @@ uv run wowperf night https://www.warcraftlogs.com/reports/YOURCODE
 
 reads every boss and every pull the report holds and writes them as one page, behind two
 dropdowns — a boss, then a pull within it. There is no `--fight`; covering every fight is the
-point, and there is no outside comparison either: `--player`, `--all-players` and `--no-compare`
-are not offered, and the page says so once instead of leaving those families silently missing.
+point. Every pull, kill or wipe, is compared against its boss's reference kills — what hit and
+killed the raid, why a wipe ended, the damage pace, and a kill's time — and `--no-compare` skips
+all of it. The per-player parse comparison is not drawn: `--player` and `--all-players` are not
+offered, and the page says so once instead of leaving those families silently missing.
 `--deep FIGHT` buys back one named pull's full death anatomy, repeatable; `--no-deaths` drops
 death cards from the whole page instead, and the two together are a contradiction the command
 refuses. It writes `<code>.night.json` and `<code>.night.html`.
@@ -167,27 +169,22 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
 | `analyze`, one player | 83 to 95 |
-| `night --no-deaths`, a whole report | 106 to 118, plus 27 for damage pace |
+| `night --no-deaths`, a whole report | 186 |
 | `analyze --all-players` | 190 |
-| `night`, a whole report | 300, with a caveat below |
+| `night`, a whole report | 705 |
 | `raid --all-players`, a kill | 878 |
 
 Each is one reading of one report on one day rather than a budget; the dates and the conditions
 behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
 goes.
 
-**The two `night` rows are a sixteen-pull report, and only the first is a cold-cache reading.**
-That one was measured twice, minutes apart, at 106 and 118 — the spread is the same per-query
-drift the rest of these figures carry. Both rows predate the damage pace comparison each wipe now
-draws, which added 27 points on one cold run (2026-09-28); `--no-compare` skips it. The 300 was
-measured on the same day against a cache
-that earlier `raid` and `progression` runs on that same report had already partly filled, so a
-first look at a report nobody has read costs more than 300, by an amount nobody has measured.
-Scaling a one-boss reading at the default tier (195 points over seven pulls, 2026-09-26) to all
-sixteen pulls puts a cold default-tier night near 450 to 500 points — an estimate, not a reading.
-What separates the two rows is the death cards: the default tier draws one per death and needs
-an aura table per raider per pull to tell a defensive that was held from one that had faded,
-and that single query family was 239 of the 300.
+**The two `night` rows are two different reports, both read cold on 2026-10-01 with every pull
+compared.** The 186 is a sixteen-pull Heroic report at the `--no-deaths` tier, 83 of it the
+comparison; the 705 a twenty-one-pull Mythic report at the default tier, about 130 of it the
+comparison. `--no-compare` skips that part. What separates the two rows is mostly the death cards:
+the default tier draws one per death and needs an aura table per raider per pull to tell a
+defensive that was held from one that had faded, and that single query family was 423 of the
+705.
 
 **Whether the boss died is what moves the raid figures, not how many players you name.**
 Warcraft Logs ranks kills alone, so an attempt that wiped carries no rankings row, and the
