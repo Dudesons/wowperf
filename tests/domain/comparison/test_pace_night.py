@@ -99,11 +99,17 @@ def test_one_compared_wipe_draws_no_line() -> None:
 
 
 def test_a_kill_and_a_pull_with_no_sample_are_not_listed() -> None:
+    """A kill is compared too, so it carries a sample, and a behind one here.
+
+    The line counts wipes: the kill is neither listed nor counted among the
+    wipes that ended behind, whatever its own pace reads.
+    """
     pulls = [a_pull(12), a_pull(13, kill=True), a_pull(14), a_pull(15)]
-    samples = {12: a_sample(80), 14: a_sample(110)}
+    samples = {12: a_sample(80), 13: a_sample(80), 14: a_sample(110)}
     line = the_line(pulls, samples)
     assert line is not None
     assert [one.split(":")[0] for one in line.evidence] == ["Fight 12", "Fight 14"]
+    assert line.title == "1 of 2 wipes ended behind the kills' pace"
 
 
 def test_no_compare_draws_no_line() -> None:
