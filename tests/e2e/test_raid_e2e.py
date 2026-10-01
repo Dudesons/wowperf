@@ -41,7 +41,7 @@ import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import pytest
 from typer.testing import CliRunner
@@ -49,6 +49,7 @@ from typer.testing import CliRunner
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_consumables, load_defensives
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
+from wowperf.adapters.wcl.pace import GRIDS_DIFFER_REASON, NO_BOSS_SERIES
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.cli import (
     REFERENCE_CACHE_SECONDS,
@@ -739,8 +740,16 @@ reaches the summing. Its twenty players are real people too: assert on shapes on
 """
 
 
-def run_raid_live(tmp_path: Path, url: str) -> tuple[float, list[dict[str, Any]]]:
-    """`wowperf raid <url>` against the live API with a fresh cache: points spent, findings.
+class LiveRaid(NamedTuple):
+    """One live `wowperf raid` run: what it spent, its findings file, and its own stderr."""
+
+    spent: float
+    payload: dict[str, Any]
+    stderr: str
+
+
+def invoke_raid_live(tmp_path: Path, url: str) -> LiveRaid:
+    """`wowperf raid <url>` against the live API with a fresh cache.
 
     The command's own output is printed as ASCII so the run's cost reaches the
     log; nothing a finding says is echoed.
@@ -756,7 +765,25 @@ def run_raid_live(tmp_path: Path, url: str) -> tuple[float, list[dict[str, Any]]
     assert spent_match is not None, "no rate-limit line in the command's own output"
     [written] = out.glob("*.findings.json")
     payload = cast(dict[str, Any], json.loads(written.read_text(encoding="utf-8")))
-    return float(spent_match.group(1)), cast(list[dict[str, Any]], payload["findings"])
+    return LiveRaid(float(spent_match.group(1)), payload, stderr_ascii)
+
+
+def run_raid_live(tmp_path: Path, url: str) -> tuple[float, list[dict[str, Any]]]:
+    """`invoke_raid_live`, cut to the points spent and the findings."""
+    live = invoke_raid_live(tmp_path, url)
+    return live.spent, cast(list[dict[str, Any]], live.payload["findings"])
+
+
+def operation_calls(stderr: str, operation: str) -> int:
+    """How many calls the command's cost breakdown names for one operation.
+
+    The breakdown's row reads `  BossDamageGraph   12 calls   12.00 points`.
+    """
+    match = re.search(
+        rf"^\s+{re.escape(operation)}\s+(\d+) calls?\s", stderr, flags=re.MULTILINE
+    )
+    assert match is not None, f"the cost breakdown names no {operation} row"
+    return int(match.group(1))
 
 
 @pytest.mark.e2e
@@ -805,8 +832,16 @@ def test_a_real_council_wipe_sums_its_bosses_damage_pace(tmp_path: Path) -> None
     Measured 2026-10-01 with a fresh cache, one player, comparison on: 90.06
     points of 3600; `BossDamageGraph` 12 calls -- two of our own and two for
     each of 5 reference kills -- for 12.00, and `ReferenceFight` 5 for 10.00.
+
+    The pace finding alone cannot tell a summed council from one boss read
+    alone, so the graph count is what proves the summing: two graphs for our
+    own fight and two for every reference whose graphs were fetched, where a
+    single boss would cost one each. A reference whose graphs were fetched is
+    one that loaded, or one dropped for what its graphs held.
     """
-    spent, findings = run_raid_live(tmp_path, COUNCIL_WIPE)
+    live = invoke_raid_live(tmp_path, COUNCIL_WIPE)
+    spent = live.spent
+    findings = cast(list[dict[str, Any]], live.payload["findings"])
     ids = [f["id"] for f in findings]
 
     assert "compare.pace.boss" in ids, "the council's pace was not compared"
@@ -815,5 +850,18 @@ def test_a_real_council_wipe_sums_its_bosses_damage_pace(tmp_path: Path) -> None
     [pace] = [f for f in findings if f["id"] == "compare.pace.boss"]
     against = [line for line in pace["evidence"] if re.match(r"Against \d+ reference kills", line)]
     assert against, "the council's pace stood on fewer than three reference kills"
+
+    pace_references = [
+        one for one in live.payload["comparison"]["references"] if one["axis"] == "pace"
+    ]
+    graphed = [
+        one
+        for one in pace_references
+        if one["loaded"] or one["reason"] in (GRIDS_DIFFER_REASON, NO_BOSS_SERIES)
+    ]
+    graphs = operation_calls(live.stderr, "BossDamageGraph")
+    assert graphs == 2 * (len(graphed) + 1), (
+        "the boss graphs fetched were not two per fight, ours and every graphed reference's"
+    )
 
     assert spent <= 130.0, "the run spent more than the bound this test allows"

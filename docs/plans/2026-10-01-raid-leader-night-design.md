@@ -122,6 +122,11 @@ On `cW38jmwdnZfbHVL4`'s Entombed Sentinels fights the boss-flagged enemies are B
 and Breath of Ula'tek; the add Venom Coagulation is flagged `NPC`. That report is the council's
 end-to-end fixture.
 
+> **Amended 2026-10-01.** The council's end-to-end test reads `6jHcTvtB4XAMGZag` fight 8, a
+> Mythic wipe at the same council, not `cW38jmwdnZfbHVL4`'s Entombed Sentinels: on 2026-10-01
+> `cW38`'s Heroic board offered no reference kill at our size of 20, so its pace withheld before
+> any graph was summed.
+
 `NO_SINGLE_BOSS` survives only for a fight whose enemies include no boss-flagged actor.
 
 ### 4.4 Kill speed
@@ -251,6 +256,10 @@ Test-first throughout. Unit tests cover:
 
 End-to-end tests stay on `cW38jmwdnZfbHVL4`: fight 2 the canonical kill, fight 30 the canonical
 wipe. Its Entombed Sentinels fights are the council fixture.
+
+> **Amended 2026-10-01.** The council's end-to-end test reads `6jHcTvtB4XAMGZag` fight 8
+> (Mythic) instead, because `cW38jmwdnZfbHVL4`'s Heroic board offered no reference kill at size
+> 20 on 2026-10-01; section 4.3 carries the same note.
 
 Done means a live run of `wowperf night 6jHcTvtB4XAMGZag` reports how often each state
 occurred across its 21 pulls: each `wipe.cause` verdict, pace behind / on pace / ahead, each
