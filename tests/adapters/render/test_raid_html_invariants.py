@@ -1043,6 +1043,26 @@ def test_every_withheld_section_gives_a_reason() -> None:
     assert withheld.group(1).strip() == str(escape(WITHHELD_DETAIL))
 
 
+def test_a_wipes_parse_reason_is_on_the_page_once() -> None:
+    """Design 5.5: a `raid --fight N` wipe states the parse axis's absence once.
+
+    Once on the Damage tab, and once more in the Provenance list, whose job is
+    to name every withheld section in one place -- and on no player card,
+    where it would be the same paragraph twice per raider.
+    """
+    html = a_wiped_raid_page()
+    reason = str(escape(WITHHELD_DETAIL))
+    damage = html[html.index('id="tab-damage"'):html.index('id="tab-mechanics"')]
+    players = html[html.index('id="tab-players"'):html.index('id="tab-provenance"')]
+    provenance = html[html.index('id="tab-provenance"'):]
+
+    assert 'id="player-' in players, "the fixture drew no player card to check"
+    assert damage.count(reason) == 1
+    assert players.count(reason) == 0
+    assert provenance.count(reason) == 1
+    assert html.count(reason) == 2
+
+
 def test_a_raid_report_with_no_mechanics_rows_states_nothing_to_report() -> None:
     """`mechanics_rows` empties out for real: `--no-compare` guarantees no
     reference sample, and a fight with no damage outlier emits no row either.

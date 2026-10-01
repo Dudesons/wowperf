@@ -274,7 +274,9 @@ def test_every_finding_reaches_exactly_one_field() -> None:
 
     The page renders each field in turn, so a finding in two fields is drawn
     twice under two headings and a finding in none is measured and never
-    shown.
+    shown. A per-raider parse notice the withheld Damage tab states for the
+    whole fight is counted as stated there: this kill's tab is open, so none
+    of this fixture's is, and its notice has to reach its card.
     """
     loaded, subject = a_raid_fixture()
     findings = one_of_every_raid_family()
@@ -284,7 +286,7 @@ def test_every_finding_reaches_exactly_one_field() -> None:
         NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
-    placed = placements(report)
+    placed = placements(report) + stated_by_the_damage_tab(report, findings)
     assert placed, "the report drew no rows at all"
     assert report.summary_pointers, "no Summary pointer, so pointers and placements read alike"
     assert sorted(placed) == sorted(finding.id for finding in findings), (
@@ -397,6 +399,36 @@ def test_a_kill_one_raider_had_no_leaderboard_for_still_opens_the_damage_tab() -
     assert report.damage.state is SectionState.PRESENT
 
 
+def test_a_kill_whose_damage_tab_is_open_keeps_a_raiders_reason_on_their_card() -> None:
+    """An open Damage tab states no reason, so it cannot stand in for a card's.
+
+    The fight-wide reason a card may leave unsaid is the one the withheld Damage
+    tab prints. On a kill where one raider's leaderboard answered, the tab is
+    open on that raider's rows and says nothing; the other raider's own reason,
+    which is the first `compare.parse.unavailable` finding on the page, would be
+    stated nowhere if the card dropped it too.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+    own = Finding(
+        id=f"compare.parse.unavailable.{STONEWAKE_SLUG}",
+        title="No ranked parse was available for Stonewake",
+        detail=ONE_RAIDERS_REASON,
+        confidence=Confidence.MEASURED,
+        player_slug=STONEWAKE_SLUG,
+    )
+
+    report = build_raid_report(
+        loaded, (*a_kills_findings(), own), subject,
+        frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}), FETCHED,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.state is SectionState.PRESENT
+    cards = {card.slug: card for card in report.players}
+    assert cards[STONEWAKE_SLUG].spell_and_talent.reason == ONE_RAIDERS_REASON
+    assert own.id in [row.finding_id for row in cards[STONEWAKE_SLUG].spell_and_talent_rows]
+
+
 def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
     """`--no-compare` withholds the same tab for a different reason, and says which.
 
@@ -412,6 +444,24 @@ def test_an_analysis_that_compared_nothing_does_not_blame_the_boss() -> None:
 
     assert report.damage.state is SectionState.WITHHELD
     assert report.damage.reason == NO_COMPARISON_RAN
+
+
+def test_a_raid_read_with_no_compare_keeps_its_reason_on_every_card() -> None:
+    """Only a caller that states the parse axis's absence elsewhere silences the cards.
+
+    `raid --no-compare` hands no parse subject and states the absence nowhere
+    else for a whole page, so each card still says no reference was fetched.
+    """
+    loaded, subject = a_raid_fixture(kill=True)
+
+    report = build_raid_report(
+        loaded, (), subject, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert len(report.players) == 2, "the fixture built no cards to check the reason on"
+    assert [card.spell_and_talent.reason for card in report.players] == [
+        NO_COMPARISON_RAN, NO_COMPARISON_RAN
+    ]
 
 
 def test_the_withheld_damage_tab_is_named_in_the_provenance() -> None:
@@ -442,10 +492,9 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
     times. The Mythic+ sibling repeats it per card because a keystone roster is
     five and five copies read as emphasis; twenty read as a bug.
 
-    The suppression is on this list alone. Each card still carries its own
-    reason, which is the half a reader looking at one raider needs without
-    scrolling to Provenance, and the second assertion is what keeps the fix
-    from being made in the wrong place.
+    The cards say nothing of it either: the Damage tab states the reason the
+    whole attempt shares, and a card restating it is the same repetition one
+    card at a time.
     """
     loaded, subject = a_raid_fixture(kill=False)
 
@@ -460,9 +509,87 @@ def test_a_reason_the_whole_attempt_shares_is_disclosed_once_not_once_per_raider
         f"Damage against other kills: {WITHHELD_DETAIL}"
     ]
     assert report.players, "the fixture built no cards to check the reason survived on"
-    assert [card.spell_and_talent.reason for card in report.players] == [
-        WITHHELD_DETAIL, WITHHELD_DETAIL
+    assert [card.spell_and_talent.reason for card in report.players] == ["", ""]
+
+
+def test_a_wipe_states_the_parse_reason_on_its_damage_tab_and_on_no_card() -> None:
+    """Section 5.5: on a `raid --fight N` wipe the absence is stated once, on the Damage tab.
+
+    The reason is the attempt's -- the boss lived -- and not any raider's, so a
+    card that restated it would print the Damage tab's paragraph once per
+    raider: twice as the card's withheld line and its per-slug row, on every card.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+
+    report = build_raid_report(
+        loaded, a_wipes_findings(), subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    assert report.damage.reason == WITHHELD_DETAIL
+    assert len(report.players) == 2, "the fixture built no cards to check the silence on"
+    for card in report.players:
+        assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
+        assert card.spell_and_talent.reason == "", card.slug
+        assert not [
+            row for row in card.spell_and_talent_rows
+            if row.finding_id.startswith("compare.parse.unavailable.")
+        ], card.slug
+    assert [
+        line for line in report.provenance.withheld
+        if line.startswith("Damage against other kills: ")
+    ] == [f"Damage against other kills: {WITHHELD_DETAIL}"]
+    assert not [
+        line for line in report.provenance.withheld
+        if line.startswith("Spell and talent comparison")
     ]
+
+
+def stated_by_the_damage_tab(report: RaidReport, findings: tuple[Finding, ...]) -> list[str]:
+    """The per-raider parse notices the Damage tab states for everyone at once.
+
+    A `compare.parse.unavailable.<slug>` finding whose detail is the very reason
+    the withheld Damage tab prints is said there, once, and reaches no ledger
+    field of its own. Read off the report's own Damage section, so a builder
+    that dropped such a finding from its card while the tab stood open --
+    saying nothing -- accounts for nothing here and is caught as placed nowhere.
+    """
+    if report.damage.state is not SectionState.WITHHELD:
+        return []
+    return [
+        finding.id
+        for finding in findings
+        if finding.id.startswith("compare.parse.unavailable.")
+        and finding.detail == report.damage.reason
+    ]
+
+
+def test_a_parse_reason_shared_by_the_fight_is_placed_once_not_per_raider() -> None:
+    """The per-raider notices the Damage tab states are reached by no ledger field.
+
+    Not on a card, and not under "Other findings" either: a notice taken off
+    the cards and left to `build_observations`' catch-all would be the same
+    paragraph moved, twice, to the bottom of the Summary. A timed finding and
+    a family nothing places ride along so the accounting is not vacuous.
+    """
+    loaded, subject = a_raid_fixture(kill=False)
+    findings = (
+        *a_wipes_findings(),
+        a_finding("deaths.total", seconds=30.0),
+        a_finding(AN_UNPLACED_FAMILY),
+    )
+
+    report = build_raid_report(
+        loaded, findings, subject, frozenset({EMBERKIN_SLUG, STONEWAKE_SLUG}),
+        FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+    )
+
+    stated = stated_by_the_damage_tab(report, findings)
+    assert sorted(stated) == sorted(one.id for one in a_wipes_findings())
+    placed = placements(report)
+    assert not set(placed) & set(stated), f"stated by the Damage tab and placed too: {placed}"
+    assert [row.finding_id for row in report.observations] == [AN_UNPLACED_FAMILY]
+    assert sorted(placed + stated) == sorted(finding.id for finding in findings)
 
 
 ONE_RAIDERS_REASON = (
@@ -972,8 +1099,8 @@ def test_a_wipe_with_pace_rows_still_states_the_parse_reason_once() -> None:
 def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
     """A kill-time row opens the Damage tab, but it is not a parse row.
 
-    On a page whose parse axis was not drawn, `parse_withheld` is the reason the
-    Provenance states for it. Counting the kill-time row as one of the parse
+    On a page whose parse comparison left no row, the Provenance states why on
+    its Damage line. Counting the kill-time row as one of the parse
     comparison's own would read that axis as present and drop the line.
     """
     loaded, subject = a_raid_fixture(kill=True)
@@ -990,16 +1117,15 @@ def test_a_kill_time_row_does_not_stand_in_for_the_parse_comparison() -> None:
     )
     findings = tuple(analyse_kill_time(loaded.encounter, sample))
     assert [finding.id for finding in findings] == [KILL_TIME_ID]
-    reason = "The night page draws no parse comparison."
 
     report = build_raid_report(
         loaded, findings, subject, frozenset({EMBERKIN_SLUG}), FETCHED,
-        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES, parse_withheld=reason,
+        NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
     )
 
     assert [row.finding_id for row in report.damage_rows] == [KILL_TIME_ID]
     assert report.damage.state is SectionState.PRESENT
-    assert f"Damage against other kills: {reason}" in report.provenance.withheld
+    assert f"Damage against other kills: {NO_COMPARISON_RAN}" in report.provenance.withheld
 
 
 def test_a_kill_with_no_pace_sample_draws_no_pace_fields() -> None:

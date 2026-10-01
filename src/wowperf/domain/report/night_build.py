@@ -3,9 +3,8 @@
 
 from collections.abc import Mapping, Sequence
 
-from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, parse_axis_not_drawn
+from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
 from wowperf.domain.comparison.pace import PaceSample
-from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.findings import Finding, fight_ranges
 from wowperf.domain.night import FailedPull, LoadedNight
 from wowperf.domain.report.frame import plural
@@ -167,17 +166,12 @@ def build_night_report(
     for that pull, read back from the one-day reference cache the command
     shares across every pull at one boss and size.
 
-    `parse_withheld` is set for every pull `pace_by_fight` names, and for no
-    other. The command fetched reference kills for such a pull, so
-    `NO_COMPARISON_RAN` -- no reference was fetched -- would be false of it.
-    On a wipe it is `WITHHELD_DETAIL`, the sentence `raid --fight N` prints
-    for that wipe, whose parse comparison it withholds because the boss
-    lived. On a kill that sentence would be false, and `raid` does draw the
-    parse axis there; the night does not, so a kill says the night's own
-    reason, `NOT_DRAWN_COMPARED_DETAIL`. Either way the pull says it where
-    `raid` says its own: on every card, in the Damage tab's fallback, and
-    once in its Provenance. Any pull of a `--no-compare` night fetched
-    nothing and keeps `NO_COMPARISON_RAN`.
+    `parse_stated_elsewhere` is set for every pull. The parse axis's absence
+    is the night's, not any pull's: `compare.parse.not_drawn` states it once
+    for the page, worded for whether the night was compared against the
+    reference kills. So no pull's card says it, no pull's Provenance repeats
+    it, and a pull whose Damage tab has no row says `PULL_DAMAGE_NOT_DRAWN`,
+    which points to where the reasons are.
 
     Walks `loaded.loaded` rather than `loaded.night.bosses`: the two run
     parallel by `LoadedNight`'s own contract, and each `LoadedProgression`
@@ -239,11 +233,7 @@ def build_night_report(
                         trimmed=tier == TRIMMED,
                         death_cards=tier != NO_CARDS,
                         pace=pace_sample,
-                        parse_withheld=(
-                            None if pace_sample is None
-                            else NOT_DRAWN_COMPARED_DETAIL if attempt.encounter.kill
-                            else WITHHELD_DETAIL
-                        ),
+                        parse_stated_elsewhere=True,
                         throughput=throughput,
                     ),
                     tier=tier,

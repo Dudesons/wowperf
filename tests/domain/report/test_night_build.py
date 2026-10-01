@@ -6,7 +6,12 @@ from collections.abc import Mapping, Sequence
 from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from wowperf.domain.analysis.progression_service import analyse_progression
-from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, NOT_DRAWN_ID
+from wowperf.domain.comparison.night_axis import (
+    NOT_DRAWN_COMPARED_DETAIL,
+    NOT_DRAWN_DETAIL,
+    NOT_DRAWN_ID,
+    PULL_DAMAGE_NOT_DRAWN,
+)
 from wowperf.domain.comparison.pace import NO_BOSS, PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
@@ -480,12 +485,14 @@ def test_a_pull_whose_owner_is_not_on_the_roster_opens_on_the_first_raider() -> 
         assert opened == ["Emberkin", "Emberkin"], owner_name
 
 
-def test_every_pull_states_that_no_comparison_was_drawn_for_it() -> None:
+def test_no_pull_says_a_comparison_ran_and_matched_nobody() -> None:
     """`compared_slugs=None` and not an empty set, which would be a false claim.
 
     An empty frozenset means a comparison ran and matched nobody, and the raid
-    builder says nothing at all in that case -- so this line's absence is what
-    a wrong value here looks like.
+    builder then tells every card its raider was not asked for -- "name them
+    with --player", a flag `night` does not have. A night card says nothing of
+    the parse comparison at all, so any reason on one is what a wrong value
+    here looks like.
     """
     report = build_night_report(
         a_night(bosses=(2,)),
@@ -500,9 +507,10 @@ def test_every_pull_states_that_no_comparison_was_drawn_for_it() -> None:
     )
 
     for pull in report.bosses[0].pulls:
-        assert any(
-            NO_COMPARISON_RAN in line for line in pull.report.provenance.withheld
-        )
+        assert len(pull.report.players) == len(ROSTER)
+        assert [card.spell_and_talent.reason for card in pull.report.players] == [
+            ""
+        ] * len(ROSTER)
 
 
 def test_each_pulls_findings_reach_that_pull_alone() -> None:
@@ -889,24 +897,23 @@ def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
     }
 
 
-def test_a_pull_handed_a_pace_sample_states_the_wipes_own_reason_on_every_card() -> None:
-    """Design 14.3: the pull's page is the page `raid --fight N` draws for that wipe.
+def test_a_pull_handed_a_pace_sample_states_the_wipes_own_reason_on_no_card() -> None:
+    """Design 5.5: the night page states the parse axis's absence once, for the page.
 
-    `raid` on a wipe says `WITHHELD_DETAIL` on the card of every raider it
-    compared -- the attempt did not kill, so no parse leaderboard sample stands
-    beside it. `NO_COMPARISON_RAN` says no reference was fetched at all,
-    which is false of a pull `load_pace_sample` ran for.
+    `compare.parse.not_drawn` says it under Findings about the night, so a
+    card that said it again -- in the wipe's words or the night's -- would
+    print the same paragraph once per raider on every pull.
     """
     pulls = three_wipes_one_handed_no_sample()
 
     for role in ("compared", "unavailable"):
         cards = pulls[role].players
         assert len(cards) == len(ROSTER), role
-        assert [card.spell_and_talent.reason for card in cards] == [WITHHELD_DETAIL] * 2, role
+        assert [card.spell_and_talent.reason for card in cards] == [""] * 2, role
 
 
-def test_a_pull_handed_a_pace_sample_withholds_its_damage_tab_as_raid_does_on_that_wipe() -> None:
-    """The Damage tab's own fallback: `raid`'s wipe withholds it with `WITHHELD_DETAIL`.
+def test_a_pull_handed_a_pace_sample_withholds_its_damage_tab_pointing_to_the_reasons() -> None:
+    """The Damage tab's own fallback names where the reasons are, and restates neither.
 
     The compared pull's tab opens on its pace row, so the fallback shows only
     on the pull whose sample withheld -- the one place a reader meets it.
@@ -916,51 +923,128 @@ def test_a_pull_handed_a_pace_sample_withholds_its_damage_tab_as_raid_does_on_th
     assert pulls["compared"].damage.state is SectionState.PRESENT
     unavailable = pulls["unavailable"].damage
     assert unavailable.state is SectionState.WITHHELD
-    assert unavailable.reason == WITHHELD_DETAIL
+    assert unavailable.reason == PULL_DAMAGE_NOT_DRAWN
 
 
-def test_a_pull_handed_a_pace_sample_states_the_wipes_reason_once_in_its_provenance() -> None:
-    """`raid`'s wipe states `WITHHELD_DETAIL` once, as the Damage line, and never again.
+def test_a_pull_handed_a_pace_sample_states_no_parse_reason_in_its_provenance() -> None:
+    """The night states the parse axis's absence once; a pull's Provenance does not repeat it.
 
-    Its per-card spell-and-talent lines are suppressed there as repeats of the
-    reason the whole attempt shares, so the night pull carries no "Spell and
-    talent comparison" line either -- and nothing saying no reference was fetched.
+    No "Damage against other kills" line, no "Spell and talent comparison"
+    line, and nothing saying no reference was fetched.
     """
     pulls = three_wipes_one_handed_no_sample()
 
     for role in ("compared", "unavailable"):
         withheld = pulls[role].provenance.withheld
-        assert [line for line in withheld if WITHHELD_DETAIL in line] == [
-            f"Damage against other kills: {WITHHELD_DETAIL}"
-        ], role
+        assert not any(line.startswith("Damage against other kills") for line in withheld), role
         assert not any(line.startswith("Spell and talent comparison") for line in withheld), role
+        assert not any(WITHHELD_DETAIL in line for line in withheld), role
         assert not any(NO_COMPARISON_RAN in line for line in withheld), role
 
 
 def test_a_pull_handed_no_pace_sample_keeps_no_comparison_ran_at_every_site() -> None:
-    """A `--no-compare` night: nothing was fetched for it, and the page says so."""
+    """A `--no-compare` pull: silent cards, a Damage tab that points, and no parse lines.
+
+    The night-level finding is what says the parse axis is not drawn; on a night
+    handed no pace sample at all it says so in `NOT_DRAWN_DETAIL`'s words.
+    """
     pulls = three_wipes_one_handed_no_sample()
     untouched = pulls["untouched"]
 
-    assert [card.spell_and_talent.reason for card in untouched.players] == [
-        NO_COMPARISON_RAN
-    ] * 2
+    assert [card.spell_and_talent.reason for card in untouched.players] == [""] * 2
     assert untouched.damage.state is SectionState.WITHHELD
-    assert untouched.damage.reason == NO_COMPARISON_RAN
-    assert [line for line in untouched.provenance.withheld if NO_COMPARISON_RAN in line] == [
-        f"Damage against other kills: {NO_COMPARISON_RAN}",
-        f"Spell and talent comparison: {NO_COMPARISON_RAN}",
-    ]
-    assert not any(WITHHELD_DETAIL in line for line in untouched.provenance.withheld)
+    assert untouched.damage.reason == PULL_DAMAGE_NOT_DRAWN
+    withheld = untouched.provenance.withheld
+    assert not any(line.startswith("Damage against other kills") for line in withheld)
+    assert not any(line.startswith("Spell and talent comparison") for line in withheld)
+    assert not any(NO_COMPARISON_RAN in line for line in withheld)
+    assert not any(WITHHELD_DETAIL in line for line in withheld)
+
+    night = a_night(bosses=(1,))
+    report = build_night_report(
+        night,
+        NO_FINDINGS,
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+    )
+    assert [row.detail for row in report.observations] == [NOT_DRAWN_DETAIL]
+
+
+def test_a_night_pull_says_nothing_of_the_parse_comparison_on_its_cards() -> None:
+    """A compared wipe, a compared kill, and a pull handed no sample: every card is silent."""
+    wipes = three_wipes_one_handed_no_sample()
+    night = a_night(bosses=(1,), kill=True)
+    encounter = night.night.bosses[0].attempts[0]
+    sample = a_sample(80, int(encounter.duration_seconds))
+    kill = build_night_report(
+        night,
+        {encounter.fight_id: analyse_pace(encounter, sample)},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={encounter.fight_id: sample},
+    ).bosses[0].pulls[0].report
+
+    for role, pull in (
+        ("compared wipe", wipes["compared"]),
+        ("compared kill", kill),
+        ("no sample", wipes["untouched"]),
+    ):
+        assert len(pull.players) == len(ROSTER), role
+        for card in pull.players:
+            assert card.spell_and_talent.state is SectionState.WITHHELD, role
+            assert card.spell_and_talent.reason == "", role
+
+
+def test_a_night_pull_with_no_damage_row_points_to_where_the_reasons_are() -> None:
+    """A pull whose pace sample withheld has no Damage row, and the tab says where to look.
+
+    The parse reason is under Findings about the night and the pace reason is
+    in the pull's Provenance, so the tab names both places and restates neither.
+    """
+    night = a_night(bosses=(1,))
+    encounter = night.night.bosses[0].attempts[0]
+    sample = PaceSample(unavailable=NO_BOSS)
+
+    report = build_night_report(
+        night,
+        {encounter.fight_id: analyse_pace(encounter, sample)},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={encounter.fight_id: sample},
+    )
+
+    pull = report.bosses[0].pulls[0].report
+    assert pull.damage.state is SectionState.WITHHELD
+    assert pull.damage.reason == PULL_DAMAGE_NOT_DRAWN
+    withheld = pull.provenance.withheld
+    assert not any(line.startswith("Damage against other kills") for line in withheld)
+    assert not any(line.startswith("Spell and talent comparison") for line in withheld)
+    assert f"Damage pace against other kills: {NO_BOSS}" in withheld
 
 
 def test_a_kill_handed_a_pace_sample_states_the_nights_own_reason_for_its_parse_line() -> None:
-    """A kill's parse line says the night draws no parse axis, not that the boss lived.
+    """A compared kill's pull says nothing of the parse axis: the night says it, once.
 
-    `WITHHELD_DETAIL` opens by saying the attempt did not kill the boss, false
-    of a kill. `NO_COMPARISON_RAN` says no reference was fetched, false of a
-    pull compared against the kills. What is true is the night's own reason:
-    it never asks a parse leaderboard, on a kill or on a wipe.
+    The night's own reason -- it never asks a parse leaderboard, on a kill or on
+    a wipe -- is under Findings about the night. The kill's Damage tab opens on
+    its kill-time and pace rows, so no fallback stands on it either, and
+    neither `WITHHELD_DETAIL`, false of a kill, nor `NO_COMPARISON_RAN`, false
+    of a pull compared against the kills, is anywhere in its Provenance.
     """
     night = a_night(bosses=(1,), kill=True)
     encounter = night.night.bosses[0].attempts[0]
@@ -982,14 +1066,14 @@ def test_a_kill_handed_a_pace_sample_states_the_nights_own_reason_for_its_parse_
 
     pull = report.bosses[0].pulls[0].report
     withheld = pull.provenance.withheld
-    assert [line for line in withheld if line.startswith("Damage against other kills")] == [
-        f"Damage against other kills: {NOT_DRAWN_COMPARED_DETAIL}"
-    ]
+    assert not any(line.startswith("Damage against other kills") for line in withheld)
+    assert not any(line.startswith("Spell and talent comparison") for line in withheld)
     assert not any(WITHHELD_DETAIL in line for line in withheld)
     assert not any(NO_COMPARISON_RAN in line for line in withheld)
-    assert [card.spell_and_talent.reason for card in pull.players] == [
-        NOT_DRAWN_COMPARED_DETAIL
-    ] * len(ROSTER)
+    assert pull.damage.state is SectionState.PRESENT
+    assert pull.damage.reason == ""
+    assert [card.spell_and_talent.reason for card in pull.players] == [""] * len(ROSTER)
+    assert [row.detail for row in report.observations] == [NOT_DRAWN_COMPARED_DETAIL]
 
 
 def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None:

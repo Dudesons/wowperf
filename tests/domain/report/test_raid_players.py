@@ -144,21 +144,80 @@ def test_the_card_nobody_asked_for_says_so_rather_than_looking_clean() -> None:
     assert asked.spell_and_talent.state is SectionState.PRESENT
 
 
-def test_a_wipe_tells_every_raider_why_their_comparison_is_empty() -> None:
-    """Design section 13: an empty section teaches nothing.
+WIPE_REASON = "Warcraft Logs computes no rankings row for an attempt that did not kill."
+"""`a_wiped_attempt`'s shared detail, the one its Damage tab states for everybody."""
+
+
+def test_a_wipe_states_its_shared_reason_on_no_card() -> None:
+    """Design 5.5: the reason the whole attempt shares is stated once, not per raider.
 
     Warcraft Logs computes no rankings row for an attempt that did not kill,
-    so the external frame is withheld for everybody -- and the page has to say
-    that, in words, on each card.
+    so the external frame is withheld for everybody. The Damage tab says so
+    once; a card that said it again, as a withheld line or as its own row,
+    would print the same paragraph once per raider.
+    """
+    cards = build_raid_players(*a_wiped_attempt(), stated_once=WIPE_REASON)
+
+    assert len(cards) == 2, "the fixture built no cards"
+    for card in cards:
+        assert card.spell_and_talent.state is SectionState.WITHHELD, card.slug
+        assert card.spell_and_talent.reason == "", card.slug
+        ids = [row.finding_id for row in comparison_rows(card)]
+        assert not any(
+            finding_id.startswith("compare.parse.unavailable") for finding_id in ids
+        ), card.slug
+
+
+def test_a_reason_stated_nowhere_else_stays_on_every_card() -> None:
+    """Design section 13: an empty section teaches nothing.
+
+    Handed no reason stated elsewhere, each card is the only place its reason
+    is said, so each keeps it -- as its withheld line and as its own row.
     """
     cards = build_raid_players(*a_wiped_attempt())
 
-    assert cards, "the fixture built no cards"
+    assert len(cards) == 2, "the fixture built no cards"
     for card in cards:
+        assert card.spell_and_talent.reason == WIPE_REASON, card.slug
         ids = [row.finding_id for row in comparison_rows(card)]
         assert any(
             finding_id.startswith("compare.parse.unavailable") for finding_id in ids
         ), card.slug
+
+
+def test_a_notice_with_an_empty_detail_is_not_mistaken_for_one_stated_elsewhere() -> None:
+    """The empty default states nothing elsewhere, so it drops no row, even an empty one.
+
+    The notice's title still names what was withheld; leaving it off the card
+    because its detail happens to equal "nothing" would leave it nowhere.
+    """
+    loaded, findings, subject, compared, titles = a_wiped_attempt()
+    findings = tuple(one.model_copy(update={"detail": ""}) for one in findings)
+
+    cards = build_raid_players(loaded, findings, subject, compared, titles)
+
+    for card in cards:
+        assert [row.finding_id for row in comparison_rows(card)] == [
+            f"compare.parse.unavailable.{card.slug}"
+        ], card.slug
+
+
+def test_a_raiders_own_reason_stays_on_their_card_beside_a_shared_one() -> None:
+    """Only the reason stated elsewhere leaves the card; one about this raider stays."""
+    loaded, findings, subject, compared, titles = a_wiped_attempt()
+    own = "The parse leaderboard returned no reference kills for this specialisation."
+    findings = (findings[0], findings[1].model_copy(update={"detail": own}))
+
+    cards = build_raid_players(
+        loaded, findings, subject, compared, titles, stated_once=WIPE_REASON
+    )
+
+    by_slug = {card.slug: card for card in cards}
+    assert by_slug["emberkin-0"].spell_and_talent.reason == ""
+    assert by_slug["stonewake-1"].spell_and_talent.reason == own
+    assert [row.finding_id for row in comparison_rows(by_slug["stonewake-1"])] == [
+        "compare.parse.unavailable.stonewake-1"
+    ]
 
 
 def test_the_subjects_card_opens_first_whatever_the_rosters_own_order() -> None:

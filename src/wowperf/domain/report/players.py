@@ -121,6 +121,7 @@ def _comparison_section(
     compared_slugs: frozenset[str] | None,
     *,
     parse_withheld: str | None = None,
+    stated_once: str = "",
 ) -> Section:
     """One player's comparison section, in whichever of three states it is in.
 
@@ -130,8 +131,17 @@ def _comparison_section(
     "not available" will read the second as the first and stop asking.
 
     `parse_withheld` stands in for `NO_COMPARISON_RAN` where no subject was
-    handed (`compared_slugs` is `None`) and a reference was fetched all the
-    same -- the night page's compared wipe, whose reason is the wipe's own.
+    handed (`compared_slugs` is `None`). The empty string is the night page's:
+    its parse axis's absence is stated once for the whole page, so the card
+    is withheld and says nothing.
+
+    `stated_once` is a reason the page states once for the whole fight -- the
+    raid page's withheld Damage tab. A player whose own
+    `compare.parse.unavailable` finding gives that very reason is withheld
+    with no reason of their own; one whose reason differs keeps it, because
+    the fight-wide statement does not cover it. The empty default silences
+    only a finding whose own reason is empty, which the card would have
+    printed as an empty line anyway.
     """
     if compared_slugs is None:
         return Section(
@@ -141,9 +151,10 @@ def _comparison_section(
     if slug not in compared_slugs:
         return Section(state=SectionState.WITHHELD, reason=NOT_REQUESTED)
     unavailable_id = parse_unavailable_id(slug)
-    return section_for(
-        findings, unavailable_id, present=finding_by_id(findings, unavailable_id) is None
-    )
+    unavailable = finding_by_id(findings, unavailable_id)
+    if unavailable is not None and unavailable.detail == stated_once:
+        return Section(state=SectionState.WITHHELD, reason="")
+    return section_for(findings, unavailable_id, present=unavailable is None)
 
 
 def build_players(

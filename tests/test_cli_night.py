@@ -32,6 +32,7 @@ from wowperf.cli import (
 from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
 from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, SPIKES_ID, UNAVAILABLE_ID
+from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, NOT_DRAWN_DETAIL
 from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.comparison.reference import REPORT_URL
@@ -1304,9 +1305,10 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
 
     Every pull here is a wipe compared against the reference kills, so none of
     them may say no reference was fetched, or that no reference kills were
-    drawn: the command drew them. The parse axis says the wipe's own
-    sentence. The verdict reads the same sample `raid` reads, so its notice
-    is never one about a sample the page did not draw.
+    drawn: the command drew them. The parse axis's absence is said once, for
+    the page, in the compared night's words (design 5.5), and not in the
+    wipe's on any pull. The verdict reads the same sample `raid` reads, so its
+    notice is never one about a sample the page did not draw.
     """
     result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
 
@@ -1324,13 +1326,18 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
     assert str(escape(NO_COMPARISON_RAN)) not in html
     assert str(escape(NO_REFERENCE_SAMPLE)) not in html
     assert "draws no mechanics sample" not in html
-    assert str(escape(WITHHELD_DETAIL)) in html
+    assert str(escape(WITHHELD_DETAIL)) not in html
+    assert html.count(str(escape(NOT_DRAWN_COMPARED_DETAIL))) == 1
 
 
 def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_nothing(
     tmp_path: Path,
 ) -> None:
-    """The other half: `--no-compare` fetched nothing, and the page still says so."""
+    """The other half: `--no-compare` fetched nothing, and the page says so once.
+
+    The night's own finding says it, in `NOT_DRAWN_DETAIL`'s words; no pull
+    repeats that no reference was fetched, on its cards or its Damage tab.
+    """
     result = run_night(tmp_path, "--no-compare", kill_rankings=PACE_KILL_RANKINGS)
 
     assert result.exit_code == 0, result.output
@@ -1342,7 +1349,8 @@ def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_
             assert notice["detail"] == NO_REFERENCE_SAMPLE, pull["fight_id"]
 
     html = page_file.read_text(encoding="utf-8")
-    assert str(escape(NO_COMPARISON_RAN)) in html
+    assert html.count(str(escape(NOT_DRAWN_DETAIL))) == 1
+    assert str(escape(NO_COMPARISON_RAN)) not in html
     assert str(escape(WITHHELD_DETAIL)) not in html
 
 
