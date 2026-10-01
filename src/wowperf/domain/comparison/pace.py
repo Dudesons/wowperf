@@ -80,12 +80,16 @@ class PaceSample(Frozen):
 
     `unavailable` is set exactly when nothing can be compared, and names why.
     `our_players` splits `ours` by player, for the per-player comparison.
+    `bosses_read` is how many boss-flagged enemies `ours` sums: one for a lone
+    boss, more for a council or for candidates none of which is named after
+    the fight, which `find_bosses` cannot tell apart and so sums alike.
     """
 
     ours: BossDamage | None = None
     references: tuple[PaceReference, ...] = ()
     unavailable: str = ""
     our_players: tuple[PlayerSeries, ...] = ()
+    bosses_read: int = 1
 
 
 def clock_text(seconds: float) -> str:
@@ -147,7 +151,7 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     assert reading is not None  # withheld_reason("") guarantees a usable reading
     assert sample.ours is not None  # same guarantee covers this
     if encounter.kill:
-        return [_pace_finding(reading, "", kill=True)]
+        return [_pace_finding(reading, "", kill=True, bosses_read=sample.bosses_read)]
 
     total = cumulative_at(sample.ours, encounter.duration_seconds)
     withheld_projection = ""
@@ -158,13 +162,17 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     elif total <= 0:
         withheld_projection = "No projection: the raid dealt the boss no damage"
 
-    findings = [_pace_finding(reading, withheld_projection, kill=False)]
+    findings = [
+        _pace_finding(reading, withheld_projection, kill=False, bosses_read=sample.bosses_read)
+    ]
     if not withheld_projection:
         findings.append(_projection(reading, total, encounter.duration_seconds))
     return findings
 
 
-def _pace_finding(reading: PaceReading, withheld_projection: str, *, kill: bool) -> Finding:
+def _pace_finding(
+    reading: PaceReading, withheld_projection: str, *, kill: bool, bosses_read: int
+) -> Finding:
     last = reading.seconds[-1]
     clock = clock_text(last.second)
     against = "the slowest kill's" if reading.single else "the kills'"
@@ -189,6 +197,8 @@ def _pace_finding(reading: PaceReading, withheld_projection: str, *, kill: bool)
             f"Their range at {clock}: {share_of(last.low, last.median)}% to "
             f"{share_of(last.high, last.median)}% of their median"
         )
+    if bosses_read > 1:
+        evidence.append(f"Summed over {bosses_read} boss-flagged enemies of this fight")
     if not reading.band_cut:
         evidence.append(f"Compared through the {'kill' if kill else 'wipe'} at {clock}")
     elif reading.single:
