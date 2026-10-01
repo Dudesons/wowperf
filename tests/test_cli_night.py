@@ -17,6 +17,7 @@ from tests.test_cli import operation_name, plain, quota_response
 from wowperf.adapters.cache.disk import cache_key
 from wowperf.adapters.wcl.client import MAX_WAITS
 from wowperf.adapters.wcl.queries import (
+    ABILITY_TAKEN_TABLE_QUERY,
     BOSS_DAMAGE_GRAPH_QUERY,
     ENCOUNTER_KILL_RANKINGS_QUERY,
     REFERENCE_FIGHT_QUERY,
@@ -28,7 +29,7 @@ from wowperf.cli import (
     REFERENCE_CACHE_SUBDIR,
     app,
 )
-from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE, no_sample_on_the_night
+from wowperf.domain.analysis.attempt_shape import NO_REFERENCE_SAMPLE
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID as VERDICT_WITHHELD_ID
 from wowperf.domain.analysis.spikes import NOT_JUDGED_TITLE, SPIKES_ID, UNAVAILABLE_ID
 from wowperf.domain.comparison.pace import PACE_NOT_FETCHED
@@ -94,7 +95,7 @@ SECOND_BOSS_GAME_ID = 7002
 """The two bosses' own NPC game ids, for the pace comparison's boss lookup.
 
 Both are always in `NpcActors`' answer, whatever `kill_rankings` says: a wipe
-withholds with `NO_REFERENCE_KILL` rather than `NO_SINGLE_BOSS` unless a test
+withholds with `NO_REFERENCE_KILL` rather than `NO_BOSS` unless a test
 says otherwise, and `NO_REFERENCE_KILL` is what the default empty
 `kill_rankings` promises the existing tests below."""
 
@@ -192,6 +193,11 @@ def _night_fight(
         "friendlyPlayers": [one["actor_id"] for one in NIGHT_ROSTER],
         "friendlySpecs": [one["spec"] for one in NIGHT_ROSTER],
         "friendlyItemLevels": [one["item_level"] for one in NIGHT_ROSTER],
+        "enemyNPCs": [
+            {"id": 8001, "gameID": FIRST_BOSS_GAME_ID}
+            if encounter_id == NIGHT_FIRST_BOSS
+            else {"id": 8002, "gameID": SECOND_BOSS_GAME_ID}
+        ],
     }
 
 
@@ -241,6 +247,7 @@ def build_night_transport(
     failing: frozenset[int] = frozenset(),
     kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
     pace_errors: Mapping[tuple[str, str], int] | None = None,
+    broken_ability_reports: frozenset[str] = frozenset(),
 ) -> httpx.MockTransport:
     """Answer every query a night issues, recording each operation and its variables.
 
@@ -267,12 +274,20 @@ def build_night_transport(
     and `BossDamageGraph` answer the pace comparison's other three queries,
     following `build_raid_transport`'s own shapes for the same three.
 
-    `pace_errors` answers one pace request with a bare HTTP status instead:
-    keyed by operation and `encounterId` for `EncounterKillRankings`, by
-    operation and report code for `ReferenceFight` and a reference's
-    `BossDamageGraph`, and by operation and fight id for our own report's
-    `BossDamageGraph`. A 500 is how one boss's board or one pull's graph
-    fails; a 429 is how the hourly budget runs out.
+    `AbilityTakenTable` answers the mechanics comparison, our own report with
+    twenty landings of `NIGHT_KILLING_BLOW` from a boss and every reference
+    with five -- `build_raid_transport`'s own default pair -- so the
+    comparison has a real difference to find. A report code in
+    `broken_ability_reports` answers it with a GraphQL error instead, which is
+    how one reference kill drops out of the mechanics sample alone.
+
+    `pace_errors` answers one comparison request with a bare HTTP status
+    instead: keyed by operation and `encounterId` for `EncounterKillRankings`,
+    by operation and report code for `ReferenceFight`, `AbilityTakenTable` and
+    a reference's `BossDamageGraph`, and by operation and fight id for our own
+    report's `BossDamageGraph`. A 500 is how one boss's board, one reference
+    kill's table or one pull's graph fails; a 429 is how the hourly budget
+    runs out.
     """
     running = 100.0
     quota = [100.0, 140.0]
@@ -325,7 +340,7 @@ def build_night_transport(
     # and no other boss's, matching spec 14.2: the sharing holds per boss and
     # size, never across bosses. `npc_actors_payload` always carries both
     # bosses' actors, so a wipe withholds `NO_REFERENCE_KILL` (the empty-board
-    # case) rather than `NO_SINGLE_BOSS` (a boss lookup failure) by default.
+    # case) rather than `NO_BOSS` (a boss lookup failure) by default.
     rankings_by_encounter = kill_rankings if kill_rankings is not None else {}
     npc_actors_payload: dict[str, Any] = {
         "reportData": {
@@ -468,6 +483,16 @@ def build_night_transport(
             key = str(variables.get("code"))
         if (name, key) in errors:
             return httpx.Response(errors[(name, key)])
+        if name == "AbilityTakenTable" and variables.get("code") in broken_ability_reports:
+            return httpx.Response(
+                200, json={"errors": [{"message": "no damage-taken table for this report"}]}
+            )
+        if name == "AbilityTakenTable":
+            hits = 20 if variables.get("code") == NIGHT_REPORT_CODE else 5
+            return carrying_quota({"reportData": {"report": {"taken": {"data": {"entries": [
+                {"guid": NIGHT_KILLING_BLOW, "name": "Venom Bolt", "hitCount": hits,
+                 "sources": [{"type": "Boss"}]},
+            ]}}}}})
         if name == "EncounterKillRankings":
             encounter_id = int(variables["encounterId"])
             rows = rankings_by_encounter.get(encounter_id, [])
@@ -508,6 +533,7 @@ def run_night(
     failing: frozenset[int] = frozenset(),
     kill_rankings: Mapping[int, list[dict[str, Any]]] | None = None,
     pace_errors: Mapping[tuple[str, str], int] | None = None,
+    broken_ability_reports: frozenset[str] = frozenset(),
 ) -> Any:
     transport = build_night_transport(
         A_NIGHT if fights is None else fights,
@@ -516,6 +542,7 @@ def run_night(
         failing=failing,
         kill_rankings=kill_rankings,
         pace_errors=pace_errors,
+        broken_ability_reports=broken_ability_reports,
     )
     real_client = httpx.Client
 
@@ -1068,7 +1095,7 @@ def test_night_states_what_it_spent(tmp_path: Path) -> None:
     sentence without the breakdown -- or the breakdown without the sentence --
     fails here. A compared night's own pace queries appear in the breakdown
     too, on by default: `EncounterKillRankings` and `NpcActors` run for every
-    wipe pull's boss even with nothing on the board (design 14.5's "the spend
+    pull's boss even with nothing on the board (design 14.5's "the spend
     test is extended"). Proved able to fail by a `--no-compare` run of this
     same assertion, which issues neither -- see the fix report for that run's
     output.
@@ -1084,7 +1111,14 @@ def test_night_states_what_it_spent(tmp_path: Path) -> None:
     assert "NpcActors" in output
 
 
-PACE_OPERATIONS = ("EncounterKillRankings", "NpcActors", "ReferenceFight", "BossDamageGraph")
+COMPARE_OPERATIONS = (
+    "EncounterKillRankings", "NpcActors", "ReferenceFight", "BossDamageGraph", "AbilityTakenTable"
+)
+"""Every query a pull's comparison against the reference kills issues, and nothing else does.
+
+The pace comparison's four, and the mechanics comparison's damage-taken table:
+a night read with `--no-compare` requests none of them.
+"""
 
 
 def _finding_ids(findings: list[dict[str, Any]]) -> set[str]:
@@ -1190,18 +1224,32 @@ def test_a_boss_wide_reference_kill_is_fetched_once_and_shared_across_its_wipes(
     assert references == PACE_REFERENCE_PAIRS
 
 
-def test_no_compare_fetches_no_reference_kill_and_writes_no_pace_finding(tmp_path: Path) -> None:
-    """Section 14.2: `--no-compare` is the flag's name, and it skips pace alone.
+def test_no_compare_fetches_no_reference_kill_and_writes_no_comparison_finding(
+    tmp_path: Path,
+) -> None:
+    """Section 14.2: `--no-compare` skips every comparison against the reference kills.
 
-    Nothing else this command draws is touched by the flag; only the queries
-    and the findings this task adds are asserted here.
+    What hit the raid against the kills, the damage pace, and a kill's time
+    all stand on reference kills, so the flag fetches none and writes none of
+    their findings. The night holds a kill, so the kill-time finding has a
+    pull it could have been written on. What the command draws from the
+    report itself is untouched by the flag and not asserted here.
     """
+    fights = [
+        A_NIGHT[0],
+        _night_fight(
+            SECOND_PULL, kill=True, fight_percentage=0.01, start_ms=200_000, end_ms=320_000
+        ),
+        A_NIGHT[2],
+    ]
     calls: list[tuple[str, dict[str, Any]]] = []
-    result = run_night(tmp_path, "--no-compare", kill_rankings=PACE_KILL_RANKINGS, calls=calls)
+    result = run_night(
+        tmp_path, "--no-compare", fights=fights, kill_rankings=PACE_KILL_RANKINGS, calls=calls
+    )
 
     assert result.exit_code == 0, result.output
     operations = _operations(calls)
-    for operation in PACE_OPERATIONS:
+    for operation in COMPARE_OPERATIONS:
         assert operation not in operations
 
     payload = json.loads(_written(tmp_path)[0].read_text(encoding="utf-8"))
@@ -1209,44 +1257,56 @@ def test_no_compare_fetches_no_reference_kill_and_writes_no_pace_finding(tmp_pat
     for boss in payload["bosses"]:
         assert "progression.attempts.pace" not in _finding_ids(boss["findings"])
         for pull in boss["pulls"]:
-            assert not any(
-                finding_id.startswith("compare.pace.")
-                for finding_id in _finding_ids(pull["findings"])
-            )
+            ids = _finding_ids(pull["findings"])
+            assert not any(finding_id.startswith("compare.pace.") for finding_id in ids)
+            assert not any(finding_id.startswith("mechanics.") for finding_id in ids)
+            assert "compare.kill.time" not in ids
 
 
-def test_a_night_of_only_kills_fetches_no_reference_kill(tmp_path: Path) -> None:
-    """Section 14.1: a kill pull draws no pace comparison, whatever the board offers.
+def test_a_kill_pull_is_compared_against_the_reference_kills(tmp_path: Path) -> None:
+    """Design 4.1: a kill draws what `raid --fight N` draws for it, but the parse axis.
 
-    Both attempts here are kills, so `_pace_references` and `load_pace_sample`
-    must never run at all -- proved the same way `--no-compare` is above,
-    by absence from the operations a real board would otherwise be read from.
+    What hit the raid against the kills, the kill's damage pace and its time,
+    all from the one execution-leaderboard sample.
     """
-    all_kills = [
-        _night_fight(FIRST_PULL, kill=True, fight_percentage=0.0),
-        _night_fight(
-            THIRD_PULL, encounter_id=NIGHT_SECOND_BOSS, boss_name=SECOND_BOSS_NAME,
-            kill=True, fight_percentage=0.0, start_ms=400_000, end_ms=520_000,
-        ),
-    ]
+    fights = [_night_fight(FIRST_PULL, kill=True, fight_percentage=0.01)]
     calls: list[tuple[str, dict[str, Any]]] = []
-    result = run_night(
-        tmp_path, fights=all_kills, kill_rankings=PACE_KILL_RANKINGS, calls=calls
-    )
+    result = run_night(tmp_path, fights=fights, kill_rankings=PACE_KILL_RANKINGS, calls=calls)
 
     assert result.exit_code == 0, result.output
-    operations = _operations(calls)
-    for operation in PACE_OPERATIONS:
-        assert operation not in operations
+    [pull] = _pulls_by_fight(tmp_path).values()
+    ids = _finding_ids(pull["findings"])
+    assert {"compare.kill.time", "compare.pace.boss"} <= ids
+    assert any(one.startswith("mechanics.ability.") for one in ids)
+    assert "AbilityTakenTable" in _operations(calls)
+
+
+def test_a_compared_wipe_reads_its_verdict_against_the_reference_kills(tmp_path: Path) -> None:
+    """Nobody dies, the boss holds at 60% and we outlast the kills' 300 s median.
+
+    That is the throughput shape, which `classify_attempt` can only reach
+    with the reference kills' durations -- the mechanics sample the night
+    draws. The fixture's own fight carries no `bossPercentage` by default,
+    and without one the verdict withholds before it reads any duration.
+    """
+    fights = [{**_night_fight(FIRST_PULL, end_ms=320_000), "bossPercentage": 60.0}]
+    result = run_night(tmp_path, fights=fights, deaths_on=(), kill_rankings=PACE_KILL_RANKINGS)
+
+    assert result.exit_code == 0, result.output
+    [pull] = _pulls_by_fight(tmp_path).values()
+    [verdict] = [one for one in pull["findings"] if one["id"].startswith("wipe.cause")]
+    assert verdict["id"] == "wipe.cause"
+    assert verdict["title"].startswith("This attempt failed on throughput:")
 
 
 def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path: Path) -> None:
     """Design 14.3: each wipe pull's page is the page `raid --fight N` draws for it.
 
-    Every pull here is a wipe handed a pace sample, so none of them may say no
-    reference was fetched, or that no reference kills were drawn: the
-    command drew them. The parse axis says the wipe's own sentence, and the
-    verdict notice says what the night itself did not draw.
+    Every pull here is a wipe compared against the reference kills, so none of
+    them may say no reference was fetched, or that no reference kills were
+    drawn: the command drew them. The parse axis says the wipe's own
+    sentence. The verdict reads the same sample `raid` reads, so its notice
+    is never one about a sample the page did not draw.
     """
     result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS)
 
@@ -1257,15 +1317,14 @@ def test_a_compared_night_says_on_each_wipe_what_raid_says_on_that_wipe(tmp_path
     assert [pull["fight_id"] for pull in pulls] == [FIRST_PULL, SECOND_PULL, THIRD_PULL]
     for pull in pulls:
         [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
-        assert notice["detail"] == no_sample_on_the_night(pull["fight_id"]).detail
+        assert notice["detail"] != NO_REFERENCE_SAMPLE, pull["fight_id"]
+        assert "draws no mechanics sample" not in notice["detail"], pull["fight_id"]
 
     html = page_file.read_text(encoding="utf-8")
     assert str(escape(NO_COMPARISON_RAN)) not in html
     assert str(escape(NO_REFERENCE_SAMPLE)) not in html
+    assert "draws no mechanics sample" not in html
     assert str(escape(WITHHELD_DETAIL)) in html
-    for pull in pulls:
-        reason = no_sample_on_the_night(pull["fight_id"]).detail
-        assert f"Why this attempt ended: {escape(reason)}" in html, pull["fight_id"]
 
 
 def test_a_night_read_with_no_compare_keeps_the_sentences_for_a_night_that_drew_nothing(
@@ -1407,6 +1466,63 @@ def test_a_pull_whose_own_boss_graph_fails_is_withheld_alone(tmp_path: Path) -> 
         assert "compare.pace.boss" in _finding_ids(pulls[fight_id]["findings"]), fight_id
 
 
+def test_a_pull_whose_own_boss_graph_fails_keeps_its_mechanics_comparison(
+    tmp_path: Path,
+) -> None:
+    """Pace failing is pace's failure alone: the reference kills were still drawn.
+
+    The mechanics sample loaded before the graph was asked for, so that pull
+    still compares what hit it against the kills, and its verdict notice may
+    not say that no reference kills were drawn.
+    """
+    result = run_night(
+        tmp_path,
+        kill_rankings=PACE_KILL_RANKINGS,
+        pace_errors={("BossDamageGraph", str(FIRST_PULL)): 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    pull = _pulls_by_fight(tmp_path)[FIRST_PULL]
+    assert any(one.startswith("mechanics.ability.") for one in _finding_ids(pull["findings"]))
+    [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
+    assert notice["detail"] != NO_REFERENCE_SAMPLE
+
+
+def test_the_nights_reference_ability_tables_go_to_the_one_day_store(tmp_path: Path) -> None:
+    """The mechanics half of the terms test above: other players' tables expire.
+
+    Every reference kill's damage-taken table sits in `REFERENCE_CACHE_SUBDIR`
+    and nowhere in the permanent store; our own report's tables are the control,
+    in the permanent store and nowhere else.
+    """
+    calls: list[tuple[str, dict[str, Any]]] = []
+    result = run_night(tmp_path, kill_rankings=PACE_KILL_RANKINGS, calls=calls)
+    assert result.exit_code == 0, result.output
+
+    tables = [variables for name, variables in calls if name == "AbilityTakenTable"]
+    theirs = [
+        cache_key(ABILITY_TAKEN_TABLE_QUERY, variables)
+        for variables in tables if variables["code"] != NIGHT_REPORT_CODE
+    ]
+    ours = [
+        cache_key(ABILITY_TAKEN_TABLE_QUERY, variables)
+        for variables in tables if variables["code"] == NIGHT_REPORT_CODE
+    ]
+    # Six references, each fetched once however many of its boss's pulls
+    # drew on it, and one table per pull of our own.
+    assert len(theirs) == 6
+    assert len(ours) == 3
+
+    permanent = tmp_path / "cache"
+    transient = permanent / REFERENCE_CACHE_SUBDIR
+    for key in theirs:
+        assert (transient / f"{key}.json").is_file(), key
+        assert not (permanent / f"{key}.json").exists(), key
+    for key in ours:
+        assert (permanent / f"{key}.json").is_file(), key
+        assert not (transient / f"{key}.json").exists(), key
+
+
 def test_a_spent_hourly_budget_is_waited_out_and_stops_the_night_only_if_refused_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1456,3 +1572,118 @@ def test_a_reference_kill_that_fails_is_replaced_by_the_next_on_the_board(
     for fight_id in (FIRST_PULL, SECOND_PULL):
         [pace] = [one for one in pulls[fight_id]["findings"] if one["id"] == "compare.pace.boss"]
         assert f"Against {SAMPLE_SIZE} reference kills of this raid size" in pace["evidence"]
+
+
+def test_a_pulls_pace_reads_the_mechanics_samples_members_first(tmp_path: Path) -> None:
+    """Design 4.1: the pace references are the mechanics sample's members, then the board.
+
+    Seven kills on the first boss's board, the first of whose damage-taken
+    table will not load: the mechanics sample is the next five, and pace,
+    reading those five first, fills its sample without ever asking for the
+    first kill. Read from the board's top instead, pace would take that
+    first kill and the two samples would stand on different kills.
+    """
+    rankings = {
+        **PACE_KILL_RANKINGS,
+        NIGHT_FIRST_BOSS: [
+            *PACE_KILL_RANKINGS[NIGHT_FIRST_BOSS],
+            *(_pace_reference_row(code, fight) for code, fight in EXTRA_FIRST_BOSS_REFERENCES),
+        ],
+    }
+    dropped = FIRST_BOSS_REFERENCE_CODES[0]
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    result = run_night(
+        tmp_path,
+        fights=[_night_fight(FIRST_PULL)],
+        kill_rankings=rankings,
+        calls=calls,
+        broken_ability_reports=frozenset({dropped}),
+    )
+
+    assert result.exit_code == 0, result.output
+    tables = [variables["code"] for name, variables in calls if name == "AbilityTakenTable"]
+    assert dropped in tables
+    paced = [variables["code"] for name, variables in calls if name == "ReferenceFight"]
+    assert len(paced) == SAMPLE_SIZE
+    assert dropped not in paced
+
+
+def _seven_kill_board() -> dict[int, list[dict[str, Any]]]:
+    """The first boss's board with four kills behind its three, so a dropped one is refilled."""
+    return {
+        **PACE_KILL_RANKINGS,
+        NIGHT_FIRST_BOSS: [
+            *PACE_KILL_RANKINGS[NIGHT_FIRST_BOSS],
+            *(_pace_reference_row(code, fight) for code, fight in EXTRA_FIRST_BOSS_REFERENCES),
+        ],
+    }
+
+
+def test_a_reference_kill_whose_table_answers_a_server_error_is_dropped_and_refilled(
+    tmp_path: Path,
+) -> None:
+    """Design section 6: a reference that fails to load is dropped and listed in Provenance.
+
+    A transport error on one reference kill's damage-taken table is that
+    kill's failure, not the pull's: the next kill on the board takes its
+    place, the pull still reads its pace, and its verdict may not say that no
+    reference kill was drawn.
+    """
+    dropped = FIRST_BOSS_REFERENCE_CODES[0]
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    result = run_night(
+        tmp_path,
+        fights=[_night_fight(FIRST_PULL)],
+        kill_rankings=_seven_kill_board(),
+        calls=calls,
+        pace_errors={("AbilityTakenTable", dropped): 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    tables = [
+        variables["code"]
+        for name, variables in calls
+        if name == "AbilityTakenTable" and variables["code"] != NIGHT_REPORT_CODE
+    ]
+    assert tables[0] == dropped
+    assert len(tables) == SAMPLE_SIZE + 1
+
+    pull = _pulls_by_fight(tmp_path)[FIRST_PULL]
+    ids = _finding_ids(pull["findings"])
+    assert any(one.startswith("mechanics.ability.") for one in ids)
+    assert "compare.pace.boss" in ids
+    [notice] = [one for one in pull["findings"] if one["id"] == VERDICT_WITHHELD_ID]
+    assert notice["detail"] != NO_REFERENCE_SAMPLE
+
+    html = _written(tmp_path)[1].read_text(encoding="utf-8")
+    start = html.index(
+        f"Mechanics candidate (report {dropped}, fight {FIRST_BOSS_REFERENCE_FIGHTS[0]})"
+    )
+    line = html[start:html.index("</p>", start)]
+    assert "not used:" in line
+    assert "500 Internal Server Error" in line
+
+
+def test_a_spent_budget_on_a_reference_kills_table_stops_the_night(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A refusal that outlasts the client's waits is every remaining pull's failure.
+
+    `RateLimitExceeded` is a `WclError`, so a per-reference guard catching
+    `WclError` would record it as one kill's failure and walk on into every
+    later request; it must stop the night instead, as it does on the board.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = run_night(
+        tmp_path,
+        fights=[_night_fight(FIRST_PULL)],
+        kill_rankings=_seven_kill_board(),
+        pace_errors={("AbilityTakenTable", FIRST_BOSS_REFERENCE_CODES[0]): 429},
+    )
+
+    assert result.exit_code == 1
+    assert "hourly point budget is spent" in plain(result.output)
+    assert not _written(tmp_path)[0].exists()

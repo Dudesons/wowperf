@@ -172,6 +172,11 @@ Before implementing new functionality:
   `.env.example` carries both as `WOWPERF_E2E_RAID_KILL` and `WOWPERF_E2E_RAID_WIPE`. Point
   them at a different fight and tests unrelated to your change will fail. Refer to the players
   by class, spec, role or index — in code, in tests, in commit messages and in documents.
+- The twenty players on report `6jHcTvtB4XAMGZag` are real people. It is a Mythic night, and the
+  council end-to-end test reads **fight 8** (an Entombed Sentinels wipe): a Heroic board offers
+  no reference kill at size 20 for that boss, so only a Mythic pull reaches the summing. Refer to
+  the players by class, spec, role or index — in code, in tests, in commit messages and in
+  documents.
 
 ## Test Coverage Requirements
 

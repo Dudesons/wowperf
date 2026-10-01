@@ -226,6 +226,9 @@ RAID_WIPE_FIGHT_ID = 30
 PACE_BOSS_GAME_ID = 950
 PACE_BOSS_OUR_ACTOR_ID = 61
 PACE_BOSS_REFERENCE_ACTOR_ID = 62
+KILL_BOSS_GAME_ID = 951
+KILL_BOSS_OUR_ACTOR_ID = 71
+KILL_BOSS_REFERENCE_ACTOR_ID = 72
 RAID_REFERENCE_PLAYER_ACTOR_ID = 63
 """One reference kill's Mage/Arcane player -- the same class and spec as
 `RAID_ROSTER[0]` (Emberkin), so the per-player pace comparison has a peer to
@@ -235,7 +238,7 @@ read the boss's own damage as a player's."""
 """The wipe fight's boss (named "Ula'tek", matching `_raid_fights_payload`'s
 own wipe fight) as the pace comparison's own queries find it: one game id
 shared by our actor and the reference kill's, and distinct actor ids on each
-side -- the join `find_boss_actor` and the reference-fight lookup are meant
+side -- the join `find_bosses` and the reference-fight lookup are meant
 to make, not one a shared id could pass by accident."""
 RAID_PARSE_CODES = ("refpa", "refpb", "refpc", "refpd", "refpe")
 RAID_PARSE_FIGHT = 8
@@ -317,7 +320,10 @@ def _raid_fights_payload(roster: tuple[dict[str, Any], ...] = RAID_ROSTER) -> di
                 "endTime": 700_000,
                 "owner": {"name": roster[0]["name"].lower()},
                 "fights": [
-                    a_fight(RAID_FIGHT_ID),
+                    a_fight(
+                        RAID_FIGHT_ID,
+                        enemyNPCs=[{"id": KILL_BOSS_OUR_ACTOR_ID, "gameID": KILL_BOSS_GAME_ID}],
+                    ),
                     a_fight(
                         RAID_WIPE_FIGHT_ID,
                         name="Ula'tek",
@@ -326,6 +332,7 @@ def _raid_fights_payload(roster: tuple[dict[str, Any], ...] = RAID_ROSTER) -> di
                         fightPercentage=16.49,
                         startTime=400_000,
                         endTime=700_000,
+                        enemyNPCs=[{"id": PACE_BOSS_OUR_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID}],
                     ),
                 ],
                 "masterData": {
@@ -562,12 +569,13 @@ def build_raid_transport(
         }
     }
 
-    # The pace comparison's own three queries, answered only on a wipe: a
-    # boss actor named after the wipe fight itself (`_raid_fights_payload`'s
-    # own rule, "Ula'tek"), a reference fight naming that same boss by game
-    # id, and each side's boss-only damage graph. Ours deals the boss far
-    # less than the reference every second, so the wipe reads as behind
-    # rather than landing on a state this task does not need to prove.
+    # The pace comparison's own three queries: a boss actor for each of the
+    # report's two fights (named after the fight itself, `_raid_fights_payload`'s
+    # own rule -- "Ula'tek" for the wipe, "The Twin Fangs" for the kill), a
+    # reference fight naming both bosses by game id, and each side's boss-only
+    # damage graph. Ours deals the boss far less than the reference every
+    # second, so a fight reads as behind rather than landing on a state this
+    # harness does not need to prove.
     npc_actors_payload: dict[str, Any] = {
         "reportData": {
             "report": {
@@ -576,7 +584,11 @@ def build_raid_transport(
                         {
                             "id": PACE_BOSS_OUR_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID,
                             "name": "Ula'tek", "subType": "Boss",
-                        }
+                        },
+                        {
+                            "id": KILL_BOSS_OUR_ACTOR_ID, "gameID": KILL_BOSS_GAME_ID,
+                            "name": "The Twin Fangs", "subType": "Boss",
+                        },
                     ]
                 }
             }
@@ -596,7 +608,8 @@ def build_raid_transport(
                         {
                             "id": fight_id, "startTime": 1_000, "endTime": 381_000,
                             "enemyNPCs": [
-                                {"id": PACE_BOSS_REFERENCE_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID}
+                                {"id": PACE_BOSS_REFERENCE_ACTOR_ID, "gameID": PACE_BOSS_GAME_ID},
+                                {"id": KILL_BOSS_REFERENCE_ACTOR_ID, "gameID": KILL_BOSS_GAME_ID},
                             ],
                             "friendlyPlayers": [RAID_REFERENCE_PLAYER_ACTOR_ID],
                             "friendlySpecs": ["Arcane"],
@@ -1219,13 +1232,37 @@ def test_a_wipe_run_writes_the_pace_finding_and_one_reference_per_mechanics_memb
     assert len(pace_records) == 1, pace_records
 
 
-def test_a_kill_run_asks_for_none_of_the_pace_operations(tmp_path: Path) -> None:
-    """A kill has the parse comparison; nothing about its pace is ever fetched."""
+def test_a_kill_run_asks_for_each_of_the_pace_operations(tmp_path: Path) -> None:
+    """A kill reads its damage pace against the reference kills, as a wipe does."""
     calls: list[str] = []
     result = run_raid(tmp_path, calls=calls)
 
     assert result.exit_code == 0, result.output
+    for operation in PACE_OPERATIONS:
+        assert operation in calls, (operation, calls)
+
+
+def test_a_kill_reads_its_damage_pace_and_its_time_against_the_kills(tmp_path: Path) -> None:
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert "compare.pace.boss" in ids
+    assert "compare.kill.time" in ids
+    assert "compare.pace.projection" not in ids
+    assert "compare.pace.player" not in " ".join(ids)
+
+
+def test_no_compare_on_a_kill_asks_for_none_of_the_pace_operations(tmp_path: Path) -> None:
+    calls: list[str] = []
+    result = run_raid(tmp_path, "--no-compare", calls=calls)
+
+    assert result.exit_code == 0, result.output
     assert not any(one in PACE_OPERATIONS for one in calls), calls
+    payload = written_raid_findings(tmp_path)
+    ids = [one["id"] for one in payload["findings"]]
+    assert not any(one.startswith("compare.pace.") for one in ids), ids
 
 
 def test_no_compare_on_a_wipe_asks_for_none_of_the_pace_operations(tmp_path: Path) -> None:

@@ -1,12 +1,13 @@
-# ABOUTME: Fetches our boss's damage graph and each reference kill's, by the boss-actor rule.
+# ABOUTME: Fetches our boss's (or council's) damage graphs and each reference kill's.
 # ABOUTME: A reference is dropped with its reason recorded; nothing here is fatal to the sample.
 
+from collections.abc import Sequence
 from typing import Any
 
 import httpx
 
 from wowperf.adapters.cache.disk import DiskCache, cache_key
-from wowperf.adapters.wcl.client import WclClient
+from wowperf.adapters.wcl.client import RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import (
     IngestError,
@@ -26,13 +27,19 @@ from wowperf.adapters.wcl.queries import (
 from wowperf.domain.comparison.mechanics import ReferenceKillRow
 from wowperf.domain.comparison.pace import (
     BOSS_IN_NO_REFERENCE,
+    GRIDS_DIFFER,
+    NO_BOSS,
     NO_BOSS_DAMAGE,
     NO_REFERENCE_KILL,
-    NO_SINGLE_BOSS,
     PaceSample,
 )
-from wowperf.domain.comparison.pace_boss import find_boss_actor
-from wowperf.domain.comparison.pace_curve import PaceReference, PlayerSeries
+from wowperf.domain.comparison.pace_boss import find_bosses
+from wowperf.domain.comparison.pace_curve import (
+    BossDamage,
+    PaceReference,
+    PlayerSeries,
+    sum_boss_damage,
+)
 from wowperf.domain.comparison.reference import REPORT_URL
 from wowperf.domain.comparison.sample import SAMPLE_SIZE
 from wowperf.domain.encounter import Encounter
@@ -42,6 +49,7 @@ FIGHT_NOT_IN_REPORT = "the reference fight is not in its report"
 BOSS_NOT_AMONG_ENEMIES = "the boss is not among this fight's enemies"
 BOSS_APPEARS_TWICE = "the boss appears as more than one actor"
 NO_BOSS_SERIES = "the damage graph held no series for the boss"
+GRIDS_DIFFER_REASON = "the bosses' damage graphs came back on different time grids"
 
 
 def _fetch(
@@ -79,6 +87,48 @@ def _record(
     )
 
 
+def _boss_graphs(
+    client: WclClient,
+    cache: DiskCache,
+    *,
+    code: str,
+    fight_id: int,
+    start_ms: int,
+    end_ms: int,
+    target_ids: Sequence[int],
+) -> tuple[BossDamage | None, bool, dict[int, BossDamage], bool]:
+    """One graph per boss, summed: (total, grids differ, per-player, all from cache).
+
+    The total is None when any graph carried no boss series, or when the
+    graphs sat on different grids -- the second flag says which. A player's
+    series sums their part of every graph they appear in.
+    """
+    totals: list[BossDamage | None] = []
+    players: dict[int, list[BossDamage]] = {}
+    all_hit = True
+    for target_id in target_ids:
+        payload, hit = _fetch(
+            client, cache, BOSS_DAMAGE_GRAPH_QUERY,
+            {"code": code, "fightId": fight_id, "startTime": float(start_ms),
+             "endTime": float(end_ms), "targetId": target_id},
+        )
+        all_hit = all_hit and hit
+        totals.append(build_boss_damage(payload, fight_start_ms=start_ms))
+        for actor_id, series in build_player_boss_damage(payload, fight_start_ms=start_ms).items():
+            players.setdefault(actor_id, []).append(series)
+    if any(total is None for total in totals):
+        return None, False, {}, all_hit
+    summed = sum_boss_damage([total for total in totals if total is not None])
+    if summed is None:
+        return None, True, {}, all_hit
+    per_player = {
+        actor_id: combined
+        for actor_id, parts in players.items()
+        if (combined := sum_boss_damage(parts)) is not None
+    }
+    return summed, False, per_player, all_hit
+
+
 def load_pace_sample(
     client: WclClient,
     own_cache: DiskCache,
@@ -86,15 +136,20 @@ def load_pace_sample(
     encounter: Encounter,
     references: tuple[ReferenceKillRow, ...],
 ) -> tuple[PaceSample, tuple[ReferenceRecord, ...]]:
-    """Our boss's damage graph and each reference kill's, for one wipe.
+    """Our boss's damage graph and each reference kill's, for one pull, kill or wipe.
+
+    The boss is found among the fight's own enemies: one boss, or a council's
+    bosses, each read through its own graph and summed onto one series. A
+    reference fight must field every one of our bosses, found by game id.
 
     Our report's responses go in `own_cache`, which never expires; the
     reference kills' in `reference_cache`, which does -- other players' logs,
     kept for one comparison. `references` is the candidates in the order they
     are tried: `raid` hands its mechanics comparison's own members, so the
-    page's two comparisons stand on one sample, and `night` hands every
-    candidate the leaderboard offers, so a reference that fails is refilled
-    from the rows behind it. Either way the loop stops once it holds
+    page's two comparisons stand on one sample, and `night` hands the same
+    members followed by every other candidate the leaderboard offers, so a
+    reference that fails is refilled from the rows behind it. Either way the
+    loop stops once it holds
     `SAMPLE_SIZE` references, and a candidate past that costs no request.
 
     Each side's boss graph is also split by player: `our_players` is our own
@@ -105,17 +160,24 @@ def load_pace_sample(
     of this is written anywhere; it lives for one comparison in memory.
 
     A reference is dropped, with its reason recorded, when its fight is
-    missing, when our boss's game id names no actor in it or more than one, or
-    when its graph carries no boss series. Never fatal: a `WclError`,
-    `IngestError` or `httpx.HTTPError` on one reference is recorded and the
-    loop moves on.
+    missing, when one of our bosses' game ids names no actor in it or more than
+    one, when its graphs carry no boss series, or when they sit on different
+    time grids. Never fatal: a `WclError`, `IngestError` or `httpx.HTTPError`
+    on one reference is recorded and the loop moves on. `RateLimitExceeded`
+    alone is raised: the client raises it only once its own waits for the
+    reset are spent, so it is every later request's failure, not one
+    reference's.
     """
     actors_payload, _ = _fetch(
         client, own_cache, NPC_ACTORS_QUERY, {"code": encounter.report_code}
     )
-    boss = find_boss_actor(build_npc_actors(actors_payload), encounter.boss_name)
-    if boss is None:
-        return PaceSample(unavailable=NO_SINGLE_BOSS), ()
+    bosses = find_bosses(
+        build_npc_actors(actors_payload),
+        frozenset(enemy.actor_id for enemy in encounter.enemies),
+        encounter.boss_name,
+    )
+    if not bosses:
+        return PaceSample(unavailable=NO_BOSS), ()
 
     if not references:
         # No reference to compare against, so our own graph is never worth its
@@ -123,19 +185,14 @@ def load_pace_sample(
         # spent anything on the fight it was actually asked to read.
         return PaceSample(unavailable=NO_REFERENCE_KILL), ()
 
-    own_graph_variables = {
-        "code": encounter.report_code,
-        "fightId": encounter.fight_id,
-        "startTime": float(encounter.start_ms),
-        "endTime": float(encounter.end_ms),
-        "targetId": boss.actor_id,
-    }
-    graph_payload, _ = _fetch(client, own_cache, BOSS_DAMAGE_GRAPH_QUERY, own_graph_variables)
-    ours = build_boss_damage(graph_payload, fight_start_ms=encounter.start_ms)
+    ours, grids_differ, our_series, _ = _boss_graphs(
+        client, own_cache, code=encounter.report_code, fight_id=encounter.fight_id,
+        start_ms=encounter.start_ms, end_ms=encounter.end_ms,
+        target_ids=[boss.actor_id for boss in bosses],
+    )
     if ours is None:
-        return PaceSample(unavailable=NO_BOSS_DAMAGE), ()
+        return PaceSample(unavailable=GRIDS_DIFFER if grids_differ else NO_BOSS_DAMAGE), ()
 
-    our_series = build_player_boss_damage(graph_payload, fight_start_ms=encounter.start_ms)
     our_players = tuple(
         PlayerSeries(
             actor_id=player.actor_id,
@@ -164,33 +221,35 @@ def load_pace_sample(
                 records.append(_record(row, loaded=False, reason=FIGHT_NOT_IN_REPORT))
                 continue
 
-            matching = [
-                enemy.actor_id for enemy in fight.enemies if enemy.game_id == boss.game_id
-            ]
-            if not matching:
+            target_ids: list[int] = []
+            absent = duplicated = False
+            for boss in bosses:
+                matching = [
+                    enemy.actor_id for enemy in fight.enemies if enemy.game_id == boss.game_id
+                ]
+                absent = absent or not matching
+                duplicated = duplicated or len(matching) > 1
+                if len(matching) == 1:
+                    target_ids.append(matching[0])
+            if absent:
                 boss_absent_count += 1
                 records.append(_record(row, loaded=False, reason=BOSS_NOT_AMONG_ENEMIES))
                 continue
-            if len(matching) > 1:
+            if duplicated:
                 records.append(_record(row, loaded=False, reason=BOSS_APPEARS_TWICE))
                 continue
 
-            graph_variables = {
-                "code": row.report_code,
-                "fightId": row.fight_id,
-                "startTime": float(fight.start_ms),
-                "endTime": float(fight.end_ms),
-                "targetId": matching[0],
-            }
-            damage_payload, damage_hit = _fetch(
-                client, reference_cache, BOSS_DAMAGE_GRAPH_QUERY, graph_variables
+            damage, grids_differ, series, damage_hit = _boss_graphs(
+                client, reference_cache, code=row.report_code, fight_id=row.fight_id,
+                start_ms=fight.start_ms, end_ms=fight.end_ms, target_ids=target_ids,
             )
-            damage = build_boss_damage(damage_payload, fight_start_ms=fight.start_ms)
             if damage is None:
-                records.append(_record(row, loaded=False, reason=NO_BOSS_SERIES))
+                records.append(
+                    _record(row, loaded=False,
+                            reason=GRIDS_DIFFER_REASON if grids_differ else NO_BOSS_SERIES)
+                )
                 continue
 
-            series = build_player_boss_damage(damage_payload, fight_start_ms=fight.start_ms)
             deaths: dict[int, float] = {}
             if row.deaths > 0:
                 events = fetch_all_events(
@@ -228,6 +287,8 @@ def load_pace_sample(
                 )
             )
             records.append(_record(row, loaded=True, from_cache=fight_hit and damage_hit))
+        except RateLimitExceeded:
+            raise
         except (WclError, IngestError, httpx.HTTPError) as error:
             records.append(_record(row, loaded=False, reason=str(error)))
             continue

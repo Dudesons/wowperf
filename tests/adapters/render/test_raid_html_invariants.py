@@ -31,13 +31,20 @@ from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.spikes import SPIKES_ID, answers_for
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsMember,
     MechanicsSample,
     ReferenceKillRow,
 )
-from wowperf.domain.comparison.pace import PACE_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.pace import (
+    KILL_DETAIL,
+    PACE_ID,
+    PROJECTION_ID,
+    PaceSample,
+    analyse_pace,
+)
 from wowperf.domain.comparison.pace_curve import PaceReference, PlayerSeries
 from wowperf.domain.comparison.pace_player import (
     PLAYER_PACE_PREFIX,
@@ -1686,13 +1693,10 @@ re-approving this file that it is the normal shape.
 def a_golden_pace_sample() -> PaceSample:
     """A behind pace comparison, given to the golden's own kill fight.
 
-    `analyse_pace` and `pace_reading` both refuse a kill outright (design
-    section 4: pace is a wipe-only comparison), so this sample -- and the
-    findings `analyse_pace` would emit from it -- never actually reach the
-    golden page. Passing it here anyway is the proof: the golden byte-compare
-    below holds the page to carrying not one trace of it, through the same
-    `build_raid_report` call a real kill's report is built from, rather than
-    through a synthetic fixture that never risked drawing one.
+    The golden page is a kill that fell behind the best kills' pace, through the
+    same `build_raid_report` call a real kill's report is built from, so the
+    byte-compare below holds the chart and the card a kill draws, and the
+    Summary warning it does not.
     """
     duration = int((FIGHT_END_MS - FIGHT_START_MS) / 1000) + 60
     kills = tuple(a_kill(100, duration) for _ in range(3))
@@ -1738,18 +1742,22 @@ def test_the_golden_fixture_actually_carries_a_comparison() -> None:
     }, sorted(families)
 
 
-def test_a_kill_carries_a_pace_sample_and_still_draws_none_of_it() -> None:
-    """The golden fixture is a kill given a real, behind pace sample -- design
-    section 4's "only on a wipe" rule, held against the real builder rather
-    than a fixture that never risked drawing anything.
+def test_a_kill_with_a_pace_sample_draws_the_chart_and_card_but_no_summary_warning() -> None:
+    """The golden fixture is a kill given a real, behind pace sample, built through
+    the real `build_raid_report`: the Damage tab carries the chart and the card,
+    the card states the kill's own caveat, and the Summary stays the kill-speed
+    findings' rather than opening on a warning that behind the best kills is the
+    expected result.
     """
     report = a_golden_raid_report()
 
-    assert report.pace_chart is None
+    assert report.pace_chart is not None
+    rows = {row.finding_id: row for row in all_raid_ledger_rows(report)}
+    assert rows[PACE_ID].detail == KILL_DETAIL
+    assert PROJECTION_ID not in rows
     assert report.pace_warning is None
-    assert not [
-        row for row in all_raid_ledger_rows(report) if row.finding_id.startswith("compare.pace.")
-    ]
+    assert "a kill behind their pace is the expected result" in golden_raid_html()
+    assert "Behind the reference kills' pace." not in golden_raid_html()
 
 
 def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> None:
@@ -1776,7 +1784,12 @@ def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> No
         finding for finding in a_real_raid_comparison() if finding.id.startswith("compare.")
     ]
     assert compared, "the fixture produced no comparison findings at all"
-    assert {finding.player_slug for finding in compared} == {EMBERKIN_SLUG, STONEWAKE_SLUG}
+    # The kill time is the one fight-wide comparison: it is about the raid's kill,
+    # not a raider, so it carries no slug. Every other comparison names its raider.
+    assert {finding.player_slug for finding in compared if finding.id != KILL_TIME_ID} == {
+        EMBERKIN_SLUG, STONEWAKE_SLUG
+    }
+    assert {finding.id for finding in compared if not finding.player_slug} == {KILL_TIME_ID}
     for finding in compared:
         row = rows.get(finding.id)
         assert row is not None, f"{finding.id} reached no row at all"

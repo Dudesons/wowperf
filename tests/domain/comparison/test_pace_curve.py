@@ -13,6 +13,7 @@ from wowperf.domain.comparison.pace_curve import (
     final_behind_start,
     lag_against,
     read_pace,
+    sum_boss_damage,
 )
 
 
@@ -237,3 +238,36 @@ def test_fewer_than_three_references_hold_no_band() -> None:
     lag = lag_against(100.0, one_second_kills(400, 400))
     assert lag.reached_at is None
     assert lag.band_end == 0
+
+
+def test_two_bosses_on_one_grid_sum_bucket_by_bucket_through_the_longer() -> None:
+    blood = BossDamage(interval_ms=950.0, amounts=(10, 20, 30), lead_ms=0)
+    breath = BossDamage(interval_ms=950.0, amounts=(1, 2), lead_ms=0)
+    assert sum_boss_damage((blood, breath)) == BossDamage(
+        interval_ms=950.0, amounts=(11, 22, 30), lead_ms=0
+    )
+
+
+def test_one_boss_sums_to_itself() -> None:
+    one = BossDamage(interval_ms=1000.0, amounts=(4, 5), lead_ms=250)
+    assert sum_boss_damage((one,)) == one
+
+
+def test_parts_on_different_intervals_do_not_sum() -> None:
+    parts = (
+        BossDamage(interval_ms=950.0, amounts=(1,)),
+        BossDamage(interval_ms=1000.0, amounts=(1,)),
+    )
+    assert sum_boss_damage(parts) is None
+
+
+def test_parts_with_different_leads_do_not_sum() -> None:
+    parts = (
+        BossDamage(interval_ms=1000.0, amounts=(1,), lead_ms=0),
+        BossDamage(interval_ms=1000.0, amounts=(1,), lead_ms=500),
+    )
+    assert sum_boss_damage(parts) is None
+
+
+def test_no_parts_is_no_damage() -> None:
+    assert sum_boss_damage(()) is None

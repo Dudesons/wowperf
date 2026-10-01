@@ -27,7 +27,8 @@ def analyse_night_boss(
     fetches every pull's casts. Without it there is nothing to judge, and
     asking anyway would put a silence on the page that reads like a check that
     ran and found nothing. The pace line reads each wipe pull's own sample, so
-    it is only there on a night that fetched them.
+    it is only there on a night that fetched them; a kill's sample is handed
+    in too, and the line leaves it out.
     """
     findings = analyse_progression(series)
     if death_cards:

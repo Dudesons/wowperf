@@ -77,7 +77,7 @@ class NightProvenance(Frozen):
 
     `withheld` is prose built from two sources and nothing else:
     `NightReport.failed_pulls`, for the pulls that never loaded at all, and
-    each drawn pull's own `compare.pace.unavailable` finding, for a wipe whose
+    each drawn pull's own `compare.pace.unavailable` finding, for a pull whose
     damage pace could not be compared. Each fact still has exactly one
     source, so the lines cannot drift from what they describe -- two
     independently gathered representations of the same fact drift, and then
@@ -92,9 +92,10 @@ class NightProvenance(Frozen):
     """
 
     fetched_at: str
-    # Every reference kill any wipe pull weighed, deduplicated by `url` in the
-    # order the pulls first weighed it. A link and never a figure, like every
-    # `ReferenceRecord` on this page -- see that class's own docstring.
+    # Every reference kill any pull weighed, for its mechanics sample or its
+    # damage pace, deduplicated by `url` in the order the pulls first weighed
+    # it. A link and never a figure, like every `ReferenceRecord` on this
+    # page -- see that class's own docstring.
     references: tuple[ReferenceRecord, ...] = ()
     withheld: tuple[str, ...] = ()
     methods: tuple[str, ...] = ()

@@ -1,5 +1,5 @@
-# ABOUTME: A wipe's damage pace against the reference kills, and when that pace would have killed.
-# ABOUTME: Two findings or one withheld notice, all read from `pace_curve`'s one reading.
+# ABOUTME: A fight's damage pace against the reference kills, and a wipe's when it would kill.
+# ABOUTME: One to two findings or one withheld notice, all read from `pace_curve`'s one reading.
 
 from statistics import median
 
@@ -24,9 +24,13 @@ PACE_ID = "compare.pace.boss"
 PROJECTION_ID = "compare.pace.projection"
 UNAVAILABLE_ID = "compare.pace.unavailable"
 
-NO_SINGLE_BOSS = (
-    "This fight has no single boss to compare: the report names no one boss actor after the "
-    "fight, which is what a council encounter looks like."
+NO_BOSS = (
+    "No enemy of this fight could be told apart as its boss: the log listed none for it, "
+    "none carries the boss flag, or more than one is named after the fight."
+)
+GRIDS_DIFFER = (
+    "This fight's bosses' damage graphs came back on different time grids, so their damage "
+    "could not be added up."
 )
 NO_BOSS_DAMAGE = "The damage graph for this boss held no series to compare."
 NO_REFERENCE_KILL = "No reference kill of this raid size could be loaded to compare against."
@@ -39,7 +43,7 @@ PACE_NOT_FETCHED = "Warcraft Logs did not return what this comparison reads"
 
 
 def not_fetched(message: str) -> str:
-    """Why a wipe was not compared when a request it needed failed, in the error's own words.
+    """Why a fight was not compared when a request it needed failed, in the error's own words.
 
     The opening is fixed so every such reason reads alike; the rest is the
     error's first line, as `FailedPull` keeps a failed pull's, because the
@@ -57,6 +61,12 @@ BOSS_DETAIL = (
     "that had dealt most. Each graph is read within its own buckets, so a dip shorter than "
     "the coarsest bucket is not reported."
 )
+TOP_KILLS_CAVEAT = (
+    "The reference kills are the execution leaderboard's, among the best kills of this boss, "
+    "so a kill behind their pace is the expected result; what this reads is from when it fell "
+    "behind."
+)
+KILL_DETAIL = f"{BOSS_DETAIL} {TOP_KILLS_CAVEAT}"
 PROJECTION_DETAIL = (
     "Assumes the raid's average damage to the boss would have held for the rest of the "
     "fight. Phases, intermissions and a shrinking raid all break that, and a wipe is where "
@@ -91,7 +101,7 @@ def share_of(value: float, of: float) -> int:
 
 def pace_reading(encounter: Encounter, sample: PaceSample) -> PaceReading | None:
     """The one reading both the findings and the chart draw from, or None."""
-    if encounter.kill or sample.unavailable or sample.ours is None:
+    if sample.unavailable or sample.ours is None:
         return None
     return read_pace(sample.ours, sample.references, encounter.duration_seconds)
 
@@ -109,9 +119,8 @@ def withheld_reason(encounter: Encounter, sample: PaceSample) -> str:
     """Why `analyse_pace` would withhold with `compare.pace.unavailable`, or "".
 
     The one predicate both the raid-wide and the per-player analyser read, so
-    a wipe that withholds one withholds the other. Does not check
-    `encounter.kill`: a kill withholds for a different reason (there is no
-    pace comparison at all) that each caller already checks on its own.
+    a fight that withholds one withholds the other. Does not check
+    `encounter.kill`: the per-player and night callers each gate on it themselves.
     """
     if sample.unavailable or sample.ours is None:
         return sample.unavailable or NO_BOSS_DAMAGE
@@ -124,20 +133,21 @@ def withheld_reason(encounter: Encounter, sample: PaceSample) -> str:
 
 
 def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
-    """`compare.pace.boss` and `compare.pace.projection`, or the notice saying why not.
+    """`compare.pace.boss` and, on a wipe, `compare.pace.projection`, or the notice saying why not.
 
-    A kill is never compared: kills have the parse comparison. The notice is
+    A kill is read against the reference kills the same way a wipe is, but is
+    never projected: it has already dealt the boss all its health. The notice is
     badged `measured` because what it states -- that a lookup found nothing --
     is a plain reading, and Provenance draws it rather than the Damage tab.
     """
-    if encounter.kill:
-        return []
     reason = withheld_reason(encounter, sample)
     if reason:
         return [_notice(reason)]
     reading = pace_reading(encounter, sample)
     assert reading is not None  # withheld_reason("") guarantees a usable reading
     assert sample.ours is not None  # same guarantee covers this
+    if encounter.kill:
+        return [_pace_finding(reading, "", kill=True)]
 
     total = cumulative_at(sample.ours, encounter.duration_seconds)
     withheld_projection = ""
@@ -148,13 +158,13 @@ def analyse_pace(encounter: Encounter, sample: PaceSample) -> list[Finding]:
     elif total <= 0:
         withheld_projection = "No projection: the raid dealt the boss no damage"
 
-    findings = [_pace_finding(reading, withheld_projection)]
+    findings = [_pace_finding(reading, withheld_projection, kill=False)]
     if not withheld_projection:
         findings.append(_projection(reading, total, encounter.duration_seconds))
     return findings
 
 
-def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
+def _pace_finding(reading: PaceReading, withheld_projection: str, *, kill: bool) -> Finding:
     last = reading.seconds[-1]
     clock = clock_text(last.second)
     against = "the slowest kill's" if reading.single else "the kills'"
@@ -180,7 +190,7 @@ def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
             f"{share_of(last.high, last.median)}% of their median"
         )
     if not reading.band_cut:
-        evidence.append(f"Compared through the wipe at {clock}")
+        evidence.append(f"Compared through the {'kill' if kill else 'wipe'} at {clock}")
     elif reading.single:
         evidence.append(f"Compared through {clock}, when the reference kill ended")
     else:
@@ -200,7 +210,7 @@ def _pace_finding(reading: PaceReading, withheld_projection: str) -> Finding:
     return Finding(
         id=PACE_ID,
         title=f"{lead}: {share_of(last.ours, last.median)}% of {of} by {clock}",
-        detail=BOSS_DETAIL,
+        detail=KILL_DETAIL if kill else BOSS_DETAIL,
         confidence=Confidence.DERIVED,
         evidence=tuple(evidence),
     )

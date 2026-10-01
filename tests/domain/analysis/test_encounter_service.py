@@ -7,7 +7,6 @@ from tests.domain.comparison.test_pace_curve import steady
 from wowperf.domain.analysis.attempt_shape import (
     NO_REFERENCE_SAMPLE,
     WITHHELD_ID,
-    no_sample_on_the_night,
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID, answers_for
@@ -737,24 +736,14 @@ def test_a_wipe_reaches_a_lethal_finding_and_a_verdict() -> None:
     assert "wipe.cause" in ids
 
 
-def test_the_callers_own_sample_absence_reaches_the_withheld_verdict() -> None:
-    """The night page's absence, handed to the analyser, is what the notice states.
-
-    Without it the analyser falls back to `NO_REFERENCE_SAMPLE`, the sentence
-    for a run that drew no reference kill -- false of a night wipe whose pace
-    was read against kills it drew.
-    """
+def test_an_empty_sample_reaches_the_withheld_verdict_as_the_missing_sample() -> None:
+    """With no reference kill to read, the verdict's notice says none was drawn."""
     loaded = _loaded_wipe_with(deaths=1)
-    absence = no_sample_on_the_night(loaded.encounter.fight_id)
 
-    handed = analyse_encounter(loaded, DEFENSIVES, Consumables(), no_sample=absence)
-    default = analyse_encounter(loaded, DEFENSIVES, Consumables())
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
 
-    [notice] = [finding for finding in handed if finding.id == WITHHELD_ID]
-    assert notice.detail == absence.detail
-    assert notice.evidence == (absence.evidence,)
-    [fallback] = [finding for finding in default if finding.id == WITHHELD_ID]
-    assert fallback.detail == NO_REFERENCE_SAMPLE
+    [notice] = [finding for finding in findings if finding.id == WITHHELD_ID]
+    assert notice.detail == NO_REFERENCE_SAMPLE
 
 
 def test_the_resurrection_stream_reaches_the_verdict() -> None:
@@ -856,6 +845,29 @@ def test_a_wipe_with_no_pace_sample_carries_no_pace_finding() -> None:
 
     ids = {finding.id for finding in findings}
     assert not any(one.startswith(PACE_PREFIX) for one in ids), ids
+
+
+def test_a_kill_with_three_reference_kills_carries_the_kill_time_finding() -> None:
+    """The sample `compare_mechanics` already reads is the one the kill time reads."""
+    sample = MechanicsSample(
+        members=tuple(
+            MechanicsMember(
+                row=ReferenceKillRow(
+                    report_code=f"ref{one}", fight_id=1, size=20, duration_ms=seconds * 1000
+                ),
+                abilities=(),
+            )
+            for one, seconds in enumerate((310, 240, 500))
+        )
+    )
+
+    findings = analyse_encounter(
+        a_loaded_encounter(), DEFENSIVES, Consumables(), mechanics=sample,
+    )
+
+    [finding] = [one for one in findings if one.id == "compare.kill.time"]
+    assert finding.confidence is Confidence.MEASURED
+    assert "against the kills' median of 5:10" in finding.title
 
 
 def a_raid_wipe_encounter() -> Encounter:

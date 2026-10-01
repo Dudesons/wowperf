@@ -95,6 +95,7 @@ query Fights($code: String!) {
         friendlyPlayers
         friendlySpecs
         friendlyItemLevels
+        enemyNPCs { id gameID }
         dungeonPulls {
           id
           name
@@ -274,7 +275,7 @@ query DamageDoneGraph($code: String!, $fightId: Int!, $startTime: Float!, $endTi
 
 # Every enemy actor of a report, with the flag that tells a boss from an add:
 # `subType` reads "Boss", "NPC" or "Unknown". `translate: true` is required
-# because `find_boss_actor` compares an actor's `name` against
+# because `find_bosses` compares an actor's `name` against
 # `Encounter.boss_name`, which comes from `fights(translate: true)` -- see the
 # wcl-api skill, "A damage graph can be scoped to the boss...", 2026-09-27.
 NPC_ACTORS_QUERY = """

@@ -171,35 +171,35 @@ Every boss and every pull one report holds is `wowperf night <url> [--deep FIGHT
 reads one pull, `progression` one boss's pulls, this one every boss and every pull the report
 holds. There is no `--fight`, because covering every fight is the point.
 
-It draws no parse axis and no mechanics axis — the two per-player and per-boss comparisons `raid`
-draws for a single pull. The parse axis is per player per boss, and across a whole report it would
-cost an order of magnitude more than everything else here put together, so `--player` and
-`--all-players` do not apply and are not offered; there is no per-player reference for them to
-widen. The mechanics axis is absent for a different reason: this command draws no per-boss
-mechanics comparison at all, so it loads no damage-taken table for one, whatever `--no-compare`
-says. Either way, every pull's spell-and-talent section is empty, and why it is differs: a
-kill, or a night read with `--no-compare`, reads "No reference was fetched for this analysis,
-so there is nothing to compare against" — the same line `raid --no-compare` prints, since neither
-drew this axis at all — while a wipe pull whose pace was compared, which did fetch reference
-kills, reads the sentence `raid --fight N` prints for that wipe: the attempt did not kill the boss,
-so no parse leaderboard sample stands beside it and every parse family is withheld. It says so where
-`raid` does — on every card, on the Damage tab when no pace row opens it, and once in the pull's
-Provenance. That pull's verdict notice says the night draws no mechanics sample, so the attempt's
-duration and death toll are not read against the kills here, and names `wowperf raid --fight
-<fight>` as the command that draws that sample; a `--no-compare` night's says instead that no
-reference kills were drawn. The page also states the parse absence once, on its own, naming the
-families it leaves out — damage against the board, damage by target, casts a minute, talents, buff
-uptime, the percentile — rather than leaving them silently missing.
-
-It does draw one comparison, on by default: each wipe pull's damage pace against the reference
-kills, the same reading `raid --fight N` draws for that pull, shared through the one-day reference
-cache across every pull at one boss and raid size. `--no-compare` skips it and analyses every pull
-in isolation; a kill pull draws no pace comparison either way, kills having no pace to read. Two or
-more compared wipes at one boss also add one line to that boss's Attempts tab, counting how many
-ended behind the kills' pace. `wowperf raid --fight N` is what draws the mechanics axis for one
-pull, and the parse axis for one kill — on a wipe `raid` withholds the parse axis too.
+It draws no parse axis — the per-player comparison `raid` draws for a single kill. The parse axis
+is per player per boss, and across a whole report it would cost an order of magnitude more than
+everything else here put together, so `--player` and `--all-players` do not apply and are not
+offered; there is no per-player reference for them to widen. The page states that absence once, on
+its own, naming the families it leaves out — damage against the board, damage by target, casts a
+minute, talents, buff uptime, the percentile — rather than leaving them silently missing.
+`wowperf raid --fight N` is what draws the parse axis, for one kill; on a wipe `raid` withholds it
+too.
 `--narrative` is not offered either, for the reason `raid` and `progression` do not take it: this
 command writes no narrative-bearing page.
+
+Everything else `raid --fight N` compares for a pull, this draws for every pull, kills included, on
+by default: the mechanics axis — what hit and killed the raid against the execution leaderboard's
+reference kills — and the damage pace against those kills on every pull, and the kill time on each
+kill. A wipe's verdict on why it ended (`wipe.cause`) is read against the same reference kills, as
+on `raid`. One reference sample per boss and raid size serves every pull at that boss, shared
+through the one-day reference cache; our own damage-taken table is one query per pull. Two or more
+compared wipes at one boss also add one line to that boss's Attempts tab, counting how many ended
+behind the kills' pace. `--no-compare` skips every comparison and analyses every pull in isolation.
+
+Every pull's spell-and-talent section is therefore empty, and why it is differs. On a night read
+with `--no-compare` it reads "No reference was fetched for this analysis, so there is nothing to
+compare against" — the same line `raid --no-compare` prints — and each wipe's verdict notice says
+no reference kills were drawn. A compared wipe reads the sentence `raid --fight N` prints for that
+wipe: the attempt did not kill the boss, so no parse leaderboard sample stands beside it and every
+parse family is withheld. A compared kill reads the night's own sentence instead, that this page
+never asks a parse leaderboard, since `raid` would draw the axis for that kill. Either way it says
+so where `raid` does — on every card, on the Damage tab when no other row opens it, and once in the
+pull's Provenance.
 
 What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws no death card at all,
 the cheapest tier a pull can be read at; left unset, the default trims every card to what each

@@ -40,7 +40,6 @@ from wowperf.adapters.wcl.pace import load_pace_sample
 from wowperf.adapters.wcl.queries import ABILITY_TAKEN_TABLE_QUERY, DAMAGE_DONE_TARGETS_QUERY
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
 from wowperf.adapters.wcl.repository import RaidReference, WclRunRepository
-from wowperf.domain.analysis.attempt_shape import NO_SAMPLE, no_sample_on_the_night
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.night_service import analyse_night_boss
 from wowperf.domain.analysis.progression_service import analyse_progression
@@ -80,7 +79,7 @@ from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.data_audit import AuditEntry, audit_lines, never_cast
 from wowperf.domain.encounter import Encounter, LoadedEncounter
-from wowperf.domain.findings import rank_findings
+from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
 from wowperf.domain.report.model import ReferenceRecord
@@ -770,16 +769,16 @@ def _reference_kill_rows(
 def _pace_references(
     rankings: WclEncounterRankingRepository, encounter: Encounter
 ) -> tuple[ReferenceKillRow, ...]:
-    """The kills a night wipe's pace may be read against: `raid`'s rule, without its tables.
+    """Every kill a night pull's pace may be read against: `raid`'s rule, without its tables.
 
-    `raid` takes its pace references from the mechanics sample, which also
-    loads each kill's damage-taken table; the night page draws no mechanics
-    comparison, so it takes every row the same rule selects, never the fight
-    under analysis, in leaderboard order. All of them rather than the first
-    `SAMPLE_SIZE`: `load_pace_sample` stops once it holds that many, so a
-    reference whose own fight will not load is refilled from the rows behind
-    it instead of shrinking the sample, and a row past a full sample costs
-    no request.
+    Every row the rule selects, never the fight under analysis, in leaderboard
+    order. `_compare_night_pull` puts the mechanics sample's members first and
+    these behind them, so a member whose own fight will not load for pace is
+    refilled from the rows behind it instead of shrinking the sample:
+    `load_pace_sample` stops once it holds `SAMPLE_SIZE`, and a row past a full
+    sample costs no request. It reads the board through the same ranking
+    repository and one-day cache `_mechanics_sample` just read it through, so
+    the second read is served from disk.
     """
     ours = (encounter.report_code, encounter.fight_id)
     return tuple(
@@ -801,8 +800,11 @@ def _mechanics_sample(
     Mirrors `_samples`: a row naming our own report and fight is never a
     reference for it (comparing a kill against itself would report a perfect
     match and teach the reader nothing), and a row whose ability table failed
-    to load is skipped, never fatal, with the reason recorded rather than
-    silently dropped.
+    to load -- a GraphQL error, a malformed table, or a transport error -- is
+    skipped, never fatal, with the reason recorded rather than silently
+    dropped. `RateLimitExceeded` alone is re-raised: the client raises it
+    only once its own waits for the reset are spent, so it is every later
+    request's failure, not this row's.
 
     Every size-matching row is offered to the loop, which breaks once it holds
     `SAMPLE_SIZE` members -- `_samples`' own shape, and for its reason: slicing
@@ -832,13 +834,82 @@ def _mechanics_sample(
             continue
         try:
             abilities, from_cache = _ability_taken(client, cache, row.report_code, row.fight_id)
-        except (IngestError, WclError) as error:
+        except RateLimitExceeded:
+            raise
+        except (IngestError, WclError, httpx.HTTPError) as error:
             records.append(_mechanics_record(row, loaded=False, reason=str(error)))
             continue
         records.append(_mechanics_record(row, loaded=True, from_cache=from_cache))
         members.append(MechanicsMember(row=row, abilities=abilities))
 
     return MechanicsSample(members=tuple(members)), tuple(records)
+
+
+class NightPullComparison(NamedTuple):
+    """What one night pull is compared with: `raid --fight N`'s samples, but the parse axis."""
+
+    mechanics: MechanicsSample
+    our_abilities: tuple[AbilityTakenRow, ...]
+    pace: PaceSample
+    records: tuple[ReferenceRecord, ...]
+
+
+def _compare_night_pull(
+    repository: WclRunRepository,
+    rankings: WclEncounterRankingRepository,
+    transient: DiskCache,
+    encounter: Encounter,
+) -> NightPullComparison:
+    """One night pull's mechanics sample and damage pace, each failing on its own.
+
+    The pace references are the mechanics sample's members first, then the
+    rest of the board: with no failure that is `raid`'s own sample, and a
+    member whose pace graph fails is refilled from the rows behind it rather
+    than shrinking the pace sample.
+
+    The board, or our own damage-taken table, not answering leaves this pull
+    compared with nothing: there is no other board to fall back on, so pace
+    says why and the verdict says no reference kill was drawn. Pace failing
+    after the sample loaded is pace's failure alone -- the reference kills
+    were drawn, and the verdict and what hit the raid still read them.
+
+    `RateLimitExceeded` is raised only once the client's own waits for the
+    reset are spent, so it is not this pull's failure but every remaining
+    pull's, as when a pull's streams are loaded: recorded here it would state
+    a cause true of none of them in particular, so it is re-raised.
+    """
+    try:
+        mechanics, mechanics_records = _mechanics_sample(
+            rankings, repository.client, transient, encounter
+        )
+        # Our own report's responses never expire, so this is cached beside
+        # every other query the night issued for it, not in the transient
+        # store the reference kills' tables share.
+        our_abilities, _ = _ability_taken(
+            repository.client, repository.cache, encounter.report_code, encounter.fight_id
+        )
+    except RateLimitExceeded:
+        raise
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        return NightPullComparison(
+            MechanicsSample(), (), PaceSample(unavailable=not_fetched(str(error))), ()
+        )
+
+    members = tuple(member.row for member in mechanics.members)
+    references = members + tuple(
+        row for row in _pace_references(rankings, encounter) if row not in members
+    )
+    try:
+        # A reference kill that fails never raises here -- `load_pace_sample`
+        # records it and tries the next.
+        pace, pace_records = load_pace_sample(
+            repository.client, repository.cache, transient, encounter, references
+        )
+    except RateLimitExceeded:
+        raise
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        pace, pace_records = PaceSample(unavailable=not_fetched(str(error))), ()
+    return NightPullComparison(mechanics, our_abilities, pace, mechanics_records + pace_records)
 
 
 DAMAGE_METRICS = ("dps", "bossdps")
@@ -1631,18 +1702,17 @@ def raid(
             mechanics_sample, reference_records = _mechanics_sample(
                 encounter_rankings, repository.client, transient, encounter
             )
-            # A wipe only: kills have the parse comparison, and nothing is fetched for a
-            # comparison the page would not draw. The references are the mechanics
-            # sample's own members, so the page's two comparisons stand on one sample.
-            if not encounter.kill:
-                pace_sample, pace_records = load_pace_sample(
-                    repository.client,
-                    repository.cache,
-                    transient,
-                    encounter,
-                    tuple(member.row for member in mechanics_sample.members),
-                )
-                reference_records += pace_records
+            # A kill and a wipe both read pace, against the mechanics sample's own
+            # members, so the page's comparisons stand on one sample. Per-player
+            # pace stays a wipe's: `pace_player.py` gates it.
+            pace_sample, pace_records = load_pace_sample(
+                repository.client,
+                repository.cache,
+                transient,
+                encounter,
+                tuple(member.row for member in mechanics_sample.members),
+            )
+            reference_records += pace_records
             # Our own report's responses never expire, so this is cached
             # beside every other query `load_encounter` already issued for it,
             # not in the transient store the reference kills' tables share.
@@ -1919,8 +1989,7 @@ def night(
     no_compare: bool = typer.Option(
         False,
         "--no-compare",
-        help="Fetch no reference kill: no wipe pull's damage pace is compared against "
-        "the kills",
+        help="Fetch no reference kill: no pull is compared against the kills",
     ),
     difficulty: int | None = typer.Option(
         None,
@@ -1939,19 +2008,19 @@ def night(
     It draws no parse axis. That sample is per player per boss, and across a
     report it would cost an order of magnitude more than everything else here
     put together, so `--player` and `--all-players` are not offered, there
-    being no per-player reference for them to widen. It draws no mechanics
-    axis either, for a different reason: the night draws no per-boss
-    mechanics comparison at all, so it loads no damage-taken table for one.
-    The page says once that no parse axis was drawn, rather than leaving six
-    families silently missing.
+    being no per-player reference for them to widen. The page says once that
+    no parse axis was drawn, rather than leaving six families silently
+    missing.
 
-    It does draw one comparison, on by default: each wipe pull's damage pace
-    against the reference kills, the same reading `raid --fight N` draws for
-    that pull, shared through the one-day reference cache across every pull at
-    one boss and raid size. `--no-compare` skips it and analyses every pull in
-    isolation; a kill pull never draws it either way, kills having no pace to
-    read. Two or more compared wipes at one boss also add one line to that
-    boss's Attempts tab, counting how many ended behind the kills' pace.
+    Every other comparison `raid --fight N` draws for a pull, this draws for
+    every pull, kills included, on by default: what hit and killed the raid
+    against the execution leaderboard's reference kills, the verdict on why a
+    wipe ended, the damage pace, and a kill's time. One reference sample per
+    boss and raid size serves all of them, shared across that boss's pulls
+    through the one-day reference cache; our own damage-taken table is one
+    query per pull. `--no-compare` skips all of it and analyses every pull in
+    isolation. Two or more compared wipes at one boss also add one line to
+    that boss's Attempts tab, counting how many ended behind the kills' pace.
 
     What a pull costs is chosen per pull, on three rungs: `--no-deaths` draws
     no death card at all, the default trims every card to what each player had
@@ -2031,46 +2100,24 @@ def night(
         # payload off this single list rather than rebuilding it three times.
         drawn = [attempt for boss in loaded.loaded for attempt in boss.attempts_with_events]
 
-        pace_by_fight: dict[int, PaceSample] = {}
-        records_by_fight: dict[int, tuple[ReferenceRecord, ...]] = {}
+        comparisons: dict[int, NightPullComparison] = {}
         if not no_compare:
             # One `DiskCache` and one ranking repository for the whole night,
             # never per boss or per pull: the reference cache is what shares a
-            # boss's kills across its own wipes (design section 14.2), so
-            # nothing here needs to refill or re-share anything itself.
+            # boss's board and reference kills across its own pulls
+            # (`2026-10-01-raid-leader-night-design.md` section 4.1), so
+            # nothing here needs to refill or re-share anything itself. Every
+            # pull is compared, kills included.
             transient = DiskCache(
                 cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
             )
             encounter_rankings = WclEncounterRankingRepository(repository.client, transient)
             for attempt in drawn:
-                # A kill has the parse comparison on `raid`, and no pace to
-                # read here either: nothing is fetched for a comparison the
-                # page would not draw.
-                if attempt.encounter.kill:
-                    continue
-                try:
-                    pace_sample, pace_records = load_pace_sample(
-                        repository.client,
-                        repository.cache,
-                        transient,
-                        attempt.encounter,
-                        _pace_references(encounter_rankings, attempt.encounter),
-                    )
-                except RateLimitExceeded:
-                    # Raised only once the client's own waits for the reset
-                    # are spent. Not this pull's failure but every remaining
-                    # pull's, as when a pull's streams are loaded: recorded
-                    # once per wipe it would state a cause true of none of them.
-                    raise
-                except (ValueError, WclError, httpx.HTTPError, OSError) as error:
-                    # The board, or a request on our own report, did not
-                    # answer: there is no other board to fall back on, so this
-                    # wipe is not compared and says why, and the night goes
-                    # on. A reference kill that fails never reaches here --
-                    # `load_pace_sample` records it and tries the next.
-                    pace_sample, pace_records = PaceSample(unavailable=not_fetched(str(error))), ()
-                pace_by_fight[attempt.encounter.fight_id] = pace_sample
-                records_by_fight[attempt.encounter.fight_id] = pace_records
+                comparisons[attempt.encounter.fight_id] = _compare_night_pull(
+                    repository, encounter_rankings, transient, attempt.encounter
+                )
+        pace_by_fight = {fight_id: one.pace for fight_id, one in comparisons.items()}
+        records_by_fight = {fight_id: one.records for fight_id, one in comparisons.items()}
 
         # Two lists, not one. A boss's findings read its attempts' metadata and
         # a pull's read that pull's own streams; neither is a summary of the
@@ -2083,33 +2130,28 @@ def night(
             )
             for boss in loaded.loaded
         }
-        # No mechanics sample and no parse subject: this command fetches no
-        # execution-leaderboard ability table and compares no player's parse,
-        # so handing the analyser an empty sample and no subjects is what
-        # leaves those two families undrawn rather than drawn from nothing.
-        # Pace is the one comparison this command does draw, on by default;
-        # `pace_by_fight` hands each pull its own sample, or nothing at all
-        # for a kill or for a night read with `--no-compare`. A pull handed
-        # one also drew reference kills, so its verdict notice may not say
-        # none were drawn: it says the night drew no mechanics sample instead.
-        # Each pull is handed the answers its own roster holds, because a
-        # night's roster can change between one pull and the next.
-        findings_by_fight = {
-            attempt.encounter.fight_id: analyse_encounter(
+        # No parse subject: this command compares no player's parse, so
+        # handing the analyser none is what leaves that axis undrawn rather
+        # than drawn from nothing. Everything else `raid` compares, each pull
+        # is handed from its own comparison -- the mechanics sample the verdict
+        # and what hit the raid read, our own damage-taken table, and the
+        # pace sample -- or an empty sample and no pace on a night read with
+        # `--no-compare`. Each pull is handed the answers its own roster
+        # holds, because a night's roster can change between one pull and the
+        # next.
+        findings_by_fight: dict[int, list[Finding]] = {}
+        for attempt in drawn:
+            comparison = comparisons.get(attempt.encounter.fight_id)
+            findings_by_fight[attempt.encounter.fight_id] = analyse_encounter(
                 attempt,
                 defensives,
                 consumables,
                 roles=roles,
-                pace=pace_by_fight.get(attempt.encounter.fight_id),
-                no_sample=(
-                    no_sample_on_the_night(attempt.encounter.fight_id)
-                    if attempt.encounter.fight_id in pace_by_fight
-                    else NO_SAMPLE
-                ),
+                mechanics=comparison.mechanics if comparison else MechanicsSample(),
+                our_abilities=comparison.our_abilities if comparison else (),
+                pace=comparison.pace if comparison else None,
                 answers=answers_for(attempt.encounter.players, throughput, externals, roles),
             )
-            for attempt in drawn
-        }
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")

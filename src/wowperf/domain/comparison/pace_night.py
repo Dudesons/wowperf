@@ -27,9 +27,10 @@ def analyse_night_pace(
 ) -> list[Finding]:
     """`progression.attempts.pace` for one boss, or nothing.
 
-    `attempts` is the boss's drawn pulls in pull order; `samples` is each wipe
-    pull's pace sample by fight id, as the night command loaded it. A pull with
-    no sample -- a kill, or a night read with `--no-compare` -- is not listed.
+    `attempts` is the boss's drawn pulls in pull order; `samples` is each
+    pull's pace sample by fight id, as the night command loaded it. A kill is
+    not listed, whatever sample it carries, since the line counts wipes; nor is
+    a pull with no sample, as on a night read with `--no-compare`.
     Every clock and state is the one `pace_reading` already gives that pull, so
     this line and the pull's own finding cannot disagree.
     """

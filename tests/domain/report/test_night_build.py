@@ -6,8 +6,8 @@ from collections.abc import Mapping, Sequence
 from tests.domain.comparison.test_pace_night import a_sample
 from tests.domain.progression_fixtures import a_loaded_attempt
 from wowperf.domain.analysis.progression_service import analyse_progression
-from wowperf.domain.comparison.night_axis import NOT_DRAWN_ID
-from wowperf.domain.comparison.pace import NO_SINGLE_BOSS, PACE_ID, PaceSample, analyse_pace
+from wowperf.domain.comparison.night_axis import NOT_DRAWN_COMPARED_DETAIL, NOT_DRAWN_ID
+from wowperf.domain.comparison.pace import NO_BOSS, PACE_ID, PaceSample, analyse_pace
 from wowperf.domain.comparison.pace_night import NIGHT_PACE_ID, analyse_night_pace
 from wowperf.domain.comparison.parse_axis import WITHHELD_DETAIL
 from wowperf.domain.encounter import LoadedEncounter
@@ -55,7 +55,7 @@ FAILED_REASON = "the damage-taken stream would not load"
 
 def a_pull(
     fight_id: int, boss_name: str, encounter_id: int, owner_name: str | None,
-    *, roster: tuple[Player, ...] = ROSTER,
+    *, roster: tuple[Player, ...] = ROSTER, kill: bool = False,
 ) -> LoadedEncounter:
     """One deepened pull: one death, and one hit inside its run-up.
 
@@ -73,6 +73,7 @@ def a_pull(
         boss_name=boss_name,
         encounter_id=encounter_id,
         owner_name=owner_name,
+        kill=kill,
     )
 
 
@@ -82,6 +83,7 @@ def a_night(
     owner_name: str | None = OWNER,
     failed: tuple[int, ...] = (),
     roster: tuple[Player, ...] = ROSTER,
+    kill: bool = False,
 ) -> LoadedNight:
     """A loaded night with one boss per entry in `bosses`, holding that many pulls.
 
@@ -93,6 +95,9 @@ def a_night(
     its `loaded`, with a `FailedPull` naming it: that is the shape
     `load_night_attempts` produces for a pull whose streams would not come
     back.
+
+    `kill` makes every pull a kill, for the one sentence a kill's page says
+    where a wipe's says another.
     """
     loaded: list[LoadedProgression] = []
     failures: list[FailedPull] = []
@@ -100,7 +105,10 @@ def a_night(
         boss_name = BOSS_NAMES[index]
         encounter_id = 3490 + index
         pulls = tuple(
-            a_pull((index + 1) * 10 + which, boss_name, encounter_id, owner_name, roster=roster)
+            a_pull(
+                (index + 1) * 10 + which, boss_name, encounter_id, owner_name,
+                roster=roster, kill=kill,
+            )
             for which in range(count)
         )
         failures.extend(
@@ -346,11 +354,11 @@ def test_the_page_carries_the_absent_axis_disclosure_exactly_once() -> None:
     assert ids.count(NOT_DRAWN_ID) == 1
 
 
-def test_a_night_handed_a_pace_sample_says_it_draws_pace_and_no_parses() -> None:
+def test_a_night_handed_a_pace_sample_says_it_compares_against_kills_and_draws_no_parses() -> None:
     """Handed any sample, the night asked a leaderboard for reference kills --
-    even when every wipe then withheld -- so the disclosure may no longer say
-    that no comparison against other kills is drawn. A night handed none, a
-    `--no-compare` or all-kills night, keeps the sentence it always had.
+    even when every pull then withheld -- so the disclosure may no longer say
+    that no comparison against other kills is drawn. A night handed none, one
+    read with `--no-compare`, keeps the sentence it always had.
     """
     night = a_night(bosses=(1,))
     fight_id = night.night.bosses[0].attempts[0].fight_id
@@ -371,7 +379,7 @@ def test_a_night_handed_a_pace_sample_says_it_draws_pace_and_no_parses() -> None
         (row,) = (one for one in report.observations if one.finding_id == NOT_DRAWN_ID)
         return row.title
 
-    withheld = disclosure({fight_id: PaceSample(unavailable=NO_SINGLE_BOSS)})
+    withheld = disclosure({fight_id: PaceSample(unavailable=NO_BOSS)})
     assert withheld == "No parse comparison is drawn on this page"
     assert disclosure(None) == "No comparison against other kills is drawn on this page"
     assert disclosure({}) == "No comparison against other kills is drawn on this page"
@@ -793,7 +801,7 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
     night = a_night(bosses=(1,))
     encounter = night.night.bosses[0].attempts[0]
     fight_id = encounter.fight_id
-    sample = PaceSample(unavailable=NO_SINGLE_BOSS)
+    sample = PaceSample(unavailable=NO_BOSS)
     findings = analyse_pace(encounter, sample)
 
     report = build_night_report(
@@ -810,7 +818,7 @@ def test_a_withheld_pace_notice_becomes_one_provenance_line() -> None:
 
     named = [line for line in report.provenance.withheld if line.startswith(f"Fight {fight_id}:")]
     assert named == [
-        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_SINGLE_BOSS}"
+        f"Fight {fight_id}: damage pace against the kills was not compared. {NO_BOSS}"
     ]
 
 
@@ -819,8 +827,8 @@ def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
 
     The switch under test is on being handed a sample, not on that sample
     succeeding: `load_pace_sample` ran for both of the first two, and only the
-    third is a pull `pace_by_fight` never names -- the shape a kill or a
-    `--no-compare` night has. Returned by role, so each test below reads the
+    third is a pull `pace_by_fight` never names -- the shape a `--no-compare`
+    night has. Returned by role, so each test below reads the
     pull it is about by name rather than by position.
     """
     night = a_night(bosses=(3,))
@@ -839,7 +847,7 @@ def three_wipes_one_handed_no_sample() -> dict[str, RaidReport]:
         findings_by_boss=NO_FINDINGS,
         pace_by_fight={
             compared.fight_id: sample,
-            unavailable.fight_id: PaceSample(unavailable=NO_SINGLE_BOSS),
+            unavailable.fight_id: PaceSample(unavailable=NO_BOSS),
         },
     )
     by_fight = {pull.report.provenance.fight_id: pull.report for pull in report.bosses[0].pulls}
@@ -899,7 +907,7 @@ def test_a_pull_handed_a_pace_sample_states_the_wipes_reason_once_in_its_provena
 
 
 def test_a_pull_handed_no_pace_sample_keeps_no_comparison_ran_at_every_site() -> None:
-    """A kill, or a `--no-compare` night: nothing was fetched for it, and the page says so."""
+    """A `--no-compare` night: nothing was fetched for it, and the page says so."""
     pulls = three_wipes_one_handed_no_sample()
     untouched = pulls["untouched"]
 
@@ -913,6 +921,44 @@ def test_a_pull_handed_no_pace_sample_keeps_no_comparison_ran_at_every_site() ->
         f"Spell and talent comparison: {NO_COMPARISON_RAN}",
     ]
     assert not any(WITHHELD_DETAIL in line for line in untouched.provenance.withheld)
+
+
+def test_a_kill_handed_a_pace_sample_states_the_nights_own_reason_for_its_parse_line() -> None:
+    """A kill's parse line says the night draws no parse axis, not that the boss lived.
+
+    `WITHHELD_DETAIL` opens by saying the attempt did not kill the boss, false
+    of a kill. `NO_COMPARISON_RAN` says no reference was fetched, false of a
+    pull compared against the kills. What is true is the night's own reason:
+    it never asks a parse leaderboard, on a kill or on a wipe.
+    """
+    night = a_night(bosses=(1,), kill=True)
+    encounter = night.night.bosses[0].attempts[0]
+    assert encounter.kill
+    sample = a_sample(80, int(encounter.duration_seconds))
+
+    report = build_night_report(
+        night,
+        {encounter.fight_id: analyse_pace(encounter, sample)},
+        FETCHED,
+        NO_DEFENSIVES,
+        NO_CONSUMABLES,
+        NO_ROLES,
+        deep_fights=frozenset(),
+        death_cards=True,
+        findings_by_boss=NO_FINDINGS,
+        pace_by_fight={encounter.fight_id: sample},
+    )
+
+    pull = report.bosses[0].pulls[0].report
+    withheld = pull.provenance.withheld
+    assert [line for line in withheld if line.startswith("Damage against other kills")] == [
+        f"Damage against other kills: {NOT_DRAWN_COMPARED_DETAIL}"
+    ]
+    assert not any(WITHHELD_DETAIL in line for line in withheld)
+    assert not any(NO_COMPARISON_RAN in line for line in withheld)
+    assert [card.spell_and_talent.reason for card in pull.players] == [
+        NOT_DRAWN_COMPARED_DETAIL
+    ] * len(ROSTER)
 
 
 def test_the_boss_pace_line_lands_on_the_summary_and_nowhere_on_a_pull() -> None:

@@ -321,6 +321,11 @@ def build_encounter(
             for t in fight.get("phaseTransitions") or ()
         ),
         phases=phases,
+        enemies=tuple(
+            EnemyNpc(actor_id=int(npc["id"]), game_id=int(npc["gameID"]))
+            for npc in fight.get("enemyNPCs") or ()
+            if npc.get("id") is not None and npc.get("gameID") is not None
+        ),
         start_ms=int(fight["startTime"]),
         end_ms=int(fight["endTime"]),
         owner_name=(report.get("owner") or {}).get("name"),
@@ -679,7 +684,7 @@ def build_player_boss_damage(
 def build_npc_actors(payload: dict[str, Any]) -> tuple[NpcActor, ...]:
     """Every enemy actor of a report, with its boss flag.
 
-    A row missing `id` or `gameID` is skipped: it names nothing `find_boss_actor`
+    A row missing `id` or `gameID` is skipped: it names nothing `find_bosses`
     or a reference fight's enemy list could ever match against.
     """
     report = (payload.get("reportData") or {}).get("report") or {}

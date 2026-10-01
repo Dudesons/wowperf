@@ -3,7 +3,7 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.analysis.attempt_shape import NO_SAMPLE, NoSample, classify_attempt
+from wowperf.domain.analysis.attempt_shape import classify_attempt
 from wowperf.domain.analysis.consumables import (
     analyse_consumables_at_death,
     analyse_consumables_never_used,
@@ -17,6 +17,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import Answer, analyse_spikes
+from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsSample,
@@ -67,7 +68,6 @@ def analyse_encounter(
     parse_subjects: Sequence[ParseSubject] = (),
     pace: PaceSample | None = None,
     self_resurrections: SelfResurrections = SelfResurrections(),
-    no_sample: NoSample = NO_SAMPLE,
     answers: Sequence[Answer] | None = None,
 ) -> list[Finding]:
     """Every analyser a single boss fight supports, as one ranked list.
@@ -99,19 +99,16 @@ def analyse_encounter(
     land -- the order here is the order the analysers ran in, never an order a
     reader meets.
 
-    `pace` runs `analyse_pace` on the wipes the command fetched references for;
-    `None` means the command never asked -- a kill, or `--no-compare` -- and is
-    kept apart from a sample that asked and found nothing to compare.
+    `pace` runs `analyse_pace` on the attempt the command fetched references
+    for, a kill or a wipe; `None` means the command never asked --
+    `--no-compare` -- and is kept apart from a sample that asked and found
+    nothing to compare.
 
     The same `pace` also runs `analyse_player_pace`, one row per compared
     damage dealer or tank; it reads `parse_subjects` rather than
     `encounter.players` because that is the roster `--player`/`--all-players`
     actually asked to compare, the same list the raid-wide parse axis above
     reads from.
-
-    `no_sample` is what the attempt verdict's notice says when `mechanics`
-    holds no reference kill, handed straight to `classify_attempt`; the
-    night page passes its own, since it never draws that sample.
 
     The raid's heaviest moments are read beside what hit it, and only when
     `answers` is handed in, because the answer set is built from the data
@@ -160,6 +157,7 @@ def analyse_encounter(
         phase_shares=phase_shares,
     )
     findings += compare_lethal_abilities(loaded.deaths, mechanics)
+    findings += analyse_kill_time(encounter, mechanics)
     findings += compare_phase_cost(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
@@ -181,7 +179,6 @@ def analyse_encounter(
         loaded.deaths,
         mechanics,
         resurrections=loaded.resurrections,
-        no_sample=no_sample,
     )
     if verdict is not None:
         findings.append(verdict)

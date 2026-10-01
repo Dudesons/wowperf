@@ -27,6 +27,7 @@ RAID_PLACEMENTS: tuple[tuple[str, str], ...] = (
     ("healing.spikes", "mechanics_rows"),
     ("interrupts.", "interrupts"),
     ("compare.pace.", "damage_rows"),
+    ("compare.kill.", "damage_rows"),
     ("compare.damage.", "damage_rows"),
     ("compare.rank", "damage_rows"),
     ("defensives.", "group_rows"),
