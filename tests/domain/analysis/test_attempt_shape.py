@@ -5,7 +5,6 @@ from wowperf.domain.analysis.attempt_shape import (
     NO_REFERENCE_SAMPLE,
     alive_over_time,
     classify_attempt,
-    no_sample_on_the_night,
 )
 from wowperf.domain.comparison.mechanics import MechanicsMember, MechanicsSample, ReferenceKillRow
 from wowperf.domain.encounter import Encounter
@@ -502,44 +501,15 @@ def test_an_attempt_with_no_reference_sample_names_the_missing_sample() -> None:
     assert "reference" in reason.lower(), reason
 
 
-def test_a_caller_that_draws_no_sample_states_its_own_absence_in_place_of_the_default() -> None:
-    """The night page draws no mechanics sample at all, so the default is false there.
-
-    `NO_REFERENCE_SAMPLE` says no reference kills were drawn for this boss --
-    false of a night wipe whose pace was read against kills it drew. The
-    caller's own absence is stated whole, detail and evidence both, so the
-    findings file cannot carry the true sentence beside a false evidence line.
-    """
+def test_the_missing_sample_notice_states_its_sentence_and_its_evidence() -> None:
+    """Both halves, because the findings file prints both and they must agree."""
     encounter = _encounter(kill=False, boss_percentage=45.0, seconds=400.0)
 
-    finding = classify_attempt(
-        encounter, _deaths(1), MechanicsSample(), no_sample=no_sample_on_the_night(7)
-    )
+    finding = classify_attempt(encounter, _deaths(1), MechanicsSample())
 
-    assert _withheld_reason(finding) == no_sample_on_the_night(7).detail
+    assert _withheld_reason(finding) == NO_REFERENCE_SAMPLE
     assert finding is not None
-    assert finding.evidence == (no_sample_on_the_night(7).evidence,)
-    default = classify_attempt(encounter, _deaths(1), MechanicsSample())
-    assert _withheld_reason(default) == NO_REFERENCE_SAMPLE
-    assert default is not None
-    assert default.evidence == ("no reference kills were drawn",)
-
-
-def test_the_nights_absence_names_the_command_that_draws_the_sample_for_that_fight() -> None:
-    """`raid --fight N` draws the mechanics sample on a wipe; the night names that N.
-
-    Plain text: the Provenance line renders no code span, so a backtick would
-    print as itself. And nothing in it claims no reference kill was drawn.
-    """
-    absence = no_sample_on_the_night(30)
-
-    assert "wowperf raid --fight 30 " in absence.detail
-    assert "mechanics sample" in absence.detail
-    assert "duration and death toll" in absence.detail
-    assert "`" not in absence.detail
-    assert "No reference kills were drawn" not in absence.detail
-    assert "--no-compare" not in absence.detail
-    assert absence.detail != NO_REFERENCE_SAMPLE
+    assert finding.evidence == ("no reference kills were drawn",)
 
 
 def test_an_attempt_with_no_boss_health_reading_names_that() -> None:

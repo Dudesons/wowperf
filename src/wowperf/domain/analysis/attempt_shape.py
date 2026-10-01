@@ -45,45 +45,15 @@ NEITHER_SHAPE = (
 )
 
 
-class NoSample(Frozen):
-    """Why the verdict had no reference kills to read, and the evidence line saying so.
+NO_SAMPLE_EVIDENCE = "no reference kills were drawn"
+"""The evidence line beside `NO_REFERENCE_SAMPLE`, the verdict's notice for an empty sample.
 
-    Carried as one value so the two halves cannot disagree: the findings file
-    prints both, and a true sentence beside a false evidence line is still a
-    false finding.
-    """
-
-    detail: str
-    evidence: str
-
-
-NO_SAMPLE = NoSample(detail=NO_REFERENCE_SAMPLE, evidence="no reference kills were drawn")
-"""The absence `raid` reaches, and a night read with `--no-compare`.
-
-True of both: `raid` asked the leaderboard and was answered with nothing, or
-`--no-compare` told either command not to ask.
+Both are true wherever the sample is empty: `raid` or `night` asked the
+leaderboard and was answered with nothing, or `--no-compare` told either
+command not to ask. `raid` and `night`, the two commands that read a verdict,
+draw the same mechanics sample for it, so neither has an absence of its own
+to state in their place.
 """
-
-
-def no_sample_on_the_night(fight_id: int) -> NoSample:
-    """The absence on a night wipe that compared its pace: the page draws no such sample.
-
-    `NO_REFERENCE_SAMPLE` would be false there -- the night drew reference
-    kills for this very pull, and read its damage pace against them. What is
-    true is that the night never draws the mechanics sample the verdict reads
-    its reference duration and death toll from, and `raid --fight N` does,
-    on a wipe as on a kill: its `_mechanics_sample` runs for any fight that
-    was not read with `--no-compare`. Plain text, because the Provenance line
-    it lands on renders no code span.
-    """
-    return NoSample(
-        detail=(
-            "The night page draws no mechanics sample, so this attempt's duration and "
-            "death toll are not read against the reference kills on this page. "
-            f"wowperf raid --fight {fight_id} draws that sample for this attempt."
-        ),
-        evidence="the night page draws no mechanics sample",
-    )
 
 
 DISMANTLED_SHARE = 0.5
@@ -248,7 +218,6 @@ def classify_attempt(
     sample: MechanicsSample,
     *,
     resurrections: tuple[Resurrection, ...] = (),
-    no_sample: NoSample = NO_SAMPLE,
 ) -> Finding | None:
     """Why this attempt ended, when the log supports saying.
 
@@ -267,15 +236,11 @@ def classify_attempt(
     Boss health is `boss_percentage`, never `fight_percentage`. The two are
     different quantities and diverged 51.12 against 3.76 on one measured
     attempt.
-
-    `no_sample` is what the notice says when `sample` holds no reference
-    kill: `NO_SAMPLE` for `raid`, and the caller's own absence for a page
-    that never draws the sample at all.
     """
     if encounter.kill:
         return None
     if not sample.members:
-        return _withheld(no_sample.detail, no_sample.evidence)
+        return _withheld(NO_REFERENCE_SAMPLE, NO_SAMPLE_EVIDENCE)
     if encounter.boss_percentage is None:
         return _withheld(NO_BOSS_HEALTH, "the report carried no boss health")
 

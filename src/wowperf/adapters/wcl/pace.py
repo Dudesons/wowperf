@@ -146,9 +146,10 @@ def load_pace_sample(
     reference kills' in `reference_cache`, which does -- other players' logs,
     kept for one comparison. `references` is the candidates in the order they
     are tried: `raid` hands its mechanics comparison's own members, so the
-    page's two comparisons stand on one sample, and `night` hands every
-    candidate the leaderboard offers, so a reference that fails is refilled
-    from the rows behind it. Either way the loop stops once it holds
+    page's two comparisons stand on one sample, and `night` hands the same
+    members followed by every other candidate the leaderboard offers, so a
+    reference that fails is refilled from the rows behind it. Either way the
+    loop stops once it holds
     `SAMPLE_SIZE` references, and a candidate past that costs no request.
 
     Each side's boss graph is also split by player: `our_players` is our own
