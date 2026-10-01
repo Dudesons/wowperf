@@ -437,6 +437,52 @@ def test_a_whole_report_reads_as_one_night(tmp_path: Path) -> None:
     # carries no ability or player name, only the finding id.
     assert killing_blow_fired, "progression.repeat.killing_blow did not fire on any summary boss"
 
+    # Every summary opens on its headline, and the boss rollups are written
+    # under the boss and never under a pull. Shapes only: a rollup's title and
+    # evidence name abilities and fights, so no message carries either.
+    for index, boss in enumerate(payload["bosses"]):
+        opening = re.search(
+            rf'<section class="pull" data-night-pull-panel id="b{index}-summary">'
+            r'.*?<h2 id="([^"]+)"',
+            html,
+            re.DOTALL,
+        )
+        opens_on_headline = opening is not None and opening.group(1) == f"b{index}-headline"
+        assert opens_on_headline, f"boss {index}'s summary does not open on its headline"
+        leads = [f for f in boss["findings"] if f["id"].startswith("progression.lead.")]
+        lead_ids = [f["id"] for f in leads]
+        fixed_order = lead_ids == [
+            one for one in (
+                "progression.lead.kill_speed",
+                "progression.lead.verdicts",
+                "progression.lead.overlanding",
+            ) if one in lead_ids
+        ]
+        assert fixed_order, f"boss {index}'s rollups are out of their fixed order"
+        wiped = any(not pull["kill"] for pull in boss["pulls"])
+        assert ("progression.lead.verdicts" in lead_ids) == wiped, (
+            f"boss {index}'s verdict rollup does not match whether it wiped"
+        )
+        killed = any(pull["kill"] for pull in boss["pulls"])
+        if not killed:
+            assert "progression.lead.kill_speed" not in lead_ids, (
+                f"boss {index} never died and carries a kill-speed rollup"
+            )
+        for lead in leads:
+            badged = lead["confidence"] in {"measured", "derived", "inferred"}
+            assert badged, f"boss {index}'s {lead['id']} carries no badge"
+        under_a_pull = any(
+            f["id"].startswith("progression.lead.")
+            for pull in boss["pulls"] for f in pull["findings"]
+        )
+        assert not under_a_pull, f"a pull of boss {index} carries a boss rollup"
+
+    # Every attempt row that opens a pull names one that is on the page, and
+    # every drawn pull is opened by exactly one row.
+    opens = re.findall(r'data-night-show="([^"]+)"', html)
+    panels = re.findall(r'<section class="pull" data-night-pull-panel id="(f\d+-pull)"', html)
+    assert sorted(opens) == sorted(panels)
+
     # Every pull is its own tab group, across sixteen of them, plus one group
     # per boss summary: ids that collide send every button on the page to
     # whichever panel the browser picked first, and eight bosses is where a
