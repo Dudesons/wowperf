@@ -43,7 +43,7 @@ Confirmed against the live API on 2026-09-04, using report `6Kx1P9GbNXrcLdHa` fi
 | `characterRankings` row | `name`, `class`, `spec`, `amount`, `hardModeLevel`, `duration`, `startTime`, `report{code,fightID,startTime}`, `guild{id,name,faction}`, `server{id,name,region}`, `bracketData`, `faction`, `affixes[]`, `medal`, `score`, `leaderboard` |
 | `ReportFight.talentImportCode(actorID: Int!)` | exists; returns a ~100-character import string such as `C4DAAAAAAAAAAAAAAAAAAAAAAMzwYZmxsgZGamZG…` |
 | `ReportFight.encounterID` on a keystone fight | `12825` for Den of Nalorakk, whose `gameZone.id` is `2825`. **The encounter ID this plan needs is on the fight already** — no zone lookup, no hardcoded ID |
-| `Report.owner { id name }` | exists; the value is **lowercased** — the owner of a report whose roster shows `Dudesons` reads `dudesons` |
+| `Report.owner { id name }` | exists; the value is **lowercased** — a report owner whose roster name is capitalised reads all lowercase |
 | `worldData.zone(id: 53)` | `{id, name: "The Venomous Abyss", frozen: false, partitions: [{id: 1, name: "12.1", compactName: "12.1", default: true}]}` |
 
 Four behaviours that no documentation states and that a naive implementation gets wrong:
@@ -190,14 +190,14 @@ def a_minimal_fight() -> dict[str, object]:
 def test_build_run_reads_the_encounter_and_the_owner_off_the_report() -> None:
     report = {
         "code": "abc123",
-        "owner": {"name": "dudesons"},
+        "owner": {"name": "stonewake"},
         "masterData": {"actors": []},
     }
 
     run = build_run(report, a_minimal_fight())
 
     assert run.encounter_id == 12825
-    assert run.owner_name == "dudesons"
+    assert run.owner_name == "stonewake"
 
 
 def test_build_run_survives_a_report_with_no_owner() -> None:
@@ -1152,7 +1152,7 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
         "masterData": {
             "actors": [
                 {"id": 693, "name": "Emberkin", "subType": "Mage"},
-                {"id": 7, "name": "Dudesons", "subType": "DeathKnight"},
+                {"id": 7, "name": "Stonewake", "subType": "DeathKnight"},
             ]
         },
     }
@@ -1165,7 +1165,7 @@ def test_a_talent_string_reaches_the_player_it_belongs_to() -> None:
 
     by_name = {player.name: player for player in run.players}
     assert by_name["Emberkin"].talent_import_string == "C4DAAAAA"
-    assert by_name["Dudesons"].talent_import_string == "CoPAAAAA"
+    assert by_name["Stonewake"].talent_import_string == "CoPAAAAA"
 ```
 
 Append to `tests/adapters/wcl/test_rankings.py`? No — the query builder is tested here. Add to `tests/adapters/wcl/test_ingest.py` as well:
@@ -2815,7 +2815,7 @@ def a_loaded(players: tuple[Player, ...], level: int = 16) -> LoadedRun:
 
 
 ROSTER = (
-    player("Dudesons", "DeathKnight", "Blood"),
+    player("Stonewake", "DeathKnight", "Blood"),
     player("Emberkin", "Mage", "Arcane"),
 )
 
@@ -2873,7 +2873,7 @@ def test_a_small_item_level_gap_is_not_worth_a_banner() -> None:
 
 
 def test_a_different_group_composition_is_declared() -> None:
-    theirs = (player("Dudesons", "Warrior", "Protection"), player("Emberkin", "Mage", "Arcane"))
+    theirs = (player("Stonewake", "Warrior", "Protection"), player("Emberkin", "Mage", "Arcane"))
 
     findings = declare_confounds(a_loaded(ROSTER), a_loaded(theirs), SAME_LEVEL)
 
@@ -3061,7 +3061,7 @@ One function, deliberately dull: run every comparison, concatenate, rank. All th
 Two behaviours it owns because nothing else can:
 
 1. **A missing reference is a finding, not a crash.** Design §3.6 says ordinary analysis gaps produce findings. A dungeon nobody has speed-run at this level, or a specialisation with no ranked parse, is ordinary.
-2. **`find_player` folds case.** The report owner's name arrives lowercased from the API while the roster carries the character's own capitalisation — `dudesons` against `Dudesons` on the verified report. Matching exactly would fail on the default path every time.
+2. **`find_player` folds case.** The report owner's name arrives lowercased from the API while the roster carries the character's own capitalisation — the Blood Death Knight's two spellings on the verified report differ only in case. Matching exactly would fail on the default path every time.
 
 - [ ] **Step 1: Write the failing tests**
 

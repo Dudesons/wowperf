@@ -33,7 +33,7 @@
 
 ## Verified schema
 
-Confirmed against the live API on 2026-09-05, using report `6Kx1P9GbNXrcLdHa` fight 36, actor 7 (`Dudesons`, DeathKnight Blood). **These are the real names and the real behaviour.** Nothing outside this section may be assumed.
+Confirmed against the live API on 2026-09-05, using report `6Kx1P9GbNXrcLdHa` fight 36, actor 7 (the DeathKnight Blood). **These are the real names and the real behaviour.** Nothing outside this section may be assumed.
 
 | Field | Verified shape |
 | --- | --- |
@@ -1048,7 +1048,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
 
 
-def a_player(name: str = "Dudesons", actor_id: int = 7) -> Player:
+def a_player(name: str = "Stonewake", actor_id: int = 7) -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=315
     )

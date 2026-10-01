@@ -88,7 +88,7 @@ at runtime. Nothing resolves them.
 
 ### D6. A tank taking melee damage is reported as an outlier — confirmed
 
-"Dudesons took 210.2× the group median from Melee" is a Blood Death Knight doing the job. The skill
+The Blood Death Knight "took 210.2× the group median from Melee": that is a tank doing the job. The skill
 excuses this with "the tool cannot tell which specs tank", but the roster carries the spec name,
 and spec → role is a table of thirty-nine rows that changes once an expansion. Add
 `data/roles.toml` with a verified-on date, and suppress melee-type outliers for the tank rather

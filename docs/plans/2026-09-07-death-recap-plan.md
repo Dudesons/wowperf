@@ -917,11 +917,11 @@ from wowperf.domain.events import (
 from wowperf.domain.model import LoadedRun, Player
 
 DEATH_MS = 60_000
-DUDE = Player(actor_id=1, name="Dudesons", class_name="DeathKnight", spec="Blood", item_level=680)
+DUDE = Player(actor_id=1, name="Stonewake", class_name="DeathKnight", spec="Blood", item_level=680)
 
 
 def a_death(at_ms: int = DEATH_MS, actor_id: int = 1) -> Death:
-    return Death(player_name="Dudesons", actor_id=actor_id, timestamp_ms=at_ms,
+    return Death(player_name="Stonewake", actor_id=actor_id, timestamp_ms=at_ms,
                  killing_blow="Frigid Roar", pull_index=0)
 
 
@@ -1581,7 +1581,7 @@ REINCARNATION = SelfResurrections(ability_ids=(21169,))
 
 
 def dead(at_ms: int = 60_000, back_after: float | None = None) -> Death:
-    return Death(player_name="Dudesons", actor_id=1, timestamp_ms=at_ms, killing_blow="x",
+    return Death(player_name="Stonewake", actor_id=1, timestamp_ms=at_ms, killing_blow="x",
                  pull_index=0, seconds_until_next_action=back_after)
 
 
@@ -1815,7 +1815,7 @@ This task is one commit on purpose. The template renders the old card's fields, 
 
 ```python
 def test_a_death_card_can_carry_no_timeline_and_no_availability() -> None:
-    card = DeathCard(player="Dudesons", class_name="DeathKnight", when="12:04, pull 5",
+    card = DeathCard(player="Stonewake", class_name="DeathKnight", when="12:04, pull 5",
                      killing_blow="Frigid Roar")
     assert (card.timeline, card.availability, card.came_back) == ((), (), "")
 
@@ -1857,7 +1857,7 @@ def test_the_timeline_rows_are_formatted_and_carry_their_kind() -> None:
     card = build_deaths(loaded, NO_DEFENSIVES, NO_CONSUMABLES)[0]
     assert [(r.seconds_before, r.kind, r.ability, r.detail, r.health) for r in card.timeline] == [
         ("5.8 s", "hit", "Snowdrift", "82,410 to health", "18%"),
-        ("5.0 s", "heal", "Death Strike", "+9,100 from Dudesons", "27%"),
+        ("5.0 s", "heal", "Death Strike", "+9,100 from Stonewake", "27%"),
     ]
     assert card.health_badge is not None and card.health_badge.label == "derived"
     assert card.health_note == ""
@@ -1984,7 +1984,7 @@ In `tests/adapters/render/test_html_sections.py`, rewrite `test_a_death_card_sho
 ```python
 def test_a_death_card_renders_its_recap() -> None:
     card = DeathCard(
-        player="Dudesons",
+        player="Stonewake",
         class_name="DeathKnight",
         when="12:04, pull 5",
         killing_blow="Frigid Roar",

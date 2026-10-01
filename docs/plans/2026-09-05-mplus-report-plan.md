@@ -178,7 +178,7 @@ def test_a_report_holds_every_section() -> None:
 
 def test_a_player_card_names_the_class_in_text_not_only_in_colour() -> None:
     card = PlayerCard(
-        name="Dudesons",
+        name="Stonewake",
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
@@ -193,7 +193,7 @@ def test_a_player_card_names_the_class_in_text_not_only_in_colour() -> None:
 
 def test_a_death_card_can_carry_no_damage_rows() -> None:
     card = DeathCard(
-        player="Dudesons",
+        player="Stonewake",
         class_name="DeathKnight",
         when="12:04, pull 5",
         killing_blow="Frigid Roar",
@@ -1214,7 +1214,7 @@ from wowperf.domain.report.build import build_deaths
 from tests.domain.report.test_build_frame import a_pull, a_run
 
 
-def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
     )
@@ -1222,7 +1222,7 @@ def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
 
 def a_death(actor_id: int, at_ms: int, blow: str = "Frigid Roar") -> Death:
     return Death(
-        player_name="Dudesons",
+        player_name="Stonewake",
         actor_id=actor_id,
         timestamp_ms=at_ms,
         killing_blow=blow,
@@ -1255,7 +1255,7 @@ def test_a_run_with_no_deaths_yields_no_cards() -> None:
 
 def test_a_death_names_the_player_and_the_killing_blow() -> None:
     card = build_deaths(a_loaded_with((a_death(1, 60_000),), ()))[0]
-    assert card.player == "Dudesons"
+    assert card.player == "Stonewake"
     assert card.killing_blow == "Frigid Roar"
 
 
@@ -1438,7 +1438,7 @@ def a_finding(finding_id: str, seconds: float | None = None, title: str = "x") -
     )
 
 
-def a_player(actor_id: int = 1, name: str = "Dudesons") -> Player:
+def a_player(actor_id: int = 1, name: str = "Stonewake") -> Player:
     return Player(
         actor_id=actor_id, name=name, class_name="DeathKnight", spec="Blood", item_level=680
     )
@@ -1469,7 +1469,7 @@ def test_the_interrupts_section_takes_nothing_that_is_not_an_interrupt() -> None
 
 def test_one_card_per_player() -> None:
     cards = build_players(a_loaded(), (), None)
-    assert [card.name for card in cards] == ["Dudesons"]
+    assert [card.name for card in cards] == ["Stonewake"]
 
 
 def test_a_card_names_the_class_in_text_beside_its_colour() -> None:
@@ -1484,13 +1484,13 @@ def test_an_unknown_class_still_gets_a_colour_rather_than_an_empty_string() -> N
 
 
 def test_a_card_carries_its_players_damage_findings() -> None:
-    findings = (a_finding("players.damage.0", title="Dudesons took 2.3x the group median"),)
+    findings = (a_finding("players.damage.0", title="Stonewake took 2.3x the group median"),)
     card = build_players(a_loaded(), findings, None)[0]
     assert ids(card.damage_rows) == ["players.damage.0"]
 
 
 def test_a_card_never_calls_damage_avoidable() -> None:
-    findings = (a_finding("players.damage.0", title="Dudesons took 2.3x the group median"),)
+    findings = (a_finding("players.damage.0", title="Stonewake took 2.3x the group median"),)
     card = build_players(a_loaded(), findings, None)[0]
     assert "avoidable" not in " ".join(row.title + row.detail for row in card.damage_rows).lower()
 
@@ -2080,7 +2080,7 @@ def test_the_axis_ticks_are_rendered() -> None:
 
 def test_a_death_card_shows_the_run_up() -> None:
     card = DeathCard(
-        player="Dudesons",
+        player="Stonewake",
         class_name="DeathKnight",
         when="12:04, pull 5",
         killing_blow="Frigid Roar",
@@ -2106,7 +2106,7 @@ def test_the_interrupts_section_renders_its_rows() -> None:
 
 def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
     card = PlayerCard(
-        name="Dudesons",
+        name="Stonewake",
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",
@@ -2123,7 +2123,7 @@ def test_a_player_card_prints_the_class_name_beside_the_colour() -> None:
 
 def test_a_player_cards_withheld_comparison_states_its_reason() -> None:
     card = PlayerCard(
-        name="Dudesons",
+        name="Stonewake",
         class_name="DeathKnight",
         spec="Blood",
         colour="class-deathknight",

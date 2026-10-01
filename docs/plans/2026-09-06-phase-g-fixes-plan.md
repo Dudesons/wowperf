@@ -1617,9 +1617,9 @@ Open `out/6Kx1P9GbNXrcLdHa-36.findings.json` and confirm, one line each in the f
 
 - D1: no `compare.route.skipped.*` prices pull 10; either the pulls aligned and the skipped list is short and plausible, or `compare.route.unaligned` states the share.
 - D2: any skipped pack's forces equal the `trash.pull.*` forces for the same pull.
-- D3: `deaths.total` is not "15s"; Milkmystiel's and Emberkin's deaths cost over twenty seconds each; the detail no longer mentions the timer penalty.
+- D3: `deaths.total` is not "15s"; the Paladin's and the Mage's deaths cost over twenty seconds each; the detail no longer mentions the timer penalty.
 - D5: the HTML header reads "Tyrannical, Fortified, Xal'atath's Guile", not "9, 10, 147".
-- D6: no `players.damage.*` names Dudesons taking melee.
+- D6: no `players.damage.*` names the Blood Death Knight taking melee.
 - D7: the stderr sentence reports points spent.
 - D8: `cache/references/` exists and holds the two reference reports' responses; the root `cache/` gained only the affix and rate-limit responses.
 - D9: the `defensives.unused.*` and `consumables.*` findings appear under "Deaths" in the HTML and not under "Other findings".
