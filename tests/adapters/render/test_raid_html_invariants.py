@@ -31,6 +31,7 @@ from wowperf.adapters.render.icons import CdnIcons
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.spikes import SPIKES_ID, answers_for
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
+from wowperf.domain.comparison.kill_time import KILL_TIME_ID
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsMember,
@@ -1783,9 +1784,12 @@ def test_the_golden_page_draws_every_comparison_sentence_once_per_raider() -> No
         finding for finding in a_real_raid_comparison() if finding.id.startswith("compare.")
     ]
     assert compared, "the fixture produced no comparison findings at all"
-    assert {finding.player_slug for finding in compared} - {""} == {
+    # The kill time is the one fight-wide comparison: it is about the raid's kill,
+    # not a raider, so it carries no slug. Every other comparison names its raider.
+    assert {finding.player_slug for finding in compared if finding.id != KILL_TIME_ID} == {
         EMBERKIN_SLUG, STONEWAKE_SLUG
     }
+    assert {finding.id for finding in compared if not finding.player_slug} == {KILL_TIME_ID}
     for finding in compared:
         row = rows.get(finding.id)
         assert row is not None, f"{finding.id} reached no row at all"
