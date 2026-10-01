@@ -3,6 +3,7 @@
 
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,7 +16,7 @@ from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
 from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables, load_slot_names
 from wowperf.adapters.wcl.auth import TokenProvider
-from wowperf.adapters.wcl.client import RateLimit, WclClient
+from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.ranking_repository import WclRankingRepository
@@ -455,6 +456,7 @@ def build_raid_transport(
     our_ability_entries: list[dict[str, Any]] | None = None,
     broken_ability_reports: frozenset[tuple[str, int]] = frozenset(),
     broken_parse_reports: frozenset[str] = frozenset(),
+    status_errors: dict[tuple[str, str], int] | None = None,
     death_events: list[dict[str, Any]] | None = None,
     calls: list[str] | None = None,
 ) -> httpx.MockTransport:
@@ -483,7 +485,9 @@ def build_raid_transport(
     a caller can simulate a reference row whose ability table fails to load
     without the row itself failing to load. `broken_parse_reports` names report
     codes whose `Fights` request answers a null report, so a parse reference can
-    fail to load at all.
+    fail to load at all. `status_errors` answers one request with a bare HTTP
+    status instead, keyed by operation name and report code: a 500 is how one
+    reference fails in transport, a 429 how the hourly budget runs out.
 
     `roster` is our own report's roster. `death_events` answers our own
     report's `Deaths` with the raw events given, in place of the default empty
@@ -776,6 +780,8 @@ def build_raid_transport(
             calls.append(name)
         variables = body.get("variables") or {}
         code = variables.get("code")
+        if status_errors and (name, str(code)) in status_errors:
+            return httpx.Response(status_errors[(name, str(code))])
         if name == "RateLimit":
             return httpx.Response(200, json={"data": {}})
         if name == "Fights":
@@ -894,6 +900,9 @@ def build_raid_transport(
         """Every answer leaves carrying a quota block, as the live API's do."""
         nonlocal running
         response = answer(request)
+        if response.status_code != httpx.codes.OK:
+            # A bare status carries no JSON to add a block to.
+            return response
         payload = response.json()
         data = payload.get("data")
         if not isinstance(data, dict) or "rateLimitData" in data:
@@ -1530,6 +1539,58 @@ def test_a_parse_reference_that_fails_to_load_is_skipped_not_fatal(tmp_path: Pat
     ]
     assert broken["loaded"] is False
     assert broken["reason"]
+
+
+def test_a_parse_reference_answering_a_server_error_is_dropped_and_refilled(
+    tmp_path: Path,
+) -> None:
+    """A transport error on one parse reference is that reference's failure, not the fight's.
+
+    `WclClient.execute` raises `httpx.HTTPStatusError` for a 500, which is
+    neither an `IngestError` nor a `WclError`: the reference is listed in
+    Provenance with the reason, and the comparison is drawn from the rest.
+    """
+    dropped = RAID_PARSE_CODES[0]
+
+    result = run_raid(tmp_path, status_errors={("Fights", dropped): 500})
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": 4}
+    [record] = [one for one in payload["comparison"]["references"] if one["report_code"] == dropped]
+    assert record["loaded"] is False
+    assert "500 Internal Server Error" in record["reason"]
+
+
+def test_a_parse_references_target_table_answering_a_server_error_keeps_the_member(
+    tmp_path: Path,
+) -> None:
+    """A member whose per-target table fails is still compared on every other family."""
+    result = run_raid(tmp_path, status_errors={("DamageDoneTargets", RAID_PARSE_CODES[0]): 500})
+
+    assert result.exit_code == 0, result.output
+    payload = written_raid_findings(tmp_path)
+    assert payload["comparison"]["sample_size"]["parse"] == {"Emberkin": SAMPLE_SIZE}
+
+
+@pytest.mark.parametrize("operation", ["Fights", "AuraTable", "DamageDoneTargets"])
+def test_a_spent_budget_on_a_parse_reference_stops_raid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """A refusal that outlasts the client's waits is every later request's failure.
+
+    `RateLimitExceeded` is a `WclError`, so a per-reference guard catching
+    `WclError` would record it against one reference -- or swallow it as one
+    member's missing auras or target table -- and walk on into every later
+    request; it must stop the command instead, before anything is written.
+    """
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = run_raid(tmp_path, status_errors={(operation, RAID_PARSE_CODES[0]): 429})
+
+    assert result.exit_code == 1
+    assert "hourly point budget is spent" in plain(result.output)
+    assert not list((tmp_path / "out").glob("*.findings.json"))
 
 
 def test_an_empty_parse_board_says_so_rather_than_comparing_nothing(tmp_path: Path) -> None:
@@ -3400,13 +3461,20 @@ def _samples_run_repository(
     tmp_path: Path,
     fights_by_code: dict[str, dict[str, Any]],
     abilities_rows: list[dict[str, Any]] | None = None,
+    fights_status_by_code: dict[str, int] | None = None,
+    asked: list[str] | None = None,
 ) -> WclRunRepository:
     """A `WclRunRepository` whose Fights query answers from `fights_by_code`; a
     code it does not recognise answers "report not found", reproducing a
     leaderboard row that fails to load. Every other query answers with the
     emptiest shape the speed and parse profiles accept. `abilities_rows`
     replaces the empty ability dictionary, for the test that needs a
-    reference's own Abilities query to carry a real `gameID` and `icon`."""
+    reference's own Abilities query to carry a real `gameID` and `icon`.
+
+    `fights_status_by_code` answers one code's Fights query with a bare HTTP
+    status instead: a 500 is how one reference fails in transport, a 429 how
+    the hourly budget runs out. The client's waits for a reset are not really
+    slept. `asked` collects every code a Fights query asked for."""
     abilities: dict[str, Any] = {
         "reportData": {"report": {"masterData": {"abilities": abilities_rows or []}}}
     }
@@ -3424,6 +3492,10 @@ def _samples_run_repository(
         name = query.split("query ")[1].split("(")[0].split("{")[0].strip()
         if name == "Fights":
             code = body["variables"]["code"]
+            if asked is not None:
+                asked.append(code)
+            if fights_status_by_code and code in fights_status_by_code:
+                return httpx.Response(fights_status_by_code[code])
             payload = fights_by_code.get(code, {"reportData": {"report": None}})
             return httpx.Response(200, json={"data": payload})
         if name == "Abilities":
@@ -3439,7 +3511,7 @@ def _samples_run_repository(
         return httpx.Response(200, json={"data": empty_events})
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    client = WclClient(TokenProvider("id", "secret", http), http)
+    client = WclClient(TokenProvider("id", "secret", http), http, sleep=lambda _seconds: None)
     return WclRunRepository(client, DiskCache(tmp_path / "runs"))
 
 
@@ -3594,6 +3666,99 @@ def test_a_candidate_that_failed_to_load_is_recorded_with_its_reason(tmp_path: P
         record for record in records if not record.loaded and record.report_code == "brokenrun"
     )
     assert failed.reason
+
+
+def test_a_speed_candidate_answering_a_server_error_is_recorded_and_refilled(
+    tmp_path: Path,
+) -> None:
+    """A transport error on one reference is that reference's failure, not the run's.
+
+    `WclClient.execute` raises `httpx.HTTPStatusError` for a 500, which is
+    neither an `IngestError` nor a `WclError`: the speed loop must record it and
+    fill the sample from the rows behind it rather than lose the comparison.
+    """
+    fights_by_code = {
+        "cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",)),
+    }
+    rows = [_candidate_speed_row("failsrun"), _candidate_speed_row("cleanrun")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    runs = _samples_run_repository(
+        tmp_path, fights_by_code, fights_status_by_code={"failsrun": 500}
+    )
+
+    speed, _parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
+
+    assert [member.row.report_code for member in speed.members] == ["cleanrun"]
+    [failed] = [record for record in records if record.report_code == "failsrun"]
+    assert failed.axis == "speed"
+    assert failed.loaded is False
+    assert "500 Internal Server Error" in failed.reason
+
+
+def test_a_spent_budget_on_a_speed_candidate_is_raised_not_recorded(tmp_path: Path) -> None:
+    """`RateLimitExceeded` is a `WclError`, but it is no one reference's failure.
+
+    The client raises it only once its waits for the reset are spent, so
+    recording it and asking for the next row would spend the rest of the loop
+    on refusals. The next row is never asked for.
+    """
+    fights_by_code = {
+        "cleanrun": _candidate_fights_payload("cleanrun", roster=("Someone",)),
+    }
+    rows = [_candidate_speed_row("refusedrun"), _candidate_speed_row("cleanrun")]
+    rankings = _samples_ranking_repository(tmp_path, speed_rows_by_bracket={bracket_for(16): rows})
+    asked: list[str] = []
+    runs = _samples_run_repository(
+        tmp_path, fights_by_code, fights_status_by_code={"refusedrun": 429}, asked=asked
+    )
+
+    with pytest.raises(RateLimitExceeded):
+        _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
+    assert set(asked) == {"refusedrun"}
+
+
+def test_a_parse_candidate_answering_a_server_error_is_recorded_and_refilled(
+    tmp_path: Path,
+) -> None:
+    """The parse loop's guard is the speed loop's: a 500 drops one reference."""
+    fights_by_code = {
+        "cleanparse": _candidate_fights_payload("cleanparse", roster=("Someone",)),
+    }
+    rows = [_candidate_parse_row("failsparse"), _candidate_parse_row("cleanparse")]
+    rankings = _samples_ranking_repository(
+        tmp_path, parse_rows_by_bracket={bracket_for(16): rows}
+    )
+    runs = _samples_run_repository(
+        tmp_path, fights_by_code, fights_status_by_code={"failsparse": 500}
+    )
+
+    _speed, parse, records = _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
+
+    assert [member.report_code for member in parse[SUBJECT.actor_id].members] == ["cleanparse"]
+    [failed] = [record for record in records if record.report_code == "failsparse"]
+    assert failed.axis == "parse"
+    assert failed.loaded is False
+    assert "500 Internal Server Error" in failed.reason
+    assert failed.player_slug == "emberkin-0"
+
+
+def test_a_spent_budget_on_a_parse_candidate_is_raised_not_recorded(tmp_path: Path) -> None:
+    """A refusal that outlasts the client's waits stops the parse loop too."""
+    fights_by_code = {
+        "cleanparse": _candidate_fights_payload("cleanparse", roster=("Someone",)),
+    }
+    rows = [_candidate_parse_row("refusedparse"), _candidate_parse_row("cleanparse")]
+    rankings = _samples_ranking_repository(
+        tmp_path, parse_rows_by_bracket={bracket_for(16): rows}
+    )
+    asked: list[str] = []
+    runs = _samples_run_repository(
+        tmp_path, fights_by_code, fights_status_by_code={"refusedparse": 429}, asked=asked
+    )
+
+    with pytest.raises(RateLimitExceeded):
+        _samples(rankings, runs, OUR_RUN, SUBJECT_ONLY)
+    assert set(asked) == {"refusedparse"}
 
 
 def test_a_short_leaderboard_yields_a_short_sample_rather_than_an_error(tmp_path: Path) -> None:
@@ -3984,13 +4149,16 @@ def _aura_repository(
     subdir: str,
     calls: list[tuple[str, int, int]],
     failing_actor_ids: frozenset[int] = frozenset(),
+    failure_status: int = 500,
 ) -> WclRunRepository:
     """A `WclRunRepository` that answers only `AuraTable`, with empty-but-valid
     aura tables, recording each query's (report_code, fight_id, actor_id) so a
     caller can assert on exactly which aura queries fired and how many times —
-    not merely on the outcome. An actor id in `failing_actor_ids` gets a 500
-    response instead, so a caller can exercise `_auras`' own fallback to `None`
-    without faking a malformed payload."""
+    not merely on the outcome. An actor id in `failing_actor_ids` gets a
+    `failure_status` response instead, so a caller can exercise `_auras`' own
+    fallback to `None` without faking a malformed payload: a 500 by default, a
+    429 for a spent hourly budget, whose waits for a reset are not really
+    slept."""
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/oauth/token":
@@ -3998,7 +4166,7 @@ def _aura_repository(
         variables = json.loads(request.content)["variables"]
         calls.append((variables["code"], variables["fightId"], variables["actorId"]))
         if variables["actorId"] in failing_actor_ids:
-            return httpx.Response(500, json={"error": "boom"})
+            return httpx.Response(failure_status, json={"error": "boom"})
         return httpx.Response(
             200,
             json={
@@ -4013,7 +4181,7 @@ def _aura_repository(
         )
 
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    client = WclClient(TokenProvider("id", "secret", http), http)
+    client = WclClient(TokenProvider("id", "secret", http), http, sleep=lambda _seconds: None)
     return WclRunRepository(client, DiskCache(tmp_path / subdir))
 
 
@@ -4059,6 +4227,26 @@ def test_a_failed_aura_fetch_costs_that_player_their_bands_and_nothing_else(
 
     assert 2 not in result.auras_by_actor
     assert len(result.auras) == len(loaded.run.players) - 1
+
+
+def test_a_spent_budget_on_one_players_auras_is_raised_not_swallowed(tmp_path: Path) -> None:
+    """A spent budget is no one player's missing bands: it stops the loop.
+
+    `RateLimitExceeded` is a `WclError`, so swallowing it with the rest would
+    cost that player their bands and send every later player's query into the
+    same refusal, each after the client's own waits for a reset.
+    """
+    aura_calls: list[tuple[str, int, int]] = []
+    runs = _aura_repository(
+        tmp_path, "ours", aura_calls, failing_actor_ids=frozenset({1}), failure_status=429
+    )
+    loaded = LoadedRun(run=OUR_RUN_WITH_TEAMMATE)
+
+    with pytest.raises(RateLimitExceeded):
+        load_run_with_auras(
+            runs, OUR_RUN_WITH_TEAMMATE.report_code, OUR_RUN_WITH_TEAMMATE.fight_id, loaded
+        )
+    assert {call[2] for call in aura_calls} == {1}
 
 
 def test_every_resolvable_parse_member_fetches_its_own_auras(tmp_path: Path) -> None:
@@ -4139,6 +4327,56 @@ def test_no_member_resolving_fetches_our_own_auras_not_at_all(tmp_path: Path) ->
     assert updated.members[0].auras is None
     assert our_auras is None
     assert aura_calls == []
+
+
+def test_a_parse_member_whose_auras_answer_a_server_error_keeps_auras_none(
+    tmp_path: Path,
+) -> None:
+    """A 500 on one member's aura table costs that member its bands and no more."""
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(
+        tmp_path, "references", aura_calls, failing_actor_ids=frozenset({101})
+    )
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    sample = ParseSample(
+        members=(
+            _parse_member("ref0", 101, "Player0", "Player0"),
+            _parse_member("ref1", 102, "Player1", "Player1"),
+        )
+    )
+
+    updated, our_auras = _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+
+    by_code = {member.report_code: member for member in updated.members}
+    assert by_code["ref0"].auras is None
+    assert by_code["ref1"].auras is not None
+    assert our_auras is not None
+
+
+def test_a_spent_budget_on_a_parse_members_auras_is_raised_not_swallowed(
+    tmp_path: Path,
+) -> None:
+    """A 429 that outlasts the client's waits stops the members' loop.
+
+    The second member's aura table is never asked for: recording the refusal
+    against the first and moving on would only buy the second the same one.
+    """
+    aura_calls: list[tuple[str, int, int]] = []
+    references = _aura_repository(
+        tmp_path, "references", aura_calls, failing_actor_ids=frozenset({101}),
+        failure_status=429,
+    )
+    ours = _aura_repository(tmp_path, "ours", aura_calls)
+    sample = ParseSample(
+        members=(
+            _parse_member("ref0", 101, "Player0", "Player0"),
+            _parse_member("ref1", 102, "Player1", "Player1"),
+        )
+    )
+
+    with pytest.raises(RateLimitExceeded):
+        _fetch_parse_auras(sample, ours, references, OUR_RUN, SUBJECT)
+    assert "ref1" not in {call[0] for call in aura_calls}
 
 
 def test_analyze_writes_an_html_report_beside_the_findings(tmp_path: Path) -> None:
