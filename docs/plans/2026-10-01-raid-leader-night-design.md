@@ -1,6 +1,9 @@
 # The night page, rebuilt for the raid leader
 
-**Status:** approved design, not yet planned.
+**Status:** approved design; both sub-slices built and exercised live, 2026-10-01. Sub-slice 1
+(§4) planned in `docs/plans/2026-10-01-raid-leader-night-coverage-plan.md`, shipped in #47 with
+#48 and #49. Sub-slice 2 (§5) planned in `docs/plans/2026-10-01-raid-leader-night-page-plan.md`,
+shipped in #50 with #52.
 **Area:** `wowperf night`, and through the builders it shares, `wowperf raid --fight N` and
 `wowperf progression`. It amends `docs/plans/2026-09-23-night-report-design.md` (§5, restoring
 what the shipped code dropped), `docs/plans/2026-09-27-wipe-damage-pace-design.md` (§4, §7, §11,
