@@ -4,7 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.comparison.sample import ParseSample, SpeedSample
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import LoadedRun, Run
 from wowperf.domain.report.model import Badge, Header, Section, SectionState
 
@@ -31,8 +31,13 @@ def parse_unavailable_id(slug: str) -> str:
 
 
 def plural(count: int, singular: str) -> str:
-    """`singular` unless `count` is not one. The one pluralisation rule this report needs."""
-    return singular if count == 1 else f"{singular}s"
+    """`singular` unless `count` is not one: the noun alone, for a sentence that does not print
+    the count right before it.
+
+    A count and its noun together are `quantity`'s, and this reads the same rule
+    from it, so the noun alone and the noun after its count cannot disagree.
+    """
+    return quantity(count, singular, f"{singular}s").removeprefix(f"{count} ")
 
 
 def badge_for(confidence: Confidence) -> Badge:

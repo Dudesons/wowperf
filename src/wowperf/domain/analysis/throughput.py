@@ -9,7 +9,7 @@ from wowperf.domain.analysis.defensives import (
     cooldown_ceiling,
 )
 from wowperf.domain.events import CastEvent, Death, EnemyDeath
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import Pull, Run
 from wowperf.domain.season import CooldownAbility, ThroughputCooldowns
 
@@ -177,13 +177,12 @@ def analyse_cooldown_alignment(
             if name_counts[player.name] == 1
             else f"{player.name}.{player.actor_id}"
         )
-        pulls_word = "pull" if len(lines) == 1 else "pulls"
         findings.append(
             Finding(
                 id=f"throughput.alignment.{base_id}",
                 title=(
                     f"{player.name} had a cooldown ready and unpressed on "
-                    f"{len(lines)} big {pulls_word}"
+                    f"{quantity(len(lines), 'big pull', 'big pulls')}"
                 ),
                 detail=(
                     "Read against the run's boss pulls and its largest trash packs, "
@@ -271,7 +270,7 @@ def analyse_cooldown_ceiling(
                     evidence=(
                         f"{player.class_name} {player.spec}",
                         f"ability {ability.ability_id}",
-                        f"{uses} cast{'s' if uses != 1 else ''} in {alive:.0f}s alive",
+                        f"{quantity(uses, 'cast', 'casts')} in {alive:.0f}s alive",
                     ),
                     ability_id=ability.ability_id,
                     ability_name=ability.name,

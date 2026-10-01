@@ -11,7 +11,7 @@ from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace import clock_text
 from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.events import CastEvent, DamageTakenEvent, Death, Resurrection
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import Player
 from wowperf.domain.season import CooldownAbility, Externals, Roles, ThroughputCooldowns
 
@@ -279,7 +279,6 @@ def analyse_spikes(
         for moment in moments
     ]
     count = len(verdicts)
-    plural = "s" if count != 1 else ""
     tally = {state: sum(one.state is state for one in verdicts) for state in State}
     parts = [
         f"{tally[state]} {label}"
@@ -293,7 +292,7 @@ def analyse_spikes(
     findings = [
         Finding(
             id=SPIKES_ID,
-            title=f"{count} heaviest moment{plural}: {', '.join(parts)}",
+            title=f"{quantity(count, 'heaviest moment', 'heaviest moments')}: {', '.join(parts)}",
             detail=SPIKES_DETAIL.format(setting=setting),
             confidence=Confidence.DERIVED,
             evidence=tuple(_line(one, span[0], setting) for one in verdicts),
@@ -305,7 +304,8 @@ def analyse_spikes(
             Finding(
                 id=UNANSWERED_ID,
                 title=(
-                    f"{len(unanswered)} of {count} heaviest moment{plural} went unanswered "
+                    f"{len(unanswered)} of "
+                    f"{quantity(count, 'heaviest moment', 'heaviest moments')} went unanswered "
                     "while group cooldowns were ready"
                 ),
                 detail=UNANSWERED_DETAIL.format(setting=setting),

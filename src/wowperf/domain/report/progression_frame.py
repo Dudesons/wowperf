@@ -73,7 +73,7 @@ def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
     if killed is not None:
         outcome = f"Killed on attempt {killed} of {len(attempts)}"
     else:
-        outcome = f"No kill in {len(attempts)} attempt{'' if len(attempts) == 1 else 's'}"
+        outcome = f"No kill in {quantity(len(attempts), 'attempt', 'attempts')}"
     return ProgressionHeader(
         boss=progression.boss_name,
         difficulty=DIFFICULTY_NAMES.get(

@@ -14,7 +14,7 @@ from wowperf.domain.comparison.measures import (
     Verdict,
 )
 from wowperf.domain.comparison.statistics import observed_range
-from wowperf.domain.findings import Finding
+from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import (
     NO_COMPARISON_RAN,
@@ -22,7 +22,6 @@ from wowperf.domain.report.frame import (
     finding_by_id,
     format_seconds,
     parse_unavailable_id,
-    plural,
     section_for,
 )
 from wowperf.domain.report.ledger import NO_TOOLTIPS, collapse_repeated_details, ledger_row
@@ -229,10 +228,10 @@ def build_players(
             ]
         )
         stats_line = (
-            f"{summary.casts_in_pulls} {plural(summary.casts_in_pulls, 'cast')} "
+            f"{quantity(summary.casts_in_pulls, 'cast', 'casts')} "
             f"in {total_pulls} of pulls · "
-            f"{summary.deaths} {plural(summary.deaths, 'death')} · "
-            f"{summary.interrupts} {plural(summary.interrupts, 'interrupt')}"
+            f"{quantity(summary.deaths, 'death', 'deaths')} · "
+            f"{quantity(summary.interrupts, 'interrupt', 'interrupts')}"
         )
         cards.append(
             PlayerCard(
@@ -283,7 +282,7 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                 heading="Casts on shared trash packs",
                 caption=(
                     f"Casts a minute over {measures.trash_seconds:.0f}s of trash across "
-                    f"{measures.pack_count} {plural(measures.pack_count, 'pack')} both routes "
+                    f"{quantity(measures.pack_count, 'pack', 'packs')} both routes "
                     "fought, against the median of the parses that cast each. Derived."
                 ),
                 rows=_rate_rows(measures.trash),

@@ -35,8 +35,8 @@ from wowperf.domain.comparison.pace import clock_text
 from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.events import Death
 from wowperf.domain.fight import LoadedFight
-from wowperf.domain.findings import Confidence
-from wowperf.domain.report.frame import badge_for, format_seconds, plural
+from wowperf.domain.findings import Confidence, quantity
+from wowperf.domain.report.frame import badge_for, format_seconds
 from wowperf.domain.report.health_curve import PRECISION, build_health_curve, curve_x
 from wowperf.domain.report.model import (
     AvailabilityGroup,
@@ -424,7 +424,7 @@ def _healer_summary(side: HealerSide, death: Death) -> str:
         parts.append(f"no cast {window}")
         return "; ".join(parts)
     aimed = [
-        f"{count} {one if count == 1 else many}"
+        quantity(count, one, many)
         for count, (one, many) in zip(
             (counts.at_player, counts.at_self, counts.at_other_players, counts.at_non_players,
              counts.untargeted),
@@ -433,7 +433,7 @@ def _healer_summary(side: HealerSide, death: Death) -> str:
         )
         if count
     ]
-    parts.append(f"{counts.total} {plural(counts.total, 'cast')} {window}: {', '.join(aimed)}")
+    parts.append(f"{quantity(counts.total, 'cast', 'casts')} {window}: {', '.join(aimed)}")
     if side.last_at_player_ms is None:
         parts.append("none at this player")
     else:
@@ -485,7 +485,8 @@ def _healers(
         return HealerGroup(
             note=(
                 "No other player's specialisation reads as a healer's, and the log names no "
-                f"specialisation for {unknown} other {plural(unknown, 'player')}: a healer "
+                f"specialisation for {quantity(unknown, 'other player', 'other players')}: "
+                "a healer "
                 "among them would not be listed."
             )
         )
@@ -518,7 +519,8 @@ def _healers(
     )
     if unknown:
         note += (
-            f" The log names no specialisation for {unknown} other {plural(unknown, 'player')}, "
+            " The log names no specialisation for "
+            f"{quantity(unknown, 'other player', 'other players')}, "
             "so a healer among them is not listed here."
         )
     return HealerGroup(
@@ -623,7 +625,7 @@ def build_deaths(
                 # words the ledger uses.
                 health_badge=badge_for(Confidence.DERIVED) if has_health else None,
                 health_curve=curve,
-                timeline_summary=f"{len(timeline)} {plural(len(timeline), 'event')}",
+                timeline_summary=quantity(len(timeline), "event", "events"),
                 timeline_note=(
                     TRIMMED_CARD_NOTE if trimmed else ("" if timeline else NO_TIMELINE_EVENT)
                 ),

@@ -21,7 +21,7 @@ from wowperf.domain.comparison.pace_curve import (
 from wowperf.domain.comparison.parse_axis import ParseSubject
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.findings import Confidence, Finding
+from wowperf.domain.findings import Confidence, Finding, quantity
 from wowperf.domain.model import Player
 from wowperf.domain.season import Roles, SelfResurrections
 
@@ -177,7 +177,7 @@ def _too_few_title(count: int, player: Player) -> str:
     if count == 0:
         return f"No {one} in the reference kills: fewer than three to compare against"
     return (
-        f"Only {count} {one if count == 1 else many} in the reference kills: "
+        f"Only {quantity(count, one, many)} in the reference kills: "
         "fewer than three to compare against"
     )
 
@@ -209,7 +209,7 @@ def _lag_line(
             f"By {clock_text(second)} they had dealt what the kills' median {one} had dealt "
             "by then"
         )
-    seconds = f"{abs(gap)} second{'s' if abs(gap) != 1 else ''}"
+    seconds = quantity(abs(gap), "second", "seconds")
     return (
         f"By {clock_text(second)} they had dealt what the kills' median {one} had dealt by "
         f"{clock_text(lag.reached_at)}: {seconds} {'behind' if gap > 0 else 'ahead'}"
@@ -235,7 +235,8 @@ def _finding(
     }[last.state]
 
     evidence = [
-        f"Against {len(peers)} {label} across {kills} reference kill{'s' if kills != 1 else ''} "
+        f"Against {len(peers)} {label} across "
+        f"{quantity(kills, 'reference kill', 'reference kills')} "
         "of this raid size",
         f"Their range at {clock}: {share_of(last.low, last.median)}% to "
         f"{share_of(last.high, last.median)}% of their median",

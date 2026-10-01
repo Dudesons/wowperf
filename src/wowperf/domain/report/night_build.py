@@ -5,7 +5,7 @@ from collections.abc import Mapping, Sequence
 
 from wowperf.domain.comparison.night_axis import parse_axis_not_drawn
 from wowperf.domain.comparison.pace import PaceSample
-from wowperf.domain.findings import Finding, fight_ranges
+from wowperf.domain.findings import Finding, fight_ranges, quantity
 from wowperf.domain.night import FailedPull, LoadedNight
 from wowperf.domain.report.frame import plural
 from wowperf.domain.report.ledger import ledger_row
@@ -276,8 +276,8 @@ def build_night_report(
                 pulls=tuple(pulls),
                 summary=summary,
                 summary_label=(
-                    f"Summary: {summary.provenance.attempts_deepened} "
-                    f"{plural(summary.provenance.attempts_deepened, 'pull')}"
+                    "Summary: "
+                    f"{quantity(summary.provenance.attempts_deepened, 'pull', 'pulls')}"
                     if summary
                     else ""
                 ),
