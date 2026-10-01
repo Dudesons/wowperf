@@ -1,8 +1,10 @@
 # ABOUTME: Builds the raid report's header: boss, difficulty by name, outcome, partition.
-# ABOUTME: A sibling of the Mythic+ Header -- a boss fight has no dungeon or keystone level.
+# ABOUTME: Also names an attempt's first death, for the raid and progression pages alike.
 
+from wowperf.domain.analysis.progression_repeats import first_roster_death
 from wowperf.domain.base import Frozen
-from wowperf.domain.encounter import Encounter
+from wowperf.domain.encounter import Encounter, LoadedEncounter
+from wowperf.domain.events import Death
 
 # Warcraft Logs' own difficulty numbers for a raid encounter. Neither
 # `ReportFight` nor `worldData.encounter` echoes a name alongside the number
@@ -57,3 +59,17 @@ def build_raid_header(encounter: Encounter) -> RaidHeader:
         partition=f"Partition {encounter.partition}",
         size=encounter.size,
     )
+
+
+def first_death_named(loaded: LoadedEncounter) -> tuple[Death, str] | None:
+    """The attempt's first roster death and who died, as "name (spec class)"; None if nobody did.
+
+    One reading for every sentence that names the first death -- the pull's
+    Summary and the attempt table's cell -- so the two cannot name different
+    raiders or spell one raider two ways; each keeps its own wording around it.
+    """
+    death = first_roster_death(loaded)
+    if death is None:
+        return None
+    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
+    return death, f"{player.name} ({player.spec} {player.class_name})"

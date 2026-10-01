@@ -13,8 +13,7 @@ from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.progression import LoadedProgression, remaining_percent
 from wowperf.domain.report.frame import format_seconds
 from wowperf.domain.report.progression_model import AttemptRow, ProgressionHeader
-from wowperf.domain.report.raid_build import first_death_named
-from wowperf.domain.report.raid_frame import DIFFICULTY_NAMES
+from wowperf.domain.report.raid_frame import DIFFICULTY_NAMES, first_death_named
 
 NO_READING = "—"
 """What an attempt with no figure prints. A zero would read as a kill, and an

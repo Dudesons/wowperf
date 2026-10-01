@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.deaths import numbered_chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
-from wowperf.domain.analysis.progression_repeats import collapse_seconds, first_roster_death
+from wowperf.domain.analysis.progression_repeats import collapse_seconds
 from wowperf.domain.comparison.kill_time import KILL_PREFIX, KILL_TIME_ID
 from wowperf.domain.comparison.night_axis import (
     PULL_DAMAGE_NOT_DRAWN,
@@ -22,7 +22,6 @@ from wowperf.domain.comparison.pace import (
 from wowperf.domain.comparison.pace_curve import PaceReading, PaceState, pace_end
 from wowperf.domain.comparison.pace_player import PLAYER_PACE_PREFIX, SCOPE_LINE
 from wowperf.domain.encounter import LoadedEncounter
-from wowperf.domain.events import Death
 from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
@@ -51,7 +50,7 @@ from wowperf.domain.report.model import (
     Tooltip,
 )
 from wowperf.domain.report.pace_chart import build_pace_chart
-from wowperf.domain.report.raid_frame import build_raid_header
+from wowperf.domain.report.raid_frame import build_raid_header, first_death_named
 from wowperf.domain.report.raid_grid import build_raid_grid
 from wowperf.domain.report.raid_ledger import RAID_DECOMPOSITION_IDS, RAID_PLACEMENTS
 from wowperf.domain.report.raid_model import RaidReport, WipeOpening
@@ -105,20 +104,6 @@ def _pace_line(reading: PaceReading) -> str:
     state, cut = pace_end(reading)
     lead = PACE_LEADS[state] if cut is None else PACE_CUT_LEADS[state].format(clock=_clock(cut))
     return f"{lead} {PACE_CHART_IS_ELSEWHERE}"
-
-
-def first_death_named(loaded: LoadedEncounter) -> tuple[Death, str] | None:
-    """The attempt's first roster death and who died, as "name (spec class)"; None if nobody did.
-
-    One reading for every sentence that names the first death -- the pull's
-    Summary and the attempt table's cell -- so the two cannot name different
-    raiders or spell one raider two ways; each keeps its own wording around it.
-    """
-    death = first_roster_death(loaded)
-    if death is None:
-        return None
-    player = next(one for one in loaded.players if one.actor_id == death.actor_id)
-    return death, f"{player.name} ({player.spec} {player.class_name})"
 
 
 def _wipe_opening(
