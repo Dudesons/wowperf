@@ -1859,6 +1859,21 @@ def test_one_death_after_the_call_is_folded_in_the_singular() -> None:
     assert report.deaths_folded == "1 more death after the 4th — not carded"
 
 
+def test_a_death_of_an_actor_off_the_roster_after_the_call_is_folded_too() -> None:
+    """The fold counts the cards not drawn, and a card is drawn for every death the log lists."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIRST_DEATH_MS + 30_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE, pet))
+
+    assert [card.player for card in report.deaths] == [
+        "Emberkin", "Stonewake", "Bríala", "Emberkin",
+    ]
+    assert report.deaths_folded == "3 more deaths after the 4th — not carded"
+
+
 def test_a_wipe_that_ends_on_the_call_folds_nothing() -> None:
     report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE[:4]))
 

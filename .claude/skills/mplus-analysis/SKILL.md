@@ -196,7 +196,8 @@ never reaches the Summary.
 
 On a raid wipe that reached its fourth roster death, the heaviest moments are ranked and judged
 only up to that death: the pull carries `wipe.lost`, and a moment after it is never picked, so its
-absence says nothing about how the collapse was healed.
+absence says nothing about how the collapse was healed. The spike findings' detail states the cut,
+and the notice that no moment ranked says none ranked before that death.
 
 - **The judgement is the group's.** Healers plan rotations together, and one holding while
   another spends is usually right. Name the holders the evidence names, but never say one healer

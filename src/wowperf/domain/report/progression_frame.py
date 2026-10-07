@@ -104,6 +104,7 @@ def _verdict(kill: bool, findings: Sequence[Finding], loaded: LoadedEncounter | 
     not minted for -- has no reading rather than a verdict made up for it.
     The kind is printed in the words the boss rollup's title uses, so "both"
     names what it is both of.
+
     A kill whose deaths were fetched and that reached the wipe call reads "dirty kill".
     """
     if kill:

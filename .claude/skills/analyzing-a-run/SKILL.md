@@ -252,7 +252,8 @@ reference kill, it has no kill speed to open on and starts at the alive chart.
 A wipe that reached its fourth roster death carries `wipe.lost` (derived): the pull is read as
 lost from that death, its death cards stop there with one line counting the rest, and its heaviest
 moments are read only up to it. A kill with four roster deaths or more carries `raid.dirty_kill`
-(measured) and reads "dirty" in its header; nothing on a kill is cut.
+(measured) and reads "dirty" in its header; nothing on a kill is cut. The attempt rows read
+"dirty kill" only where the pull's deaths were fetched, and keep "kill" otherwise.
 
 The night's Provenance groups the pulls that failed to load by reason, one line per reason naming
 every fight it kept out, and does not repeat a pull's withheld pace notice, which stays in that
