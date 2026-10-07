@@ -3,13 +3,17 @@
 
 from wowperf.domain.analysis.wipe_call import (
     CALL_ORDINAL,
+    DIRTY_KILL_ID,
+    LOST_ID,
     WIPE_CALL_DEATHS,
+    analyse_wipe_call,
     deaths_after,
     is_dirty,
     lost_at,
 )
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import Death
+from wowperf.domain.findings import Confidence
 from wowperf.domain.model import Player
 
 ROSTER = (
@@ -124,3 +128,33 @@ def test_deaths_after_the_call_count_every_actor_strictly_after_it() -> None:
     assert sorted((one.actor_id, one.timestamp_ms - START_MS) for one in after) == [
         (1, 70_000), (PET, 61_000),
     ]
+
+
+def test_a_lost_wipe_says_when_it_was_lost() -> None:
+    # The pull runs 240 s; the call is the fourth death, 63 s in.
+    loaded = a_pull(kill=False, deaths=((1, 60), (2, 61), (3, 62), (4, 63), (1, 100)))
+
+    [finding] = analyse_wipe_call(loaded)
+
+    assert finding.id == LOST_ID == "wipe.lost"
+    assert finding.confidence is Confidence.DERIVED
+    assert finding.title == "The pull was lost at the 4th death, 1:03 into 4:00"
+    assert "heaviest moments" in finding.detail
+    assert "death cards stop there" in finding.detail
+    assert "twenty-player" in finding.detail
+
+
+def test_a_dirty_kill_counts_its_roster_deaths() -> None:
+    loaded = a_pull(kill=True, deaths=((1, 30), (2, 40), (3, 60), (4, 70), (PET, 75), (1, 80)))
+
+    [finding] = analyse_wipe_call(loaded)
+
+    assert finding.id == DIRTY_KILL_ID == "raid.dirty_kill"
+    assert finding.confidence is Confidence.MEASURED
+    assert finding.title == "Killed with 5 deaths"
+    assert "nothing is cut on a kill" in finding.detail
+
+
+def test_a_pull_short_of_the_call_states_nothing() -> None:
+    assert analyse_wipe_call(a_pull(kill=False, deaths=((1, 30), (2, 40), (3, 60)))) == []
+    assert analyse_wipe_call(a_pull(kill=True, deaths=((1, 30), (2, 40), (3, 60)))) == []

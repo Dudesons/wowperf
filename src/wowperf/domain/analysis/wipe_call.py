@@ -3,8 +3,10 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.comparison.pace import clock_text
 from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
+from wowperf.domain.findings import Confidence, Finding
 
 WIPE_CALL_DEATHS = 4
 """The roster death at which a wipe is lost and a kill is dirty.
@@ -20,6 +22,23 @@ size was measured, and four is the count raid leaders call. Design
 
 CALL_ORDINAL = f"{WIPE_CALL_DEATHS}th"
 """How the page names the call's death. "th" is right for every count from 4 to 20."""
+
+LOST_ID = "wipe.lost"
+DIRTY_KILL_ID = "raid.dirty_kill"
+
+LOST_DETAIL = (
+    f"A wipe is read as lost from the {CALL_ORDINAL} death of a roster player, counted in time "
+    "order; a player who is battle-resurrected and dies again counts twice. From that death the "
+    "heaviest moments of damage are no longer ranked or judged, and death cards stop there. "
+    "Every other finding still reads the whole pull. The count is a fixed rule, measured on "
+    "twenty-player pulls only, and it can be wrong: a raid can recover from it, and one kill "
+    "measured did."
+)
+DIRTY_KILL_DETAIL = (
+    f"A kill on which the log holds {WIPE_CALL_DEATHS} or more roster deaths, the count at which "
+    "a wipe is read as lost; a player who is battle-resurrected and dies again counts twice. "
+    "The kill is read whole: nothing is cut on a kill."
+)
 
 
 def death_order(death: Death) -> tuple[int, int]:
@@ -67,3 +86,36 @@ def deaths_after(deaths: Sequence[Death], lost: Death) -> tuple[Death, ...]:
     drawn for every death the log lists, and this counts the cards not drawn.
     """
     return tuple(death for death in deaths if death_order(death) > death_order(lost))
+
+
+def analyse_wipe_call(loaded: LoadedEncounter) -> list[Finding]:
+    """`wipe.lost` on a lost wipe, `raid.dirty_kill` on a dirty kill, or nothing.
+
+    "Lost" is a rule chosen, and the rule can be wrong, so it is derived; a
+    dirty kill is a count against a definition, so it is measured.
+    """
+    encounter = loaded.encounter
+    lost = lost_at(loaded)
+    if lost is not None:
+        into = clock_text((lost.timestamp_ms - encounter.start_ms) / 1000)
+        return [
+            Finding(
+                id=LOST_ID,
+                title=(
+                    f"The pull was lost at the {CALL_ORDINAL} death, {into} into "
+                    f"{clock_text(encounter.duration_seconds)}"
+                ),
+                detail=LOST_DETAIL,
+                confidence=Confidence.DERIVED,
+            )
+        ]
+    if is_dirty(loaded):
+        return [
+            Finding(
+                id=DIRTY_KILL_ID,
+                title=f"Killed with {len(roster_deaths_in_order(loaded))} deaths",
+                detail=DIRTY_KILL_DETAIL,
+                confidence=Confidence.MEASURED,
+            )
+        ]
+    return []
