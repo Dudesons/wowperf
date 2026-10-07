@@ -2,8 +2,9 @@
 # ABOUTME: Also names an attempt's first death, for the raid and progression pages alike.
 
 from wowperf.domain.analysis.progression_repeats import first_roster_death
+from wowperf.domain.analysis.wipe_call import is_dirty, roster_deaths_in_order
 from wowperf.domain.base import Frozen
-from wowperf.domain.encounter import Encounter, LoadedEncounter
+from wowperf.domain.encounter import LoadedEncounter
 from wowperf.domain.events import Death
 
 # Warcraft Logs' own difficulty numbers for a raid encounter. Neither
@@ -40,8 +41,12 @@ class RaidHeader(Frozen):
     size: int
 
 
-def build_raid_header(encounter: Encounter) -> RaidHeader:
-    if encounter.kill:
+def build_raid_header(loaded: LoadedEncounter) -> RaidHeader:
+    """The facts above the tabs; a kill past the wipe call is labelled dirty, nothing more."""
+    encounter = loaded.encounter
+    if is_dirty(loaded):
+        outcome = f"Killed — dirty, {len(roster_deaths_in_order(loaded))} deaths"
+    elif encounter.kill:
         outcome = "Killed"
     elif encounter.fight_percentage is None:
         # The report itself does not say (`Encounter.fight_percentage`'s own

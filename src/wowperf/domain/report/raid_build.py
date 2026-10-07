@@ -541,7 +541,7 @@ def build_raid_report(
     )
 
     return RaidReport(
-        header=build_raid_header(loaded.encounter),
+        header=build_raid_header(loaded),
         verdict=verdict,
         opening=opening,
         ledger_decomposition=ledger_decomposition,
