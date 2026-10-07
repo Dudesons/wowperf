@@ -1,6 +1,6 @@
 # The wipe call: a pull is lost at its fourth death
 
-**Status:** approved design, not yet planned.
+**Status:** approved design, planned in docs/plans/2026-10-07-wipe-call-plan.md.
 **Slice:** raid analysis (slice 2), with what the night page inherits from it. It touches the
 raid page, the night page's pulls and rollups, and the progression and night attempt rows.
 
@@ -84,7 +84,7 @@ and the cost is stated instead: a failure after the call is not judged.
 Both are emitted by `analyse_encounter` (`encounter_service.py`), on every raid pull the rule
 applies to, and so on every night pull too.
 
-- **`raid.lost`**, badge `derived`: "The pull was lost at the 4th death, 2:41 into 4:03". Its
+- **`wipe.lost`**, badge `derived`: "The pull was lost at the 4th death, 2:41 into 4:03". Its
   detail names the rule and says that heavy moments are read up to that death and death cards
   stop there. The death and its time are read from the log, but "lost" is a rule we chose, and
   the rule can be wrong: one kill in nine crossed it and won.
@@ -143,7 +143,7 @@ and kill time all read the whole pull. On a kill, nothing is cut.
 
 **End-to-end:**
 
-- The canonical wipe (`cW38`, fight 30) carries `raid.lost`.
+- The canonical wipe (`cW38`, fight 30) carries `wipe.lost`.
 - The canonical kill (`cW38`, fight 2, no deaths) carries neither finding.
 
 **Live run (the invariant).** Every state must be seen on a real log, and its frequency reported:
@@ -152,8 +152,7 @@ the 37 pulls in §3. The dirty kill occurs only on `cW38` fight 27, so the live 
 it. The live run must also report whether any pre-cut moment newly ranks under the shortened
 span.
 
-## 8. Open naming point
+## 8. Naming
 
-Today's wipe finding is `wipe.cause` (`raid_build.py`), and the agreed ids are `raid.lost` and
-`raid.dirty_kill`. `wipe.lost` would sit in the existing family. No `kill.` family exists:
-`compare.kill.time` is the nearest. To settle at spec review.
+`wipe.lost` sits beside the attempt verdict `wipe.cause` (`raid_build.py`). No `kill.` family
+exists to hold the other, so it stays `raid.dirty_kill`.
