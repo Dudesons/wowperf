@@ -46,9 +46,12 @@ has to be rebuilt from events rather than read from a pre-built table.
 The player card gets a new table, titled **"Debuff uptime on bosses"**, directly under "Buff uptime
 on boss pulls".
 
-- **One row per debuff, at most five.** A debuff earns a row by the buff family's own rules: at
+- **One row per qualifying debuff.** A debuff earns a row by the buff family's own rules: at
   least three parse references carry it, and their median is at least 10%. That filter, not a
-  hand-written list, keeps incidental debuffs off the table.
+  hand-written list, keeps incidental debuffs off the table. Like the buff table, the table
+  itself is not capped. The cap of five (`MAX_AURAS_REPORTED`) applies to the gap findings.
+  *Corrected 2026-10-07 while planning: this line first said "at most five" rows, from a misreading
+  of the buff table.*
 - **One verdict per row, on the figure across all boss pulls.** The figure is the total seconds
   the bosses carried the debuff, divided by the total boss-pull seconds. The states are the buff
   family's: *below* when the median exceeds ours by at least 15 points, *level*, and *not judged*
@@ -180,8 +183,13 @@ The keys:
 - `LyKXYvVZm192TDr6` fight 9, a +18 Ruby Life Pools with a Death Knight and its Rune Weapon.
 - `nd6Rz47Gj1ZPxFfm` fight 3, a +18 Temple of Sethraliss, whose first boss is a council.
 
-A state that never occurs is a defect to chase, not a quiet success. Budget about 50 points of
-3600 for both runs, cold.
+A state that never occurs is a defect to chase, not a quiet success.
+
+**Budget about 400 points of 3600 for both runs, cold.** That covers `--all-players` on the first
+key, which gives five subjects' worth of states, and one player on the second. *Corrected
+2026-10-07 while planning: the first figure here, about 50, left out that a cold `--all-players`
+compared run already costs about 190 points before any debuff stream (wcl-api skill,
+2026-09-11).*
 
 ## 7. Cost
 
