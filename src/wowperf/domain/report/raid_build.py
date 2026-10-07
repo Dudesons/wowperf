@@ -7,6 +7,7 @@ from wowperf.domain.analysis.attempt_shape import WITHHELD_ID
 from wowperf.domain.analysis.deaths import numbered_chains
 from wowperf.domain.analysis.defensives import CEILING_WITHHELD_ID
 from wowperf.domain.analysis.progression_repeats import collapse_seconds
+from wowperf.domain.analysis.wipe_call import lost_at
 from wowperf.domain.comparison.kill_time import KILL_PREFIX, KILL_TIME_ID
 from wowperf.domain.comparison.night_axis import (
     PULL_DAMAGE_NOT_DRAWN,
@@ -26,7 +27,12 @@ from wowperf.domain.findings import Finding
 from wowperf.domain.model import Player
 from wowperf.domain.report.alive_chart import build_alive_chart
 from wowperf.domain.report.build import _check_unique_finding_ids, ceiling_withheld_line
-from wowperf.domain.report.deaths import HEALTH_METHOD, NO_CARDS_ASKED, build_deaths
+from wowperf.domain.report.deaths import (
+    HEALTH_METHOD,
+    NO_CARDS_ASKED,
+    build_deaths,
+    folded_deaths_line,
+)
 from wowperf.domain.report.finding_tooltip import tooltips_by_finding_id
 from wowperf.domain.report.frame import (
     NO_COMPARISON_RAN,
@@ -488,11 +494,13 @@ def build_raid_report(
 
     # `death_cards=False` skips the call rather than building cards and
     # throwing them away: the tier exists so the work is never done.
+    lost = lost_at(loaded)
     deaths = (
         build_deaths(loaded, defensives, consumables, externals, self_resurrections,
                      trimmed=trimmed,
                      roles=roles if throughput is not None else None,
-                     throughput=throughput or ThroughputCooldowns())
+                     throughput=throughput or ThroughputCooldowns(),
+                     stop_after=lost)
         if death_cards
         else ()
     )
@@ -548,6 +556,7 @@ def build_raid_report(
         # so only this tier says why. Every other empty `deaths` is the log's
         # own answer, and the page states it as one.
         deaths_note="" if death_cards else NO_CARDS_ASKED,
+        deaths_folded=folded_deaths_line(loaded.deaths, lost) if death_cards else "",
         death_rows=placed_rows["death_rows"],
         interrupts=placed_rows["interrupts"],
         players=players,
