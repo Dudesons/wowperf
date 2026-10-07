@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from wowperf.domain.analysis.attempt_shape import verdict_kind, verdict_words
 from wowperf.domain.analysis.progression_best import roster_deaths
 from wowperf.domain.analysis.progression_repeats import collapse_seconds
+from wowperf.domain.analysis.wipe_call import is_dirty
 from wowperf.domain.comparison.pace import PaceSample, pace_reading, withheld_reason
 from wowperf.domain.comparison.pace_curve import pace_end
 from wowperf.domain.encounter import Encounter, LoadedEncounter
@@ -21,6 +22,12 @@ empty cell reads as a rendering bug."""
 
 KILL_VERDICT = "kill"
 """The Verdict cell of a kill: no wipe to explain, and a fact the fight list states."""
+
+DIRTY_KILL_VERDICT = "dirty kill"
+"""The Verdict cell of a kill past the wipe call: still a kill, with a lost pull's deaths.
+
+Only where the attempt's deaths were fetched; an attempt nobody deepened keeps
+`KILL_VERDICT`, because nothing says how many died."""
 
 NOT_COMPARED = "not compared"
 """The Pace cell of a pull handed a sample its own pace comparison withheld."""
@@ -89,7 +96,7 @@ def build_progression_header(series: LoadedProgression) -> ProgressionHeader:
     )
 
 
-def _verdict(kill: bool, findings: Sequence[Finding]) -> str:
+def _verdict(kill: bool, findings: Sequence[Finding], loaded: LoadedEncounter | None) -> str:
     """The pull's own wipe verdict, "kill" on a kill, or no reading.
 
     The first finding that states a verdict, so the pull's other findings are
@@ -97,9 +104,10 @@ def _verdict(kill: bool, findings: Sequence[Finding]) -> str:
     not minted for -- has no reading rather than a verdict made up for it.
     The kind is printed in the words the boss rollup's title uses, so "both"
     names what it is both of.
+    A kill whose deaths were fetched and that reached the wipe call reads "dirty kill".
     """
     if kill:
-        return KILL_VERDICT
+        return DIRTY_KILL_VERDICT if loaded is not None and is_dirty(loaded) else KILL_VERDICT
     return next(
         (verdict_words(kind) for finding in findings if (kind := verdict_kind(finding))),
         NO_READING,
@@ -182,7 +190,9 @@ def build_attempt_rows(
                 duration=format_seconds(attempt.duration_seconds) or NO_READING,
                 phase=phase,
                 deaths=NO_READING if loaded is None else str(roster_deaths(loaded)),
-                verdict=_verdict(attempt.kill, (pull_findings or {}).get(attempt.fight_id, ())),
+                verdict=_verdict(
+                    attempt.kill, (pull_findings or {}).get(attempt.fight_id, ()), loaded
+                ),
                 pace=_pace(attempt, (pace or {}).get(attempt.fight_id)),
                 first_death=_first_death(loaded),
                 held=(
