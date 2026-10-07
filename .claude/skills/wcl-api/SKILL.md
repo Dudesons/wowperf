@@ -914,6 +914,74 @@ selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_au
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
 
+Everything above is about `table`. The event stream gives a different answer: see the next
+section.
+
+## The debuff event stream does name the caster
+
+First read 2026-10-02 by an ad-hoc query. Verified 2026-10-07 by re-reading those cached pages
+offline and by a fresh live probe into the same cache, against report `LyKXYvVZm192TDr6` fight 9,
+a +18 Ruby Life Pools completed in 1607.7 s.
+
+```
+events(dataType: Debuffs, hostilityType: Enemies, fightIDs: [Int],
+       startTime: Float, endTime: Float, limit: 10000)
+```
+
+**The stream attributes each debuff on an enemy to the actor that applied it, which the table
+above does not.** Every one of the 25,887 rows carries a `sourceID`, and every `targetID` resolves
+to an NPC in `masterData.actors`. Sources resolve to 23,656 rows from players, 2,165 from pets and
+66 from NPCs. Blood Plague (55078) splits by source: 1,613 rows from the Death Knight (actor 171)
+and 1,469 from actor 172. `masterData.actors` gives actor 172 as `type: "Pet"`, named `Rune
+Weapon`, `gameID` 27893, with `petOwner` 171. It is a second source of the same debuff, with its
+own applications: 441 applies over 141 target instances, against the player's 168. A per-player
+figure therefore has to decide whether to fold pets in by `petOwner`, as `graph` does for damage.
+The 66 NPC-sourced rows are two abilities that enemies apply to themselves or each other.
+
+**Shape.** Rows carry `timestamp`, `type`, `sourceID`, `targetID`, `abilityGameID` and `fight`
+always. They carry `targetInstance` on 20,521, `sourceMarker` on 9,150, `targetMarker` on 5,186,
+`sourceInstance` on 2,231 and `stack` on 1,538. `type` took five values: `refreshdebuff` 13,905,
+`applydebuff` 5,226, `removedebuff` 5,218, `applydebuffstack` 1,263, `removedebuffstack` 275.
+
+**Cost: about one point per 10,000-row page.** The 2026-10-02 query was reported at 3.19 points
+for three pages, from that session's own reading, which is not reproducible here. The fresh
+probe, into a cache that did not hold it, read 3 calls for 3.00. The pages broke at the same
+timestamps, 11608833 and 12287315, and the 25,887 rows were identical, in order, to those of
+2026-10-02. The actor lookup with `type` and `petOwner` cost 1.00 more. Whole probe, as the
+ledger printed it: 3.00 for the stream, 1.00 for the actors, and 1.00 for the two `RateLimit`
+reads.
+
+**No row repeats across a page boundary**: each page starts at the previous page's
+`nextPageTimestamp`, and the previous page ends earlier than that. Inside pages, 39 rows are
+exact duplicates of another row, 30 of them refreshes. Whether those are two real events is not
+established. They are not pagination overlap.
+
+**An application without a removal is mostly one enemy logged under two actor ids, not an enemy
+that died.** Pairing the Death Knight's own Blood Plague on `(targetID, targetInstance)` leaves
+13 of its 168 `applydebuff` rows with no later `removedebuff`. It also leaves 14 `removedebuff`
+rows with no open application. All 13 open applications sit on actors 261 and 270. None of
+those 13 target instances has a row in the fight's cached enemy death stream, 185 NPC deaths, and
+actor 261 has no death row at all. Each of the 13 is followed, 2 to 26 seconds later, by an orphan
+removal on the
+same `targetInstance` of a different actor with the same `gameID`. Actors 261 and 263 are both
+`Infused Whelp` (`gameID` 189893), and 269 and 270 are both `Scorchling` (194622). The fourteenth
+orphan removal closes a second application on a target that logged two applies before its
+removes. These are the only two `gameID`s, of the 22 targeted on this fight, that span more than
+one actor id.
+
+Keying intervals on the target's `gameID` with `targetInstance`, instead of its actor id,
+balances the Death Knight's Blood Plague completely. Across all player-sourced rows, it reduces
+applications left open from 32 to 3 and orphan removals from 38 to 11. The pairing method was
+`(sourceID, sourceInstance, abilityGameID, target, targetInstance)` walked in timestamp order,
+with an apply opening an interval and a remove closing it.
+
+So **closing an open interval at the last event on that target is wrong for the case that
+dominates here.** The last event on actor 261's instance is the application itself, so that
+rule closes each interval with no length at all, 2 to 26 seconds short. That one creature
+is logged under two actor ids is inferred from the timing and the matching instance numbers.
+The log does not state it. How to close the 3 intervals still open after re-keying is not
+settled. Nothing in `queries.py` reads this stream yet.
+
 ## A damage-taken table's row counts landings, not just hits
 
 Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
