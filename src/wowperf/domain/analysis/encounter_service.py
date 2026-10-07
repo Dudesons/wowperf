@@ -16,8 +16,8 @@ from wowperf.domain.analysis.defensives import (
 )
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
-from wowperf.domain.analysis.spikes import Answer, analyse_spikes
-from wowperf.domain.analysis.wipe_call import analyse_wipe_call, lost_at
+from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID, Answer, analyse_spikes
+from wowperf.domain.analysis.wipe_call import CALL_ORDINAL, analyse_wipe_call, lost_at
 from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -26,7 +26,7 @@ from wowperf.domain.comparison.mechanics import (
     compare_mechanics,
     compare_phase_cost,
 )
-from wowperf.domain.comparison.pace import PaceSample, analyse_pace
+from wowperf.domain.comparison.pace import PaceSample, analyse_pace, clock_text
 from wowperf.domain.comparison.pace_player import analyse_player_pace
 from wowperf.domain.comparison.parse_axis import ParseSubject, compare_parse_axis
 from wowperf.domain.encounter import LoadedEncounter
@@ -56,6 +56,34 @@ def _for_raider(findings: list[Finding], slug: str) -> list[Finding]:
         finding.model_copy(update={"id": f"{finding.id}.{slug}", "player_slug": slug})
         for finding in findings
     ]
+
+
+FIGHT_HAS_NO_HEAVY_MOMENT = "No moment of this fight was heavy enough to rank"
+"""The title `analyse_spikes` gives its no-heavy-moment notice when `setting` is "fight"."""
+
+
+def _state_the_cut(spikes: list[Finding], call_seconds: float) -> list[Finding]:
+    """The heavy-moment findings of a lost wipe, each stating the window it read.
+
+    `analyse_spikes` is handed a span ending at the call and describes it as
+    "the fight"; these findings render on a different tab from `wipe.lost`, so
+    each says where the reading stopped, and the notice that no moment ranked
+    says it was none before the call.
+    """
+    cut = (
+        f"On this wipe the fight is read only up to its {CALL_ORDINAL} roster death, at "
+        f"{clock_text(call_seconds)}, where it was called lost; a moment after it is never ranked."
+    )
+    stated = []
+    for finding in spikes:
+        if not finding.id.startswith(SPIKES_ID):
+            stated.append(finding)
+            continue
+        update = {"detail": f"{finding.detail} {cut}"}
+        if finding.id == UNAVAILABLE_ID and finding.title == FIGHT_HAS_NO_HEAVY_MOMENT:
+            update["title"] = f"No moment before the {CALL_ORDINAL} death was heavy enough to rank"
+        stated.append(finding.model_copy(update=update))
+    return stated
 
 
 def analyse_encounter(
@@ -168,7 +196,7 @@ def analyse_encounter(
         # move the median every earlier moment is measured against.
         lost = lost_at(loaded)
         span = (encounter.start_ms, encounter.end_ms if lost is None else lost.timestamp_ms)
-        findings += analyse_spikes(
+        spikes = analyse_spikes(
             damage_taken=loaded.damage_taken,
             casts=loaded.casts,
             deaths=loaded.deaths,
@@ -179,6 +207,9 @@ def analyse_encounter(
             combat=(span,),
             setting="fight",
         )
+        if lost is not None:
+            spikes = _state_the_cut(spikes, (lost.timestamp_ms - encounter.start_ms) / 1000)
+        findings += spikes
     verdict = classify_attempt(
         encounter,
         loaded.deaths,

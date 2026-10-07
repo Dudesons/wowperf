@@ -1070,6 +1070,9 @@ def test_a_wipe_past_the_call_carries_wipe_lost_and_its_verdict() -> None:
 
     findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
 
+    # The fixture carries no reference sample, so the verdict is the withheld one.
+    ids = [f.id for f in findings]
+    assert ids.index(WITHHELD_ID) < ids.index("wipe.lost")
     [lost] = [f for f in findings if f.id == "wipe.lost"]
     assert lost.confidence is Confidence.DERIVED
     assert lost.title == "The pull was lost at the 4th death, 1:03 into 6:14"
@@ -1121,7 +1124,23 @@ def test_a_lost_wipe_reads_its_heavy_moments_only_up_to_the_call() -> None:
     )
 
     assert reading.id == UNAVAILABLE_ID
-    assert reading.title == "No moment of this fight was heavy enough to rank"
+    assert reading.title == "No moment before the 4th death was heavy enough to rank"
+    assert "read only up to its 4th roster death, at 1:03" in reading.detail
+
+
+def test_a_lost_wipe_still_ranks_a_heavy_moment_before_the_call_and_states_the_cut() -> None:
+    # Deaths at 1:00, 1:10, 1:20 and 2:00: the call falls at 2:00, so the burst
+    # at 1:40 is after the first death and before the fourth.
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 70, 80, 120))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert reading.detail.endswith(
+        "On this wipe the fight is read only up to its 4th roster death, at 2:00, "
+        "where it was called lost; a moment after it is never ranked."
+    )
 
 
 def test_a_wipe_short_of_the_call_reads_the_whole_fight() -> None:
@@ -1131,6 +1150,7 @@ def test_a_wipe_short_of_the_call_reads_the_whole_fight() -> None:
 
     assert reading.id == SPIKES_ID
     assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert "read only up to" not in reading.detail
 
 
 def test_a_dirty_kill_reads_the_whole_fight() -> None:
@@ -1140,3 +1160,4 @@ def test_a_dirty_kill_reads_the_whole_fight() -> None:
 
     assert reading.id == SPIKES_ID
     assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert "read only up to" not in reading.detail
