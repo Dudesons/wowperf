@@ -1822,3 +1822,81 @@ def test_a_raid_page_that_compared_nothing_calls_nothing_on_it_a_run() -> None:
     )
     for text in _every_string(report.model_dump()):
         assert not re.search(r"\brun\b(?!-)", text), text
+
+
+A_COLLAPSE = (
+    a_death(EMBERKIN, FIRST_DEATH_MS),
+    a_death(STONEWAKE, FIRST_DEATH_MS + 3_000),
+    a_death(HEALER, FIRST_DEATH_MS + 8_000),
+    # Emberkin, battle-rezzed and dead again: the fourth roster death, the call.
+    a_death(EMBERKIN, FIRST_DEATH_MS + 20_000),
+    a_death(STONEWAKE, FIRST_DEATH_MS + 25_000),
+    a_death(HEALER, FIRST_DEATH_MS + 26_000),
+)
+"""Six deaths on a roster of three: the call is the fourth, two follow it."""
+
+
+def a_report_of(loaded: LoadedEncounter, *, death_cards: bool = True) -> RaidReport:
+    return build_raid_report(
+        loaded, (), EMBERKIN, None, FETCHED, NO_DEFENSIVES, NO_CONSUMABLES, NO_ROLES,
+        death_cards=death_cards,
+    )
+
+
+def test_a_lost_wipe_cards_its_deaths_up_to_the_call_and_folds_the_rest() -> None:
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE))
+
+    assert [card.player for card in report.deaths] == [
+        "Emberkin", "Stonewake", "Bríala", "Emberkin",
+    ]
+    assert report.deaths_folded == "2 more deaths after the 4th — not carded"
+
+
+def test_one_death_after_the_call_is_folded_in_the_singular() -> None:
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE[:5]))
+
+    assert len(report.deaths) == 4
+    assert report.deaths_folded == "1 more death after the 4th — not carded"
+
+
+def test_a_death_of_an_actor_off_the_roster_after_the_call_is_folded_too() -> None:
+    """The fold counts the cards not drawn, and a card is drawn for every death the log lists."""
+    pet = Death(
+        actor_id=999, player_name="Actor 999", timestamp_ms=FIRST_DEATH_MS + 30_000,
+        killing_blow="Shadow Torrent", seconds_until_next_action=20.0,
+    )
+
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE, pet))
+
+    assert [card.player for card in report.deaths] == [
+        "Emberkin", "Stonewake", "Bríala", "Emberkin",
+    ]
+    assert report.deaths_folded == "3 more deaths after the 4th — not carded"
+
+
+def test_a_wipe_that_ends_on_the_call_folds_nothing() -> None:
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE[:4]))
+
+    assert len(report.deaths) == 4
+    assert report.deaths_folded == ""
+
+
+def test_a_dirty_kill_cards_every_death() -> None:
+    wipe = a_wipe_that_started_with(*A_COLLAPSE)
+    kill = wipe.model_copy(
+        update={"encounter": wipe.encounter.model_copy(update={"kill": True})}
+    )
+
+    report = a_report_of(kill)
+
+    assert len(report.deaths) == 6
+    assert report.deaths_folded == ""
+
+
+def test_a_run_that_asked_for_no_cards_folds_nothing() -> None:
+    """`--no-deaths` built no card at all; `NO_CARDS_ASKED` says why, not a fold line."""
+    report = a_report_of(a_wipe_that_started_with(*A_COLLAPSE), death_cards=False)
+
+    assert report.deaths == ()
+    assert report.deaths_folded == ""
+    assert report.deaths_note == NO_CARDS_ASKED

@@ -467,6 +467,12 @@ def test_a_real_wipe_is_analysed_rather_than_refused(tmp_path: Path) -> None:
     severities = [SEVERITY_BY_FAMILY.get(family_of(f.id), UNKNOWN_SEVERITY) for f in findings]
     assert severities == sorted(severities), "findings are not ranked by severity first"
 
+    # The canonical wipe logs 21 deaths, far past the call.
+    lost = [f for f in findings if f.id == "wipe.lost"]
+    assert len(lost) == 1, "the canonical wipe was not called lost"
+    assert lost[0].confidence is Confidence.DERIVED, "wipe.lost was not badged derived"
+    assert "raid.dirty_kill" not in {f.id for f in findings}, "a wipe was labelled a dirty kill"
+
     assert_mechanics_output_is_well_formed(findings, mechanics_sample, our_abilities)
     assert_the_wipe_analysis_fired(loaded, mechanics_sample, findings)
 
@@ -823,6 +829,10 @@ def test_a_real_kill_is_read_against_the_kills_time_and_pace(tmp_path: Path) -> 
     assert no_projection, "a kill was projected, though it already dealt the boss its health"
     no_player_pace = not any(one.startswith("compare.pace.player.") for one in ids)
     assert no_player_pace, "a kill carried a per-player pace reading, which stays a wipe's"
+
+    # The canonical kill has no deaths: neither side of the wipe call applies.
+    assert "wipe.lost" not in ids, "a kill was called lost"
+    assert "raid.dirty_kill" not in ids, "a deathless kill was labelled dirty"
 
     assert spent <= 140.0, "the run spent more than the bound this test allows"
 

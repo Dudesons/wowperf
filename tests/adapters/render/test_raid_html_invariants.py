@@ -18,10 +18,13 @@ from tests.domain.analysis.test_encounter_service import ARCANE_BLAST
 from tests.domain.analysis.test_spikes import a_heavy_moment_left_unanswered
 from tests.domain.comparison.test_pace_curve import a_kill, steady
 from tests.domain.report.test_raid_build import (
+    A_COLLAPSE,
     FETCHED,
     NO_CONSUMABLES,
     NO_DEFENSIVES,
     NO_ROLES,
+    a_report_of,
+    a_wipe_that_started_with,
 )
 from tests.domain.report.test_raid_frame import an_encounter
 from tests.domain.report.test_raid_model import raid_view_model_types
@@ -2313,3 +2316,9 @@ def test_a_death_whose_killing_blow_was_never_fetched_claims_neither() -> None:
     assert '<li class="faded">' not in html
     assert '<li class="held">' not in html
     assert '<li class="pressed">' in html
+
+
+def test_a_lost_wipe_states_the_deaths_it_did_not_card() -> None:
+    html = render_raid(a_report_of(a_wipe_that_started_with(*A_COLLAPSE)))
+
+    assert "2 more deaths after the 4th — not carded" in html

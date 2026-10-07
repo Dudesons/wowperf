@@ -35,7 +35,7 @@ from wowperf.domain.events import (
     EnemyCastRow,
     Resurrection,
 )
-from wowperf.domain.findings import Confidence
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.players import slugs_by_actor
@@ -1027,3 +1027,137 @@ def test_the_defensive_finding_calls_this_stretch_a_fight() -> None:
     assert "cast somewhere in the fight" in finding.detail
     for text in (finding.title, finding.detail, *finding.evidence):
         assert not re.search(r"\brun\b", text), text
+
+
+WIPE_CALL_ROSTER = (
+    *RAID,
+    Player(actor_id=14, name="Кириллица", class_name="Mage", spec="Arcane", item_level=700),
+)
+"""Four raiders, so a wipe can reach the call without anyone on the roster dying twice."""
+
+
+def a_pull_of_four(*, kill: bool, death_seconds: tuple[int, ...]) -> LoadedEncounter:
+    """`a_loaded_encounter`'s fight with `WIPE_CALL_ROSTER`, one death per second given.
+
+    Deaths go to every raider but Emberkin in turn, so Emberkin -- the one who
+    holds the group answer in the heavy-moment fixture -- is alive throughout.
+    The fight starts at 1 s and ends at 375 s, so it runs 6:14.
+    """
+    loaded = a_loaded_encounter()
+    start = loaded.encounter.start_ms
+    dying = WIPE_CALL_ROSTER[1:]
+    deaths = tuple(
+        Death(
+            player_name=dying[index % len(dying)].name,
+            actor_id=dying[index % len(dying)].actor_id,
+            timestamp_ms=start + second * 1_000,
+            killing_blow="Ravenous Feast",
+        )
+        for index, second in enumerate(death_seconds)
+    )
+    encounter = loaded.encounter.model_copy(
+        update={
+            "kill": kill,
+            "boss_percentage": None if kill else 40.0,
+            "players": WIPE_CALL_ROSTER,
+        }
+    )
+    return loaded.model_copy(update={"encounter": encounter, "deaths": deaths})
+
+
+def test_a_wipe_past_the_call_carries_wipe_lost_and_its_verdict() -> None:
+    loaded = a_pull_of_four(kill=False, death_seconds=(60, 61, 62, 63, 90))
+
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
+
+    # The fixture carries no reference sample, so the verdict is the withheld one.
+    ids = [f.id for f in findings]
+    assert ids.index(WITHHELD_ID) < ids.index("wipe.lost")
+    [lost] = [f for f in findings if f.id == "wipe.lost"]
+    assert lost.confidence is Confidence.DERIVED
+    assert lost.title == "The pull was lost at the 4th death, 1:03 into 6:14"
+    assert "raid.dirty_kill" not in {f.id for f in findings}
+
+
+def test_a_kill_past_the_call_carries_raid_dirty_kill_and_is_never_lost() -> None:
+    loaded = a_pull_of_four(kill=True, death_seconds=(60, 61, 62, 63))
+
+    ids = [f.id for f in analyse_encounter(loaded, DEFENSIVES, Consumables())]
+
+    assert ids.count("raid.dirty_kill") == 1
+    assert "wipe.lost" not in ids
+
+
+def test_a_pull_short_of_the_call_carries_neither() -> None:
+    for kill in (True, False):
+        loaded = a_pull_of_four(kill=kill, death_seconds=(60, 61, 62))
+        ids = {f.id for f in analyse_encounter(loaded, DEFENSIVES, Consumables())}
+        assert not ids & {"wipe.lost", "raid.dirty_kill"}, (kill, ids)
+
+
+def a_pull_of_four_with_a_heavy_moment(
+    *, kill: bool, death_seconds: tuple[int, ...]
+) -> LoadedEncounter:
+    """`a_pull_of_four` taking `an_encounter_with_a_heavy_moment`'s damage and its one answer.
+
+    Steady damage every second and a burst at 1:40 to 1:45, answered by
+    Emberkin two seconds before it.
+    """
+    heavy = an_encounter_with_a_heavy_moment()
+    return a_pull_of_four(kill=kill, death_seconds=death_seconds).model_copy(
+        update={"damage_taken": heavy.damage_taken, "casts": heavy.casts}
+    )
+
+
+def spike_reading(loaded: LoadedEncounter) -> Finding:
+    answers = answers_for(WIPE_CALL_ROSTER, ThroughputCooldowns(), GROUP_EXTERNALS, Roles())
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables(), answers=answers)
+    [reading] = [f for f in findings if f.id in (SPIKES_ID, UNAVAILABLE_ID)]
+    return reading
+
+
+def test_a_lost_wipe_reads_its_heavy_moments_only_up_to_the_call() -> None:
+    # The call falls at 1:03; the burst at 1:40 is after it. Before the call the
+    # damage is steady, so no window reaches twice the median and none ranks.
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 61, 62, 63))
+    )
+
+    assert reading.id == UNAVAILABLE_ID
+    assert reading.title == "No moment before the 4th death was heavy enough to rank"
+    assert "read only up to its 4th roster death, at 1:03" in reading.detail
+
+
+def test_a_lost_wipe_still_ranks_a_heavy_moment_before_the_call_and_states_the_cut() -> None:
+    # Deaths at 1:00, 1:10, 1:20 and 2:00: the call falls at 2:00, so the burst
+    # at 1:40 is after the first death and before the fourth.
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 70, 80, 120))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert reading.detail.endswith(
+        "On this wipe the fight is read only up to its 4th roster death, at 2:00, "
+        "where it was called lost; a moment after it is never ranked."
+    )
+
+
+def test_a_wipe_short_of_the_call_reads_the_whole_fight() -> None:
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 61, 62))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert "read only up to" not in reading.detail
+
+
+def test_a_dirty_kill_reads_the_whole_fight() -> None:
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=True, death_seconds=(60, 61, 62, 63))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+    assert "read only up to" not in reading.detail

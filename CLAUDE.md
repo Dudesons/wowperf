@@ -363,8 +363,9 @@ The analysers under `src/wowperf/domain/analysis/` produce the findings: time de
 deaths and what each one cost, missed interrupts, trash efficiency, per-player facts, defensives
 off cooldown at a death and defensives pressed far below what their cooldown allowed, healing
 consumables, throughput cooldowns spent away from the pulls worth spending them on, the group's
-heaviest moments of damage taken and whether a group cooldown answered each, the recap
-behind each death card, and what the other healers were doing when each player died. The class data they read — cooldowns, teammates' externals,
+heaviest moments of damage taken and whether a group cooldown answered each, read on a wipe only
+up to its fourth roster death, the recap behind each death card, and what the other healers were
+doing when each player died. The class data they read — cooldowns, teammates' externals,
 self-resurrections, roles — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the

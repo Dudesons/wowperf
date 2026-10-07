@@ -41,6 +41,7 @@ def test_an_unknown_family_sorts_last_rather_than_first() -> None:
     "family",
     [
         "wipe",
+        "raid",
         "deaths",
         "progression",
         "mechanics",
@@ -133,3 +134,9 @@ def test_every_family_the_progression_path_emits_has_a_severity() -> None:
     for finding in killing_blow_findings:
         family = finding.id.split(".")[0]
         assert family in SEVERITY_BY_FAMILY, f"{finding.id} ranks on UNKNOWN_SEVERITY"
+
+
+def test_a_dirty_kill_ranks_with_the_outcome_ahead_of_any_death() -> None:
+    """`raid.dirty_kill` says how the kill ended, as `wipe.*` says how a wipe did."""
+    ranked = rank_raid_findings([finding("deaths.total", 180.0), finding("raid.dirty_kill")])
+    assert [item.id for item in ranked] == ["raid.dirty_kill", "deaths.total"]
