@@ -1027,3 +1027,66 @@ def test_the_defensive_finding_calls_this_stretch_a_fight() -> None:
     assert "cast somewhere in the fight" in finding.detail
     for text in (finding.title, finding.detail, *finding.evidence):
         assert not re.search(r"\brun\b", text), text
+
+
+WIPE_CALL_ROSTER = (
+    *RAID,
+    Player(actor_id=14, name="Кириллица", class_name="Mage", spec="Arcane", item_level=700),
+)
+"""Four raiders, so a wipe can reach the call without anyone on the roster dying twice."""
+
+
+def a_pull_of_four(*, kill: bool, death_seconds: tuple[int, ...]) -> LoadedEncounter:
+    """`a_loaded_encounter`'s fight with `WIPE_CALL_ROSTER`, one death per second given.
+
+    Deaths go to every raider but Emberkin in turn, so Emberkin -- the one who
+    holds the group answer in the heavy-moment fixture -- is alive throughout.
+    The fight starts at 1 s and ends at 375 s, so it runs 6:14.
+    """
+    loaded = a_loaded_encounter()
+    start = loaded.encounter.start_ms
+    dying = WIPE_CALL_ROSTER[1:]
+    deaths = tuple(
+        Death(
+            player_name=dying[index % len(dying)].name,
+            actor_id=dying[index % len(dying)].actor_id,
+            timestamp_ms=start + second * 1_000,
+            killing_blow="Ravenous Feast",
+        )
+        for index, second in enumerate(death_seconds)
+    )
+    encounter = loaded.encounter.model_copy(
+        update={
+            "kill": kill,
+            "boss_percentage": None if kill else 40.0,
+            "players": WIPE_CALL_ROSTER,
+        }
+    )
+    return loaded.model_copy(update={"encounter": encounter, "deaths": deaths})
+
+
+def test_a_wipe_past_the_call_carries_wipe_lost_and_its_verdict() -> None:
+    loaded = a_pull_of_four(kill=False, death_seconds=(60, 61, 62, 63, 90))
+
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables())
+
+    [lost] = [f for f in findings if f.id == "wipe.lost"]
+    assert lost.confidence is Confidence.DERIVED
+    assert lost.title == "The pull was lost at the 4th death, 1:03 into 6:14"
+    assert "raid.dirty_kill" not in {f.id for f in findings}
+
+
+def test_a_kill_past_the_call_carries_raid_dirty_kill_and_is_never_lost() -> None:
+    loaded = a_pull_of_four(kill=True, death_seconds=(60, 61, 62, 63))
+
+    ids = [f.id for f in analyse_encounter(loaded, DEFENSIVES, Consumables())]
+
+    assert ids.count("raid.dirty_kill") == 1
+    assert "wipe.lost" not in ids
+
+
+def test_a_pull_short_of_the_call_carries_neither() -> None:
+    for kill in (True, False):
+        loaded = a_pull_of_four(kill=kill, death_seconds=(60, 61, 62))
+        ids = {f.id for f in analyse_encounter(loaded, DEFENSIVES, Consumables())}
+        assert not ids & {"wipe.lost", "raid.dirty_kill"}, (kill, ids)

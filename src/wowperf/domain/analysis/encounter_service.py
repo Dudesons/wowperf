@@ -17,6 +17,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import Answer, analyse_spikes
+from wowperf.domain.analysis.wipe_call import analyse_wipe_call
 from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -182,6 +183,7 @@ def analyse_encounter(
     )
     if verdict is not None:
         findings.append(verdict)
+    findings += analyse_wipe_call(loaded)
     for subject in parse_subjects:
         findings += _for_raider(
             compare_parse_axis(
