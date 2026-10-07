@@ -35,7 +35,7 @@ from wowperf.domain.events import (
     EnemyCastRow,
     Resurrection,
 )
-from wowperf.domain.findings import Confidence
+from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player
 from wowperf.domain.phases import Phase, PhaseTransition
 from wowperf.domain.report.players import slugs_by_actor
@@ -1090,3 +1090,53 @@ def test_a_pull_short_of_the_call_carries_neither() -> None:
         loaded = a_pull_of_four(kill=kill, death_seconds=(60, 61, 62))
         ids = {f.id for f in analyse_encounter(loaded, DEFENSIVES, Consumables())}
         assert not ids & {"wipe.lost", "raid.dirty_kill"}, (kill, ids)
+
+
+def a_pull_of_four_with_a_heavy_moment(
+    *, kill: bool, death_seconds: tuple[int, ...]
+) -> LoadedEncounter:
+    """`a_pull_of_four` taking `an_encounter_with_a_heavy_moment`'s damage and its one answer.
+
+    Steady damage every second and a burst at 1:40 to 1:45, answered by
+    Emberkin two seconds before it.
+    """
+    heavy = an_encounter_with_a_heavy_moment()
+    return a_pull_of_four(kill=kill, death_seconds=death_seconds).model_copy(
+        update={"damage_taken": heavy.damage_taken, "casts": heavy.casts}
+    )
+
+
+def spike_reading(loaded: LoadedEncounter) -> Finding:
+    answers = answers_for(WIPE_CALL_ROSTER, ThroughputCooldowns(), GROUP_EXTERNALS, Roles())
+    findings = analyse_encounter(loaded, DEFENSIVES, Consumables(), answers=answers)
+    [reading] = [f for f in findings if f.id in (SPIKES_ID, UNAVAILABLE_ID)]
+    return reading
+
+
+def test_a_lost_wipe_reads_its_heavy_moments_only_up_to_the_call() -> None:
+    # The call falls at 1:03; the burst at 1:40 is after it. Before the call the
+    # damage is steady, so no window reaches twice the median and none ranks.
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 61, 62, 63))
+    )
+
+    assert reading.id == UNAVAILABLE_ID
+    assert reading.title == "No moment of this fight was heavy enough to rank"
+
+
+def test_a_wipe_short_of_the_call_reads_the_whole_fight() -> None:
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=False, death_seconds=(60, 61, 62))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")
+
+
+def test_a_dirty_kill_reads_the_whole_fight() -> None:
+    reading = spike_reading(
+        a_pull_of_four_with_a_heavy_moment(kill=True, death_seconds=(60, 61, 62, 63))
+    )
+
+    assert reading.id == SPIKES_ID
+    assert reading.evidence[0].startswith("1:40 to 1:45, the heaviest")

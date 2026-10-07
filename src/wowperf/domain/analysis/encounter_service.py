@@ -17,7 +17,7 @@ from wowperf.domain.analysis.defensives import (
 from wowperf.domain.analysis.interrupts import analyse_interrupts, reconstruct_enemy_casts
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import Answer, analyse_spikes
-from wowperf.domain.analysis.wipe_call import analyse_wipe_call
+from wowperf.domain.analysis.wipe_call import analyse_wipe_call, lost_at
 from wowperf.domain.comparison.kill_time import analyse_kill_time
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -163,7 +163,11 @@ def analyse_encounter(
         loaded.damage_taken, encounter.phases, encounter.phase_transitions
     )
     if answers is not None:
-        span = (encounter.start_ms, encounter.end_ms)
+        # A lost wipe's heaviest moments are ranked, weighed and judged only up
+        # to the call: collapse damage would otherwise take ranked slots and
+        # move the median every earlier moment is measured against.
+        lost = lost_at(loaded)
+        span = (encounter.start_ms, encounter.end_ms if lost is None else lost.timestamp_ms)
         findings += analyse_spikes(
             damage_taken=loaded.damage_taken,
             casts=loaded.casts,
