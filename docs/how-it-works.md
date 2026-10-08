@@ -357,6 +357,7 @@ src/wowperf/
 │   ├── findings.py        Finding, FindingFact, Confidence, rank_findings
 │   ├── loadout.py         EquippedItem, StatBlock, Loadout
 │   ├── auras.py           AuraBand, Aura, PlayerAuras, uptime_seconds_in
+│   ├── debuffs.py         DebuffEvent, DebuffLog, pair_debuffs — enemy-debuff events paired into intervals
 │   ├── season.py          value objects for every data/*.toml file
 │   ├── slug.py            player_slug — the one place a slug is minted
 │   ├── ports.py           the boundary: 4 Protocols
@@ -498,7 +499,7 @@ Comparison families:
 | Axis | Families |
 | --- | --- |
 | Speed (group) | route, tempo, confounds |
-| Parse (per player) | cast spells, trash spells, talents, buff uptime, enchants, tier, stats, consumable buffs, potions |
+| Parse (per player) | cast spells, trash spells, talents, buff uptime, debuff uptime on bosses, enchants, tier, stats, consumable buffs, potions |
 | Raid only | mechanics, rank, damage total, targets |
 
 Uptime covers buffs everywhere and debuffs on Mythic+ bosses. Warcraft Logs offers no way to
