@@ -6,9 +6,12 @@ from types import MappingProxyType
 
 from wowperf.domain.analysis.players import summarise_players
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
+    BossCell,
+    BossDebuffRow,
     PlayerMeasures,
     StatShare,
     Verdict,
@@ -304,6 +307,28 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                 rows=_aura_rows(measures.auras),
             )
         )
+    debuffs = measures.boss_debuffs
+    if debuffs.rows:
+        tally = debuffs.tally
+        built.append(
+            ComparisonTable(
+                heading="Debuff uptime on bosses",
+                caption=(
+                    f"Share of {debuffs.seconds:.0f}s of single-boss pulls the boss carried "
+                    "each debuff from this player or their pets, against the median of the "
+                    "parses that applied each. Council pulls are left out. Each boss column "
+                    "reads ours against the median and carries no verdict. Our own log held "
+                    f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
+                    "application, dropped; "
+                    f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
+                    "open at the fight's end, closed there; and "
+                    f"{quantity(tally.unresolved_targets, 'row', 'rows')} on an enemy with no "
+                    "game id, skipped. Derived."
+                ),
+                cell_headings=debuffs.bosses,
+                rows=_debuff_rows(debuffs.rows),
+            )
+        )
     if measures.stats:
         built.append(
             ComparisonTable(
@@ -395,3 +420,45 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
             )
         )
     return tuple(rows)
+
+
+WITHHELD_LABELS = {
+    Withheld.COUNCIL: "a council, not measured",
+    Withheld.NO_BOSS: "no boss found",
+    Withheld.NOT_REACHED: "no reference reached it",
+    Withheld.TOO_FEW: "too few references",
+}
+"""How a boss cell with no figure says why, in the reader's words."""
+
+
+def _debuff_rows(rows: Sequence[BossDebuffRow]) -> tuple[ComparisonRow, ...]:
+    """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives."""
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    built = []
+    for row in ordered:
+        m = row.uptime
+        low, high = observed_range(m.their_fractions)
+        built.append(
+            ComparisonRow(
+                ability_id=m.ability_id,
+                name=m.name,
+                ours=f"{m.ours:.0%}",
+                theirs=f"{m.their_median:.0%}",
+                spread=f"{low:.0%} to {high:.0%}",
+                sample=f"{len(m.their_fractions)} top parses",
+                verdict=m.verdict.value,
+                verdict_label=VERDICT_LABELS[m.verdict],
+                cells=tuple(_cell(cell) for cell in row.cells),
+            )
+        )
+    return tuple(built)
+
+
+def _cell(cell: BossCell) -> str:
+    """One boss's cell: ours against the median, or ours and why there is no median."""
+    reason = WITHHELD_LABELS[cell.withheld] if cell.withheld is not None else ""
+    if cell.ours is None:
+        return reason
+    if cell.their_median is None:
+        return f"{cell.ours:.0%}; {reason}" if reason else f"{cell.ours:.0%}"
+    return f"{cell.ours:.0%} against {cell.their_median:.0%}"

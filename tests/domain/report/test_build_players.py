@@ -2,14 +2,19 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
+from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
+    BossCell,
+    BossDebuffRow,
+    BossDebuffTable,
     PlayerMeasures,
     StatShare,
     Stretch,
     Verdict,
 )
+from wowperf.domain.debuffs import PairingTally
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
@@ -1007,3 +1012,72 @@ def test_a_player_with_no_readable_stats_gets_no_stat_table() -> None:
         Defensives(), ThroughputCooldowns(), measures={"stonewake-0": PlayerMeasures()},
     )[0]
     assert not [t for t in card.comparison_tables if "stat" in t.heading.lower()]
+
+
+def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> None:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraUptime(
+                    ability_id=195181, name="Bone Shield", ours=0.62,
+                    their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                    verdict=Verdict.BELOW,
+                ),
+            ),
+            boss_seconds=648.0,
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.5,
+                                their_median=0.9,
+                            ),
+                            BossCell(
+                                encounter_id=2002, boss="Second Boss",
+                                withheld=Withheld.COUNCIL,
+                            ),
+                            BossCell(
+                                encounter_id=2003, boss="Third Boss", ours=0.8,
+                                withheld=Withheld.TOO_FEW,
+                            ),
+                        ),
+                    ),
+                ),
+                seconds=200.0,
+                bosses=("First Boss", "Second Boss", "Third Boss"),
+                tally=PairingTally(orphan_removes=1, closed_at_end=2),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    assert [t.heading for t in card.comparison_tables] == [
+        "Buff uptime on boss pulls",
+        "Debuff uptime on bosses",
+    ]
+    table = card.comparison_tables[1]
+    assert table.cell_headings == ("First Boss", "Second Boss", "Third Boss")
+    [row] = table.rows
+    assert (row.ours, row.theirs, row.spread, row.verdict_label) == (
+        "70%", "90%", "85% to 95%", "Below"
+    )
+    assert row.cells == (
+        "50% against 90%", "a council, not measured", "80%; too few references"
+    )
+    assert table.caption == (
+        "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
+        "their pets, against the median of the parses that applied each. Council pulls are "
+        "left out. Each boss column reads ours against the median and carries no verdict. Our "
+        "own log held 1 removal with no application, dropped; 2 applications still open at "
+        "the fight's end, closed there; and 0 rows on an enemy with no game id, skipped. "
+        "Derived."
+    )
