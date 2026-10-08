@@ -1,6 +1,8 @@
 # ABOUTME: Boss debuff uptime against the parse sample: the buff family's thresholds, debuff words.
 # ABOUTME: Pins the gap, level, unjudged, the pairwise fallback and every unavailable branch.
 
+import pytest
+
 from tests.domain.comparison.test_uptime import BOSS, a_player, a_run
 from wowperf.domain.auras import Aura, AuraBand
 from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossWindow, Withheld
@@ -245,6 +247,25 @@ def test_a_row_carries_the_overall_verdict_and_one_cell_per_boss() -> None:
         BossCell(encounter_id=2002, boss="Second Boss", ours=0.9, their_median=0.9),
     )
     assert (table.bosses, table.seconds) == (("First Boss", "Second Boss"), 200.0)
+
+
+def test_a_boss_fought_twice_is_one_column_and_one_cell_summed_over_both_pulls() -> None:
+    # A wipe, then the kill: two windows sharing one encounter id. 50s of the
+    # first pull's 100s and 90s of the second's make 140s of 200s.
+    kill = FIRST.model_copy(update={"start_ms": 200_000, "end_ms": 300_000})
+    sample = a_two_boss_sample(
+        *(on_two_bosses(0.9, 0.9, windows=(FIRST, kill)) for _ in range(3))
+    )
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9, windows=(FIRST, kill)), sample)
+
+    assert table.bosses == ("First Boss",)
+    assert table.seconds == 200.0
+    [row] = table.rows
+    [cell] = row.cells
+    assert cell.encounter_id == 2001
+    assert cell.ours == pytest.approx(0.7)
+    assert cell.their_median == pytest.approx(0.9)
 
 
 def test_our_council_cell_is_withheld_with_its_reason() -> None:

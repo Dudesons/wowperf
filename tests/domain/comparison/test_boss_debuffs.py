@@ -210,6 +210,28 @@ def test_a_share_is_read_per_boss_and_a_withheld_boss_says_why() -> None:
     assert encounter_share(mine, DOT, 9999) is None
 
 
+def test_a_boss_fought_twice_is_summed_over_both_measured_pulls() -> None:
+    # A wipe, then the kill: two windows, one encounter. The shares differ, so a
+    # mean of the two, or either one alone, cannot reach the summed figure:
+    # 30s of 60s, then 10s of 40s, is 40s of 100s.
+    wipe = BOSS_PULL
+    kill = a_pull(2, 100_000, 140_000, encounter_id=2001, name=BOSS_NAME)
+    mine = boss_debuffs(
+        a_log(
+            an_event(True, 20_000),
+            an_event(False, 50_000),
+            an_event(True, 100_000),
+            an_event(False, 110_000),
+        ),
+        (wipe, kill),
+        PLAYER,
+    )
+
+    assert [window.encounter_id for window in mine.windows] == [2001, 2001]
+    assert mine.seconds == 100.0
+    assert encounter_share(mine, DOT, 2001) == 0.4
+
+
 FIRST, SECOND, THIRD = 60, 61, 62
 FIRST_GAME, SECOND_GAME = 6000, 6100
 
@@ -261,6 +283,18 @@ def test_an_unflagged_pair_named_for_both_is_a_council() -> None:
     )
 
     assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+
+
+def test_an_unflagged_enemy_whose_name_only_begins_the_pulls_is_its_boss() -> None:
+    # The flag is absent, so only the opening-words half of the name step can
+    # find this boss: the `find_bosses` fallback has no candidate to read.
+    window = the_window_of(
+        "Alpha Fixture the Tester",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture"),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
 
 
 def test_a_flagged_pair_whose_first_name_begins_the_pulls_is_a_council_not_that_boss() -> None:
