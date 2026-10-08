@@ -1059,6 +1059,34 @@ The e2e assertion on this pairing fails on the old key only where a pet's applic
 removal carry different instance numbers on a measured boss. `nd6Rz47Gj1ZPxFfm` fight 3 is
 that key: Mirror Image Frostbolt on Galvazzt.
 
+**What a council's death times cost, as the feature's own reading, 2026-10-08.**
+`WclRunRepository.debuff_log` also reads `EnemyDeaths` for the fight, for the council debuff
+coverage of `docs/plans/2026-10-08-council-debuff-coverage-design.md`. It was the first run with
+the feature, and every other read was already cached.
+
+`analyze nd6Rz47Gj1ZPxFfm --fight 3` spent 6.58 points:
+
+- `EnemyDeaths`: 5 calls for 5.58
+- `RateLimit`: 2 calls for 1.00
+
+`analyze LyKXYvVZm192TDr6 --fight 9 --all-players` spent 25.30:
+
+- `EnemyDeaths`: 19 calls for 24.30
+- `RateLimit`: 2 calls for 1.00
+
+Each count equals the run's distinct loaded parse references: 5, and 19 of that key's 25 parse
+rows. Each reference's death stream fit in one page.
+
+**Our own side's read was a cache hit.** The query and variables are those of the full load, and
+all 24 cache files the two runs wrote went under the reference cache, none under the root cache
+that holds our own reports.
+
+A warm rerun spent 1.00 per command, all of it on `RateLimit`.
+
+**A kill's last death is stamped after the pull closes.** On all 26 cached council kills, the last
+council boss's death row lands 3 to 36 ms after that pull's end, so a window that is inclusive of
+the end alone misses it.
+
 ## A damage-taken table's row counts landings, not just hits
 
 Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
