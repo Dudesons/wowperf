@@ -63,8 +63,12 @@ class PairingTally(Frozen):
     unresolved_targets: int = 0
 
 
-Key = tuple[int, int, int, int, int]
-"""(source id, source instance, ability id, target game id, target instance)."""
+Key = tuple[int, int, int, int]
+"""(source id, ability id, target game id, target instance).
+
+The source's own instance number is left out: a pet applies a debuff under one
+instance and removes it under another, so keyed on it every removal was an orphan.
+"""
 
 
 def pair_debuffs(log: DebuffLog) -> tuple[tuple[DebuffInterval, ...], PairingTally]:
@@ -77,9 +81,15 @@ def pair_debuffs(log: DebuffLog) -> tuple[tuple[DebuffInterval, ...], PairingTal
     Keyed on the actor id, 13 of one player's 168 applications never closed.
     Keyed on the game id, the same ability balanced completely.
 
-    The source stays raw in the key, instance and all, so two summons of one
-    pet never close each other's debuff. It is folded to its owner only when
-    the interval is written.
+    The source stays raw in the key, so a player and their pet are two streams.
+    Its instance number is not in the key. Measured 2026-10-08 on a cached key:
+    a Mirror Image pet applied Frostbolt under instance 25 and removed it under
+    instance 26, so keyed on the instance every removal was an orphan and the
+    first application ran to the fight's end. The source is folded to its owner
+    only when the interval is written. The cost: if two copies of one pet each
+    kept their own copy of a debuff on one target at once, the first removal
+    closes the interval, so the figure can under-count; it can no longer run to
+    the fight's end.
 
     A second application while one is open keeps the first start: the debuff
     never came off. A removal with nothing open is counted and dropped rather
@@ -94,7 +104,7 @@ def pair_debuffs(log: DebuffLog) -> tuple[tuple[DebuffInterval, ...], PairingTal
     unresolved = 0
 
     def written(key: Key, start_ms: int, end_ms: int) -> DebuffInterval:
-        source_id, _, ability_id, game_id, instance = key
+        source_id, ability_id, game_id, instance = key
         return DebuffInterval(
             owner_id=owners.get(source_id, source_id),
             ability_id=ability_id,
@@ -112,7 +122,6 @@ def pair_debuffs(log: DebuffLog) -> tuple[tuple[DebuffInterval, ...], PairingTal
             continue
         key = (
             event.source_id,
-            event.source_instance,
             event.ability_id,
             game_id,
             event.target_instance,

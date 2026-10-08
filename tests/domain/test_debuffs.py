@@ -135,16 +135,62 @@ def test_two_copies_of_one_enemy_are_two_intervals() -> None:
     ]
 
 
-def test_two_summons_of_one_pet_do_not_close_each_other() -> None:
+def test_a_pet_applying_and_removing_under_two_instances_closes_its_own_interval() -> None:
+    """Measured 2026-10-08 on a cached key: every Mirror Image Frostbolt row came
+    from one pet actor, applied under instance 25 and removed under instance 26.
+    Keyed on the instance, all three removes were orphans and the first apply
+    ran to the end of the fight. A remove shares its millisecond with the next
+    apply, so the log's own order has to hold. The times are the trace's own
+    gaps, started from one second.
+    """
     intervals, tally = pair_debuffs(
         a_log(
-            an_event(True, 1000, source=PET, source_instance=2),
-            an_event(False, 2000, source=PET, source_instance=3),
+            an_event(True, 1_000, source=PET, source_instance=25),
+            an_event(False, 8_400, source=PET, source_instance=26),
+            an_event(True, 8_400, source=PET, source_instance=25),
+            an_event(False, 9_850, source=PET, source_instance=26),
+            an_event(True, 9_850, source=PET, source_instance=25),
+            an_event(False, 16_920, source=PET, source_instance=26),
         )
     )
 
-    assert (tally.orphan_removes, tally.closed_at_end) == (1, 1)
-    assert spans(intervals) == [(1000, FIGHT_END)]
+    assert spans(intervals) == [(1_000, 8_400), (8_400, 9_850), (9_850, 16_920)]
+    assert [one.owner_id for one in intervals] == [PLAYER, PLAYER, PLAYER]
+    assert tally == PairingTally()
+
+
+def test_a_player_and_their_pet_are_two_keys_for_one_ability_on_one_target() -> None:
+    intervals, tally = pair_debuffs(
+        a_log(
+            an_event(True, 1000, source=PLAYER),
+            an_event(True, 2000, source=PET, source_instance=2),
+            an_event(False, 3000, source=PET, source_instance=2),
+            an_event(False, 6000, source=PLAYER),
+        )
+    )
+
+    assert sorted(spans(intervals)) == [(1000, 6000), (2000, 3000)]
+    assert [one.owner_id for one in intervals] == [PLAYER, PLAYER]
+    assert tally == PairingTally()
+
+
+def test_two_players_applying_one_ability_to_one_target_do_not_close_each_other() -> None:
+    other_player = 173
+
+    intervals, tally = pair_debuffs(
+        a_log(
+            an_event(True, 1000, source=PLAYER),
+            an_event(True, 2000, source=other_player),
+            an_event(False, 3000, source=other_player),
+            an_event(False, 6000, source=PLAYER),
+        )
+    )
+
+    assert sorted((one.owner_id, one.start_ms, one.end_ms) for one in intervals) == [
+        (PLAYER, 1000, 6000),
+        (other_player, 2000, 3000),
+    ]
+    assert tally == PairingTally()
 
 
 def test_a_target_with_no_game_id_is_counted_and_skipped() -> None:
