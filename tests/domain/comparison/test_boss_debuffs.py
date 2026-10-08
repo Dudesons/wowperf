@@ -1,8 +1,11 @@
 # ABOUTME: One player's debuffs on each boss: the boss alone, clipped to its pull, pets included.
 # ABOUTME: Pins councils and missing bosses withheld, a shorter boss name, and per-boss shares.
 
+import pytest
+
 from wowperf.domain.auras import uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import (
+    SHARED_OVERLAP_TOLERANCE_S,
     BossWindow,
     Withheld,
     boss_debuffs,
@@ -16,7 +19,9 @@ from wowperf.domain.model import EnemyNpc, Pull
 BOSS_NAME = "The Test Colossus"
 BOSS_ACTOR, BOSS_GAME = 50, 5000
 ADD_ACTOR, ADD_GAME = 51, 5100
-PLAYER, PET, OTHER = 7, 8, 9
+PLAYER, PET, OTHER, THIRD_PLAYER = 7, 8, 9, 10
+RUN_PLAYERS = frozenset({PLAYER, OTHER, THIRD_PLAYER})
+"""The players of our run, as the caller names them: a pet and an enemy are never among them."""
 DOT = 55078
 GAME_IDS = {BOSS_ACTOR: BOSS_GAME, ADD_ACTOR: ADD_GAME}
 
@@ -96,6 +101,7 @@ def test_only_the_debuff_on_the_boss_counts() -> None:
         ),
         (TRASH_PULL, BOSS_PULL),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     [aura] = mine.auras
@@ -106,7 +112,7 @@ def test_only_the_debuff_on_the_boss_counts() -> None:
 
 def test_an_interval_reaching_past_the_pull_is_clipped_to_it() -> None:
     mine = boss_debuffs(
-        a_log(an_event(True, 5_000), an_event(False, 75_000)), (BOSS_PULL,), PLAYER
+        a_log(an_event(True, 5_000), an_event(False, 75_000)), (BOSS_PULL,), PLAYER, RUN_PLAYERS
     )
 
     assert [(band.start_ms, band.end_ms) for band in mine.auras[0].bands] == [(10_000, 70_000)]
@@ -122,6 +128,7 @@ def test_a_pet_counts_for_its_owner_and_an_overlap_counts_once() -> None:
         ),
         (BOSS_PULL,),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     [aura] = mine.auras
@@ -134,6 +141,7 @@ def test_another_players_debuff_is_not_this_players() -> None:
         a_log(an_event(True, 20_000, source=OTHER), an_event(False, 50_000, source=OTHER)),
         (BOSS_PULL,),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     assert mine.auras == ()
@@ -154,6 +162,7 @@ def test_a_council_is_withheld_and_counts_no_seconds() -> None:
         a_log(an_event(True, 20_000), an_event(False, 50_000), actors=council),
         (pull,),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     assert [window.withheld for window in mine.windows] == [Withheld.COUNCIL]
@@ -179,7 +188,7 @@ def test_a_boss_whose_name_only_begins_the_pulls_is_still_the_boss() -> None:
 
 
 def test_the_pairing_tally_rides_along() -> None:
-    mine = boss_debuffs(a_log(an_event(False, 30_000)), (BOSS_PULL,), PLAYER)
+    mine = boss_debuffs(a_log(an_event(False, 30_000)), (BOSS_PULL,), PLAYER, RUN_PLAYERS)
 
     assert mine.tally.orphan_removes == 1
 
@@ -203,6 +212,7 @@ def test_a_share_is_read_per_boss_and_a_withheld_boss_says_why() -> None:
         a_log(an_event(True, 10_000), an_event(False, 40_000), actors=council),
         (BOSS_PULL, second),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     assert encounter_share(mine, DOT, 2001) == 0.5
@@ -225,6 +235,7 @@ def test_a_boss_fought_twice_is_summed_over_both_measured_pulls() -> None:
         ),
         (wipe, kill),
         PLAYER,
+        RUN_PLAYERS,
     )
 
     assert [window.encounter_id for window in mine.windows] == [2001, 2001]
@@ -386,3 +397,141 @@ def test_a_part_matched_by_two_game_ids_is_no_boss_and_does_not_fall_back_to_a_f
     )
 
     assert (window.boss_game_id, window.withheld) == (None, Withheld.NO_BOSS)
+
+
+def held(source: int, start_ms: int, end_ms: int) -> tuple[DebuffEvent, DebuffEvent]:
+    """One application and its removal, by `source`, on the boss."""
+    return an_event(True, start_ms, source=source), an_event(False, end_ms, source=source)
+
+
+def test_a_debuff_one_teammates_application_replaces_is_shared_with_them() -> None:
+    # The two never overlap: each application took the debuff over from the
+    # other's, which is the shape of a debuff only one of which sits on a target.
+    log = a_log(
+        *held(PLAYER, 10_000, 30_000),
+        *held(OTHER, 30_000, 50_000),
+        *held(PLAYER, 50_000, 70_000),
+    )
+
+    mine = boss_debuffs(log, (BOSS_PULL,), PLAYER, RUN_PLAYERS)
+    theirs = boss_debuffs(log, (BOSS_PULL,), OTHER, RUN_PLAYERS)
+
+    assert mine.shared_with == ((DOT, (OTHER,)),)
+    assert theirs.shared_with == ((DOT, (PLAYER,)),)
+    # Shared changes no figure: our own seconds are still ours alone.
+    assert mine.auras[0].total_uptime_ms == 40_000
+
+
+def test_copies_of_one_debuff_that_coexist_are_each_casters_own() -> None:
+    # Ten seconds of overlap: both copies sat on the boss at once, so a teammate
+    # applying the same debuff did not take ours away.
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 40_000), *held(OTHER, 30_000, 60_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+@pytest.mark.parametrize(
+    ("our_end_ms", "shared"),
+    [(31_000, True), (31_001, False)],
+    ids=["exactly-the-tolerance", "a-millisecond-over"],
+)
+def test_an_overlap_up_to_the_tolerance_is_still_exclusive(our_end_ms: int, shared: bool) -> None:
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, our_end_ms), *held(OTHER, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert SHARED_OVERLAP_TOLERANCE_S == 1.0
+    assert (mine.shared_with == ((DOT, (OTHER,)),)) is shared
+
+
+def test_an_overlap_is_summed_across_every_stretch_the_two_held_it() -> None:
+    # Two overlaps of 0.6s each: neither alone passes the tolerance, together they do.
+    mine = boss_debuffs(
+        a_log(
+            *held(PLAYER, 10_000, 20_600),
+            *held(OTHER, 20_000, 40_000),
+            *held(PLAYER, 39_400, 50_000),
+        ),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+def test_an_overlap_outside_the_boss_pull_does_not_count() -> None:
+    # Both held it before the pull began, at once; on the boss pull they never
+    # overlapped. Only the measured window is read.
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 0, 30_000), *held(OTHER, 0, 9_000), *held(OTHER, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ((DOT, (OTHER,)),)
+
+
+def test_our_zero_is_shared_when_two_teammates_took_the_debuff_over_from_each_other() -> None:
+    mine = boss_debuffs(
+        a_log(*held(OTHER, 10_000, 30_000), *held(THIRD_PLAYER, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.auras == ()
+    assert mine.shared_with == ((DOT, (OTHER, THIRD_PLAYER)),)
+
+
+def test_our_zero_beside_one_teammate_says_nothing_about_sharing() -> None:
+    # One holder alone cannot show that copies never coexist.
+    mine = boss_debuffs(
+        a_log(*held(OTHER, 10_000, 30_000)), (BOSS_PULL,), PLAYER, RUN_PLAYERS
+    )
+
+    assert mine.shared_with == ()
+
+
+def test_a_player_and_their_own_pet_never_share() -> None:
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 30_000), *held(PET, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+def test_an_enemy_applying_the_same_debuff_does_not_make_it_shared() -> None:
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 30_000), *held(ADD_ACTOR, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+def test_without_the_runs_players_nothing_is_shared() -> None:
+    # A reference's debuffs are read with no players named, and sharing is
+    # never computed for one.
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 30_000), *held(OTHER, 30_000, 50_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        frozenset(),
+    )
+
+    assert mine.shared_with == ()

@@ -77,10 +77,17 @@ class BossCell(Frozen):
 
 
 class BossDebuffRow(Frozen):
-    """One debuff: the judged figure across all boss pulls, and one cell per boss."""
+    """One debuff: the judged figure across all boss pulls, and one cell per boss.
+
+    `shared_with` names, by actor id, the other players whose copies of this
+    debuff replaced this player's rather than sat beside it. When it names
+    anyone the row is not judged, whatever `uptime.verdict` says: the figure is
+    this player's share of one slot, not their uptime.
+    """
 
     uptime: AuraUptime
     cells: tuple[BossCell, ...] = ()
+    shared_with: tuple[int, ...] = ()
 
 
 class BossDebuffTable(Frozen):

@@ -1,7 +1,7 @@
 # ABOUTME: Compares one player's debuff uptime on bosses against their specialisation's parses.
 # ABOUTME: Shares of measured boss time, judged by the buff family's own thresholds and median.
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 from wowperf.domain.comparison.boss_debuffs import BossDebuffs, Withheld, encounter_share
 from wowperf.domain.comparison.measures import (
@@ -115,11 +115,21 @@ def compare_boss_debuffs_sample(
         ]
 
     our_fractions = debuff_fractions(our)
+    # A shared debuff is one slot a teammate's application took over, so our
+    # share of it is no uptime of ours: it is neither a gap nor an unjudged zero.
+    shared = dict(our.shared_with)
     if not sample.can_aggregate(eligible):
-        return too_few(_pairwise(our_fractions, our.seconds, our_name, eligible[0]), len(eligible))
+        return too_few(
+            _pairwise(our_fractions, our.seconds, our_name, eligible[0], shared),
+            len(eligible),
+        )
 
     names, per_member = per_member_fractions(eligible)
-    measures = uptime_measures(our_fractions, per_member, names)
+    measures = [
+        m
+        for m in uptime_measures(our_fractions, per_member, names)
+        if m.ability_id not in shared
+    ]
     total = len(sample.members)
     missing = total - len(eligible)
     gaps = sorted(
@@ -173,15 +183,21 @@ def _pairwise(
     our_seconds: float,
     our_name: str,
     theirs: ParseMember,
+    shared: Collection[int],
 ) -> list[Finding]:
     """One reference, named, by the buff family's pairwise rule.
 
     A zero on our side is passed over here as it is on the buff side: below the
-    floor there is no sample to say the debuff is one this build applies.
+    floor there is no sample to say the debuff is one this build applies. A
+    debuff in `shared` is passed over too, as it is in the sample's rule.
     """
     assert theirs.boss_debuffs is not None  # chosen from debuff_eligible
     their_seconds = theirs.boss_debuffs.seconds
-    gaps = pairwise_gaps(our_fractions, debuff_fractions(theirs.boss_debuffs))
+    gaps = [
+        gap
+        for gap in pairwise_gaps(our_fractions, debuff_fractions(theirs.boss_debuffs))
+        if gap[1] not in shared
+    ]
 
     return [
         Finding(
@@ -219,7 +235,10 @@ def _unjudged(our_name: str, names: Sequence[str]) -> Finding:
 
     A debuff names who applied it, so unlike a buff's zero this one is the
     player's own. What the log cannot say is whether their build has the
-    ability at all, which is why it is named rather than judged.
+    ability at all, which is why it is named rather than judged. A debuff two
+    teammates took over from each other is shared and never listed here. One
+    a single teammate held still is: one holder cannot show that copies never
+    coexist, so whether that teammate's copy left ours no room is unknown too.
     """
     count = len(names)
     return Finding(
@@ -231,8 +250,9 @@ def _unjudged(our_name: str, names: Sequence[str]) -> Finding:
         detail=(
             "Each of these was on the boss over enough of the sample's boss time to compare, "
             "and never on ours. A debuff names who applied it, so this zero is the player's "
-            "own; what the log cannot say is whether their build has the ability at all. Check "
-            "the talents before reading it as a missed button."
+            "own; what the log cannot say is whether their build has the ability at all, or "
+            "whether a teammate's copy of a debuff that sits once on a target left no room for "
+            "theirs. Check the talents before reading it as a missed button."
         ),
         confidence=Confidence.DERIVED,
         seconds_lost=None,
@@ -262,6 +282,7 @@ def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuf
 
     names, per_member = per_member_fractions(eligible)
     measures = uptime_measures(debuff_fractions(our), per_member, names)
+    shared = dict(our.shared_with)
     bosses: dict[int, str] = {}
     for window in our.windows:
         bosses.setdefault(window.encounter_id, window.name)
@@ -273,6 +294,7 @@ def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuf
                 _cell(our, eligible, m.ability_id, encounter_id, name)
                 for encounter_id, name in bosses.items()
             ),
+            shared_with=shared.get(m.ability_id, ()),
         )
         for m in measures
     )

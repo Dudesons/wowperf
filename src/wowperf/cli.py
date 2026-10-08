@@ -1392,6 +1392,11 @@ def _fetch_parse_boss_debuffs(
     whole group: the caller memoises it, so our stream is requested once at
     most. A reference's stream is paid for once, and a later subject drawing
     the same reference reads it back from the disk cache.
+
+    Our side is read with the run's players, so a debuff a teammate's
+    application replaces is found shared. A reference is read with none:
+    sharing can only lower a reference's share, which moves the median down
+    and so never makes ours read wrongly below.
     """
     ours: BossDebuffs | None = None
     ours_built = False
@@ -1403,7 +1408,12 @@ def _fetch_parse_boss_debuffs(
             continue
         if not ours_built:
             log = our_log()
-            ours = None if log is None else boss_debuffs(log, our_run.pulls, subject.actor_id)
+            players = frozenset(player.actor_id for player in our_run.players)
+            ours = (
+                None
+                if log is None
+                else boss_debuffs(log, our_run.pulls, subject.actor_id, players)
+            )
             ours_built = True
         their_log = _debuff_log(references, member.report_code, member.fight_id)
         members.append(
@@ -1411,7 +1421,9 @@ def _fetch_parse_boss_debuffs(
                 update={
                     "boss_debuffs": None
                     if their_log is None
-                    else boss_debuffs(their_log, member.pulls, their_player.actor_id)
+                    else boss_debuffs(
+                        their_log, member.pulls, their_player.actor_id, frozenset()
+                    )
                 }
             )
         )

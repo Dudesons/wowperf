@@ -2721,6 +2721,26 @@ def test_a_compared_run_reads_both_sides_debuffs_on_the_boss(tmp_path: Path) -> 
     assert "compare.uptime.boss.0.emberkin-0" in ids
 
 
+def test_a_teammate_taking_our_debuff_over_leaves_no_gap(tmp_path: Path) -> None:
+    """The run above, with a teammate (actor 700) holding the same debuff on the
+    boss for the 3s ours was off, never at once. Our 25% is then shared, not a
+    gap: only the run's own roster, handed down from `analyze`, can say so."""
+    teammate = [{**row, "sourceID": 700} for row in on_the_boss(2000, 5000)]
+    result = run_analyze(
+        tmp_path,
+        teammates=(("Stonewake", "Warrior", "Arms"),),
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        debuff_rows_by_code={
+            "abc123": on_the_boss(1000, 2000) + teammate,
+            PARSE_REFERENCE_CODE: on_the_boss(1000, 5000),
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    ids = [finding["id"] for finding in written_findings(tmp_path)["findings"]]
+    assert not [one for one in ids if one.startswith("compare.uptime.boss.")]
+
+
 def test_no_compare_reads_no_debuff_stream(tmp_path: Path) -> None:
     calls: list[str] = []
 

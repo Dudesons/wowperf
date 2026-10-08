@@ -31,9 +31,10 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     assert all(event.timestamp_ms <= log.end_ms for event in log.events)
 
     boss_pulls = [pull for pull in run.pulls if pull.is_boss]
+    players = frozenset(player.actor_id for player in run.players)
     landed = 0
     for player in run.players:
-        mine = boss_debuffs(log, run.pulls, player.actor_id)
+        mine = boss_debuffs(log, run.pulls, player.actor_id, players)
         assert len(mine.windows) == len(boss_pulls)
         for aura in mine.auras:
             # An uptime cannot exceed the stretch it was measured over.

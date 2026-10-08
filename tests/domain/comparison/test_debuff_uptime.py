@@ -3,9 +3,22 @@
 
 import pytest
 
+from tests.domain.comparison.test_boss_debuffs import (
+    BOSS_PULL,
+    OTHER,
+    PLAYER,
+    RUN_PLAYERS,
+    a_log,
+    held,
+)
 from tests.domain.comparison.test_uptime import BOSS, a_player, a_run
 from wowperf.domain.auras import Aura, AuraBand
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossWindow, Withheld
+from wowperf.domain.comparison.boss_debuffs import (
+    BossDebuffs,
+    BossWindow,
+    Withheld,
+    boss_debuffs,
+)
 from wowperf.domain.comparison.debuff_uptime import (
     boss_debuff_table,
     compare_boss_debuffs_sample,
@@ -391,6 +404,98 @@ def test_when_our_stream_could_not_be_read_the_table_records_no_tally() -> None:
 
     assert table.tally is None
     assert table.seconds == 0.0
+
+
+TEAMMATE, SECOND_TEAMMATE = 702, 703
+
+
+def shared_with(debuffs: BossDebuffs, ability_id: int, *owners: int) -> BossDebuffs:
+    return debuffs.model_copy(update={"shared_with": ((ability_id, owners),)})
+
+
+def test_a_shared_debuff_far_below_the_sample_is_not_a_gap() -> None:
+    ours = shared_with(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
+
+    assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9)) == []
+
+
+def test_below_the_floor_a_shared_debuff_is_not_a_gap_either() -> None:
+    ours = shared_with(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
+
+    assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9)) == []
+
+
+def test_a_shared_debuff_we_never_applied_is_not_named_unjudged() -> None:
+    ours = shared_with(on_the_boss(), DOT, TEAMMATE, SECOND_TEAMMATE)
+
+    assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9)) == []
+
+
+OTHER_DOT, OTHER_DOT_NAME = 55095, "Frost Fever"
+
+
+def test_only_the_shared_debuff_is_set_aside() -> None:
+    both = ((DOT, DOT_NAME, 0.9), (OTHER_DOT, OTHER_DOT_NAME, 0.9))
+    sample = ParseSample(
+        members=tuple(a_member(name, on_the_boss(*both)) for name in REFERENCE_NAMES)
+    )
+    ours = shared_with(
+        on_the_boss((DOT, DOT_NAME, 0.3), (OTHER_DOT, OTHER_DOT_NAME, 0.3)), DOT, TEAMMATE
+    )
+
+    findings = compare_boss_debuffs_sample(ours, OUR_NAME, sample)
+
+    assert [(finding.id, finding.ability_id) for finding in findings] == [
+        ("compare.uptime.boss.0", OTHER_DOT)
+    ]
+
+
+def test_a_teammate_taking_the_debuff_over_from_us_leaves_no_gap() -> None:
+    # Read off a log: ours 10s of the 60s pull, the teammate's the other 50s,
+    # never at once. The sample's 90% against our 17% would be a gap.
+    ours = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 20_000), *held(OTHER, 20_000, 70_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9)) == []
+
+
+def test_a_teammates_copy_beside_ours_leaves_the_gap_standing() -> None:
+    # The same figures, but the teammate's copy sat on the boss beside ours, so
+    # theirs took nothing away from ours: the gap is ours.
+    ours = boss_debuffs(
+        a_log(*held(PLAYER, 10_000, 20_000), *held(OTHER, 10_000, 70_000)),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    findings = compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9))
+
+    assert [finding.id for finding in findings] == ["compare.uptime.boss.0"]
+
+
+def test_a_shared_row_keeps_its_figures_and_names_who_it_was_shared_with() -> None:
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+    ours = shared_with(on_two_bosses(0.5, 0.9), DOT, TEAMMATE, SECOND_TEAMMATE)
+
+    [row] = boss_debuff_table(ours, sample).rows
+
+    assert row.shared_with == (TEAMMATE, SECOND_TEAMMATE)
+    assert row.uptime.ours == pytest.approx(0.7)
+    assert row.uptime.verdict is Verdict.BELOW
+
+
+def test_a_row_whose_debuff_is_not_the_shared_one_names_nobody() -> None:
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+    ours = shared_with(on_two_bosses(0.5, 0.9), OTHER_DOT, TEAMMATE)
+
+    [row] = boss_debuff_table(ours, sample).rows
+
+    assert row.shared_with == ()
 
 
 def test_the_players_measures_carry_the_debuff_table() -> None:
