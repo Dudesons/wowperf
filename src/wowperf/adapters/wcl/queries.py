@@ -192,6 +192,30 @@ query EnemyCasts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: F
 }
 """
 
+# Every debuff the group put on enemies, each row naming its caster. The table
+# endpoint cannot be scoped to one caster; this stream can (wcl-api skill, "The
+# debuff event stream does name the caster", verified 2026-10-07). About one
+# point per 10,000-row page.
+ENEMY_DEBUFFS_QUERY = """
+query EnemyDebuffs($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Debuffs
+        hostilityType: Enemies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
 INTERRUPTS_QUERY = """
 query Interrupts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
   reportData {
@@ -392,12 +416,17 @@ query Resurrects(
 }
 """
 
+# Every actor in the report, untyped, so a pet or a mechanic modelled as a
+# hostile pet resolves too. `name`, `type` and `subType` let `find_bosses` read
+# a boss off a key's own pulls, and `petOwner` folds a pet's debuffs into its
+# owner's (wcl-api skill, "The debuff event stream does name the caster",
+# 2026-10-07). `translate: true` for the reason `NPC_ACTORS_QUERY` gives.
 ACTORS_QUERY = """
 query Actors($code: String!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       masterData(translate: true) {
-        actors { id gameID }
+        actors { id gameID name type subType petOwner }
       }
     }
   }

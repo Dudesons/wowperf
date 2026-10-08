@@ -57,7 +57,7 @@ covers it otherwise.
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
 | `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | yes |
-| `petOwner` | `ReportActor` | 2026-09-12 | no |
+| `petOwner` | `ReportActor` | 2026-09-12 | yes |
 | `playerDetails` | `Report` | 2026-09-14 | yes |
 | `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
 | `bossPercentage` | `ReportFight` | 2026-09-16 | yes |
@@ -980,7 +980,7 @@ dominates here.** The last event on actor 261's instance is the application itse
 rule closes each interval with no length at all, 2 to 26 seconds short. That one creature
 is logged under two actor ids is inferred from the timing and the matching instance numbers.
 The log does not state it. How to close the 3 intervals still open after re-keying is not
-settled. Nothing in `queries.py` reads this stream yet.
+settled. `ENEMY_DEBUFFS_QUERY` in `queries.py` reads this stream.
 
 ## A damage-taken table's row counts landings, not just hits
 
