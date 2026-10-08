@@ -676,7 +676,10 @@ def test_a_boss_that_dies_twice_lives_until_its_last_death() -> None:
     assert [target.end_ms for target in window.targets] == [50_000, 60_000]
 
 
-def test_a_death_outside_the_pull_is_not_this_pulls() -> None:
+def test_a_death_before_the_pull_is_ignored_and_one_after_it_with_no_next_pull_counts() -> None:
+    # Alpha's death at 5s precedes the pull: it is not this pull's. Its death at
+    # 75s follows the pull's end and no pull comes after: it is Alpha's death, and
+    # bounds the boss at the pull's end rather than past it.
     [window] = boss_windows_of(
         (a_council_pull(),),
         COUNCIL_ACTORS,
@@ -684,7 +687,56 @@ def test_a_death_outside_the_pull_is_not_this_pulls() -> None:
     )
 
     assert [target.end_ms for target in window.targets] == [70_000, 60_000]
+    assert window.deathless == 0
+
+
+def test_a_death_before_the_pull_alone_leaves_the_boss_deathless() -> None:
+    [window] = boss_windows_of(
+        (a_council_pull(),), COUNCIL_ACTORS, ((ALPHA_GAME, 5_000), (BETA_GAME, 60_000))
+    )
+
+    assert [target.end_ms for target in window.targets] == [70_000, 60_000]
     assert window.deathless == 1
+
+
+def test_a_death_logged_just_after_the_pull_closed_is_still_that_bosss() -> None:
+    [window] = boss_windows_of(
+        (a_council_pull(),), COUNCIL_ACTORS, ((ALPHA_GAME, 40_000), (BETA_GAME, 70_036))
+    )
+
+    assert [target.end_ms for target in window.targets] == [40_000, 70_000]
+    assert window.deathless == 0
+
+
+def test_a_killed_pull_does_not_borrow_a_boss_death_from_the_next_pull() -> None:
+    # Beta has no death in the first pull; the one at 130s belongs to the second.
+    first = a_council_pull()
+    second = a_council_pull().model_copy(
+        update={"index": 2, "pull_id": 3, "start_ms": 100_000, "end_ms": 160_000}
+    )
+
+    one, two = boss_windows_of(
+        (first, second), COUNCIL_ACTORS, ((ALPHA_GAME, 40_000), (BETA_GAME, 130_000))
+    )
+
+    assert one.deathless == 1
+    assert two.deathless == 1
+
+
+def test_a_death_in_the_next_pull_is_not_this_pulls() -> None:
+    wipe = a_council_pull(killed=False)
+    kill = a_council_pull().model_copy(
+        update={"index": 2, "pull_id": 3, "start_ms": 100_000, "end_ms": 160_000}
+    )
+
+    wiped, killed = boss_windows_of(
+        (wipe, kill), COUNCIL_ACTORS, ((ALPHA_GAME, 130_000), (BETA_GAME, 150_000))
+    )
+
+    assert [target.end_ms for target in wiped.targets] == [70_000, 70_000]
+    assert [target.end_ms for target in killed.targets] == [130_000, 150_000]
+    assert wiped.deathless == 0
+    assert killed.deathless == 0
 
 
 def test_a_single_boss_runs_the_whole_pull_whatever_the_deaths_say() -> None:

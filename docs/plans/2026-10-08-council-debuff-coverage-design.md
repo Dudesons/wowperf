@@ -72,6 +72,9 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
      measured.
    - Deaths match a boss by **game id**, for the reason the pairing keys on it: one enemy can be logged
      under two actor ids.
+   - *Amended 2026-10-08, live:* the log stamps the last council boss's death 3 to 36 ms after the
+     pull's end on all 26 cached council kills, so a death counts for a pull from its start up to the
+     next pull's start, and the span is capped at the pull's end.
    - The naming rule that picks the boss or the council is the one amended on 2026-10-08: name first,
      flag second. An ambiguous part still reads no boss found.
 3. **Covered seconds (domain).** For each player and debuff, the seconds the debuff was on each target,

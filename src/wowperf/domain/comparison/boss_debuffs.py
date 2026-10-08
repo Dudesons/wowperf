@@ -61,7 +61,11 @@ class BossWindow(Frozen):
     targets: tuple[BossTarget, ...] = ()
     withheld: Withheld | None = None
     deathless: int = 0
-    """Council bosses of a kill pull with no death inside it, measured to its end."""
+    """Council bosses of a kill pull with no death inside it, measured to its end.
+
+    A death counts from the pull's start up to the next pull's start, since the log
+    stamps a kill's last death a few milliseconds after the pull closed.
+    """
 
     @property
     def seconds(self) -> float:
@@ -158,11 +162,17 @@ def boss_windows_of(
     records a death but never an appearance, so the start is the pull's. A
     council boss that never died there runs to the pull's end, and on a kill
     that is counted, since a killed council's bosses all died.
+
+    A death is a pull's when it falls from the pull's start up to the next pull's
+    start in `pulls`, which is in chronological order: the log stamps a kill's
+    last death a few milliseconds after the pull closed. The span never runs
+    past the pull's end.
     """
     windows: list[BossWindow] = []
-    for pull in pulls:
+    for position, pull in enumerate(pulls):
         if not pull.is_boss:
             continue
+        horizon = pulls[position + 1].start_ms if position + 1 < len(pulls) else None
         found = bosses_of(
             npc_actors, frozenset(enemy.actor_id for enemy in pull.enemies), pull.name
         )
@@ -185,10 +195,10 @@ def boss_windows_of(
                 died = [
                     at
                     for dead, at in deaths
-                    if dead == game_id and pull.start_ms <= at <= pull.end_ms
+                    if dead == game_id and pull.start_ms <= at and (horizon is None or at < horizon)
                 ]
                 if died:
-                    end_ms = max(died)
+                    end_ms = min(max(died), pull.end_ms)
                 elif pull.killed:
                     deathless += 1
             targets.append(BossTarget(game_id=game_id, start_ms=pull.start_ms, end_ms=end_ms))
