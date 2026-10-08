@@ -161,9 +161,12 @@ def test_a_council_is_withheld_and_counts_no_seconds() -> None:
 
 
 def test_a_boss_pull_with_no_boss_flagged_enemy_is_withheld() -> None:
+    # The pull is named for no enemy, because an unflagged enemy named after the
+    # pull is the boss (the name-first rule).
     unflagged = tuple(actor.model_copy(update={"sub_type": "NPC"}) for actor in ACTORS)
+    pull = a_pull(1, 10_000, 70_000, encounter_id=2001, name="The Fixture Hall")
 
-    assert [window.withheld for window in boss_windows_of((BOSS_PULL,), unflagged)] == [
+    assert [window.withheld for window in boss_windows_of((pull,), unflagged)] == [
         Withheld.NO_BOSS
     ]
 
@@ -205,3 +208,147 @@ def test_a_share_is_read_per_boss_and_a_withheld_boss_says_why() -> None:
     assert encounter_share(mine, DOT, 2001) == 0.5
     assert encounter_share(mine, DOT, 2002) is Withheld.COUNCIL
     assert encounter_share(mine, DOT, 9999) is None
+
+
+FIRST, SECOND, THIRD = 60, 61, 62
+FIRST_GAME, SECOND_GAME = 6000, 6100
+
+
+def the_window_of(name: str, *actors: NpcActor) -> BossWindow:
+    """The one window of a boss pull named `name`, holding exactly these enemies."""
+    pull = a_pull(
+        1,
+        10_000,
+        70_000,
+        encounter_id=2001,
+        name=name,
+        enemies=tuple(actor.actor_id for actor in actors),
+    )
+    [window] = boss_windows_of((pull,), actors)
+    return window
+
+
+def an_enemy(actor_id: int, game_id: int, name: str, sub_type: str = "NPC") -> NpcActor:
+    return NpcActor(actor_id=actor_id, game_id=game_id, name=name, sub_type=sub_type)
+
+
+def test_an_unflagged_enemy_named_after_the_pull_is_its_boss() -> None:
+    window = the_window_of(
+        BOSS_NAME,
+        an_enemy(FIRST, FIRST_GAME, BOSS_NAME),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_a_name_match_beats_a_boss_flagged_add() -> None:
+    window = the_window_of(
+        BOSS_NAME,
+        an_enemy(FIRST, FIRST_GAME, BOSS_NAME),
+        an_enemy(SECOND, SECOND_GAME, "Fixture Add", "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_an_unflagged_pair_named_for_both_is_a_council() -> None:
+    window = the_window_of(
+        "Alpha Fixture and Beta Fixture",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture"),
+        an_enemy(SECOND, SECOND_GAME, "Beta Fixture"),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+
+
+def test_a_flagged_pair_whose_first_name_begins_the_pulls_is_a_council_not_that_boss() -> None:
+    window = the_window_of(
+        "Alpha Fixture and Beta Fixture",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
+        an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+
+
+def test_a_pull_named_for_two_bosses_with_one_in_it_is_still_a_council() -> None:
+    window = the_window_of(
+        "Alpha Fixture and Beta Fixture",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+
+
+def test_one_boss_logged_under_two_actor_ids_is_one_boss() -> None:
+    window = the_window_of(
+        BOSS_NAME,
+        an_enemy(FIRST, FIRST_GAME, BOSS_NAME, "Boss"),
+        an_enemy(THIRD, FIRST_GAME, BOSS_NAME, "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_one_flagged_boss_logged_under_two_actor_ids_is_one_boss_when_no_name_matches() -> None:
+    window = the_window_of(
+        "The Fixture Hall",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
+        an_enemy(THIRD, FIRST_GAME, "Alpha Fixture", "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_a_pull_named_for_no_enemy_reads_its_one_flagged_enemy() -> None:
+    window = the_window_of(
+        "The Fixture Hall",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_a_pull_named_for_no_enemy_reads_two_flagged_enemies_as_a_council() -> None:
+    window = the_window_of(
+        "Council o' Fixtures",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
+        an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+
+
+def test_a_pull_named_for_no_enemy_and_holding_no_flagged_one_has_no_boss() -> None:
+    window = the_window_of(
+        "The Fixture Hall",
+        an_enemy(FIRST, FIRST_GAME, "Fixture Add"),
+        an_enemy(SECOND, SECOND_GAME, "Another Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.NO_BOSS)
+
+
+def test_a_comma_in_the_pulls_name_is_a_title_not_a_second_boss() -> None:
+    window = the_window_of(
+        "Alpha Fixture, The Tester",
+        an_enemy(FIRST, FIRST_GAME, "Alpha Fixture, The Tester"),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+
+
+def test_a_part_matched_by_two_game_ids_is_no_boss_and_does_not_fall_back_to_a_flag() -> None:
+    window = the_window_of(
+        BOSS_NAME,
+        an_enemy(FIRST, FIRST_GAME, BOSS_NAME),
+        an_enemy(SECOND, SECOND_GAME, BOSS_NAME),
+        an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add", "Boss"),
+    )
+
+    assert (window.boss_game_id, window.withheld) == (None, Withheld.NO_BOSS)

@@ -123,6 +123,18 @@ The order is hexagonal, matching the buff family.
      out of the overall figure, on both sides of the comparison.
    - **Unmeasured on dungeons.** `find_bosses` was measured on raids only, so the first live run
      must confirm it on dungeon bosses (§6).
+   - *Amended 2026-10-08:* the first live run did not confirm it. Warcraft Logs types some
+     dungeon bosses as plain `NPC` (Galvazzt is its pull's only enemy, and has no flag), so
+     `find_bosses` found no boss there. Where an encounter is named for two bosses it read one:
+     "Adderis and Aspix" begins with "Adderis ", so Adderis alone was measured, and "Kyrakka and
+     Erkhart Stormvein" held no flagged enemy at all. The dungeon boss is now read by name first
+     and by flag second (`boss_game_id_of`, `comparison/boss_debuffs.py`). The pull's name is
+     split on " and " (never on a comma, which marks a title); each part is matched against the
+     pull's own enemies by the opening-words rule, counted by game id because one enemy can be
+     logged under two actor ids. A part matching two game ids is no boss. Several parts with at
+     least one matched is a council. One part matching one game id is that boss. A name that
+     matches no enemy falls back to `find_bosses`, counted by game id. `find_bosses` itself is
+     unchanged, since raid pacing reads it.
 
 6. **Comparison (domain).** The pairing's output takes the existing `Aura`-with-bands shape. It
    goes through the same machinery as buffs: the sample median, the observed range, the floor of

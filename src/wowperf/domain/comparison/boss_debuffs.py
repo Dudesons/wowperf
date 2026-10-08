@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from wowperf.domain.auras import Aura, AuraBand, uptime_seconds_in
 from wowperf.domain.base import Frozen
-from wowperf.domain.comparison.pace_boss import NpcActor, find_bosses
+from wowperf.domain.comparison.pace_boss import NpcActor, find_bosses, named_after
 from wowperf.domain.debuffs import DebuffLog, PairingTally, pair_debuffs
 from wowperf.domain.model import Pull
 
@@ -17,7 +17,7 @@ class Withheld(StrEnum):
 
     The first two are read off our own route: a council's bosses can die
     apart, which needs the alive-span inference this design defers, and a boss
-    pull may hold no enemy `find_bosses` can name. The last two are about the
+    pull may hold no enemy `boss_game_id_of` can name. The last two are about the
     sample beside a figure of ours.
     """
 
@@ -67,26 +67,52 @@ class BossDebuffs(Frozen):
         return sum(window.seconds for window in self.windows if window.withheld is None)
 
 
+def boss_game_id_of(
+    npc_actors: tuple[NpcActor, ...], enemy_ids: frozenset[int], pull_name: str
+) -> int | Withheld:
+    """The game id of a pull's one boss, or why it has none to measure.
+
+    Measured 2026-10-08: dungeon logs flag only some bosses as `Boss`, and a
+    council's pull is named "A and B", which begins with A's name alone. So the
+    pull's name is read first: split on " and " (never on a comma, which marks
+    a title), each part names the pull's enemies that open with it, counted by
+    game id because one enemy can be logged under two actor ids. A part naming
+    two game ids is no boss. Several parts with one named is a council. One
+    part with one game id is the boss. When the name matches no enemy, the
+    boss flag is read as `find_bosses` reads it, also by game id.
+    """
+    enemies = [one for one in npc_actors if one.actor_id in enemy_ids]
+    parts = pull_name.split(" and ")
+    named = [{one.game_id for one in enemies if named_after(one.name, part)} for part in parts]
+    if any(len(game_ids) > 1 for game_ids in named):
+        return Withheld.NO_BOSS
+    if len(parts) > 1 and any(named):
+        return Withheld.COUNCIL
+    if named[0]:
+        return next(iter(named[0]))
+    flagged = {one.game_id for one in find_bosses(npc_actors, enemy_ids, pull_name)}
+    if len(flagged) > 1:
+        return Withheld.COUNCIL
+    return next(iter(flagged), Withheld.NO_BOSS)
+
+
 def boss_windows_of(
     pulls: Sequence[Pull], npc_actors: tuple[NpcActor, ...]
 ) -> tuple[BossWindow, ...]:
     """Every boss pull, with its one boss, or the reason it has none to measure.
 
-    `find_bosses` reads the pull's own enemies, their boss flag and the pull's
-    name. One boss is measured. Several are a council, withheld. None, which
-    includes two named after the pull, is no boss found, withheld.
+    `boss_game_id_of` reads the pull's own enemies against the pull's name
+    first and their boss flag second. One boss is measured. A council, or a
+    pull named for several bosses, is withheld; so is a pull with no boss found.
     """
     windows: list[BossWindow] = []
     for pull in pulls:
         if not pull.is_boss:
             continue
-        bosses = find_bosses(
+        found = boss_game_id_of(
             npc_actors, frozenset(enemy.actor_id for enemy in pull.enemies), pull.name
         )
-        boss_game_id = bosses[0].game_id if len(bosses) == 1 else None
-        withheld = (
-            None if len(bosses) == 1 else Withheld.COUNCIL if bosses else Withheld.NO_BOSS
-        )
+        boss_game_id, withheld = (None, found) if isinstance(found, Withheld) else (found, None)
         windows.append(
             BossWindow(
                 encounter_id=pull.encounter_id,
