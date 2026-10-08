@@ -16,6 +16,7 @@ from wowperf.domain.comparison.measures import (
     StatShare,
     Verdict,
 )
+from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.comparison.statistics import observed_range
 from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.model import LoadedRun, Player
@@ -207,6 +208,10 @@ def build_players(
     """
     names_by_actor = display_names(loaded.run.players)
     slugs = slugs_by_actor(loaded.run.players)
+    specs = {
+        player.actor_id: pair_label(player.class_name, player.spec, plural=False)
+        for player in loaded.run.players
+    }
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
@@ -262,14 +267,20 @@ def build_players(
                     loaded, summary.actor_id, summary.class_name, summary.spec,
                     defensives, throughput,
                 ),
-                comparison_tables=_tables(measures.get(slug)),
+                comparison_tables=_tables(measures.get(slug), specs),
             )
         )
     return tuple(cards)
 
 
-def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
-    """The three tables, each dropped when it has no rows to show."""
+def _tables(
+    measures: PlayerMeasures | None, specs: Mapping[int, str]
+) -> tuple[ComparisonTable, ...]:
+    """The three tables, each dropped when it has no rows to show.
+
+    `specs` names each of the run's players by specialisation and class, keyed
+    by actor id, for a debuff row shared with a teammate.
+    """
     if measures is None:
         return ()
     built = []
@@ -319,7 +330,8 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                     "each debuff from this player or their pets, against the median of the "
                     "parses that applied each. Council pulls, and pulls with no single boss, "
                     "are left out. Each boss column reads ours against the median and "
-                    "carries no verdict. The group's log for the whole fight held "
+                    "carries no verdict. A debuff a teammate's application replaces is marked "
+                    "shared, not judged. The group's log for the whole fight held "
                     f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
                     "application, dropped (a pet copy's second removal counts here); "
                     f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
@@ -328,7 +340,7 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                     "game id, skipped. Derived."
                 ),
                 cell_headings=debuffs.bosses,
-                rows=_debuff_rows(debuffs.rows),
+                rows=_debuff_rows(debuffs.rows, specs),
             )
         )
     if measures.stats:
@@ -433,13 +445,24 @@ WITHHELD_LABELS = {
 """How a boss cell with no figure says why, in the reader's words."""
 
 
-def _debuff_rows(rows: Sequence[BossDebuffRow]) -> tuple[ComparisonRow, ...]:
-    """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives."""
+def _debuff_rows(
+    rows: Sequence[BossDebuffRow], specs: Mapping[int, str]
+) -> tuple[ComparisonRow, ...]:
+    """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
+
+    A shared row keeps its figures and names who it was shared with in place
+    of a verdict. It takes the `unjudged` tint, because like that row it says
+    nothing about this player's play.
+    """
     ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
     built = []
     for row in ordered:
         m = row.uptime
         low, high = observed_range(m.their_fractions)
+        verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
+        if row.shared_with:
+            verdict = Verdict.UNJUDGED
+            label = "Shared with " + " and ".join(specs[one] for one in row.shared_with)
         built.append(
             ComparisonRow(
                 ability_id=m.ability_id,
@@ -448,8 +471,8 @@ def _debuff_rows(rows: Sequence[BossDebuffRow]) -> tuple[ComparisonRow, ...]:
                 theirs=f"{m.their_median:.0%}",
                 spread=f"{low:.0%} to {high:.0%}",
                 sample=f"{len(m.their_fractions)} top parses",
-                verdict=m.verdict.value,
-                verdict_label=VERDICT_LABELS[m.verdict],
+                verdict=verdict.value,
+                verdict_label=label,
                 cells=tuple(_cell(cell) for cell in row.cells),
             )
         )

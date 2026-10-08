@@ -20,7 +20,7 @@ from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import place_rows
-from wowperf.domain.report.model import LedgerRow, PlayerCard, SectionState
+from wowperf.domain.report.model import ComparisonTable, LedgerRow, PlayerCard, SectionState
 from wowperf.domain.report.players import (
     VERDICT_LABELS,
     build_players,
@@ -1089,11 +1089,83 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
         "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
         "their pets, against the median of the parses that applied each. Council pulls, and "
         "pulls with no single boss, are left out. Each boss column reads ours against the "
-        "median and carries no verdict. The group's log for the whole fight held 1 removal "
+        "median and carries no verdict. A debuff a teammate's application replaces is marked "
+        "shared, not judged. The group's log for the whole fight held 1 removal "
         "with no application, dropped (a pet copy's second removal counts here); 2 "
         "applications still open at the fight's end, closed there; and 0 rows on an enemy "
         "with no game id, skipped. Derived."
     )
+
+
+def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
+    """The debuff table of a card whose one row a teammate's application replaced."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=115804, name="Mortal Wounds", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.7,
+                                their_median=0.9,
+                            ),
+                        ),
+                        shared_with=shared_with,
+                    ),
+                ),
+                seconds=100.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    loaded = a_loaded(
+        players=(
+            a_player(),
+            Player(
+                actor_id=2, name="Emberkin", class_name="Monk", spec="Windwalker",
+                item_level=680,
+            ),
+            Player(
+                actor_id=3, name="Bríala", class_name="DeathKnight", spec="Frost",
+                item_level=680,
+            ),
+        )
+    )
+    card = build_players(
+        loaded, (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+    [table] = card.comparison_tables
+    return table
+
+
+def test_a_shared_debuff_is_labelled_with_who_it_was_shared_with_and_not_judged() -> None:
+    [row] = a_shared_debuff_table(2).rows
+
+    assert row.verdict_label == "Shared with Windwalker Monk"
+    # The tint of a row that declined to judge: a shared row says nothing about
+    # this player's play either, so it recedes as `unjudged` does.
+    assert row.verdict == Verdict.UNJUDGED.value
+    # The figures still show.
+    assert (row.ours, row.theirs, row.cells) == ("70%", "90%", ("70% against 90%",))
+
+
+def test_a_debuff_shared_with_two_teammates_names_both_by_spec_and_class() -> None:
+    [row] = a_shared_debuff_table(2, 3).rows
+
+    assert row.verdict_label == "Shared with Windwalker Monk and Frost Death Knight"
+
+
+def test_an_unshared_debuff_keeps_its_own_verdict() -> None:
+    [row] = a_shared_debuff_table().rows
+
+    assert (row.verdict, row.verdict_label) == ("below", "Below")
 
 
 def test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know() -> None:
