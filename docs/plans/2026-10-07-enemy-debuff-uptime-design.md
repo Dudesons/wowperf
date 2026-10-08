@@ -120,7 +120,9 @@ The order is hexagonal, matching the buff family.
      end, which added 1,869.7 s of uptime on measured bosses across 8 of the 26 cached keys. The
      source is folded to its owner only when an interval is written. The accepted cost is an
      under-count when two copies of one pet each hold a debuff on one target, since the first
-     removal closes the interval; it moved no debuff by more than 6.3 points of boss time. Orphan
+     removal closes the interval; it moved Withering Grasp and Mind Sear, the two debuffs it was
+     measured on, by no more than 6.3 points of boss time on any key (corrected 2026-10-08: this
+     note first said it of every debuff, which was not measured). Orphan
      removes now mostly count a pet copy's second removal rather than a broken pairing. The
      function is `pair_debuffs(log)`, returning the intervals and the tally, where this item
      names `debuff_bands(events, owner_of, game_id_of)`.
@@ -199,7 +201,9 @@ Tests come first, and use only the sanctioned fixture names.
 - **End to end:** one live `analyze` on a key, asserting the table and its finding ids.
   - *Amended 2026-10-08:* no live `analyze` test was added. The live proof ran `analyze` on both
     keys and read the table, the finding ids and the state distribution from the findings files
-    (the wcl-api skill's 2026-10-08 paragraphs). The committed end-to-end test is a
+    (corrected 2026-10-08: the state distribution is recorded in the amendment to the live proof
+    below; the wcl-api skill's 2026-10-08 paragraphs hold the cost, the pairing and the tally,
+    and not the distribution). The committed end-to-end test is a
     repository-level check that no debuff on a measured boss outlives the key; it is not an
     `analyze` run.
 
@@ -220,6 +224,36 @@ The keys:
 - `nd6Rz47Gj1ZPxFfm` fight 3, a +18 Temple of Sethraliss, whose first boss is a council.
 
 A state that never occurs is a defect to chase, not a quiet success.
+
+*Amended 2026-10-08:* the live distribution, read from the findings files of the final pairing
+(the one that drops the source instance). It spans six subjects: five players on the first key
+and one on the second. Players are named by class only.
+
+- **Row verdicts, 25 rows:** `level` 21, `unjudged` 3, `below` 1.
+  - The one `below` is a Warrior's Mortal Wounds on the first key: ours 69%, median 91%, range
+    40% to 95%, over 5 top parses.
+  - The 3 `unjudged` are Venomfang twice and Soul Fang Venom, all on the first key.
+- **Per-boss cells, 77 cells:** `measured` 49, `council` 25, `no boss found` 2, `too few
+  references` 1. The council cells are 23 on the first key and 2 on the second.
+- **Findings:** `gap` 1 (`compare.uptime.boss.0.<slug>`, on the Mortal Wounds row, `derived`) and
+  `unjudged` 3 (`derived`).
+- **Pairing tally, our own run:** first key 284 orphan removes and 4 end-closed intervals; second
+  key 454 and 62. Most orphan removes are a pet copy's second removal on an interval already
+  closed, not a broken pairing.
+- **Never reached, three states:** `compare.uptime.boss.unavailable`, the pairwise fallback and
+  `no reference reached this boss`.
+  - The first two need a parse sample below the floor of three. Every player's parse sample was
+    5, all 30 parse references loaded, and every gap finding read "0 of 5 references had no
+    debuff data".
+  - The third needs a reference whose log misses a boss pull. Every parse reference was a key of
+    the same dungeon and read every boss exactly as ours did.
+  - They were left unexercised because no cached key offered a thin sample or a reference
+    missing a boss, and a search on a fresh key was not paid for. The brief had marked them
+    optional.
+- **Where the figures were read:** the task-8 report, section "Final reread after 132ef70" of
+  `.superpowers/sdd/2026-10-07-enemy-debuff-uptime-plan/`. Those figures supersede the earlier
+  ones in that report, which read the pairing before it dropped the source instance (a second
+  `below` row and gap finding, both from a Mage's Frostbolt over-count, are gone).
 
 **Budget about 400 points of 3600 for both runs, cold.** That covers `--all-players` on the first
 key, which gives five subjects' worth of states, and one player on the second. *Corrected

@@ -174,7 +174,8 @@ Being clear about this matters more than the features:
 
 Warcraft Logs gives each client 3600 points an hour, and every response is cached under `cache/`,
 so a second look at a fight you have already read costs a single point. What a first look costs
-depends on the command and on how wide you cast it. Measured, against a cold cache:
+depends on the command and on how wide you cast it. Measured, against a cold cache, except the two
+`analyze` rows of 2026-10-08, whose references were cold but whose own run was already cached:
 
 | Command | Points |
 | --- | --- |
@@ -192,10 +193,13 @@ behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a 
 goes.
 
 **The two `analyze` rows are the readings of 2026-10-08, taken once boss debuff uptime
-had added its event stream, on two keys that no older figure was drawn from.** Both ran with
-the references cold. The one-player reading is a +18 Temple of Sethraliss, 20 of its points the
-debuff stream; the `--all-players` reading is a different key, 74 of its points the stream.
-Neither is the earlier 83 to 95 or 190 plus the stream, so do not subtract one from the other.
+had added its event stream.** Both ran with the references cold and our own run already cached.
+The one-player reading is a +18 Temple of Sethraliss, the same key as the 94.69 reading of
+2026-09-23, 20 of its points the debuff stream. The `--all-players` reading is a different key,
+74 of its points the stream, and it is the only one of the two with no older cost reading. The
+skill records the older spread for the one-player shape as 66 through 94.69, and the older
+`--all-players` reading, 190.90 on 2026-09-11, was another report; so do not subtract an older
+figure from either row to price the stream. Its own line in each breakdown is that price.
 
 **The two `night` rows are two different reports, both read cold on 2026-10-01 with every pull
 compared.** The 186 is a sixteen-pull Heroic report at the `--no-deaths` tier, 83 of it the
