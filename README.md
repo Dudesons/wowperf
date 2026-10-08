@@ -166,7 +166,7 @@ Being clear about this matters more than the features:
   reference runs it falls back to a single reference and says so on the finding.
 - **Uptime covers buffs everywhere and debuffs on Mythic+ bosses.** Warcraft Logs offers no way to
   scope the enemy-debuff table to a single caster, but its event stream names each application's
-  caster, so "what you kept up on the boss" is rebuilt from that stream. Trash, raid and council
+  caster, so "what you kept up on the boss" is rebuilt from that stream. Trash and raid
   pulls are not measured yet.
 - **Nothing here is a DPS ranking.** It is about decisions, not throughput.
 
