@@ -1,10 +1,11 @@
 # ABOUTME: Command-line entry point; the driving adapter that wires ports to implementations.
 # ABOUTME: Holds no analysis logic, only construction, argument handling and output.
 
+import functools
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -49,6 +50,7 @@ from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs, boss_debuffs
 from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -78,6 +80,7 @@ from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.data_audit import AuditEntry, audit_lines, never_cast
+from wowperf.domain.debuffs import DebuffLog
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -1357,6 +1360,62 @@ def _fetch_parse_auras(
     return sample.model_copy(update={"members": tuple(updated_members)}), our_auras
 
 
+def _debuff_log(runs: WclRunRepository, code: str, fight_id: int) -> DebuffLog | None:
+    """One fight's enemy-debuff log, or None if it cannot be had.
+
+    Swallowed and re-raised on the same terms as `_auras`: a failed stream must
+    not discard a report already paid for, and `compare.uptime.boss.unavailable`
+    states the gap. A spent budget alone is re-raised, because it is every
+    later fetch's failure too.
+    """
+    try:
+        return runs.debuff_log(code, fight_id)
+    except RateLimitExceeded:
+        raise
+    except (IngestError, WclError, httpx.HTTPError):
+        return None
+
+
+def _fetch_parse_boss_debuffs(
+    sample: ParseSample,
+    references: WclRunRepository,
+    our_log: Callable[[], DebuffLog | None],
+    our_run: Run,
+    subject: Player,
+) -> tuple[ParseSample, BossDebuffs | None]:
+    """Every parse member's own debuffs on its own bosses, and our subject's.
+
+    The rule is `_fetch_parse_auras`'s. A member whose counterpart cannot be
+    found in its own roster is left without debuff data, unfetched. Our own
+    side is built only once some member's counterpart resolves. `our_log` is
+    shared across every subject of one run, because the stream covers the
+    whole group: the caller memoises it, so it is fetched once at most.
+    """
+    ours: BossDebuffs | None = None
+    ours_built = False
+    members: list[ParseMember] = []
+    for member in sample.members:
+        their_player = find_player(member.players, member.character_name)
+        if their_player is None:
+            members.append(member)
+            continue
+        if not ours_built:
+            log = our_log()
+            ours = None if log is None else boss_debuffs(log, our_run.pulls, subject.actor_id)
+            ours_built = True
+        their_log = _debuff_log(references, member.report_code, member.fight_id)
+        members.append(
+            member.model_copy(
+                update={
+                    "boss_debuffs": None
+                    if their_log is None
+                    else boss_debuffs(their_log, member.pulls, their_player.actor_id)
+                }
+            )
+        )
+    return sample.model_copy(update={"members": tuple(members)}), ours
+
+
 def _parse_sample_size(subject: ComparisonSubject) -> int:
     """How many parse references this player's comparison actually drew.
 
@@ -1510,6 +1569,12 @@ def analyze(
                 rankings, references, loaded.run, requested
             )
 
+            # One enemy-debuff stream covers the whole group, so every subject
+            # reads the same one: memoised, it is fetched once at most, and only
+            # once some member's counterpart resolves.
+            our_debuff_log = functools.cache(
+                lambda: _debuff_log(repository, loaded.run.report_code, loaded.run.fight_id)
+            )
             for player_to_compare, slug, name in requested:
                 sample, our_auras = _fetch_parse_auras(
                     parse_samples[player_to_compare.actor_id],
@@ -1518,6 +1583,9 @@ def analyze(
                     loaded.run,
                     player_to_compare,
                 )
+                sample, our_boss_debuffs = _fetch_parse_boss_debuffs(
+                    sample, references, our_debuff_log, loaded.run, player_to_compare
+                )
                 subjects.append(
                     ComparisonSubject(
                         player=player_to_compare,
@@ -1525,6 +1593,7 @@ def analyze(
                         display_name=name,
                         parse=sample,
                         our_auras=our_auras,
+                        our_boss_debuffs=our_boss_debuffs,
                         consumable_buffs=consumable_buffs,
                         potion_ids=combat_potion_ids,
                         slot_names=slot_names,
