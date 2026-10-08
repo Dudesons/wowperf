@@ -46,9 +46,12 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
 - **A council cell is a figure.** It shows the council's coverage against the reference median, e.g.
   "83% against 88%" under "Kyrakka and Erkhart Stormvein", and carries no verdict, like every boss
   column.
-- **The row's figure counts council time.** Single-boss figures do not move.
+- **The row's figure counts council time.** Single-boss figures do not move, for every pull Warcraft
+  Logs lists once. *Amended 2026-10-08, final review:* a boss pull listed twice is the exception, and
+  section 5 says what it did before and what it does now.
 - **The caption** stops saying council pulls are left out. It says a council is measured over the time
-  each of its bosses was alive, from the pull's start to that boss's death.
+  each of its bosses was alive, from the pull's start to that boss's death, or to the pull's end if it
+  did not die there.
 - **"No boss found" stays withheld.** For example Avatar of Sethraliss, whose pull lists no Avatar among
   its enemies.
 - **The "council" withheld reason is removed.** Nothing produces it any more, so it is not kept unused.
@@ -101,6 +104,28 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
   side, so the comparison stays like for like. The live run records how far the references sit below
   100%, and this design is amended with it.
 - **An ambiguous name.** No boss found, as now.
+
+*Amended 2026-10-08, final review:* `dungeonPulls` is sorted by start, but it lists some boss pulls
+twice. Over the 969 cached keystone fights, 10 boss pulls in 5 fights appear as exact duplicates, with
+the same name, start and end, and all of them are wipes.
+
+- **The rule.** `boss_windows_of` skips a boss pull whose encounter, start and end equal the previous
+  boss pull's, so one physical pull is measured once. When it looks for the next pull, it also skips
+  any pull, trash or boss, with the same start and end as the current one: a duplicate of this pull is
+  not the next pull.
+- **What it fixed.** The branch counted a duplicate's boss-alive seconds and its covered seconds twice,
+  so a pull's seconds read 120 s instead of 60 s, and a figure summed with other pulls was weighted
+  wrongly. A boss pull listed twice, with a debuff on it from 20 s to 50 s of a 60 s pull, read 0.50
+  over 120 s and now reads 0.50 over 60 s. The first copy's next-pull horizon was its own start, so no
+  death was admitted there.
+- **Single-boss figures before the branch.** The earlier code merged the numerator once and summed the
+  denominator twice, so on those 5 fights the single-boss figure was itself halved: the same pull read
+  0.25. The claim that single-boss figures do not move holds for every pull listed once. On a pull
+  listed twice, the figure moved from 0.25 to 0.50, which is the true share.
+- **A death in a pull's own span always counts.** A council boss's death is a pull's when it falls from
+  the pull's start and either at or before the pull's end, or before the next pull's start, or there
+  is no next pull. A next pull that opens before this one closes cannot hide a death inside this one.
+  The span stays the last such death, capped at the pull's end.
 
 *Amended 2026-10-08, live:* `analyze` ran on `LyKXYvVZm192TDr6` fight 9 with `--all-players` and on
 `nd6Rz47Gj1ZPxFfm` fight 3. Both runs used the death rule of §4 as amended.

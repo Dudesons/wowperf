@@ -430,14 +430,16 @@ instead of adjusting for them, because adjusting would invent a number:
   share of boss-alive time the bosses carried a debuff from the player or their pets,
   against the median of the parses that applied it, by the buff family's thresholds. It is
   derived: the intervals come from the log's own applications and removals. A council's cell
-  is coverage across its bosses, each counted from the pull's start to its own death; a pull
+  is coverage across its bosses, each counted from the pull's start to its own death, or to the
+  pull's end if it did not die there; a pull
   with no boss found is left out on both sides. The card's per-boss columns
   describe, never judge. Unlike a buff,
   a debuff names who applied it, so `compare.uptime.boss.unjudged` is the player's own zero;
   what it cannot say is whether their build has the ability. A debuff only one copy of which
-  sits on a target is another matter: when at least two of the run's players held it on the
-  bosses and every pair of their copies overlapped by at most a second in total, a teammate's
-  application replaced theirs. Such a debuff is shown as shared, its row's `shared_with` naming
+  sits on a target is another matter: when at least two of the run's players held it, at least
+  one pair of them on a common boss within one pull, and every such pair's copies overlapped by
+  at most a second in total, a teammate's application replaced theirs. Two players who held it
+  only on different bosses, or in different pulls, were never compared. Such a debuff is shown as shared, its row's `shared_with` naming
   those teammates' actor ids, and is never judged: no gap finding, and not in `unjudged`. In the
   findings JSON a shared row still carries the `uptime.verdict` its figures reach, "below" for
   instance, beside the non-empty `shared_with`; read that row as not judged, whatever its

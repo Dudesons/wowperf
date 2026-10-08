@@ -91,7 +91,7 @@ def test_a_debuff_kept_up_well_below_the_sample_is_a_gap() -> None:
     assert "range 90% to 90% across 3 top parses" in gap.evidence
     assert (
         "a single boss over its whole pull, a council's bosses each from the pull's start to "
-        "their own death."
+        "their own death, or to the pull's end if they did not die there."
     ) in gap.detail
     assert "A pull with no boss found is left out on both sides." in gap.detail
     assert "council pull, or" not in gap.detail

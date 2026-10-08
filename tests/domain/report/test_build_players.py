@@ -1090,8 +1090,9 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
     assert table.caption == (
         "Share of 200s of boss-alive time the bosses carried each debuff from this player "
         "or their pets, against the median of the parses that applied each. A council's "
-        "bosses each count from the pull's start to their own death; a pull with no boss "
-        "found is left out. Each boss column reads ours against the median and carries no "
+        "bosses each count from the pull's start to their own death, or to the pull's end if "
+        "they did not die there; a pull with no boss found is left out. Each boss column "
+        "reads ours against the median and carries no "
         "verdict. A debuff a teammate's application replaces is marked shared, not judged. "
         "The group's log for the whole fight held 1 removal with no application, dropped (a "
         "pet copy's second removal counts here); 2 applications still open at the fight's "

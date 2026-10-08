@@ -29,7 +29,10 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     assert log.events, "a real key applies debuffs to enemies"
     assert all(event.timestamp_ms <= log.end_ms for event in log.events)
 
-    boss_pulls = [pull for pull in run.pulls if pull.is_boss]
+    # A boss pull the log lists twice is measured once.
+    boss_pulls = {
+        (pull.encounter_id, pull.start_ms, pull.end_ms) for pull in run.pulls if pull.is_boss
+    }
     players = frozenset(player.actor_id for player in run.players)
     landed = 0
     for player in run.players:
@@ -50,6 +53,9 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     windows = boss_windows_of(run.pulls, log.npc_actors, log.deaths)
     measured = [w for w in windows if w.withheld is None]
     assert measured, "a real key has at least one boss pull with a boss found"
+    # The log stamps a kill's last council death a few ms after the pull closes;
+    # every council kill measured had its deaths found.
+    assert sum(window.deathless for window in windows) == 0
     boss_ids = {target.game_id for window in measured for target in window.targets}
     last_end = max(window.end_ms for window in measured)
     names = dict(log.ability_names)
