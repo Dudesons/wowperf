@@ -1,6 +1,6 @@
 # Debuff uptime on bosses, per player
 
-**Status:** approved design, 2026-10-07. Not yet planned or built.
+**Status:** approved design, 2026-10-07; planned in docs/plans/2026-10-07-enemy-debuff-uptime-plan.md, built, and exercised live on 2026-10-08.
 **Area:** `wowperf analyze`, the parse axis of the Mythic+ comparison, and the player card on the
 Players tab. It revives the "on target" half of `docs/plans/2026-09-03-mplus-postmortem-design.md`
 §5 item 5, which has been inert since 2026-09-05, for boss pulls only.

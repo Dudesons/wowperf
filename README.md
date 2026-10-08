@@ -164,8 +164,10 @@ Being clear about this matters more than the features:
   something misleading.
 - **It reports a median and an observed range, never an average.** Below three comparable
   reference runs it falls back to a single reference and says so on the finding.
-- **Uptime covers buffs only.** Warcraft Logs offers no way to scope the enemy-debuff table to a
-  single caster, so "what you kept up on the boss" does not exist as a number.
+- **Uptime covers buffs everywhere and debuffs on Mythic+ bosses.** Warcraft Logs offers no way to
+  scope the enemy-debuff table to a single caster, but its event stream names each application's
+  caster, so "what you kept up on the boss" is rebuilt from that stream. Trash, raid and council
+  pulls are not measured yet.
 - **Nothing here is a DPS ranking.** It is about decisions, not throughput.
 
 ## Quota

@@ -1117,9 +1117,10 @@ class WclRunRepository:
         loading them for a whole roster would pay for ten tables to answer a
         question about two players. Only what the player carried is asked for:
         no query argument narrows the enemy-debuff table to one caster, so the
-        matching figure for enemies does not exist — the measured table is in
-        `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to
-        one caster".
+        matching figure for enemies cannot come from a table — the measured
+        table is in `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot
+        be scoped to one caster". `debuff_log` reads the event stream that does
+        name the caster, for the boss figure.
         """
         payload = self._query(
             AURA_TABLE_QUERY,

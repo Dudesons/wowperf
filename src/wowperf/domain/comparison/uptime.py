@@ -2,10 +2,12 @@
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
 # Buffs only, and the titles here say so. The design's other half — what a player
-# kept up on enemies — is not comparable per player: no query argument narrows the
+# kept up on enemies — cannot come from the aura table: no query argument narrows the
 # enemy-debuff table to one caster, so every row it returns belongs to the whole
-# group. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped
-# to one caster".
+# group (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+# caster"). It is rebuilt from the event stream instead, for bosses, in
+# `debuff_uptime.py` and `boss_debuffs.py` (same skill, "The debuff event stream does
+# name the caster").
 
 from collections.abc import Callable, Sequence
 

@@ -537,7 +537,8 @@ query ReportRankings($code: String!, $fightId: Int!, $metric: ReportRankingMetri
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
 # belongs to the whole group — see `.claude/skills/wcl-api/SKILL.md`, "The debuff
-# half cannot be scoped to one caster", for the arguments measured. The selection
+# half cannot be scoped to one caster", for the arguments measured. What a player
+# kept up on enemies comes from `ENEMY_DEBUFFS_QUERY` above instead. The selection
 # is aliased even though it is now the only one, because
 # `ingest.build_player_auras` reads it by that name and says so when it is missing.
 AURA_TABLE_QUERY = """

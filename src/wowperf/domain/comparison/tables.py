@@ -203,9 +203,12 @@ def _auras(
 ) -> tuple[AuraUptime, ...]:
     """Buff uptime against the sample's median, as shares of boss time.
 
-    Buffs only, as everywhere the uptime comparison reaches: no query argument
-    narrows the enemy-debuff table to one caster, so the matching figure for
-    what a player kept up on enemies does not exist to put beside these.
+    Buffs only, from this table: no query argument narrows the enemy-debuff
+    table to one caster, so what a player kept up on enemies cannot come from
+    it. That figure is rebuilt from the event stream instead, for bosses, and
+    sits beside these in `boss_debuffs` (see `comparison/boss_debuffs.py` and
+    `.claude/skills/wcl-api/SKILL.md`, "The debuff event stream does name the
+    caster").
     """
     eligible = parse.aura_eligible
     if not eligible:

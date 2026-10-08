@@ -973,14 +973,18 @@ Keying intervals on the target's `gameID` with `targetInstance`, instead of its 
 balances the Death Knight's Blood Plague completely. Across all player-sourced rows, it reduces
 applications left open from 32 to 3 and orphan removals from 38 to 11. The pairing method was
 `(sourceID, sourceInstance, abilityGameID, target, targetInstance)` walked in timestamp order,
-with an apply opening an interval and a remove closing it.
+with an apply opening an interval and a remove closing it. The feature's own pairing has
+since dropped the source instance from that key, which the 2026-10-08 paragraph at the end of
+this section measures; what is stated here is what was measured at the time.
 
 So **closing an open interval at the last event on that target is wrong for the case that
 dominates here.** The last event on actor 261's instance is the application itself, so that
 rule closes each interval with no length at all, 2 to 26 seconds short. That one creature
 is logged under two actor ids is inferred from the timing and the matching instance numbers.
 The log does not state it. How to close the 3 intervals still open after re-keying is not
-settled. `ENEMY_DEBUFFS_QUERY` in `queries.py` reads this stream.
+settled. `ENEMY_DEBUFFS_QUERY` in `queries.py` reads it, for the boss figure of
+`docs/plans/2026-10-07-enemy-debuff-uptime-design.md`, and keys targets on game id as
+recommended here.
 
 **What boss debuff uptime cost, as the feature's own reading, 2026-10-08.** `analyze
 LyKXYvVZm192TDr6 --fight 9 --all-players` ran with its references cold and spent 298.65 points.
@@ -1023,7 +1027,8 @@ The stream cost one point per page. On the first command that came to 74.00 poin
 twenty reports. The design's §7 had estimated about 45 points more for `--all-players`, so the
 real figure is well above it.
 
-Each report read pays one `Actors` call. On our own report, which was already cached under the
+Each report whose stream is read pays one `Actors` call: ours, and each parse reference. A speed
+reference reads no stream and pays none. On our own report, which was already cached under the
 old query text, that call is the one-time re-read the new fields cost, because the query text is
 part of the cache key.
 
@@ -1035,7 +1040,7 @@ to Galvazzt under `sourceInstance` 25 and removed it under 26, three times over.
 instance, every removal was an orphan and the first application ran to the fight's end, which
 read as 58.2 s of the pull. Keyed without it, the same rows read 15.9 s.
 
-Across that key, the first key and the 24 cached parse references of the two analyses, intervals
+Across that key, the first key and the 24 cached references of the two analyses, intervals
 left open added 1,869.7 s on measured bosses under the old key, all of it Mirror Image Frostbolt.
 Under the new key they add 0 s.
 
@@ -1043,6 +1048,16 @@ The new key has a cost, which the same comparison measured. When two copies of o
 their own copy of a debuff on one target, the first removal closes both. That lowers Withering
 Grasp (Magus of the Dead) by 51.1 s and Mind Sear (Antoran Inquisitor) by 39.5 s across those
 keys. On no key does it move either debuff by more than 6.3 points of boss time.
+
+The pairing's own tally changed with the key. Orphan removes rose from 24 to 284 on
+`LyKXYvVZm192TDr6` fight 9 and from 132 to 454 on `nd6Rz47Gj1ZPxFfm` fight 3. Of the 284, 281
+are a second removal on an interval already closed, and of the 454, 453 are; a Rune Weapon
+accounts for 271 and 368. The tally now mostly counts concurrent pet copies rather than broken
+pairing, so read a high orphan count on a key with pets as that, not as a failure to pair.
+
+The e2e assertion on this pairing fails on the old key only where a pet's application and
+removal carry different instance numbers on a measured boss. `nd6Rz47Gj1ZPxFfm` fight 3 is
+that key: Mirror Image Frostbolt on Galvazzt.
 
 ## A damage-taken table's row counts landings, not just hits
 
