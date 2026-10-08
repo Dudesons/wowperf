@@ -982,6 +982,68 @@ is logged under two actor ids is inferred from the timing and the matching insta
 The log does not state it. How to close the 3 intervals still open after re-keying is not
 settled. `ENEMY_DEBUFFS_QUERY` in `queries.py` reads this stream.
 
+**What boss debuff uptime cost, as the feature's own reading, 2026-10-08.** `analyze
+LyKXYvVZm192TDr6 --fight 9 --all-players` ran with its references cold and spent 298.65 points.
+The command printed the composition:
+
+- `EnemyDebuffs`: 74 calls for 74.00
+- `Fights`: 20 calls for 40.20
+- `Talents`: 19 calls for 38.95
+- `PlayerDetails`: 19 calls for 38.00
+- `AuraTable`: 25 calls for 25.00
+- `Abilities`: 20 calls for 20.00
+- `Casts`: 20 calls for 20.00
+- `Actors`: 19 calls for 19.00
+- `Deaths`: 5 calls for 5.38
+- `EnemyCasts`: 5 calls for 5.06
+- `CharacterRankings`: 5 calls for 5.05
+- `Interrupts`: 5 calls for 5.00
+- `FightRankings`: 1 call for 1.01
+- `Affixes`: 1 call for 1.00
+- `RateLimit`: 2 calls for 1.00, its last read unpriced
+
+`analyze nd6Rz47Gj1ZPxFfm --fight 3` compared one player and spent 107.53:
+
+- `Fights`: 11 calls for 22.11
+- `EnemyDebuffs`: 20 calls for 20.00
+- `Talents`: 5 calls for 10.25
+- `Abilities`: 10 calls for 10.00
+- `PlayerDetails`: 5 calls for 10.00
+- `Actors`: 6 calls for 6.00
+- `Casts`: 6 calls for 6.00
+- `EnemyCasts`: 5 calls for 5.15
+- `AuraTable`: 5 calls for 5.00
+- `Deaths`: 5 calls for 5.00
+- `Interrupts`: 5 calls for 5.00
+- `CharacterRankings`: 1 call for 1.01
+- `FightRankings`: 1 call for 1.01
+- `RateLimit`: 2 calls for 1.00
+
+The stream cost one point per page. On the first command that came to 74.00 points across its
+twenty reports. The design's §7 had estimated about 45 points more for `--all-players`, so the
+real figure is well above it.
+
+Each report read pays one `Actors` call. On our own report, which was already cached under the
+old query text, that call is the one-time re-read the new fields cost, because the query text is
+part of the cache key.
+
+Rerun warm, each command spent 1.00, all of it on its two `RateLimit` reads.
+
+**The pairing keys on the source id without its instance number.** Measured 2026-10-08 on the
+cached Temple of Sethraliss key `nd6Rz47Gj1ZPxFfm` fight 3: a Mirror Image pet applied Frostbolt
+to Galvazzt under `sourceInstance` 25 and removed it under 26, three times over. Keyed on the
+instance, every removal was an orphan and the first application ran to the fight's end, which
+read as 58.2 s of the pull. Keyed without it, the same rows read 15.9 s.
+
+Across that key, the first key and the 24 cached parse references of the two analyses, intervals
+left open added 1,869.7 s on measured bosses under the old key, all of it Mirror Image Frostbolt.
+Under the new key they add 0 s.
+
+The new key has a cost, which the same comparison measured. When two copies of one pet each keep
+their own copy of a debuff on one target, the first removal closes both. That lowers Withering
+Grasp (Magus of the Dead) by 51.1 s and Mind Sear (Antoran Inquisitor) by 39.5 s across those
+keys. On no key does it move either debuff by more than 6.3 points of boss time.
+
 ## A damage-taken table's row counts landings, not just hits
 
 Measured 2026-09-14 against `table(dataType: DamageTaken, viewBy: Ability)` for a real raid kill.
