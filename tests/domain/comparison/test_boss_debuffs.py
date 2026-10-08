@@ -723,7 +723,10 @@ def test_a_killed_pull_does_not_borrow_a_boss_death_from_the_next_pull() -> None
     assert two.deathless == 1
 
 
-def test_a_death_in_the_next_pull_is_not_this_pulls() -> None:
+def test_a_wipe_runs_to_its_end_and_the_kill_after_it_takes_its_own_deaths() -> None:
+    # The wipe is capped at its own end whatever the horizon says, so this pins the
+    # kill's spans, not the horizon: `test_a_killed_pull_does_not_borrow_a_boss_death_
+    # from_the_next_pull` pins that.
     wipe = a_council_pull(killed=False)
     kill = a_council_pull().model_copy(
         update={"index": 2, "pull_id": 3, "start_ms": 100_000, "end_ms": 160_000}
@@ -802,6 +805,82 @@ def test_copies_that_coexist_on_one_council_boss_are_per_caster() -> None:
             deaths=((ALPHA_GAME, 40_000), (BETA_GAME, 70_000)),
         ),
         (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+def a_listed_twice(pull: Pull) -> tuple[Pull, Pull]:
+    """The pull, then its exact duplicate, as `dungeonPulls` lists some wipes."""
+    return pull, pull.model_copy(update={"index": pull.index + 1, "pull_id": pull.pull_id + 1})
+
+
+def test_a_boss_pull_listed_twice_is_measured_once() -> None:
+    # 30s of a 60s pull is half. Counted twice, the seconds double and so does the
+    # covered time (0.5 over 120s), or the denominator doubles alone (0.25).
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 20_000, 50_000)), a_listed_twice(BOSS_PULL), PLAYER, RUN_PLAYERS
+    )
+
+    assert len(mine.windows) == 1
+    assert mine.seconds == 60.0
+    assert encounter_share(mine, DOT, 2001) == 0.5
+
+
+def test_a_council_kill_listed_twice_is_one_window_ending_at_its_deaths() -> None:
+    # The first copy's next pull is its own duplicate, which starts where it does:
+    # no death would be admitted there.
+    [window] = boss_windows_of(
+        a_listed_twice(a_council_pull()),
+        COUNCIL_ACTORS,
+        ((ALPHA_GAME, 40_000), (BETA_GAME, 60_000)),
+    )
+
+    assert [target.end_ms for target in window.targets] == [40_000, 60_000]
+    assert window.deathless == 0
+
+
+def test_a_duplicate_of_a_pull_is_not_the_next_pull_for_a_trash_pull_either() -> None:
+    # A duplicate of the boss pull listed as a non-boss pull still starts where it does.
+    boss = a_council_pull()
+    twin = a_pull(2, boss.start_ms, boss.end_ms)
+
+    [window] = boss_windows_of(
+        (boss, twin), COUNCIL_ACTORS, ((ALPHA_GAME, 40_000), (BETA_GAME, 60_000))
+    )
+
+    assert [target.end_ms for target in window.targets] == [40_000, 60_000]
+    assert window.deathless == 0
+
+
+def test_a_next_pull_starting_inside_this_one_does_not_hide_a_death_inside_it() -> None:
+    # The next pull opens at 50s, before this one closes at 70s. Alpha's death at
+    # 60s is inside this pull's own span, so it is this pull's whatever comes next.
+    overlapping = a_council_pull().model_copy(
+        update={"index": 2, "pull_id": 3, "start_ms": 50_000, "end_ms": 160_000}
+    )
+
+    [window, _] = boss_windows_of(
+        (a_council_pull(), overlapping),
+        COUNCIL_ACTORS,
+        ((ALPHA_GAME, 60_000), (BETA_GAME, 65_000)),
+    )
+
+    assert [target.end_ms for target in window.targets] == [60_000, 65_000]
+    assert window.deathless == 0
+
+
+def test_a_boss_fought_twice_shares_a_debuff_only_within_one_pull() -> None:
+    # Ours only in the wipe, theirs only in the kill: the two copies never sat on
+    # one boss in one pull, so nothing shows that they replace each other.
+    wipe = BOSS_PULL
+    kill = a_pull(2, 100_000, 160_000, encounter_id=2001, name=BOSS_NAME)
+
+    mine = boss_debuffs(
+        a_log(*held(PLAYER, 20_000, 50_000), *held(OTHER, 110_000, 140_000)),
+        (wipe, kill),
         PLAYER,
         RUN_PLAYERS,
     )

@@ -63,8 +63,9 @@ class BossWindow(Frozen):
     deathless: int = 0
     """Council bosses of a kill pull with no death inside it, measured to its end.
 
-    A death counts from the pull's start up to the next pull's start, since the log
-    stamps a kill's last death a few milliseconds after the pull closed.
+    A death counts from the pull's start, through its own span and up to the next
+    pull's start, since the log stamps a kill's last death a few milliseconds after
+    the pull closed.
     """
 
     @property
@@ -158,21 +159,40 @@ def boss_windows_of(
     """Every boss pull, with the bosses it is measured on, or the reason it has none.
 
     One boss is measured over the whole pull. A council's bosses are each
-    measured from the pull's start to their last death inside it: the log
+    measured from the pull's start to their last death in it, as below: the log
     records a death but never an appearance, so the start is the pull's. A
     council boss that never died there runs to the pull's end, and on a kill
     that is counted, since a killed council's bosses all died.
 
-    A death is a pull's when it falls from the pull's start up to the next pull's
-    start in `pulls`, which is in chronological order: the log stamps a kill's
-    last death a few milliseconds after the pull closed. The span never runs
-    past the pull's end.
+    A death is a pull's when it falls from the pull's start and either within
+    the pull's own span, whatever pull follows, or before the next pull's start
+    in `pulls`, which is in chronological order: the log stamps a kill's last
+    death a few milliseconds after the pull closed. The span never runs past the
+    pull's end.
+
+    Warcraft Logs sometimes lists one physical boss pull twice, with the same
+    encounter, start and end (measured 2026-10-08: 10 duplicated boss pulls in 5
+    of 969 cached fights, all wipes). It is measured once, so its seconds and
+    covered time are not counted twice. A duplicate of a pull, trash or boss, is
+    never the next pull either, since it starts where this one does.
     """
     windows: list[BossWindow] = []
+    previous: tuple[int, int, int] | None = None
     for position, pull in enumerate(pulls):
         if not pull.is_boss:
             continue
-        horizon = pulls[position + 1].start_ms if position + 1 < len(pulls) else None
+        listed = (pull.encounter_id, pull.start_ms, pull.end_ms)
+        if listed == previous:
+            continue
+        previous = listed
+        horizon = next(
+            (
+                later.start_ms
+                for later in pulls[position + 1 :]
+                if (later.start_ms, later.end_ms) != (pull.start_ms, pull.end_ms)
+            ),
+            None,
+        )
         found = bosses_of(
             npc_actors, frozenset(enemy.actor_id for enemy in pull.enemies), pull.name
         )
@@ -195,7 +215,9 @@ def boss_windows_of(
                 died = [
                     at
                     for dead, at in deaths
-                    if dead == game_id and pull.start_ms <= at and (horizon is None or at < horizon)
+                    if dead == game_id
+                    and pull.start_ms <= at
+                    and (at <= pull.end_ms or horizon is None or at < horizon)
                 ]
                 if died:
                     end_ms = min(max(died), pull.end_ms)
