@@ -61,7 +61,7 @@
       <td class="num">{{ row.theirs }}</td>
       <td class="num">{{ row.spread }}</td>
       <td>{{ row.sample }}</td>
-      <td>{{ row.verdict_label }}</td>{% for cell in row.cells %}<td class="num">{{ cell }}</td>{% endfor %}
+      <td>{{ row.verdict_label }}</td>{% for cell in row.cells %}<td class="num">{{ cell }}</td>{% endfor +%}
     </tr>
     {% endfor %}
     </tbody>
