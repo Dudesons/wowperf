@@ -122,7 +122,9 @@ The order is hexagonal, matching the buff family.
      under-count when two copies of one pet each hold a debuff on one target, since the first
      removal closes the interval; it moved Withering Grasp and Mind Sear, the two debuffs it was
      measured on, by no more than 6.3 points of boss time on any key (corrected 2026-10-08: this
-     note first said it of every debuff, which was not measured). Orphan
+     note first said it of every debuff, but the skill records the bound for these two only; the
+     per-ability comparison over all 26 keys found only three abilities moving by 0.5 s or
+     more). Orphan
      removes now mostly count a pet copy's second removal rather than a broken pairing. The
      function is `pair_debuffs(log)`, returning the intervals and the tally, where this item
      names `debuff_bands(events, owner_of, game_id_of)`.
@@ -242,14 +244,18 @@ and one on the second. Players are named by class only.
   closed, not a broken pairing.
 - **Never reached, three states:** `compare.uptime.boss.unavailable`, the pairwise fallback and
   `no reference reached this boss`.
-  - The first two need a parse sample below the floor of three. Every player's parse sample was
-    5, all 30 parse references loaded, and every gap finding read "0 of 5 references had no
-    debuff data".
-  - The third needs a reference whose log misses a boss pull. Every parse reference was a key of
-    the same dungeon and read every boss exactly as ours did.
-  - They were left unexercised because no cached key offered a thin sample or a reference
-    missing a boss, and a search on a fresh key was not paid for. The brief had marked them
-    optional.
+  - `compare.uptime.boss.unavailable` fires when no reference in the sample returned debuff data,
+    or when our own side has no figure (our stream unread, or no single-boss pull). It did not
+    occur because every player's parse sample held 5 references, all 30 parse references loaded
+    and returned debuff data (every gap finding read "0 of 5 references had no debuff data"),
+    and both keys had measured single-boss pulls.
+  - The pairwise fallback fires only when fewer than three references are eligible. It did not
+    occur because every sample held 5.
+  - `no reference reached this boss` needs a reference whose log misses a boss pull. It did not
+    occur because every parse reference was a key of the same dungeon and read every boss
+    exactly as ours did.
+  - All three were left unexercised because no cached key offered a thin sample or a
+    reference missing a boss, and a search on a fresh key was not paid for. They were optional.
 - **Where the figures were read:** the task-8 report, section "Final reread after 132ef70" of
   `.superpowers/sdd/2026-10-07-enemy-debuff-uptime-plan/`. Those figures supersede the earlier
   ones in that report, which read the pairing before it dropped the source instance (a second
