@@ -8,8 +8,10 @@ from pydantic import Field
 from wowperf.domain.analysis.trash import forces_by_pull
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs
 from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.consumables import compare_consumable_buffs, compare_potions
+from wowperf.domain.comparison.debuff_uptime import compare_boss_debuffs_sample
 from wowperf.domain.comparison.loadout import (
     compare_enchants,
     compare_stats,
@@ -70,6 +72,9 @@ class ComparisonSubject(Frozen):
     display_name: str = Field(min_length=1)
     parse: ParseSample | None
     our_auras: PlayerAuras | None = None
+    # Our player's own debuffs on our bosses. One stream serves the whole group,
+    # so `cli.py` fetches it once and builds this per subject from it.
+    our_boss_debuffs: BossDebuffs | None = None
     # Curated data the comparison itself performs no I/O to load: `cli.py` reads
     # both from the committed TOML files and passes them in. Empty defaults keep
     # every test in this module free to build a subject without either.
@@ -150,6 +155,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
             our_pulls, our_boss_seconds, subject.our_auras, subject.display_name,
             parse, measured=boss_pull_uptime, words=DUNGEON,
         ),
+        *compare_boss_debuffs_sample(subject.our_boss_debuffs, subject.display_name, parse),
         *compare_enchants(
             subject.player.loadout, their_loadouts, subject.display_name, subject.slot_names
         ),

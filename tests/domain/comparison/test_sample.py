@@ -94,6 +94,8 @@ def test_a_parse_member_carries_no_run() -> None:
     `pulls` is here because three readers -- the boss-cast rule, the aura
     windows and the trash alignment -- read the reference's route and nothing
     else of its run; it is empty for a raid reference, which has no route.
+    `boss_debuffs` is here because the boss debuff comparison reads a reference's own
+    debuffs on its own bosses, and nothing else of its event streams.
     """
     assert "run" not in ParseMember.model_fields
     assert set(ParseMember.model_fields) == {
@@ -106,4 +108,5 @@ def test_a_parse_member_carries_no_run() -> None:
         "auras",
         "ability_icons",
         "pulls",
+        "boss_debuffs",
     }
