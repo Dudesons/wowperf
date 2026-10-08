@@ -1,6 +1,7 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
@@ -208,10 +209,7 @@ def build_players(
     """
     names_by_actor = display_names(loaded.run.players)
     slugs = slugs_by_actor(loaded.run.players)
-    specs = {
-        player.actor_id: pair_label(player.class_name, player.spec, plural=False)
-        for player in loaded.run.players
-    }
+    specs = {player.actor_id: (player.class_name, player.spec) for player in loaded.run.players}
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
@@ -274,12 +272,12 @@ def build_players(
 
 
 def _tables(
-    measures: PlayerMeasures | None, specs: Mapping[int, str]
+    measures: PlayerMeasures | None, specs: Mapping[int, tuple[str, str]]
 ) -> tuple[ComparisonTable, ...]:
     """The three tables, each dropped when it has no rows to show.
 
-    `specs` names each of the run's players by specialisation and class, keyed
-    by actor id, for a debuff row shared with a teammate.
+    `specs` holds each of the run's players' (class, specialisation), keyed by
+    actor id, to name the teammates a debuff row was shared with.
     """
     if measures is None:
         return ()
@@ -445,8 +443,24 @@ WITHHELD_LABELS = {
 """How a boss cell with no figure says why, in the reader's words."""
 
 
+def _shared_label(shared_with: Sequence[int], specs: Mapping[int, tuple[str, str]]) -> str:
+    """ "Shared with 2 Windwalker Monks and Frost Death Knight": each spec and class once.
+
+    Teammates of one specialisation and class are counted rather than
+    repeated, so the label still says how many players held the slot.
+    """
+    counts = Counter(specs[one] for one in shared_with)
+    named = [
+        f"{count} {pair_label(class_name, spec)}"
+        if count > 1
+        else pair_label(class_name, spec, plural=False)
+        for (class_name, spec), count in counts.items()
+    ]
+    return "Shared with " + " and ".join(named)
+
+
 def _debuff_rows(
-    rows: Sequence[BossDebuffRow], specs: Mapping[int, str]
+    rows: Sequence[BossDebuffRow], specs: Mapping[int, tuple[str, str]]
 ) -> tuple[ComparisonRow, ...]:
     """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
 
@@ -462,7 +476,7 @@ def _debuff_rows(
         verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
         if row.shared_with:
             verdict = Verdict.UNJUDGED
-            label = "Shared with " + " and ".join(specs[one] for one in row.shared_with)
+            label = _shared_label(row.shared_with, specs)
         built.append(
             ComparisonRow(
                 ability_id=m.ability_id,

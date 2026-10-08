@@ -1135,6 +1135,10 @@ def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
                 actor_id=3, name="Bríala", class_name="DeathKnight", spec="Frost",
                 item_level=680,
             ),
+            Player(
+                actor_id=4, name="Кириллица", class_name="Monk", spec="Windwalker",
+                item_level=680,
+            ),
         )
     )
     card = build_players(
@@ -1160,6 +1164,14 @@ def test_a_debuff_shared_with_two_teammates_names_both_by_spec_and_class() -> No
     [row] = a_shared_debuff_table(2, 3).rows
 
     assert row.verdict_label == "Shared with Windwalker Monk and Frost Death Knight"
+
+
+def test_teammates_of_one_spec_and_class_are_counted_not_repeated() -> None:
+    # Two Windwalker Monks and a Death Knight: repeating the Monk would read as
+    # a stutter and hide that two players held the slot.
+    [row] = a_shared_debuff_table(2, 3, 4).rows
+
+    assert row.verdict_label == "Shared with 2 Windwalker Monks and Frost Death Knight"
 
 
 def test_an_unshared_debuff_keeps_its_own_verdict() -> None:

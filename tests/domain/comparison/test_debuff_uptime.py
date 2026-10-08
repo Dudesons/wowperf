@@ -409,24 +409,24 @@ def test_when_our_stream_could_not_be_read_the_table_records_no_tally() -> None:
 TEAMMATE, SECOND_TEAMMATE = 702, 703
 
 
-def shared_with(debuffs: BossDebuffs, ability_id: int, *owners: int) -> BossDebuffs:
+def marked_shared(debuffs: BossDebuffs, ability_id: int, *owners: int) -> BossDebuffs:
     return debuffs.model_copy(update={"shared_with": ((ability_id, owners),)})
 
 
 def test_a_shared_debuff_far_below_the_sample_is_not_a_gap() -> None:
-    ours = shared_with(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
+    ours = marked_shared(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
 
     assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9)) == []
 
 
 def test_below_the_floor_a_shared_debuff_is_not_a_gap_either() -> None:
-    ours = shared_with(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
+    ours = marked_shared(on_the_boss((DOT, DOT_NAME, 0.3)), DOT, TEAMMATE)
 
     assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9)) == []
 
 
 def test_a_shared_debuff_we_never_applied_is_not_named_unjudged() -> None:
-    ours = shared_with(on_the_boss(), DOT, TEAMMATE, SECOND_TEAMMATE)
+    ours = marked_shared(on_the_boss(), DOT, TEAMMATE, SECOND_TEAMMATE)
 
     assert compare_boss_debuffs_sample(ours, OUR_NAME, a_sample(0.9, 0.9, 0.9)) == []
 
@@ -439,7 +439,7 @@ def test_only_the_shared_debuff_is_set_aside() -> None:
     sample = ParseSample(
         members=tuple(a_member(name, on_the_boss(*both)) for name in REFERENCE_NAMES)
     )
-    ours = shared_with(
+    ours = marked_shared(
         on_the_boss((DOT, DOT_NAME, 0.3), (OTHER_DOT, OTHER_DOT_NAME, 0.3)), DOT, TEAMMATE
     )
 
@@ -480,7 +480,7 @@ def test_a_teammates_copy_beside_ours_leaves_the_gap_standing() -> None:
 
 def test_a_shared_row_keeps_its_figures_and_names_who_it_was_shared_with() -> None:
     sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
-    ours = shared_with(on_two_bosses(0.5, 0.9), DOT, TEAMMATE, SECOND_TEAMMATE)
+    ours = marked_shared(on_two_bosses(0.5, 0.9), DOT, TEAMMATE, SECOND_TEAMMATE)
 
     [row] = boss_debuff_table(ours, sample).rows
 
@@ -491,7 +491,7 @@ def test_a_shared_row_keeps_its_figures_and_names_who_it_was_shared_with() -> No
 
 def test_a_row_whose_debuff_is_not_the_shared_one_names_nobody() -> None:
     sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
-    ours = shared_with(on_two_bosses(0.5, 0.9), OTHER_DOT, TEAMMATE)
+    ours = marked_shared(on_two_bosses(0.5, 0.9), OTHER_DOT, TEAMMATE)
 
     [row] = boss_debuff_table(ours, sample).rows
 

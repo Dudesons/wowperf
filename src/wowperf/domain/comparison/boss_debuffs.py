@@ -66,7 +66,7 @@ class BossDebuffs(Frozen):
     auras: tuple[Aura, ...] = ()
     tally: PairingTally = PairingTally()
     shared_with: tuple[tuple[int, tuple[int, ...]], ...] = ()
-    """(ability id, the other players' actor ids), for each debuff `shared_with` finds shared."""
+    """(ability id, the other players' actor ids), for each debuff `find_shared` finds shared."""
 
     @property
     def measured(self) -> tuple[tuple[int, int], ...]:
@@ -149,7 +149,7 @@ def boss_debuffs(
     Each interval is clipped to the pull it falls in.
 
     `players` is the actor ids of the run's players, the only owners whose
-    debuffs `shared_with` reads: a pet is already folded into its owner by the
+    debuffs `find_shared` reads: a pet is already folded into its owner by the
     pairing, and an enemy is never a player. A reference is read with none, so
     nothing on its side is ever shared.
     """
@@ -195,11 +195,11 @@ def boss_debuffs(
         windows=windows,
         auras=tuple(auras),
         tally=tally,
-        shared_with=shared_with(held, owner_id, measured),
+        shared_with=find_shared(held, owner_id, measured),
     )
 
 
-def shared_with(
+def find_shared(
     held: Mapping[tuple[int, int], Aura], owner_id: int, measured: tuple[tuple[int, int], ...]
 ) -> tuple[tuple[int, tuple[int, ...]], ...]:
     """Each debuff this owner shares one slot of with other players, and who those are.

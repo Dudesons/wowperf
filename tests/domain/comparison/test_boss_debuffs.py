@@ -513,6 +513,20 @@ def test_a_player_and_their_own_pet_never_share() -> None:
     assert mine.shared_with == ()
 
 
+TEAMMATES_PET = 11
+
+
+def test_a_teammates_pet_taking_the_debuff_over_shares_it_with_that_teammate() -> None:
+    # The pet is no player, so this is shared only if the pet is folded into its
+    # owner before the owner is checked against the run's players.
+    log = a_log(*held(PLAYER, 10_000, 30_000), *held(TEAMMATES_PET, 30_000, 50_000))
+    log = log.model_copy(update={"pet_owners": (*log.pet_owners, (TEAMMATES_PET, OTHER))})
+
+    mine = boss_debuffs(log, (BOSS_PULL,), PLAYER, RUN_PLAYERS)
+
+    assert mine.shared_with == ((DOT, (OTHER,)),)
+
+
 def test_an_enemy_applying_the_same_debuff_does_not_make_it_shared() -> None:
     mine = boss_debuffs(
         a_log(*held(PLAYER, 10_000, 30_000), *held(ADD_ACTOR, 30_000, 50_000)),

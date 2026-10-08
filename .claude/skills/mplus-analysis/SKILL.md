@@ -434,11 +434,14 @@ instead of adjusting for them, because adjusting would invent a number:
   describe, never judge. Unlike a buff,
   a debuff names who applied it, so `compare.uptime.boss.unjudged` is the player's own zero;
   what it cannot say is whether their build has the ability. A debuff only one copy of which
-  sits on a target is another matter: when the run's players held it on the bosses and their
-  copies never overlapped, a teammate's application replaced theirs. Such a debuff is shown as
-  shared, its row's `shared_with` naming those teammates' actor ids, and is never judged: no gap
-  finding, and not in `unjudged`. A zero beside a single teammate who held it stays `unjudged`,
-  because one holder cannot show the copies never coexist. `comparison_tables.<slug>
+  sits on a target is another matter: when at least two of the run's players held it on the
+  bosses and every pair of their copies overlapped by at most a second in total, a teammate's
+  application replaced theirs. Such a debuff is shown as shared, its row's `shared_with` naming
+  those teammates' actor ids, and is never judged: no gap finding, and not in `unjudged`. In the
+  findings JSON a shared row still carries the `uptime.verdict` its figures reach, "below" for
+  instance, beside the non-empty `shared_with`; read that row as not judged, whatever its
+  verdict says. A zero beside a single teammate who held it stays `unjudged`, because one
+  holder cannot show the copies never coexist. `comparison_tables.<slug>
   .boss_debuffs.tally` counts what the pairing met in our own log, and is provenance, not a
   finding. It is recorded whenever our stream was read, even beside no rows, and is null when
   it was not: null is "no stream read", while a zero tally is a log that paired cleanly.

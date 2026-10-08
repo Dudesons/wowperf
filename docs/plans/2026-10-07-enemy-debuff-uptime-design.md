@@ -94,9 +94,22 @@ A player's debuff is *shared* when it is exclusive and some other owner held it.
 at a zero of their own, once two others took it over from each other. Beside a single other owner,
 exclusivity cannot be shown and a zero stays `unjudged`. A shared debuff yields no gap finding
 and is not listed in `compare.uptime.boss.unjudged`. Its row keeps its figures, and the verdict
-column reads "Shared with" and the teammates' specialisation and class, in the unjudged row's
-tint. References are not read for sharing: it can only lower a reference's share, which moves
-the median down and so can only make ours read level, never wrongly below.
+column reads "Shared with" and the teammates' specialisation and class, counted when several share
+one, in the unjudged row's tint. References
+are not read for sharing: it can only lower a reference's share, which moves the median down and so
+can only make ours read level, never wrongly below.
+
+Checked offline over 26 cached keys the same day. Mortal Wounds was exclusive on all six keys
+where two players held it: every pair overlapped 0.00 s, and the smaller holder had at least
+84 s. Every per-caster debuff on every key read per-caster: Rune of Lingering, Venomfang, Soul
+Fang Venom, Consecration, Brittle and Incite Terror. On the measurement key the rows came to
+18 level, 3 unjudged and 2 shared, and no `below` and no gap finding remained.
+
+**Known limitation.** A per-caster debuff held by exactly two players whose copies barely
+overlapped would read as shared. Single Rune of Lingering pairs were measured at 0.00 s and
+0.72 s of overlap, with one holder at 8 s. Those keys read per-caster only because a third holder
+overlapped more. The error goes the safe way: it withholds a verdict and never accuses wrongly.
+On the 26 keys it never happened, because every such key had a third holder.
 
 ## 4. Components and data flow
 
