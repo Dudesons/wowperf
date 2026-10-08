@@ -114,6 +114,16 @@ The order is hexagonal, matching the buff family.
      boss pull.
    - **An orphan remove is counted and dropped, never guessed at.** An orphan remove is one with
      no open application.
+   - *Amended 2026-10-08:* the pairing keys on (source id, ability, target game id, target
+     instance), without the source's own instance number. A pet applies a debuff under one
+     instance and removes it under another: a Mirror Image pet's Frostbolt ran on to the fight's
+     end, which added 1,869.7 s of uptime on measured bosses across 8 of the 26 cached keys. The
+     source is folded to its owner only when an interval is written. The accepted cost is an
+     under-count when two copies of one pet each hold a debuff on one target, since the first
+     removal closes the interval; it moved no debuff by more than 6.3 points of boss time. Orphan
+     removes now mostly count a pet copy's second removal rather than a broken pairing. The
+     function is `pair_debuffs(log)`, returning the intervals and the tally, where this item
+     names `debuff_bands(events, owner_of, game_id_of)`.
 
 5. **Boss windows (domain).** For each boss pull, `find_bosses` (`comparison/pace_boss.py`) picks
    the boss from the pull's own enemies, their boss flags and the pull's `name`.
@@ -141,6 +151,10 @@ The order is hexagonal, matching the buff family.
    three, the pairwise fallback below it, and "N of M references had no debuff data". Only the
    wording and the finding ids differ. Every parse member gets the same treatment against its own
    stream. The per-boss cells are a thin descriptive layer beside it.
+   - *Noted 2026-10-08, not fixed:* a reference that is eligible but whose every boss was
+     withheld, which leaves it zero measured seconds, still counts as having debuff data. And
+     below the floor the debuff pairwise comparison returns nothing where the buff pairwise
+     comparison says unavailable.
 
 7. **Report.** A view-model row type in the builder, and a Jinja table that loops. As everywhere
    else, the builder decides and the template does not.
@@ -148,6 +162,11 @@ The order is hexagonal, matching the buff family.
 **Provenance, recorded and not judged.** For every run read, the findings record how many orphan
 removes and how many end-closed intervals the pairing met. These counts are the evidence for the
 live distribution check in §6, and the starting data for the trash design.
+
+*Amended 2026-10-08:* the tally is recorded for our own run only
+(`comparison_tables.<slug>.boss_debuffs.tally`), not for each reference run read. It is `null`
+when our own stream was not read, so a findings file tells that apart from a log that paired
+cleanly.
 
 ## 5. Failures
 
@@ -178,6 +197,11 @@ Tests come first, and use only the sanctioned fixture names.
   verdict.
 - **Integration:** ingest from fixture pages shaped like the real rows, including absent keys.
 - **End to end:** one live `analyze` on a key, asserting the table and its finding ids.
+  - *Amended 2026-10-08:* no live `analyze` test was added. The live proof ran `analyze` on both
+    keys and read the table, the finding ids and the state distribution from the findings files
+    (the wcl-api skill's 2026-10-08 paragraphs). The committed end-to-end test is a
+    repository-level check that no debuff on a measured boss outlives the key; it is not an
+    `analyze` run.
 
 **Live proof,** per the CLAUDE.md invariant. Run `analyze` on two keys already in the cache, and
 report how often each reachable state occurred:
