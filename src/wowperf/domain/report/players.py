@@ -310,6 +310,7 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
     debuffs = measures.boss_debuffs
     if debuffs.rows:
         tally = debuffs.tally
+        assert tally is not None  # rows are built only from a stream that was read
         built.append(
             ComparisonTable(
                 heading="Debuff uptime on bosses",

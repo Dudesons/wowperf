@@ -84,12 +84,17 @@ class BossDebuffRow(Frozen):
 
 
 class BossDebuffTable(Frozen):
-    """Everything the debuff table states, with the denominator and the log's own tally."""
+    """Everything the debuff table states, with the denominator and the log's own tally.
+
+    `tally` is None only when our own stream could not be read, so that a
+    findings file tells "no stream read" apart from "read, and clean". Whenever
+    the stream was read it is our own tally, even with no rows to show.
+    """
 
     rows: tuple[BossDebuffRow, ...] = ()
     seconds: float = 0.0
     bosses: tuple[str, ...] = ()
-    tally: PairingTally = PairingTally()
+    tally: PairingTally | None = None
 
 
 class StatShare(Frozen):

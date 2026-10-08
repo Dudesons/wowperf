@@ -1014,6 +1014,18 @@ def test_a_player_with_no_readable_stats_gets_no_stat_table() -> None:
     assert not [t for t in card.comparison_tables if "stat" in t.heading.lower()]
 
 
+def test_a_debuff_table_with_no_rows_and_no_stream_is_not_drawn() -> None:
+    # Our stream failing leaves `tally` None, and the caption that reads it is
+    # only ever built beside rows, so the page never meets the None.
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(),
+        measures={"stonewake-0": PlayerMeasures(boss_debuffs=BossDebuffTable())},
+    )[0]
+
+    assert not [t for t in card.comparison_tables if "Debuff" in t.heading]
+
+
 def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(

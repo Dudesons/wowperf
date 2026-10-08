@@ -249,10 +249,16 @@ def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuf
 
     Gated exactly as `tables._auras` gates the buff table: no table below the
     floor, where the comparison states one reference rather than a median.
+
+    Where there is no table, our own seconds and tally still ride along when
+    our stream was read: a zero left there by default would read in the
+    findings file as a measurement. Without our stream the tally is None.
     """
-    eligible = sample.debuff_eligible
-    if our is None or our.seconds <= 0 or not eligible or not sample.can_aggregate(eligible):
+    if our is None:
         return BossDebuffTable()
+    eligible = sample.debuff_eligible
+    if our.seconds <= 0 or not eligible or not sample.can_aggregate(eligible):
+        return BossDebuffTable(seconds=our.seconds, tally=our.tally)
 
     names, per_member = per_member_fractions(eligible)
     measures = uptime_measures(debuff_fractions(our), per_member, names)

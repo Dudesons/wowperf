@@ -307,6 +307,67 @@ def test_our_own_pairing_tally_rides_on_the_table() -> None:
     )
 
 
+def a_tallied_run() -> BossDebuffs:
+    return on_two_bosses(0.5, 0.9).model_copy(
+        update={"tally": PairingTally(orphan_removes=2, closed_at_end=1)}
+    )
+
+
+def test_below_the_floor_the_empty_table_still_carries_our_own_tally_and_seconds() -> None:
+    two = ParseSample(
+        members=(
+            a_member("Bríala", on_two_bosses(0.9, 0.9)),
+            a_member("Кириллица", on_two_bosses(0.9, 0.9)),
+        )
+    )
+
+    table = boss_debuff_table(a_tallied_run(), two)
+
+    assert table.rows == ()
+    assert table.seconds == 200.0
+    assert table.tally == PairingTally(orphan_removes=2, closed_at_end=1)
+
+
+def test_with_no_measured_boss_the_empty_table_still_carries_our_own_tally() -> None:
+    council = BossDebuffs(
+        windows=(
+            BossWindow(
+                encounter_id=2001,
+                name="The Twin Council",
+                start_ms=0,
+                end_ms=60_000,
+                withheld=Withheld.COUNCIL,
+            ),
+        ),
+        tally=PairingTally(orphan_removes=3),
+    )
+    three = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    table = boss_debuff_table(council, three)
+
+    assert table.rows == ()
+    assert table.seconds == 0.0
+    assert table.tally == PairingTally(orphan_removes=3)
+
+
+def test_a_clean_log_records_a_zero_tally_not_an_absent_one() -> None:
+    two = ParseSample(members=(a_member("Bríala", on_two_bosses(0.9, 0.9)),))
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9), two)
+
+    assert table.tally == PairingTally()
+    assert table.tally is not None
+
+
+def test_when_our_stream_could_not_be_read_the_table_records_no_tally() -> None:
+    three = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    table = boss_debuff_table(None, three)
+
+    assert table.tally is None
+    assert table.seconds == 0.0
+
+
 def test_the_players_measures_carry_the_debuff_table() -> None:
     subject = ComparisonSubject(
         player=a_player(),

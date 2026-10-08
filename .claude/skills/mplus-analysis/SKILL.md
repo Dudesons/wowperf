@@ -434,7 +434,8 @@ instead of adjusting for them, because adjusting would invent a number:
   a debuff names who applied it, so `compare.uptime.boss.unjudged` is the player's own zero;
   what it cannot say is whether their build has the ability. `comparison_tables.<slug>
   .boss_debuffs.tally` counts what the pairing met in our own log, and is provenance, not a
-  finding.
+  finding. It is recorded whenever our stream was read, even beside no rows, and is null when
+  it was not: null is "no stream read", while a zero tally is a log that paired cleanly.
 
 When a comparison was withheld, the report says why in the tool's own words — a
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not
