@@ -1982,6 +1982,8 @@ def build_analyze_transport(
     death_events: list[dict[str, Any]] | None = None,
     teammates: tuple[tuple[str, str, str], ...] = (),
     debuff_rows_by_code: dict[str, list[dict[str, Any]]] | None = None,
+    debuff_status_by_code: dict[str, int] | None = None,
+    debuff_requests: list[str] | None = None,
 ) -> httpx.MockTransport:
     """Answer every query `WclRunRepository.load` issues for report abc123, fight 36.
 
@@ -2041,6 +2043,11 @@ def build_analyze_transport(
 
     `debuff_rows_by_code` answers `EnemyDebuffs` with the rows given for the
     report codes named, in place of the default empty stream.
+    `debuff_status_by_code` answers `EnemyDebuffs` with that HTTP status and no
+    rows for the report codes named, so one stream can fail (a 500) or run the
+    budget out (a 429) as `aura_response` does for auras. `debuff_requests`
+    records the report code of every `EnemyDebuffs` request, since `calls`
+    keeps operation names only and cannot say whose stream was asked for.
 
     Every answer, `RateLimit` included, carries a quota block off one rising
     counter. Two counters would let the closing read fall below the reading before
@@ -2201,6 +2208,12 @@ def build_analyze_transport(
             return aura_response if aura_response is not None else httpx.Response(
                 200, json={"data": empty_auras}
             )
+        if name == "EnemyDebuffs":
+            if debuff_requests is not None:
+                debuff_requests.append(body["variables"]["code"])
+            failing = (debuff_status_by_code or {}).get(body["variables"]["code"])
+            if failing is not None:
+                return httpx.Response(failing, json={"error": "boom"})
         if name == "EnemyDebuffs" and debuff_rows_by_code is not None:
             debuff_rows = debuff_rows_by_code.get(body["variables"]["code"], [])
             return httpx.Response(
@@ -2281,6 +2294,8 @@ def run_analyze(
     death_events: list[dict[str, Any]] | None = None,
     teammates: tuple[tuple[str, str, str], ...] = (),
     debuff_rows_by_code: dict[str, list[dict[str, Any]]] | None = None,
+    debuff_status_by_code: dict[str, int] | None = None,
+    debuff_requests: list[str] | None = None,
 ) -> Any:
     """Invoke `analyze abc123`, mocking the report queries and both leaderboards."""
     transport = build_analyze_transport(
@@ -2294,6 +2309,8 @@ def run_analyze(
         aura_rows_by_code=aura_rows_by_code,
         teammates=teammates,
         debuff_rows_by_code=debuff_rows_by_code,
+        debuff_status_by_code=debuff_status_by_code,
+        debuff_requests=debuff_requests,
     )
     return _invoke(tmp_path, list(extra_args), transport)
 
@@ -2672,19 +2689,21 @@ def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: 
     assert calls.count("Actors") == 2
 
 
+def on_the_boss(apply_ms: int, remove_ms: int) -> list[dict[str, Any]]:
+    """One debuff of actor 693's, on the fixture's one boss (actor 699), over a span."""
+    return [
+        {"type": "applydebuff", "abilityGameID": 55078, "sourceID": 693,
+         "targetID": 699, "timestamp": apply_ms},
+        {"type": "removedebuff", "abilityGameID": 55078, "sourceID": 693,
+         "targetID": 699, "timestamp": remove_ms},
+    ]
+
+
 def test_a_compared_run_reads_both_sides_debuffs_on_the_boss(tmp_path: Path) -> None:
     """One parse reference is below the floor, so the gap is stated pairwise.
     Ours kept the debuff on the boss for 1s of its 4s pull and theirs for all
     4s, a 25% against 100% gap that clears every threshold.
     """
-    def on_the_boss(apply_ms: int, remove_ms: int) -> list[dict[str, Any]]:
-        return [
-            {"type": "applydebuff", "abilityGameID": 55078, "sourceID": 693,
-             "targetID": 699, "timestamp": apply_ms},
-            {"type": "removedebuff", "abilityGameID": 55078, "sourceID": 693,
-             "targetID": 699, "timestamp": remove_ms},
-        ]
-
     calls: list[str] = []
     result = run_analyze(
         tmp_path,
@@ -2709,6 +2728,91 @@ def test_no_compare_reads_no_debuff_stream(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
     assert "EnemyDebuffs" not in calls
+
+
+def boss_finding(tmp_path: Path, finding_id: str) -> dict[str, Any]:
+    """The one finding of that id in the findings file `analyze` wrote."""
+    [found] = [
+        one for one in written_findings(tmp_path)["findings"] if one["id"] == finding_id
+    ]
+    return cast(dict[str, Any], found)
+
+
+def test_our_own_failed_debuff_stream_still_writes_the_report_and_says_so(
+    tmp_path: Path,
+) -> None:
+    """Drives the swallow in `cli._debuff_log`: a 500 on our stream must not
+    discard a report already paid for, and the finding names our side as absent."""
+    result = run_analyze(
+        tmp_path,
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        debuff_rows_by_code={PARSE_REFERENCE_CODE: on_the_boss(1000, 5000)},
+        debuff_status_by_code={"abc123": 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    unavailable = boss_finding(tmp_path, "compare.uptime.boss.unavailable.emberkin-0")
+    assert "our debuff data absent" in unavailable["evidence"]
+    ids = [one["id"] for one in written_findings(tmp_path)["findings"]]
+    assert "compare.uptime.boss.0.emberkin-0" not in ids
+
+
+def test_a_reference_whose_debuff_stream_failed_is_counted_as_having_none(
+    tmp_path: Path,
+) -> None:
+    """The run survives, and the finding is not the gap a working reference
+    would give: no reference in the sample returned any debuff data."""
+    result = run_analyze(
+        tmp_path,
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        debuff_rows_by_code={"abc123": on_the_boss(1000, 2000)},
+        debuff_status_by_code={PARSE_REFERENCE_CODE: 500},
+    )
+
+    assert result.exit_code == 0, result.output
+    unavailable = boss_finding(tmp_path, "compare.uptime.boss.unavailable.emberkin-0")
+    assert "0 of 1 references returned debuff data" in unavailable["evidence"]
+    ids = [one["id"] for one in written_findings(tmp_path)["findings"]]
+    assert "compare.uptime.boss.0.emberkin-0" not in ids
+
+
+def test_our_failed_debuff_stream_is_asked_for_once_across_subjects(tmp_path: Path) -> None:
+    """A failure is not cached on disk, so only the memoised reader keeps the
+    second subject from asking for our stream again."""
+    requests: list[str] = []
+
+    result = run_analyze(
+        tmp_path,
+        "--player", "Emberkin", "--player", "Stonewake",
+        teammates=ANALYZE_TEAMMATES,
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        debuff_status_by_code={"abc123": 500},
+        debuff_requests=requests,
+    )
+
+    assert result.exit_code == 0, result.output
+    assert written_findings(tmp_path)["comparison"]["players"] == ["emberkin-0", "stonewake-1"]
+    assert requests.count("abc123") == 1
+
+
+@pytest.mark.parametrize("spent", ["abc123", PARSE_REFERENCE_CODE])
+def test_a_spent_budget_on_a_debuff_stream_stops_analyze(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spent: str
+) -> None:
+    """A refusal that outlasts the client's waits is every later request's
+    failure, ours or a reference's: `RateLimitExceeded` is a `WclError`, and
+    swallowing it as one stream's absence would walk on into the next."""
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+
+    result = run_analyze(
+        tmp_path,
+        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
+        debuff_status_by_code={spent: 429},
+    )
+
+    assert result.exit_code == 1
+    assert "hourly point budget is spent" in plain(result.output)
+    assert not list((tmp_path / "out").glob("*.findings.json"))
 
 
 def test_no_compare_skips_both_references(tmp_path: Path) -> None:

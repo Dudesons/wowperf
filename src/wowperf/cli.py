@@ -1389,7 +1389,9 @@ def _fetch_parse_boss_debuffs(
     found in its own roster is left without debuff data, unfetched. Our own
     side is built only once some member's counterpart resolves. `our_log` is
     shared across every subject of one run, because the stream covers the
-    whole group: the caller memoises it, so it is fetched once at most.
+    whole group: the caller memoises it, so our stream is requested once at
+    most. A reference's stream is paid for once, and a later subject drawing
+    the same reference reads it back from the disk cache.
     """
     ours: BossDebuffs | None = None
     ours_built = False
@@ -1570,8 +1572,9 @@ def analyze(
             )
 
             # One enemy-debuff stream covers the whole group, so every subject
-            # reads the same one: memoised, it is fetched once at most, and only
-            # once some member's counterpart resolves.
+            # reads the same one: memoised, it is requested once at most (a
+            # failure is not cached on disk, so the memo is what stops a second
+            # request), and only once some member's counterpart resolves.
             our_debuff_log = functools.cache(
                 lambda: _debuff_log(repository, loaded.run.report_code, loaded.run.fight_id)
             )
