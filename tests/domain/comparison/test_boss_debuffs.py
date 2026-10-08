@@ -3,9 +3,9 @@
 
 import pytest
 
-from wowperf.domain.auras import uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import (
     SHARED_OVERLAP_TOLERANCE_S,
+    BossTarget,
     BossWindow,
     Withheld,
     boss_debuffs,
@@ -86,7 +86,7 @@ def test_a_single_boss_is_measured_over_its_own_pull_and_trash_is_not() -> None:
             name=BOSS_NAME,
             start_ms=10_000,
             end_ms=70_000,
-            boss_game_id=BOSS_GAME,
+            targets=(BossTarget(game_id=BOSS_GAME, start_ms=10_000, end_ms=70_000),),
         ),
     )
 
@@ -104,9 +104,8 @@ def test_only_the_debuff_on_the_boss_counts() -> None:
         RUN_PLAYERS,
     )
 
-    [aura] = mine.auras
-    assert (aura.ability_id, aura.name, aura.total_uptime_ms) == (DOT, "Blood Plague", 30_000)
-    assert [(band.start_ms, band.end_ms) for band in aura.bands] == [(20_000, 50_000)]
+    assert mine.covered == ((2001, DOT, 30_000),)
+    assert mine.names == ((DOT, "Blood Plague"),)
     assert mine.seconds == 60.0
 
 
@@ -115,7 +114,7 @@ def test_an_interval_reaching_past_the_pull_is_clipped_to_it() -> None:
         a_log(an_event(True, 5_000), an_event(False, 75_000)), (BOSS_PULL,), PLAYER, RUN_PLAYERS
     )
 
-    assert [(band.start_ms, band.end_ms) for band in mine.auras[0].bands] == [(10_000, 70_000)]
+    assert mine.covered == ((2001, DOT, 60_000),)
 
 
 def test_a_pet_counts_for_its_owner_and_an_overlap_counts_once() -> None:
@@ -131,9 +130,7 @@ def test_a_pet_counts_for_its_owner_and_an_overlap_counts_once() -> None:
         RUN_PLAYERS,
     )
 
-    [aura] = mine.auras
-    assert uptime_seconds_in(aura, mine.measured) == 40.0
-    assert aura.total_uptime_ms == 40_000
+    assert mine.covered_seconds(DOT) == 40.0
 
 
 def test_another_players_debuff_is_not_this_players() -> None:
@@ -144,7 +141,7 @@ def test_another_players_debuff_is_not_this_players() -> None:
         RUN_PLAYERS,
     )
 
-    assert mine.auras == ()
+    assert mine.covered == ()
 
 
 def test_a_council_is_withheld_and_counts_no_seconds() -> None:
@@ -166,7 +163,7 @@ def test_a_council_is_withheld_and_counts_no_seconds() -> None:
     )
 
     assert [window.withheld for window in mine.windows] == [Withheld.COUNCIL]
-    assert (mine.seconds, mine.auras) == (0.0, ())
+    assert (mine.seconds, mine.covered) == (0.0, ())
 
 
 def test_a_boss_pull_with_no_boss_flagged_enemy_is_withheld() -> None:
@@ -184,7 +181,7 @@ def test_a_boss_whose_name_only_begins_the_pulls_is_still_the_boss() -> None:
     pull = a_pull(1, 10_000, 70_000, encounter_id=2001, name="Vashnik the Malignant")
     actors = (NpcActor(actor_id=BOSS_ACTOR, game_id=BOSS_GAME, name="Vashnik", sub_type="Boss"),)
 
-    assert [window.boss_game_id for window in boss_windows_of((pull,), actors)] == [BOSS_GAME]
+    assert [boss_ids(window) for window in boss_windows_of((pull,), actors)] == [(BOSS_GAME,)]
 
 
 def test_the_pairing_tally_rides_along() -> None:
@@ -265,6 +262,11 @@ def an_enemy(actor_id: int, game_id: int, name: str, sub_type: str = "NPC") -> N
     return NpcActor(actor_id=actor_id, game_id=game_id, name=name, sub_type=sub_type)
 
 
+def boss_ids(window: BossWindow) -> tuple[int, ...]:
+    """The game ids a window is measured on, in order."""
+    return tuple(target.game_id for target in window.targets)
+
+
 def test_an_unflagged_enemy_named_after_the_pull_is_its_boss() -> None:
     window = the_window_of(
         BOSS_NAME,
@@ -272,7 +274,7 @@ def test_an_unflagged_enemy_named_after_the_pull_is_its_boss() -> None:
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_a_name_match_beats_a_boss_flagged_add() -> None:
@@ -282,7 +284,7 @@ def test_a_name_match_beats_a_boss_flagged_add() -> None:
         an_enemy(SECOND, SECOND_GAME, "Fixture Add", "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_an_unflagged_pair_named_for_both_is_a_council() -> None:
@@ -293,7 +295,7 @@ def test_an_unflagged_pair_named_for_both_is_a_council() -> None:
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
 
 
 def test_an_unflagged_enemy_whose_name_only_begins_the_pulls_is_its_boss() -> None:
@@ -305,7 +307,7 @@ def test_an_unflagged_enemy_whose_name_only_begins_the_pulls_is_its_boss() -> No
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_a_flagged_pair_whose_first_name_begins_the_pulls_is_a_council_not_that_boss() -> None:
@@ -315,7 +317,7 @@ def test_a_flagged_pair_whose_first_name_begins_the_pulls_is_a_council_not_that_
         an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
 
 
 def test_a_pull_named_for_two_bosses_with_one_in_it_is_still_a_council() -> None:
@@ -325,7 +327,7 @@ def test_a_pull_named_for_two_bosses_with_one_in_it_is_still_a_council() -> None
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
 
 
 def test_one_boss_logged_under_two_actor_ids_is_one_boss() -> None:
@@ -335,7 +337,7 @@ def test_one_boss_logged_under_two_actor_ids_is_one_boss() -> None:
         an_enemy(THIRD, FIRST_GAME, BOSS_NAME, "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_one_flagged_boss_logged_under_two_actor_ids_is_one_boss_when_no_name_matches() -> None:
@@ -345,7 +347,7 @@ def test_one_flagged_boss_logged_under_two_actor_ids_is_one_boss_when_no_name_ma
         an_enemy(THIRD, FIRST_GAME, "Alpha Fixture", "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_a_pull_named_for_no_enemy_reads_its_one_flagged_enemy() -> None:
@@ -355,7 +357,7 @@ def test_a_pull_named_for_no_enemy_reads_its_one_flagged_enemy() -> None:
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_a_pull_named_for_no_enemy_reads_two_flagged_enemies_as_a_council() -> None:
@@ -365,7 +367,7 @@ def test_a_pull_named_for_no_enemy_reads_two_flagged_enemies_as_a_council() -> N
         an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
 
 
 def test_a_pull_named_for_no_enemy_and_holding_no_flagged_one_has_no_boss() -> None:
@@ -375,7 +377,7 @@ def test_a_pull_named_for_no_enemy_and_holding_no_flagged_one_has_no_boss() -> N
         an_enemy(SECOND, SECOND_GAME, "Another Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.NO_BOSS)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.NO_BOSS)
 
 
 def test_a_comma_in_the_pulls_name_is_a_title_not_a_second_boss() -> None:
@@ -385,7 +387,7 @@ def test_a_comma_in_the_pulls_name_is_a_title_not_a_second_boss() -> None:
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (FIRST_GAME, None)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_a_part_matched_by_two_game_ids_is_no_boss_and_does_not_fall_back_to_a_flag() -> None:
@@ -396,7 +398,7 @@ def test_a_part_matched_by_two_game_ids_is_no_boss_and_does_not_fall_back_to_a_f
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add", "Boss"),
     )
 
-    assert (window.boss_game_id, window.withheld) == (None, Withheld.NO_BOSS)
+    assert (boss_ids(window), window.withheld) == ((), Withheld.NO_BOSS)
 
 
 def held(source: int, start_ms: int, end_ms: int) -> tuple[DebuffEvent, DebuffEvent]:
@@ -419,7 +421,7 @@ def test_a_debuff_one_teammates_application_replaces_is_shared_with_them() -> No
     assert mine.shared_with == ((DOT, (OTHER,)),)
     assert theirs.shared_with == ((DOT, (PLAYER,)),)
     # Shared changes no figure: our own seconds are still ours alone.
-    assert mine.auras[0].total_uptime_ms == 40_000
+    assert mine.covered_seconds(DOT) == 40.0
 
 
 def test_copies_of_one_debuff_that_coexist_are_each_casters_own() -> None:
@@ -489,7 +491,7 @@ def test_our_zero_is_shared_when_two_teammates_took_the_debuff_over_from_each_ot
         RUN_PLAYERS,
     )
 
-    assert mine.auras == ()
+    assert mine.covered == ()
     assert mine.shared_with == ((DOT, (OTHER, THIRD_PLAYER)),)
 
 
@@ -549,3 +551,22 @@ def test_without_the_runs_players_nothing_is_shared() -> None:
     )
 
     assert mine.shared_with == ()
+
+
+def test_covered_seconds_merge_a_players_and_their_pets_copies_on_one_boss() -> None:
+    # Ours 20-50s, our pet 40-60s, ours again 65-80s (clipped to the pull's 70s):
+    # 20-60 merged is 40s, plus 65-70 is 5s. A sum of the parts would read 65s.
+    mine = boss_debuffs(
+        a_log(
+            *held(PLAYER, 20_000, 50_000),
+            *held(PET, 40_000, 60_000),
+            *held(PLAYER, 65_000, 80_000),
+        ),
+        (BOSS_PULL,),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.covered == ((2001, DOT, 45_000),)
+    assert mine.covered_seconds(DOT, 2001) == 45.0
+    assert mine.covered_seconds(DOT, 9999) == 0.0

@@ -20,9 +20,7 @@ from wowperf.domain.comparison.statistics import count_phrase, median, observed_
 from wowperf.domain.comparison.uptime import (
     MAX_AURAS_REPORTED,
     carried_fractions,
-    fractions_of,
     pairwise_gaps,
-    seconds_up_in,
     uptime_measures,
 )
 from wowperf.domain.comparison.wording import DUNGEON
@@ -42,11 +40,14 @@ GAP_DETAIL = (
 
 
 def debuff_fractions(debuffs: BossDebuffs) -> dict[int, tuple[str, float]]:
-    """Ability id to (name, share of measured boss seconds the boss carried it)."""
+    """Ability id to (name, share of measured boss-alive seconds it covered)."""
     seconds = debuffs.seconds
     if seconds <= 0:
         return {}
-    return fractions_of(debuffs.auras, seconds_up_in(debuffs.measured), seconds)
+    return {
+        ability_id: (name, debuffs.covered_seconds(ability_id) / seconds)
+        for ability_id, name in debuffs.names
+    }
 
 
 def per_member_fractions(

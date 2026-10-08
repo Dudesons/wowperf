@@ -5,7 +5,7 @@ import re
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment, align_pulls
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossWindow
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossTarget, BossWindow
 from wowperf.domain.comparison.confounds import declare_confounds_sample
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
@@ -145,18 +145,11 @@ def _boss_debuffs(start_ms: int, seconds: float, share: float) -> BossDebuffs:
                 name="Boss",
                 start_ms=start_ms,
                 end_ms=end_ms,
-                boss_game_id=99,
+                targets=(BossTarget(game_id=99, start_ms=start_ms, end_ms=end_ms),),
             ),
         ),
-        auras=(
-            Aura(
-                ability_id=UPTIME_BOSS_ABILITY_ID,
-                name=UPTIME_BOSS_ABILITY_NAME,
-                total_uptime_ms=up_ms,
-                uses=1,
-                bands=(AuraBand(start_ms=start_ms, end_ms=start_ms + up_ms),),
-            ),
-        ),
+        covered=((BOSS_ENCOUNTER_ID, UPTIME_BOSS_ABILITY_ID, up_ms),),
+        names=((UPTIME_BOSS_ABILITY_ID, UPTIME_BOSS_ABILITY_NAME),),
     )
 
 

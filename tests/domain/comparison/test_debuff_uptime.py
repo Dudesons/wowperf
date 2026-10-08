@@ -12,9 +12,9 @@ from tests.domain.comparison.test_boss_debuffs import (
     held,
 )
 from tests.domain.comparison.test_uptime import BOSS, a_player, a_run
-from wowperf.domain.auras import Aura, AuraBand
 from wowperf.domain.comparison.boss_debuffs import (
     BossDebuffs,
+    BossTarget,
     BossWindow,
     Withheld,
     boss_debuffs,
@@ -40,20 +40,20 @@ def on_the_boss(*shares: tuple[int, str, float], seconds: float = 100.0) -> Boss
     """One measured boss pull of `seconds`, each debuff on it for its share from the pull."""
     end_ms = int(seconds * 1000)
     window = BossWindow(
-        encounter_id=2001, name="The Test Colossus", start_ms=0, end_ms=end_ms, boss_game_id=5000
+        encounter_id=2001,
+        name="The Test Colossus",
+        start_ms=0,
+        end_ms=end_ms,
+        targets=(BossTarget(game_id=5000, start_ms=0, end_ms=end_ms),),
     )
-    auras = tuple(
-        Aura(
-            ability_id=ability_id,
-            name=name,
-            total_uptime_ms=int(end_ms * share),
-            uses=1,
-            bands=(AuraBand(start_ms=0, end_ms=int(end_ms * share)),),
-        )
-        for ability_id, name, share in shares
-        if share > 0
+    carried = [(ability_id, name, share) for ability_id, name, share in shares if share > 0]
+    return BossDebuffs(
+        windows=(window,),
+        covered=tuple(
+            (2001, ability_id, int(end_ms * share)) for ability_id, _, share in carried
+        ),
+        names=tuple((ability_id, name) for ability_id, name, _ in carried),
     )
-    return BossDebuffs(windows=(window,), auras=auras)
 
 
 def a_member(name: str, debuffs: BossDebuffs | None) -> ParseMember:
@@ -207,40 +207,39 @@ def test_the_service_files_the_gap_under_the_players_own_slug() -> None:
 
 
 FIRST = BossWindow(
-    encounter_id=2001, name="First Boss", start_ms=0, end_ms=100_000, boss_game_id=5000
+    encounter_id=2001,
+    name="First Boss",
+    start_ms=0,
+    end_ms=100_000,
+    targets=(BossTarget(game_id=5000, start_ms=0, end_ms=100_000),),
 )
 SECOND = BossWindow(
     encounter_id=2002,
     name="Second Boss",
     start_ms=200_000,
     end_ms=300_000,
-    boss_game_id=6000,
+    targets=(BossTarget(game_id=6000, start_ms=200_000, end_ms=300_000),),
 )
-SECOND_COUNCIL = SECOND.model_copy(update={"boss_game_id": None, "withheld": Withheld.COUNCIL})
+SECOND_COUNCIL = SECOND.model_copy(update={"targets": (), "withheld": Withheld.COUNCIL})
 
 
 def on_two_bosses(
-    first: float, second: float, *, windows: tuple[BossWindow, ...] = (FIRST, SECOND)
+    first: float,
+    second: float,
+    *,
+    windows: tuple[BossWindow, ...] = (FIRST, SECOND),
+    second_encounter: int = 2002,
 ) -> BossDebuffs:
-    bands = []
+    covered = []
     if first > 0:
-        bands.append(AuraBand(start_ms=0, end_ms=int(100_000 * first)))
+        covered.append((2001, DOT, int(100_000 * first)))
     if second > 0:
-        bands.append(AuraBand(start_ms=200_000, end_ms=200_000 + int(100_000 * second)))
-    auras = (
-        (
-            Aura(
-                ability_id=DOT,
-                name=DOT_NAME,
-                total_uptime_ms=0,
-                uses=len(bands),
-                bands=tuple(bands),
-            ),
-        )
-        if bands
-        else ()
+        covered.append((second_encounter, DOT, int(100_000 * second)))
+    return BossDebuffs(
+        windows=windows,
+        covered=tuple(covered),
+        names=((DOT, DOT_NAME),) if covered else (),
     )
-    return BossDebuffs(windows=windows, auras=auras)
 
 
 def a_two_boss_sample(*members: BossDebuffs) -> ParseSample:
@@ -269,12 +268,23 @@ def test_a_row_carries_the_overall_verdict_and_one_cell_per_boss() -> None:
 def test_a_boss_fought_twice_is_one_column_and_one_cell_summed_over_both_pulls() -> None:
     # A wipe, then the kill: two windows sharing one encounter id. 50s of the
     # first pull's 100s and 90s of the second's make 140s of 200s.
-    kill = FIRST.model_copy(update={"start_ms": 200_000, "end_ms": 300_000})
+    kill = FIRST.model_copy(
+        update={
+            "start_ms": 200_000,
+            "end_ms": 300_000,
+            "targets": (BossTarget(game_id=5000, start_ms=200_000, end_ms=300_000),),
+        }
+    )
     sample = a_two_boss_sample(
-        *(on_two_bosses(0.9, 0.9, windows=(FIRST, kill)) for _ in range(3))
+        *(
+            on_two_bosses(0.9, 0.9, windows=(FIRST, kill), second_encounter=2001)
+            for _ in range(3)
+        )
     )
 
-    table = boss_debuff_table(on_two_bosses(0.5, 0.9, windows=(FIRST, kill)), sample)
+    table = boss_debuff_table(
+        on_two_bosses(0.5, 0.9, windows=(FIRST, kill), second_encounter=2001), sample
+    )
 
     assert table.bosses == ("First Boss",)
     assert table.seconds == 200.0

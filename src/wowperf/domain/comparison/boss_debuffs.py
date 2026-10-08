@@ -1,16 +1,18 @@
 # ABOUTME: One player's debuffs on each boss, rebuilt from the group's paired debuff intervals.
-# ABOUTME: A single boss is measured over its own pull; a council or a missing boss is withheld.
+# ABOUTME: Covered seconds per boss target, summed; a council or a missing boss is withheld.
 
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from enum import StrEnum
 from itertools import combinations
 
-from wowperf.domain.auras import Aura, AuraBand, uptime_seconds_in
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace_boss import NpcActor, find_bosses, named_after
 from wowperf.domain.debuffs import DebuffLog, PairingTally, pair_debuffs
 from wowperf.domain.model import Pull
+
+Span = tuple[int, int]
+"""A start and an end, in milliseconds of the log's clock."""
 
 SHARED_OVERLAP_TOLERANCE_S = 1.0
 """The most two players' copies of one debuff may overlap, in total, and still be one slot.
@@ -39,46 +41,67 @@ class Withheld(StrEnum):
     TOO_FEW = "too few references"
 
 
-class BossWindow(Frozen):
-    """One boss pull, and the boss it is measured on, or why it is not."""
+class BossTarget(Frozen):
+    """One boss of a measured pull, and the span its figure is drawn over."""
 
-    encounter_id: int
-    name: str
+    game_id: int
     start_ms: int
     end_ms: int
-    boss_game_id: int | None = None
-    withheld: Withheld | None = None
 
     @property
     def seconds(self) -> float:
         return (self.end_ms - self.start_ms) / 1000
 
 
-class BossDebuffs(Frozen):
-    """One player's debuffs on the bosses of one run, as auras with bands.
+class BossWindow(Frozen):
+    """One boss pull, and the bosses it is measured on, or why it is not."""
 
-    The `Aura` shape is the buff family's own, so the same arithmetic reads
-    both: `uptime_seconds_in` merges overlapping bands, which is what keeps a
-    player's and their pet's copies of one debuff from counting twice.
+    encounter_id: int
+    name: str
+    start_ms: int
+    end_ms: int
+    targets: tuple[BossTarget, ...] = ()
+    withheld: Withheld | None = None
+
+    @property
+    def seconds(self) -> float:
+        """Boss-alive seconds: each target's span, summed. A withheld pull has none."""
+        return sum(target.seconds for target in self.targets)
+
+
+class BossDebuffs(Frozen):
+    """One player's debuffs on the bosses of one run, as seconds covered per boss.
+
+    A player's and their pets' copies of one debuff on one boss are merged
+    before they are counted, so a second is never counted twice on one boss.
+    A second covered on two bosses at once counts on each: the figure is
+    coverage, debuff-seconds over boss-alive seconds.
     """
 
     windows: tuple[BossWindow, ...] = ()
-    auras: tuple[Aura, ...] = ()
+    covered: tuple[tuple[int, int, int], ...] = ()
+    """(encounter id, ability id, milliseconds it covered that encounter's measured bosses)."""
+    names: tuple[tuple[int, str], ...] = ()
+    """(ability id, name), for every debuff in `covered`."""
     tally: PairingTally = PairingTally()
     shared_with: tuple[tuple[int, tuple[int, ...]], ...] = ()
     """(ability id, the other players' actor ids), for each debuff `find_shared` finds shared."""
 
     @property
-    def measured(self) -> tuple[tuple[int, int], ...]:
-        """The millisecond spans of the boss pulls a figure was drawn over."""
-        return tuple(
-            (window.start_ms, window.end_ms) for window in self.windows if window.withheld is None
-        )
-
-    @property
     def seconds(self) -> float:
-        """The denominator: single-boss pull seconds, withheld pulls left out."""
+        """The denominator: boss-alive seconds of the measured pulls, withheld ones left out."""
         return sum(window.seconds for window in self.windows if window.withheld is None)
+
+    def covered_seconds(self, ability_id: int, encounter_id: int | None = None) -> float:
+        """Seconds this debuff covered the measured bosses, of one encounter or of all."""
+        return (
+            sum(
+                ms
+                for encounter, ability, ms in self.covered
+                if ability == ability_id and (encounter_id is None or encounter == encounter_id)
+            )
+            / 1000
+        )
 
 
 def boss_game_id_of(
@@ -126,15 +149,16 @@ def boss_windows_of(
         found = boss_game_id_of(
             npc_actors, frozenset(enemy.actor_id for enemy in pull.enemies), pull.name
         )
-        boss_game_id, withheld = (None, found) if isinstance(found, Withheld) else (found, None)
         windows.append(
             BossWindow(
                 encounter_id=pull.encounter_id,
                 name=pull.name,
                 start_ms=pull.start_ms,
                 end_ms=pull.end_ms,
-                boss_game_id=boss_game_id,
-                withheld=withheld,
+                targets=()
+                if isinstance(found, Withheld)
+                else (BossTarget(game_id=found, start_ms=pull.start_ms, end_ms=pull.end_ms),),
+                withheld=found if isinstance(found, Withheld) else None,
             )
         )
     return tuple(windows)
@@ -146,7 +170,7 @@ def boss_debuffs(
     """What this player, and their pets, kept on each measured boss of this run.
 
     The boss is matched by game id, for the same reason the pairing keys on it.
-    Each interval is clipped to the pull it falls in.
+    Each interval is clipped to the span of the boss it sat on.
 
     `players` is the actor ids of the run's players, the only owners whose
     debuffs `find_shared` reads: a pet is already folded into its owner by the
@@ -155,61 +179,53 @@ def boss_debuffs(
     """
     windows = boss_windows_of(pulls, log.npc_actors)
     intervals, tally = pair_debuffs(log)
-    names = dict(log.ability_names)
     owners = players | {owner_id}
-    bands: dict[tuple[int, int], list[AuraBand]] = defaultdict(list)
-    for window in windows:
-        if window.withheld is not None:
-            continue
-        for one in intervals:
-            if one.owner_id not in owners or one.target_game_id != window.boss_game_id:
-                continue
-            start_ms = max(one.start_ms, window.start_ms)
-            end_ms = min(one.end_ms, window.end_ms)
-            if end_ms > start_ms:
-                bands[(one.owner_id, one.ability_id)].append(
-                    AuraBand(start_ms=start_ms, end_ms=end_ms)
-                )
+    held: dict[tuple[int, int], dict[tuple[int, int], list[Span]]] = {}
+    for index, window in enumerate(windows):
+        for target in window.targets:
+            for one in intervals:
+                if one.owner_id not in owners or one.target_game_id != target.game_id:
+                    continue
+                start_ms = max(one.start_ms, target.start_ms)
+                end_ms = min(one.end_ms, target.end_ms)
+                if end_ms > start_ms:
+                    by_target = held.setdefault((one.owner_id, one.ability_id), {})
+                    by_target.setdefault((index, target.game_id), []).append((start_ms, end_ms))
 
-    measured = tuple(
-        (window.start_ms, window.end_ms) for window in windows if window.withheld is None
-    )
-    held = {
-        (owner, ability_id): Aura(
-            ability_id=ability_id,
-            name=names.get(ability_id, f"Unknown ability {ability_id}"),
-            total_uptime_ms=0,
-            uses=len(found),
-            bands=tuple(sorted(found, key=lambda band: band.start_ms)),
-        )
-        for (owner, ability_id), found in bands.items()
-    }
-    auras: list[Aura] = []
-    for owner, ability_id in sorted(held):
+    covered: dict[tuple[int, int], int] = defaultdict(int)
+    for (owner, ability_id), by_target in held.items():
         if owner != owner_id:
             continue
-        aura = held[(owner, ability_id)]
-        total_ms = round(uptime_seconds_in(aura, measured) * 1000)
-        auras.append(aura.model_copy(update={"total_uptime_ms": total_ms}))
+        for (index, _), spans in by_target.items():
+            covered[(windows[index].encounter_id, ability_id)] += _length_ms(_merged(spans))
+    names = dict(log.ability_names)
     return BossDebuffs(
         windows=windows,
-        auras=tuple(auras),
+        covered=tuple(
+            (encounter_id, ability_id, ms)
+            for (encounter_id, ability_id), ms in sorted(covered.items())
+        ),
+        names=tuple(
+            (ability_id, names.get(ability_id, f"Unknown ability {ability_id}"))
+            for ability_id in sorted({ability_id for _, ability_id in covered})
+        ),
         tally=tally,
-        shared_with=find_shared(held, owner_id, measured),
+        shared_with=find_shared(held, owner_id),
     )
 
 
 def find_shared(
-    held: Mapping[tuple[int, int], Aura], owner_id: int, measured: tuple[tuple[int, int], ...]
+    held: Mapping[tuple[int, int], Mapping[tuple[int, int], Sequence[Span]]], owner_id: int
 ) -> tuple[tuple[int, tuple[int, ...]], ...]:
     """Each debuff this owner shares one slot of with other players, and who those are.
 
-    `held` is every player's bands on the measured bosses, keyed by (owner,
-    ability id), each with some time in it. A debuff is exclusive when at least
-    two owners held it and no two of them overlapped by more than
-    `SHARED_OVERLAP_TOLERANCE_S` in total: a teammate's application replaced
-    the one before it. Several owners holding it is not enough on its own,
-    since copies of a per-caster debuff coexist.
+    `held` is every player's clipped spans on the measured bosses, keyed by
+    (owner, ability id) and then by (window index, boss game id). A debuff is
+    exclusive when at least two owners held it and no two of them overlapped by
+    more than `SHARED_OVERLAP_TOLERANCE_S` in total, the overlaps measured
+    boss by boss and summed: a teammate's application replaced the one before
+    it. Several owners holding it is not enough on its own, since copies of a
+    per-caster debuff coexist.
 
     It is shared with this owner when it is exclusive and someone else held it.
     That includes a debuff this owner never held, once two others took it over
@@ -217,43 +233,59 @@ def find_shared(
     exclusivity has no second owner to be measured against, so the debuff is
     not shared and its zero stays unjudged.
     """
-    holders: dict[int, dict[int, Aura]] = defaultdict(dict)
-    for (owner, ability_id), aura in held.items():
-        holders[ability_id][owner] = aura
+    holders: dict[int, dict[int, dict[tuple[int, int], list[Span]]]] = defaultdict(dict)
+    for (owner, ability_id), by_target in held.items():
+        holders[ability_id][owner] = {target: _merged(spans) for target, spans in by_target.items()}
 
     shared: list[tuple[int, tuple[int, ...]]] = []
     for ability_id in sorted(holders):
-        auras = holders[ability_id]
-        others = tuple(sorted(owner for owner in auras if owner != owner_id))
-        exclusive = len(auras) >= 2 and all(
-            _overlap_ms(first, second, measured) <= SHARED_OVERLAP_TOLERANCE_S * 1000
-            for first, second in combinations(auras.values(), 2)
+        owners = holders[ability_id]
+        others = tuple(sorted(owner for owner in owners if owner != owner_id))
+        exclusive = len(owners) >= 2 and all(
+            _overlap_ms(first, second) <= SHARED_OVERLAP_TOLERANCE_S * 1000
+            for first, second in combinations(owners.values(), 2)
         )
         if exclusive and others:
             shared.append((ability_id, others))
     return tuple(shared)
 
 
-def _overlap_ms(first: Aura, second: Aura, measured: tuple[tuple[int, int], ...]) -> int:
-    """The milliseconds two owners' bands of one debuff sat on the bosses at once.
+def _overlap_ms(
+    first: Mapping[tuple[int, int], Sequence[Span]],
+    second: Mapping[tuple[int, int], Sequence[Span]],
+) -> int:
+    """The milliseconds two owners' copies of one debuff sat on the same boss at once.
 
-    Each alone, less the two together: `uptime_seconds_in` merges what overlaps,
-    so the difference is exactly the time counted twice. Every band edge is a
-    whole millisecond, so rounding removes only the float's own error.
+    Boss by boss, each alone less the two together is exactly the time counted
+    twice; those are summed. Every edge is a whole millisecond, so it is exact.
     """
-    both = first.model_copy(update={"bands": first.bands + second.bands})
-    seconds = (
-        uptime_seconds_in(first, measured)
-        + uptime_seconds_in(second, measured)
-        - uptime_seconds_in(both, measured)
+    return sum(
+        _length_ms(first[target])
+        + _length_ms(second[target])
+        - _length_ms(_merged([*first[target], *second[target]]))
+        for target in first.keys() & second.keys()
     )
-    return round(seconds * 1000)
+
+
+def _merged(spans: Iterable[Span]) -> list[Span]:
+    """The spans, overlaps joined, in order."""
+    merged: list[Span] = []
+    for start, end in sorted(spans):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _length_ms(spans: Iterable[Span]) -> int:
+    return sum(end - start for start, end in spans)
 
 
 def encounter_share(
     debuffs: BossDebuffs, ability_id: int, encounter_id: int
 ) -> float | Withheld | None:
-    """The share of one boss's measured pulls this debuff was on it.
+    """The share of one encounter's boss-alive seconds this debuff covered.
 
     A boss fought more than once, after a wipe, is summed over its measured
     pulls. `Withheld` when every pull of it was withheld, giving the first
@@ -266,8 +298,4 @@ def encounter_share(
     seconds = sum(window.seconds for window in measured)
     if seconds <= 0:
         return None
-    aura = next((one for one in debuffs.auras if one.ability_id == ability_id), None)
-    if aura is None:
-        return 0.0
-    spans = tuple((window.start_ms, window.end_ms) for window in measured)
-    return uptime_seconds_in(aura, spans) / seconds
+    return debuffs.covered_seconds(ability_id, encounter_id) / seconds

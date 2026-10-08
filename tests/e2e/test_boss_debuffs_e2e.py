@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from wowperf.cli import build_repository
-from wowperf.domain.auras import uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import boss_debuffs, boss_windows_of
 from wowperf.domain.debuffs import pair_debuffs
 from wowperf.urls import parse_report_url
@@ -36,9 +35,9 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     for player in run.players:
         mine = boss_debuffs(log, run.pulls, player.actor_id, players)
         assert len(mine.windows) == len(boss_pulls)
-        for aura in mine.auras:
-            # An uptime cannot exceed the stretch it was measured over.
-            assert uptime_seconds_in(aura, mine.measured) <= mine.seconds + 1e-9, aura.name
+        for ability_id, name in mine.names:
+            # A share cannot exceed the boss-alive time it was measured over.
+            assert mine.covered_seconds(ability_id) <= mine.seconds + 1e-9, name
             landed += 1
     assert landed, "no player's debuff landed on any measured boss of this key"
 
@@ -50,7 +49,7 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     # Mirror Image; a key without one passes under any pairing.
     measured = [w for w in boss_windows_of(run.pulls, log.npc_actors) if w.withheld is None]
     assert measured, "a real key has at least one boss pull with a single boss"
-    boss_ids = {window.boss_game_id for window in measured}
+    boss_ids = {target.game_id for window in measured for target in window.targets}
     last_end = max(window.end_ms for window in measured)
     names = dict(log.ability_names)
     intervals, _ = pair_debuffs(log)
