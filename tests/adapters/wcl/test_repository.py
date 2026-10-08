@@ -1333,6 +1333,26 @@ def test_the_debuff_log_reads_the_stream_and_the_actors_of_one_fight(tmp_path: P
     assert {"EnemyDebuffs", "Actors", "Abilities"} <= set(calls)
 
 
+def test_the_debuff_log_carries_the_fights_enemy_deaths(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    log = recording_repository(calls, tmp_path).debuff_log("abc123", 36)
+
+    assert log.deaths == ((244889, 15000),)
+    assert "EnemyDeaths" in calls
+
+
+def test_the_debuff_logs_deaths_cost_nothing_after_a_load(tmp_path: Path) -> None:
+    """Our own run's full load already read EnemyDeaths with the same variables."""
+    calls: list[str] = []
+    repository = recording_repository(calls, tmp_path)
+
+    repository.load("abc123", 36)
+    repository.debuff_log("abc123", 36)
+
+    assert calls.count("EnemyDeaths") == 1
+
+
 def test_the_enemy_debuff_query_asks_for_debuffs_on_enemies() -> None:
     assert "query EnemyDebuffs(" in ENEMY_DEBUFFS_QUERY
     assert "dataType: Debuffs" in ENEMY_DEBUFFS_QUERY

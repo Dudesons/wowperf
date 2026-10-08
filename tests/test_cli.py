@@ -2681,7 +2681,10 @@ def test_a_reference_does_not_pay_for_the_streams_no_comparison_reads(tmp_path: 
     # of one below are a trimmed reference and not an absent one.
     assert calls.count("Casts") > 1
     assert calls.count("DamageTaken") == 1
-    assert calls.count("EnemyDeaths") == 1
+    # Ours, from its full load, and the parse reference's own: a council boss's
+    # life ends at its death on either side. Our own second read, inside
+    # debuff_log, is a cache hit; the speed reference reads none.
+    assert calls.count("EnemyDeaths") == 2
     assert calls.count("Resurrects") == 1
     # Ours, and the parse reference's own: its boss debuffs need its pets and
     # its boss flags. Our own second read is a cache hit. The speed reference

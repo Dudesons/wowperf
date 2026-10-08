@@ -62,3 +62,23 @@ def test_only_npcs_are_offered_to_the_boss_finder_and_missing_names_read_empty()
 def test_names_and_the_fight_end_ride_along() -> None:
     log = a_log()
     assert (log.ability_names, log.end_ms) == (((55078, "Blood Plague"),), 9000)
+
+
+def test_enemy_deaths_ride_along_by_game_id_and_unknown_actors_are_skipped() -> None:
+    log = build_debuff_log(
+        EVENTS,
+        ACTORS,
+        {55078: "Blood Plague"},
+        9000,
+        death_events=[
+            {"type": "death", "targetID": 279, "timestamp": 8000},
+            {"type": "death", "targetID": 12345, "timestamp": 8100},
+            {"type": "resurrect", "targetID": 279, "timestamp": 8200},
+        ],
+    )
+
+    assert log.deaths == ((999, 8000),)
+
+
+def test_no_death_events_mean_no_deaths() -> None:
+    assert a_log().deaths == ()

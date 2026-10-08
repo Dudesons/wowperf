@@ -1,6 +1,7 @@
 # ABOUTME: Translates Warcraft Logs report JSON into the domain model.
 # ABOUTME: The only module that knows Warcraft Logs field names; everything downstream is clean.
 
+from collections.abc import Sequence
 from typing import Any
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
@@ -485,8 +486,13 @@ def build_debuff_log(
     actors: list[dict[str, Any]],
     ability_names: dict[int, str],
     end_ms: int,
+    death_events: Sequence[dict[str, Any]] = (),
 ) -> DebuffLog:
-    """The enemy-debuff stream and the report's actors, as one log a player can be read off."""
+    """The enemy-debuff stream and the report's actors, as one log a player can be read off.
+
+    A death on an actor with no game id is skipped, because it cannot be a boss the figure measures.
+    """
+    game_ids = {actor["id"]: actor["gameID"] for actor in actors if actor.get("gameID") is not None}
     return DebuffLog(
         events=tuple(
             DebuffEvent(
@@ -506,9 +512,7 @@ def build_debuff_log(
             for actor in actors
             if actor.get("petOwner") is not None
         ),
-        game_ids=tuple(
-            (actor["id"], actor["gameID"]) for actor in actors if actor.get("gameID") is not None
-        ),
+        game_ids=tuple(game_ids.items()),
         npc_actors=tuple(
             NpcActor(
                 actor_id=actor["id"],
@@ -521,6 +525,11 @@ def build_debuff_log(
         ),
         ability_names=tuple(sorted(ability_names.items())),
         end_ms=end_ms,
+        deaths=tuple(
+            (game_ids[event["targetID"]], event["timestamp"])
+            for event in death_events
+            if event.get("type") == "death" and event.get("targetID") in game_ids
+        ),
     )
 
 

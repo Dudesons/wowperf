@@ -1135,20 +1135,30 @@ class WclRunRepository:
         compared run reads it, and one stream serves every player in the group,
         so the caller fetches it once per run. The fight's window and its end
         come from the report the cache already holds.
+
+        The fight's enemy deaths ride along, because a council boss's life ends
+        at its death. On our own run, the full load already read them, so it
+        costs nothing; a reference pays about one point.
         """
         report = self._report(report_code)
         fight = select_keystone_fight(report["fights"], fight_id)
         ability_names, _ = self._ability_dictionary(report_code)
-        events = fetch_all_events(
-            lambda one_query, variables: self._query(one_query, variables),
-            ENEMY_DEBUFFS_QUERY,
-            {
-                "code": report_code,
-                "fightId": fight["id"],
-                "startTime": float(fight["startTime"]),
-                "endTime": float(fight["endTime"]),
-            },
-        )
+        variables = {
+            "code": report_code,
+            "fightId": fight["id"],
+            "startTime": float(fight["startTime"]),
+            "endTime": float(fight["endTime"]),
+        }
+
+        def query(one_query: str, query_variables: dict[str, Any]) -> dict[str, Any]:
+            return self._query(one_query, query_variables)
+
+        events = fetch_all_events(query, ENEMY_DEBUFFS_QUERY, variables)
+        death_events = fetch_all_events(query, ENEMY_DEATHS_QUERY, variables)
         return build_debuff_log(
-            events, self._actors(report_code), ability_names, int(fight["endTime"])
+            events,
+            self._actors(report_code),
+            ability_names,
+            int(fight["endTime"]),
+            death_events=death_events,
         )
