@@ -14,9 +14,9 @@ from wowperf.domain.comparison.sample import (
 from wowperf.domain.comparison.statistics import count_phrase, observed_range
 from wowperf.domain.comparison.uptime import (
     MAX_AURAS_REPORTED,
-    MIN_UPTIME_FRACTION,
-    UPTIME_GAP_FRACTION,
+    carried_fractions,
     fractions_of,
+    pairwise_gaps,
     seconds_up_in,
     uptime_measures,
 )
@@ -56,13 +56,7 @@ def per_member_fractions(
     per_member: list[dict[int, float]] = []
     for member in members:
         assert member.boss_debuffs is not None  # debuff_eligible guarantees it
-        carried: dict[int, float] = {}
-        for ability_id, (name, share) in debuff_fractions(member.boss_debuffs).items():
-            if share <= 0.0:
-                continue
-            names.setdefault(ability_id, name)
-            carried[ability_id] = share
-        per_member.append(carried)
+        per_member.append(carried_fractions(debuff_fractions(member.boss_debuffs), names))
     return names, per_member
 
 
@@ -182,15 +176,7 @@ def _pairwise(
     """
     assert theirs.boss_debuffs is not None  # chosen from debuff_eligible
     their_seconds = theirs.boss_debuffs.seconds
-    gaps = []
-    for ability_id, (name, their_share) in debuff_fractions(theirs.boss_debuffs).items():
-        if their_share < MIN_UPTIME_FRACTION:
-            continue
-        our_share = our_fractions.get(ability_id, (name, 0.0))[1]
-        if our_share <= 0.0 or their_share - our_share < UPTIME_GAP_FRACTION:
-            continue
-        gaps.append((their_share - our_share, ability_id, name, our_share, their_share))
-    gaps.sort(reverse=True)
+    gaps = pairwise_gaps(our_fractions, debuff_fractions(theirs.boss_debuffs))
 
     return [
         Finding(
