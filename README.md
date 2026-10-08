@@ -181,15 +181,21 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 | `progression`, every attempt | 3 to 26 |
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
-| `analyze`, one player | 83 to 95 |
+| `analyze`, one player, 2026-10-08 | 107.53 |
 | `night --no-deaths`, a whole report | 186 |
-| `analyze --all-players` | 190 |
+| `analyze --all-players`, 2026-10-08 | 298.65 |
 | `night`, a whole report | 705 |
 | `raid --all-players`, a kill | 878 |
 
 Each is one reading of one report on one day rather than a budget; the dates and the conditions
 behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
 goes.
+
+**The two `analyze` rows are the readings of 2026-10-08, taken once boss debuff uptime
+had added its event stream, on two keys that no older figure was drawn from.** Both ran with
+the references cold. The one-player reading is a +18 Temple of Sethraliss, 20 of its points the
+debuff stream; the `--all-players` reading is a different key, 74 of its points the stream.
+Neither is the earlier 83 to 95 or 190 plus the stream, so do not subtract one from the other.
 
 **The two `night` rows are two different reports, both read cold on 2026-10-01 with every pull
 compared.** The 186 is a sixteen-pull Heroic report at the `--no-deaths` tier, 83 of it the
