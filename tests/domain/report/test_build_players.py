@@ -1,6 +1,8 @@
 # ABOUTME: Behaviour tests for the interrupts section and the per-player cards.
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
+import pytest
+
 from tests.domain.report.test_build_frame import a_pull, a_run
 from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
@@ -1086,18 +1088,18 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
         "50% against 90%", "no boss found", "80%; too few references"
     )
     assert table.caption == (
-        "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
-        "their pets, against the median of the parses that applied each. Council pulls, and "
-        "pulls with no single boss, are left out. Each boss column reads ours against the "
-        "median and carries no verdict. A debuff a teammate's application replaces is marked "
-        "shared, not judged. The group's log for the whole fight held 1 removal "
-        "with no application, dropped (a pet copy's second removal counts here); 2 "
-        "applications still open at the fight's end, closed there; and 0 rows on an enemy "
-        "with no game id, skipped. Derived."
+        "Share of 200s of boss-alive time the bosses carried each debuff from this player "
+        "or their pets, against the median of the parses that applied each. A council's "
+        "bosses each count from the pull's start to their own death; a pull with no boss "
+        "found is left out. Each boss column reads ours against the median and carries no "
+        "verdict. A debuff a teammate's application replaces is marked shared, not judged. "
+        "The group's log for the whole fight held 1 removal with no application, dropped (a "
+        "pet copy's second removal counts here); 2 applications still open at the fight's "
+        "end, closed there; and 0 rows on an enemy with no game id, skipped. Derived."
     )
 
 
-def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
+def a_shared_debuff_table(*shared_with: int, deathless: int = 0) -> ComparisonTable:
     """The debuff table of a card whose one row a teammate's application replaced."""
     measures = {
         "stonewake-0": PlayerMeasures(
@@ -1121,6 +1123,7 @@ def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
                 seconds=100.0,
                 bosses=("First Boss",),
                 tally=PairingTally(),
+                deathless=deathless,
             ),
         )
     }
@@ -1147,6 +1150,27 @@ def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
     )[0]
     [table] = card.comparison_tables
     return table
+
+
+@pytest.mark.parametrize(
+    ("deathless", "stated"),
+    [
+        (0, None),
+        (1, "1 council boss of a kill pull had no death in the log and was measured to the "
+            "pull's end."),
+        (2, "2 council bosses of a kill pull had no death in the log and were measured to "
+            "the pull's end."),
+    ],
+)
+def test_a_council_boss_with_no_death_is_stated_only_when_there_is_one(
+    deathless: int, stated: str | None
+) -> None:
+    caption = a_shared_debuff_table(deathless=deathless).caption
+
+    if stated is None:
+        assert "had no death" not in caption
+    else:
+        assert caption.endswith(f"skipped. {stated} Derived.")
 
 
 def test_a_shared_debuff_is_labelled_with_who_it_was_shared_with_and_not_judged() -> None:

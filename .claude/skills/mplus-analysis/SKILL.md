@@ -427,10 +427,11 @@ instead of adjusting for them, because adjusting would invent a number:
   this player does not own. `compare.talents.<slug>` is the one row still drawn from a single
   reference — the top-ranked parse, whose report its evidence links to.
 - **Debuff uptime on bosses is rebuilt, not read.** `compare.uptime.boss.<rank>.<slug>` is the
-  share of single-boss pull time the boss carried a debuff from the player or their pets,
+  share of boss-alive time the bosses carried a debuff from the player or their pets,
   against the median of the parses that applied it, by the buff family's thresholds. It is
-  derived: the intervals come from the log's own applications and removals. A council pull, or
-  a pull with no single boss, is left out on both sides, and the card's per-boss columns
+  derived: the intervals come from the log's own applications and removals. A council's cell
+  is coverage across its bosses, each counted from the pull's start to its own death; a pull
+  with no boss found is left out on both sides. The card's per-boss columns
   describe, never judge. Unlike a buff,
   a debuff names who applied it, so `compare.uptime.boss.unjudged` is the player's own zero;
   what it cannot say is whether their build has the ability. A debuff only one copy of which
@@ -445,6 +446,8 @@ instead of adjusting for them, because adjusting would invent a number:
   .boss_debuffs.tally` counts what the pairing met in our own log, and is provenance, not a
   finding. It is recorded whenever our stream was read, even beside no rows, and is null when
   it was not: null is "no stream read", while a zero tally is a log that paired cleanly.
+  `comparison_tables.<slug>.boss_debuffs.deathless` is provenance too: how many council bosses
+  of a kill pull had no death in the log and were measured to the pull's end. Zero is none.
 
 When a comparison was withheld, the report says why in the tool's own words — a
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not

@@ -40,6 +40,9 @@ has to be rebuilt from events rather than read from a pre-built table.
   stream.
 - **Council pulls.** They are withheld with a stated reason (§4). A council's bosses can die
   apart, which is the alive-span inference deferred with trash.
+  *Amended 2026-10-08:* council pulls are measured, as coverage across their bosses, by
+  `docs/plans/2026-10-08-council-debuff-coverage-design.md`. That design supersedes this one
+  wherever a later section here says a council is withheld.
 
 ## 3. What the reader sees
 

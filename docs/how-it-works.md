@@ -505,8 +505,8 @@ Comparison families:
 Uptime covers buffs everywhere and debuffs on Mythic+ bosses. Warcraft Logs offers no way to
 scope the enemy-debuff table to one caster (measured 2026-09-05), but its `Debuffs` event stream
 names each application's caster (measured 2026-10-07), so what a player kept up *on enemies* is
-rebuilt from that stream for bosses. Both are recorded in `wcl-api`. Trash, raid and council
-pulls, and any pull with no single boss, are not measured yet.
+rebuilt from that stream for bosses. Both are recorded in `wcl-api`. Trash and raid
+pulls, and any pull with no boss found, are not measured yet.
 
 On a raid wipe, six families are withheld in **one sentence** rather than six separate silences.
 

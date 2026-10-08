@@ -1,6 +1,6 @@
 # Debuff coverage on council bosses
 
-**Status:** approved design, 2026-10-08. Not yet planned or built.
+**Status:** approved design, 2026-10-08; planned in `docs/plans/2026-10-08-council-debuff-coverage-plan.md`.
 **Area:** the boss debuff figure of `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` (PR #57).
 This design lifts that design's §2 exclusion of council pulls. It builds on that branch, and it
 supersedes it wherever the two overlap.
@@ -82,6 +82,11 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
    - `debuff_fractions`, `per_member_fractions` and `encounter_share` read the new totals. The
      thresholds, the median rule, the table, the page and the finding ids are untouched.
 4. **Shared rule.** The overlap between two owners is computed per target, then summed.
+   *Amended 2026-10-08, while planning:* only owners who held the debuff on a common boss within one
+   pull are compared. Copies that each kept to a different council boss never met, so they show
+   nothing either way. The same holds for two owners who held it on one boss in different pulls only,
+   one in a wipe and the other in the kill, since a boss is keyed by its pull and its game id. For a
+   single boss in one pull this is the existing rule.
 5. **CLI.** No wiring change. The deaths arrive inside the `DebuffLog` that `analyze` already fetches
    once per run.
 

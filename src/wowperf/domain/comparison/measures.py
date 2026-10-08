@@ -103,6 +103,8 @@ class BossDebuffTable(Frozen):
     seconds: float = 0.0
     bosses: tuple[str, ...] = ()
     tally: PairingTally | None = None
+    deathless: int = 0
+    """Our council bosses of a kill pull with no death in the log, measured to the pull's end."""
 
 
 class StatShare(Frozen):

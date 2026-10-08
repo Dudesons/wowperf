@@ -90,9 +90,11 @@ def test_a_debuff_kept_up_well_below_the_sample_is_a_gap() -> None:
     )
     assert "range 90% to 90% across 3 top parses" in gap.evidence
     assert (
-        "A council pull, or a pull with no single boss, is left out on both sides."
-        in gap.detail
-    )
+        "a single boss over its whole pull, a council's bosses each from the pull's start to "
+        "their own death."
+    ) in gap.detail
+    assert "A pull with no boss found is left out on both sides." in gap.detail
+    assert "council pull, or" not in gap.detail
     assert "0 of 3 references had no debuff data" in gap.evidence
     assert (gap.ability_id, gap.ability_name) == (DOT, DOT_NAME)
 
@@ -160,7 +162,7 @@ def test_our_own_missing_stream_is_unavailable() -> None:
 
 
 def test_a_run_whose_every_boss_was_withheld_is_unavailable() -> None:
-    council = BossDebuffs(
+    unfound = BossDebuffs(
         windows=(
             BossWindow(
                 encounter_id=2001,
@@ -172,7 +174,7 @@ def test_a_run_whose_every_boss_was_withheld_is_unavailable() -> None:
         )
     )
 
-    [finding] = compare_boss_debuffs_sample(council, OUR_NAME, a_sample(0.9, 0.9, 0.9))
+    [finding] = compare_boss_debuffs_sample(unfound, OUR_NAME, a_sample(0.9, 0.9, 0.9))
 
     assert finding.id == "compare.uptime.boss.unavailable"
     assert "our measured boss time 0s" in finding.evidence
@@ -344,6 +346,30 @@ def test_no_table_below_the_floor_or_without_our_own_figure() -> None:
     assert boss_debuff_table(None, three).rows == ()
 
 
+def test_the_table_carries_our_count_of_deathless_council_bosses() -> None:
+    window = FIRST.model_copy(update={"deathless": 1})
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9, windows=(window, SECOND)), sample)
+
+    assert table.deathless == 1
+
+
+def test_below_the_floor_the_empty_table_still_carries_our_deathless_count() -> None:
+    window = FIRST.model_copy(update={"deathless": 2})
+    two = ParseSample(
+        members=(
+            a_member("Bríala", on_two_bosses(0.9, 0.9)),
+            a_member("Кириллица", on_two_bosses(0.9, 0.9)),
+        )
+    )
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9, windows=(window, SECOND)), two)
+
+    assert table.rows == ()
+    assert table.deathless == 2
+
+
 def test_our_own_pairing_tally_rides_on_the_table() -> None:
     sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
     ours = on_two_bosses(0.5, 0.9).model_copy(
@@ -377,7 +403,7 @@ def test_below_the_floor_the_empty_table_still_carries_our_own_tally_and_seconds
 
 
 def test_with_no_measured_boss_the_empty_table_still_carries_our_own_tally() -> None:
-    council = BossDebuffs(
+    unfound = BossDebuffs(
         windows=(
             BossWindow(
                 encounter_id=2001,
@@ -391,7 +417,7 @@ def test_with_no_measured_boss_the_empty_table_still_carries_our_own_tally() -> 
     )
     three = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
 
-    table = boss_debuff_table(council, three)
+    table = boss_debuff_table(unfound, three)
 
     assert table.rows == ()
     assert table.seconds == 0.0

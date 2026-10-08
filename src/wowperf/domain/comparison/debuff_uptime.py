@@ -31,9 +31,10 @@ ID_PREFIX = "compare.uptime.boss"
 STRETCH = "boss time"
 
 GAP_DETAIL = (
-    "Both figures are the share of single-boss pull time the boss carried this debuff from "
-    "the player or their pets, which is comparable even though the fights ran for different "
-    "lengths. A council pull, or a pull with no single boss, is left out on both sides. "
+    "Both figures are the share of boss-alive time the bosses carried this debuff from the "
+    "player or their pets: a single boss over its whole pull, a council's bosses each from "
+    "the pull's start to their own death. That is comparable even though the fights ran for "
+    "different lengths. A pull with no boss found is left out on both sides. "
     f"{DUNGEON.uptime_hedge} The intervals are rebuilt from the log's own applications and "
     "removals rather than read from a table."
 )
@@ -72,7 +73,7 @@ def _unavailable(our_name: str, detail: str, evidence: tuple[str, ...]) -> Findi
         title=f"Boss debuff uptime could not be compared for {our_name}",
         detail=(
             "A boss debuff comparison needs the enemy-debuff stream, and at least one pull "
-            f"with a single boss, on our side and on a reference's. {detail} No figures are "
+            f"with a boss found, on our side and on a reference's. {detail} No figures are "
             "reported rather than figures from one side."
         ),
         confidence=Confidence.MEASURED,
@@ -107,7 +108,7 @@ def compare_boss_debuffs_sample(
             _unavailable(
                 our_name,
                 "Our own side has no figure: its stream could not be read, or none of its "
-                "boss pulls held a single boss.",
+                "boss pulls had a boss found.",
                 (
                     f"our debuff data {'absent' if our is None else 'present'}",
                     f"our measured boss time {0.0 if our is None else our.seconds:.0f}s",
@@ -279,7 +280,7 @@ def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuf
         return BossDebuffTable()
     eligible = sample.debuff_eligible
     if our.seconds <= 0 or not eligible or not sample.can_aggregate(eligible):
-        return BossDebuffTable(seconds=our.seconds, tally=our.tally)
+        return BossDebuffTable(seconds=our.seconds, tally=our.tally, deathless=our.deathless)
 
     names, per_member = per_member_fractions(eligible)
     measures = uptime_measures(debuff_fractions(our), per_member, names)
@@ -300,7 +301,11 @@ def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuf
         for m in measures
     )
     return BossDebuffTable(
-        rows=rows, seconds=our.seconds, bosses=tuple(bosses.values()), tally=our.tally
+        rows=rows,
+        seconds=our.seconds,
+        bosses=tuple(bosses.values()),
+        tally=our.tally,
+        deathless=our.deathless,
     )
 
 

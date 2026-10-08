@@ -320,22 +320,30 @@ def _tables(
     if debuffs.rows:
         tally = debuffs.tally
         assert tally is not None  # rows are built only from a stream that was read
+        deathless = (
+            f"{quantity(debuffs.deathless, 'council boss', 'council bosses')} of a kill pull "
+            "had no death in the log and "
+            f"{'was' if debuffs.deathless == 1 else 'were'} measured to the pull's end. "
+            if debuffs.deathless
+            else ""
+        )
         built.append(
             ComparisonTable(
                 heading="Debuff uptime on bosses",
                 caption=(
-                    f"Share of {debuffs.seconds:.0f}s of single-boss pulls the boss carried "
+                    f"Share of {debuffs.seconds:.0f}s of boss-alive time the bosses carried "
                     "each debuff from this player or their pets, against the median of the "
-                    "parses that applied each. Council pulls, and pulls with no single boss, "
-                    "are left out. Each boss column reads ours against the median and "
-                    "carries no verdict. A debuff a teammate's application replaces is marked "
-                    "shared, not judged. The group's log for the whole fight held "
+                    "parses that applied each. A council's bosses each count from the pull's "
+                    "start to their own death; a pull with no boss found is left out. Each "
+                    "boss column reads ours against the median and carries no verdict. A "
+                    "debuff a teammate's application replaces is marked shared, not judged. "
+                    "The group's log for the whole fight held "
                     f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
                     "application, dropped (a pet copy's second removal counts here); "
                     f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
                     "open at the fight's end, closed there; and "
                     f"{quantity(tally.unresolved_targets, 'row', 'rows')} on an enemy with no "
-                    "game id, skipped. Derived."
+                    f"game id, skipped. {deathless}Derived."
                 ),
                 cell_headings=debuffs.bosses,
                 rows=_debuff_rows(debuffs.rows, specs),

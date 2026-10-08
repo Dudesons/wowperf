@@ -49,7 +49,7 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     # Mirror Image; a key without one passes under any pairing.
     windows = boss_windows_of(run.pulls, log.npc_actors, log.deaths)
     measured = [w for w in windows if w.withheld is None]
-    assert measured, "a real key has at least one boss pull with a single boss"
+    assert measured, "a real key has at least one boss pull with a boss found"
     boss_ids = {target.game_id for window in measured for target in window.targets}
     last_end = max(window.end_ms for window in measured)
     names = dict(log.ability_names)

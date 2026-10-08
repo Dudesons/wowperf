@@ -378,7 +378,7 @@ buff uptime, and the confounds that would make any of the others misleading. Upt
 buffs everywhere and debuffs on Mythic+ bosses. The enemy-debuff *table* cannot be
 scoped to one caster (measured 2026-09-05), but the `Debuffs` event stream names each
 application's caster (measured 2026-10-07), and the boss figure is rebuilt from it. Both are
-recorded in `.claude/skills/wcl-api/SKILL.md`. Trash, raid and council pulls are not measured
+recorded in `.claude/skills/wcl-api/SKILL.md`. Trash and raid pulls are not measured
 yet; `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` §2 says why.
 
 The report is a frozen view model and a pure builder under `src/wowperf/domain/report/`,
