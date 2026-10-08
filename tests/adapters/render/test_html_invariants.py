@@ -1486,12 +1486,12 @@ def test_a_boss_column_lands_under_its_own_heading() -> None:
     table = ComparisonTable(
         heading="Debuff uptime on bosses",
         caption="Derived.",
-        cell_headings=("The Test Colossus", "The Twin Council"),
+        cell_headings=("The Test Colossus", "The Fixture Hall"),
         rows=(
             ComparisonRow(
                 ability_id=55078, name="Blood Plague", ours="70%", theirs="90%",
                 spread="85% to 95%", sample="3 top parses", verdict="below",
-                verdict_label="Below", cells=("50% against 90%", "a council, not measured"),
+                verdict_label="Below", cells=("50% against 90%", "no boss found"),
             ),
         ),
     )
@@ -1503,8 +1503,8 @@ def test_a_boss_column_lands_under_its_own_heading() -> None:
         if "The Test Colossus" in rendered[0]
     ]
 
-    assert headings[-2:] == ["The Test Colossus", "The Twin Council"]
+    assert headings[-2:] == ["The Test Colossus", "The Fixture Hall"]
     [(_, cells)] = rows
     assert [MARKUP.sub("", cell) for cell in cells[-2:]] == [
-        "50% against 90%", "a council, not measured"
+        "50% against 90%", "no boss found"
     ]

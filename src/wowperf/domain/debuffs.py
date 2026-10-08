@@ -36,6 +36,8 @@ class DebuffLog(Frozen):
     """(actor id, game id), for every actor in the report."""
     npc_actors: tuple[NpcActor, ...] = ()
     ability_names: tuple[tuple[int, str], ...] = ()
+    deaths: tuple[tuple[int, int], ...] = ()
+    """(game id, timestamp ms) of each enemy death in the fight, for a council boss's span."""
     end_ms: int
 
 

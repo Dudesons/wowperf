@@ -164,10 +164,10 @@ def test_a_run_whose_every_boss_was_withheld_is_unavailable() -> None:
         windows=(
             BossWindow(
                 encounter_id=2001,
-                name="The Twin Council",
+                name="The Fixture Hall",
                 start_ms=0,
                 end_ms=60_000,
-                withheld=Withheld.COUNCIL,
+                withheld=Withheld.NO_BOSS,
             ),
         )
     )
@@ -220,7 +220,7 @@ SECOND = BossWindow(
     end_ms=300_000,
     targets=(BossTarget(game_id=6000, start_ms=200_000, end_ms=300_000),),
 )
-SECOND_COUNCIL = SECOND.model_copy(update={"targets": (), "withheld": Withheld.COUNCIL})
+SECOND_UNFOUND = SECOND.model_copy(update={"targets": (), "withheld": Withheld.NO_BOSS})
 
 
 def on_two_bosses(
@@ -295,15 +295,15 @@ def test_a_boss_fought_twice_is_one_column_and_one_cell_summed_over_both_pulls()
     assert cell.their_median == pytest.approx(0.9)
 
 
-def test_our_council_cell_is_withheld_with_its_reason() -> None:
+def test_our_unfound_boss_cell_is_withheld_with_its_reason() -> None:
     sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
 
     table = boss_debuff_table(
-        on_two_bosses(0.5, 0.0, windows=(FIRST, SECOND_COUNCIL)), sample
+        on_two_bosses(0.5, 0.0, windows=(FIRST, SECOND_UNFOUND)), sample
     )
 
     assert table.rows[0].cells[1] == BossCell(
-        encounter_id=2002, boss="Second Boss", withheld=Withheld.COUNCIL
+        encounter_id=2002, boss="Second Boss", withheld=Withheld.NO_BOSS
     )
 
 
@@ -381,10 +381,10 @@ def test_with_no_measured_boss_the_empty_table_still_carries_our_own_tally() -> 
         windows=(
             BossWindow(
                 encounter_id=2001,
-                name="The Twin Council",
+                name="The Fixture Hall",
                 start_ms=0,
                 end_ms=60_000,
-                withheld=Withheld.COUNCIL,
+                withheld=Withheld.NO_BOSS,
             ),
         ),
         tally=PairingTally(orphan_removes=3),

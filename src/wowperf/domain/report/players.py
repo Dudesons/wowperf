@@ -435,7 +435,6 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
 
 
 WITHHELD_LABELS = {
-    Withheld.COUNCIL: "a council, not measured",
     Withheld.NO_BOSS: "no boss found",
     Withheld.NOT_REACHED: "no reference measured it",
     Withheld.TOO_FEW: "too few references",

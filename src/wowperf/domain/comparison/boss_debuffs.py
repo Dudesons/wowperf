@@ -1,5 +1,5 @@
 # ABOUTME: One player's debuffs on each boss, rebuilt from the group's paired debuff intervals.
-# ABOUTME: Covered seconds per boss target, summed; a council or a missing boss is withheld.
+# ABOUTME: Covered seconds per boss, summed; a council's bosses each over their own life.
 
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
@@ -29,13 +29,11 @@ below the second.
 class Withheld(StrEnum):
     """Why a boss, or one boss's cell, carries no figure.
 
-    The first two are read off our own route: a council's bosses can die
-    apart, which needs the alive-span inference this design defers, and a boss
-    pull may hold no enemy `boss_game_id_of` can name. The last two are about the
-    sample beside a figure of ours.
+    The first is read off our own route: a boss pull may hold no enemy
+    `bosses_of` can name. The last two are about the sample beside a figure of
+    ours.
     """
 
-    COUNCIL = "council"
     NO_BOSS = "no boss found"
     NOT_REACHED = "no reference measured this boss"
     TOO_FEW = "too few references"
@@ -62,6 +60,8 @@ class BossWindow(Frozen):
     end_ms: int
     targets: tuple[BossTarget, ...] = ()
     withheld: Withheld | None = None
+    deathless: int = 0
+    """Council bosses of a kill pull with no death inside it, measured to its end."""
 
     @property
     def seconds(self) -> float:
@@ -92,6 +92,11 @@ class BossDebuffs(Frozen):
         """The denominator: boss-alive seconds of the measured pulls, withheld ones left out."""
         return sum(window.seconds for window in self.windows if window.withheld is None)
 
+    @property
+    def deathless(self) -> int:
+        """Council bosses of a kill pull that never died inside it, over every window."""
+        return sum(window.deathless for window in self.windows)
+
     def covered_seconds(self, ability_id: int, encounter_id: int | None = None) -> float:
         """Seconds this debuff covered the measured bosses, of one encounter or of all."""
         return (
@@ -104,61 +109,97 @@ class BossDebuffs(Frozen):
         )
 
 
-def boss_game_id_of(
+class BossesFound(Frozen):
+    """The game ids a boss pull is measured on, and whether they are a council's."""
+
+    game_ids: tuple[int, ...]
+    council: bool = False
+
+
+def bosses_of(
     npc_actors: tuple[NpcActor, ...], enemy_ids: frozenset[int], pull_name: str
-) -> int | Withheld:
-    """The game id of a pull's one boss, or why it has none to measure.
+) -> BossesFound | Withheld:
+    """The bosses a pull is measured on, or why it has none.
 
     Measured 2026-10-08: dungeon logs flag only some bosses as `Boss`, and a
     council's pull is named "A and B", which begins with A's name alone. So the
     pull's name is read first: split on " and " (never on a comma, which marks
     a title), each part names the pull's enemies that open with it, counted by
     game id because one enemy can be logged under two actor ids. A part naming
-    two game ids is no boss. Several parts with one named is a council. One
-    part with one game id is the boss. When the name matches no enemy, the
-    boss flag is read as `find_bosses` reads it, also by game id.
+    two game ids is no boss. A pull named for several bosses is a council,
+    measured on every one of them among its enemies, even one. One part with
+    one game id is the boss. When the name matches no enemy, the boss flag is
+    read as `find_bosses` reads it, also by game id: several flagged bosses are
+    a council.
     """
     enemies = [one for one in npc_actors if one.actor_id in enemy_ids]
     parts = pull_name.split(" and ")
     named = [{one.game_id for one in enemies if named_after(one.name, part)} for part in parts]
     if any(len(game_ids) > 1 for game_ids in named):
         return Withheld.NO_BOSS
-    if len(parts) > 1 and any(named):
-        return Withheld.COUNCIL
-    if named[0]:
-        return next(iter(named[0]))
-    flagged = {one.game_id for one in find_bosses(npc_actors, enemy_ids, pull_name)}
-    if len(flagged) > 1:
-        return Withheld.COUNCIL
-    return next(iter(flagged), Withheld.NO_BOSS)
+    found = sorted(set[int]().union(*named))
+    if found:
+        return BossesFound(game_ids=tuple(found), council=len(parts) > 1)
+    flagged = sorted({one.game_id for one in find_bosses(npc_actors, enemy_ids, pull_name)})
+    if not flagged:
+        return Withheld.NO_BOSS
+    return BossesFound(game_ids=tuple(flagged), council=len(flagged) > 1)
 
 
 def boss_windows_of(
-    pulls: Sequence[Pull], npc_actors: tuple[NpcActor, ...]
+    pulls: Sequence[Pull],
+    npc_actors: tuple[NpcActor, ...],
+    deaths: tuple[tuple[int, int], ...] = (),
 ) -> tuple[BossWindow, ...]:
-    """Every boss pull, with its one boss, or the reason it has none to measure.
+    """Every boss pull, with the bosses it is measured on, or the reason it has none.
 
-    `boss_game_id_of` reads the pull's own enemies against the pull's name
-    first and their boss flag second. One boss is measured. A council, or a
-    pull named for several bosses, is withheld; so is a pull with no boss found.
+    One boss is measured over the whole pull. A council's bosses are each
+    measured from the pull's start to their last death inside it: the log
+    records a death but never an appearance, so the start is the pull's. A
+    council boss that never died there runs to the pull's end, and on a kill
+    that is counted, since a killed council's bosses all died.
     """
     windows: list[BossWindow] = []
     for pull in pulls:
         if not pull.is_boss:
             continue
-        found = boss_game_id_of(
+        found = bosses_of(
             npc_actors, frozenset(enemy.actor_id for enemy in pull.enemies), pull.name
         )
+        if isinstance(found, Withheld):
+            windows.append(
+                BossWindow(
+                    encounter_id=pull.encounter_id,
+                    name=pull.name,
+                    start_ms=pull.start_ms,
+                    end_ms=pull.end_ms,
+                    withheld=found,
+                )
+            )
+            continue
+        targets: list[BossTarget] = []
+        deathless = 0
+        for game_id in found.game_ids:
+            end_ms = pull.end_ms
+            if found.council:
+                died = [
+                    at
+                    for dead, at in deaths
+                    if dead == game_id and pull.start_ms <= at <= pull.end_ms
+                ]
+                if died:
+                    end_ms = max(died)
+                elif pull.killed:
+                    deathless += 1
+            targets.append(BossTarget(game_id=game_id, start_ms=pull.start_ms, end_ms=end_ms))
         windows.append(
             BossWindow(
                 encounter_id=pull.encounter_id,
                 name=pull.name,
                 start_ms=pull.start_ms,
                 end_ms=pull.end_ms,
-                targets=()
-                if isinstance(found, Withheld)
-                else (BossTarget(game_id=found, start_ms=pull.start_ms, end_ms=pull.end_ms),),
-                withheld=found if isinstance(found, Withheld) else None,
+                targets=tuple(targets),
+                deathless=deathless,
             )
         )
     return tuple(windows)
@@ -177,7 +218,7 @@ def boss_debuffs(
     pairing, and an enemy is never a player. A reference is read with none, so
     nothing on its side is ever shared.
     """
-    windows = boss_windows_of(pulls, log.npc_actors)
+    windows = boss_windows_of(pulls, log.npc_actors, log.deaths)
     intervals, tally = pair_debuffs(log)
     owners = players | {owner_id}
     held: dict[tuple[int, int], dict[tuple[int, int], list[Span]]] = {}
@@ -224,8 +265,10 @@ def find_shared(
     exclusive when at least two owners held it and no two of them overlapped by
     more than `SHARED_OVERLAP_TOLERANCE_S` in total, the overlaps measured
     boss by boss and summed: a teammate's application replaced the one before
-    it. Several owners holding it is not enough on its own, since copies of a
-    per-caster debuff coexist.
+    it. Only owners who held it on a common boss are compared: two copies that
+    each kept to a different boss of a council never met, which shows nothing
+    either way. Several owners holding it is not enough on its own, since
+    copies of a per-caster debuff coexist.
 
     It is shared with this owner when it is exclusive and someone else held it.
     That includes a debuff this owner never held, once two others took it over
@@ -241,9 +284,14 @@ def find_shared(
     for ability_id in sorted(holders):
         owners = holders[ability_id]
         others = tuple(sorted(owner for owner in owners if owner != owner_id))
-        exclusive = len(owners) >= 2 and all(
-            _overlap_ms(first, second) <= SHARED_OVERLAP_TOLERANCE_S * 1000
+        pairs = [
+            (first, second)
             for first, second in combinations(owners.values(), 2)
+            if first.keys() & second.keys()
+        ]
+        exclusive = bool(pairs) and all(
+            _overlap_ms(first, second) <= SHARED_OVERLAP_TOLERANCE_S * 1000
+            for first, second in pairs
         )
         if exclusive and others:
             shared.append((ability_id, others))

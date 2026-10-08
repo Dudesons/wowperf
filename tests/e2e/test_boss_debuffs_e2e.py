@@ -47,7 +47,8 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     # The assertion bites only on a key where a pet's application and removal
     # carry different instance numbers on a measured boss, such as a Mage's
     # Mirror Image; a key without one passes under any pairing.
-    measured = [w for w in boss_windows_of(run.pulls, log.npc_actors) if w.withheld is None]
+    windows = boss_windows_of(run.pulls, log.npc_actors, log.deaths)
+    measured = [w for w in windows if w.withheld is None]
     assert measured, "a real key has at least one boss pull with a single boss"
     boss_ids = {target.game_id for window in measured for target in window.targets}
     last_end = max(window.end_ms for window in measured)

@@ -1,5 +1,5 @@
 # ABOUTME: One player's debuffs on each boss: the boss alone, clipped to its pull, pets included.
-# ABOUTME: Pins councils and missing bosses withheld, a shorter boss name, and per-boss shares.
+# ABOUTME: Pins a council measured over its bosses' lives, a missing boss withheld, shares per boss.
 
 import pytest
 
@@ -68,13 +68,18 @@ def an_event(
     )
 
 
-def a_log(*events: DebuffEvent, actors: tuple[NpcActor, ...] = ACTORS) -> DebuffLog:
+def a_log(
+    *events: DebuffEvent,
+    actors: tuple[NpcActor, ...] = ACTORS,
+    deaths: tuple[tuple[int, int], ...] = (),
+) -> DebuffLog:
     return DebuffLog(
         events=events,
         pet_owners=((PET, PLAYER),),
         game_ids=tuple(GAME_IDS.items()),
         npc_actors=actors,
         ability_names=((DOT, "Blood Plague"),),
+        deaths=deaths,
         end_ms=80_000,
     )
 
@@ -144,7 +149,7 @@ def test_another_players_debuff_is_not_this_players() -> None:
     assert mine.covered == ()
 
 
-def test_a_council_is_withheld_and_counts_no_seconds() -> None:
+def test_a_council_is_measured_over_its_bosses_lives() -> None:
     council = (
         NpcActor(
             actor_id=BOSS_ACTOR, game_id=BOSS_GAME, name="Blood of the Twins", sub_type="Boss"
@@ -156,14 +161,21 @@ def test_a_council_is_withheld_and_counts_no_seconds() -> None:
     pull = a_pull(1, 10_000, 70_000, encounter_id=2001, name="The Twin Council")
 
     mine = boss_debuffs(
-        a_log(an_event(True, 20_000), an_event(False, 50_000), actors=council),
+        a_log(
+            an_event(True, 20_000),
+            an_event(False, 50_000),
+            actors=council,
+            deaths=((BOSS_GAME, 40_000), (ADD_GAME, 70_000)),
+        ),
         (pull,),
         PLAYER,
         RUN_PLAYERS,
     )
 
-    assert [window.withheld for window in mine.windows] == [Withheld.COUNCIL]
-    assert (mine.seconds, mine.covered) == (0.0, ())
+    assert [window.withheld for window in mine.windows] == [None]
+    assert mine.seconds == 30.0 + 60.0
+    # The 20-50s on the first boss is clipped to that boss's death at 40s.
+    assert mine.covered == ((2001, DOT, 20_000),)
 
 
 def test_a_boss_pull_with_no_boss_flagged_enemy_is_withheld() -> None:
@@ -190,7 +202,7 @@ def test_the_pairing_tally_rides_along() -> None:
     assert mine.tally.orphan_removes == 1
 
 
-def test_a_share_is_read_per_boss_and_a_withheld_boss_says_why() -> None:
+def test_a_share_is_read_per_boss() -> None:
     second = a_pull(2, 100_000, 200_000, encounter_id=2002, name="The Twin Council")
     council = (
         *ACTORS,
@@ -213,7 +225,8 @@ def test_a_share_is_read_per_boss_and_a_withheld_boss_says_why() -> None:
     )
 
     assert encounter_share(mine, DOT, 2001) == 0.5
-    assert encounter_share(mine, DOT, 2002) is Withheld.COUNCIL
+    # Nothing was on the council's bosses, and they were measured.
+    assert encounter_share(mine, DOT, 2002) == 0.0
     assert encounter_share(mine, DOT, 9999) is None
 
 
@@ -295,7 +308,7 @@ def test_an_unflagged_pair_named_for_both_is_a_council() -> None:
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME, SECOND_GAME), None)
 
 
 def test_an_unflagged_enemy_whose_name_only_begins_the_pulls_is_its_boss() -> None:
@@ -317,17 +330,17 @@ def test_a_flagged_pair_whose_first_name_begins_the_pulls_is_a_council_not_that_
         an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
     )
 
-    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME, SECOND_GAME), None)
 
 
-def test_a_pull_named_for_two_bosses_with_one_in_it_is_still_a_council() -> None:
+def test_a_pull_named_for_two_bosses_with_one_in_it_measures_that_one() -> None:
     window = the_window_of(
         "Alpha Fixture and Beta Fixture",
         an_enemy(FIRST, FIRST_GAME, "Alpha Fixture", "Boss"),
         an_enemy(ADD_ACTOR, ADD_GAME, "Fixture Add"),
     )
 
-    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME,), None)
 
 
 def test_one_boss_logged_under_two_actor_ids_is_one_boss() -> None:
@@ -367,7 +380,7 @@ def test_a_pull_named_for_no_enemy_reads_two_flagged_enemies_as_a_council() -> N
         an_enemy(SECOND, SECOND_GAME, "Beta Fixture", "Boss"),
     )
 
-    assert (boss_ids(window), window.withheld) == ((), Withheld.COUNCIL)
+    assert (boss_ids(window), window.withheld) == ((FIRST_GAME, SECOND_GAME), None)
 
 
 def test_a_pull_named_for_no_enemy_and_holding_no_flagged_one_has_no_boss() -> None:
@@ -570,3 +583,175 @@ def test_covered_seconds_merge_a_players_and_their_pets_copies_on_one_boss() -> 
     assert mine.covered == ((2001, DOT, 45_000),)
     assert mine.covered_seconds(DOT, 2001) == 45.0
     assert mine.covered_seconds(DOT, 9999) == 0.0
+
+
+ALPHA, BETA = 63, 64
+ALPHA_GAME, BETA_GAME = 6300, 6400
+COUNCIL_NAME = "Alpha Fixture and Beta Fixture"
+COUNCIL_ACTORS = (
+    an_enemy(ALPHA, ALPHA_GAME, "Alpha Fixture"),
+    an_enemy(BETA, BETA_GAME, "Beta Fixture"),
+)
+
+
+def a_council_pull(*, killed: bool = True) -> Pull:
+    pull = a_pull(1, 10_000, 70_000, encounter_id=2001, name=COUNCIL_NAME, enemies=(ALPHA, BETA))
+    return pull.model_copy(
+        update={
+            "killed": killed,
+            "enemies": (
+                EnemyNpc(actor_id=ALPHA, game_id=ALPHA_GAME),
+                EnemyNpc(actor_id=BETA, game_id=BETA_GAME),
+            ),
+        }
+    )
+
+
+def a_council_log(*events: DebuffEvent, deaths: tuple[tuple[int, int], ...] = ()) -> DebuffLog:
+    return DebuffLog(
+        events=events,
+        pet_owners=((PET, PLAYER),),
+        game_ids=((ALPHA, ALPHA_GAME), (BETA, BETA_GAME), (THIRD, ALPHA_GAME)),
+        npc_actors=COUNCIL_ACTORS,
+        ability_names=((DOT, "Blood Plague"),),
+        deaths=deaths,
+        end_ms=80_000,
+    )
+
+
+def on(target: int, source: int, start_ms: int, end_ms: int) -> tuple[DebuffEvent, DebuffEvent]:
+    """One application and its removal, by `source`, on `target`."""
+    return (
+        an_event(True, start_ms, source=source, target=target),
+        an_event(False, end_ms, source=source, target=target),
+    )
+
+
+def test_a_councils_coverage_sums_each_boss_over_its_own_life() -> None:
+    # Alpha dies at 40s, Beta at 70s: 30s and 60s alive. Ours covered Alpha for
+    # 30s (all of it) and Beta for 30s: 60s of 90s. A pull-length reading would
+    # be 60s over 60s, and a merged timeline 30s over 60s.
+    mine = boss_debuffs(
+        a_council_log(
+            *on(ALPHA, PLAYER, 10_000, 40_000),
+            *on(BETA, PLAYER, 10_000, 40_000),
+            deaths=((ALPHA_GAME, 40_000), (BETA_GAME, 70_000)),
+        ),
+        (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    [window] = mine.windows
+    assert window.targets == (
+        BossTarget(game_id=ALPHA_GAME, start_ms=10_000, end_ms=40_000),
+        BossTarget(game_id=BETA_GAME, start_ms=10_000, end_ms=70_000),
+    )
+    assert mine.seconds == 90.0
+    assert mine.covered_seconds(DOT) == 60.0
+    assert encounter_share(mine, DOT, 2001) == 60.0 / 90.0
+
+
+def test_a_wiped_council_runs_each_boss_to_the_pulls_end_and_counts_no_missing_death() -> None:
+    [window] = boss_windows_of((a_council_pull(killed=False),), COUNCIL_ACTORS)
+
+    assert [target.end_ms for target in window.targets] == [70_000, 70_000]
+    assert window.deathless == 0
+
+
+def test_a_killed_council_boss_with_no_death_runs_to_the_pulls_end_and_is_counted() -> None:
+    [window] = boss_windows_of((a_council_pull(),), COUNCIL_ACTORS, ((ALPHA_GAME, 40_000),))
+
+    assert [target.end_ms for target in window.targets] == [40_000, 70_000]
+    assert window.deathless == 1
+
+
+def test_a_boss_that_dies_twice_lives_until_its_last_death() -> None:
+    [window] = boss_windows_of(
+        (a_council_pull(),),
+        COUNCIL_ACTORS,
+        ((ALPHA_GAME, 30_000), (ALPHA_GAME, 50_000), (BETA_GAME, 60_000)),
+    )
+
+    assert [target.end_ms for target in window.targets] == [50_000, 60_000]
+
+
+def test_a_death_outside_the_pull_is_not_this_pulls() -> None:
+    [window] = boss_windows_of(
+        (a_council_pull(),),
+        COUNCIL_ACTORS,
+        ((ALPHA_GAME, 5_000), (ALPHA_GAME, 75_000), (BETA_GAME, 60_000)),
+    )
+
+    assert [target.end_ms for target in window.targets] == [70_000, 60_000]
+    assert window.deathless == 1
+
+
+def test_a_single_boss_runs_the_whole_pull_whatever_the_deaths_say() -> None:
+    [window] = boss_windows_of((BOSS_PULL,), ACTORS, ((BOSS_GAME, 50_000),))
+
+    assert window.targets == (BossTarget(game_id=BOSS_GAME, start_ms=10_000, end_ms=70_000),)
+
+
+def test_a_council_boss_logged_under_a_second_actor_id_is_still_that_boss() -> None:
+    # Actor THIRD is a second id of Alpha's game id: what sat on it, sat on Alpha.
+    mine = boss_debuffs(
+        a_council_log(*on(THIRD, PLAYER, 10_000, 40_000), deaths=((ALPHA_GAME, 40_000),)),
+        (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.covered_seconds(DOT) == 30.0
+
+
+def test_two_players_on_different_council_bosses_do_not_share() -> None:
+    # Ours only ever on Alpha, theirs only ever on Beta: the copies never met on
+    # one boss, which says nothing about whether they could coexist.
+    mine = boss_debuffs(
+        a_council_log(
+            *on(ALPHA, PLAYER, 10_000, 40_000),
+            *on(BETA, OTHER, 10_000, 40_000),
+            deaths=((ALPHA_GAME, 40_000), (BETA_GAME, 70_000)),
+        ),
+        (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()
+
+
+def test_a_debuff_two_players_swap_on_each_council_boss_is_shared() -> None:
+    mine = boss_debuffs(
+        a_council_log(
+            *on(ALPHA, PLAYER, 10_000, 25_000),
+            *on(ALPHA, OTHER, 25_000, 40_000),
+            *on(BETA, OTHER, 10_000, 40_000),
+            *on(BETA, PLAYER, 40_000, 70_000),
+            deaths=((ALPHA_GAME, 40_000), (BETA_GAME, 70_000)),
+        ),
+        (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ((DOT, (OTHER,)),)
+
+
+def test_copies_that_coexist_on_one_council_boss_are_per_caster() -> None:
+    # They swap on Alpha but sit together on Beta for 20s: per caster after all.
+    mine = boss_debuffs(
+        a_council_log(
+            *on(ALPHA, PLAYER, 10_000, 25_000),
+            *on(ALPHA, OTHER, 25_000, 40_000),
+            *on(BETA, PLAYER, 10_000, 50_000),
+            *on(BETA, OTHER, 30_000, 70_000),
+            deaths=((ALPHA_GAME, 40_000), (BETA_GAME, 70_000)),
+        ),
+        (a_council_pull(),),
+        PLAYER,
+        RUN_PLAYERS,
+    )
+
+    assert mine.shared_with == ()

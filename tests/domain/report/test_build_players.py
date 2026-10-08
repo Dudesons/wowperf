@@ -1052,7 +1052,7 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
                             ),
                             BossCell(
                                 encounter_id=2002, boss="Second Boss",
-                                withheld=Withheld.COUNCIL,
+                                withheld=Withheld.NO_BOSS,
                             ),
                             BossCell(
                                 encounter_id=2003, boss="Third Boss", ours=0.8,
@@ -1083,7 +1083,7 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
         "70%", "90%", "85% to 95%", "Below"
     )
     assert row.cells == (
-        "50% against 90%", "a council, not measured", "80%; too few references"
+        "50% against 90%", "no boss found", "80%; too few references"
     )
     assert table.caption == (
         "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
