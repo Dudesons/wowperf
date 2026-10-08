@@ -70,6 +70,34 @@ on boss pulls".
   player-slug suffix `service.py` already appends, and each is routed to the player card through
   `report/players.py`'s `COMPARISON_PREFIXES`.
 
+*Amended 2026-10-08:* a debuff one teammate's application replaces is marked **shared**, not
+judged. The first live run's only gap finding was false. It was measured on the cached key
+`LyKXYvVZm192TDr6` fight 9, over 438 s of measured boss time:
+
+| Debuff on measured bosses | Owner | Share | Pairwise overlap |
+| --- | --- | --- | --- |
+| Mortal Wounds (115804) | Arms Warrior | 69.1% | Warrior / Monk: **0.0 s** |
+| | Windwalker Monk | 27.1% | union of both: 96.2% |
+| Rune of Lingering (1287663) | 5 players | 9-53% each | every pair overlaps: **7.9 s to 127.9 s** |
+
+Only one Mortal Wounds sits on a target, so a teammate's application replaces yours. The table
+judged the Warrior below, 69% against a median of 91%, when the group kept it up 96% of the time.
+Rune of Lingering is one per caster: copies coexist, so a per-player figure is fair there. "A
+teammate also applied it" is therefore not what makes a debuff shared. **Copies that never
+overlap** are.
+
+The rule is computed on our own side only, from the same stream and measured boss windows, with
+no new query. Each player of our run is one owner, their pets folded in; an enemy applying the
+debuff is not an owner. A debuff is *exclusive* when at least two owners held it on the measured
+bosses and every pair of them overlapped by at most `SHARED_OVERLAP_TOLERANCE_S` (1.0 s) in total.
+A player's debuff is *shared* when it is exclusive and some other owner held it. That holds even
+at a zero of their own, once two others took it over from each other. Beside a single other owner,
+exclusivity cannot be shown and a zero stays `unjudged`. A shared debuff yields no gap finding
+and is not listed in `compare.uptime.boss.unjudged`. Its row keeps its figures, and the verdict
+column reads "Shared with" and the teammates' specialisation and class, in the unjudged row's
+tint. References are not read for sharing: it can only lower a reference's share, which moves
+the median down and so can only make ours read level, never wrongly below.
+
 ## 4. Components and data flow
 
 The order is hexagonal, matching the buff family.
