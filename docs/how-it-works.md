@@ -357,6 +357,7 @@ src/wowperf/
 │   ├── findings.py        Finding, FindingFact, Confidence, rank_findings
 │   ├── loadout.py         EquippedItem, StatBlock, Loadout
 │   ├── auras.py           AuraBand, Aura, PlayerAuras, uptime_seconds_in
+│   ├── debuffs.py         DebuffEvent, DebuffLog, pair_debuffs — enemy-debuff events paired into intervals
 │   ├── season.py          value objects for every data/*.toml file
 │   ├── slug.py            player_slug — the one place a slug is minted
 │   ├── ports.py           the boundary: 4 Protocols
@@ -498,12 +499,14 @@ Comparison families:
 | Axis | Families |
 | --- | --- |
 | Speed (group) | route, tempo, confounds |
-| Parse (per player) | cast spells, trash spells, talents, buff uptime, enchants, tier, stats, consumable buffs, potions |
+| Parse (per player) | cast spells, trash spells, talents, buff uptime, debuff uptime on bosses, enchants, tier, stats, consumable buffs, potions |
 | Raid only | mechanics, rank, damage total, targets |
 
-Uptime covers buffs only. Warcraft Logs offers no way to scope the enemy-debuff table to one
-caster, so the matching figure for what a player kept up *on enemies* does not exist. That was
-measured on 2026-09-05 and is recorded in `wcl-api` under a heading that says exactly that.
+Uptime covers buffs everywhere and debuffs on Mythic+ bosses. Warcraft Logs offers no way to
+scope the enemy-debuff table to one caster (measured 2026-09-05), but its `Debuffs` event stream
+names each application's caster (measured 2026-10-07), so what a player kept up *on enemies* is
+rebuilt from that stream for bosses. Both are recorded in `wcl-api`. Trash, raid and council
+pulls, and any pull with no single boss, are not measured yet.
 
 On a raid wipe, six families are withheld in **one sentence** rather than six separate silences.
 

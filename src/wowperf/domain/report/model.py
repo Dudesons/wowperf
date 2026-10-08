@@ -601,6 +601,9 @@ class ComparisonRow(Frozen):
     sample: str
     verdict: str
     verdict_label: str
+    # One string per column `ComparisonTable.cell_headings` names, in its order.
+    # Descriptive only: the row's verdict is the judgement, never a cell.
+    cells: tuple[str, ...] = ()
 
 
 class ComparisonTable(Frozen):
@@ -613,6 +616,9 @@ class ComparisonTable(Frozen):
 
     heading: str
     caption: str
+    # Extra column headings after Verdict, one per boss on the debuff table.
+    # Empty for every other table, which then renders exactly as it always has.
+    cell_headings: tuple[str, ...] = ()
     rows: tuple[ComparisonRow, ...] = ()
 
 

@@ -7,6 +7,7 @@ from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage
+from wowperf.domain.debuffs import DebuffEvent, DebuffLog
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
@@ -473,6 +474,54 @@ def build_interrupts(
             )
         )
     return tuple(interrupts)
+
+
+DEBUFF_TYPES = ("applydebuff", "removedebuff")
+"""The two rows that change whether a debuff is on. Refreshes and stacks do not."""
+
+
+def build_debuff_log(
+    events: list[dict[str, Any]],
+    actors: list[dict[str, Any]],
+    ability_names: dict[int, str],
+    end_ms: int,
+) -> DebuffLog:
+    """The enemy-debuff stream and the report's actors, as one log a player can be read off."""
+    return DebuffLog(
+        events=tuple(
+            DebuffEvent(
+                applied=event["type"] == "applydebuff",
+                timestamp_ms=event["timestamp"],
+                source_id=event["sourceID"],
+                source_instance=event.get("sourceInstance") or 0,
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                ability_id=event["abilityGameID"],
+            )
+            for event in events
+            if event.get("type") in DEBUFF_TYPES
+        ),
+        pet_owners=tuple(
+            (actor["id"], actor["petOwner"])
+            for actor in actors
+            if actor.get("petOwner") is not None
+        ),
+        game_ids=tuple(
+            (actor["id"], actor["gameID"]) for actor in actors if actor.get("gameID") is not None
+        ),
+        npc_actors=tuple(
+            NpcActor(
+                actor_id=actor["id"],
+                game_id=actor["gameID"],
+                name=actor.get("name") or "",
+                sub_type=actor.get("subType") or "",
+            )
+            for actor in actors
+            if actor.get("type") == "NPC" and actor.get("gameID") is not None
+        ),
+        ability_names=tuple(sorted(ability_names.items())),
+        end_ms=end_ms,
+    )
 
 
 def build_enemy_deaths(

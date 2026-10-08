@@ -40,6 +40,7 @@ from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.model import (
     AvailabilityRow,
     ComparisonRow,
+    ComparisonTable,
     CooldownRow,
     CurveGuide,
     CurvePoint,
@@ -1448,3 +1449,62 @@ def test_a_tooltip_is_markup_the_builder_wrote_and_never_names_a_mitigation_sour
     assert 'class="tip"' not in body
     assert "prevented" not in html.lower()
     assert "damage reduction" not in html.lower()
+
+
+def test_a_comparison_row_without_cells_ends_as_it_always_has() -> None:
+    """A table with no boss columns must render byte for byte as it did before they
+    existed. The row's own line ends in a loop over its cells, and the environment
+    trims the newline after a block tag, so an empty loop is where a byte goes
+    missing: the row's closing tag would glue itself to the Verdict cell. The
+    heading checks above read cells, never the whitespace between them."""
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Buff uptime without boss columns",
+        caption="Derived.",
+        rows=(
+            ComparisonRow(
+                ability_id=55078, name="Blood Plague", ours="70%", theirs="90%",
+                spread="85% to 95%", sample="3 top parses", verdict="below",
+                verdict_label="Below",
+            ),
+        ),
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    html = render(report)
+
+    assert "<td>Below</td>\n    </tr>\n" in html
+    assert '<th scope="col">Verdict</th></tr></thead>\n    <tbody>' in html
+
+
+def test_a_boss_column_lands_under_its_own_heading() -> None:
+    """The per-boss cells are extra columns. Each must sit under the boss it names,
+    and a table without them must render exactly as before, which
+    `test_a_comparison_row_without_cells_ends_as_it_always_has` pins."""
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Debuff uptime on bosses",
+        caption="Derived.",
+        cell_headings=("The Test Colossus", "The Twin Council"),
+        rows=(
+            ComparisonRow(
+                ability_id=55078, name="Blood Plague", ours="70%", theirs="90%",
+                spread="85% to 95%", sample="3 top parses", verdict="below",
+                verdict_label="Below", cells=("50% against 90%", "a council, not measured"),
+            ),
+        ),
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    [(headings, rows)] = [
+        rendered for rendered in compared_tables(render(report))
+        if "The Test Colossus" in rendered[0]
+    ]
+
+    assert headings[-2:] == ["The Test Colossus", "The Twin Council"]
+    [(_, cells)] = rows
+    assert [MARKUP.sub("", cell) for cell in cells[-2:]] == [
+        "50% against 90%", "a council, not measured"
+    ]

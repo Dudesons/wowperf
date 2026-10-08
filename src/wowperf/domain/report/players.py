@@ -1,18 +1,23 @@
 # ABOUTME: One card per player, carrying the facts measured about them.
 # ABOUTME: Damage reads against the group median: a log cannot say a hit was avoidable.
 
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 from wowperf.domain.analysis.players import summarise_players
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
+    BossCell,
+    BossDebuffRow,
     PlayerMeasures,
     StatShare,
     Verdict,
 )
+from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.comparison.statistics import observed_range
 from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.model import LoadedRun, Player
@@ -204,6 +209,7 @@ def build_players(
     """
     names_by_actor = display_names(loaded.run.players)
     slugs = slugs_by_actor(loaded.run.players)
+    specs = {player.actor_id: (player.class_name, player.spec) for player in loaded.run.players}
 
     untimed = [finding for finding in findings if finding.seconds_lost is None]
     damage = [finding for finding in untimed if finding.id.startswith("players.damage.")]
@@ -259,14 +265,20 @@ def build_players(
                     loaded, summary.actor_id, summary.class_name, summary.spec,
                     defensives, throughput,
                 ),
-                comparison_tables=_tables(measures.get(slug)),
+                comparison_tables=_tables(measures.get(slug), specs),
             )
         )
     return tuple(cards)
 
 
-def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
-    """The three tables, each dropped when it has no rows to show."""
+def _tables(
+    measures: PlayerMeasures | None, specs: Mapping[int, tuple[str, str]]
+) -> tuple[ComparisonTable, ...]:
+    """The three tables, each dropped when it has no rows to show.
+
+    `specs` holds each of the run's players' (class, specialisation), keyed by
+    actor id, to name the teammates a debuff row was shared with.
+    """
     if measures is None:
         return ()
     built = []
@@ -302,6 +314,31 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                     "median of the parses that carried each. Derived."
                 ),
                 rows=_aura_rows(measures.auras),
+            )
+        )
+    debuffs = measures.boss_debuffs
+    if debuffs.rows:
+        tally = debuffs.tally
+        assert tally is not None  # rows are built only from a stream that was read
+        built.append(
+            ComparisonTable(
+                heading="Debuff uptime on bosses",
+                caption=(
+                    f"Share of {debuffs.seconds:.0f}s of single-boss pulls the boss carried "
+                    "each debuff from this player or their pets, against the median of the "
+                    "parses that applied each. Council pulls, and pulls with no single boss, "
+                    "are left out. Each boss column reads ours against the median and "
+                    "carries no verdict. A debuff a teammate's application replaces is marked "
+                    "shared, not judged. The group's log for the whole fight held "
+                    f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
+                    "application, dropped (a pet copy's second removal counts here); "
+                    f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
+                    "open at the fight's end, closed there; and "
+                    f"{quantity(tally.unresolved_targets, 'row', 'rows')} on an enemy with no "
+                    "game id, skipped. Derived."
+                ),
+                cell_headings=debuffs.bosses,
+                rows=_debuff_rows(debuffs.rows, specs),
             )
         )
     if measures.stats:
@@ -395,3 +432,72 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
             )
         )
     return tuple(rows)
+
+
+WITHHELD_LABELS = {
+    Withheld.COUNCIL: "a council, not measured",
+    Withheld.NO_BOSS: "no boss found",
+    Withheld.NOT_REACHED: "no reference measured it",
+    Withheld.TOO_FEW: "too few references",
+}
+"""How a boss cell with no figure says why, in the reader's words."""
+
+
+def _shared_label(shared_with: Sequence[int], specs: Mapping[int, tuple[str, str]]) -> str:
+    """ "Shared with 2 Windwalker Monks and Frost Death Knight": each spec and class once.
+
+    Teammates of one specialisation and class are counted rather than
+    repeated, so the label still says how many players held the slot.
+    """
+    counts = Counter(specs[one] for one in shared_with)
+    named = [
+        f"{count} {pair_label(class_name, spec)}"
+        if count > 1
+        else pair_label(class_name, spec, plural=False)
+        for (class_name, spec), count in counts.items()
+    ]
+    return "Shared with " + " and ".join(named)
+
+
+def _debuff_rows(
+    rows: Sequence[BossDebuffRow], specs: Mapping[int, tuple[str, str]]
+) -> tuple[ComparisonRow, ...]:
+    """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
+
+    A shared row keeps its figures and names who it was shared with in place
+    of a verdict. It takes the `unjudged` tint, because like that row it says
+    nothing about this player's play.
+    """
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    built = []
+    for row in ordered:
+        m = row.uptime
+        low, high = observed_range(m.their_fractions)
+        verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
+        if row.shared_with:
+            verdict = Verdict.UNJUDGED
+            label = _shared_label(row.shared_with, specs)
+        built.append(
+            ComparisonRow(
+                ability_id=m.ability_id,
+                name=m.name,
+                ours=f"{m.ours:.0%}",
+                theirs=f"{m.their_median:.0%}",
+                spread=f"{low:.0%} to {high:.0%}",
+                sample=f"{len(m.their_fractions)} top parses",
+                verdict=verdict.value,
+                verdict_label=label,
+                cells=tuple(_cell(cell) for cell in row.cells),
+            )
+        )
+    return tuple(built)
+
+
+def _cell(cell: BossCell) -> str:
+    """One boss's cell: ours against the median, or ours and why there is no median."""
+    reason = WITHHELD_LABELS[cell.withheld] if cell.withheld is not None else ""
+    if cell.ours is None:
+        return reason
+    if cell.their_median is None:
+        return f"{cell.ours:.0%}; {reason}" if reason else f"{cell.ours:.0%}"
+    return f"{cell.ours:.0%} against {cell.their_median:.0%}"

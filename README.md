@@ -164,30 +164,42 @@ Being clear about this matters more than the features:
   something misleading.
 - **It reports a median and an observed range, never an average.** Below three comparable
   reference runs it falls back to a single reference and says so on the finding.
-- **Uptime covers buffs only.** Warcraft Logs offers no way to scope the enemy-debuff table to a
-  single caster, so "what you kept up on the boss" does not exist as a number.
+- **Uptime covers buffs everywhere and debuffs on Mythic+ bosses.** Warcraft Logs offers no way to
+  scope the enemy-debuff table to a single caster, but its event stream names each application's
+  caster, so "what you kept up on the boss" is rebuilt from that stream. Trash, raid and council
+  pulls are not measured yet.
 - **Nothing here is a DPS ranking.** It is about decisions, not throughput.
 
 ## Quota
 
 Warcraft Logs gives each client 3600 points an hour, and every response is cached under `cache/`,
 so a second look at a fight you have already read costs a single point. What a first look costs
-depends on the command and on how wide you cast it. Measured, against a cold cache:
+depends on the command and on how wide you cast it. Measured, against a cold cache, except the two
+`analyze` rows of 2026-10-08, whose references were cold but whose own run was already cached:
 
 | Command | Points |
 | --- | --- |
 | `progression`, every attempt | 3 to 26 |
 | `raid --all-players`, a wipe | 65 |
 | `raid`, one player, a kill | 63 |
-| `analyze`, one player | 83 to 95 |
+| `analyze`, one player, 2026-10-08 | 107.53 |
 | `night --no-deaths`, a whole report | 186 |
-| `analyze --all-players` | 190 |
+| `analyze --all-players`, 2026-10-08 | 298.65 |
 | `night`, a whole report | 705 |
 | `raid --all-players`, a kill | 878 |
 
 Each is one reading of one report on one day rather than a budget; the dates and the conditions
 behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
 goes.
+
+**The two `analyze` rows are the readings of 2026-10-08, taken once boss debuff uptime
+had added its event stream.** Both ran with the references cold and our own run already cached.
+The one-player reading is a +18 Temple of Sethraliss, the same key as the 94.69 reading of
+2026-09-23, 20 of its points the debuff stream. The `--all-players` reading is a different key,
+74 of its points the stream, and it is the only one of the two with no older cost reading. The
+skill records the older spread for the one-player shape as 66 through 94.69, and the older
+`--all-players` reading, 190.90 on 2026-09-11, was another report; so do not subtract an older
+figure from either row to price the stream. Its own line in each breakdown is that price.
 
 **The two `night` rows are two different reports, both read cold on 2026-10-01 with every pull
 compared.** The 186 is a sixteen-pull Heroic report at the `--no-deaths` tier, 83 of it the

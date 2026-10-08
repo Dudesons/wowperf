@@ -16,6 +16,7 @@ from wowperf.adapters.wcl.ingest import (
     build_damage_done,
     build_damage_taken,
     build_deaths,
+    build_debuff_log,
     build_encounter,
     build_enemy_cast_rows,
     build_enemy_deaths,
@@ -43,6 +44,7 @@ from wowperf.adapters.wcl.queries import (
     DEATHS_QUERY,
     ENEMY_CASTS_QUERY,
     ENEMY_DEATHS_QUERY,
+    ENEMY_DEBUFFS_QUERY,
     FIGHTS_QUERY,
     HEALING_QUERY,
     INTERRUPTS_QUERY,
@@ -55,6 +57,7 @@ from wowperf.adapters.wcl.report_rankings import build_report_rankings
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.raid_reference import ReportRankings
+from wowperf.domain.debuffs import DebuffLog
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.events import CastEvent, Death, HealingEvent
 from wowperf.domain.loadout import Loadout
@@ -286,13 +289,17 @@ class WclRunRepository:
         that encases a player is modelled as a hostile pet owned by that player.
         Fetching every actor, not only type "NPC", is what makes that resolve.
         """
+        return {actor["id"]: actor["gameID"] for actor in self._actors(report_code, hits)}
+
+    def _actors(self, report_code: str, hits: list[bool] | None = None) -> list[dict[str, Any]]:
+        """Every actor row of the report, untyped, as the actors query returns them."""
         payload = self._query(ACTORS_QUERY, {"code": report_code}, hits)
         report = payload["reportData"]["report"]
         master = report.get("masterData") or {}
         actors = master.get("actors")
         if actors is None:
             raise WclError(f"Report {report_code} returned no masterData.actors block")
-        return {actor["id"]: actor["gameID"] for actor in actors}
+        return cast(list[dict[str, Any]], actors)
 
     def _talents(
         self, report_code: str, fight: dict[str, Any], hits: list[bool] | None = None
@@ -1110,12 +1117,38 @@ class WclRunRepository:
         loading them for a whole roster would pay for ten tables to answer a
         question about two players. Only what the player carried is asked for:
         no query argument narrows the enemy-debuff table to one caster, so the
-        matching figure for enemies does not exist — the measured table is in
-        `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to
-        one caster".
+        matching figure for enemies cannot come from a table — the measured
+        table is in `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot
+        be scoped to one caster". `debuff_log` reads the event stream that does
+        name the caster, for the boss figure.
         """
         payload = self._query(
             AURA_TABLE_QUERY,
             {"code": report_code, "fightId": fight_id, "actorId": actor_id},
         )
         return build_player_auras(payload, actor_id)
+
+    def debuff_log(self, report_code: str, fight_id: int) -> DebuffLog:
+        """One keystone fight's enemy-debuff stream, with the actors that read it per player.
+
+        Fetched on its own, like `auras`, rather than folded into `load`: only a
+        compared run reads it, and one stream serves every player in the group,
+        so the caller fetches it once per run. The fight's window and its end
+        come from the report the cache already holds.
+        """
+        report = self._report(report_code)
+        fight = select_keystone_fight(report["fights"], fight_id)
+        ability_names, _ = self._ability_dictionary(report_code)
+        events = fetch_all_events(
+            lambda one_query, variables: self._query(one_query, variables),
+            ENEMY_DEBUFFS_QUERY,
+            {
+                "code": report_code,
+                "fightId": fight["id"],
+                "startTime": float(fight["startTime"]),
+                "endTime": float(fight["endTime"]),
+            },
+        )
+        return build_debuff_log(
+            events, self._actors(report_code), ability_names, int(fight["endTime"])
+        )

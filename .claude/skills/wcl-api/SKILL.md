@@ -57,7 +57,7 @@ covers it otherwise.
 | `filterExpression` | `events` argument | 2026-09-07 | yes |
 | `graph` | `Report` | 2026-09-12 | yes |
 | `viewBy` | `graph` and `table` argument | 2026-09-12 | yes |
-| `petOwner` | `ReportActor` | 2026-09-12 | no |
+| `petOwner` | `ReportActor` | 2026-09-12 | yes |
 | `playerDetails` | `Report` | 2026-09-14 | yes |
 | `includeCombatantInfo` | `playerDetails` argument | 2026-09-14 | yes |
 | `bossPercentage` | `ReportFight` | 2026-09-16 | yes |
@@ -913,6 +913,151 @@ one is. Anything built on the per-player reading returns nothing, silently.
 selection had shipped inert since 2026-09-05. `tests/adapters/wcl/test_ingest_auras.py` holds it
 out. Removing it drops one of that query's two `table` selections, which plausibly lowers what
 `AuraTable` costs; that is a prediction and nothing here has measured it.
+
+Everything above is about `table`. The event stream gives a different answer: see the next
+section.
+
+## The debuff event stream does name the caster
+
+First read 2026-10-02 by an ad-hoc query. Verified 2026-10-07 by re-reading those cached pages
+offline and by a fresh live probe into the same cache, against report `LyKXYvVZm192TDr6` fight 9,
+a +18 Ruby Life Pools completed in 1607.7 s.
+
+```
+events(dataType: Debuffs, hostilityType: Enemies, fightIDs: [Int],
+       startTime: Float, endTime: Float, limit: 10000)
+```
+
+**The stream attributes each debuff on an enemy to the actor that applied it, which the table
+above does not.** Every one of the 25,887 rows carries a `sourceID`, and every `targetID` resolves
+to an NPC in `masterData.actors`. Sources resolve to 23,656 rows from players, 2,165 from pets and
+66 from NPCs. Blood Plague (55078) splits by source: 1,613 rows from the Death Knight (actor 171)
+and 1,469 from actor 172. `masterData.actors` gives actor 172 as `type: "Pet"`, named `Rune
+Weapon`, `gameID` 27893, with `petOwner` 171. It is a second source of the same debuff, with its
+own applications: 441 applies over 141 target instances, against the player's 168. A per-player
+figure therefore has to decide whether to fold pets in by `petOwner`, as `graph` does for damage.
+The 66 NPC-sourced rows are two abilities that enemies apply to themselves or each other.
+
+**Shape.** Rows carry `timestamp`, `type`, `sourceID`, `targetID`, `abilityGameID` and `fight`
+always. They carry `targetInstance` on 20,521, `sourceMarker` on 9,150, `targetMarker` on 5,186,
+`sourceInstance` on 2,231 and `stack` on 1,538. `type` took five values: `refreshdebuff` 13,905,
+`applydebuff` 5,226, `removedebuff` 5,218, `applydebuffstack` 1,263, `removedebuffstack` 275.
+
+**Cost: about one point per 10,000-row page.** The 2026-10-02 query was reported at 3.19 points
+for three pages, from that session's own reading, which is not reproducible here. The fresh
+probe, into a cache that did not hold it, read 3 calls for 3.00. The pages broke at the same
+timestamps, 11608833 and 12287315, and the 25,887 rows were identical, in order, to those of
+2026-10-02. The actor lookup with `type` and `petOwner` cost 1.00 more. Whole probe, as the
+ledger printed it: 3.00 for the stream, 1.00 for the actors, and 1.00 for the two `RateLimit`
+reads.
+
+**No row repeats across a page boundary**: each page starts at the previous page's
+`nextPageTimestamp`, and the previous page ends earlier than that. Inside pages, 39 rows are
+exact duplicates of another row, 30 of them refreshes. Whether those are two real events is not
+established. They are not pagination overlap.
+
+**An application without a removal is mostly one enemy logged under two actor ids, not an enemy
+that died.** Pairing the Death Knight's own Blood Plague on `(targetID, targetInstance)` leaves
+13 of its 168 `applydebuff` rows with no later `removedebuff`. It also leaves 14 `removedebuff`
+rows with no open application. All 13 open applications sit on actors 261 and 270. None of
+those 13 target instances has a row in the fight's cached enemy death stream, 185 NPC deaths, and
+actor 261 has no death row at all. Each of the 13 is followed, 2 to 26 seconds later, by an orphan
+removal on the
+same `targetInstance` of a different actor with the same `gameID`. Actors 261 and 263 are both
+`Infused Whelp` (`gameID` 189893), and 269 and 270 are both `Scorchling` (194622). The fourteenth
+orphan removal closes a second application on a target that logged two applies before its
+removes. These are the only two `gameID`s, of the 22 targeted on this fight, that span more than
+one actor id.
+
+Keying intervals on the target's `gameID` with `targetInstance`, instead of its actor id,
+balances the Death Knight's Blood Plague completely. Across all player-sourced rows, it reduces
+applications left open from 32 to 3 and orphan removals from 38 to 11. The pairing method was
+`(sourceID, sourceInstance, abilityGameID, target, targetInstance)` walked in timestamp order,
+with an apply opening an interval and a remove closing it. The feature's own pairing has
+since dropped the source instance from that key, which the 2026-10-08 paragraph at the end of
+this section measures; what is stated here is what was measured at the time.
+
+So **closing an open interval at the last event on that target is wrong for the case that
+dominates here.** The last event on actor 261's instance is the application itself, so that
+rule closes each interval with no length at all, 2 to 26 seconds short. That one creature
+is logged under two actor ids is inferred from the timing and the matching instance numbers.
+The log does not state it. How to close the 3 intervals still open after re-keying is not
+settled. `ENEMY_DEBUFFS_QUERY` in `queries.py` reads it, for the boss figure of
+`docs/plans/2026-10-07-enemy-debuff-uptime-design.md`, and keys targets on game id as
+recommended here.
+
+**What boss debuff uptime cost, as the feature's own reading, 2026-10-08.** `analyze
+LyKXYvVZm192TDr6 --fight 9 --all-players` ran with its references cold and spent 298.65 points.
+The command printed the composition:
+
+- `EnemyDebuffs`: 74 calls for 74.00
+- `Fights`: 20 calls for 40.20
+- `Talents`: 19 calls for 38.95
+- `PlayerDetails`: 19 calls for 38.00
+- `AuraTable`: 25 calls for 25.00
+- `Abilities`: 20 calls for 20.00
+- `Casts`: 20 calls for 20.00
+- `Actors`: 19 calls for 19.00
+- `Deaths`: 5 calls for 5.38
+- `EnemyCasts`: 5 calls for 5.06
+- `CharacterRankings`: 5 calls for 5.05
+- `Interrupts`: 5 calls for 5.00
+- `FightRankings`: 1 call for 1.01
+- `Affixes`: 1 call for 1.00
+- `RateLimit`: 2 calls for 1.00, its last read unpriced
+
+`analyze nd6Rz47Gj1ZPxFfm --fight 3` compared one player and spent 107.53:
+
+- `Fights`: 11 calls for 22.11
+- `EnemyDebuffs`: 20 calls for 20.00
+- `Talents`: 5 calls for 10.25
+- `Abilities`: 10 calls for 10.00
+- `PlayerDetails`: 5 calls for 10.00
+- `Actors`: 6 calls for 6.00
+- `Casts`: 6 calls for 6.00
+- `EnemyCasts`: 5 calls for 5.15
+- `AuraTable`: 5 calls for 5.00
+- `Deaths`: 5 calls for 5.00
+- `Interrupts`: 5 calls for 5.00
+- `CharacterRankings`: 1 call for 1.01
+- `FightRankings`: 1 call for 1.01
+- `RateLimit`: 2 calls for 1.00
+
+The stream cost one point per page. On the first command that came to 74.00 points across its
+twenty reports. The design's §7 had estimated about 45 points more for `--all-players`, so the
+real figure is well above it.
+
+Each report whose stream is read pays one `Actors` call: ours, and each parse reference. A speed
+reference reads no stream and pays none. On our own report, which was already cached under the
+old query text, that call is the one-time re-read the new fields cost, because the query text is
+part of the cache key.
+
+Rerun warm, each command spent 1.00, all of it on its two `RateLimit` reads.
+
+**The pairing keys on the source id without its instance number.** Measured 2026-10-08 on the
+cached Temple of Sethraliss key `nd6Rz47Gj1ZPxFfm` fight 3: a Mirror Image pet applied Frostbolt
+to Galvazzt under `sourceInstance` 25 and removed it under 26, three times over. Keyed on the
+instance, every removal was an orphan and the first application ran to the fight's end, which
+read as 58.2 s of the pull. Keyed without it, the same rows read 15.9 s.
+
+Across that key, the first key and the 24 cached references of the two analyses, intervals
+left open added 1,869.7 s on measured bosses under the old key, all of it Mirror Image Frostbolt.
+Under the new key they add 0 s.
+
+The new key has a cost, which the same comparison measured. When two copies of one pet each keep
+their own copy of a debuff on one target, the first removal closes both. That lowers Withering
+Grasp (Magus of the Dead) by 51.1 s and Mind Sear (Antoran Inquisitor) by 39.5 s across those
+keys. On no key does it move either debuff by more than 6.3 points of boss time.
+
+The pairing's own tally changed with the key. Orphan removes rose from 24 to 284 on
+`LyKXYvVZm192TDr6` fight 9 and from 132 to 454 on `nd6Rz47Gj1ZPxFfm` fight 3. Of the 284, 281
+are a second removal on an interval already closed, and of the 454, 453 are; a Rune Weapon
+accounts for 271 and 368. The tally now mostly counts concurrent pet copies rather than broken
+pairing, so read a high orphan count on a key with pets as that, not as a failure to pair.
+
+The e2e assertion on this pairing fails on the old key only where a pet's application and
+removal carry different instance numbers on a measured boss. `nd6Rz47Gj1ZPxFfm` fight 3 is
+that key: Mirror Image Frostbolt on Galvazzt.
 
 ## A damage-taken table's row counts landings, not just hits
 

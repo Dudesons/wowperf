@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.alignment import MIN_ALIGNED_SHARE, Alignment
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.events import CastEvent, Death, EnemyCastRow, InterruptEvent
 from wowperf.domain.findings import Finding
@@ -96,6 +97,11 @@ class ParseMember(Frozen):
     # reference, which has no route -- and a trash comparison over an empty one
     # aligns nothing, which is the right answer rather than a missing one.
     pulls: tuple[Pull, ...] = ()
+    # This reference's own debuffs on its own bosses, rebuilt from its enemy-
+    # debuff stream. None when the stream could not be had, which
+    # `compare.uptime.boss.unavailable` states rather than reading as "applied
+    # nothing".
+    boss_debuffs: BossDebuffs | None = None
 
 
 class _Sample(Frozen):
@@ -141,6 +147,10 @@ class ParseSample(_Sample):
     @property
     def aura_eligible(self) -> tuple[ParseMember, ...]:
         return tuple(member for member in self.members if member.auras is not None)
+
+    @property
+    def debuff_eligible(self) -> tuple[ParseMember, ...]:
+        return tuple(member for member in self.members if member.boss_debuffs is not None)
 
     @property
     def top(self) -> ParseMember | None:

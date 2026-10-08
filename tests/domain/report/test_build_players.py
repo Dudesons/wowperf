@@ -2,20 +2,25 @@
 # ABOUTME: A card carries a finding's title and detail unchanged; it adds no framing of its own.
 
 from tests.domain.report.test_build_frame import a_pull, a_run
+from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
+    BossCell,
+    BossDebuffRow,
+    BossDebuffTable,
     PlayerMeasures,
     StatShare,
     Stretch,
     Verdict,
 )
+from wowperf.domain.debuffs import PairingTally
 from wowperf.domain.events import CastEvent, Death, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.ledger import place_rows
-from wowperf.domain.report.model import LedgerRow, PlayerCard, SectionState
+from wowperf.domain.report.model import ComparisonTable, LedgerRow, PlayerCard, SectionState
 from wowperf.domain.report.players import (
     VERDICT_LABELS,
     build_players,
@@ -1007,3 +1012,208 @@ def test_a_player_with_no_readable_stats_gets_no_stat_table() -> None:
         Defensives(), ThroughputCooldowns(), measures={"stonewake-0": PlayerMeasures()},
     )[0]
     assert not [t for t in card.comparison_tables if "stat" in t.heading.lower()]
+
+
+def test_a_debuff_table_with_no_rows_and_no_stream_is_not_drawn() -> None:
+    # Our stream failing leaves `tally` None, and the caption that reads it is
+    # only ever built beside rows, so the page never meets the None.
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(),
+        measures={"stonewake-0": PlayerMeasures(boss_debuffs=BossDebuffTable())},
+    )[0]
+
+    assert not [t for t in card.comparison_tables if "Debuff" in t.heading]
+
+
+def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> None:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraUptime(
+                    ability_id=195181, name="Bone Shield", ours=0.62,
+                    their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                    verdict=Verdict.BELOW,
+                ),
+            ),
+            boss_seconds=648.0,
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.5,
+                                their_median=0.9,
+                            ),
+                            BossCell(
+                                encounter_id=2002, boss="Second Boss",
+                                withheld=Withheld.COUNCIL,
+                            ),
+                            BossCell(
+                                encounter_id=2003, boss="Third Boss", ours=0.8,
+                                withheld=Withheld.TOO_FEW,
+                            ),
+                        ),
+                    ),
+                ),
+                seconds=200.0,
+                bosses=("First Boss", "Second Boss", "Third Boss"),
+                tally=PairingTally(orphan_removes=1, closed_at_end=2),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    assert [t.heading for t in card.comparison_tables] == [
+        "Buff uptime on boss pulls",
+        "Debuff uptime on bosses",
+    ]
+    table = card.comparison_tables[1]
+    assert table.cell_headings == ("First Boss", "Second Boss", "Third Boss")
+    [row] = table.rows
+    assert (row.ours, row.theirs, row.spread, row.verdict_label) == (
+        "70%", "90%", "85% to 95%", "Below"
+    )
+    assert row.cells == (
+        "50% against 90%", "a council, not measured", "80%; too few references"
+    )
+    assert table.caption == (
+        "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
+        "their pets, against the median of the parses that applied each. Council pulls, and "
+        "pulls with no single boss, are left out. Each boss column reads ours against the "
+        "median and carries no verdict. A debuff a teammate's application replaces is marked "
+        "shared, not judged. The group's log for the whole fight held 1 removal "
+        "with no application, dropped (a pet copy's second removal counts here); 2 "
+        "applications still open at the fight's end, closed there; and 0 rows on an enemy "
+        "with no game id, skipped. Derived."
+    )
+
+
+def a_shared_debuff_table(*shared_with: int) -> ComparisonTable:
+    """The debuff table of a card whose one row a teammate's application replaced."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=115804, name="Mortal Wounds", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.7,
+                                their_median=0.9,
+                            ),
+                        ),
+                        shared_with=shared_with,
+                    ),
+                ),
+                seconds=100.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    loaded = a_loaded(
+        players=(
+            a_player(),
+            Player(
+                actor_id=2, name="Emberkin", class_name="Monk", spec="Windwalker",
+                item_level=680,
+            ),
+            Player(
+                actor_id=3, name="Bríala", class_name="DeathKnight", spec="Frost",
+                item_level=680,
+            ),
+            Player(
+                actor_id=4, name="Кириллица", class_name="Monk", spec="Windwalker",
+                item_level=680,
+            ),
+        )
+    )
+    card = build_players(
+        loaded, (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+    [table] = card.comparison_tables
+    return table
+
+
+def test_a_shared_debuff_is_labelled_with_who_it_was_shared_with_and_not_judged() -> None:
+    [row] = a_shared_debuff_table(2).rows
+
+    assert row.verdict_label == "Shared with Windwalker Monk"
+    # The tint of a row that declined to judge: a shared row says nothing about
+    # this player's play either, so it recedes as `unjudged` does.
+    assert row.verdict == Verdict.UNJUDGED.value
+    # The figures still show.
+    assert (row.ours, row.theirs, row.cells) == ("70%", "90%", ("70% against 90%",))
+
+
+def test_a_debuff_shared_with_two_teammates_names_both_by_spec_and_class() -> None:
+    [row] = a_shared_debuff_table(2, 3).rows
+
+    assert row.verdict_label == "Shared with Windwalker Monk and Frost Death Knight"
+
+
+def test_teammates_of_one_spec_and_class_are_counted_not_repeated() -> None:
+    # Two Windwalker Monks and a Death Knight: repeating the Monk would read as
+    # a stutter and hide that two players held the slot.
+    [row] = a_shared_debuff_table(2, 3, 4).rows
+
+    assert row.verdict_label == "Shared with 2 Windwalker Monks and Frost Death Knight"
+
+
+def test_an_unshared_debuff_keeps_its_own_verdict() -> None:
+    [row] = a_shared_debuff_table().rows
+
+    assert (row.verdict, row.verdict_label) == ("below", "Below")
+
+
+def test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know() -> None:
+    # A reference can have fought the boss and had it withheld, so the cell may
+    # not claim that none reached it: it says only that none measured it.
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.9,
+                                withheld=Withheld.NOT_REACHED,
+                            ),
+                        ),
+                    ),
+                ),
+                seconds=100.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [row] = card.comparison_tables[0].rows
+    assert row.cells == ("90%; no reference measured it",)
+    assert BossCell(
+        encounter_id=2001, boss="First Boss", withheld=Withheld.NOT_REACHED
+    ).model_dump(mode="json")["withheld"] == "no reference measured this boss"

@@ -17,7 +17,7 @@ from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import WclClient
 from wowperf.adapters.wcl.errors import WclError
 from wowperf.adapters.wcl.ingest import IngestError
-from wowperf.adapters.wcl.queries import ACTORS_QUERY, FIGHTS_QUERY
+from wowperf.adapters.wcl.queries import ACTORS_QUERY, ENEMY_DEBUFFS_QUERY, FIGHTS_QUERY
 from wowperf.adapters.wcl.repository import WclRunRepository
 from wowperf.domain.ports import RunRepository
 
@@ -146,8 +146,10 @@ def recording_repository(
             "report": {
                 "masterData": {
                     "actors": [
-                        {"id": 699, "gameID": 241874},
-                        {"id": 702, "gameID": 244889},
+                        {"id": 699, "gameID": 241874, "type": "NPC", "subType": "NPC",
+                         "name": "Fixture Add"},
+                        {"id": 702, "gameID": 244889, "type": "NPC", "subType": "Boss",
+                         "name": "Boss"},
                     ]
                 }
             }
@@ -245,6 +247,14 @@ def recording_repository(
         "Resurrects": events_payload(
             [{"type": "resurrect", "abilityGameID": 61999, "sourceID": 7, "targetID": 693,
               "timestamp": 9000}]
+        ),
+        "EnemyDebuffs": events_payload(
+            [
+                {"type": "applydebuff", "abilityGameID": 55078, "sourceID": 693,
+                 "targetID": 702, "timestamp": 10000},
+                {"type": "removedebuff", "abilityGameID": 55078, "sourceID": 693,
+                 "targetID": 702, "timestamp": 15000},
+            ]
         ),
     }
 
@@ -763,9 +773,11 @@ def test_actors_query_carries_no_type_filter() -> None:
     that Warcraft Logs models as hostile. If ACTORS_QUERY filters to `actors(type: "NPC")`
     only, those actors cannot resolve: the ingest fails with a missing actor error.
     This test catches any reintroduction of the type filter and prevents silent regression.
+    The selection now also carries `name`, `type`, `subType` and `petOwner`, for the boss
+    finder and the pet folding.
     """
     assert 'actors(type:' not in ACTORS_QUERY
-    assert 'actors { id gameID }' in ACTORS_QUERY
+    assert 'actors { id gameID name type subType petOwner }' in ACTORS_QUERY
 
 
 def an_aura_payload() -> dict[str, object]:
@@ -1305,3 +1317,24 @@ def test_a_raid_parse_reference_refuses_a_keystone_fight(tmp_path: Path) -> None
 
     with pytest.raises(IngestError, match="not a boss fight"):
         repository.load_raid_parse_reference(RAID_REPORT_CODE, 1)
+
+
+def test_the_debuff_log_reads_the_stream_and_the_actors_of_one_fight(tmp_path: Path) -> None:
+    calls: list[str] = []
+
+    log = recording_repository(calls, tmp_path).debuff_log("abc123", 36)
+
+    assert [(event.applied, event.timestamp_ms) for event in log.events] == [
+        (True, 10000),
+        (False, 15000),
+    ]
+    assert log.end_ms == 1920000
+    assert [actor.actor_id for actor in log.npc_actors if actor.sub_type == "Boss"] == [702]
+    assert {"EnemyDebuffs", "Actors", "Abilities"} <= set(calls)
+
+
+def test_the_enemy_debuff_query_asks_for_debuffs_on_enemies() -> None:
+    assert "query EnemyDebuffs(" in ENEMY_DEBUFFS_QUERY
+    assert "dataType: Debuffs" in ENEMY_DEBUFFS_QUERY
+    assert "hostilityType: Enemies" in ENEMY_DEBUFFS_QUERY
+    assert "nextPageTimestamp" in ENEMY_DEBUFFS_QUERY

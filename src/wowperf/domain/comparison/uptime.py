@@ -2,10 +2,12 @@
 # ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
 
 # Buffs only, and the titles here say so. The design's other half — what a player
-# kept up on enemies — is not comparable per player: no query argument narrows the
+# kept up on enemies — cannot come from the aura table: no query argument narrows the
 # enemy-debuff table to one caster, so every row it returns belongs to the whole
-# group. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped
-# to one caster".
+# group (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+# caster"). It is rebuilt from the event stream instead, for bosses, in
+# `debuff_uptime.py` and `boss_debuffs.py` (same skill, "The debuff event stream does
+# name the caster").
 
 from collections.abc import Callable, Sequence
 
@@ -157,6 +159,53 @@ def _no_reference_auras(our_name: str, total: int) -> Finding:
     )
 
 
+def pairwise_gaps(
+    ours: dict[int, tuple[str, float]], theirs: dict[int, tuple[str, float]]
+) -> list[tuple[float, int, str, float, float]]:
+    """Where one reference had an aura up markedly more than ours did, widest gap first.
+
+    Each row is (gap, ability id, name, our fraction, their fraction). An aura
+    is a candidate when the reference carried it for at least
+    `MIN_UPTIME_FRACTION`, ours is above zero, and the reference leads by at
+    least `UPTIME_GAP_FRACTION`. A zero on our side is passed over rather than
+    reported: below the aggregate floor there is no sample to say the aura is
+    one this player is meant to carry, so why that is trustworthy to skip is
+    each caller's to state.
+    """
+    gaps = []
+    for ability_id, (name, their_fraction) in theirs.items():
+        if their_fraction < MIN_UPTIME_FRACTION:
+            continue
+        our_fraction = ours.get(ability_id, (name, 0.0))[1]
+        if our_fraction <= 0.0:
+            continue
+        if their_fraction - our_fraction < UPTIME_GAP_FRACTION:
+            continue
+        gaps.append((their_fraction - our_fraction, ability_id, name, our_fraction,
+                     their_fraction))
+    gaps.sort(reverse=True)
+    return gaps
+
+
+def carried_fractions(
+    fractions: dict[int, tuple[str, float]], names: dict[int, str]
+) -> dict[int, float]:
+    """The fractions above zero, by ability id, recording each name in `names`.
+
+    A fraction only counts as carried when it is above zero: a band that never
+    overlaps the measured stretch reads the same as never having the aura at
+    all. `names` is shared across a sample's members and keeps the first
+    spelling seen for each ability.
+    """
+    carried: dict[int, float] = {}
+    for ability_id, (name, fraction) in fractions.items():
+        if fraction <= 0.0:
+            continue
+        names.setdefault(ability_id, name)
+        carried[ability_id] = fraction
+    return carried
+
+
 def _gap_findings(
     ours: dict[int, tuple[str, float]],
     theirs: dict[int, tuple[str, float]],
@@ -166,24 +215,14 @@ def _gap_findings(
     their_seconds: float,
     words: Wording,
 ) -> list[Finding]:
-    gaps = []
-    for ability_id, (name, their_fraction) in theirs.items():
-        if their_fraction < MIN_UPTIME_FRACTION:
-            continue
-        our_fraction = ours.get(ability_id, (name, 0.0))[1]
-        if our_fraction <= 0.0:
-            # `onSelf` carries no source filter, so it returns teammate-cast
-            # buffs, consumables, and gear procs alongside what this player
-            # actually carries. Attributing a 0% on our side to this player is
-            # only trustworthy for an ability they carried at all; the case of
-            # a spell they never cast is already covered by compare_spells's
-            # missing-spell branch, against the caster who actually owns it.
-            continue
-        if their_fraction - our_fraction < UPTIME_GAP_FRACTION:
-            continue
-        gaps.append((their_fraction - our_fraction, ability_id, name, our_fraction,
-                     their_fraction))
-    gaps.sort(reverse=True)
+    # `pairwise_gaps` passes over an aura at zero on our side. `onSelf` carries
+    # no source filter, so it returns teammate-cast buffs, consumables, and gear
+    # procs alongside what this player actually carries. Attributing a 0% on
+    # our side to this player is only trustworthy for an ability they carried
+    # at all; the case of a spell they never cast is already covered by
+    # compare_spells's missing-spell branch, against the caster who actually
+    # owns it.
+    gaps = pairwise_gaps(ours, theirs)
 
     findings = []
     for rank, (_, ability_id, name, our_fraction, their_fraction) in enumerate(
@@ -439,13 +478,7 @@ def _gap_findings_sample(
             if their_seconds > 0
             else {}
         )
-        qualifying: dict[int, float] = {}
-        for ability_id, (name, fraction) in fractions.items():
-            if fraction <= 0.0:
-                continue
-            names.setdefault(ability_id, name)
-            qualifying[ability_id] = fraction
-        per_member.append(qualifying)
+        per_member.append(carried_fractions(fractions, names))
 
     measures = uptime_measures(our_fractions, per_member, names)
     gaps = sorted(

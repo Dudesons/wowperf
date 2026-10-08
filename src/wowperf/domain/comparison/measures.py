@@ -4,6 +4,8 @@
 from enum import StrEnum
 
 from wowperf.domain.base import Frozen
+from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.debuffs import PairingTally
 
 
 class Verdict(StrEnum):
@@ -59,6 +61,50 @@ class AuraUptime(Frozen):
     verdict: Verdict
 
 
+class BossCell(Frozen):
+    """One boss's figure in one debuff's row: ours against the sample's, never a verdict.
+
+    `ours` is None only when our own pull of this boss was withheld, and
+    `their_median` is None whenever `withheld` names a reason, so a cell
+    always says why it is missing a figure.
+    """
+
+    encounter_id: int
+    boss: str
+    ours: float | None = None
+    their_median: float | None = None
+    withheld: Withheld | None = None
+
+
+class BossDebuffRow(Frozen):
+    """One debuff: the judged figure across all boss pulls, and one cell per boss.
+
+    `shared_with` names, by actor id, the other players whose copies of this
+    debuff replaced this player's rather than sat beside it. When it names
+    anyone the row is not judged, whatever `uptime.verdict` says: the figure is
+    this player's share of one slot, not their uptime.
+    """
+
+    uptime: AuraUptime
+    cells: tuple[BossCell, ...] = ()
+    shared_with: tuple[int, ...] = ()
+
+
+class BossDebuffTable(Frozen):
+    """Everything the debuff table states, with the denominator and the log's own tally.
+
+    `tally` is None only when no stream was read for our side, whether it was
+    never requested or could not be read, so that a findings file tells "no
+    stream read" apart from "read, and clean". Whenever the stream was read it
+    is our own tally, even with no rows to show.
+    """
+
+    rows: tuple[BossDebuffRow, ...] = ()
+    seconds: float = 0.0
+    bosses: tuple[str, ...] = ()
+    tally: PairingTally | None = None
+
+
 class StatShare(Frozen):
     """One secondary's share of a player's own rating budget, against the sample's.
 
@@ -95,6 +141,7 @@ class PlayerMeasures(Frozen):
     trash: tuple[AbilityRate, ...] = ()
     auras: tuple[AuraUptime, ...] = ()
     stats: tuple[StatShare, ...] = ()
+    boss_debuffs: BossDebuffTable = BossDebuffTable()
     boss_seconds: float = 0.0
     trash_seconds: float = 0.0
     pack_count: int = 0
