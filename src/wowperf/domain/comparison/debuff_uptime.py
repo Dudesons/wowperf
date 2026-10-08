@@ -35,7 +35,7 @@ STRETCH = "boss time"
 GAP_DETAIL = (
     "Both figures are the share of single-boss pull time the boss carried this debuff from "
     "the player or their pets, which is comparable even though the fights ran for different "
-    "lengths. A pull whose bosses are a council is left out on both sides. "
+    "lengths. A council pull, or a pull with no single boss, is left out on both sides. "
     f"{DUNGEON.uptime_hedge} The intervals are rebuilt from the log's own applications and "
     "removals rather than read from a table."
 )

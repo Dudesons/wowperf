@@ -76,6 +76,10 @@ def test_a_debuff_kept_up_well_below_the_sample_is_a_gap() -> None:
         "50% for Stonewake (actor 7)"
     )
     assert "range 90% to 90% across 3 top parses" in gap.evidence
+    assert (
+        "A council pull, or a pull with no single boss, is left out on both sides."
+        in gap.detail
+    )
     assert "0 of 3 references had no debuff data" in gap.evidence
     assert (gap.ability_id, gap.ability_name) == (DOT, DOT_NAME)
 

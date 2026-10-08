@@ -1087,9 +1087,49 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
     )
     assert table.caption == (
         "Share of 200s of single-boss pulls the boss carried each debuff from this player or "
-        "their pets, against the median of the parses that applied each. Council pulls are "
-        "left out. Each boss column reads ours against the median and carries no verdict. Our "
-        "own log held 1 removal with no application, dropped; 2 applications still open at "
-        "the fight's end, closed there; and 0 rows on an enemy with no game id, skipped. "
-        "Derived."
+        "their pets, against the median of the parses that applied each. Council pulls, and "
+        "pulls with no single boss, are left out. Each boss column reads ours against the "
+        "median and carries no verdict. The group's log for the whole fight held 1 removal "
+        "with no application, dropped (a pet copy's second removal counts here); 2 "
+        "applications still open at the fight's end, closed there; and 0 rows on an enemy "
+        "with no game id, skipped. Derived."
     )
+
+
+def test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know() -> None:
+    # A reference can have fought the boss and had it withheld, so the cell may
+    # not claim that none reached it: it says only that none measured it.
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            boss_debuffs=BossDebuffTable(
+                rows=(
+                    BossDebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.9,
+                                withheld=Withheld.NOT_REACHED,
+                            ),
+                        ),
+                    ),
+                ),
+                seconds=100.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [row] = card.comparison_tables[0].rows
+    assert row.cells == ("90%; no reference measured it",)
+    assert BossCell(
+        encounter_id=2001, boss="First Boss", withheld=Withheld.NOT_REACHED
+    ).model_dump(mode="json")["withheld"] == "no reference measured this boss"

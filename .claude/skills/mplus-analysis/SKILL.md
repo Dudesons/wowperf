@@ -429,8 +429,9 @@ instead of adjusting for them, because adjusting would invent a number:
 - **Debuff uptime on bosses is rebuilt, not read.** `compare.uptime.boss.<rank>.<slug>` is the
   share of single-boss pull time the boss carried a debuff from the player or their pets,
   against the median of the parses that applied it, by the buff family's thresholds. It is
-  derived: the intervals come from the log's own applications and removals. A council pull is
-  left out on both sides, and the card's per-boss columns describe, never judge. Unlike a buff,
+  derived: the intervals come from the log's own applications and removals. A council pull, or
+  a pull with no single boss, is left out on both sides, and the card's per-boss columns
+  describe, never judge. Unlike a buff,
   a debuff names who applied it, so `compare.uptime.boss.unjudged` is the player's own zero;
   what it cannot say is whether their build has the ability. `comparison_tables.<slug>
   .boss_debuffs.tally` counts what the pairing met in our own log, and is provenance, not a

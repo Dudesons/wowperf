@@ -317,10 +317,11 @@ def _tables(measures: PlayerMeasures | None) -> tuple[ComparisonTable, ...]:
                 caption=(
                     f"Share of {debuffs.seconds:.0f}s of single-boss pulls the boss carried "
                     "each debuff from this player or their pets, against the median of the "
-                    "parses that applied each. Council pulls are left out. Each boss column "
-                    "reads ours against the median and carries no verdict. Our own log held "
+                    "parses that applied each. Council pulls, and pulls with no single boss, "
+                    "are left out. Each boss column reads ours against the median and "
+                    "carries no verdict. The group's log for the whole fight held "
                     f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
-                    "application, dropped; "
+                    "application, dropped (a pet copy's second removal counts here); "
                     f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
                     "open at the fight's end, closed there; and "
                     f"{quantity(tally.unresolved_targets, 'row', 'rows')} on an enemy with no "
@@ -426,7 +427,7 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
 WITHHELD_LABELS = {
     Withheld.COUNCIL: "a council, not measured",
     Withheld.NO_BOSS: "no boss found",
-    Withheld.NOT_REACHED: "no reference reached it",
+    Withheld.NOT_REACHED: "no reference measured it",
     Withheld.TOO_FEW: "too few references",
 }
 """How a boss cell with no figure says why, in the reader's words."""

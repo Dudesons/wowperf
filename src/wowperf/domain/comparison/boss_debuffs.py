@@ -23,7 +23,7 @@ class Withheld(StrEnum):
 
     COUNCIL = "council"
     NO_BOSS = "no boss found"
-    NOT_REACHED = "no reference reached this boss"
+    NOT_REACHED = "no reference measured this boss"
     TOO_FEW = "too few references"
 
 
