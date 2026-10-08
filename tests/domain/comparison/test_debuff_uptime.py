@@ -4,9 +4,15 @@
 from tests.domain.comparison.test_uptime import BOSS, a_player, a_run
 from wowperf.domain.auras import Aura, AuraBand
 from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossWindow, Withheld
-from wowperf.domain.comparison.debuff_uptime import compare_boss_debuffs_sample
+from wowperf.domain.comparison.debuff_uptime import (
+    boss_debuff_table,
+    compare_boss_debuffs_sample,
+)
+from wowperf.domain.comparison.measures import BossCell, Verdict
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
+from wowperf.domain.comparison.tables import comparison_measures
+from wowperf.domain.debuffs import PairingTally
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun
 
@@ -179,3 +185,137 @@ def test_the_service_files_the_gap_under_the_players_own_slug() -> None:
     ids = [finding.id for finding in compare(LoadedRun(run=a_run(BOSS)), None, [subject])]
 
     assert "compare.uptime.boss.0.stonewake-0" in ids
+
+
+FIRST = BossWindow(
+    encounter_id=2001, name="First Boss", start_ms=0, end_ms=100_000, boss_game_id=5000
+)
+SECOND = BossWindow(
+    encounter_id=2002,
+    name="Second Boss",
+    start_ms=200_000,
+    end_ms=300_000,
+    boss_game_id=6000,
+)
+SECOND_COUNCIL = SECOND.model_copy(update={"boss_game_id": None, "withheld": Withheld.COUNCIL})
+
+
+def on_two_bosses(
+    first: float, second: float, *, windows: tuple[BossWindow, ...] = (FIRST, SECOND)
+) -> BossDebuffs:
+    bands = []
+    if first > 0:
+        bands.append(AuraBand(start_ms=0, end_ms=int(100_000 * first)))
+    if second > 0:
+        bands.append(AuraBand(start_ms=200_000, end_ms=200_000 + int(100_000 * second)))
+    auras = (
+        (
+            Aura(
+                ability_id=DOT,
+                name=DOT_NAME,
+                total_uptime_ms=0,
+                uses=len(bands),
+                bands=tuple(bands),
+            ),
+        )
+        if bands
+        else ()
+    )
+    return BossDebuffs(windows=windows, auras=auras)
+
+
+def a_two_boss_sample(*members: BossDebuffs) -> ParseSample:
+    return ParseSample(
+        members=tuple(
+            a_member(name, debuffs)
+            for name, debuffs in zip(REFERENCE_NAMES, members, strict=True)
+        )
+    )
+
+
+def test_a_row_carries_the_overall_verdict_and_one_cell_per_boss() -> None:
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9), sample)
+
+    [row] = table.rows
+    assert row.uptime.verdict is Verdict.BELOW
+    assert row.cells == (
+        BossCell(encounter_id=2001, boss="First Boss", ours=0.5, their_median=0.9),
+        BossCell(encounter_id=2002, boss="Second Boss", ours=0.9, their_median=0.9),
+    )
+    assert (table.bosses, table.seconds) == (("First Boss", "Second Boss"), 200.0)
+
+
+def test_our_council_cell_is_withheld_with_its_reason() -> None:
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    table = boss_debuff_table(
+        on_two_bosses(0.5, 0.0, windows=(FIRST, SECOND_COUNCIL)), sample
+    )
+
+    assert table.rows[0].cells[1] == BossCell(
+        encounter_id=2002, boss="Second Boss", withheld=Withheld.COUNCIL
+    )
+
+
+def test_a_boss_no_reference_reached_shows_ours_and_says_so() -> None:
+    sample = a_two_boss_sample(
+        *(on_two_bosses(0.9, 0.0, windows=(FIRST,)) for _ in range(3))
+    )
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9), sample)
+
+    assert table.rows[0].cells[1] == BossCell(
+        encounter_id=2002, boss="Second Boss", ours=0.9, withheld=Withheld.NOT_REACHED
+    )
+
+
+def test_a_boss_too_few_references_applied_it_on_shows_ours_and_says_so() -> None:
+    sample = a_two_boss_sample(
+        on_two_bosses(0.9, 0.9), on_two_bosses(0.9, 0.9), on_two_bosses(0.9, 0.0)
+    )
+
+    table = boss_debuff_table(on_two_bosses(0.5, 0.9), sample)
+
+    assert table.rows[0].cells[1] == BossCell(
+        encounter_id=2002, boss="Second Boss", ours=0.9, withheld=Withheld.TOO_FEW
+    )
+
+
+def test_no_table_below_the_floor_or_without_our_own_figure() -> None:
+    two = ParseSample(
+        members=(
+            a_member("Bríala", on_two_bosses(0.9, 0.9)),
+            a_member("Кириллица", on_two_bosses(0.9, 0.9)),
+        )
+    )
+    three = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+
+    assert boss_debuff_table(on_two_bosses(0.5, 0.9), two).rows == ()
+    assert boss_debuff_table(None, three).rows == ()
+
+
+def test_our_own_pairing_tally_rides_on_the_table() -> None:
+    sample = a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3)))
+    ours = on_two_bosses(0.5, 0.9).model_copy(
+        update={"tally": PairingTally(orphan_removes=2, closed_at_end=1)}
+    )
+
+    assert boss_debuff_table(ours, sample).tally == PairingTally(
+        orphan_removes=2, closed_at_end=1
+    )
+
+
+def test_the_players_measures_carry_the_debuff_table() -> None:
+    subject = ComparisonSubject(
+        player=a_player(),
+        slug="stonewake-0",
+        display_name=OUR_NAME,
+        parse=a_two_boss_sample(*(on_two_bosses(0.9, 0.9) for _ in range(3))),
+        our_boss_debuffs=on_two_bosses(0.5, 0.9),
+    )
+
+    measures = comparison_measures(LoadedRun(run=a_run(BOSS)), [subject])
+
+    assert [row.uptime.name for row in measures["stonewake-0"].boss_debuffs.rows] == [DOT_NAME]

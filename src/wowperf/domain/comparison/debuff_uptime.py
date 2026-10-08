@@ -3,15 +3,20 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs
-from wowperf.domain.comparison.measures import Verdict
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs, Withheld, encounter_share
+from wowperf.domain.comparison.measures import (
+    BossCell,
+    BossDebuffRow,
+    BossDebuffTable,
+    Verdict,
+)
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
     ParseMember,
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.statistics import count_phrase, observed_range
+from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.comparison.uptime import (
     MAX_AURAS_REPORTED,
     carried_fractions,
@@ -236,4 +241,73 @@ def _unjudged(our_name: str, names: Sequence[str]) -> Finding:
             f"applied by at least {MIN_SAMPLE_FOR_AGGREGATE} top parses each",
             "absent from our own measured boss pulls",
         ),
+    )
+
+
+def boss_debuff_table(our: BossDebuffs | None, sample: ParseSample) -> BossDebuffTable:
+    """The debuff table: each qualifying debuff, judged overall, with a cell per boss.
+
+    Gated exactly as `tables._auras` gates the buff table: no table below the
+    floor, where the comparison states one reference rather than a median.
+    """
+    eligible = sample.debuff_eligible
+    if our is None or our.seconds <= 0 or not eligible or not sample.can_aggregate(eligible):
+        return BossDebuffTable()
+
+    names, per_member = per_member_fractions(eligible)
+    measures = uptime_measures(debuff_fractions(our), per_member, names)
+    bosses: dict[int, str] = {}
+    for window in our.windows:
+        bosses.setdefault(window.encounter_id, window.name)
+
+    rows = tuple(
+        BossDebuffRow(
+            uptime=m,
+            cells=tuple(
+                _cell(our, eligible, m.ability_id, encounter_id, name)
+                for encounter_id, name in bosses.items()
+            ),
+        )
+        for m in measures
+    )
+    return BossDebuffTable(
+        rows=rows, seconds=our.seconds, bosses=tuple(bosses.values()), tally=our.tally
+    )
+
+
+def _cell(
+    our: BossDebuffs,
+    members: Sequence[ParseMember],
+    ability_id: int,
+    encounter_id: int,
+    name: str,
+) -> BossCell:
+    """One boss's cell. Descriptive only: the verdict is the row's, never a cell's.
+
+    A member that never reached this boss, or whose pull of it was withheld,
+    is not counted for it. Those that did and applied the debuff there give the
+    median, at the same floor the row's own median keeps.
+    """
+    ours = encounter_share(our, ability_id, encounter_id)
+    if not isinstance(ours, float):
+        return BossCell(
+            encounter_id=encounter_id, boss=name, withheld=ours or Withheld.NO_BOSS
+        )
+
+    shares = []
+    for member in members:
+        assert member.boss_debuffs is not None  # debuff_eligible guarantees it
+        shares.append(encounter_share(member.boss_debuffs, ability_id, encounter_id))
+    reached = [share for share in shares if isinstance(share, float)]
+    if not reached:
+        return BossCell(
+            encounter_id=encounter_id, boss=name, ours=ours, withheld=Withheld.NOT_REACHED
+        )
+    carried = [share for share in reached if share > 0.0]
+    if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
+        return BossCell(
+            encounter_id=encounter_id, boss=name, ours=ours, withheld=Withheld.TOO_FEW
+        )
+    return BossCell(
+        encounter_id=encounter_id, boss=name, ours=ours, their_median=median(carried)
     )
