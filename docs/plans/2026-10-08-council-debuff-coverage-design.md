@@ -120,13 +120,24 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
   - Mystic Touch, 98.24% against 97.77%;
   - Mortal Wounds, 50.84% against 70.80%;
   - Touch of the Magi on Adderis and Aspix, 13.14% against 14.31%.
-- **The untargetable question.** On Kyrakka and Erkhart, the references do not sit materially below
-  100%.
-  - The group's coverage of the debuffs a spec keeps up permanently reached 97.3 to 99.2% for
-    Mystic Touch (6 reference pulls), 91.7 to 99.0% for Atrophic Poison (10) and 89.4 to 99.2% for
-    Blood Plague (8).
-  - The council cell medians were 97.77%, 97.54% and 98.97%.
-  - Any untargetable stretch costs at most a few points, on both sides alike.
+- **The untargetable question,** on Kyrakka and Erkhart, was not settled.
+  - The council cell medians, the compared players' own references, sat at 97.5 to 99% on three
+    debuffs: Mystic Touch 97.77%, Atrophic Poison 97.54% and Blood Plague 98.97%.
+  - The survey measured group-union coverage on the council bosses: the union over every player of
+    a reference's group, not the compared player's figure. It ranged widely across reference pulls:
+
+    | Debuff | Group-union coverage | Reference pulls |
+    | --- | --- | --- |
+    | Mystic Touch | 97.3 to 99.2% | 6 |
+    | Atrophic Poison | 91.7 to 99.0% | 10 |
+    | Blood Plague | 89.4 to 99.2% | 8 |
+    | Overwhelmed | 84.9 to 99.0% | 14 |
+    | Insidious Chill | 62.2 to 94.9% | 9 |
+
+  - The cost of an untargetable stretch was not isolated, and the lows are not explained. A spec
+    absent from a group, or a debuff not kept up, are candidates only; neither was verified.
+  - The comparison stays like for like whatever the cause, because both sides are measured over
+    the same span rule.
 - **Row verdicts:**
   - `level` 20, `unjudged` 3, `below` 1.
   - 2 rows are shared: Mortal Wounds, on an Arms Warrior and on a Windwalker Monk.
@@ -138,8 +149,8 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
     829.59 s, is 60.48%.
 - **"too few references" did not occur.** Its one occurrence before this change was on the Arms
   Warrior's Honed Reflexes row, and that row left the table. The debuff was on neither council boss
-  at all, for us or for any of the five references. So the references' shares fell from 2.81 to
-  23.12% to 1.50 to 11.90%, and their median from 14.40% to 7.67%. All five references still carried
+  at all, for us or for any of the five references. So the references' shares fell from a range of
+  2.81 to 23.12% to a range of 1.50 to 11.90%, and their median from 14.40% to 7.67%. All five references still carried
   the debuff, but the median fell under the 10% floor, the rule as designed.
 - **"no reference measured this boss" did not occur,** before this change or after. It stays
   unexercised live.
