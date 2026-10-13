@@ -52,20 +52,28 @@
   <summary>{{ table.heading }}</summary>
   <p class="sub">{{ table.caption }}</p>
   <table class="compared-rows">
-    <thead><tr><th scope="col">Ability</th><th scope="col" class="num">Ours</th><th scope="col" class="num">Median</th><th scope="col" class="num">Range</th><th scope="col">Sample</th><th scope="col">Verdict</th>{% for heading in table.cell_headings %}<th scope="col" class="num">{{ heading }}</th>{% endfor %}</tr></thead>
+    <thead><tr><th scope="col">Ability</th>{% if table.figures %}<th scope="col" class="num">Ours</th><th scope="col" class="num">Median</th><th scope="col" class="num">Range</th><th scope="col">Sample</th>{% endif %}{% if table.judged %}<th scope="col">Verdict</th>{% endif %}{% for heading in table.cell_headings %}<th scope="col" class="num">{{ heading }}</th>{% endfor %}</tr></thead>
     <tbody>
     {% for row in table.rows %}
     <tr class="v-{{ row.verdict }}">
       <td>{{ ability(row.ability_id, row.name) }}</td>
+      {% if table.figures %}
       <td class="num">{{ row.ours }}</td>
       <td class="num">{{ row.theirs }}</td>
       <td class="num">{{ row.spread }}</td>
       <td>{{ row.sample }}</td>
-      <td>{{ row.verdict_label }}</td>{% for cell in row.cells %}<td class="num">{{ cell }}</td>{% endfor +%}
+      {% endif %}
+      {%+ if table.judged %}<td>{{ row.verdict_label }}</td>{% endif %}{% for cell in row.cells %}<td class="num">{{ cell }}</td>{% endfor +%}
     </tr>
     {% endfor %}
     </tbody>
   </table>
+  {% if table.note %}
+  <p class="sub">{{ table.note }}</p>
+  {% endif %}
+  {% if table.warning %}
+  <p class="withheld">{{ table.warning }}</p>
+  {% endif %}
   </details>
   {% endfor %}
 </div>

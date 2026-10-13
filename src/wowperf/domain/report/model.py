@@ -591,16 +591,20 @@ class ComparisonRow(Frozen):
     than defaulted so that every caller says which it is building. A None
     draws no icon, which is what the `ability` macro already does for any id
     the CDN could not address.
+
+    A row of a table that draws no figure columns, or no verdict, leaves those
+    strings empty. The uptime tables state their judged figure, its range and
+    its sample in cells, and the reach table judges nothing.
     """
 
     ability_id: int | None
     name: str
-    ours: str
-    theirs: str
-    spread: str
-    sample: str
+    ours: str = ""
+    theirs: str = ""
+    spread: str = ""
+    sample: str = ""
     verdict: str
-    verdict_label: str
+    verdict_label: str = ""
     # One string per column `ComparisonTable.cell_headings` names, in its order.
     # Descriptive only: the row's verdict is the judgement, never a cell.
     cells: tuple[str, ...] = ()
@@ -616,10 +620,22 @@ class ComparisonTable(Frozen):
 
     heading: str
     caption: str
-    # Extra column headings after Verdict, one per boss on the debuff table.
-    # Empty for every other table, which then renders exactly as it always has.
+    # Whether the row's own Ours, Median, Range and Sample columns are drawn. The
+    # uptime tables draw their judged figure, its range and its sample as their
+    # first three cells instead, then a cell per stretch.
+    figures: bool = True
+    # Whether the Verdict column is drawn. The reach table judges nothing.
+    judged: bool = True
+    # Extra column headings after Verdict: on the uptime tables, Overall, Range
+    # and Sample, then a stretch or a boss each. Empty for every other table,
+    # which then renders exactly as it always has.
     cell_headings: tuple[str, ...] = ()
     rows: tuple[ComparisonRow, ...] = ()
+    # Drawn under the table: what its figures mean.
+    note: str = ""
+    # Drawn under the note: what its figures could not include. Empty when nothing
+    # was left out.
+    warning: str = ""
 
 
 class PlayerCard(Frozen):

@@ -238,8 +238,11 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
 .compared-rows .num { text-align: right; font-variant-numeric: tabular-nums; }
 /* The verdict is a word in its own column and a tint here, never a colour alone:
    a reader who cannot separate the tints, or who printed the page, still has
-   the column. Three of the four land on the second cell, our own figure, which
-   is the one the verdict is about, and they say two different things. Hue says
+   the column. Three of the four land on the second cell. On the cast and stat
+   tables that is our own figure, the one the verdict is about. On the uptime
+   tables, which draw no figure columns and state Overall in a cell after the
+   verdict, it is the Verdict word itself, which says the same branch. Either
+   way they say two different things. Hue says
    which side our figure landed on: --theirs mutes it where we sit under the
    sample's median, --ours picks it out where we sit over it, --ink-dim settles
    it where the two are level. Weight says whether the comparison found a

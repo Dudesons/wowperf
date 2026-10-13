@@ -10,6 +10,7 @@ from wowperf.domain.comparison.measures import (
     AuraRow,
     AuraUptime,
     BossCell,
+    DebuffReach,
     DebuffRow,
     DebuffTable,
     PlayerMeasures,
@@ -758,7 +759,7 @@ def test_an_uptime_table_is_sorted_by_our_own_uptime_not_by_the_gap() -> None:
 
 
 def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
-    """Rates are casts a minute and uptimes are a share of boss time. A column
+    """Rates are casts a minute and uptimes are a share of the key's time. A column
     that spelled both the same way would invite reading one as the other."""
     measures = {
         "stonewake-0": PlayerMeasures(
@@ -777,8 +778,7 @@ def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
     )[0]
 
     auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
-    assert auras.rows[0].ours == "98%"
-    assert auras.rows[0].theirs == "100%"
+    assert auras.rows[0].cells[0] == "98% against 100%"
 
 
 def test_an_uptime_rows_range_and_sample_state_its_overall_figure() -> None:
@@ -806,8 +806,7 @@ def test_an_uptime_rows_range_and_sample_state_its_overall_figure() -> None:
     )[0]
 
     [row] = next(t for t in card.comparison_tables if "uptime" in t.heading.lower()).rows
-    assert (row.ours, row.theirs) == ("50%", "60%")
-    assert (row.spread, row.sample) == ("40% to 80%", "2 top parses")
+    assert row.cells[:3] == ("50% against 60%", "40% to 80%", "2 top parses")
 
 
 def a_card_with_all_three_tables() -> PlayerCard:
@@ -841,6 +840,7 @@ def a_card_with_all_three_tables() -> PlayerCard:
             boss_seconds=648.0,
             trash_seconds=950.0,
             pack_count=8,
+            key_seconds=1834.0,
         )
     }
     return build_players(
@@ -857,7 +857,7 @@ def test_the_three_tables_come_under_their_own_headings_in_one_order() -> None:
     assert [t.heading for t in a_card_with_all_three_tables().comparison_tables] == [
         "Casts on boss pulls",
         "Casts on shared trash packs",
-        "Buff uptime on boss pulls",
+        "Buff uptime",
     ]
 
 
@@ -883,8 +883,13 @@ def test_the_table_captions_are_not_interchangeable() -> None:
         "against the median of the parses that cast each. Derived."
     )
     assert auras.caption == (
-        "Share of 648s of boss pulls, against the median of the parses that "
-        "carried each. Derived."
+        "Share of 1834s of key time, from the key's start to its end with the walking "
+        "between pulls included, against the median of the parses that carried each. The "
+        "verdict reads Overall, and Range and Sample are Overall's. Without bosses is the key "
+        "less its boss pulls and Bosses the boss pulls; each reads ours against the median "
+        "and carries no verdict. A buff only up in combat reads lower over the whole key the "
+        "more of it was spent between pulls, so a reference that walked less reads higher "
+        "whatever either player did. Derived."
     )
     assert len({boss.caption, trash.caption, auras.caption}) == 3
 
@@ -929,8 +934,7 @@ def test_an_aura_the_comparison_refused_to_judge_keeps_that_verdict() -> None:
 
     row = card.comparison_tables[0].rows[0]
     assert row.verdict == "unjudged"
-    assert row.spread == "94% to 99%"
-    assert row.sample == "3 top parses"
+    assert row.cells[1:3] == ("94% to 99%", "3 top parses")
 
 
 def test_each_verdict_reaches_a_row_as_its_own_word() -> None:
@@ -1071,17 +1075,20 @@ def test_a_debuff_table_with_no_rows_and_no_stream_is_not_drawn() -> None:
     assert not [t for t in card.comparison_tables if "Debuff" in t.heading]
 
 
-def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> None:
+def test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_boss() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraRow(uptime=AuraUptime(
-                    ability_id=195181, name="Bone Shield", ours=0.62,
-                    their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
-                    verdict=Verdict.BELOW,
-                )),
+                AuraRow(
+                    uptime=AuraUptime(
+                        ability_id=195181, name="Bone Shield", ours=0.62,
+                        their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                        verdict=Verdict.BELOW,
+                    )
+                ),
             ),
             boss_seconds=648.0,
+            key_seconds=1834.0,
             debuffs=DebuffTable(
                 rows=(
                     DebuffRow(
@@ -1090,6 +1097,8 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
                             their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
                             verdict=Verdict.BELOW,
                         ),
+                        trash=StretchCell(ours=0.4, their_median=0.8),
+                        bosses=StretchCell(ours=0.6, their_median=0.9),
                         cells=(
                             BossCell(
                                 encounter_id=2001, boss="First Boss", ours=0.5,
@@ -1118,29 +1127,56 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
     )[0]
 
     assert [t.heading for t in card.comparison_tables] == [
-        "Buff uptime on boss pulls",
-        "Debuff uptime on bosses",
+        "Buff uptime",
+        "Debuff coverage",
+        "Debuff reach",
     ]
     table = card.comparison_tables[1]
-    assert table.cell_headings == ("First Boss", "Second Boss", "Third Boss")
-    [row] = table.rows
-    assert (row.ours, row.theirs, row.spread, row.verdict_label) == (
-        "70%", "90%", "85% to 95%", "Below"
+    assert (table.figures, table.judged) == (False, True)
+    assert table.cell_headings == (
+        "Overall",
+        "Range",
+        "Sample",
+        "Trash",
+        "Bosses",
+        "First Boss",
+        "Second Boss",
+        "Third Boss",
     )
+    [row] = table.rows
+    assert row.verdict_label == "Below"
+    # Drawn once, in the cells: the row's own figure strings stay empty on a
+    # table that draws no figure columns.
+    assert (row.ours, row.theirs, row.spread, row.sample) == ("", "", "", "")
+    # Range and Sample are Overall's: the references' 85%, 90% and 95%. Neither
+    # stretch nor any boss cell carries a range of its own.
     assert row.cells == (
-        "50% against 90%", "no boss found", "80%; too few references"
+        "70% against 90%",
+        "85% to 95%",
+        "3 top parses",
+        "40% against 80%",
+        "60% against 90%",
+        "50% against 90%",
+        "no boss found",
+        "80%; too few references",
     )
     assert table.caption == (
-        "Share of 200s of boss-alive time the bosses carried each debuff from this player "
-        "or their pets, against the median of the parses that applied each. A council's "
-        "bosses each count from the pull's start to their own death, or to the pull's end if "
-        "they did not die there; a pull with no boss found is left out. Each boss column "
-        "reads ours against the median and carries no "
-        "verdict. A debuff a teammate's application replaces is marked shared, not judged. "
-        "The group's log for the whole fight held 1 removal with no application, dropped (a "
-        "pet copy's second removal counts here); 2 applications still open at the fight's "
-        "end, closed there; and 0 rows on an enemy with no game id, skipped. Derived."
+        "Share of 200s of enemy-alive time, summed over every enemy measured, that carried "
+        "each debuff from this player or their pets, against the median of the parses that "
+        "applied each. The verdict reads Overall, and Range and Sample are Overall's. Trash "
+        "is the mobs of trash pulls; Bosses is the bosses themselves, a council's each from "
+        "the pull's start to their own death, or to the pull's end if they did not die "
+        "there; adds that spawn during a boss fight, and the enemies of a pull with no boss "
+        "found, count in Overall only. Those columns and each boss's read ours against the "
+        "median and carry no verdict. A debuff a teammate's application replaces is marked "
+        "shared, not judged. The group's log for the whole fight held 1 removal with no "
+        "application, dropped (a pet copy's second removal counts here); 2 applications "
+        "still open at the fight's end, closed there; and 0 rows on an enemy with no game "
+        "id, skipped. Derived."
     )
+    # This row sets no reach, so every reach cell is empty, Range and Sample too.
+    [unreached] = card.comparison_tables[2].rows
+    assert unreached.cells == ("", "", "", "", "")
 
 
 def a_shared_debuff_table(*shared_with: int, deathless: int = 0) -> ComparisonTable:
@@ -1155,6 +1191,8 @@ def a_shared_debuff_table(*shared_with: int, deathless: int = 0) -> ComparisonTa
                             their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
                             verdict=Verdict.BELOW,
                         ),
+                        trash=StretchCell(withheld=Withheld.NO_TRASH),
+                        bosses=StretchCell(ours=0.7, their_median=0.9),
                         cells=(
                             BossCell(
                                 encounter_id=2001, boss="First Boss", ours=0.7,
@@ -1192,8 +1230,8 @@ def a_shared_debuff_table(*shared_with: int, deathless: int = 0) -> ComparisonTa
         loaded, (), frozenset({"stonewake-0"}), a_player(), {},
         Defensives(), ThroughputCooldowns(), measures=measures,
     )[0]
-    [table] = card.comparison_tables
-    return table
+    coverage, _reach = card.comparison_tables
+    return coverage
 
 
 @pytest.mark.parametrize(
@@ -1225,7 +1263,14 @@ def test_a_shared_debuff_is_labelled_with_who_it_was_shared_with_and_not_judged(
     # this player's play either, so it recedes as `unjudged` does.
     assert row.verdict == Verdict.UNJUDGED.value
     # The figures still show.
-    assert (row.ours, row.theirs, row.cells) == ("70%", "90%", ("70% against 90%",))
+    assert row.cells == (
+        "70% against 90%",
+        "85% to 95%",
+        "3 top parses",
+        "no trash measured",
+        "70% against 90%",
+        "70% against 90%",
+    )
 
 
 def test_a_debuff_shared_with_two_teammates_names_both_by_spec_and_class() -> None:
@@ -1281,7 +1326,205 @@ def test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know() -
     )[0]
 
     [row] = card.comparison_tables[0].rows
-    assert row.cells == ("90%; no reference measured it",)
+    assert row.cells == (
+        "70% against 90%", "85% to 95%", "3 top parses", "", "", "90%; no reference measured it"
+    )
     assert BossCell(
         encounter_id=2001, boss="First Boss", withheld=Withheld.NOT_REACHED
     ).model_dump(mode="json")["withheld"] == "no reference measured this boss"
+
+
+def test_the_buff_table_reads_overall_its_range_and_sample_then_each_stretch() -> None:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraRow(
+                    uptime=AuraUptime(
+                        ability_id=195181, name="Bone Shield", ours=0.62,
+                        their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                        verdict=Verdict.BELOW,
+                    ),
+                    without_bosses=StretchCell(ours=0.55, their_median=0.97),
+                    bosses=StretchCell(ours=0.9, withheld=Withheld.TOO_FEW),
+                ),
+            ),
+            key_seconds=1834.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [table] = card.comparison_tables
+    assert table.heading == "Buff uptime"
+    assert (table.figures, table.judged) == (False, True)
+    assert table.cell_headings == ("Overall", "Range", "Sample", "Without bosses", "Bosses")
+    [row] = table.rows
+    assert row.verdict_label == "Below"
+    # Range and Sample are the references behind Overall's median, 95% to 99%
+    # over three; neither stretch carries a range of its own.
+    assert row.cells == (
+        "62% against 98%",
+        "95% to 99%",
+        "3 top parses",
+        "55% against 97%",
+        "90%; too few references",
+    )
+
+
+def test_a_key_with_no_time_outside_its_boss_pulls_says_so_in_without_bosses() -> None:
+    # The buff stretch is the key less its boss pulls, walking included, so an
+    # empty cell there must not borrow the debuff's "no trash measured".
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraRow(
+                    uptime=AuraUptime(
+                        ability_id=195181, name="Bone Shield", ours=0.62,
+                        their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                        verdict=Verdict.BELOW,
+                    ),
+                    without_bosses=StretchCell(withheld=Withheld.NOTHING_OUTSIDE_BOSSES),
+                    bosses=StretchCell(ours=0.62, their_median=0.98),
+                ),
+            ),
+            key_seconds=1834.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [table] = card.comparison_tables
+    [row] = table.rows
+    assert row.cells == (
+        "62% against 98%",
+        "95% to 99%",
+        "3 top parses",
+        "nothing outside boss pulls",
+        "62% against 98%",
+    )
+
+
+def debuff_tables(
+    *, unmeasured_no_death: int = 0, undebuffed_deaths: int = 0
+) -> tuple[ComparisonTable, ComparisonTable]:
+    """The coverage and reach tables of a card with one debuff, on one boss and on trash."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            debuffs=DebuffTable(
+                rows=(
+                    DebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.6,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        trash=StretchCell(ours=0.4, their_median=0.85),
+                        bosses=StretchCell(ours=0.95, their_median=0.97),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.95,
+                                their_median=0.97,
+                            ),
+                        ),
+                        reach=DebuffReach(
+                            overall=StretchCell(ours=0.5, their_median=0.92),
+                            trash=StretchCell(ours=0.45, their_median=0.9),
+                            bosses=StretchCell(ours=1.0, their_median=1.0),
+                            # Four, where the coverage row has three, and another
+                            # range, so a reach Range or Sample read off the
+                            # coverage figure would show.
+                            overall_fractions=(0.88, 0.9, 0.94, 0.95),
+                        ),
+                    ),
+                ),
+                seconds=300.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+                unmeasured_no_death=unmeasured_no_death,
+                undebuffed_deaths=undebuffed_deaths,
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+    coverage, reach = card.comparison_tables
+    return coverage, reach
+
+
+def test_the_reach_table_follows_the_coverage_table_and_judges_nothing() -> None:
+    coverage, reach = debuff_tables()
+
+    assert (coverage.heading, reach.heading) == ("Debuff coverage", "Debuff reach")
+    [covered] = coverage.rows
+    assert covered.cells == (
+        "60% against 90%",
+        "85% to 95%",
+        "3 top parses",
+        "40% against 85%",
+        "95% against 97%",
+        "95% against 97%",
+    )
+    assert (reach.figures, reach.judged) == (False, False)
+    assert reach.cell_headings == ("Overall", "Range", "Sample", "Trash", "Bosses")
+    [row] = reach.rows
+    assert (row.name, row.verdict, row.verdict_label) == ("Blood Plague", "described", "")
+    # Range and Sample are the references' Overall reach, not their coverage.
+    assert row.cells == (
+        "50% against 92%",
+        "88% to 95%",
+        "4 top parses",
+        "45% against 90%",
+        "100% against 100%",
+    )
+    assert reach.caption == (
+        "Share of the enemies measured that carried each debuff from this player or their "
+        "pets at least once, against the median of the parses that applied each. Range and "
+        "Sample are Overall's. A boss counts as one enemy. Reach describes and is never "
+        "judged. Derived."
+    )
+
+
+def test_the_note_under_the_debuff_tables_explains_coverage_and_reach() -> None:
+    coverage, reach = debuff_tables()
+
+    assert coverage.note == ""
+    assert reach.note == (
+        "Coverage: the share of the enemies' alive time this player's debuff was on them, "
+        "summed over every enemy, so a long-lived mob weighs more than one that dies in "
+        "seconds. Reached: the share of the enemies that carried it at least once. Low "
+        "coverage with high reach means it was spread but not kept up; low coverage with low "
+        "reach means it stayed on too few mobs. A trash mob's life runs from the first debuff "
+        "anyone put on it to its death; adds that spawn during a boss fight count in Overall "
+        "only."
+    )
+
+
+@pytest.mark.parametrize(
+    ("unmeasured", "undebuffed", "warning"),
+    [
+        (0, 0, ""),
+        (3, 0, "3 enemies had no death in the log and were not measured."),
+        (0, 1, "1 enemy died without anyone debuffing it and counts only toward reached."),
+        (
+            1,
+            2,
+            "1 enemy had no death in the log and was not measured; 2 died without anyone "
+            "debuffing them and count only toward reached.",
+        ),
+    ],
+)
+def test_the_warning_states_each_count_only_when_above_zero(
+    unmeasured: int, undebuffed: int, warning: str
+) -> None:
+    coverage, reach = debuff_tables(
+        unmeasured_no_death=unmeasured, undebuffed_deaths=undebuffed
+    )
+
+    assert coverage.warning == ""
+    assert reach.warning == warning

@@ -11,10 +11,13 @@ from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraRow,
+    AuraUptime,
     BossCell,
     DebuffRow,
+    DebuffTable,
     PlayerMeasures,
     StatShare,
+    StretchCell,
     Verdict,
 )
 from wowperf.domain.comparison.pace_player import pair_label
@@ -89,6 +92,23 @@ from, being the one word here that is not ordinary English -- what the table
 means by it is that the comparison declined to read anything into the figure
 beside it, and a reader meeting the bare word would have no way to know that.
 """
+
+DESCRIBED = "described"
+"""The row class of a table that judges nothing.
+
+No stylesheet rule tints it, so its figures read in the page's own ink: reach is
+a description, and a verdict's tint on it would claim a judgement nobody made.
+"""
+
+DEBUFF_NOTE = (
+    "Coverage: the share of the enemies' alive time this player's debuff was on them, summed "
+    "over every enemy, so a long-lived mob weighs more than one that dies in seconds. "
+    "Reached: the share of the enemies that carried it at least once. Low coverage with high "
+    "reach means it was spread but not kept up; low coverage with low reach means it stayed "
+    "on too few mobs. A trash mob's life runs from the first debuff anyone put on it to its "
+    "death; adds that spawn during a boss fight count in Overall only."
+)
+"""What the two debuff tables measure, drawn once under the pair."""
 
 
 def class_colour(class_name: str) -> str:
@@ -308,11 +328,19 @@ def _tables(
     if measures.auras:
         built.append(
             ComparisonTable(
-                heading="Buff uptime on boss pulls",
+                heading="Buff uptime",
                 caption=(
-                    f"Share of {measures.boss_seconds:.0f}s of boss pulls, against the "
-                    "median of the parses that carried each. Derived."
+                    f"Share of {measures.key_seconds:.0f}s of key time, from the key's start to "
+                    "its end with the walking between pulls included, against the median of "
+                    "the parses that carried each. The verdict reads Overall, and Range and "
+                    "Sample are Overall's. Without bosses is the key less its boss pulls and "
+                    "Bosses the boss pulls; each reads ours against the median and carries no "
+                    "verdict. A buff only up in combat reads lower over the whole key the more "
+                    "of it was spent between pulls, so a reference that walked less reads "
+                    "higher whatever either player did. Derived."
                 ),
+                figures=False,
+                cell_headings=("Overall", "Range", "Sample", "Without bosses", "Bosses"),
                 rows=_aura_rows(measures.auras),
             )
         )
@@ -329,16 +357,19 @@ def _tables(
         )
         built.append(
             ComparisonTable(
-                heading="Debuff uptime on bosses",
+                heading="Debuff coverage",
                 caption=(
-                    f"Share of {debuffs.seconds:.0f}s of boss-alive time the bosses carried "
-                    "each debuff from this player or their pets, against the median of the "
-                    "parses that applied each. A council's bosses each count from the pull's "
-                    "start to their own death, or to the pull's end if they did not die "
-                    "there; a pull with no boss found is left out. Each "
-                    "boss column reads ours against the median and carries no verdict. A "
-                    "debuff a teammate's application replaces is marked shared, not judged. "
-                    "The group's log for the whole fight held "
+                    f"Share of {debuffs.seconds:.0f}s of enemy-alive time, summed over every "
+                    "enemy measured, that carried each debuff from this player or their pets, "
+                    "against the median of the parses that applied each. The verdict reads "
+                    "Overall, and Range and Sample are Overall's. Trash is the mobs of trash "
+                    "pulls; Bosses is the bosses themselves, a council's each from the pull's "
+                    "start to their own death, or to the pull's end if they did not die there; "
+                    "adds that spawn during a boss fight, and the enemies of a pull with no "
+                    "boss found, count in Overall only. Those columns and each boss's read ours "
+                    "against the median and carry no verdict. A debuff a teammate's "
+                    "application replaces is marked shared, not judged. The group's log for "
+                    "the whole fight held "
                     f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
                     "application, dropped (a pet copy's second removal counts here); "
                     f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
@@ -346,8 +377,28 @@ def _tables(
                     f"{quantity(tally.unresolved_targets, 'row', 'rows')} on an enemy with no "
                     f"game id, skipped. {deathless}Derived."
                 ),
-                cell_headings=debuffs.bosses,
+                figures=False,
+                cell_headings=(
+                    "Overall", "Range", "Sample", "Trash", "Bosses", *debuffs.bosses
+                ),
                 rows=_debuff_rows(debuffs.rows, specs),
+            )
+        )
+        built.append(
+            ComparisonTable(
+                heading="Debuff reach",
+                caption=(
+                    "Share of the enemies measured that carried each debuff from this player "
+                    "or their pets at least once, against the median of the parses that "
+                    "applied each. Range and Sample are Overall's. A boss counts as one "
+                    "enemy. Reach describes and is never judged. Derived."
+                ),
+                figures=False,
+                judged=False,
+                cell_headings=("Overall", "Range", "Sample", "Trash", "Bosses"),
+                rows=_reach_rows(debuffs.rows),
+                note=DEBUFF_NOTE,
+                warning=_unmeasured(debuffs),
             )
         )
     if measures.stats:
@@ -423,33 +474,36 @@ def _aura_rows(rows: Sequence[AuraRow]) -> tuple[ComparisonRow, ...]:
     did I hold each of these for", and that is a list a reader scans from the
     top. Sorting by the gap scattered the figures a reader came for and led
     with whatever the player held *least*.
+
+    Its cells read Overall, Overall's range and sample, then Without bosses and
+    Bosses.
     """
     ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
-    built = []
-    for row in ordered:
-        m = row.uptime
-        low, high = observed_range(m.their_fractions)
-        built.append(
-            ComparisonRow(
-                ability_id=m.ability_id,
-                name=m.name,
-                ours=f"{m.ours:.0%}",
-                theirs=f"{m.their_median:.0%}",
-                spread=f"{low:.0%} to {high:.0%}",
-                sample=f"{len(m.their_fractions)} top parses",
-                verdict=m.verdict.value,
-                verdict_label=VERDICT_LABELS[m.verdict],
-            )
+    return tuple(
+        ComparisonRow(
+            ability_id=row.uptime.ability_id,
+            name=row.uptime.name,
+            verdict=row.uptime.verdict.value,
+            verdict_label=VERDICT_LABELS[row.uptime.verdict],
+            cells=(
+                _overall(row.uptime),
+                *_spread_and_sample(row.uptime.their_fractions),
+                _cell(row.without_bosses),
+                _cell(row.bosses),
+            ),
         )
-    return tuple(built)
+        for row in ordered
+    )
 
 
 WITHHELD_LABELS = {
     Withheld.NO_BOSS: "no boss found",
+    Withheld.NO_TRASH: "no trash measured",
+    Withheld.NOTHING_OUTSIDE_BOSSES: "nothing outside boss pulls",
     Withheld.NOT_REACHED: "no reference measured it",
     Withheld.TOO_FEW: "too few references",
 }
-"""How a boss cell with no figure says why, in the reader's words."""
+"""How a boss or stretch cell with no figure says why, in the reader's words."""
 
 
 def _shared_label(shared_with: Sequence[int], specs: Mapping[int, tuple[str, str]]) -> str:
@@ -476,12 +530,14 @@ def _debuff_rows(
     A shared row keeps its figures and names who it was shared with in place
     of a verdict. It takes the `unjudged` tint, because like that row it says
     nothing about this player's play.
+
+    Its cells read Overall, Overall's range and sample, Trash and Bosses, then
+    each boss.
     """
     ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
     built = []
     for row in ordered:
         m = row.uptime
-        low, high = observed_range(m.their_fractions)
         verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
         if row.shared_with:
             verdict = Verdict.UNJUDGED
@@ -490,23 +546,85 @@ def _debuff_rows(
             ComparisonRow(
                 ability_id=m.ability_id,
                 name=m.name,
-                ours=f"{m.ours:.0%}",
-                theirs=f"{m.their_median:.0%}",
-                spread=f"{low:.0%} to {high:.0%}",
-                sample=f"{len(m.their_fractions)} top parses",
                 verdict=verdict.value,
                 verdict_label=label,
-                cells=tuple(_cell(cell) for cell in row.cells),
+                cells=(
+                    _overall(m),
+                    *_spread_and_sample(m.their_fractions),
+                    _cell(row.trash),
+                    _cell(row.bosses),
+                    *(_cell(cell) for cell in row.cells),
+                ),
             )
         )
     return tuple(built)
 
 
-def _cell(cell: BossCell) -> str:
-    """One boss's cell: ours against the median, or ours and why there is no median."""
+def _cell(cell: BossCell | StretchCell) -> str:
+    """One boss's or one stretch's cell: ours against the median, or ours and why not."""
     reason = WITHHELD_LABELS[cell.withheld] if cell.withheld is not None else ""
     if cell.ours is None:
         return reason
     if cell.their_median is None:
         return f"{cell.ours:.0%}; {reason}" if reason else f"{cell.ours:.0%}"
     return f"{cell.ours:.0%} against {cell.their_median:.0%}"
+
+
+def _overall(m: AuraUptime) -> str:
+    """The judged figure as a cell: ours against the median, the verdict beside it."""
+    return f"{m.ours:.0%} against {m.their_median:.0%}"
+
+
+def _spread_and_sample(fractions: Sequence[float]) -> tuple[str, str]:
+    """The Range and Sample cells of the references behind an Overall median.
+
+    Two empty cells when there are none, as on a reach no reference measured.
+    """
+    if not fractions:
+        return "", ""
+    low, high = observed_range(fractions)
+    return f"{low:.0%} to {high:.0%}", f"{len(fractions)} top parses"
+
+
+def _reach_rows(rows: Sequence[DebuffRow]) -> tuple[ComparisonRow, ...]:
+    """Each debuff's reach, in the coverage table's order so a reader can look across.
+
+    Its cells read Overall, Overall's range and sample, then Trash and Bosses.
+    """
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    return tuple(
+        ComparisonRow(
+            ability_id=row.uptime.ability_id,
+            name=row.uptime.name,
+            verdict=DESCRIBED,
+            cells=(
+                _cell(row.reach.overall),
+                *_spread_and_sample(row.reach.overall_fractions),
+                _cell(row.reach.trash),
+                _cell(row.reach.bosses),
+            ),
+        )
+        for row in ordered
+    )
+
+
+def _unmeasured(debuffs: DebuffTable) -> str:
+    """The warning under the debuff tables, a clause per count above zero, or nothing.
+
+    A clause stating zero would warn about nothing, so each is drawn only when
+    its own count is above zero.
+    """
+    unmeasured, undebuffed = debuffs.unmeasured_no_death, debuffs.undebuffed_deaths
+    clauses: list[str] = []
+    if unmeasured:
+        clauses.append(
+            f"{quantity(unmeasured, 'enemy', 'enemies')} had no death in the log and "
+            f"{'was' if unmeasured == 1 else 'were'} not measured"
+        )
+    if undebuffed:
+        who = str(undebuffed) if clauses else quantity(undebuffed, "enemy", "enemies")
+        clauses.append(
+            f"{who} died without anyone debuffing {'it' if undebuffed == 1 else 'them'} and "
+            f"{'counts' if undebuffed == 1 else 'count'} only toward reached"
+        )
+    return "; ".join(clauses) + "." if clauses else ""
