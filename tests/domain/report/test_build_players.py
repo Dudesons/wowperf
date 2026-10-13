@@ -1622,3 +1622,38 @@ def test_a_table_with_no_kept_row_says_nothing_of_it() -> None:
     coverage, _reach = debuff_tables()
 
     assert coverage.note == ""
+
+
+def test_a_stretch_every_reference_measured_and_none_applied_it_in_says_so_on_the_page() -> None:
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            debuffs=DebuffTable(
+                rows=(
+                    DebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.7,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        bosses=StretchCell(ours=0.0, withheld=Withheld.NOT_APPLIED),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.4,
+                                withheld=Withheld.NOT_APPLIED,
+                            ),
+                        ),
+                    ),
+                ),
+                seconds=100.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [row] = card.comparison_tables[0].rows
+    assert row.cells[4:] == ("0%; no reference applied it", "40%; no reference applied it")

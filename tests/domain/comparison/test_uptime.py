@@ -4,7 +4,8 @@
 from collections.abc import Callable, Sequence
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
-from wowperf.domain.comparison.measures import Verdict
+from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.comparison.measures import StretchCell, Verdict
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.uptime import (
@@ -17,6 +18,7 @@ from wowperf.domain.comparison.uptime import (
     key_clock_uptime,
     seconds_up_in,
     seconds_up_over_the_fight,
+    stretch_cell,
     uptime_measures,
     whole_fight_uptime,
     without_boss_pulls,
@@ -1050,3 +1052,44 @@ def test_an_aura_over_the_floor_is_judged_whether_or_not_it_is_kept() -> None:
     [measure] = uptime_measures({1: ("Both", 0.1)}, per_member, names, kept={1})
 
     assert measure.verdict is Verdict.BELOW
+
+
+# --- stretch_cell ---------------------------------------------------------------
+
+
+def test_a_stretch_every_reference_measured_and_none_applied_it_in_says_so() -> None:
+    assert stretch_cell(0.4, [0.0] * 5) == StretchCell(ours=0.4, withheld=Withheld.NOT_APPLIED)
+
+
+def test_a_stretch_with_too_few_references_measuring_it_is_too_few_not_unapplied() -> None:
+    assert stretch_cell(0.4, [0.0, 0.0]) == StretchCell(ours=0.4, withheld=Withheld.TOO_FEW)
+
+
+def test_a_stretch_some_references_never_measured_counts_only_those_that_did() -> None:
+    # Two measured it, at zero; the other three had nothing there to measure.
+    assert stretch_cell(0.4, [0.0, 0.0, None, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.TOO_FEW
+    )
+    assert stretch_cell(0.4, [0.0, 0.0, 0.0, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.NOT_APPLIED
+    )
+
+
+def test_a_stretch_no_reference_measured_is_not_reached() -> None:
+    assert stretch_cell(0.4, [None, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.NOT_REACHED
+    )
+
+
+def test_a_stretch_three_references_carried_gives_their_median() -> None:
+    assert stretch_cell(0.4, [0.5, 0.7, 0.9, 0.0]) == StretchCell(ours=0.4, their_median=0.7)
+
+
+def test_a_stretch_fewer_than_three_carried_is_too_few_even_if_others_measured_zero() -> None:
+    assert stretch_cell(0.4, [0.5, 0.7, 0.0, 0.0, 0.0]) == StretchCell(
+        ours=0.4, withheld=Withheld.TOO_FEW
+    )
+
+
+def test_a_stretch_our_side_measured_nothing_over_keeps_its_reason() -> None:
+    assert stretch_cell(Withheld.NO_TRASH, [0.0] * 5) == StretchCell(withheld=Withheld.NO_TRASH)

@@ -249,6 +249,20 @@ decided the rule on 2026-10-13.
 - **Scope.** Debuffs only, and the sample table only: the single-reference path and the buff table
   are unchanged, and so are the finding ids.
 
+*Amended 2026-10-13, after the live run:* a stretch no reference applied the debuff in is named as
+such. RwlRwlRwlRwl decided the rule on 2026-10-13.
+- **What the live run showed.** On slows that bosses are immune to (Heart Strike and Grip of the
+  Dead on a Blood Death Knight) the Bosses, per-boss and reach-Bosses cells read "too few
+  references", though all five references measured the stretch and all five sat at 0%. The cell
+  dropped the zeros before counting, so a sample that measured the stretch and never applied the
+  debuff there read as too small.
+- **The rule.** When no reference carried the debuff over a stretch but at least
+  `MIN_SAMPLE_FOR_AGGREGATE` measured it, the cell reads "no reference applied it". Every other
+  case is as it was: no reference measured it reads "no reference measured it", and fewer than
+  `MIN_SAMPLE_FOR_AGGREGATE` carriers otherwise still reads "too few references".
+- **Where it applies.** The one cell rule is shared, so the buff table's cells, the debuff table's
+  Trash, Bosses and per-boss cells, and the reach table's cells all read it.
+
 ## 5. Components
 
 - **Domain, `comparison/`:**

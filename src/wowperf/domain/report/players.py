@@ -512,6 +512,7 @@ WITHHELD_LABELS = {
     Withheld.NO_TRASH: "no trash measured",
     Withheld.NOTHING_OUTSIDE_BOSSES: "nothing outside boss pulls",
     Withheld.NOT_REACHED: "no reference measured it",
+    Withheld.NOT_APPLIED: "no reference applied it",
     Withheld.TOO_FEW: "too few references",
 }
 """How a boss or stretch cell with no figure says why, in the reader's words."""

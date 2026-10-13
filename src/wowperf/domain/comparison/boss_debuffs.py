@@ -42,14 +42,17 @@ class Withheld(StrEnum):
 
     The first three are read off our own route: a boss pull may hold no enemy
     `bosses_of` can name, a key may hold no trash life to measure, and a key
-    clock may hold no time outside its boss pulls. The last two are about the
-    sample beside a figure of ours.
+    clock may hold no time outside its boss pulls. The last three are about the
+    sample beside a figure of ours: no reference measured the stretch, enough
+    measured it and none applied the debuff there (a boss that is immune to it,
+    say), or too few carried it to give a median.
     """
 
     NO_BOSS = "no boss found"
     NO_TRASH = "no trash measured"
     NOTHING_OUTSIDE_BOSSES = "nothing outside boss pulls"
     NOT_REACHED = "no reference measured this boss"
+    NOT_APPLIED = "no reference applied it"
     TOO_FEW = "too few references"
 
 

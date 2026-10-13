@@ -542,12 +542,18 @@ def stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> Stre
     side measured nothing over the stretch. A reference that measured nothing
     there (None) is not counted for it, and a reference at zero there did not
     carry it; the rest give the median, at the floor the row's own median keeps.
+
+    When none carried it but at least `MIN_SAMPLE_FOR_AGGREGATE` measured the
+    stretch, the cell says no reference applied it, rather than that too few
+    references were there to read: they were, and the answer is zero.
     """
     if isinstance(ours, Withheld):
         return StretchCell(withheld=ours)
     if all(share is None for share in theirs):
         return StretchCell(ours=ours, withheld=Withheld.NOT_REACHED)
     carried = carried_shares(theirs)
+    if not carried and sum(share is not None for share in theirs) >= MIN_SAMPLE_FOR_AGGREGATE:
+        return StretchCell(ours=ours, withheld=Withheld.NOT_APPLIED)
     if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
         return StretchCell(ours=ours, withheld=Withheld.TOO_FEW)
     return StretchCell(ours=ours, their_median=median(carried))

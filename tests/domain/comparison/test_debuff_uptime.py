@@ -383,7 +383,19 @@ def test_a_debuff_seen_only_on_trash_still_earns_a_row() -> None:
     assert (row.uptime.name, row.uptime.verdict) == (DOT_NAME, Verdict.BELOW)
     assert row.uptime.ours == pytest.approx(0.05)
     assert row.uptime.their_median == pytest.approx(0.45)
-    assert row.bosses == StretchCell(ours=0.0, withheld=Withheld.TOO_FEW)
+    assert row.bosses == StretchCell(ours=0.0, withheld=Withheld.NOT_APPLIED)
+
+
+def test_a_boss_every_reference_measured_and_none_applied_it_on_says_so() -> None:
+    # Three references fought both bosses and held the debuff on the second at
+    # zero: they measured it, and none applied it there.
+    sample = a_sample_of(*(on_two_bosses(0.9, 0.0) for _ in range(3)))
+
+    table = debuff_table(on_two_bosses(0.5, 0.9), sample)
+
+    assert table.rows[0].cells[1] == BossCell(
+        encounter_id=2002, boss="Second Boss", ours=0.9, withheld=Withheld.NOT_APPLIED
+    )
 
 
 def test_the_table_carries_what_could_not_be_measured() -> None:
@@ -787,7 +799,7 @@ def test_a_kept_row_draws_every_cell_as_any_row_does() -> None:
 
     kept = table.rows[1]
     assert kept.bosses == StretchCell(ours=0.3, their_median=0.5)
-    assert kept.trash == StretchCell(ours=0.0, withheld=Withheld.TOO_FEW)
+    assert kept.trash == StretchCell(ours=0.0, withheld=Withheld.NOT_APPLIED)
     assert kept.cells == (
         BossCell(encounter_id=2001, boss="The Test Colossus", ours=0.3, their_median=0.5),
     )
