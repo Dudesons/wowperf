@@ -123,22 +123,53 @@ The spike's full record is not committed; this section is its measured content.
   every table measured"), so no new data is read. A parse reference gains its fight's start and end,
   read from the report the cache already holds.
 
+*Amended 2026-10-13, after planning:* the Bosses figure is no longer exactly as today. It moves on a
+fight where Warcraft Logs lists a boss pull twice, with one encounter, start and end (10 such pulls in
+5 of 969 cached keystone fights, all wipes, measured 2026-10-08).
+- **The defect.** The buff's boss windows held such a pull twice. Bands are clipped to every window
+  and merged before they are summed, so the buff's seconds in that pull counted once. The boss
+  seconds summed it twice. A buff up through every boss pull therefore read below 100%: exactly half
+  on a fight whose only boss pull is the duplicate, and two thirds beside one other boss pull of the
+  same length.
+- **The fix.** The buff windows now keep one copy, on our side and on every reference's, by the rule
+  the debuff figure already applies (`docs/plans/2026-10-08-council-debuff-coverage-design.md` §5). One
+  helper holds the rule for both.
+- **Why the move is intended.** The figure that moves was wrong, and the two families now count one
+  physical pull alike.
+- **What does not move.** Overall never counted the pull twice: the key clock is one span. Neither
+  did Without bosses: the boss pulls are walked past in order, so a repeated one changes nothing.
+- **Out of scope.** Cast rates still divide by boss seconds that count the pull twice. They are the
+  separate task §10 names.
+
 ## 4. What the reader sees
 
-**Buff uptime:** one row per buff, a verdict judged on Overall, then the cells Overall, Without
-bosses and Bosses, each "ours / the median". The caption states the walking consequence of
-decision 2.
+**Buff uptime:** one row per buff, a verdict judged on Overall, then the cells Overall, Range,
+Sample, Without bosses and Bosses. Overall and the two stretches each read "ours / the median";
+Range and Sample are Overall's. The caption states the walking consequence of decision 2.
+
+| Buff | Verdict | Overall | Range | Sample | Without bosses | Bosses |
+| --- | --- | --- | --- | --- | --- | --- |
 
 **Debuff coverage** (judged), then **Debuff reach** (descriptive), one row per debuff in each:
 
-| Debuff | Verdict | Overall | Trash | Bosses | per-boss cells as today |
-| --- | --- | --- | --- | --- | --- |
+| Debuff | Verdict | Overall | Range | Sample | Trash | Bosses | per-boss cells as today |
+| --- | --- | --- | --- | --- | --- | --- | --- |
 
-| Debuff | Overall | Trash | Bosses |
-| --- | --- | --- | --- |
+| Debuff | Overall | Range | Sample | Trash | Bosses |
+| --- | --- | --- | --- | --- | --- |
 
 The reach table has no per-boss columns: a boss is one target, so its reach is 100% or 0%, which the
 Bosses column already says.
+
+*Amended 2026-10-13, after planning:* the three tables keep a Range and a Sample column, for the
+judged Overall figure.
+- **What they state.** The spread and the count of the references behind Overall's median, which is
+  what the verdict rests on. RwlRwlRwlRwl decided it on reading the plan, which had drawn neither.
+- **Reach too.** Reach keeps the two columns, stating its own Overall figure's references, so the
+  three tables share one shape. Those references are the parses that reached any enemy with the
+  debuff, and the findings file keeps their Overall reaches beside the reach cells.
+- **The other cells.** The cells for each stretch and each boss stay "ours / the median", with no
+  range of their own.
 
 **The note under the pair**, in this spirit: *Coverage*: the share of the enemies' alive time your
 debuff was on them, summed over every enemy, so a long-lived mob weighs more than one that dies in
@@ -184,7 +215,8 @@ for the boss column; a key with no measurable trash life reads "no trash measure
   game id, as the pairing does.
 - A debuff applied before the key's first death of that instance and removed after it: clipped to the
   life's end.
-- A boss pull Warcraft Logs lists twice: measured once, by the existing rule.
+- A boss pull Warcraft Logs lists twice: measured once, by the existing rule, in the debuff figure
+  and, by §3.3's amendment, in the buff Bosses figure.
 
 ## 7. Testing and proof
 

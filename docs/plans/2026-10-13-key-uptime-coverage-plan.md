@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Measure Mythic+ uptime over the whole key. Buffs are judged over the key clock, from the fight's start to its end. Debuffs are judged as coverage over every enemy's life, summed, with reach described beside it. Each family keeps a Bosses figure, which does not move, and gains a non-boss one.
+**Goal:** Measure Mythic+ uptime over the whole key. Buffs are judged over the key clock, from the fight's start to its end. Debuffs are judged as coverage over every enemy's life, summed, with reach described beside it. Each family keeps a Bosses figure and gains a non-boss one. The Bosses figure does not move, except on the buff side of a fight where Warcraft Logs lists a boss pull twice: that pull is now measured once there, as the debuff side already measures it (spec §3.3, amended).
 
 **Architecture:**
 
@@ -12,8 +12,8 @@
 - **Task 4** measures coverage and reach per stretch, in a new module `comparison/key_debuffs.py`, and reads the shared rule per life. The boss figure is built by the same helpers as before, and every existing boss test now reads it through the new path.
 - **Task 5** judges debuffs on Overall coverage, renames their finding ids to `compare.uptime.debuff.*`, and fills the table's stretch and reach cells.
 - **Task 6** gives our run and every parse reference its fight's own start and end, read from the report the cache already holds.
-- **Task 7** judges buffs over the key clock and describes them without bosses and on bosses.
-- **Task 8** draws the page: the buff columns, "Debuff coverage", "Debuff reach", the note and the warning.
+- **Task 7** judges buffs over the key clock and describes them without bosses and on bosses. A boss pull listed twice is one buff window, by the rule the debuff figure already reads, now held in one helper both call.
+- **Task 8** draws the page: the buff columns, "Debuff coverage", "Debuff reach", each with the Range and Sample of its Overall figure, the note and the warning.
 - **Task 9** updates the docs.
 - **Task 10** is the live proof.
 
@@ -21,7 +21,7 @@
 
 **Spec:** `docs/plans/2026-10-13-key-uptime-coverage-design.md`. Read it first. It builds on `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` and `docs/plans/2026-10-08-council-debuff-coverage-design.md`, which you should also read. The previous plan in this area, `docs/plans/2026-10-08-council-debuff-coverage-plan.md`, shows how the boss figure was built.
 
-**Choices the spec leaves open, decided here.** Task 9 records each in the design as a dated amendment.
+**Choices the spec leaves open, decided here.** Task 9 records each in the design as a dated amendment, except choices 11 and 13. RwlRwlRwlRwl decided those two on 2026-10-13, after reading this plan, and the design's §4 and §3.3 already carry them as dated amendments.
 
 1. **Where the lives live.** In `comparison/enemy_lives.py`, taking the measured bosses' game ids rather than the windows. A module that reads only a log and a route has no reason to import the boss rule.
 2. **How the key is represented.** A new `KeyDebuffs` composes the unchanged `BossDebuffs` with a `StretchCover` for trash and one for adds. Extending `BossDebuffs` would have put trash under a type named for bosses. Replacing it would have rewritten forty boss tests that are the best evidence the boss figure does not move.
@@ -33,8 +33,15 @@
 8. **The fight's clock rides on `Run.fight_ms` and `ParseMember.fight_ms`.** It is filled by `build_run`, which already holds the fight dict that `repository._load` reads from the cached report. No new query is made.
 9. **The key clock reaches the shared uptime code in two keyword arguments**, `our_fight_ms` and `over`. Their defaults leave the raid path exactly as it is.
 10. **The warning states each clause only when its count is above zero.** A clause stating zero would warn about nothing.
-11. **The three uptime tables are drawn in spec §4's layout.** That is Ability, Verdict, then one cell per stretch, so the Ours, Median, Range and Sample columns are not drawn on them. The rows still carry those four strings, which state Overall, and the findings still state the range and the sample size.
-12. **The findings file's `comparison_tables.<slug>.boss_debuffs` becomes `.debuffs`**, for the reason spec §4 gives for renaming the ids: the old name would describe the wrong figure. Each `auras` entry now nests its judged figure under `uptime`, beside `without_bosses` and `bosses`.
+11. **The three uptime tables keep a Range and a Sample column, for the judged Overall figure.** Debuff coverage reads `Ability | Verdict | Overall | Range | Sample | Trash | Bosses | one column per boss`. Buff uptime reads `Ability | Verdict | Overall | Range | Sample | Without bosses | Bosses`. Debuff reach reads `Ability | Overall | Range | Sample | Trash | Bosses`.
+    - **Why.** The verdict rests on Overall, so the spread and the count of the references behind Overall's median are what let a reader weigh it. This plan first drew neither, and RwlRwlRwlRwl reversed that on 2026-10-13 ("keep range and sample"). Reach keeps the two columns too, stating its Overall figure's references, so the three tables share one shape. The cells for each stretch and each boss stay "ours against the median".
+    - **How.** The builder writes Overall, Range and Sample as each row's first three cells, under headings of the same names, so the template still only loops. The Ours, Median, Range and Sample columns that the cast tables draw before the Verdict are not drawn on these tables. Their rows leave those four strings empty rather than carry a second copy of what the cells draw.
+    - **Reach's references.** A `StretchCell` holds no references, so `DebuffReach.overall_fractions` keeps the references' Overall reaches behind `overall`'s median (Task 5).
+12. **The findings file's `comparison_tables.<slug>.boss_debuffs` becomes `.debuffs`**, for the reason spec §4 gives for renaming the ids: the old name would describe the wrong figure. Each `auras` entry now nests its judged figure under `uptime`, beside `without_bosses` and `bosses`. Each debuff row's `reach` carries `overall_fractions` beside its three cells.
+13. **A boss pull Warcraft Logs lists twice is one buff window**, by the rule `boss_windows_of` already applies to the debuff figure.
+    - **The rule lives in one helper.** It is `boss_debuffs.boss_pulls_listed_once`, which both `boss_windows_of` and `uptime.boss_windows` call (Task 7).
+    - **What it corrects.** `boss_windows` listed such a pull's span twice. `auras.uptime_seconds_in` clips bands to every window and merges the result, so the buff's seconds inside the pull counted once, while the boss seconds counted it twice. Today that is the judged figure, with `spells.boss_seconds` as its denominator; after Task 7 it is the Bosses cell, with `tables._share_in` summing the windows. A buff up through every boss pull therefore read below 100%, and exactly 50% when the duplicated pull is the fight's only boss pull.
+    - **What it leaves alone.** The cast path reads `spells.boss_pulls` and `spells.boss_seconds`, never `boss_windows`, so cast rates are untouched. Spec §10 leaves them to a separate task. The raid path reads no boss window, so it is untouched too.
 
 ## Global Constraints
 
@@ -65,15 +72,15 @@
 
 | File | Change |
 | --- | --- |
-| `docs/plans/2026-10-13-key-uptime-coverage-design.md` | The measured life start (Task 1); the status line and the planning decisions (Task 9); the live amendment (Task 10). |
+| `docs/plans/2026-10-13-key-uptime-coverage-design.md` | The measured life start (Task 1); the status line and the planning decisions (Task 9); the live amendment (Task 10). The §3.3 and §4 amendments for choices 13 and 11 are already in it. |
 | `src/wowperf/domain/debuffs.py` | `EnemyDeathRow`, `DebuffLog.death_rows`, `DebuffLog.player_ids` (Task 2). |
 | `src/wowperf/adapters/wcl/ingest.py` | `build_debuff_log` fills the two new fields (Task 2); `build_run` fills `Run.fight_ms` (Task 6). |
 | `src/wowperf/domain/comparison/enemy_lives.py` | **New.** `LifeStretch`, `EnemyLife`, `EnemyLives`, `enemy_lives` (Task 3). |
-| `src/wowperf/domain/comparison/boss_debuffs.py` | `Target`, `Held`, `held_on_bosses`, `bosses_held_by`, `BossDebuffs.reached` and `.targets`, a per-target `find_shared`, public `merged_spans` and `length_ms`, and `boss_debuffs` moved out (Task 4); `Withheld.NO_TRASH` (Task 5). |
+| `src/wowperf/domain/comparison/boss_debuffs.py` | `Target`, `Held`, `held_on_bosses`, `bosses_held_by`, `BossDebuffs.reached` and `.targets`, a per-target `find_shared`, public `merged_spans` and `length_ms`, and `boss_debuffs` moved out (Task 4); `Withheld.NO_TRASH` (Task 5); `boss_pulls_listed_once`, which `boss_windows_of` now reads (Task 7). |
 | `src/wowperf/domain/comparison/key_debuffs.py` | **New.** `StretchCover`, `combined`, `KeyDebuffs`, `held_on_lives`, `key_debuffs`, `boss_debuffs` (Task 4). |
-| `src/wowperf/domain/comparison/measures.py` | `StretchCell`, `DebuffReach`, `DebuffRow`, `DebuffTable` and `PlayerMeasures.debuffs` (Task 5); `AuraRow`, `PlayerMeasures.auras` and `.key_seconds` (Task 7). |
-| `src/wowperf/domain/comparison/uptime.py` | `measured_or` and `stretch_cell` (Task 5); the two-argument `UptimeRule`, `key_clock_uptime`, `fight_seconds`, `without_boss_pulls`, `boss_seconds_of`, `fight_seconds_of`, `our_fight_ms` and `over`, and the removal of `boss_pull_uptime` (Task 7). |
-| `src/wowperf/domain/comparison/debuff_uptime.py` | Judged on Overall coverage, `compare.uptime.debuff.*`, `debuff_table` with stretch and reach cells (Task 5). |
+| `src/wowperf/domain/comparison/measures.py` | `StretchCell`, `DebuffReach` with `overall_fractions`, `DebuffRow`, `DebuffTable` and `PlayerMeasures.debuffs` (Task 5); `AuraRow`, `PlayerMeasures.auras` and `.key_seconds` (Task 7). |
+| `src/wowperf/domain/comparison/uptime.py` | `measured_or`, `carried_shares` and `stretch_cell` (Task 5); the two-argument `UptimeRule`, `key_clock_uptime`, `fight_seconds`, `without_boss_pulls`, `boss_seconds_of`, `fight_seconds_of`, `our_fight_ms` and `over`, the removal of `boss_pull_uptime`, and `boss_windows` reading `boss_pulls_listed_once` (Task 7). |
+| `src/wowperf/domain/comparison/debuff_uptime.py` | Judged on Overall coverage, `compare.uptime.debuff.*`, `debuff_table` with stretch and reach cells, and reach's Overall references (Task 5). |
 | `src/wowperf/domain/comparison/sample.py` | `ParseMember.debuffs` (Task 5), `ParseMember.fight_ms` (Task 6). |
 | `src/wowperf/domain/comparison/service.py` | `ComparisonSubject.our_debuffs` (Task 5); buffs over the key clock (Task 7). |
 | `src/wowperf/domain/comparison/tables.py` | `debuff_table` (Task 5); `_auras` builds `AuraRow`s over the key clock (Task 7). |
@@ -1749,12 +1756,13 @@ The verdict moves from the bosses to Overall, and the findings change name with 
   - `Withheld.NO_TRASH = "no trash measured"`.
   - In `measures`:
     - `StretchCell(ours: float | None = None, their_median: float | None = None, withheld: Withheld | None = None)`;
-    - `DebuffReach(overall: StretchCell = StretchCell(), trash: StretchCell = StretchCell(), bosses: StretchCell = StretchCell())`;
+    - `DebuffReach(overall: StretchCell = StretchCell(), trash: StretchCell = StretchCell(), bosses: StretchCell = StretchCell(), overall_fractions: tuple[float, ...] = ())`, where `overall_fractions` holds the references' Overall reaches behind `overall`'s median, which the reach table's Range and Sample state (Task 8);
     - `DebuffRow(uptime: AuraUptime, trash: StretchCell = StretchCell(), bosses: StretchCell = StretchCell(), cells: tuple[BossCell, ...] = (), reach: DebuffReach = DebuffReach(), shared_with: tuple[int, ...] = ())`, which replaces `BossDebuffRow`;
     - `DebuffTable(rows, seconds, bosses, tally, deathless, unmeasured_no_death: int = 0, undebuffed_deaths: int = 0)`, which replaces `BossDebuffTable`;
     - `PlayerMeasures.debuffs: DebuffTable`, which replaces `boss_debuffs`.
   - In `uptime`:
     - `measured_or(value: float | None, reason: Withheld) -> float | Withheld`;
+    - `carried_shares(theirs: Sequence[float | None]) -> tuple[float, ...]`, the references that carried a figure over one stretch, which both `stretch_cell` and `debuff_uptime._reach` read;
     - `stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> StretchCell`.
   - In `debuff_uptime`:
     - `ID_PREFIX = "compare.uptime.debuff"`;
@@ -2075,7 +2083,8 @@ def test_a_trash_cell_no_reference_measured_shows_ours_and_says_so() -> None:
 
 def test_reach_is_described_for_every_stretch() -> None:
     # Ours sat on the boss and on 1 of 4 mobs: 2 of 5 enemies. Each reference
-    # sat on the boss and on all 4.
+    # sat on the boss and on all 4, so each of the three gives an Overall reach
+    # of 1.0, and those three are what the reach table's Range and Sample state.
     ours = with_trash(on_the_boss((DOT, DOT_NAME, 0.9)), 0.1, reached=1)
     sample = a_sample_of(
         *(with_trash(on_the_boss((DOT, DOT_NAME, 0.9)), 0.9) for _ in range(3))
@@ -2087,7 +2096,23 @@ def test_reach_is_described_for_every_stretch() -> None:
         overall=StretchCell(ours=0.4, their_median=1.0),
         trash=StretchCell(ours=0.25, their_median=1.0),
         bosses=StretchCell(ours=1.0, their_median=1.0),
+        overall_fractions=(1.0, 1.0, 1.0),
     )
+
+
+def test_reach_keeps_the_references_overall_reach_not_their_coverage() -> None:
+    # Each reference covered 90% of the boss and of its trash, and reached the
+    # boss and 2 of its 4 mobs: 3 of 5 enemies. Their coverage, 0.9, is not
+    # their reach, 0.6, and only the reach belongs under the reach table's Range.
+    ours = with_trash(on_the_boss((DOT, DOT_NAME, 0.9)), 0.1, reached=1)
+    sample = a_sample_of(
+        *(with_trash(on_the_boss((DOT, DOT_NAME, 0.9)), 0.9, reached=2) for _ in range(3))
+    )
+
+    [row] = debuff_table(ours, sample).rows
+
+    assert row.reach.overall_fractions == (0.6, 0.6, 0.6)
+    assert row.uptime.their_fractions == (0.9, 0.9, 0.9)
 
 
 def test_a_debuff_seen_only_on_trash_still_earns_a_row() -> None:
@@ -2522,11 +2547,14 @@ class DebuffReach(Frozen):
     """One debuff's reach over each stretch: the share of enemies it sat on at all.
 
     Described, never judged: a reach threshold would be invented, not measured.
+    `overall_fractions` are the references' Overall reaches above zero, which
+    give `overall`'s median; the reach table states their range and count.
     """
 
     overall: StretchCell = StretchCell()
     trash: StretchCell = StretchCell()
     bosses: StretchCell = StretchCell()
+    overall_fractions: tuple[float, ...] = ()
 ```
 
 2. Replace `BossDebuffRow` and `BossDebuffTable` with:
@@ -2587,6 +2615,15 @@ def measured_or(value: float | None, reason: Withheld) -> float | Withheld:
     return reason if value is None else value
 
 
+def carried_shares(theirs: Sequence[float | None]) -> tuple[float, ...]:
+    """The references' shares over one stretch that carried it there: measured, above zero.
+
+    These give a stretch cell's median, and the reach table states their range
+    and count beside Overall reach.
+    """
+    return tuple(share for share in theirs if share is not None and share > 0.0)
+
+
 def stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> StretchCell:
     """One stretch's cell: ours against the median of the references that carried it there.
 
@@ -2597,10 +2634,9 @@ def stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> Stre
     """
     if isinstance(ours, Withheld):
         return StretchCell(withheld=ours)
-    reached = [share for share in theirs if share is not None]
-    if not reached:
+    if all(share is None for share in theirs):
         return StretchCell(ours=ours, withheld=Withheld.NOT_REACHED)
-    carried = [share for share in reached if share > 0.0]
+    carried = carried_shares(theirs)
     if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
         return StretchCell(ours=ours, withheld=Withheld.TOO_FEW)
     return StretchCell(ours=ours, their_median=median(carried))
@@ -2635,6 +2671,7 @@ from wowperf.domain.comparison.statistics import count_phrase, median, observed_
 from wowperf.domain.comparison.uptime import (
     MAX_AURAS_REPORTED,
     carried_fractions,
+    carried_shares,
     measured_or,
     pairwise_gaps,
     stretch_cell,
@@ -2952,11 +2989,17 @@ def debuff_table(our: KeyDebuffs | None, sample: ParseSample) -> DebuffTable:
 
 
 def _reach(our: KeyDebuffs, theirs: Sequence[KeyDebuffs], ability_id: int) -> DebuffReach:
-    """One debuff's reach over each stretch, ours against the sample's: described, never judged."""
+    """One debuff's reach over each stretch, ours against the sample's: described, never judged.
+
+    The references' Overall reaches behind the median ride along, for the reach
+    table's Range and Sample.
+    """
     overall = our.overall.reach(ability_id)
     assert overall is not None  # the table's gate leaves alive time, so at least one life
+    their_overall = [one.overall.reach(ability_id) for one in theirs]
     return DebuffReach(
-        overall=stretch_cell(overall, [one.overall.reach(ability_id) for one in theirs]),
+        overall=stretch_cell(overall, their_overall),
+        overall_fractions=carried_shares(their_overall),
         trash=stretch_cell(
             measured_or(our.trash.reach(ability_id), Withheld.NO_TRASH),
             [one.trash.reach(ability_id) for one in theirs],
@@ -3280,8 +3323,22 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 ### Task 7: Judge buffs over the key clock
 
+This task also measures a boss pull Warcraft Logs lists twice once in the buff windows (choice 13). The duplicate test that `boss_windows_of` runs moves into `boss_debuffs.boss_pulls_listed_once`, and `uptime.boss_windows` calls it too.
+
+What a duplicate does today, read from the code:
+- `uptime.boss_windows` returns one span per boss pull, so it returns a duplicated pull's span twice.
+- `auras.uptime_seconds_in` clips every band to every window and merges the clipped intervals before summing, so the buff's seconds inside that pull count once.
+- The denominators sum every boss pull: `spells.boss_seconds` today, and Task 7's `_share_in` for the Bosses cell. So the pull's seconds count twice.
+
+On a fight whose only boss pull is listed twice, a buff up throughout reads 50%. Beside one other boss pull of the same length, it reads 67%.
+
+The Overall figure and the Without bosses cell never count the duplicate twice. `key_clock_uptime` reads the fight's one span. `without_boss_pulls` walks the sorted boss windows with a cursor, and a repeated window starts behind it.
+
+This task leaves the cast path alone. A cast rate reads `spells.boss_pulls` and `spells.boss_seconds`, never `boss_windows`: `grep -rn "boss_windows(" src` finds it only in `uptime.py` and `tables.py`. The raid's buff rule, `whole_fight_uptime`, reads no window at all, and the raid's denominator is `ParseMember.boss_seconds` through the default `over`. So neither path moves.
+
 **Files:**
 - Modify:
+  - `src/wowperf/domain/comparison/boss_debuffs.py` (`boss_pulls_listed_once`, read by `boss_windows_of`)
   - `src/wowperf/domain/comparison/uptime.py`
   - `src/wowperf/domain/comparison/wording.py`
   - `src/wowperf/domain/comparison/service.py`
@@ -3289,6 +3346,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
   - `src/wowperf/domain/comparison/tables.py`
   - `src/wowperf/domain/report/players.py`
 - Modify tests:
+  - `tests/domain/comparison/test_boss_debuffs.py`
   - `tests/domain/comparison/test_uptime.py`
   - `tests/domain/comparison/test_service.py`
   - `tests/domain/comparison/test_tables.py`
@@ -3301,7 +3359,9 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 **Interfaces:**
 - Consumes: Task 6's `Run.fight_ms` and `ParseMember.fight_ms`, and Task 5's `stretch_cell`, `measured_or` and `StretchCell`.
 - Produces:
+  - In `boss_debuffs`: `boss_pulls_listed_once(pulls: Sequence[Pull]) -> tuple[tuple[int, Pull], ...]`, each boss pull with its position in `pulls`, a pull that repeats the previous boss pull's encounter, start and end dropped. `boss_windows_of` reads it, and its signature and behaviour are unchanged.
   - In `uptime`:
+    - `boss_windows(pulls)` keeps its signature and lists a boss pull Warcraft Logs lists twice once. It no longer imports `spells.boss_pulls`, which stays as it is for the cast path;
     - `UptimeRule = Callable[[Sequence[Pull], Span | None], Callable[[Aura], float]]`;
     - `fight_seconds(fight_ms: Span | None) -> float`;
     - `key_clock_uptime(pulls, fight_ms) -> Callable[[Aura], float]`;
@@ -3317,6 +3377,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
     - `PlayerMeasures.key_seconds: float = 0.0`.
 
 - [ ] **Step 1: Write the failing tests, and rewrite the ones the change breaks**
+
+The helper's own test in `test_boss_debuffs.py` is written at Step 7. Written here, its import error would stop `test_boss_debuffs.py`, `test_debuff_uptime.py` and `test_tables.py` from collecting, since the last two import helpers from it. The two duplicate tests below could then never show their wrong figure at Step 6.
 
 **`tests/domain/comparison/test_uptime.py`:**
 - Replace its imports through the `wording` line with:
@@ -3391,6 +3453,20 @@ def test_a_fights_seconds_are_its_clock_and_no_clock_reads_zero() -> None:
     assert fight_seconds(None) == 0.0
 
 
+def test_a_boss_pull_warcraft_logs_lists_twice_is_one_window() -> None:
+    # One encounter, start and end listed twice, as `dungeonPulls` lists some
+    # wipes. Two windows would count its seconds twice in a sum over them while
+    # `uptime_seconds_in` merges the aura's seconds in it once. The same boss
+    # pulled again later is a window of its own.
+    relisted = BOSS.model_copy(update={"index": 2, "pull_id": 2})
+    again = a_pull(3, 300_000, 400_000, encounter_id=12825)
+
+    assert boss_windows((BOSS, relisted, TRASH, again)) == (
+        (0, 100_000),
+        (300_000, 400_000),
+    )
+
+
 def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> None:
     # The reference's key runs 300s and carried the buff for 150s of it; its boss
     # pull, the default denominator, is 100s. Ours ran the same 300s and carried
@@ -3435,6 +3511,7 @@ def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> Non
 
 **`tests/domain/comparison/test_tables.py`:**
 - Add `from wowperf.domain.comparison.boss_debuffs import Withheld` to the imports, and add `StretchCell` to the `measures` import.
+- Add `from tests.domain.comparison.test_boss_debuffs import a_listed_twice` above the `tests.domain.comparison.test_service` import.
 - In `a_parse_member`, add `fight_ms=theirs.run.fight_ms,` after `pulls=theirs.run.pulls,`.
 - Replace `test_an_aura_row_is_a_share_of_boss_time_on_both_sides` with:
 
@@ -3482,12 +3559,13 @@ def test_an_aura_row_is_judged_over_the_key_clock_on_both_sides() -> None:
 - Append:
 
 ```python
-def a_two_pull_aura_member(code: str) -> ParseMember:
+def a_two_pull_aura_member(code: str, *, boss_listed_twice: bool = False) -> ParseMember:
     """A reference with a minute of trash, then a minute of boss 140s later, its
-    aura up from the key's start to its end."""
-    theirs = a_loaded(
-        (THEIRS,), (a_pull_of(0, (1,), 60.0), a_pull_of(1, (9,), 60.0, boss=True))
-    )
+    aura up from the key's start to its end. `boss_listed_twice` lists that boss
+    pull twice, as Warcraft Logs lists some wipes."""
+    trash, boss = a_pull_of(0, (1,), 60.0), a_pull_of(1, (9,), 60.0, boss=True)
+    pulls = (trash, *a_listed_twice(boss)) if boss_listed_twice else (trash, boss)
+    theirs = a_loaded((THEIRS,), pulls)
     return a_parse_member(
         code,
         theirs,
@@ -3514,6 +3592,34 @@ def test_an_aura_is_described_without_bosses_and_on_bosses_beside_its_verdict() 
     assert row.without_bosses == StretchCell(ours=0.5, their_median=1.0)
     assert row.bosses == StretchCell(ours=0.0, their_median=1.0)
     assert measures.key_seconds == 250.0
+
+
+def test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell() -> None:
+    """Warcraft Logs lists some boss pulls twice, with one encounter, start and
+    end. Ours: 100s of trash, then a 50s boss pull listed twice, the aura up over
+    that pull alone. Each reference lists its 60s boss pull twice too, the aura
+    up throughout. Counted twice, a pull's seconds double while the aura's
+    seconds in it merge once, and both sides would read 50% on bosses."""
+    trash, boss = a_pull_of(0, (1,), 100.0), a_pull_of(1, (9,), 50.0, boss=True)
+    ours = a_loaded((OURS,), (trash, *a_listed_twice(boss)))
+    sample = ParseSample(
+        members=tuple(
+            a_two_pull_aura_member(code, boss_listed_twice=True)
+            for code in ("REF1", "REF2", "REF3")
+        )
+    )
+    our_auras = PlayerAuras(
+        actor_id=OURS.actor_id, on_self=(an_aura(50_000, start_ms=200_000),)
+    )
+
+    measures = comparison_measures(ours, only_ours(sample, our_auras=our_auras))[OUR_SLUG]
+
+    [row] = measures.auras
+    assert row.bosses == StretchCell(ours=1.0, their_median=1.0)
+    # The key clock and the key less its boss pulls never counted it twice:
+    # 50s of a 250s key, and none of the 200s outside the boss pull.
+    assert row.uptime.ours == 0.2
+    assert row.without_bosses == StretchCell(ours=0.0, their_median=1.0)
 ```
 
 - In `test_every_uptime_finding_has_a_table_row_stating_the_same_figures`, replace its last block, from `by_aura = ...` to the end, with:
@@ -3649,6 +3755,8 @@ Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain tests/tes
 Expected:
 - ImportErrors on `KEY`, `key_clock_uptime`, `fight_seconds`, `fight_seconds_of`, `without_boss_pulls` and `AuraRow`;
 - once those exist, `test_uptime_findings_appear_when_both_sides_carry_auras` and the CLI uptime test fail, because the verdict still reads boss pulls.
+
+The two duplicate tests show their wrong figure at Step 6, once everything but the duplicate rule is in place.
 
 - [ ] **Step 3: `uptime.py`**
 
@@ -3920,7 +4028,9 @@ def _beside(
 def _share_in(auras: PlayerAuras, ability_id: int, windows: tuple[Span, ...]) -> float | None:
     """This aura's share of these windows, or None when they hold no time at all.
 
-    The denominator sums the windows as given, as the boss figure always has.
+    The denominator sums the windows as given. Neither caller's windows overlap:
+    `without_boss_pulls` walks past every boss pull, and `boss_windows` lists a
+    boss pull Warcraft Logs lists twice once, so no second is counted twice.
     """
     seconds = sum(end - start for start, end in windows) / 1000
     if seconds <= 0:
@@ -3965,14 +4075,113 @@ def _aura_rows(rows: Sequence[AuraRow]) -> tuple[ComparisonRow, ...]:
 
 The buff table's heading and caption change in Task 8.
 
-- [ ] **Step 6: Run the tests to see them pass**
+- [ ] **Step 6: Run the tests to see the duplicate tests fail on their figure**
+
+Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain tests/test_cli.py -q`
+Expected: every test passes except these two, which fail on what a boss pull listed twice does today:
+- `test_a_boss_pull_warcraft_logs_lists_twice_is_one_window` reads `((0, 100000), (0, 100000), (300000, 400000))`: the duplicate's span twice;
+- `test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell` reads `StretchCell(ours=0.5, their_median=0.5, withheld=None)` on bosses: the pull's seconds counted twice, the aura's once.
+
+- [ ] **Step 7: One rule for a boss pull listed twice**
+
+1. In `tests/domain/comparison/test_boss_debuffs.py`, add `boss_pulls_listed_once,` to the `wowperf.domain.comparison.boss_debuffs` import, between `Withheld,` and `boss_windows_of,`. Then append, after `test_a_duplicate_of_a_pull_is_not_the_next_pull_for_a_trash_pull_either`:
+
+```python
+def test_a_boss_pull_listed_twice_is_kept_once_at_its_own_position() -> None:
+    # The position is the pull's place in the route, which `boss_windows_of`
+    # reads on from to find the next pull. The same boss pulled again later is
+    # a second pull, not a duplicate.
+    first, twin = a_listed_twice(BOSS_PULL)
+    again = a_pull(3, 100_000, 160_000, encounter_id=2001, name=BOSS_NAME)
+
+    assert boss_pulls_listed_once((TRASH_PULL, first, twin, again)) == (
+        (1, first),
+        (3, again),
+    )
+```
+
+   Every other test in that file stays as it is. Among them, `test_a_boss_pull_listed_twice_is_measured_once`, `test_a_council_kill_listed_twice_is_one_window_ending_at_its_deaths` and `test_a_duplicate_of_a_pull_is_not_the_next_pull_for_a_trash_pull_either` pin `boss_windows_of`'s rule once it reads the helper.
+
+   Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain/comparison/test_boss_debuffs.py -q`
+   Expected: a collection error, `ImportError: cannot import name 'boss_pulls_listed_once'`.
+
+2. In `src/wowperf/domain/comparison/boss_debuffs.py`, add this function after `bosses_of`, before `boss_windows_of`:
+
+```python
+def boss_pulls_listed_once(pulls: Sequence[Pull]) -> tuple[tuple[int, Pull], ...]:
+    """Every boss pull of a route with its position in it, a pull listed twice kept once.
+
+    Warcraft Logs sometimes lists one physical boss pull twice, with the same
+    encounter, start and end (measured 2026-10-08: 10 duplicated boss pulls in 5
+    of 969 cached fights, all wipes). A boss pull that repeats the boss pull
+    before it is dropped, so its seconds and what was up during them are
+    counted once wherever they are summed. The same boss pulled again at
+    another time is another pull. The position is the pull's index in `pulls`,
+    for a caller that reads on from it.
+    """
+    kept: list[tuple[int, Pull]] = []
+    previous: tuple[int, int, int] | None = None
+    for position, pull in enumerate(pulls):
+        if not pull.is_boss:
+            continue
+        listed = (pull.encounter_id, pull.start_ms, pull.end_ms)
+        if listed == previous:
+            continue
+        previous = listed
+        kept.append((position, pull))
+    return tuple(kept)
+```
+
+3. In `boss_windows_of`, replace these lines:
+
+```python
+    windows: list[BossWindow] = []
+    previous: tuple[int, int, int] | None = None
+    for position, pull in enumerate(pulls):
+        if not pull.is_boss:
+            continue
+        listed = (pull.encounter_id, pull.start_ms, pull.end_ms)
+        if listed == previous:
+            continue
+        previous = listed
+        horizon = next(
+```
+
+with:
+
+```python
+    windows: list[BossWindow] = []
+    for position, pull in boss_pulls_listed_once(pulls):
+        horizon = next(
+```
+
+   The rest of the function is unchanged. In its docstring, after "It is measured once, so its seconds and covered time are not counted twice.", add the sentence "`boss_pulls_listed_once` holds that rule, and the buff windows read it too."
+
+4. In `src/wowperf/domain/comparison/uptime.py`, extend the `boss_debuffs` import of Step 3 to `from wowperf.domain.comparison.boss_debuffs import Span, Withheld, boss_pulls_listed_once`. Remove `from wowperf.domain.comparison.spells import boss_pulls`: `boss_windows` was its only reader in this module, and `spells.boss_pulls` itself stays as it is for the cast path.
+5. Replace `boss_windows` with:
+
+```python
+def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
+    """The millisecond spans of the boss pulls, for intersecting aura bands against.
+
+    Takes the route rather than a `Run`, so that a parse reference — which
+    carries its pulls and no run — reaches the same rule our own side does.
+
+    A boss pull Warcraft Logs lists twice is one span, by the rule the debuff
+    figure's `boss_windows_of` reads, so a sum over these spans counts its
+    seconds once, as the merge in `auras.uptime_seconds_in` counts the aura's.
+    """
+    return tuple((pull.start_ms, pull.end_ms) for _, pull in boss_pulls_listed_once(pulls))
+```
+
+- [ ] **Step 8: Run the tests to see them pass**
 
 Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain tests/test_cli.py tests/adapters -q`
-Expected: all pass. `tests/domain/comparison/test_parse_axis.py`, the raid's uptime, passes unchanged.
+Expected: all pass, the three duplicate tests included. Every `boss_windows_of` test in `test_boss_debuffs.py` passes unchanged. `tests/domain/comparison/test_parse_axis.py`, the raid's uptime, passes unchanged, and so does `tests/domain/comparison/test_spells.py`, the cast rates'.
 
-- [ ] **Step 7: Gate and commit**
+- [ ] **Step 9: Gate and commit**
 
-Run the gate. Then run `grep -rn "boss_pull_uptime" src tests`. It must find nothing.
+Run the gate. Then run `grep -rn "boss_pull_uptime" src tests`. It must find nothing. Then run `grep -rn "boss_windows(" src`. It must list only `src/wowperf/domain/comparison/uptime.py` and `src/wowperf/domain/comparison/tables.py`, which shows the rule reached no cast or raid path.
 
 Write `<scratchpad>\task7-msg.txt`:
 
@@ -3985,11 +4194,18 @@ fight's start to its end, and described without bosses and on bosses
 beside the verdict. The finding ids keep their names. The raid path
 keeps its own rule through the defaults of the two new arguments.
 
+A boss pull Warcraft Logs lists twice put its span in the buff windows
+twice, so its seconds counted twice while the buff's seconds in it
+merged once: a buff up through every boss pull read below 100%. The
+debuff figure already measured such a pull once. The rule now lives in
+one helper both read. Cast rates do not read these windows and are
+left to a separate change.
+
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-/mingw64/bin/git add src/wowperf/domain/comparison/uptime.py src/wowperf/domain/comparison/wording.py src/wowperf/domain/comparison/service.py src/wowperf/domain/comparison/measures.py src/wowperf/domain/comparison/tables.py src/wowperf/domain/report/players.py tests/domain/comparison/test_uptime.py tests/domain/comparison/test_service.py tests/domain/comparison/test_tables.py tests/domain/comparison/test_sample_invariants.py tests/domain/report/test_build_players.py tests/test_cli.py tests/e2e/test_compare_e2e.py tests/e2e/test_uptime_e2e.py
+/mingw64/bin/git add src/wowperf/domain/comparison/boss_debuffs.py tests/domain/comparison/test_boss_debuffs.py src/wowperf/domain/comparison/uptime.py src/wowperf/domain/comparison/wording.py src/wowperf/domain/comparison/service.py src/wowperf/domain/comparison/measures.py src/wowperf/domain/comparison/tables.py src/wowperf/domain/report/players.py tests/domain/comparison/test_uptime.py tests/domain/comparison/test_service.py tests/domain/comparison/test_tables.py tests/domain/comparison/test_sample_invariants.py tests/domain/report/test_build_players.py tests/test_cli.py tests/e2e/test_compare_e2e.py tests/e2e/test_uptime_e2e.py
 ```
 
 ```bash
@@ -4000,7 +4216,12 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
 ### Task 8: Draw the buff columns, "Debuff coverage", "Debuff reach", the note and the warning
 
-The builder decides everything here, and the template only loops. Two booleans on `ComparisonTable` say whether the figure columns and the Verdict column are drawn. A table that keeps both defaults renders byte for byte as before, because `trim_blocks` and `lstrip_blocks` remove a block tag that stands on its own line. The one inline tag that opens an indented line is written `{%+ ... %}`, which keeps that line's indentation. The golden page and `test_a_comparison_row_without_cells_ends_as_it_always_has` hold this.
+The builder decides everything here, and the template only loops.
+
+- **Two booleans** on `ComparisonTable` say whether the figure columns and the Verdict column are drawn.
+- **The uptime tables' layout.** The three uptime tables draw no figure columns. Their judged Overall figure, its Range and its Sample are each row's first three cells, under headings of the same names, in the layout choice 11 gives. Their rows leave `ours`, `theirs`, `spread` and `sample` empty, so each string is drawn from one place.
+- **A table with both defaults** renders byte for byte as before. `trim_blocks` and `lstrip_blocks` remove a block tag that stands on its own line, and the one inline tag that opens an indented line is written `{%+ ... %}`, which keeps that line's indentation.
+- **What holds that claim.** `test_a_comparison_row_without_cells_ends_as_it_always_has` holds it, with the rich fixture's column tests (`test_every_compared_cell_lands_under_the_heading_it_claims` and `test_a_right_aligned_column_is_headed_by_a_right_aligned_heading`), whose tables are all cast rates. The golden pages do not hold it. None of the four (`minimal.html`, `raid.html`, `night.html`, `progression.html`) draws a comparison table: none contains `<table class="compared-rows">`. They pass whatever this task does to one, and they stay byte-identical with the Range and Sample cells too.
 
 **Files:**
 - Modify:
@@ -4016,7 +4237,8 @@ The builder decides everything here, and the template only loops. Two booleans o
 - Produces:
   - `ComparisonTable.figures: bool = True`, `.judged: bool = True`, `.note: str = ""` and `.warning: str = ""`;
   - `ComparisonRow.ours`, `.theirs`, `.spread`, `.sample` and `.verdict_label`, each defaulting to `""`;
-  - in `players`: `DESCRIBED = "described"`, `DEBUFF_NOTE`, and `WITHHELD_LABELS[Withheld.NO_TRASH] == "no trash measured"`.
+  - in `players`: `DESCRIBED = "described"`, `DEBUFF_NOTE`, `WITHHELD_LABELS[Withheld.NO_TRASH] == "no trash measured"`, and the private helpers `_overall`, `_spread_and_sample`, `_reach_rows` and `_unmeasured`.
+- Consumes from Task 5 as well: `DebuffReach.overall_fractions`, which the reach table's Range and Sample state.
 
 - [ ] **Step 1: Write the failing tests, and rewrite the ones the change breaks**
 
@@ -4030,11 +4252,24 @@ In `tests/domain/report/test_build_players.py`:
     assert auras.caption == (
         "Share of 1834s of key time, from the key's start to its end with the walking "
         "between pulls included, against the median of the parses that carried each. The "
-        "verdict reads Overall. Without bosses is the key less its boss pulls and Bosses the "
-        "boss pulls; each reads ours against the median and carries no verdict. A buff only "
-        "up in combat reads lower over the whole key the more of it was spent between pulls, "
-        "so a reference that walked less reads higher whatever either player did. Derived."
+        "verdict reads Overall, and Range and Sample are Overall's. Without bosses is the key "
+        "less its boss pulls and Bosses the boss pulls; each reads ours against the median "
+        "and carries no verdict. A buff only up in combat reads lower over the whole key the "
+        "more of it was spent between pulls, so a reference that walked less reads higher "
+        "whatever either player did. Derived."
     )
+```
+
+- In `test_an_uptime_row_is_spelled_as_a_percentage`, the table draws its figure in its Overall cell now, and an uptime is a share of the key's time. Replace "uptimes are a share of boss time" in its docstring with "uptimes are a share of the key's time", and its last two assertions with:
+
+```python
+    assert auras.rows[0].cells[0] == "98% against 100%"
+```
+
+- In `test_an_aura_the_comparison_refused_to_judge_keeps_that_verdict`, the Range and Sample are cells now. Replace its last two assertions, on `row.spread` and `row.sample`, with:
+
+```python
+    assert row.cells[1:3] == ("94% to 99%", "3 top parses")
 ```
 
 - Replace `test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss` with:
@@ -4099,14 +4334,26 @@ def test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_b
     table = card.comparison_tables[1]
     assert (table.figures, table.judged) == (False, True)
     assert table.cell_headings == (
-        "Overall", "Trash", "Bosses", "First Boss", "Second Boss", "Third Boss"
+        "Overall",
+        "Range",
+        "Sample",
+        "Trash",
+        "Bosses",
+        "First Boss",
+        "Second Boss",
+        "Third Boss",
     )
     [row] = table.rows
-    assert (row.ours, row.theirs, row.spread, row.verdict_label) == (
-        "70%", "90%", "85% to 95%", "Below"
-    )
+    assert row.verdict_label == "Below"
+    # Drawn once, in the cells: the row's own figure strings stay empty on a
+    # table that draws no figure columns.
+    assert (row.ours, row.theirs, row.spread, row.sample) == ("", "", "", "")
+    # Range and Sample are Overall's: the references' 85%, 90% and 95%. Neither
+    # stretch nor any boss cell carries a range of its own.
     assert row.cells == (
         "70% against 90%",
+        "85% to 95%",
+        "3 top parses",
         "40% against 80%",
         "60% against 90%",
         "50% against 90%",
@@ -4116,16 +4363,20 @@ def test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_b
     assert table.caption == (
         "Share of 200s of enemy-alive time, summed over every enemy measured, that carried "
         "each debuff from this player or their pets, against the median of the parses that "
-        "applied each. The verdict reads Overall. Trash is the mobs of trash pulls; Bosses is "
-        "the bosses themselves, a council's each from the pull's start to their own death, or "
-        "to the pull's end if they did not die there; adds that spawn during a boss fight, "
-        "and the enemies of a pull with no boss found, count in Overall only. Those columns "
-        "and each boss's read ours against the median and carry no verdict. A debuff a "
-        "teammate's application replaces is marked shared, not judged. The group's log for "
-        "the whole fight held 1 removal with no application, dropped (a pet copy's second "
-        "removal counts here); 2 applications still open at the fight's end, closed there; "
-        "and 0 rows on an enemy with no game id, skipped. Derived."
+        "applied each. The verdict reads Overall, and Range and Sample are Overall's. Trash "
+        "is the mobs of trash pulls; Bosses is the bosses themselves, a council's each from "
+        "the pull's start to their own death, or to the pull's end if they did not die "
+        "there; adds that spawn during a boss fight, and the enemies of a pull with no boss "
+        "found, count in Overall only. Those columns and each boss's read ours against the "
+        "median and carry no verdict. A debuff a teammate's application replaces is marked "
+        "shared, not judged. The group's log for the whole fight held 1 removal with no "
+        "application, dropped (a pet copy's second removal counts here); 2 applications "
+        "still open at the fight's end, closed there; and 0 rows on an enemy with no game "
+        "id, skipped. Derived."
     )
+    # This row sets no reach, so every reach cell is empty, Range and Sample too.
+    [unreached] = card.comparison_tables[2].rows
+    assert unreached.cells == ("", "", "", "", "")
 ```
 
 - In `a_shared_debuff_table`:
@@ -4134,18 +4385,27 @@ def test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_b
 - In `test_a_shared_debuff_is_labelled_with_who_it_was_shared_with_and_not_judged`, the last assertion becomes:
 
 ```python
-    assert (row.ours, row.theirs, row.cells) == (
-        "70%",
-        "90%",
-        ("70% against 90%", "no trash measured", "70% against 90%", "70% against 90%"),
+    assert row.cells == (
+        "70% against 90%",
+        "85% to 95%",
+        "3 top parses",
+        "no trash measured",
+        "70% against 90%",
+        "70% against 90%",
     )
 ```
 
-- In `test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know`, replace `assert row.cells == ("90%; no reference measured it",)` with `assert row.cells == ("70% against 90%", "", "", "90%; no reference measured it")`. The row sets neither stretch, and an empty `StretchCell` draws an empty cell.
+- In `test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know`, replace `assert row.cells == ("90%; no reference measured it",)` with the assertion below. The row sets neither stretch, and an empty `StretchCell` draws an empty cell.
+
+```python
+    assert row.cells == (
+        "70% against 90%", "85% to 95%", "3 top parses", "", "", "90%; no reference measured it"
+    )
+```
 - Append:
 
 ```python
-def test_the_buff_table_reads_overall_then_without_bosses_then_bosses() -> None:
+def test_the_buff_table_reads_overall_its_range_and_sample_then_each_stretch() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
@@ -4170,10 +4430,18 @@ def test_the_buff_table_reads_overall_then_without_bosses_then_bosses() -> None:
     [table] = card.comparison_tables
     assert table.heading == "Buff uptime"
     assert (table.figures, table.judged) == (False, True)
-    assert table.cell_headings == ("Overall", "Without bosses", "Bosses")
+    assert table.cell_headings == ("Overall", "Range", "Sample", "Without bosses", "Bosses")
     [row] = table.rows
     assert row.verdict_label == "Below"
-    assert row.cells == ("62% against 98%", "55% against 97%", "90%; too few references")
+    # Range and Sample are the references behind Overall's median, 95% to 99%
+    # over three; neither stretch carries a range of its own.
+    assert row.cells == (
+        "62% against 98%",
+        "95% to 99%",
+        "3 top parses",
+        "55% against 97%",
+        "90%; too few references",
+    )
 
 
 def debuff_tables(
@@ -4202,6 +4470,10 @@ def debuff_tables(
                             overall=StretchCell(ours=0.5, their_median=0.92),
                             trash=StretchCell(ours=0.45, their_median=0.9),
                             bosses=StretchCell(ours=1.0, their_median=1.0),
+                            # Four, where the coverage row has three, and another
+                            # range, so a reach Range or Sample read off the
+                            # coverage figure would show.
+                            overall_fractions=(0.88, 0.9, 0.94, 0.95),
                         ),
                     ),
                 ),
@@ -4227,17 +4499,30 @@ def test_the_reach_table_follows_the_coverage_table_and_judges_nothing() -> None
     assert (coverage.heading, reach.heading) == ("Debuff coverage", "Debuff reach")
     [covered] = coverage.rows
     assert covered.cells == (
-        "60% against 90%", "40% against 85%", "95% against 97%", "95% against 97%"
+        "60% against 90%",
+        "85% to 95%",
+        "3 top parses",
+        "40% against 85%",
+        "95% against 97%",
+        "95% against 97%",
     )
     assert (reach.figures, reach.judged) == (False, False)
-    assert reach.cell_headings == ("Overall", "Trash", "Bosses")
+    assert reach.cell_headings == ("Overall", "Range", "Sample", "Trash", "Bosses")
     [row] = reach.rows
     assert (row.name, row.verdict, row.verdict_label) == ("Blood Plague", "described", "")
-    assert row.cells == ("50% against 92%", "45% against 90%", "100% against 100%")
+    # Range and Sample are the references' Overall reach, not their coverage.
+    assert row.cells == (
+        "50% against 92%",
+        "88% to 95%",
+        "4 top parses",
+        "45% against 90%",
+        "100% against 100%",
+    )
     assert reach.caption == (
         "Share of the enemies measured that carried each debuff from this player or their "
-        "pets at least once, against the median of the parses that applied each. A boss "
-        "counts as one enemy. Reach describes and is never judged. Derived."
+        "pets at least once, against the median of the parses that applied each. Range and "
+        "Sample are Overall's. A boss counts as one enemy. Reach describes and is never "
+        "judged. Derived."
     )
 
 
@@ -4287,19 +4572,23 @@ In `tests/adapters/render/test_html_invariants.py`:
 
 ```python
 def test_a_table_with_no_figure_columns_and_no_verdict_draws_only_its_cells() -> None:
-    """The reach table judges nothing and states each stretch in a cell, so its
-    headings are Ability and the cells' own, and its note and warning follow it."""
+    """The reach table judges nothing and states Overall, its Range and Sample, and
+    each stretch in a cell, so its headings are Ability and the cells' own, in
+    that order, and its note and warning follow it."""
     report = rich_report()
     table = ComparisonTable(
         heading="Debuff reach",
         caption="Derived.",
         figures=False,
         judged=False,
-        cell_headings=("Overall", "Trash", "Bosses"),
+        cell_headings=("Overall", "Range", "Sample", "Trash", "Bosses"),
         rows=(
             ComparisonRow(
                 ability_id=55078, name="Blood Plague", verdict="described",
-                cells=("40% against 100%", "25% against 100%", "100% against 100%"),
+                cells=(
+                    "40% against 100%", "88% to 100%", "3 top parses", "25% against 100%",
+                    "100% against 100%",
+                ),
             ),
         ),
         note="Coverage: the share of alive time. Reached: the share of enemies.",
@@ -4313,11 +4602,12 @@ def test_a_table_with_no_figure_columns_and_no_verdict_draws_only_its_cells() ->
     [(headings, rows)] = [
         rendered for rendered in compared_tables(html) if "Trash" in rendered[0]
     ]
-    assert headings == ["Ability", "Overall", "Trash", "Bosses"]
+    assert headings == ["Ability", "Overall", "Range", "Sample", "Trash", "Bosses"]
     [(row_class, cells)] = rows
     assert row_class == "v-described"
     assert [MARKUP.sub("", cell) for cell in cells[1:]] == [
-        "40% against 100%", "25% against 100%", "100% against 100%"
+        "40% against 100%", "88% to 100%", "3 top parses", "25% against 100%",
+        "100% against 100%",
     ]
     [body] = [body for body in COMPARED_TABLE.findall(html) if ">Trash<" in body]
     headed = _numeric_columns(COMPARED_HEADING_TAG.findall(body))
@@ -4333,11 +4623,14 @@ def test_a_judged_table_with_no_figure_columns_keeps_its_verdict() -> None:
         heading="Buff uptime",
         caption="Derived.",
         figures=False,
-        cell_headings=("Overall", "Without bosses", "Bosses"),
+        cell_headings=("Overall", "Range", "Sample", "Without bosses", "Bosses"),
         rows=(
             ComparisonRow(
                 ability_id=195181, name="Bone Shield", verdict="below", verdict_label="Below",
-                cells=("62% against 98%", "55% against 97%", "90%; too few references"),
+                cells=(
+                    "62% against 98%", "95% to 99%", "3 top parses", "55% against 97%",
+                    "90%; too few references",
+                ),
             ),
         ),
     )
@@ -4350,10 +4643,13 @@ def test_a_judged_table_with_no_figure_columns_keeps_its_verdict() -> None:
         if "Without bosses" in rendered[0]
     ]
 
-    assert headings == ["Ability", "Verdict", "Overall", "Without bosses", "Bosses"]
+    assert headings == [
+        "Ability", "Verdict", "Overall", "Range", "Sample", "Without bosses", "Bosses"
+    ]
     [(_, cells)] = rows
     assert [MARKUP.sub("", cell) for cell in cells[1:]] == [
-        "Below", "62% against 98%", "55% against 97%", "90%; too few references"
+        "Below", "62% against 98%", "95% to 99%", "3 top parses", "55% against 97%",
+        "90%; too few references",
     ]
 ```
 
@@ -4362,13 +4658,13 @@ def test_a_judged_table_with_no_figure_columns_keeps_its_verdict() -> None:
 Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain/report/test_build_players.py tests/adapters/render/test_html_invariants.py -q`
 Expected:
 - failures on the headings, the captions, the cells, `table.figures`, `reach.note` and `reach.warning`;
-- in the invariants tests, a `ValidationError` for the `ComparisonRow` that names no `ours`, and headings that still include Ours, Median, Range and Sample.
+- in the invariants tests, a `ValidationError` for the `ComparisonRow` that names no `ours`, and headings that still include the Ours, Median, Range and Sample figure columns before the Verdict.
 
 - [ ] **Step 3: The view model**
 
 In `src/wowperf/domain/report/model.py`, in `ComparisonRow`:
 - Give `ours`, `theirs`, `spread`, `sample` and `verdict_label` the default `""`, keeping their order.
-- Add this paragraph to its docstring: "A row of a table that draws no figure columns, or no verdict, may leave those strings empty: the reach table describes each stretch in a cell and judges nothing."
+- Add this paragraph to its docstring: "A row of a table that draws no figure columns, or no verdict, leaves those strings empty. The uptime tables state their judged figure, its range and its sample in cells, and the reach table judges nothing."
 
 In `ComparisonTable`, replace the two-line comment on `cell_headings` and add the four fields, so the body reads:
 
@@ -4376,13 +4672,14 @@ In `ComparisonTable`, replace the two-line comment on `cell_headings` and add th
     heading: str
     caption: str
     # Whether the row's own Ours, Median, Range and Sample columns are drawn. The
-    # uptime tables draw a cell per stretch in their place, Overall first.
+    # uptime tables draw their judged figure, its range and its sample as their
+    # first three cells instead, then a cell per stretch.
     figures: bool = True
     # Whether the Verdict column is drawn. The reach table judges nothing.
     judged: bool = True
-    # Extra column headings after Verdict: a stretch or a boss each, on the uptime
-    # tables. Empty for every other table, which then renders exactly as it always
-    # has.
+    # Extra column headings after Verdict: on the uptime tables, Overall, Range
+    # and Sample, then a stretch or a boss each. Empty for every other table,
+    # which then renders exactly as it always has.
     cell_headings: tuple[str, ...] = ()
     rows: tuple[ComparisonRow, ...] = ()
     # Drawn under the table: what its figures mean.
@@ -4460,15 +4757,15 @@ DEBUFF_NOTE = (
                 caption=(
                     f"Share of {measures.key_seconds:.0f}s of key time, from the key's start to "
                     "its end with the walking between pulls included, against the median of "
-                    "the parses that carried each. The verdict reads Overall. Without bosses "
-                    "is the key less its boss pulls and Bosses the boss pulls; each reads ours "
-                    "against the median and carries no verdict. A buff only up in combat reads "
-                    "lower over the whole key the more of it was spent between pulls, so a "
-                    "reference that walked less reads higher whatever either player did. "
-                    "Derived."
+                    "the parses that carried each. The verdict reads Overall, and Range and "
+                    "Sample are Overall's. Without bosses is the key less its boss pulls and "
+                    "Bosses the boss pulls; each reads ours against the median and carries no "
+                    "verdict. A buff only up in combat reads lower over the whole key the more "
+                    "of it was spent between pulls, so a reference that walked less reads "
+                    "higher whatever either player did. Derived."
                 ),
                 figures=False,
-                cell_headings=("Overall", "Without bosses", "Bosses"),
+                cell_headings=("Overall", "Range", "Sample", "Without bosses", "Bosses"),
                 rows=_aura_rows(measures.auras),
             )
         )
@@ -4484,13 +4781,14 @@ DEBUFF_NOTE = (
                     f"Share of {debuffs.seconds:.0f}s of enemy-alive time, summed over every "
                     "enemy measured, that carried each debuff from this player or their pets, "
                     "against the median of the parses that applied each. The verdict reads "
-                    "Overall. Trash is the mobs of trash pulls; Bosses is the bosses "
-                    "themselves, a council's each from the pull's start to their own death, or "
-                    "to the pull's end if they did not die there; adds that spawn during a boss "
-                    "fight, and the enemies of a pull with no boss found, count in Overall "
-                    "only. Those columns and each boss's read ours against the median and "
-                    "carry no verdict. A debuff a teammate's application replaces is marked "
-                    "shared, not judged. The group's log for the whole fight held "
+                    "Overall, and Range and Sample are Overall's. Trash is the mobs of trash "
+                    "pulls; Bosses is the bosses themselves, a council's each from the pull's "
+                    "start to their own death, or to the pull's end if they did not die there; "
+                    "adds that spawn during a boss fight, and the enemies of a pull with no "
+                    "boss found, count in Overall only. Those columns and each boss's read ours "
+                    "against the median and carry no verdict. A debuff a teammate's "
+                    "application replaces is marked shared, not judged. The group's log for "
+                    "the whole fight held "
                     f"{quantity(tally.orphan_removes, 'removal', 'removals')} with no "
                     "application, dropped (a pet copy's second removal counts here); "
                     f"{quantity(tally.closed_at_end, 'application', 'applications')} still "
@@ -4499,7 +4797,9 @@ DEBUFF_NOTE = (
                     f"game id, skipped. {deathless}Derived."
                 ),
                 figures=False,
-                cell_headings=("Overall", "Trash", "Bosses", *debuffs.bosses),
+                cell_headings=(
+                    "Overall", "Range", "Sample", "Trash", "Bosses", *debuffs.bosses
+                ),
                 rows=_debuff_rows(debuffs.rows, specs),
             )
         )
@@ -4509,12 +4809,12 @@ DEBUFF_NOTE = (
                 caption=(
                     "Share of the enemies measured that carried each debuff from this player "
                     "or their pets at least once, against the median of the parses that "
-                    "applied each. A boss counts as one enemy. Reach describes and is never "
-                    "judged. Derived."
+                    "applied each. Range and Sample are Overall's. A boss counts as one "
+                    "enemy. Reach describes and is never judged. Derived."
                 ),
                 figures=False,
                 judged=False,
-                cell_headings=("Overall", "Trash", "Bosses"),
+                cell_headings=("Overall", "Range", "Sample", "Trash", "Bosses"),
                 rows=_reach_rows(debuffs.rows),
                 note=DEBUFF_NOTE,
                 warning=_unmeasured(debuffs),
@@ -4522,21 +4822,81 @@ DEBUFF_NOTE = (
         )
 ```
 
-5. In `_aura_rows`, add this argument to the `ComparisonRow(...)` after `verdict_label=...`: `cells=(_overall(m), _cell(row.without_bosses), _cell(row.bosses)),`.
-6. In `_debuff_rows`:
-   - add this sentence to its docstring: "Its cells read Overall, Trash and Bosses, then each boss.";
-   - replace its `cells=tuple(_cell(cell) for cell in row.cells),` with:
+5. Replace `_aura_rows` with the following. Its docstring keeps both of Task 7's paragraphs and gains a third. The row's `ours`, `theirs`, `spread` and `sample` are no longer set: the table draws no figure columns, and the cells carry those figures once.
 
 ```python
+def _aura_rows(rows: Sequence[AuraRow]) -> tuple[ComparisonRow, ...]:
+    """Aura uptimes, our own highest first, as shares not seconds.
+
+    The two cast tables lead with the widest gap. This one does not, because it
+    is read differently: dozens of rows long, it answers "how much of the fight
+    did I hold each of these for", and that is a list a reader scans from the
+    top. Sorting by the gap scattered the figures a reader came for and led
+    with whatever the player held *least*.
+
+    Its cells read Overall, Overall's range and sample, then Without bosses and
+    Bosses.
+    """
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    return tuple(
+        ComparisonRow(
+            ability_id=row.uptime.ability_id,
+            name=row.uptime.name,
+            verdict=row.uptime.verdict.value,
+            verdict_label=VERDICT_LABELS[row.uptime.verdict],
+            cells=(
+                _overall(row.uptime),
+                *_spread_and_sample(row.uptime.their_fractions),
+                _cell(row.without_bosses),
+                _cell(row.bosses),
+            ),
+        )
+        for row in ordered
+    )
+```
+
+6. Replace `_debuff_rows` with the following. Its docstring keeps both of its paragraphs and gains a third. As in `_aura_rows`, the row's four figure strings are no longer set, and the `low, high = observed_range(...)` line goes with them.
+
+```python
+def _debuff_rows(
+    rows: Sequence[DebuffRow], specs: Mapping[int, tuple[str, str]]
+) -> tuple[ComparisonRow, ...]:
+    """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
+
+    A shared row keeps its figures and names who it was shared with in place
+    of a verdict. It takes the `unjudged` tint, because like that row it says
+    nothing about this player's play.
+
+    Its cells read Overall, Overall's range and sample, Trash and Bosses, then
+    each boss.
+    """
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    built = []
+    for row in ordered:
+        m = row.uptime
+        verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
+        if row.shared_with:
+            verdict = Verdict.UNJUDGED
+            label = _shared_label(row.shared_with, specs)
+        built.append(
+            ComparisonRow(
+                ability_id=m.ability_id,
+                name=m.name,
+                verdict=verdict.value,
+                verdict_label=label,
                 cells=(
                     _overall(m),
+                    *_spread_and_sample(m.their_fractions),
                     _cell(row.trash),
                     _cell(row.bosses),
                     *(_cell(cell) for cell in row.cells),
                 ),
+            )
+        )
+    return tuple(built)
 ```
 
-7. Replace `_cell` with the following, and add the three functions after it:
+7. Replace `_cell` with the following, and add the four functions after it:
 
 ```python
 def _cell(cell: BossCell | StretchCell) -> str:
@@ -4554,15 +4914,34 @@ def _overall(m: AuraUptime) -> str:
     return f"{m.ours:.0%} against {m.their_median:.0%}"
 
 
+def _spread_and_sample(fractions: Sequence[float]) -> tuple[str, str]:
+    """The Range and Sample cells of the references behind an Overall median.
+
+    Two empty cells when there are none, as on a reach no reference measured.
+    """
+    if not fractions:
+        return "", ""
+    low, high = observed_range(fractions)
+    return f"{low:.0%} to {high:.0%}", f"{len(fractions)} top parses"
+
+
 def _reach_rows(rows: Sequence[DebuffRow]) -> tuple[ComparisonRow, ...]:
-    """Each debuff's reach, in the coverage table's order so a reader can look across."""
+    """Each debuff's reach, in the coverage table's order so a reader can look across.
+
+    Its cells read Overall, Overall's range and sample, then Trash and Bosses.
+    """
     ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
     return tuple(
         ComparisonRow(
             ability_id=row.uptime.ability_id,
             name=row.uptime.name,
             verdict=DESCRIBED,
-            cells=(_cell(row.reach.overall), _cell(row.reach.trash), _cell(row.reach.bosses)),
+            cells=(
+                _cell(row.reach.overall),
+                *_spread_and_sample(row.reach.overall_fractions),
+                _cell(row.reach.trash),
+                _cell(row.reach.bosses),
+            ),
         )
         for row in ordered
     )
@@ -4593,7 +4972,7 @@ def _unmeasured(debuffs: DebuffTable) -> str:
 - [ ] **Step 6: Run the tests to see them pass**
 
 Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain/report tests/adapters/render -q`
-Expected: all pass. That includes `test_the_rendered_page_matches_the_golden_file` and `test_a_comparison_row_without_cells_ends_as_it_always_has`, which pin that a table with both defaults renders as it did.
+Expected: all pass. That includes `test_a_comparison_row_without_cells_ends_as_it_always_has` and the rich fixture's column tests, which pin that a table with both defaults renders as it did. The four golden-file tests pass too, but they pin nothing here: no golden page draws a comparison table.
 
 - [ ] **Step 7: Gate and commit**
 
@@ -4603,10 +4982,13 @@ Run the gate. Write `<scratchpad>\task8-msg.txt`:
 Draw buff uptime, debuff coverage and debuff reach over the whole key
 
 The page now shows what the comparison judges. Each uptime table reads
-Overall first, with the verdict, then each stretch, and the debuff pair
-gets a reach table that judges nothing. A note explains coverage against
-reach, and a warning names what could not be measured. The template only
-loops: the builder decides which columns a table draws.
+the verdict, then Overall with the range and sample of the references
+behind its median, then each stretch, and the debuff pair gets a reach
+table that judges nothing. Range and Sample stay because the verdict
+rests on Overall, and a reader weighs a median by its spread and count.
+A note explains coverage against reach, and a warning names what could
+not be measured. The template only loops: the builder decides which
+columns a table draws.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
@@ -4653,16 +5035,15 @@ Spec §9 lists these. The wcl-api skill waits for Task 10, which is where a cost
   boss test reads it through `key_debuffs`.
 ```
 
-3. At the end of §4, after the **Findings** list, add:
+3. At the end of §4, after the **Findings** list, add the block below. The tables' columns are not in it: §4's own amendment of 2026-10-13, after planning, already states them.
 
 ```markdown
 *Amended 2026-10-13, while planning:*
-- The three uptime tables draw Ability, the Verdict where there is one, then a cell per stretch,
-  Overall first. The Ours, Median, Range and Sample columns are not drawn on them. The findings
-  still state the range and the sample size.
 - The warning states each clause only when its own count is above zero.
 - In the findings file, `comparison_tables.<slug>.boss_debuffs` becomes `.debuffs`, and each
   `auras` entry nests its judged figure under `uptime`, beside `without_bosses` and `bosses`.
+  Each debuff row's `reach` carries `overall_fractions`, the references' Overall reaches behind
+  its median.
 ```
 
 - [ ] **Step 2: The parent and council designs**
@@ -4702,8 +5083,10 @@ In `.claude/skills/mplus-analysis/SKILL.md`, replace the whole bullet that begin
   walking between pulls included, on our side and on every reference's. A buff only up in combat
   reads lower the more of the key was spent between pulls, so a reference that walked less reads
   higher whatever either player did: say so before reading a narrow gap as play. The card's
-  Without bosses and Bosses columns describe and never judge. `comparison_tables.<slug>.auras`
-  carries each row's `uptime`, the judged figure, beside `without_bosses` and `bosses`.
+  Without bosses and Bosses columns describe and never judge; its Range and Sample are Overall's.
+  A boss pull Warcraft Logs lists twice counts once in Bosses, as it does for debuffs.
+  `comparison_tables.<slug>.auras` carries each row's `uptime`, the judged figure, beside
+  `without_bosses` and `bosses`.
 - **Debuff coverage is rebuilt, not read.** `compare.uptime.debuff.<rank>.<slug>` is the share
   of the enemies' alive time, summed over every enemy of the key, that carried a debuff from the
   player or their pets, against the median of the parses that applied it, by the buff family's
@@ -4713,7 +5096,8 @@ In `.claude/skills/mplus-analysis/SKILL.md`, replace the whole bullet that begin
   their own death, or to the pull's end if they did not die there. Overall carries the verdict.
   Trash (the mobs of trash pulls) and Bosses describe, and adds that spawn during a boss fight
   count in Overall only. Coverage is not reach. Each row's `reach` is the share of the enemies
-  that carried the debuff at least once, described and never judged. Low coverage with high reach
+  that carried the debuff at least once, described and never judged; its `overall_fractions` are
+  the references' Overall reaches behind its median. Low coverage with high reach
   is a debuff spread but not kept up; low coverage with low reach is one kept on too few mobs.
   Unlike a buff, a debuff names who applied it, so `compare.uptime.debuff.unjudged` is the
   player's own zero; what it cannot say is whether their build has the ability. A debuff only one
@@ -5167,11 +5551,13 @@ If the wcl-api skill changed, add it as well:
 | §3.2 item 2: boss figures unmoved | 4 (all of `test_boss_debuffs.py` through `key_debuffs`, and `test_the_boss_figure_is_the_boss_rule_whatever_died_beside_it`) |
 | §3.2 item 7: thresholds reused | 5, 7 (`uptime_measures`, `stretch_cell`) |
 | §3.3: buff windows on both sides; the reference's clock at 0 points | 6, 7 |
+| §3.3 amendment: a boss pull listed twice is one buff window, by the debuff rule, in one shared helper; cast rates and the raid path untouched | 7 (`boss_pulls_listed_once`; `test_a_boss_pull_warcraft_logs_lists_twice_is_one_window`, `test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell`, `test_a_boss_pull_listed_twice_is_kept_once_at_its_own_position`; every `boss_windows_of` test unchanged; Step 9's `grep -rn "boss_windows(" src`) |
+| §4 amendment: Range and Sample of the Overall figure on all three tables, reach included | 5 (`DebuffReach.overall_fractions`, `carried_shares`, `test_reach_keeps_the_references_overall_reach_not_their_coverage`), 8 (the column order, and Range and Sample read off Overall in `test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_boss`, `test_the_buff_table_reads_overall_its_range_and_sample_then_each_stretch` and `test_the_reach_table_follows_the_coverage_table_and_judges_nothing`) |
 | §4 findings: buff ids kept, debuff ids renamed, badges unchanged, the two counts in the file | 5, 7 |
 | §5 components | 3, 4, 5, 6, 7, 8 |
-| §6 edge cases: no trash; two actor ids; a debuff across a death; a boss pull listed twice | 5; 3; 4 (`test_a_debuff_reaching_past_a_death_is_clipped_to_the_life`); 4 (`boss_windows_of` unchanged) |
+| §6 edge cases: no trash; two actor ids; a debuff across a death; a boss pull listed twice | 5; 3; 4 (`test_a_debuff_reaching_past_a_death_is_clipped_to_the_life`); 4 (`boss_windows_of` unchanged) and 7 (the buff windows, by the same rule) |
 | §7 tests | 2-8 |
 | §7 the plan's first step | 1 |
 | §7 live proof, §8 cost | 10 |
 | §9 documentation | 9, 10 |
-| §10 out of scope | untouched: the raid path keeps its rule through `whole_fight_uptime` and the defaults of `our_fight_ms` and `over` |
+| §10 out of scope | untouched: the raid path keeps its rule through `whole_fight_uptime` and the defaults of `our_fight_ms` and `over`; cast rates keep `spells.boss_seconds`, which still sums a boss pull listed twice twice, for the separate task §10 names |
