@@ -1022,3 +1022,31 @@ def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> Non
     assert gap.title == (
         "Fixture Ward was up for 50% of Bríala's key time, 10% of Stonewake (actor 7)'s"
     )
+
+
+def test_a_kept_aura_under_the_floor_is_not_judged_and_comes_after_the_judged() -> None:
+    names = {1: "Kept", 2: "Judged"}
+    per_member = [{1: 0.05, 2: 0.6}] * 3
+
+    measures = uptime_measures({1: ("Kept", 0.3), 2: ("Judged", 0.6)}, per_member, names, kept={1})
+
+    assert [(m.name, m.verdict) for m in measures] == [
+        ("Judged", Verdict.LEVEL),
+        ("Kept", Verdict.BOSSES_ONLY),
+    ]
+
+
+def test_a_kept_aura_still_needs_enough_carriers() -> None:
+    names = {1: "Kept"}
+    per_member = [{1: 0.05}, {1: 0.05}, {}]
+
+    assert uptime_measures({1: ("Kept", 0.3)}, per_member, names, kept={1}) == ()
+
+
+def test_an_aura_over_the_floor_is_judged_whether_or_not_it_is_kept() -> None:
+    names = {1: "Both"}
+    per_member = [{1: 0.6}] * 3
+
+    [measure] = uptime_measures({1: ("Both", 0.1)}, per_member, names, kept={1})
+
+    assert measure.verdict is Verdict.BELOW

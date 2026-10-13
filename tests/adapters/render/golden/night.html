@@ -247,11 +247,12 @@ details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 
    both readings the row a reader can act on is the quietest in the table, and
    a level row left to inherit would keep the body's ink, the brightest on the
    page. An unjudged row is greyed whole, because none of its figures was read
-   as a shortfall. */
+   as a shortfall, and so is a row kept only for its boss figure. */
 .compared-rows tr.v-below td:nth-child(2) { color: var(--theirs); font-weight: 500; }
 .compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
 .compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
-.compared-rows tr.v-unjudged td { color: var(--ink-faint); }
+.compared-rows tr.v-unjudged td, .compared-rows tr.v-bosses_only td {
+  color: var(--ink-faint); }
 .damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 .damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
 .damage-grid th[scope="row"] { text-align: left; font-weight: normal; }

@@ -9,7 +9,7 @@
 # `debuff_uptime.py` and `key_debuffs.py` (same skill, "The debuff event stream does
 # name the caster").
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import Span, Withheld, boss_pulls_listed_once
@@ -460,6 +460,8 @@ def uptime_measures(
     our_fractions: dict[int, tuple[str, float]],
     per_member: Sequence[dict[int, float]],
     names: dict[int, str],
+    *,
+    kept: Collection[int] = (),
 ) -> tuple[AuraUptime, ...]:
     """Every aura the sample carried often enough to judge, with its verdict.
 
@@ -467,8 +469,16 @@ def uptime_measures(
     `MIN_SAMPLE_FOR_AGGREGATE` carriers or below `MIN_UPTIME_FRACTION` is
     absent entirely rather than carrying a verdict: neither was compared, and
     a table that showed them would claim a judgement nobody made.
+
+    `kept` names abilities another stretch's own admission already vouched for.
+    One of them that falls under `MIN_UPTIME_FRACTION` here is returned after
+    the judged ones with `Verdict.BOSSES_ONLY` instead of being dropped: its
+    figures are stated and none of them is compared. It still needs
+    `MIN_SAMPLE_FOR_AGGREGATE` carriers here, which a stretch it is a part of
+    has already shown.
     """
-    measures: list[AuraUptime] = []
+    judged: list[AuraUptime] = []
+    set_aside: list[AuraUptime] = []
     for ability_id, name in names.items():
         carried = [q[ability_id] for q in per_member if ability_id in q]
         if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
@@ -478,16 +488,27 @@ def uptime_measures(
             # gear.
             continue
         their_median = median(carried)
-        if their_median < MIN_UPTIME_FRACTION:
-            continue
         our_fraction = our_fractions.get(ability_id, (name, 0.0))[1]
+        if their_median < MIN_UPTIME_FRACTION:
+            if ability_id in kept:
+                set_aside.append(
+                    AuraUptime(
+                        ability_id=ability_id,
+                        name=name,
+                        ours=our_fraction,
+                        their_median=their_median,
+                        their_fractions=tuple(carried),
+                        verdict=Verdict.BOSSES_ONLY,
+                    )
+                )
+            continue
         if our_fraction <= 0.0:
             verdict = Verdict.UNJUDGED
         elif their_median - our_fraction >= UPTIME_GAP_FRACTION:
             verdict = Verdict.BELOW
         else:
             verdict = Verdict.LEVEL
-        measures.append(
+        judged.append(
             AuraUptime(
                 ability_id=ability_id,
                 name=name,
@@ -497,7 +518,7 @@ def uptime_measures(
                 verdict=verdict,
             )
         )
-    return tuple(measures)
+    return (*judged, *set_aside)
 
 
 def measured_or(value: float | None, reason: Withheld) -> float | Withheld:

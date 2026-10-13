@@ -22,6 +22,7 @@ from wowperf.domain.comparison.measures import (
 )
 from wowperf.domain.comparison.pace_player import pair_label
 from wowperf.domain.comparison.statistics import observed_range
+from wowperf.domain.comparison.uptime import MIN_UPTIME_FRACTION
 from wowperf.domain.findings import Finding, quantity
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.report.frame import (
@@ -82,6 +83,7 @@ VERDICT_LABELS = {
     Verdict.ABOVE: "Above",
     Verdict.LEVEL: "Level",
     Verdict.UNJUDGED: "Not judged",
+    Verdict.BOSSES_ONLY: "Not judged",
 }
 """Each branch, spelled for the reader of a column rather than for a stylesheet.
 
@@ -91,6 +93,8 @@ none of them. Only `unjudged` is spelled differently from the value it comes
 from, being the one word here that is not ordinary English -- what the table
 means by it is that the comparison declined to read anything into the figure
 beside it, and a reader meeting the bare word would have no way to know that.
+`bosses_only` reads the same, and is told apart on the page by the sentence
+under the table that says why such a row is kept.
 """
 
 DESCRIBED = "described"
@@ -109,6 +113,12 @@ DEBUFF_NOTE = (
     "death; adds that spawn during a boss fight count in Overall only."
 )
 """What the two debuff tables measure, drawn once under the pair."""
+
+KEPT_FOR_BOSSES = (
+    f"Not judged: the references keep it on under {MIN_UPTIME_FRACTION:.0%} of the key's "
+    "enemy-alive time, so the row is kept for its boss figure."
+)
+"""What a debuff row kept only for its Bosses figure is, drawn under the coverage table."""
 
 
 def class_colour(class_name: str) -> str:
@@ -382,6 +392,7 @@ def _tables(
                     "Overall", "Range", "Sample", "Trash", "Bosses", *debuffs.bosses
                 ),
                 rows=_debuff_rows(debuffs.rows, specs),
+                note=KEPT_FOR_BOSSES if _has_kept_row(debuffs.rows) else "",
             )
         )
         built.append(
@@ -522,10 +533,24 @@ def _shared_label(shared_with: Sequence[int], specs: Mapping[int, tuple[str, str
     return "Shared with " + " and ".join(named)
 
 
+def _has_kept_row(rows: Sequence[DebuffRow]) -> bool:
+    return any(row.uptime.verdict is Verdict.BOSSES_ONLY for row in rows)
+
+
+def _in_table_order(rows: Sequence[DebuffRow]) -> list[DebuffRow]:
+    """Judged debuffs first, then those kept for their boss figure; our highest first in each."""
+    return sorted(
+        rows, key=lambda row: (row.uptime.verdict is Verdict.BOSSES_ONLY, -row.uptime.ours)
+    )
+
+
 def _debuff_rows(
     rows: Sequence[DebuffRow], specs: Mapping[int, tuple[str, str]]
 ) -> tuple[ComparisonRow, ...]:
     """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
+
+    A row kept only for its boss figure follows the judged ones, and is tinted
+    as an unjudged row is: it too says nothing about this player's play.
 
     A shared row keeps its figures and names who it was shared with in place
     of a verdict. It takes the `unjudged` tint, because like that row it says
@@ -534,9 +559,8 @@ def _debuff_rows(
     Its cells read Overall, Overall's range and sample, Trash and Bosses, then
     each boss.
     """
-    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
     built = []
-    for row in ordered:
+    for row in _in_table_order(rows):
         m = row.uptime
         verdict, label = m.verdict, VERDICT_LABELS[m.verdict]
         if row.shared_with:
@@ -591,7 +615,6 @@ def _reach_rows(rows: Sequence[DebuffRow]) -> tuple[ComparisonRow, ...]:
 
     Its cells read Overall, Overall's range and sample, then Trash and Bosses.
     """
-    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
     return tuple(
         ComparisonRow(
             ability_id=row.uptime.ability_id,
@@ -604,7 +627,7 @@ def _reach_rows(rows: Sequence[DebuffRow]) -> tuple[ComparisonRow, ...]:
                 _cell(row.reach.bosses),
             ),
         )
-        for row in ordered
+        for row in _in_table_order(rows)
     )
 
 

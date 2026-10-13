@@ -169,7 +169,8 @@ Range and Sample are Overall's. The caption states the walking consequence of de
 | Ability | Verdict | Overall | Range | Sample | Without bosses | Bosses |
 | --- | --- | --- | --- | --- | --- | --- |
 
-**Debuff coverage** (judged), then **Debuff reach** (descriptive), one row per debuff in each:
+**Debuff coverage** (judged), then **Debuff reach** (descriptive), one row per admitted debuff in
+each (the admission rule is the last amendment of this section):
 
 | Ability | Verdict | Overall | Range | Sample | Trash | Bosses | per-boss cells as today |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -223,6 +224,30 @@ for the boss column; a key with no measurable trash life reads "no trash measure
   the example tables above head it so too. The template draws one shared heading and only loops.
 - An empty buff Without bosses cell reads "nothing outside boss pulls", not "no trash measured":
   that stretch is the key less its boss pulls, walking included, so it is not trash alone.
+
+*Amended 2026-10-13, after the live run:* a debuff aimed at bosses kept its row. RwlRwlRwlRwl
+decided the rule on 2026-10-13.
+- **What the live run showed.** Touch of the Magi on an Arcane Mage and Soul Fang Venom on a
+  Restoration Shaman vanished from the Debuff coverage table, with their Bosses and per-boss cells.
+  Their Overall coverage in the references is about 3.6 to 5.0% of all enemy life for the first,
+  15.5 to 20.4% on bosses. The table took its rows from `uptime_measures` over the Overall shares
+  alone, which drops an ability whose median sits under `MIN_UPTIME_FRACTION`. The boss-only table
+  it replaced had these rows.
+- **The rule.** A row appears when the references' Overall median clears the existing admission
+  (at least `MIN_SAMPLE_FOR_AGGREGATE` carriers and a median of at least `MIN_UPTIME_FRACTION`),
+  or when the same rule, read over the references' Bosses shares, admits it.
+- **The verdict stays on Overall.** A row admitted only through Bosses is not judged: no verdict, no
+  gap finding, and no mention in `compare.uptime.debuff.unjudged`. Its own state is
+  `uptime.verdict` "bosses_only", distinct from `unjudged`, which means we showed none of it. The
+  page reads "Not judged" for both, and the note under the coverage table says why such a row is
+  kept.
+- **Its figures.** Its Overall cell is ours against the references' Overall median, with Range and
+  Sample over the references that carried it Overall. Trash, Bosses, each boss and reach are drawn
+  as for any row.
+- **Order.** Judged rows first, then these, each group in the table's usual order. The reach table
+  follows the coverage table.
+- **Scope.** Debuffs only, and the sample table only: the single-reference path and the buff table
+  are unchanged, and so are the finding ids.
 
 ## 5. Components
 

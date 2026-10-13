@@ -1528,3 +1528,97 @@ def test_the_warning_states_each_count_only_when_above_zero(
 
     assert coverage.warning == ""
     assert reach.warning == warning
+
+
+KEPT_SENTENCE = (
+    "Not judged: the references keep it on under 10% of the key's enemy-alive time, so the "
+    "row is kept for its boss figure."
+)
+
+
+def a_card_with_a_kept_debuff() -> tuple[ComparisonTable, ComparisonTable]:
+    """The coverage and reach tables of a card with one judged debuff and one kept for bosses.
+
+    The kept row's own figure is the higher of the two, so only its verdict can
+    put it second.
+    """
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            debuffs=DebuffTable(
+                rows=(
+                    DebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=210824, name="Touch of the Magi", ours=0.05,
+                            their_median=0.045, their_fractions=(0.04, 0.045, 0.05),
+                            verdict=Verdict.BOSSES_ONLY,
+                        ),
+                        trash=StretchCell(withheld=Withheld.NO_TRASH),
+                        bosses=StretchCell(ours=0.3, their_median=0.5),
+                        cells=(
+                            BossCell(
+                                encounter_id=2001, boss="First Boss", ours=0.3,
+                                their_median=0.5,
+                            ),
+                        ),
+                        reach=DebuffReach(overall=StretchCell(ours=0.2, their_median=0.2)),
+                    ),
+                    DebuffRow(
+                        uptime=AuraUptime(
+                            ability_id=55078, name="Blood Plague", ours=0.04,
+                            their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
+                            verdict=Verdict.BELOW,
+                        ),
+                        reach=DebuffReach(overall=StretchCell(ours=0.5, their_median=0.9)),
+                    ),
+                ),
+                seconds=300.0,
+                bosses=("First Boss",),
+                tally=PairingTally(),
+            ),
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+    coverage, reach = card.comparison_tables
+    return coverage, reach
+
+
+def test_a_debuff_kept_for_its_boss_figure_reads_not_judged_and_sorts_after_the_judged() -> None:
+    coverage, _reach = a_card_with_a_kept_debuff()
+
+    judged, kept = coverage.rows
+    assert (judged.name, judged.verdict_label) == ("Blood Plague", "Below")
+    assert (kept.name, kept.verdict_label) == ("Touch of the Magi", "Not judged")
+    # Its own state in the class, which the stylesheet greys as it does an
+    # unjudged row; the word is the same because the reader's reading is.
+    assert kept.verdict == Verdict.BOSSES_ONLY.value
+    # Its Overall cell states ours and the median; its Bosses cells are drawn.
+    assert kept.cells == (
+        "5% against 4%",
+        "4% to 5%",
+        "3 top parses",
+        "no trash measured",
+        "30% against 50%",
+        "30% against 50%",
+    )
+
+
+def test_the_reach_table_keeps_the_coverage_tables_order() -> None:
+    _coverage, reach = a_card_with_a_kept_debuff()
+
+    assert [row.name for row in reach.rows] == ["Blood Plague", "Touch of the Magi"]
+
+
+def test_the_coverage_table_says_what_a_kept_row_is() -> None:
+    coverage, reach = a_card_with_a_kept_debuff()
+
+    assert coverage.note == KEPT_SENTENCE
+    assert KEPT_SENTENCE not in reach.note
+
+
+def test_a_table_with_no_kept_row_says_nothing_of_it() -> None:
+    coverage, _reach = debuff_tables()
+
+    assert coverage.note == ""

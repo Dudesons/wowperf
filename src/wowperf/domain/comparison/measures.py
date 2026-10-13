@@ -15,12 +15,19 @@ class Verdict(StrEnum):
     we show none of may be a teammate's buff nobody gave this player, and that
     is not the same claim as being below the sample. No cast rate is ever
     unjudged, because a cast is unambiguously the player's own.
+
+    `BOSSES_ONLY` is reached only by a debuff row, and is not `UNJUDGED`: that one
+    says our own side showed none of it, this one says the references carry the
+    debuff under the admission floor over the whole key and over it on the
+    bosses alone, so the row is kept for its boss figure and the verdict, which
+    reads Overall, is not made.
     """
 
     BELOW = "below"
     ABOVE = "above"
     LEVEL = "level"
     UNJUDGED = "unjudged"
+    BOSSES_ONLY = "bosses_only"
 
 
 class Stretch(StrEnum):

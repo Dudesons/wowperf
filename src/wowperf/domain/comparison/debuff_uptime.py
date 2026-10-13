@@ -81,6 +81,23 @@ def per_member_fractions(
     return names, per_member
 
 
+def admitted_on_bosses(members: Sequence[ParseMember]) -> frozenset[int]:
+    """The debuffs the sample's Bosses shares would admit by the Overall rule: kept, not judged.
+
+    The rule is `uptime_measures`' own, read over each member's boss figure
+    rather than their Overall, so a debuff the references hold on bosses and
+    barely anywhere else is not lost to the key's trash. Only the ids are read:
+    a verdict over Bosses would be a judgement nobody made.
+    """
+    names: dict[int, str] = {}
+    per_member: list[dict[int, float]] = []
+    for member in members:
+        assert member.debuffs is not None  # debuff_eligible guarantees it
+        shares = coverage_fractions(member.debuffs.on_bosses, member.debuffs.names)
+        per_member.append(carried_fractions(shares, names))
+    return frozenset(m.ability_id for m in uptime_measures({}, per_member, names))
+
+
 def _unavailable(our_name: str, detail: str, evidence: tuple[str, ...]) -> Finding:
     return Finding(
         id=f"{ID_PREFIX}.unavailable",
@@ -285,6 +302,10 @@ def _unjudged(our_name: str, names: Sequence[str]) -> Finding:
 def debuff_table(our: KeyDebuffs | None, sample: ParseSample) -> DebuffTable:
     """The debuff tables: each qualifying debuff judged on Overall, described per stretch.
 
+    A debuff the references hold under the floor over the whole key but over it
+    on the bosses is kept after the judged rows and not judged
+    (`Verdict.BOSSES_ONLY`), for its boss figure. The findings do not read it.
+
     Gated exactly as `tables._auras` gates the buff table: no table below the
     floor, where the comparison states one reference rather than a median.
 
@@ -334,7 +355,9 @@ def debuff_table(our: KeyDebuffs | None, sample: ParseSample) -> DebuffTable:
             reach=_reach(our, theirs, m.ability_id),
             shared_with=shared.get(m.ability_id, ()),
         )
-        for m in uptime_measures(debuff_fractions(our), per_member, names)
+        for m in uptime_measures(
+            debuff_fractions(our), per_member, names, kept=admitted_on_bosses(eligible)
+        )
     )
     return counted.model_copy(update={"rows": rows, "bosses": tuple(bosses.values())})
 

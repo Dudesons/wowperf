@@ -458,6 +458,12 @@ instead of adjusting for them, because adjusting would invent a number:
   carries the `uptime.verdict` its figures reach, "below" for instance, beside the non-empty
   `shared_with`; read that row as not judged, whatever its verdict says. A zero beside a single
   teammate who held it stays `unjudged`, because one holder cannot show the copies never coexist.
+  A debuff the references keep under a tenth of the key's enemy life but over it on the bosses
+  keeps a row for its boss figure. Its `uptime.verdict` reads `bosses_only`, which is not
+  `unjudged`: that one says our side showed none of it, this one says the verdict, which reads
+  Overall, was not made. It raises no gap finding and is not named in `unjudged`, and the page
+  reads "Not judged" with a sentence under the table saying why. Its cells are read like any
+  row's, and it follows the judged rows.
   `comparison_tables.<slug>.debuffs.tally` counts what the pairing met in our own log, and is
   provenance, not a finding. It is recorded whenever our stream was read, even beside no rows, and
   is null when it was not: null is "no stream read", while a zero tally is a log that paired

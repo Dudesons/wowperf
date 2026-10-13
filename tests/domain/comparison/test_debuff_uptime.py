@@ -727,3 +727,113 @@ def test_the_players_measures_carry_the_debuff_table() -> None:
     measures = comparison_measures(LoadedRun(run=a_run(BOSS)), [subject])
 
     assert [row.uptime.name for row in measures["stonewake-0"].debuffs.rows] == [DOT_NAME]
+
+
+# --- a debuff kept for its boss figure ------------------------------------------
+
+TOUCH, TOUCH_NAME = 1001, "Touch of the Magi"
+FAINT, FAINT_NAME = 1002, "Faint Mark"
+LONG_KEY_SECONDS = 1000.0
+
+
+def on_a_long_key(
+    boss_shares: tuple[tuple[int, str, float], ...], dot_on_trash: float
+) -> KeyDebuffs:
+    """A 100s boss pull and 1000s of trash: a debuff held only on the boss is a tenth of it.
+
+    On the boss `boss_shares` give each debuff its share; on trash only Blood
+    Plague is carried. A debuff at 50% of the boss reads 50/1100 of the key,
+    under the 10% floor, though a boss-only figure of 50%.
+    """
+    return with_trash(
+        on_the_boss(*boss_shares), dot_on_trash, seconds=LONG_KEY_SECONDS
+    )
+
+
+def boss_only_sample(touch: float = 0.5, carriers: int = 3) -> ParseSample:
+    """References carrying Blood Plague everywhere and `touch` on the boss alone.
+
+    Only the first `carriers` references carry Touch of the Magi at all.
+    """
+    members = []
+    for index, name in enumerate(REFERENCE_NAMES):
+        shares = [(DOT, DOT_NAME, 0.9)]
+        if index < carriers:
+            shares.append((TOUCH, TOUCH_NAME, touch))
+        members.append(a_member(name, on_a_long_key(tuple(shares), 0.5)))
+    return ParseSample(members=tuple(members))
+
+
+def our_key(touch: float = 0.3) -> KeyDebuffs:
+    return on_a_long_key(((DOT, DOT_NAME, 0.9), (TOUCH, TOUCH_NAME, touch)), 0.2)
+
+
+def test_a_debuff_under_the_floor_overall_but_over_it_on_bosses_keeps_its_row() -> None:
+    # Overall the references hold Touch of the Magi on 50s of 1100s, 4.5%: under
+    # the floor. On the boss they hold it on half. It sorts before Blood Plague
+    # by id, and still comes after it.
+    table = debuff_table(our_key(), boss_only_sample())
+
+    judged, kept = table.rows
+    assert (judged.uptime.name, judged.uptime.verdict) == (DOT_NAME, Verdict.BELOW)
+    assert (kept.uptime.name, kept.uptime.verdict) == (TOUCH_NAME, Verdict.BOSSES_ONLY)
+    assert kept.uptime.ours == pytest.approx(30 / 1100)
+    assert kept.uptime.their_median == pytest.approx(50 / 1100)
+    assert kept.uptime.their_fractions == pytest.approx((50 / 1100,) * 3)
+
+
+def test_a_kept_row_draws_every_cell_as_any_row_does() -> None:
+    table = debuff_table(our_key(), boss_only_sample())
+
+    kept = table.rows[1]
+    assert kept.bosses == StretchCell(ours=0.3, their_median=0.5)
+    assert kept.trash == StretchCell(ours=0.0, withheld=Withheld.TOO_FEW)
+    assert kept.cells == (
+        BossCell(encounter_id=2001, boss="The Test Colossus", ours=0.3, their_median=0.5),
+    )
+    assert kept.reach.bosses == StretchCell(ours=1.0, their_median=1.0)
+    assert kept.reach.overall.ours == pytest.approx(0.2)
+
+
+def test_a_kept_row_is_never_judged_even_where_ours_is_far_below() -> None:
+    table = debuff_table(our_key(touch=0.0), boss_only_sample())
+
+    kept = table.rows[1]
+    assert kept.uptime.verdict is Verdict.BOSSES_ONLY
+    assert kept.uptime.ours == 0.0
+
+
+def test_a_debuff_under_the_floor_on_bosses_too_stays_off_the_table() -> None:
+    table = debuff_table(our_key(), boss_only_sample(touch=0.05))
+
+    assert [row.uptime.name for row in table.rows] == [DOT_NAME]
+
+
+def test_a_debuff_few_references_carried_stays_off_even_with_a_high_boss_share() -> None:
+    table = debuff_table(our_key(), boss_only_sample(carriers=2))
+
+    assert [row.uptime.name for row in table.rows] == [DOT_NAME]
+
+
+def test_a_kept_row_leaves_the_judged_rows_verdict_as_it_was() -> None:
+    without = debuff_table(
+        on_a_long_key(((DOT, DOT_NAME, 0.9),), 0.2),
+        ParseSample(
+            members=tuple(
+                a_member(name, on_a_long_key(((DOT, DOT_NAME, 0.9),), 0.5))
+                for name in REFERENCE_NAMES
+            )
+        ),
+    )
+
+    with_kept = debuff_table(our_key(), boss_only_sample())
+
+    assert with_kept.rows[0] == without.rows[0]
+
+
+def test_a_kept_row_raises_no_gap_and_is_not_named_unjudged() -> None:
+    # Ours matches the references on Blood Plague, so only Touch of the Magi
+    # could speak, and it is kept for its boss figure: it says nothing.
+    ours = on_a_long_key(((DOT, DOT_NAME, 0.9),), 0.5)
+
+    assert compare_debuffs_sample(ours, OUR_NAME, boss_only_sample()) == []
