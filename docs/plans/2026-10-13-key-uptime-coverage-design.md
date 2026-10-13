@@ -357,7 +357,7 @@ ran warm, after those amendments were built.
 | Reach Bosses "no reference applied it" | 3 | 0 |
 
 - **Findings.**
-  - Four buff gaps, all `derived`. They are the first `below` verdicts seen live:
+  - Four buff gaps, all `derived`. They are the first buff `below` verdicts seen live:
     - on the Blood Death Knight, Sanguine Ground, Death and Decay and Blood-Soaked Ground, each 56%
       against 73%;
     - on the Subtlety Rogue, Momentum of Despair, 52% against 83%.
@@ -373,8 +373,10 @@ ran warm, after those amendments were built.
 - **The warning.**
   - Ruby Life Pools: 1 enemy with no death and 11 undebuffed deaths, the same for every player.
   - Temple of Sethraliss: 22 and 1.
-  - Together that is 23 and 12, against the spike's 29 and 10. The spike counted trash only and
-    opened a life at the first row of any kind.
+  - Together that is 23 and 12, against the spike's 29 and 10. Set beside each other as a
+    comparison, not as a cause: §3.1's planning amendment re-measured the zero-length lives on
+    our two full fights at 11 under this rule, against 12 here. Why 23 differs from 29 was not
+    measured.
 
 **States that never occurred, and why.**
 - **The debuff verdict `below`, and so the debuff gap finding.** `below` needs the median at least
@@ -383,7 +385,7 @@ ran warm, after those amendments were built.
 - **`unavailable`, in both families.** Every reference returned aura and debuff data. Every gap
   finding's evidence reads 0 of 5 references without aura data, and every compared player drew a
   debuff table.
-- **"No trash measured".** Ours held 133 and 135 trash lives, and every surveyed reference 116 to 146.
+- **"No trash measured".** Ours held 133 and 135 trash lives, and every surveyed reference 116 to 148.
 - **"No reference measured it".** The one boss no side can find is Avatar of Sethraliss. It reads
   "no boss found" on our side first, and our reason takes the cell.
 - **"Nothing outside boss pulls".** A key always walks between its pulls.
@@ -401,7 +403,7 @@ ran warm, after those amendments were built.
   | Deep Wounds | Arms Warrior | 44.9% against 35.8% | 63.8% against 59.1% |
   | Heart Strike | Blood Death Knight | 35.1% against 28.2% | 58.9% against 66.8% |
 
-- **The references' Overall medians on the judged rows:**
+- **The references' Overall medians on every row but `bosses_only`:**
   - coverage ran from 10.0% to 95.0%, with a median of 24.0%;
   - reach ran from 11.0% to 93.1%, with a median of 56.4%;
   - none reached 99%.

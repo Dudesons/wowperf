@@ -463,10 +463,12 @@ instead of adjusting for them, because adjusting would invent a number:
   `unjudged`: that one says our side showed none of it, this one says the verdict, which reads
   Overall, was not made. It raises no gap finding and is not named in `unjudged`, and the page
   reads "Not judged" with a sentence under the table saying why. Its cells are read like any
-  row's, and it follows the judged rows. A cell with no median says why: `no reference measured
-  it` when none of the references had that stretch to measure; `no reference applied it` when at
-  least three measured it and every one sat at zero, as where bosses are immune to the debuff;
-  `too few references` when fewer than three carried it. None of the three is a verdict.
+  row's, and it follows the judged rows. A cell with no median says why, in its `withheld` value:
+  `no reference measured this boss` when none of the references had that stretch to measure (a
+  Trash, Bosses or reach cell can carry it too, whatever the wording says, and the page words it
+  "no reference measured it"); `no reference applied it` when at least three measured it and every
+  one sat at zero, as where bosses are immune to the debuff; `too few references` when fewer than
+  three carried it. None of the three is a verdict.
   `comparison_tables.<slug>.debuffs.tally` counts what the pairing met in our own log, and is
   provenance, not a finding. It is recorded whenever our stream was read, even beside no rows, and
   is null when it was not: null is "no stream read", while a zero tally is a log that paired
