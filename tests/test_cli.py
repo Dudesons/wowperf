@@ -2721,7 +2721,9 @@ def test_a_compared_run_reads_both_sides_debuffs_on_the_boss(tmp_path: Path) -> 
     assert result.exit_code == 0, result.output
     assert calls.count("EnemyDebuffs") == 2
     ids = [finding["id"] for finding in written_findings(tmp_path)["findings"]]
-    assert "compare.uptime.boss.0.emberkin-0" in ids
+    assert "compare.uptime.debuff.0.emberkin-0" in ids
+    debuffs = written_findings(tmp_path)["comparison_tables"]["emberkin-0"]["debuffs"]
+    assert (debuffs["unmeasured_no_death"], debuffs["undebuffed_deaths"]) == (0, 0)
 
 
 def test_a_teammate_taking_our_debuff_over_leaves_no_gap(tmp_path: Path) -> None:
@@ -2741,7 +2743,7 @@ def test_a_teammate_taking_our_debuff_over_leaves_no_gap(tmp_path: Path) -> None
 
     assert result.exit_code == 0, result.output
     ids = [finding["id"] for finding in written_findings(tmp_path)["findings"]]
-    assert not [one for one in ids if one.startswith("compare.uptime.boss.")]
+    assert not [one for one in ids if one.startswith("compare.uptime.debuff.")]
 
 
 def test_no_compare_reads_no_debuff_stream(tmp_path: Path) -> None:
@@ -2774,10 +2776,10 @@ def test_our_own_failed_debuff_stream_still_writes_the_report_and_says_so(
     )
 
     assert result.exit_code == 0, result.output
-    unavailable = boss_finding(tmp_path, "compare.uptime.boss.unavailable.emberkin-0")
+    unavailable = boss_finding(tmp_path, "compare.uptime.debuff.unavailable.emberkin-0")
     assert "our debuff data absent" in unavailable["evidence"]
     ids = [one["id"] for one in written_findings(tmp_path)["findings"]]
-    assert "compare.uptime.boss.0.emberkin-0" not in ids
+    assert "compare.uptime.debuff.0.emberkin-0" not in ids
 
 
 def test_a_reference_whose_debuff_stream_failed_is_counted_as_having_none(
@@ -2793,10 +2795,10 @@ def test_a_reference_whose_debuff_stream_failed_is_counted_as_having_none(
     )
 
     assert result.exit_code == 0, result.output
-    unavailable = boss_finding(tmp_path, "compare.uptime.boss.unavailable.emberkin-0")
+    unavailable = boss_finding(tmp_path, "compare.uptime.debuff.unavailable.emberkin-0")
     assert "0 of 1 references returned debuff data" in unavailable["evidence"]
     ids = [one["id"] for one in written_findings(tmp_path)["findings"]]
-    assert "compare.uptime.boss.0.emberkin-0" not in ids
+    assert "compare.uptime.debuff.0.emberkin-0" not in ids
 
 
 def test_our_failed_debuff_stream_is_asked_for_once_across_subjects(tmp_path: Path) -> None:

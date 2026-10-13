@@ -12,7 +12,8 @@
 from collections.abc import Callable, Sequence
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
-from wowperf.domain.comparison.measures import AuraUptime, Verdict
+from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.comparison.measures import AuraUptime, StretchCell, Verdict
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
     ParseMember,
@@ -449,6 +450,38 @@ def uptime_measures(
             )
         )
     return tuple(measures)
+
+
+def measured_or(value: float | None, reason: Withheld) -> float | Withheld:
+    """Our own figure over a stretch, or why our side measured nothing over it."""
+    return reason if value is None else value
+
+
+def carried_shares(theirs: Sequence[float | None]) -> tuple[float, ...]:
+    """The references' shares over one stretch that carried it there: measured, above zero.
+
+    These give a stretch cell's median, and the reach table states their range
+    and count beside Overall reach.
+    """
+    return tuple(share for share in theirs if share is not None and share > 0.0)
+
+
+def stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> StretchCell:
+    """One stretch's cell: ours against the median of the references that carried it there.
+
+    Descriptive only: the verdict is the row's. `ours` is a reason when our own
+    side measured nothing over the stretch. A reference that measured nothing
+    there (None) is not counted for it, and a reference at zero there did not
+    carry it; the rest give the median, at the floor the row's own median keeps.
+    """
+    if isinstance(ours, Withheld):
+        return StretchCell(withheld=ours)
+    if all(share is None for share in theirs):
+        return StretchCell(ours=ours, withheld=Withheld.NOT_REACHED)
+    carried = carried_shares(theirs)
+    if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
+        return StretchCell(ours=ours, withheld=Withheld.TOO_FEW)
+    return StretchCell(ours=ours, their_median=median(carried))
 
 
 def _gap_findings_sample(

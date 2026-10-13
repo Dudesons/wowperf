@@ -38,14 +38,15 @@ below the second.
 
 
 class Withheld(StrEnum):
-    """Why a boss, or one boss's cell, carries no figure.
+    """Why a boss, one boss's cell, or one stretch's cell carries no figure.
 
-    The first is read off our own route: a boss pull may hold no enemy
-    `bosses_of` can name. The last two are about the sample beside a figure of
-    ours.
+    The first two are read off our own route: a boss pull may hold no enemy
+    `bosses_of` can name, and a key may hold no trash life to measure. The last
+    two are about the sample beside a figure of ours.
     """
 
     NO_BOSS = "no boss found"
+    NO_TRASH = "no trash measured"
     NOT_REACHED = "no reference measured this boss"
     TOO_FEW = "too few references"
 

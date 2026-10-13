@@ -7,6 +7,7 @@ from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment, align_pulls
 from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossTarget, BossWindow
 from wowperf.domain.comparison.confounds import declare_confounds_sample
+from wowperf.domain.comparison.key_debuffs import KeyDebuffs
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
@@ -32,9 +33,9 @@ AGGREGATE_PREFIXES = (
 )
 
 # Every id whose sample function calls `statistics.median` and must state the
-# observed range beside it. Ranked ids (spells.rate, uptime.self, uptime.boss) need
+# observed range beside it. Ranked ids (spells.rate, uptime.self, uptime.debuff) need
 # a prefix; the rest are single findings, so an exact id behaves the same under
-# `startswith`. Only the ranked gap of uptime.boss states a range: its `.unavailable`
+# `startswith`. Only the ranked gap of uptime.debuff states a range: its `.unavailable`
 # and `.unjudged` siblings share the prefix, so the fixture must never fire them.
 MEDIAN_ID_PREFIXES = (
     "compare.downtime",
@@ -44,7 +45,7 @@ MEDIAN_ID_PREFIXES = (
     "compare.confound.item_level",
     "compare.spells.rate.",
     "compare.uptime.self.",
-    "compare.uptime.boss.",
+    "compare.uptime.debuff.",
 )
 
 DUNGEON_ENCOUNTER_ID = 12825
@@ -134,22 +135,25 @@ OUR_AURAS = PlayerAuras(
 )
 
 
-def _boss_debuffs(start_ms: int, seconds: float, share: float) -> BossDebuffs:
-    """One measured boss pull, on which the debuff stayed up for `share` of it."""
+def _boss_debuffs(start_ms: int, seconds: float, share: float) -> KeyDebuffs:
+    """One measured boss pull and no other enemy, the debuff up for `share` of it."""
     end_ms = start_ms + int(seconds * 1000)
     up_ms = int(seconds * 1000 * share)
-    return BossDebuffs(
-        windows=(
-            BossWindow(
-                encounter_id=BOSS_ENCOUNTER_ID,
-                name="Boss",
-                start_ms=start_ms,
-                end_ms=end_ms,
-                targets=(BossTarget(game_id=99, start_ms=start_ms, end_ms=end_ms),),
+    return KeyDebuffs(
+        bosses=BossDebuffs(
+            windows=(
+                BossWindow(
+                    encounter_id=BOSS_ENCOUNTER_ID,
+                    name="Boss",
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    targets=(BossTarget(game_id=99, start_ms=start_ms, end_ms=end_ms),),
+                ),
             ),
-        ),
-        covered=((BOSS_ENCOUNTER_ID, UPTIME_BOSS_ABILITY_ID, up_ms),),
-        names=((UPTIME_BOSS_ABILITY_ID, UPTIME_BOSS_ABILITY_NAME),),
+            covered=((BOSS_ENCOUNTER_ID, UPTIME_BOSS_ABILITY_ID, up_ms),),
+            names=((UPTIME_BOSS_ABILITY_ID, UPTIME_BOSS_ABILITY_NAME),),
+            reached=((UPTIME_BOSS_ABILITY_ID, 1),),
+        )
     )
 
 
@@ -276,7 +280,7 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
         players=theirs.players,
         casts=rate_casts + missing_casts,
         auras=auras,
-        boss_debuffs=_boss_debuffs(0, 120.0, 0.80),
+        debuffs=_boss_debuffs(0, 120.0, 0.80),
         pulls=theirs.pulls,
     )
 
@@ -286,7 +290,7 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
 # an ability we never cast anywhere (compare.spells.missing: "4 of 5", most). All
 # five also keep a buff up for 80% of their boss pull against our own 5%
 # (compare.uptime.self: a DERIVED median with its range), and a debuff on the boss
-# for 80% of their boss pull against our 5% (compare.uptime.boss: the same).
+# for 80% of their boss pull against our 5% (compare.uptime.debuff: the same).
 PARSE_SAMPLE = ParseSample(
     members=(
         _parse_member("A", casts_missing=True),
@@ -306,7 +310,7 @@ SUBJECT_WITH_AURAS = ComparisonSubject(
     display_name=SUBJECT.name,
     parse=PARSE_SAMPLE,
     our_auras=OUR_AURAS,
-    our_boss_debuffs=OUR_BOSS_DEBUFFS,
+    our_debuffs=OUR_BOSS_DEBUFFS,
 )
 
 

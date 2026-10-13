@@ -9,8 +9,8 @@ from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
     BossCell,
-    BossDebuffRow,
-    BossDebuffTable,
+    DebuffRow,
+    DebuffTable,
     PlayerMeasures,
     StatShare,
     Stretch,
@@ -1022,7 +1022,7 @@ def test_a_debuff_table_with_no_rows_and_no_stream_is_not_drawn() -> None:
     card = build_players(
         a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
         Defensives(), ThroughputCooldowns(),
-        measures={"stonewake-0": PlayerMeasures(boss_debuffs=BossDebuffTable())},
+        measures={"stonewake-0": PlayerMeasures(debuffs=DebuffTable())},
     )[0]
 
     assert not [t for t in card.comparison_tables if "Debuff" in t.heading]
@@ -1039,9 +1039,9 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
                 ),
             ),
             boss_seconds=648.0,
-            boss_debuffs=BossDebuffTable(
+            debuffs=DebuffTable(
                 rows=(
-                    BossDebuffRow(
+                    DebuffRow(
                         uptime=AuraUptime(
                             ability_id=55078, name="Blood Plague", ours=0.7,
                             their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
@@ -1104,9 +1104,9 @@ def a_shared_debuff_table(*shared_with: int, deathless: int = 0) -> ComparisonTa
     """The debuff table of a card whose one row a teammate's application replaced."""
     measures = {
         "stonewake-0": PlayerMeasures(
-            boss_debuffs=BossDebuffTable(
+            debuffs=DebuffTable(
                 rows=(
-                    BossDebuffRow(
+                    DebuffRow(
                         uptime=AuraUptime(
                             ability_id=115804, name="Mortal Wounds", ours=0.7,
                             their_median=0.9, their_fractions=(0.85, 0.9, 0.95),
@@ -1210,9 +1210,9 @@ def test_a_boss_no_reference_measured_is_labelled_for_what_the_cell_can_know() -
     # not claim that none reached it: it says only that none measured it.
     measures = {
         "stonewake-0": PlayerMeasures(
-            boss_debuffs=BossDebuffTable(
+            debuffs=DebuffTable(
                 rows=(
-                    BossDebuffRow(
+                    DebuffRow(
                         uptime=AuraUptime(
                             ability_id=55078, name="Blood Plague", ours=0.7,
                             their_median=0.9, their_fractions=(0.85, 0.9, 0.95),

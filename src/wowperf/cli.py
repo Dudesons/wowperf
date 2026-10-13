@@ -50,8 +50,7 @@ from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs
-from wowperf.domain.comparison.key_debuffs import boss_debuffs
+from wowperf.domain.comparison.key_debuffs import KeyDebuffs, key_debuffs
 from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -1365,7 +1364,7 @@ def _debuff_log(runs: WclRunRepository, code: str, fight_id: int) -> DebuffLog |
     """One fight's enemy-debuff log, or None if it cannot be had.
 
     Swallowed and re-raised on the same terms as `_auras`: a failed stream must
-    not discard a report already paid for, and `compare.uptime.boss.unavailable`
+    not discard a report already paid for, and `compare.uptime.debuff.unavailable`
     states the gap. A spent budget alone is re-raised, because it is every
     later fetch's failure too.
     """
@@ -1377,14 +1376,14 @@ def _debuff_log(runs: WclRunRepository, code: str, fight_id: int) -> DebuffLog |
         return None
 
 
-def _fetch_parse_boss_debuffs(
+def _fetch_parse_debuffs(
     sample: ParseSample,
     references: WclRunRepository,
     our_log: Callable[[], DebuffLog | None],
     our_run: Run,
     subject: Player,
-) -> tuple[ParseSample, BossDebuffs | None]:
-    """Every parse member's own debuffs on its own bosses, and our subject's.
+) -> tuple[ParseSample, KeyDebuffs | None]:
+    """Every parse member's own debuffs over every enemy of its key, and our subject's.
 
     The rule is `_fetch_parse_auras`'s. A member whose counterpart cannot be
     found in its own roster is left without debuff data, unfetched. Our own
@@ -1399,7 +1398,7 @@ def _fetch_parse_boss_debuffs(
     sharing can only lower a reference's share, which moves the median down
     and so never makes ours read wrongly below.
     """
-    ours: BossDebuffs | None = None
+    ours: KeyDebuffs | None = None
     ours_built = False
     members: list[ParseMember] = []
     for member in sample.members:
@@ -1413,16 +1412,16 @@ def _fetch_parse_boss_debuffs(
             ours = (
                 None
                 if log is None
-                else boss_debuffs(log, our_run.pulls, subject.actor_id, players)
+                else key_debuffs(log, our_run.pulls, subject.actor_id, players)
             )
             ours_built = True
         their_log = _debuff_log(references, member.report_code, member.fight_id)
         members.append(
             member.model_copy(
                 update={
-                    "boss_debuffs": None
+                    "debuffs": None
                     if their_log is None
-                    else boss_debuffs(
+                    else key_debuffs(
                         their_log, member.pulls, their_player.actor_id, frozenset()
                     )
                 }
@@ -1599,7 +1598,7 @@ def analyze(
                     loaded.run,
                     player_to_compare,
                 )
-                sample, our_boss_debuffs = _fetch_parse_boss_debuffs(
+                sample, our_debuffs = _fetch_parse_debuffs(
                     sample, references, our_debuff_log, loaded.run, player_to_compare
                 )
                 subjects.append(
@@ -1609,7 +1608,7 @@ def analyze(
                         display_name=name,
                         parse=sample,
                         our_auras=our_auras,
-                        our_boss_debuffs=our_boss_debuffs,
+                        our_debuffs=our_debuffs,
                         consumable_buffs=consumable_buffs,
                         potion_ids=combat_potion_ids,
                         slot_names=slot_names,

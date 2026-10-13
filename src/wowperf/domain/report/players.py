@@ -12,7 +12,7 @@ from wowperf.domain.comparison.measures import (
     AbilityRate,
     AuraUptime,
     BossCell,
-    BossDebuffRow,
+    DebuffRow,
     PlayerMeasures,
     StatShare,
     Verdict,
@@ -316,7 +316,7 @@ def _tables(
                 rows=_aura_rows(measures.auras),
             )
         )
-    debuffs = measures.boss_debuffs
+    debuffs = measures.debuffs
     if debuffs.rows:
         tally = debuffs.tally
         assert tally is not None  # rows are built only from a stream that was read
@@ -468,7 +468,7 @@ def _shared_label(shared_with: Sequence[int], specs: Mapping[int, tuple[str, str
 
 
 def _debuff_rows(
-    rows: Sequence[BossDebuffRow], specs: Mapping[int, tuple[str, str]]
+    rows: Sequence[DebuffRow], specs: Mapping[int, tuple[str, str]]
 ) -> tuple[ComparisonRow, ...]:
     """Debuff uptimes, our own highest first, for the reason `_aura_rows` gives.
 

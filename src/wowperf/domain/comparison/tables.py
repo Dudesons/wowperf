@@ -4,8 +4,8 @@
 from collections.abc import Sequence
 
 from wowperf.domain.auras import PlayerAuras
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs
-from wowperf.domain.comparison.debuff_uptime import boss_debuff_table
+from wowperf.domain.comparison.debuff_uptime import debuff_table
+from wowperf.domain.comparison.key_debuffs import KeyDebuffs
 from wowperf.domain.comparison.loadout import loadouts_of, stat_measures
 from wowperf.domain.comparison.measures import AbilityRate, AuraUptime, PlayerMeasures
 from wowperf.domain.comparison.sample import ParseSample
@@ -53,7 +53,7 @@ def comparison_measures(
         if parse is None or not parse.members:
             continue
         measures[subject.slug] = _for_one(
-            ours, subject.player, subject.our_auras, subject.our_boss_debuffs, parse
+            ours, subject.player, subject.our_auras, subject.our_debuffs, parse
         )
     return measures
 
@@ -62,7 +62,7 @@ def _for_one(
     ours: LoadedRun,
     our_player: Player,
     our_auras: PlayerAuras | None,
-    our_boss_debuffs: BossDebuffs | None,
+    our_debuffs: KeyDebuffs | None,
     parse: ParseSample,
 ) -> PlayerMeasures:
     """One player's sets of measures, each drawn against the whole sample."""
@@ -76,7 +76,7 @@ def _for_one(
         # fact about gear, not about a stretch of the dungeon, so unlike the
         # three above it needs no denominator and no pull alignment.
         stats=stat_measures(our_player.loadout, loadouts_of(parse.members)),
-        boss_debuffs=boss_debuff_table(our_boss_debuffs, parse),
+        debuffs=debuff_table(our_debuffs, parse),
         boss_seconds=boss_time,
         trash_seconds=trash_time,
         pack_count=pack_count,
@@ -206,7 +206,7 @@ def _auras(
     Buffs only, from this table: no query argument narrows the enemy-debuff
     table to one caster, so what a player kept up on enemies cannot come from
     it. That figure is rebuilt from the event stream instead, for bosses, and
-    sits beside these in `boss_debuffs` (see `comparison/boss_debuffs.py` and
+    sits beside these in `debuffs` (see `comparison/key_debuffs.py` and
     `.claude/skills/wcl-api/SKILL.md`, "The debuff event stream does name the
     caster").
     """

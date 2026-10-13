@@ -76,22 +76,56 @@ class BossCell(Frozen):
     withheld: Withheld | None = None
 
 
-class BossDebuffRow(Frozen):
-    """One debuff: the judged figure across all boss pulls, and one cell per boss.
+class StretchCell(Frozen):
+    """One stretch's figure in a row: ours against the sample's median, never a verdict.
+
+    `ours` is None only when our own side measured nothing over that stretch,
+    and `their_median` is None whenever `withheld` names a reason, so a cell
+    always says why it is missing a figure.
+    """
+
+    ours: float | None = None
+    their_median: float | None = None
+    withheld: Withheld | None = None
+
+
+class DebuffReach(Frozen):
+    """One debuff's reach over each stretch: the share of enemies it sat on at all.
+
+    Described, never judged: a reach threshold would be invented, not measured.
+    `overall_fractions` are the references' Overall reaches above zero, which
+    give `overall`'s median; the reach table states their range and count.
+    """
+
+    overall: StretchCell = StretchCell()
+    trash: StretchCell = StretchCell()
+    bosses: StretchCell = StretchCell()
+    overall_fractions: tuple[float, ...] = ()
+
+
+class DebuffRow(Frozen):
+    """One debuff: the judged figure over every enemy of the key, then what describes it.
+
+    `uptime` is Overall coverage and carries the verdict. `trash` and `bosses`
+    describe the two stretches, `cells` each boss, and `reach` the share of
+    enemies the debuff sat on at all; none of them carries a verdict.
 
     `shared_with` names, by actor id, the other players whose copies of this
     debuff replaced this player's rather than sat beside it. When it names
     anyone the row is not judged, whatever `uptime.verdict` says: the figure is
-    this player's share of one slot, not their uptime.
+    this player's share of one slot, not their coverage.
     """
 
     uptime: AuraUptime
+    trash: StretchCell = StretchCell()
+    bosses: StretchCell = StretchCell()
     cells: tuple[BossCell, ...] = ()
+    reach: DebuffReach = DebuffReach()
     shared_with: tuple[int, ...] = ()
 
 
-class BossDebuffTable(Frozen):
-    """Everything the debuff table states, with the denominator and the log's own tally.
+class DebuffTable(Frozen):
+    """Everything the debuff tables state, with the denominator and the log's own counts.
 
     `tally` is None only when no stream was read for our side, whether it was
     never requested or could not be read, so that a findings file tells "no
@@ -99,12 +133,17 @@ class BossDebuffTable(Frozen):
     is our own tally, even with no rows to show.
     """
 
-    rows: tuple[BossDebuffRow, ...] = ()
+    rows: tuple[DebuffRow, ...] = ()
     seconds: float = 0.0
+    """Our summed enemy-alive seconds over every measured enemy: Overall's denominator."""
     bosses: tuple[str, ...] = ()
     tally: PairingTally | None = None
     deathless: int = 0
     """Our council bosses of a kill pull with no death in the log, measured to the pull's end."""
+    unmeasured_no_death: int = 0
+    """Our enemies debuffed with no death after it in the log: left out of coverage and reach."""
+    undebuffed_deaths: int = 0
+    """Our enemies that died with no debuff from anyone since their previous death."""
 
 
 class StatShare(Frozen):
@@ -143,7 +182,7 @@ class PlayerMeasures(Frozen):
     trash: tuple[AbilityRate, ...] = ()
     auras: tuple[AuraUptime, ...] = ()
     stats: tuple[StatShare, ...] = ()
-    boss_debuffs: BossDebuffTable = BossDebuffTable()
+    debuffs: DebuffTable = DebuffTable()
     boss_seconds: float = 0.0
     trash_seconds: float = 0.0
     pack_count: int = 0
