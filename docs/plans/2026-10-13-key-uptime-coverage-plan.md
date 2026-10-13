@@ -21,7 +21,7 @@
 
 **Spec:** `docs/plans/2026-10-13-key-uptime-coverage-design.md`. Read it first. It builds on `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` and `docs/plans/2026-10-08-council-debuff-coverage-design.md`, which you should also read. The previous plan in this area, `docs/plans/2026-10-08-council-debuff-coverage-plan.md`, shows how the boss figure was built.
 
-**Choices the spec leaves open, decided here.** Task 9 records each in the design as a dated amendment, except choices 11 and 13. RwlRwlRwlRwl decided those two on 2026-10-13, after reading this plan, and the design's §4 and §3.3 already carry them as dated amendments.
+**Choices the spec leaves open, decided here.** Task 9 records choices 3 to 7, 10 and 12 in the design as dated amendments. Choices 11 and 13 are not among them. RwlRwlRwlRwl decided those two on 2026-10-13, after reading this plan, and the design's §4 and §3.3 already carry them as dated amendments.
 
 1. **Where the lives live.** In `comparison/enemy_lives.py`, taking the measured bosses' game ids rather than the windows. A module that reads only a log and a route has no reason to import the boss rule.
 2. **How the key is represented.** A new `KeyDebuffs` composes the unchanged `BossDebuffs` with a `StretchCover` for trash and one for adds. Extending `BossDebuffs` would have put trash under a type named for bosses. Replacing it would have rewritten forty boss tests that are the best evidence the boss figure does not move.
@@ -1097,6 +1097,27 @@ def test_a_debuff_reaching_past_a_death_is_clipped_to_the_life() -> None:
     assert found.unmeasured_no_death == 0
 
 
+def test_a_debuff_outliving_its_copys_death_counts_on_the_next_life_it_overlaps() -> None:
+    # Ours went on whelp 1 at 10s and its removal was logged at 40s, though that
+    # copy died at 20s. A teammate's application at 25s opens the copy's next
+    # life, which dies at 50s. Ours is clipped to each life it overlaps: 10s on
+    # the first and 15s on the second, nothing in the 5s between them. Measured
+    # 2026-10-13 over 26 cached fights: 1,801 of 156,175 paired intervals outlived
+    # a death of their copy, and the time past it was 0.38% of all interval time,
+    # so this is pinned, not changed.
+    found = mine(
+        a_log(
+            *held_on(WHELP, 1, 10_000, 40_000),
+            *held_on(WHELP, 1, 25_000, 30_000, source=OTHER),
+            deaths=(died(20_000), died(50_000)),
+        )
+    )
+
+    assert found.trash == StretchCover(
+        lives=2, alive_ms=35_000, covered=((DOT, 25_000),), reached=((DOT, 2),)
+    )
+
+
 def test_a_players_and_their_pets_copies_on_one_life_count_once() -> None:
     found = mine(
         a_log(
@@ -1200,11 +1221,15 @@ def test_copies_that_coexist_on_one_trash_life_are_each_casters_own() -> None:
 
 def test_two_players_on_different_lives_are_never_compared() -> None:
     # Ours only ever on one whelp, theirs only on the other: the copies never met.
+    # Ours on whelp 1 from 10s to 30s and theirs on whelp 2 from 30s to 50s, so
+    # the two never overlap in time either. Keyed by copy there is no common
+    # target to compare them on. Keyed by game id alone, theirs would land on
+    # whelp 1's 10-50s life beside ours, overlap it for 0s, and read as shared.
     found = mine(
         a_log(
             *held_on(WHELP, 1, 10_000, 30_000),
-            *held_on(WHELP, 2, 10_000, 30_000, source=OTHER),
-            deaths=(died(30_000), died(30_000, instance=2)),
+            *held_on(WHELP, 2, 30_000, 50_000, source=OTHER),
+            deaths=(died(50_000), died(50_000, instance=2)),
         )
     )
 
@@ -1689,7 +1714,7 @@ Expected: all pass. Every test of `test_boss_debuffs.py` passes unchanged, which
 
 `src/wowperf/cli.py` imports `BossDebuffs, boss_debuffs` from `wowperf.domain.comparison.boss_debuffs`, and the function is no longer there. Make that line `from wowperf.domain.comparison.boss_debuffs import BossDebuffs`, and add `from wowperf.domain.comparison.key_debuffs import boss_debuffs` below it. Task 5 replaces that use.
 
-Run the gate. Then grep `src/` and `tests/` for `_merged(`, `_length_ms(` and `import boss_debuffs`. No hit may name the removed helpers, and every import of the function `boss_debuffs` must come from `key_debuffs`.
+Run the gate. Then run `grep -rn "_merged(\|_length_ms(" src/wowperf/domain/comparison tests/domain/comparison`. No hit may name the removed helpers. The search is scoped to `comparison/` because `report/player_timeline.py` has an unrelated `_merged` of its own. Then run `grep -rn "import boss_debuffs" src tests`: every import of the function `boss_debuffs` must come from `key_debuffs`.
 
 - [ ] **Step 8: Commit**
 
@@ -1778,7 +1803,7 @@ The verdict moves from the bosses to Overall, and the findings change name with 
 - [ ] **Step 1: Rewrite `tests/domain/comparison/test_debuff_uptime.py` whole**
 
 ```python
-# ABOUTME: Debuff coverage against the parse sample: the buff family's thresholds, judged on Overall.
+# ABOUTME: Debuff coverage against the parse sample: the buff family's thresholds, on Overall.
 # ABOUTME: Pins the gap, level, unjudged, the pairwise fallback, the stretch cells and reach.
 
 import pytest
@@ -2491,6 +2516,13 @@ Rewrite these other tests, which break on the renames:
   - `test_a_reference_whose_debuff_stream_failed_is_counted_as_having_none` (the same two).
 
   The fixture's EnemyDeaths stream is empty, so Overall is the boss there and every figure those tests rely on is unchanged.
+
+  Then append to `test_a_compared_run_reads_both_sides_debuffs_on_the_boss`, which pins the two counts in the written findings file (spec §7). The boss is a measured boss and never cut into lives, and nothing else was debuffed or died, so both counts are zero. One reference sits below the floor, so the table has no rows, and the counts still ride along because our stream was read.
+
+```python
+    debuffs = written_findings(tmp_path)["comparison_tables"]["emberkin-0"]["debuffs"]
+    assert (debuffs["unmeasured_no_death"], debuffs["undebuffed_deaths"]) == (0, 0)
+```
 - **`tests/domain/report/test_build_players.py`:**
   - In the `measures` import, replace `BossDebuffRow,` and `BossDebuffTable,` with `DebuffRow,` and `DebuffTable,`.
   - Replace every `BossDebuffTable(` with `DebuffTable(`, every `BossDebuffRow(` with `DebuffRow(`, and every `boss_debuffs=` keyword of `PlayerMeasures` with `debuffs=`. They occur in these tests and helpers:
@@ -2667,7 +2699,7 @@ from wowperf.domain.comparison.sample import (
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
+from wowperf.domain.comparison.statistics import count_phrase, observed_range
 from wowperf.domain.comparison.uptime import (
     MAX_AURAS_REPORTED,
     carried_fractions,
@@ -3022,30 +3054,24 @@ def _cell(
 
     A member that never reached this boss, or whose pull of it was withheld,
     is not counted for it. Those that did and applied the debuff there give the
-    median, at the same floor the row's own median keeps.
+    median, at the same floor the row's own median keeps. That rule is
+    `uptime.stretch_cell`'s, so this reads it rather than keeping a copy: a
+    share that is not a figure is passed as None, and our own as its reason.
     """
     ours = encounter_share(our, ability_id, encounter_id)
-    if not isinstance(ours, float):
-        return BossCell(
-            encounter_id=encounter_id, boss=name, withheld=ours or Withheld.NO_BOSS
-        )
-
-    shares = []
+    our_figure = ours if isinstance(ours, float) else (ours or Withheld.NO_BOSS)
+    theirs: list[float | None] = []
     for member in members:
         assert member.debuffs is not None  # debuff_eligible guarantees it
-        shares.append(encounter_share(member.debuffs.bosses, ability_id, encounter_id))
-    reached = [share for share in shares if isinstance(share, float)]
-    if not reached:
-        return BossCell(
-            encounter_id=encounter_id, boss=name, ours=ours, withheld=Withheld.NOT_REACHED
-        )
-    carried = [share for share in reached if share > 0.0]
-    if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
-        return BossCell(
-            encounter_id=encounter_id, boss=name, ours=ours, withheld=Withheld.TOO_FEW
-        )
+        share = encounter_share(member.debuffs.bosses, ability_id, encounter_id)
+        theirs.append(share if isinstance(share, float) else None)
+    cell = stretch_cell(our_figure, theirs)
     return BossCell(
-        encounter_id=encounter_id, boss=name, ours=ours, their_median=median(carried)
+        encounter_id=encounter_id,
+        boss=name,
+        ours=cell.ours,
+        their_median=cell.their_median,
+        withheld=cell.withheld,
     )
 ```
 
@@ -3338,8 +3364,9 @@ This task leaves the cast path alone. A cast rate reads `spells.boss_pulls` and 
 
 **Files:**
 - Modify:
-  - `src/wowperf/domain/comparison/boss_debuffs.py` (`boss_pulls_listed_once`, read by `boss_windows_of`)
+  - `src/wowperf/domain/comparison/boss_debuffs.py` (`boss_pulls_listed_once`, read by `boss_windows_of`; `Withheld.NOTHING_OUTSIDE_BOSSES`)
   - `src/wowperf/domain/comparison/uptime.py`
+  - `src/wowperf/domain/comparison/sample.py` (`ParseMember`'s docstring)
   - `src/wowperf/domain/comparison/wording.py`
   - `src/wowperf/domain/comparison/service.py`
   - `src/wowperf/domain/comparison/measures.py`
@@ -3360,6 +3387,7 @@ This task leaves the cast path alone. A cast rate reads `spells.boss_pulls` and 
 - Consumes: Task 6's `Run.fight_ms` and `ParseMember.fight_ms`, and Task 5's `stretch_cell`, `measured_or` and `StretchCell`.
 - Produces:
   - In `boss_debuffs`: `boss_pulls_listed_once(pulls: Sequence[Pull]) -> tuple[tuple[int, Pull], ...]`, each boss pull with its position in `pulls`, a pull that repeats the previous boss pull's encounter, start and end dropped. `boss_windows_of` reads it, and its signature and behaviour are unchanged.
+  - `Withheld.NOTHING_OUTSIDE_BOSSES = "nothing outside boss pulls"`, the reason an empty buff Without bosses cell gives. That stretch is the key clock less its boss pulls, walking included, so the debuff's "no trash measured" would be false there. Task 8 gives it its label.
   - In `uptime`:
     - `boss_windows(pulls)` keeps its signature and lists a boss pull Warcraft Logs lists twice once. It no longer imports `spells.boss_pulls`, which stays as it is for the cast path;
     - `UptimeRule = Callable[[Sequence[Pull], Span | None], Callable[[Aura], float]]`;
@@ -3381,6 +3409,7 @@ This task leaves the cast path alone. A cast rate reads `spells.boss_pulls` and 
 The helper's own test in `test_boss_debuffs.py` is written at Step 7. Written here, its import error would stop `test_boss_debuffs.py`, `test_debuff_uptime.py` and `test_tables.py` from collecting, since the last two import helpers from it. The two duplicate tests below could then never show their wrong figure at Step 6.
 
 **`tests/domain/comparison/test_uptime.py`:**
+- Its first ABOUTME line becomes `# ABOUTME: Behaviour tests for buff uptime against a top parse or sample, by each caller's rule.`, since the module now pins the key clock rule beside the boss-pull one.
 - Replace its imports through the `wording` line with:
 
 ```python
@@ -3513,6 +3542,34 @@ def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> Non
 - Add `from wowperf.domain.comparison.boss_debuffs import Withheld` to the imports, and add `StretchCell` to the `measures` import.
 - Add `from tests.domain.comparison.test_boss_debuffs import a_listed_twice` above the `tests.domain.comparison.test_service` import.
 - In `a_parse_member`, add `fight_ms=theirs.run.fight_ms,` after `pulls=theirs.run.pulls,`.
+- Correct two docstrings that say boss time, because each of these references' key clock is its one boss pull:
+  - `an_aura_parse_member`'s becomes:
+
+```python
+    """A reference carrying Arcane Power for `band_ms` of a pull `seconds` long.
+
+    That pull is its whole key clock and, unless `fought_a_boss` is False, a
+    boss pull. It always starts at zero, so a `band_start_ms` past its end is an
+    aura the reference carried outside every boss pull and outside its key clock.
+    """
+```
+
+  - `a_sample_carrying_an_aura_unevenly`'s becomes:
+
+```python
+    """Three references carrying an aura across their key clock, and one that did not.
+
+    Each key clock here is one boss pull. The three sit at 0.75, 0.6 and 0.95
+    of theirs, each a division by a different denominator, so no fraction is
+    the band length that produced it. Their median is 0.75 against our own 0.25.
+
+    The fourth is the awkward one, and what makes a change to which members the
+    aura table counts visible rather than only a change to how it divides. It
+    carried the aura, but never inside its own key clock, which reads the same
+    as never having carried it at all. Counted as a zero it would drag the
+    median to 0.675.
+    """
+```
 - Replace `test_an_aura_row_is_a_share_of_boss_time_on_both_sides` with:
 
 ```python
@@ -3549,10 +3606,11 @@ def test_an_aura_row_is_judged_over_the_key_clock_on_both_sides() -> None:
     assert row.uptime.their_median == 0.75
     assert row.uptime.their_fractions == (0.75, 0.6, 0.95, 0.75)
     assert row.uptime.verdict is Verdict.BELOW
-    # Bosses describes: three references fought one, and REF6 sat at zero there.
+    # Bosses describes: four references fought one, and REF6 sat at zero there,
+    # so the other three give the median.
     assert row.bosses == StretchCell(ours=0.25, their_median=0.75)
     # This key was all boss pull: nothing of ours lay outside one.
-    assert row.without_bosses == StretchCell(withheld=Withheld.NO_TRASH)
+    assert row.without_bosses == StretchCell(withheld=Withheld.NOTHING_OUTSIDE_BOSSES)
     assert measures.key_seconds == 120.0
 ```
 
@@ -3708,6 +3766,16 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
     assert "compare.uptime.self.0.emberkin-0" in ids
 ```
 
+- In `build_analyze_transport`'s docstring, replace the sentences from "`boss_pull_reports` turns a named report's only dungeon pull" through "a genuine, populated uptime finding instead." with the lines below. The `aura_rows_by_code` sentences that follow them are unchanged.
+
+```python
+    `boss_pull_reports` turns a named report's only dungeon pull from trash
+    (encounter id 0) into a boss pull. A comparison that reads boss pulls, such
+    as the boss cast rates, needs one: with the fixture's default all-trash pull
+    every run reports zero boss seconds. Buff uptime is judged over the fight's
+    own key clock, so it reads a populated figure without one.
+```
+
 **`tests/domain/report/test_build_players.py`:**
 - Add `AuraRow,` to the `measures` import.
 - Wrap every `AuraUptime(...)` passed inside an `auras=(...)` tuple as `AuraRow(uptime=AuraUptime(...))`, with the `AuraUptime` arguments unchanged. For example, `AuraUptime(ability_id=3, name="Bone Shield", ours=0.984, their_median=1.0, their_fractions=(1.0,), verdict=Verdict.LEVEL)` becomes `AuraRow(uptime=AuraUptime(ability_id=3, name="Bone Shield", ours=0.984, their_median=1.0, their_fractions=(1.0,), verdict=Verdict.LEVEL))`. The places are:
@@ -3754,7 +3822,11 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
 Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain tests/test_cli.py -q`
 Expected:
 - ImportErrors on `KEY`, `key_clock_uptime`, `fight_seconds`, `fight_seconds_of`, `without_boss_pulls` and `AuraRow`;
-- once those exist, `test_uptime_findings_appear_when_both_sides_carry_auras` and the CLI uptime test fail, because the verdict still reads boss pulls.
+- once those names exist, and until `service.py` binds the key clock, two tests fail because the verdict still reads boss pulls:
+  - `test_a_compared_run_fetches_both_players_auras_and_reports_uptime` in `tests/test_cli.py`. The shared fixture's fight holds no boss pull, so the boss rule reports `compare.uptime.unavailable` and no `compare.uptime.self.0`.
+  - `test_every_uptime_finding_has_a_table_row_stating_the_same_figures` in `tests/domain/comparison/test_tables.py`. Its facts read "of boss time" where it expects "of key time".
+
+`test_uptime_findings_appear_when_both_sides_carry_auras` in `test_service.py` passes under both rules (5% against 95%), so it does not pin the switch.
 
 The two duplicate tests show their wrong figure at Step 6, once everything but the duplicate rule is in place.
 
@@ -3842,6 +3914,32 @@ def fight_seconds_of(member: ParseMember) -> float:
     - Add the keyword parameter `over: Callable[[ParseMember], float],` after `words: Wording,`.
     - Replace `their_seconds = member.boss_seconds` with `their_seconds = over(member)`.
     - Replace `measured(member.pulls)` with `measured(member.pulls, member.fight_ms)`.
+11. Correct the text in this module that named boss time, which is false once a caller can bind the key clock:
+    - `UPTIME_GAP_FRACTION`'s docstring becomes `"""How much more of the measured stretch they must have it up before it is worth reporting."""`.
+    - In `compare_uptime`'s docstring, the first line becomes `"""Where an aura was up markedly more of the reference's measured stretch than of ours.`.
+    - In `compare_uptime_sample`'s docstring, the first line becomes `"""Where an aura was up over markedly more of the sample's measured stretches than of ours.`.
+    - In `_gap_findings_sample`'s docstring, the first line becomes `"""Auras up over markedly more of the sample's measured stretches than of ours, by median.`, and "a band that never overlaps a boss pull reads the same" becomes "a band that never overlaps the stretch its rule measures reads the same".
+    - In `_gap_findings`, the comment above `title=` becomes:
+
+```python
+                # Presence, never agency. A proc is not something a player
+                # keeps up, and this family cannot tell a proc from a button:
+                # the aura table reports that a buff was present, not who or
+                # what put it there. So the aura is the subject and the two
+                # players are only whose stretch it is measured over -- the
+                # key clock in a dungeon, the fight itself in a raid, which is
+                # what `words.stretch_time` spells out below.
+```
+
+12. In `src/wowperf/domain/comparison/sample.py`, the second paragraph of `ParseMember`'s docstring becomes:
+
+```python
+    There is deliberately no `comparability`: nothing on the parse axis is
+    shaped like a duration. Casts are compared as rates per minute of boss time,
+    auras as fractions of the key clock and debuffs as fractions of enemy-alive
+    time, and all three mean the same thing at any keystone level, so the rule
+    that gates `compare.duration` has nothing to gate here.
+```
 
 - [ ] **Step 4: `wording.py`, `measures.py`, `service.py`**
 
@@ -3923,6 +4021,25 @@ class AuraRow(Frozen):
 ```
 
 - [ ] **Step 5: `tables.py` and `players.py`**
+
+First, in `src/wowperf/domain/comparison/boss_debuffs.py`, replace `Withheld` (as Task 5 left it) with:
+
+```python
+class Withheld(StrEnum):
+    """Why a boss, one boss's cell, or one stretch's cell carries no figure.
+
+    The first three are read off our own route: a boss pull may hold no enemy
+    `bosses_of` can name, a key may hold no trash life to measure, and a key
+    clock may hold no time outside its boss pulls. The last two are about the
+    sample beside a figure of ours.
+    """
+
+    NO_BOSS = "no boss found"
+    NO_TRASH = "no trash measured"
+    NOTHING_OUTSIDE_BOSSES = "nothing outside boss pulls"
+    NOT_REACHED = "no reference measured this boss"
+    TOO_FEW = "too few references"
+```
 
 In `src/wowperf/domain/comparison/tables.py`:
 
@@ -4010,7 +4127,9 @@ def _auras(
         rows.append(
             AuraRow(
                 uptime=m,
-                without_bosses=stretch_cell(measured_or(our_away_share, Withheld.NO_TRASH), away),
+                without_bosses=stretch_cell(
+                    measured_or(our_away_share, Withheld.NOTHING_OUTSIDE_BOSSES), away
+                ),
                 bosses=stretch_cell(measured_or(our_boss_share, Withheld.NO_BOSS), on_bosses),
             )
         )
@@ -4205,7 +4324,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-/mingw64/bin/git add src/wowperf/domain/comparison/boss_debuffs.py tests/domain/comparison/test_boss_debuffs.py src/wowperf/domain/comparison/uptime.py src/wowperf/domain/comparison/wording.py src/wowperf/domain/comparison/service.py src/wowperf/domain/comparison/measures.py src/wowperf/domain/comparison/tables.py src/wowperf/domain/report/players.py tests/domain/comparison/test_uptime.py tests/domain/comparison/test_service.py tests/domain/comparison/test_tables.py tests/domain/comparison/test_sample_invariants.py tests/domain/report/test_build_players.py tests/test_cli.py tests/e2e/test_compare_e2e.py tests/e2e/test_uptime_e2e.py
+/mingw64/bin/git add src/wowperf/domain/comparison/boss_debuffs.py tests/domain/comparison/test_boss_debuffs.py src/wowperf/domain/comparison/uptime.py src/wowperf/domain/comparison/sample.py src/wowperf/domain/comparison/wording.py src/wowperf/domain/comparison/service.py src/wowperf/domain/comparison/measures.py src/wowperf/domain/comparison/tables.py src/wowperf/domain/report/players.py tests/domain/comparison/test_uptime.py tests/domain/comparison/test_service.py tests/domain/comparison/test_tables.py tests/domain/comparison/test_sample_invariants.py tests/domain/report/test_build_players.py tests/test_cli.py tests/e2e/test_compare_e2e.py tests/e2e/test_uptime_e2e.py
 ```
 
 ```bash
@@ -4221,23 +4340,28 @@ The builder decides everything here, and the template only loops.
 - **Two booleans** on `ComparisonTable` say whether the figure columns and the Verdict column are drawn.
 - **The uptime tables' layout.** The three uptime tables draw no figure columns. Their judged Overall figure, its Range and its Sample are each row's first three cells, under headings of the same names, in the layout choice 11 gives. Their rows leave `ours`, `theirs`, `spread` and `sample` empty, so each string is drawn from one place.
 - **A table with both defaults** renders byte for byte as before. `trim_blocks` and `lstrip_blocks` remove a block tag that stands on its own line, and the one inline tag that opens an indented line is written `{%+ ... %}`, which keeps that line's indentation.
-- **What holds that claim.** `test_a_comparison_row_without_cells_ends_as_it_always_has` holds it, with the rich fixture's column tests (`test_every_compared_cell_lands_under_the_heading_it_claims` and `test_a_right_aligned_column_is_headed_by_a_right_aligned_heading`), whose tables are all cast rates. The golden pages do not hold it. None of the four (`minimal.html`, `raid.html`, `night.html`, `progression.html`) draws a comparison table: none contains `<table class="compared-rows">`. They pass whatever this task does to one, and they stay byte-identical with the Range and Sample cells too.
+- **What holds that claim.** `test_a_comparison_row_without_cells_ends_as_it_always_has` holds it, with the rich fixture's column tests (`test_every_compared_cell_lands_under_the_heading_it_claims` and `test_a_right_aligned_column_is_headed_by_a_right_aligned_heading`), whose tables are all cast rates. The golden pages do not hold it. None of the four (`minimal.html`, `raid.html`, `night.html`, `progression.html`) draws a comparison table: none contains `<table class="compared-rows">`.
+- **The goldens still change, in one comment.** Every golden inlines the stylesheet, so each of the four changes where Step 4 corrects the verdict-tint comment in `report.css.j2`, and nowhere else. Step 6 regenerates them and checks that diff.
+- **The verdict tint stays on the second cell.** On the uptime tables that cell is the Verdict word, not our figure. The word states the same branch the tint does, so the tint stays. Moving it onto Overall would need a table-level class, which the invariants' exact `<table class="compared-rows">` pattern would no longer match. The stylesheet's comment, which said the second cell is always our figure, is corrected instead.
+- **Sample is right-aligned on these tables.** It is drawn through the cells loop, which marks every cell `num`, while the cast tables' Sample column is left-aligned. That is accepted: the heading and its cells agree, which `test_a_right_aligned_column_is_headed_by_a_right_aligned_heading` pins, and the template only loops.
 
 **Files:**
 - Modify:
   - `src/wowperf/domain/report/model.py`
   - `src/wowperf/domain/report/players.py`
   - `src/wowperf/adapters/render/_players.html.j2`
+  - `src/wowperf/adapters/render/report.css.j2` (the verdict-tint comment)
 - Modify tests:
   - `tests/domain/report/test_build_players.py`
   - `tests/adapters/render/test_html_invariants.py`
+  - `tests/adapters/render/golden/minimal.html`, `raid.html`, `night.html` and `progression.html`, regenerated
 
 **Interfaces:**
 - Consumes: Task 5's `DebuffTable`, `DebuffRow`, `DebuffReach` and `StretchCell`; Task 7's `AuraRow` and `PlayerMeasures.key_seconds`.
 - Produces:
   - `ComparisonTable.figures: bool = True`, `.judged: bool = True`, `.note: str = ""` and `.warning: str = ""`;
   - `ComparisonRow.ours`, `.theirs`, `.spread`, `.sample` and `.verdict_label`, each defaulting to `""`;
-  - in `players`: `DESCRIBED = "described"`, `DEBUFF_NOTE`, `WITHHELD_LABELS[Withheld.NO_TRASH] == "no trash measured"`, and the private helpers `_overall`, `_spread_and_sample`, `_reach_rows` and `_unmeasured`.
+  - in `players`: `DESCRIBED = "described"`, `DEBUFF_NOTE`, `WITHHELD_LABELS[Withheld.NO_TRASH] == "no trash measured"`, `WITHHELD_LABELS[Withheld.NOTHING_OUTSIDE_BOSSES] == "nothing outside boss pulls"`, and the private helpers `_overall`, `_spread_and_sample`, `_reach_rows` and `_unmeasured`.
 - Consumes from Task 5 as well: `DebuffReach.overall_fractions`, which the reach table's Range and Sample state.
 
 - [ ] **Step 1: Write the failing tests, and rewrite the ones the change breaks**
@@ -4441,6 +4565,41 @@ def test_the_buff_table_reads_overall_its_range_and_sample_then_each_stretch() -
         "3 top parses",
         "55% against 97%",
         "90%; too few references",
+    )
+
+
+def test_a_key_with_no_time_outside_its_boss_pulls_says_so_in_without_bosses() -> None:
+    # The buff stretch is the key less its boss pulls, walking included, so an
+    # empty cell there must not borrow the debuff's "no trash measured".
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraRow(
+                    uptime=AuraUptime(
+                        ability_id=195181, name="Bone Shield", ours=0.62,
+                        their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                        verdict=Verdict.BELOW,
+                    ),
+                    without_bosses=StretchCell(withheld=Withheld.NOTHING_OUTSIDE_BOSSES),
+                    bosses=StretchCell(ours=0.62, their_median=0.98),
+                ),
+            ),
+            key_seconds=1834.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [table] = card.comparison_tables
+    [row] = table.rows
+    assert row.cells == (
+        "62% against 98%",
+        "95% to 99%",
+        "3 top parses",
+        "nothing outside boss pulls",
+        "62% against 98%",
     )
 
 
@@ -4720,12 +4879,34 @@ In `src/wowperf/adapters/render/_players.html.j2`, replace the block from `<tabl
   </details>
 ```
 
+In `src/wowperf/adapters/render/report.css.j2`, the comment above `.compared-rows tr.v-below td:nth-child(2)` says the tint always lands on our own figure. That is false for the uptime tables, so it becomes:
+
+```css
+/* The verdict is a word in its own column and a tint here, never a colour alone:
+   a reader who cannot separate the tints, or who printed the page, still has
+   the column. Three of the four land on the second cell. On the cast and stat
+   tables that is our own figure, the one the verdict is about. On the uptime
+   tables, which draw no figure columns and state Overall in a cell after the
+   verdict, it is the Verdict word itself, which says the same branch. Either
+   way they say two different things. Hue says
+   which side our figure landed on: --theirs mutes it where we sit under the
+   sample's median, --ours picks it out where we sit over it, --ink-dim settles
+   it where the two are level. Weight says whether the comparison found a
+   difference at all, so below and above carry it and level does not. Without
+   both readings the row a reader can act on is the quietest in the table, and
+   a level row left to inherit would keep the body's ink, the brightest on the
+   page. An unjudged row is greyed whole, because none of its figures was read
+   as a shortfall. */
+```
+
+The three rules under it are unchanged.
+
 - [ ] **Step 5: The builder**
 
 In `src/wowperf/domain/report/players.py`:
 
 1. In the `measures` import, add `AuraUptime`, `DebuffTable` and `StretchCell` beside `AuraRow` and `DebuffRow`.
-2. Add `Withheld.NO_TRASH: "no trash measured",` to `WITHHELD_LABELS`, after `Withheld.NO_BOSS`. Its docstring becomes `"""How a boss or stretch cell with no figure says why, in the reader's words."""`.
+2. Add `Withheld.NO_TRASH: "no trash measured",` and `Withheld.NOTHING_OUTSIDE_BOSSES: "nothing outside boss pulls",` to `WITHHELD_LABELS`, in that order, after `Withheld.NO_BOSS`. Its docstring becomes `"""How a boss or stretch cell with no figure says why, in the reader's words."""`.
 3. Add after `VERDICT_LABELS` and its docstring:
 
 ```python
@@ -4972,7 +5153,35 @@ def _unmeasured(debuffs: DebuffTable) -> str:
 - [ ] **Step 6: Run the tests to see them pass**
 
 Run: `export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/domain/report tests/adapters/render -q`
-Expected: all pass. That includes `test_a_comparison_row_without_cells_ends_as_it_always_has` and the rich fixture's column tests, which pin that a table with both defaults renders as it did. The four golden-file tests pass too, but they pin nothing here: no golden page draws a comparison table.
+Expected: everything passes except the four golden-file tests, which fail on the stylesheet comment Step 4 corrected:
+- `test_the_rendered_page_matches_the_golden_file` in `test_html_invariants.py`;
+- `test_the_rendered_raid_page_matches_the_golden_file`;
+- `test_the_rendered_night_page_matches_the_golden_file`;
+- `test_the_rendered_page_matches_the_golden_file` in `test_progression_html_invariants.py`.
+
+The others include `test_a_comparison_row_without_cells_ends_as_it_always_has` and the rich fixture's column tests, which pin that a table with both defaults renders as it did.
+
+Regenerate the four goldens, one command each:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/adapters/render/test_html_invariants.py --golden-update -q
+```
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/adapters/render/test_raid_html_invariants.py --golden-update -q
+```
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/adapters/render/test_night_html_invariants.py --golden-update -q
+```
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"; uv run pytest tests/adapters/render/test_progression_html_invariants.py --golden-update -q
+```
+
+Then run `/mingw64/bin/git diff --stat tests/adapters/render/golden`. It must list the four files and nothing else. Run `/mingw64/bin/git diff tests/adapters/render/golden`: every changed line must lie inside the verdict-tint comment. Any other changed line means the page itself moved, and is a defect to chase before going on.
+
+Run the Step 6 command again. Expected: all pass.
 
 - [ ] **Step 7: Gate and commit**
 
@@ -4988,13 +5197,15 @@ table that judges nothing. Range and Sample stay because the verdict
 rests on Overall, and a reader weighs a median by its spread and count.
 A note explains coverage against reach, and a warning names what could
 not be measured. The template only loops: the builder decides which
-columns a table draws.
+columns a table draws. The stylesheet's comment said the verdict tint
+always lands on our own figure; on these tables it lands on the verdict
+word, so the comment says so, and the four golden pages carry it.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ```bash
-/mingw64/bin/git add src/wowperf/domain/report/model.py src/wowperf/domain/report/players.py src/wowperf/adapters/render/_players.html.j2 tests/domain/report/test_build_players.py tests/adapters/render/test_html_invariants.py
+/mingw64/bin/git add src/wowperf/domain/report/model.py src/wowperf/domain/report/players.py src/wowperf/adapters/render/_players.html.j2 src/wowperf/adapters/render/report.css.j2 tests/domain/report/test_build_players.py tests/adapters/render/test_html_invariants.py tests/adapters/render/golden/minimal.html tests/adapters/render/golden/raid.html tests/adapters/render/golden/night.html tests/adapters/render/golden/progression.html
 ```
 
 ```bash
@@ -5044,7 +5255,27 @@ Spec §9 lists these. The wcl-api skill waits for Task 10, which is where a cost
   `auras` entry nests its judged figure under `uptime`, beside `without_bosses` and `bosses`.
   Each debuff row's `reach` carries `overall_fractions`, the references' Overall reaches behind
   its median.
+- The page heads the first column of every comparison table "Ability", these three included, so
+  the example tables above head it so too. The template draws one shared heading and only loops.
+- An empty buff Without bosses cell reads "nothing outside boss pulls", not "no trash measured":
+  that stretch is the key less its boss pulls, walking included, so it is not trash alone.
 ```
+
+4. In §4's three example tables, replace the first column's heading with `Ability`. The three header rows become:
+
+```markdown
+| Ability | Verdict | Overall | Range | Sample | Without bosses | Bosses |
+```
+
+```markdown
+| Ability | Verdict | Overall | Range | Sample | Trash | Bosses | per-boss cells as today |
+```
+
+```markdown
+| Ability | Overall | Range | Sample | Trash | Bosses |
+```
+
+   Each replaces the row that heads the same columns with `Buff` or `Debuff` in their place. The separator rows under them are unchanged.
 
 - [ ] **Step 2: The parent and council designs**
 
@@ -5223,7 +5454,7 @@ This task carries the CLAUDE.md invariant: a new judgement is not done until a l
   - `.claude/skills/wcl-api/SKILL.md`, only if Step 6 finds a cost reading that moved.
 - Scratch, not committed: `run_key1.py` (already in the scratchpad), `run_key2.py`, `live_states.py`, `survey_key.py` and their outputs.
 
-**Interfaces:** consumes every earlier task, through `wowperf analyze`, the findings file's `comparison_tables.<slug>.auras` and `.debuffs`, and `key_debuffs`. It produces no code.
+**Interfaces:** consumes every earlier task, through `wowperf analyze`, the findings file's `comparison_tables.<slug>.auras` and `.debuffs`, `key_debuffs`, `boss_pulls_listed_once`, `boss_windows_of`, `uptime.boss_windows` and `pair_debuffs`. It produces no code.
 
 - [ ] **Step 1: Write the second key's runner**
 
@@ -5351,6 +5582,12 @@ for name in FILES:
             if any(value is not None and value > 1.0 + 1e-9 for value in figures):
                 defects += 1
                 print(f"  DEFECT: a coverage above 100% on {uptime['name']}")
+            # A reference that covered any time on an enemy reached it, and one that
+            # reached an enemy covered time on it, so the two lists name the same
+            # references. Unequal lengths would put the reach Range over other parses.
+            if len(row["reach"]["overall_fractions"]) != len(uptime["their_fractions"]):
+                defects += 1
+                print(f"  DEFECT: reach and coverage name different references on {uptime['name']}")
             print(
                 f"  player {index} {uptime['name']} [{verdict}]: coverage "
                 f"overall {pct(uptime['ours'])} vs {pct(uptime['their_median'])}, "
@@ -5385,20 +5622,28 @@ Write `<scratchpad>\survey_key.py`:
 """Task 10 of the key uptime plan: the blind spot and the coverage bound over every cached key.
 
 Offline only: cached pages are read through trash_common, which never constructs DiskCache and
-never fetches. Every player of each cached keystone fight is read through the domain's own
-key_debuffs. Prints a report code's first four characters, counts and ability ids; never a
-player's name.
+never fetches. Every cached keystone fight's route is checked for the boss pulls Warcraft Logs
+lists twice: the buff windows must keep the spans the debuff windows keep. Every player of each
+fight with both debuff streams is read through the domain's own key_debuffs, and the paired
+intervals that outlive a death of their own enemy copy are counted. Prints a report code's
+first four characters, counts and ability ids; never a player's name.
 """
 
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from trash_common import STREAMS, actors_of, scanned_reports, stream  # noqa: E402
 
 from wowperf.adapters.wcl.ingest import build_debuff_log, build_run  # noqa: E402
+from wowperf.domain.comparison.boss_debuffs import (  # noqa: E402
+    boss_pulls_listed_once,
+    boss_windows_of,
+)
 from wowperf.domain.comparison.key_debuffs import key_debuffs  # noqa: E402
+from wowperf.domain.comparison.uptime import boss_windows  # noqa: E402
+from wowperf.domain.debuffs import pair_debuffs  # noqa: E402
 
 totals = Counter()
 defects = 0
@@ -5409,16 +5654,51 @@ for code, (report, tier) in sorted(scanned_reports().items()):
     for fight in report["fights"]:
         if fight.get("keystoneLevel") is None or not fight.get("dungeonPulls"):
             continue
-        events = stream(STREAMS["EnemyDebuffs"], code, fight)
-        deaths = stream(STREAMS["EnemyDeaths"], code, fight)
-        if events is None or deaths is None:
-            continue
         try:
             run = build_run(report, fight)
         except Exception as error:  # a payload cached under an older query text
             print(f"{code[:4]} f{fight['id']}: no run ({type(error).__name__})")
             continue
-        log = build_debuff_log(events, actors, {}, int(fight["endTime"]), death_events=deaths)
+        events = stream(STREAMS["EnemyDebuffs"], code, fight)
+        deaths = stream(STREAMS["EnemyDeaths"], code, fight)
+        end_ms = int(fight["endTime"])
+
+        # The route check reads no stream: a window's span is its pull's, whatever
+        # died in it, so a fight without the debuff streams is checked too.
+        routed = build_debuff_log([], actors, {}, end_ms, death_events=[])
+        listed = sum(1 for pull in run.pulls if pull.is_boss)
+        dropped = listed - len(boss_pulls_listed_once(run.pulls))
+        totals["keystone fights routed"] += 1
+        totals["boss pulls listed twice, dropped"] += dropped
+        totals["fights with a boss pull listed twice"] += dropped > 0
+        debuff_spans = tuple(
+            (window.start_ms, window.end_ms)
+            for window in boss_windows_of(run.pulls, routed.npc_actors, routed.deaths)
+        )
+        if boss_windows(run.pulls) != debuff_spans:
+            defects += 1
+            print(f"  DEFECT {code[:4]} f{fight['id']}: buff and debuff boss windows differ")
+
+        if events is None or deaths is None:
+            continue
+        log = build_debuff_log(events, actors, {}, end_ms, death_events=deaths)
+
+        game_of = dict(log.game_ids)
+        died: dict[tuple[int, int], list[int]] = defaultdict(list)
+        for row in log.death_rows:
+            if row.target_id in game_of:
+                died[(game_of[row.target_id], row.target_instance)].append(row.timestamp_ms)
+        intervals, _ = pair_debuffs(log)
+        for one in intervals:
+            totals["paired intervals"] += 1
+            times = sorted(died.get((one.target_game_id, one.target_instance), ()))
+            inside = [at for at in times if one.start_ms < at < one.end_ms]
+            if inside:
+                totals["intervals outliving a death of their copy"] += 1
+                totals["of those, reaching a later death of it"] += any(
+                    at > inside[0] for at in times if at <= one.end_ms
+                )
+
         players = frozenset(player.actor_id for player in run.players)
         if not players:
             continue
@@ -5467,12 +5747,16 @@ export PATH="$HOME/.local/bin:$PATH"; uv run python /c/Users/damien/AppData/Loca
 set -a && . <(iconv -f UTF-16 -t UTF-8 ../../../.env | tr -d '\r') 2>/dev/null && set +a; export PATH="$HOME/.local/bin:$PATH"; WOWPERF_E2E_REPORT="https://www.warcraftlogs.com/reports/LyKXYvVZm192TDr6?fight=9" uv run pytest -m e2e tests/e2e/test_boss_debuffs_e2e.py tests/e2e/test_uptime_e2e.py -q
 ```
 
-Both must pass. Run `tests/e2e/test_compare_e2e.py` the same way only if Step 2's second command reported more than 1,500 points remaining, since it loads every reference cold. If it is not run, say so in the report, with the remaining quota as the reason.
+Both must pass.
+
+Then run `tests/e2e/test_compare_e2e.py` the same way, if it fits this task's budget. Task 7 rewrote part of it, so it should not ship without a run. It loads every reference cold, so run it only if Step 2's second command reported more than 1,500 points remaining. Its own cost has not been measured, so record what it spent.
+
+If it is not run, the live amendment of Step 7 records it as a known gap: Task 7's edit to that test shipped without a live run, with the remaining quota as the reason. Say so in the report too.
 
 - [ ] **Step 6: Judge**
 
 Stop and report, without committing, if any of these holds:
-- `live_states.out` or `survey_key.out` prints `defects:` above 0, meaning a coverage or reach above 100%;
+- `live_states.out` or `survey_key.out` prints `defects:` above 0. That means a coverage or reach above 100%, a reach row whose references differ in number from its coverage row's, or a fight whose buff boss windows differ from its debuff boss windows;
 - any `UNEXPECTED` finding family appears;
 - any id `compare.uptime.boss` appears in either findings file.
 
@@ -5503,6 +5787,14 @@ Read the cost breakdowns from Step 2. The feature adds no query, so every operat
    - coverage and reach on both sides, with the four debuffs whose Overall gap is widest, ours against the median;
    - how far the references' Overall medians sit below 100%;
    - the survey's totals: fights, trash and add lives, undebuffed deaths and their share, enemies with no death, and defects;
+   - the route check:
+     - keystone fights routed;
+     - fights with a boss pull listed twice, and the pulls dropped (the 2026-10-08 reading was 10 in 5 of 969 fights);
+     - that the buff and debuff boss windows agreed on every fight.
+
+     The buff Bosses figure itself was not read on a fight with a duplicated pull: no cached `AuraTable` response covers one. State that it stays unproven live, and raise it with RwlRwlRwlRwl when reporting this task;
+   - the paired intervals that outlive a death of their own copy, and how many of those reach a later death of it (2026-10-13: 1,801 and 11 of 156,175);
+   - whether `tests/e2e/test_compare_e2e.py` ran and what it spent, or, if it did not, that it is a known gap (Step 5);
    - each command's cost, operation by operation, and whether any operation was new.
 
    It names players by class and spec only, never by name.
@@ -5553,11 +5845,11 @@ If the wcl-api skill changed, add it as well:
 | §3.3: buff windows on both sides; the reference's clock at 0 points | 6, 7 |
 | §3.3 amendment: a boss pull listed twice is one buff window, by the debuff rule, in one shared helper; cast rates and the raid path untouched | 7 (`boss_pulls_listed_once`; `test_a_boss_pull_warcraft_logs_lists_twice_is_one_window`, `test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell`, `test_a_boss_pull_listed_twice_is_kept_once_at_its_own_position`; every `boss_windows_of` test unchanged; Step 9's `grep -rn "boss_windows(" src`) |
 | §4 amendment: Range and Sample of the Overall figure on all three tables, reach included | 5 (`DebuffReach.overall_fractions`, `carried_shares`, `test_reach_keeps_the_references_overall_reach_not_their_coverage`), 8 (the column order, and Range and Sample read off Overall in `test_the_debuff_tables_follow_the_buff_table_with_a_column_per_stretch_and_boss`, `test_the_buff_table_reads_overall_its_range_and_sample_then_each_stretch` and `test_the_reach_table_follows_the_coverage_table_and_judges_nothing`) |
-| §4 findings: buff ids kept, debuff ids renamed, badges unchanged, the two counts in the file | 5, 7 |
+| §4 findings: buff ids kept, debuff ids renamed, badges unchanged, the two counts in the file | 5 (the counts read back from a written findings file in `test_a_compared_run_reads_both_sides_debuffs_on_the_boss`), 7 |
 | §5 components | 3, 4, 5, 6, 7, 8 |
-| §6 edge cases: no trash; two actor ids; a debuff across a death; a boss pull listed twice | 5; 3; 4 (`test_a_debuff_reaching_past_a_death_is_clipped_to_the_life`); 4 (`boss_windows_of` unchanged) and 7 (the buff windows, by the same rule) |
+| §6 edge cases: no trash; two actor ids; a debuff across a death; a boss pull listed twice | 5; 3; 4 (`test_a_debuff_reaching_past_a_death_is_clipped_to_the_life`, `test_a_debuff_outliving_its_copys_death_counts_on_the_next_life_it_overlaps`); 4 (`boss_windows_of` unchanged) and 7 (the buff windows, by the same rule) |
 | §7 tests | 2-8 |
 | §7 the plan's first step | 1 |
-| §7 live proof, §8 cost | 10 |
+| §7 live proof, §8 cost | 10 (with the route check of boss pulls listed twice, the count of intervals outliving their copy's death, the reach and coverage reference check, and `test_compare_e2e` run or recorded as a known gap) |
 | §9 documentation | 9, 10 |
 | §10 out of scope | untouched: the raid path keeps its rule through `whole_fight_uptime` and the defaults of `our_fight_ms` and `over`; cast rates keep `spells.boss_seconds`, which still sums a boss pull listed twice twice, for the separate task §10 names |
