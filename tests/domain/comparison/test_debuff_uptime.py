@@ -17,12 +17,12 @@ from wowperf.domain.comparison.boss_debuffs import (
     BossTarget,
     BossWindow,
     Withheld,
-    boss_debuffs,
 )
 from wowperf.domain.comparison.debuff_uptime import (
     boss_debuff_table,
     compare_boss_debuffs_sample,
 )
+from wowperf.domain.comparison.key_debuffs import boss_debuffs
 from wowperf.domain.comparison.measures import BossCell, Verdict
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare

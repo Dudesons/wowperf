@@ -8,10 +8,10 @@ from wowperf.domain.comparison.boss_debuffs import (
     BossTarget,
     BossWindow,
     Withheld,
-    boss_debuffs,
     boss_windows_of,
     encounter_share,
 )
+from wowperf.domain.comparison.key_debuffs import boss_debuffs
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.debuffs import DebuffEvent, DebuffLog
 from wowperf.domain.model import EnemyNpc, Pull

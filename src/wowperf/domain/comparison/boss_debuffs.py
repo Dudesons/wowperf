@@ -8,11 +8,22 @@ from itertools import combinations
 
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace_boss import NpcActor, find_bosses, named_after
-from wowperf.domain.debuffs import DebuffLog, PairingTally, pair_debuffs
+from wowperf.domain.debuffs import DebuffInterval, PairingTally
 from wowperf.domain.model import Pull
 
 Span = tuple[int, int]
 """A start and an end, in milliseconds of the log's clock."""
+
+Target = tuple[int, ...]
+"""What two owners' copies of a debuff are compared on: one target within one pull.
+
+A boss is (window index, boss game id). An enemy's life is (game id, instance,
+death ms), which names one life and so one pull. The two shapes differ in
+length, so they never collide.
+"""
+
+Held = dict[tuple[int, int], dict[Target, list[Span]]]
+"""Clipped spans keyed by (owner, ability id), then by the target they sat on."""
 
 SHARED_OVERLAP_TOLERANCE_S = 1.0
 """The most two players' copies of one debuff may overlap, in total, and still be one slot.
@@ -88,9 +99,14 @@ class BossDebuffs(Frozen):
     """(encounter id, ability id, milliseconds it covered that encounter's measured bosses)."""
     names: tuple[tuple[int, str], ...] = ()
     """(ability id, name), for every debuff in `covered`."""
+    reached: tuple[tuple[int, int], ...] = ()
+    """(ability id, measured boss targets it covered for any time at all), for reach."""
     tally: PairingTally = PairingTally()
     shared_with: tuple[tuple[int, tuple[int, ...]], ...] = ()
-    """(ability id, the other players' actor ids), for each debuff `find_shared` finds shared."""
+    """(ability id, the other players' actor ids), for each debuff `find_shared` finds shared.
+
+    It reads every target of the key, bosses and enemy lives alike.
+    """
 
     @property
     def seconds(self) -> float:
@@ -101,6 +117,11 @@ class BossDebuffs(Frozen):
     def deathless(self) -> int:
         """Council bosses of a kill pull that never died inside it, over every window."""
         return sum(window.deathless for window in self.windows)
+
+    @property
+    def targets(self) -> int:
+        """Boss targets of the measured pulls: the Bosses stretch's lives, for reach."""
+        return sum(len(window.targets) for window in self.windows if window.withheld is None)
 
     def covered_seconds(self, ability_id: int, encounter_id: int | None = None) -> float:
         """Seconds this debuff covered the measured bosses, of one encounter or of all."""
@@ -237,23 +258,14 @@ def boss_windows_of(
     return tuple(windows)
 
 
-def boss_debuffs(
-    log: DebuffLog, pulls: Sequence[Pull], owner_id: int, players: frozenset[int]
-) -> BossDebuffs:
-    """What this player, and their pets, kept on each measured boss of this run.
+def held_on_bosses(
+    windows: Sequence[BossWindow], intervals: Sequence[DebuffInterval], owners: frozenset[int]
+) -> Held:
+    """Every owner's spans on each measured boss, each clipped to that boss's span.
 
     The boss is matched by game id, for the same reason the pairing keys on it.
-    Each interval is clipped to the span of the boss it sat on.
-
-    `players` is the actor ids of the run's players, the only owners whose
-    debuffs `find_shared` reads: a pet is already folded into its owner by the
-    pairing, and an enemy is never a player. A reference is read with none, so
-    nothing on its side is ever shared.
     """
-    windows = boss_windows_of(pulls, log.npc_actors, log.deaths)
-    intervals, tally = pair_debuffs(log)
-    owners = players | {owner_id}
-    held: dict[tuple[int, int], dict[tuple[int, int], list[Span]]] = {}
+    held: Held = {}
     for index, window in enumerate(windows):
         for target in window.targets:
             for one in intervals:
@@ -264,14 +276,31 @@ def boss_debuffs(
                 if end_ms > start_ms:
                     by_target = held.setdefault((one.owner_id, one.ability_id), {})
                     by_target.setdefault((index, target.game_id), []).append((start_ms, end_ms))
+    return held
 
+
+def bosses_held_by(
+    windows: tuple[BossWindow, ...],
+    held: Held,
+    owner_id: int,
+    ability_names: tuple[tuple[int, str], ...],
+    tally: PairingTally,
+    shared_with: tuple[tuple[int, tuple[int, ...]], ...],
+) -> BossDebuffs:
+    """One owner's figure on the measured bosses, from every owner's spans on them.
+
+    A player's and their pets' copies on one boss are merged before they are
+    counted, and a boss target reached for any time at all counts once.
+    """
     covered: dict[tuple[int, int], int] = defaultdict(int)
+    reached: dict[int, int] = defaultdict(int)
     for (owner, ability_id), by_target in held.items():
         if owner != owner_id:
             continue
         for (index, _), spans in by_target.items():
-            covered[(windows[index].encounter_id, ability_id)] += _length_ms(_merged(spans))
-    names = dict(log.ability_names)
+            covered[(windows[index].encounter_id, ability_id)] += length_ms(merged_spans(spans))
+            reached[ability_id] += 1
+    names = dict(ability_names)
     return BossDebuffs(
         windows=windows,
         covered=tuple(
@@ -282,25 +311,27 @@ def boss_debuffs(
             (ability_id, names.get(ability_id, f"Unknown ability {ability_id}"))
             for ability_id in sorted({ability_id for _, ability_id in covered})
         ),
+        reached=tuple(sorted(reached.items())),
         tally=tally,
-        shared_with=find_shared(held, owner_id),
+        shared_with=shared_with,
     )
 
 
 def find_shared(
-    held: Mapping[tuple[int, int], Mapping[tuple[int, int], Sequence[Span]]], owner_id: int
+    held: Mapping[tuple[int, int], Mapping[Target, Sequence[Span]]], owner_id: int
 ) -> tuple[tuple[int, tuple[int, ...]], ...]:
     """Each debuff this owner shares one slot of with other players, and who those are.
 
-    `held` is every player's clipped spans on the measured bosses, keyed by
-    (owner, ability id) and then by (window index, boss game id). A debuff is
+    `held` is every player's clipped spans on the measured targets, keyed by
+    (owner, ability id) and then by target: a boss as (window index, boss game
+    id), an enemy's life as (game id, instance, death ms). A debuff is
     exclusive when at least two owners held it and no two of them overlapped by
     more than `SHARED_OVERLAP_TOLERANCE_S` in total, the overlaps measured
-    boss by boss and summed: a teammate's application replaced the one before
-    it. Only owners who held it on a common boss are compared: two copies that
-    each kept to a different boss of a council never met, which shows nothing
-    either way. Several owners holding it is not enough on its own, since
-    copies of a per-caster debuff coexist.
+    target by target and summed: a teammate's application replaced the one
+    before it. Only owners who held it on a common target are compared: two
+    copies that each kept to a different boss of a council, or to a different
+    mob, never met, which shows nothing either way. Several owners holding it
+    is not enough on its own, since copies of a per-caster debuff coexist.
 
     It is shared with this owner when it is exclusive and someone else held it.
     That includes a debuff this owner never held, once two others took it over
@@ -308,9 +339,11 @@ def find_shared(
     exclusivity has no second owner to be measured against, so the debuff is
     not shared and its zero stays unjudged.
     """
-    holders: dict[int, dict[int, dict[tuple[int, int], list[Span]]]] = defaultdict(dict)
+    holders: dict[int, dict[int, dict[Target, list[Span]]]] = defaultdict(dict)
     for (owner, ability_id), by_target in held.items():
-        holders[ability_id][owner] = {target: _merged(spans) for target, spans in by_target.items()}
+        holders[ability_id][owner] = {
+            target: merged_spans(spans) for target, spans in by_target.items()
+        }
 
     shared: list[tuple[int, tuple[int, ...]]] = []
     for ability_id in sorted(holders):
@@ -331,23 +364,24 @@ def find_shared(
 
 
 def _overlap_ms(
-    first: Mapping[tuple[int, int], Sequence[Span]],
-    second: Mapping[tuple[int, int], Sequence[Span]],
+    first: Mapping[Target, Sequence[Span]],
+    second: Mapping[Target, Sequence[Span]],
 ) -> int:
-    """The milliseconds two owners' copies of one debuff sat on the same boss at once.
+    """The milliseconds two owners' copies of one debuff sat on the same target at once.
 
-    Boss by boss, each alone less the two together is exactly the time counted
-    twice; those are summed. Every edge is a whole millisecond, so it is exact.
+    Target by target, each alone less the two together is exactly the time
+    counted twice; those are summed. Every edge is a whole millisecond, so it is
+    exact.
     """
     return sum(
-        _length_ms(first[target])
-        + _length_ms(second[target])
-        - _length_ms(_merged([*first[target], *second[target]]))
+        length_ms(first[target])
+        + length_ms(second[target])
+        - length_ms(merged_spans([*first[target], *second[target]]))
         for target in first.keys() & second.keys()
     )
 
 
-def _merged(spans: Iterable[Span]) -> list[Span]:
+def merged_spans(spans: Iterable[Span]) -> list[Span]:
     """The spans, overlaps joined, in order."""
     merged: list[Span] = []
     for start, end in sorted(spans):
@@ -358,7 +392,8 @@ def _merged(spans: Iterable[Span]) -> list[Span]:
     return merged
 
 
-def _length_ms(spans: Iterable[Span]) -> int:
+def length_ms(spans: Iterable[Span]) -> int:
+    """The milliseconds the spans cover, summed as given."""
     return sum(end - start for start, end in spans)
 
 

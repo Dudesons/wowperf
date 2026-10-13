@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 
 from wowperf.cli import build_repository
-from wowperf.domain.comparison.boss_debuffs import boss_debuffs, boss_windows_of
+from wowperf.domain.comparison.boss_debuffs import boss_windows_of
+from wowperf.domain.comparison.key_debuffs import boss_debuffs, key_debuffs
 from wowperf.domain.debuffs import pair_debuffs
 from wowperf.urls import parse_report_url
 
@@ -68,3 +69,13 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
         and one.start_ms < last_end
     ]
     assert not left_open, f"debuffs left open on a measured boss to the key's end: {left_open}"
+
+    # Every stretch's share stays within the alive time and the lives it was
+    # measured over, for every player of the key.
+    for player in run.players:
+        key = key_debuffs(log, run.pulls, player.actor_id, players)
+        for stretch in (key.overall, key.on_bosses, key.trash, key.adds):
+            for ability_id, ms in stretch.covered:
+                assert ms <= stretch.alive_ms, (ability_id, ms, stretch.alive_ms)
+            for ability_id, count in stretch.reached:
+                assert count <= stretch.lives, (ability_id, count, stretch.lives)

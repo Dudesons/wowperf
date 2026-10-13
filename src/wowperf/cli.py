@@ -50,7 +50,8 @@ from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
-from wowperf.domain.comparison.boss_debuffs import BossDebuffs, boss_debuffs
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs
+from wowperf.domain.comparison.key_debuffs import boss_debuffs
 from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
