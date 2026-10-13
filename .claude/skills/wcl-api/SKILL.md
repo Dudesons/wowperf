@@ -1059,6 +1059,14 @@ The e2e assertion on this pairing fails on the old key only where a pet's applic
 removal carry different instance numbers on a measured boss. `nd6Rz47Gj1ZPxFfm` fight 3 is
 that key: Mirror Image Frostbolt on Galvazzt.
 
+**At a key's final kill the stream can omit one debuff's removal while writing every other's.**
+Measured 2026-10-13 on `LyKXYvVZm192TDr6` fight 9: at Kyrakka's death, about 1607.45 s, the log
+wrote a `removedebuff` for every other debuff on it and none for one Flame Shock, so the pairing
+closed that interval at the stream's end, 1607.72 s, 0.27 s later. The boss figure is unaffected,
+because a boss's measured span stops at its death. The e2e assertion therefore skips an interval
+that began during the span of a boss whose death falls within `SHARED_OVERLAP_TOLERANCE_S` of the
+stream's end, and still fails on one left open on a boss killed earlier in the key.
+
 **What a council's death times cost, as the feature's own reading, 2026-10-08.**
 `WclRunRepository.debuff_log` also reads `EnemyDeaths` for the fight, for the council debuff
 coverage of `docs/plans/2026-10-08-council-debuff-coverage-design.md`. It was the first run with

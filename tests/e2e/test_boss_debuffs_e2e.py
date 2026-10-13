@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from wowperf.cli import build_repository
-from wowperf.domain.comparison.boss_debuffs import boss_windows_of
+from wowperf.domain.comparison.boss_debuffs import SHARED_OVERLAP_TOLERANCE_S, boss_windows_of
 from wowperf.domain.comparison.key_debuffs import boss_debuffs, key_debuffs
 from wowperf.domain.debuffs import pair_debuffs
 from wowperf.urls import parse_report_url
@@ -59,6 +59,17 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
     assert sum(window.deathless for window in windows) == 0
     boss_ids = {target.game_id for window in measured for target in window.targets}
     last_end = max(window.end_ms for window in measured)
+    # A boss that dies within a second of the stream's end is the key's last
+    # kill, and there the log cannot tell a removal it never wrote from one it
+    # wrote late: measured 2026-10-13, it can omit one debuff's removal while
+    # writing every other's. An interval that began during such a boss's own
+    # span is left out; one on a boss killed earlier in the key is not.
+    final_kills = [
+        target
+        for window in measured
+        for target in window.targets
+        if target.end_ms >= log.end_ms - SHARED_OVERLAP_TOLERANCE_S * 1000
+    ]
     names = dict(log.ability_names)
     intervals, _ = pair_debuffs(log)
     left_open = [
@@ -67,6 +78,11 @@ def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: P
         if one.target_game_id in boss_ids
         and one.end_ms == log.end_ms
         and one.start_ms < last_end
+        and not any(
+            target.game_id == one.target_game_id
+            and target.start_ms <= one.start_ms < target.end_ms
+            for target in final_kills
+        )
     ]
     assert not left_open, f"debuffs left open on a measured boss to the key's end: {left_open}"
 
