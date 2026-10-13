@@ -179,12 +179,15 @@ def test_an_aura_with_no_bands_is_up_for_no_seconds_over_a_whole_fight() -> None
     assert seconds_up_over_the_fight(an_aura(391477, "Coagulopathy")) == 0.0
 
 
-def test_the_dungeon_uptime_sentence_measures_boss_pull_time_at_a_keystone_level() -> None:
-    """The Mythic+ rendering of the sentences `Wording` varies, whole and with numbers.
+def test_the_dungeon_wording_over_a_boss_pull_rule_names_boss_pull_time() -> None:
+    """The comparison's pairwise sentences under `DUNGEON`'s words and a boss-pull rule.
 
-    The raid rendering of the same ones is asserted in `test_parse_axis.py`, and
-    the golden report file holds these byte for byte. The two sides' boss time
-    differs, so neither figure below is reproducible from the other's denominator.
+    A Mythic+ run's buffs are bound to `KEY` and the key clock, not to this
+    pairing; their sentences are pinned by the key-clock tests below. This
+    one holds the sentences `DUNGEON` alone words, whole and with numbers. The
+    raid rendering is asserted in `test_parse_axis.py`. The two sides' boss
+    time differs, so neither figure below is reproducible from the other's
+    denominator.
     """
     ours = a_run(BOSS)
     theirs = a_run(a_pull(0, 0, 80_000, encounter_id=12825), player=a_player("Bríala", 3))
@@ -538,12 +541,13 @@ WORDED_SAMPLE = ParseSample(
 30% each on a Siphon Storm our own side never carries."""
 
 
-def test_the_dungeon_sampled_uptime_sentences_name_boss_pulls_and_a_keystone_level() -> None:
-    """The Mythic+ rendering of the two sampled sentences `Wording` varies.
+def test_the_dungeon_wording_over_a_boss_pull_rule_names_boss_pulls_in_a_sample() -> None:
+    """The two sampled sentences under `DUNGEON`'s words and a boss-pull rule.
 
-    The golden report file does not hold these: its fixture carries no reference
-    run, so no comparison family reaches the page it renders. These assertions
-    are what pins them.
+    A Mythic+ run's buffs are bound to `KEY` and the key clock, whose sampled
+    sentences are pinned by `test_the_key_sampled_uptime_sentences_...` below.
+    The golden report file holds neither: its fixture carries no reference
+    run, so no comparison family reaches the page it renders.
     """
     findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, WORDED_SAMPLE)
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
@@ -1023,6 +1027,149 @@ def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> Non
     [gap] = [finding for finding in findings if finding.id == "compare.uptime.self.0"]
     assert gap.title == (
         "Fixture Ward was up for 50% of Bríala's key time, 10% of Stonewake (actor 7)'s"
+    )
+
+
+KEY_CLOCK_MS = (0, 300_000)
+
+
+def a_key_clock_member(
+    actor_id: int, key_ms: int, coagulopathy_ms: int, siphon_ms: int
+) -> ParseMember:
+    """A reference whose key ran `key_ms`, carrying two auras over its own clock.
+
+    The clocks differ from each other and from `KEY_CLOCK_MS`, so no figure read
+    back below could have come from the wrong denominator and still matched.
+    """
+    return a_worded_member(actor_id, 100_000, coagulopathy_ms, siphon_ms).model_copy(
+        update={"fight_ms": (0, key_ms)}
+    )
+
+
+KEY_CLOCK_SAMPLE = ParseSample(
+    members=(
+        a_key_clock_member(31, 200_000, 160_000, 60_000),
+        a_key_clock_member(32, 250_000, 175_000, 75_000),
+        a_key_clock_member(33, 400_000, 300_000, 120_000),
+    )
+)
+"""Three keys at 80%, 70% and 75% of their own clock on Coagulopathy, and 30% each on a
+Siphon Storm our own side never carries."""
+
+KEY_CLOCK_AURAS = PlayerAuras(
+    actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 60_000)),)
+)
+"""Coagulopathy up for 60s of our 300s key: 20%."""
+
+
+def test_the_key_sampled_uptime_sentences_name_the_key_clock_and_walking_between_pulls() -> None:
+    """The Mythic+ rendering of the sampled sentences, bound the way `service.compare` binds them.
+
+    Every buff finding of a real key reads these words, so the walking caveat
+    that the key clock's decision accepts reaches the reader here, in the
+    finding's own detail, as well as in the page's caption.
+    """
+    findings = compare_uptime_sample(
+        OUR_RUN.pulls, fight_seconds(KEY_CLOCK_MS), KEY_CLOCK_AURAS, OUR_NAME, KEY_CLOCK_SAMPLE,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=KEY_CLOCK_MS, over=fight_seconds_of,
+    )
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    unjudged = next(f for f in findings if f.id == "compare.uptime.unjudged")
+
+    assert gap.title == (
+        f"Coagulopathy was up a median 75% of key time across 3 top parses; 20% for {OUR_NAME}"
+    )
+    assert gap.detail == (
+        "Both figures are the share of the key's clock the aura was present, which is "
+        "comparable even though the fights ran for different lengths. Key time runs from the "
+        "key's start to its end with the walking between pulls included, so a buff only up "
+        "in combat reads lower the more of the key was spent between pulls, and a reference "
+        "that walked less reads higher whatever either player did. A different keystone "
+        "level still changes what fits, so read a narrow gap as noise. This compares by "
+        "exact ability, so a gap can still mean a different item of the same kind — but the "
+        "gap is stated over several top parses, not one player's build, so a single trinket "
+        "this player happens not to own no longer explains it away."
+    )
+    assert gap.evidence == (
+        "ability 391477",
+        "ours over 300s of the key",
+        "range 70% to 80% across 3 top parses",
+        "0 of 3 references had no aura data",
+    )
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "20% of key time"),
+        ("Reference median", "75% of key time"),
+        ("Observed range", "70% to 80%"),
+        ("Sample", "3 top parses"),
+    ]
+
+    assert unjudged.title == f"1 aura the sample carried is not judged for {OUR_NAME}"
+    assert unjudged.detail == (
+        "Each of these was present over enough of the sample's key time to compare, and "
+        "absent from ours. It is named rather than measured: the aura table cannot say "
+        "whose buff a row was, so a zero here may be a button this player never pressed or "
+        "one a teammate never gave them, and the log does not separate the two. Check "
+        "whether the build produces it before reading anything into it."
+    )
+    assert unjudged.evidence == (
+        "Siphon Storm",
+        "carried by at least 3 top parses each",
+        "absent from our own key",
+    )
+
+
+def test_the_key_pairwise_uptime_sentences_name_the_key_clock_and_walking_between_pulls() -> None:
+    theirs = a_key_clock_member(41, 200_000, 160_000, 60_000)
+
+    findings = compare_uptime(
+        OUR_RUN.pulls, fight_seconds(KEY_CLOCK_MS), KEY_CLOCK_AURAS, OUR_NAME, theirs,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=KEY_CLOCK_MS, over=fight_seconds_of,
+    )
+    [gap] = [finding for finding in findings if finding.id == "compare.uptime.self.0"]
+
+    assert gap.detail == (
+        "Both figures are the share of the key's clock the aura was present, which is "
+        "comparable even though the two fights ran for different lengths. Key time runs from "
+        "the key's start to its end with the walking between pulls included, so a buff only "
+        "up in combat reads lower the more of the key was spent between pulls, and a "
+        "reference that walked less reads higher whatever either player did. A different "
+        "keystone level still changes what fits, so read a narrow gap as noise. This "
+        "compares by exact ability, though, so a gap can also mean a different item of the "
+        "same kind, or gear this player does not own — not that nothing was used at all."
+    )
+    assert gap.evidence == (
+        "ability 391477",
+        "ours over 300s of the key",
+        "theirs over 200s of the key",
+    )
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "20% of key time"),
+        ("Reference", "80% of key time"),
+        ("Sample", "1 reference run"),
+    ]
+
+
+def test_the_key_unavailable_sentence_names_a_key_clock() -> None:
+    """A side with no clock has no key time, and the finding says which clock was missing."""
+    theirs = a_key_clock_member(42, 200_000, 160_000, 60_000)
+
+    [finding] = compare_uptime(
+        OUR_RUN.pulls, fight_seconds(None), KEY_CLOCK_AURAS, OUR_NAME, theirs,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=None, over=fight_seconds_of,
+    )
+
+    assert finding.id == "compare.uptime.unavailable"
+    assert finding.confidence is Confidence.MEASURED
+    assert finding.detail == (
+        "An uptime comparison needs a key clock on both sides and aura data for both "
+        "players. One of those is missing, so no uptime numbers are reported rather than "
+        "numbers from an unlike sample."
+    )
+    assert finding.evidence == (
+        "our key time 0s",
+        "their key time 200s",
+        "our aura data present",
+        "their aura data present",
     )
 
 

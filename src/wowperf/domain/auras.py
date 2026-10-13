@@ -38,9 +38,9 @@ class PlayerAuras(Frozen):
     argument narrows the enemy-debuff table to one caster, so a per-player
     figure for what a player kept up on enemies cannot come from the aura table
     (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
-    caster"). It is rebuilt from the `Debuffs` event stream instead, for bosses,
-    in `comparison/boss_debuffs.py` (same skill, "The debuff event stream does
-    name the caster").
+    caster"). It is rebuilt from the `Debuffs` event stream instead, for every enemy of
+    a key, in `comparison/key_debuffs.py` (same skill, "The debuff event stream
+    does name the caster").
     """
 
     actor_id: int

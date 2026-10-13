@@ -626,8 +626,9 @@ class ComparisonTable(Frozen):
     figures: bool = True
     # Whether the Verdict column is drawn. The reach table judges nothing.
     judged: bool = True
-    # Extra column headings after Verdict: on the uptime tables, Overall, Range
-    # and Sample, then a stretch or a boss each. Empty for every other table,
+    # Extra column headings after Verdict, or after Ability where no Verdict
+    # column is drawn: on the uptime tables, Overall, Range and Sample, then a
+    # stretch or a boss each. Empty for every other table,
     # which then renders exactly as it always has.
     cell_headings: tuple[str, ...] = ()
     rows: tuple[ComparisonRow, ...] = ()

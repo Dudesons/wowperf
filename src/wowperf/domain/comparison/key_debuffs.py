@@ -73,9 +73,11 @@ def combined(*covers: StretchCover) -> StretchCover:
 class KeyDebuffs(Frozen):
     """One player's debuffs over every enemy of one key, stretch by stretch.
 
-    `bosses` is the boss figure, built by the boss rule and unmoved by anything
-    that died beside a boss. `trash` holds every life whose death fell in a
-    trash pull, and `adds` every other life whose death fell in a boss pull.
+    `bosses` is the boss figure, built by the boss rule: its covered time, reach
+    and seconds are unmoved by anything that died beside a boss, though its
+    `shared_with` reads the trash and add lives too. `trash` holds every life
+    whose death fell in a trash pull, and `adds` every other life whose death
+    fell in a boss pull.
     Overall is the three summed, and it is the stretch the verdict reads.
     """
 
@@ -205,8 +207,8 @@ def boss_debuffs(
 
     Kept as its own reading because every boss test, and the boss end-to-end
     test, read the boss figure through it: they pin the very path the
-    comparison runs, so nothing that died beside a boss can move its figure
-    unnoticed.
+    comparison runs, so nothing that died beside a boss can move its covered
+    time, reach or seconds unnoticed.
     """
     return key_debuffs(log, pulls, owner_id, players).bosses
 

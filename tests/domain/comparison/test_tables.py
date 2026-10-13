@@ -806,3 +806,25 @@ def test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell() -> None:
     # 50s of a 250s key, and none of the 200s outside the boss pull.
     assert row.uptime.ours == 0.2
     assert row.without_bosses == StretchCell(ours=0.0, their_median=1.0)
+
+
+def test_two_boss_pulls_that_overlap_count_their_overlap_once_in_the_bosses_cell() -> None:
+    """Two boss pulls that are not one listing repeated, but overlap: 0s to 100s
+    and 50s to 150s. The aura is up for the whole 150s they cover between them.
+    The seconds it is up in merge once, so the seconds they are measured against
+    must too: summed as given they are 200s, and the aura would read 75% of
+    them, a gap against references that held it throughout, which nobody had."""
+    first = a_pull_of(0, (9,), 100.0, boss=True)
+    second = first.model_copy(
+        update={"index": 1, "pull_id": 2, "start_ms": 50_000, "end_ms": 150_000}
+    )
+    ours = a_loaded((OURS,), (first, second))
+    sample = ParseSample(
+        members=tuple(a_two_pull_aura_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+    our_auras = PlayerAuras(actor_id=OURS.actor_id, on_self=(an_aura(150_000),))
+
+    measures = comparison_measures(ours, only_ours(sample, our_auras=our_auras))[OUR_SLUG]
+
+    [row] = measures.auras
+    assert row.bosses == StretchCell(ours=1.0, their_median=1.0)

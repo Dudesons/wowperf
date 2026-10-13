@@ -4,7 +4,7 @@
 from collections.abc import Sequence
 
 from wowperf.domain.auras import PlayerAuras, uptime_seconds_in
-from wowperf.domain.comparison.boss_debuffs import Span, Withheld
+from wowperf.domain.comparison.boss_debuffs import Span, Withheld, length_ms, merged_spans
 from wowperf.domain.comparison.debuff_uptime import debuff_table
 from wowperf.domain.comparison.key_debuffs import KeyDebuffs
 from wowperf.domain.comparison.loadout import loadouts_of, stat_measures
@@ -299,11 +299,12 @@ def _beside(
 def _share_in(auras: PlayerAuras, ability_id: int, windows: tuple[Span, ...]) -> float | None:
     """This aura's share of these windows, or None when they hold no time at all.
 
-    The denominator sums the windows as given. Neither caller's windows overlap:
-    `without_boss_pulls` walks past every boss pull, and `boss_windows` lists a
-    boss pull Warcraft Logs lists twice once, so no second is counted twice.
+    The denominator is the time the windows cover, an overlap counted once, as
+    `uptime_seconds_in` counts it in the numerator. `boss_windows` lists a boss
+    pull Warcraft Logs lists twice once, but two distinct boss pulls may still
+    overlap, and summing them as given would count their overlap twice.
     """
-    seconds = sum(end - start for start, end in windows) / 1000
+    seconds = length_ms(merged_spans(windows)) / 1000
     if seconds <= 0:
         return None
     aura = next((one for one in auras.on_self if one.ability_id == ability_id), None)
