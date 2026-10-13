@@ -33,6 +33,9 @@ has to be rebuilt from events rather than read from a pre-built table.
   never an appearance, so the span's start would be inferred. Trash is the planned second step,
   defined as enemy coverage: debuff-seconds summed over every enemy, divided by
   enemy-alive-seconds summed. It is not designed here.
+  *Amended 2026-10-13:* trash is measured, as coverage over every enemy's life and reach across
+  them, by `docs/plans/2026-10-13-key-uptime-coverage-design.md`. That design supersedes this one
+  wherever a section here says trash is out or the figure is boss-only.
 - **Per-pull figures.** They arrive with trash.
 - **Raid.** The measure carries over unchanged, with the whole fight as the boss window. It is
   left out so that one path is proven live before a second is paid for. A cold
@@ -72,6 +75,10 @@ on boss pulls".
   `compare.uptime.boss.unjudged` and `compare.uptime.boss.unavailable`. Each carries the
   player-slug suffix `service.py` already appends, and each is routed to the player card through
   `report/players.py`'s `COMPARISON_PREFIXES`.
+  *Amended 2026-10-13:* the ids are now `compare.uptime.debuff.{rank}`,
+  `compare.uptime.debuff.unjudged` and `compare.uptime.debuff.unavailable`, judging Overall
+  coverage. The table is "Debuff coverage", beside "Debuff reach"
+  (`docs/plans/2026-10-13-key-uptime-coverage-design.md` §4).
 
 *Amended 2026-10-08:* a debuff one teammate's application replaces is marked **shared**, not
 judged. The first live run's only gap finding was false. It was measured on the cached key

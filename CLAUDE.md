@@ -375,10 +375,11 @@ Pulls align by the enemy types they contain, and a comparison is withheld rather
 printed when the reference sits more than one keystone level away, or when fewer than half
 the pulls match. The families are the route, the tempo, the cast spells, the talents, the
 buff uptime, and the confounds that would make any of the others misleading. Uptime covers
-buffs everywhere and debuffs on Mythic+ bosses. The enemy-debuff *table* cannot be
+buffs over the whole key clock and debuffs on every enemy of a Mythic+ key, as coverage of
+their alive time and reach across them. The enemy-debuff *table* cannot be
 scoped to one caster (measured 2026-09-05), but the `Debuffs` event stream names each
-application's caster (measured 2026-10-07), and the boss figure is rebuilt from it. Both are
-recorded in `.claude/skills/wcl-api/SKILL.md`. Trash and raid pulls are not measured
+application's caster (measured 2026-10-07), and the figure is rebuilt from it. Both are
+recorded in `.claude/skills/wcl-api/SKILL.md`. Raid pulls are not measured
 yet; `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` §2 says why.
 
 The report is a frozen view model and a pure builder under `src/wowperf/domain/report/`,

@@ -499,14 +499,14 @@ Comparison families:
 | Axis | Families |
 | --- | --- |
 | Speed (group) | route, tempo, confounds |
-| Parse (per player) | cast spells, trash spells, talents, buff uptime, debuff uptime on bosses, enchants, tier, stats, consumable buffs, potions |
+| Parse (per player) | cast spells, trash spells, talents, buff uptime, debuff coverage and reach, enchants, tier, stats, consumable buffs, potions |
 | Raid only | mechanics, rank, damage total, targets |
 
-Uptime covers buffs everywhere and debuffs on Mythic+ bosses. Warcraft Logs offers no way to
-scope the enemy-debuff table to one caster (measured 2026-09-05), but its `Debuffs` event stream
-names each application's caster (measured 2026-10-07), so what a player kept up *on enemies* is
-rebuilt from that stream for bosses. Both are recorded in `wcl-api`. Trash and raid
-pulls, and any pull with no boss found, are not measured yet.
+Uptime covers buffs over the whole key clock and debuffs on every enemy of a Mythic+ key. Warcraft
+Logs offers no way to scope the enemy-debuff table to one caster (measured 2026-09-05), but its
+`Debuffs` event stream names each application's caster (measured 2026-10-07), so what a player
+kept up *on enemies* is rebuilt from that stream, as coverage of their alive time and reach
+across them. Both are recorded in `wcl-api`. Raid pulls are not measured yet.
 
 On a raid wipe, six families are withheld in **one sentence** rather than six separate silences.
 

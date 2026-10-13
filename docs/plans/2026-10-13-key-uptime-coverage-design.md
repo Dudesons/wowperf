@@ -1,6 +1,6 @@
 # Uptime over the whole key: buffs, and debuff coverage and reach on every enemy
 
-**Status:** approved design, 2026-10-13. Not yet planned or built.
+**Status:** approved design, 2026-10-13; planned in `docs/plans/2026-10-13-key-uptime-coverage-plan.md`.
 **Area:** the Mythic+ uptime families. It builds on the boss debuff figure of
 `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` and its council extension
 `docs/plans/2026-10-08-council-debuff-coverage-design.md`. It supersedes both wherever they say
@@ -123,6 +123,16 @@ length went from 10 to 11 on ours, and from 85 to 93 on the references. Both sid
 7. **Thresholds** are reused, never redefined: `MIN_UPTIME_FRACTION`, `UPTIME_GAP_FRACTION`,
    `MIN_SAMPLE_FOR_AGGREGATE`, `MAX_AURAS_REPORTED`.
 
+*Amended 2026-10-13, while planning:* five points the section left open were decided in the plan.
+- A measured boss's game id is never cut into lives. Otherwise every wiped boss would read as an
+  enemy with no death, and every boss would count twice.
+- The enemies of a boss pull with no boss found count as adds, the unfound boss among them.
+- A death belongs to the last pull starting at or before it, as the council's death rule reads it.
+- A death row the log writes twice at one millisecond is one death.
+- The lives are built in `comparison/enemy_lives.py`, and coverage and reach in
+  `comparison/key_debuffs.py`. The boss figure is built by the same helpers as before, and every
+  boss test reads it through `key_debuffs.boss_debuffs`, a thin reading of `key_debuffs`.
+
 ### 3.3 Buffs
 
 - **Overall:** the share of the key clock, the fight's start to its end, that the buff was up.
@@ -156,15 +166,15 @@ fight where Warcraft Logs lists a boss pull twice, with one encounter, start and
 Sample, Without bosses and Bosses. Overall and the two stretches each read "ours / the median";
 Range and Sample are Overall's. The caption states the walking consequence of decision 2.
 
-| Buff | Verdict | Overall | Range | Sample | Without bosses | Bosses |
+| Ability | Verdict | Overall | Range | Sample | Without bosses | Bosses |
 | --- | --- | --- | --- | --- | --- | --- |
 
 **Debuff coverage** (judged), then **Debuff reach** (descriptive), one row per debuff in each:
 
-| Debuff | Verdict | Overall | Range | Sample | Trash | Bosses | per-boss cells as today |
+| Ability | Verdict | Overall | Range | Sample | Trash | Bosses | per-boss cells as today |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 
-| Debuff | Overall | Range | Sample | Trash | Bosses |
+| Ability | Overall | Range | Sample | Trash | Bosses |
 | --- | --- | --- | --- | --- | --- |
 
 The reach table has no per-boss columns: a boss is one target, so its reach is 100% or 0%, which the
@@ -202,6 +212,17 @@ for the boss column; a key with no measurable trash life reads "no trash measure
 - **Confidence stays as it is:** gaps and unjudged are `derived`, unavailable is `measured`.
 - **The findings file** carries, per table, the Overall, Trash and Bosses figures, coverage and reach,
   ours and the median, plus `unmeasured_no_death` and `undebuffed_deaths`.
+
+*Amended 2026-10-13, while planning:*
+- The warning states each clause only when its own count is above zero.
+- In the findings file, `comparison_tables.<slug>.boss_debuffs` becomes `.debuffs`, and each
+  `auras` entry nests its judged figure under `uptime`, beside `without_bosses` and `bosses`.
+  Each debuff row's `reach` carries `overall_fractions`, the references' Overall reaches behind
+  its median.
+- The page heads the first column of every comparison table "Ability", these three included, so
+  the example tables above head it so too. The template draws one shared heading and only loops.
+- An empty buff Without bosses cell reads "nothing outside boss pulls", not "no trash measured":
+  that stretch is the key less its boss pulls, walking included, so it is not trash alone.
 
 ## 5. Components
 

@@ -61,6 +61,11 @@ RwlRwlRwlRwl decided each of these on 2026-10-08.
 - **Confidence stays `derived`.** One part is inferred: a council boss's time starts at the pull's
   start, because the log records a death but never an appearance. This is stated, not hidden.
 
+*Amended 2026-10-13:* the council's figure is unchanged, and it is now one boss column of "Debuff
+coverage" and part of its Bosses column. The row's verdict reads Overall coverage over every enemy
+of the key, by `docs/plans/2026-10-13-key-uptime-coverage-design.md`. The shared rule compares two
+players on a common target, which is now a boss within one pull or one enemy's life.
+
 ## 4. Components and data flow
 
 1. **Death times (adapter).** `WclRunRepository.debuff_log` also reads `EnemyDeaths` for the same
