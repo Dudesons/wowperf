@@ -322,6 +322,181 @@ first-row start the spike measured.
 An estimate, not a measurement: about 0 points more per run, since every stream read is already
 fetched for the boss figure. The live run records the real figure.
 
+*Amended 2026-10-13, live:* `analyze` ran on both keys twice. The first round had its references
+cold. It found the two gaps that §4's two "after the live run" amendments close. The second round
+ran warm, after those amendments were built.
+
+**The keys.**
+- `LyKXYvVZm192TDr6` fight 9, `--all-players`: a Blood Death Knight, an Arms Warrior, a Windwalker
+  Monk, a Restoration Shaman and a Subtlety Rogue.
+- `nd6Rz47Gj1ZPxFfm` fight 3: an Arcane Mage.
+
+**States reached.** The second round's counts, Ruby Life Pools / Temple of Sethraliss.
+
+| State | Ruby Life Pools | Temple of Sethraliss |
+| --- | --- | --- |
+| Buff verdict `level` | 159 | 34 |
+| Buff verdict `below` | 4 | 0 |
+| Buff verdict `unjudged` | 27 | 3 |
+| Buff Without bosses measured | 190 | 37 |
+| Buff Bosses measured | 189 | 37 |
+| Buff Bosses "too few references" | 1 | 0 |
+| Debuff verdict `level` | 20 | 1 |
+| Debuff verdict `unjudged` | 2 | 0 |
+| Debuff shared | 2 | 0 |
+| Debuff verdict `bosses_only` | 1 | 1 |
+| Coverage Trash measured | 25 | 2 |
+| Coverage Bosses measured | 22 | 2 |
+| Coverage Bosses "no reference applied it" | 3 | 0 |
+| Coverage per boss measured | 66 | 6 |
+| Coverage per boss "no reference applied it" | 9 | 0 |
+| Coverage per boss "no boss found" | 0 | 2 |
+| Reach Overall measured | 25 | 2 |
+| Reach Trash measured | 25 | 2 |
+| Reach Bosses measured | 22 | 2 |
+| Reach Bosses "no reference applied it" | 3 | 0 |
+
+- **Findings.**
+  - Four buff gaps, all `derived`. They are the first `below` verdicts seen live:
+    - on the Blood Death Knight, Sanguine Ground, Death and Decay and Blood-Soaked Ground, each 56%
+      against 73%;
+    - on the Subtlety Rogue, Momentum of Despair, 52% against 83%.
+  - Five and one buff `unjudged`, and two and none debuff `unjudged`.
+- **The `bosses_only` rows** are the two this design's amendment kept:
+  - Touch of the Magi on the Arcane Mage: 16.0% against 16.4% on bosses, 4.5% against 4.1%
+    Overall.
+  - Soul Fang Venom on the Restoration Shaman: 0% against 23.2% on bosses. The player did not carry
+    it.
+- **"No reference applied it"** is read by the Blood Death Knight's three slows that bosses are
+  immune to: two Heart Strike debuffs and Grip of the Dead. In the first round, the same cells read
+  "too few references".
+- **The warning.**
+  - Ruby Life Pools: 1 enemy with no death and 11 undebuffed deaths, the same for every player.
+  - Temple of Sethraliss: 22 and 1.
+  - Together that is 23 and 12, against the spike's 29 and 10. The spike counted trash only and
+    opened a life at the first row of any kind.
+
+**States that never occurred, and why.**
+- **The debuff verdict `below`, and so the debuff gap finding.** `below` needs the median at least
+  `UPTIME_GAP_FRACTION`, 15 points, above ours. The widest judged shortfall was Grip of the Dead's
+  9.5 points.
+- **`unavailable`, in both families.** Every reference returned aura and debuff data. Every gap
+  finding's evidence reads 0 of 5 references without aura data, and every compared player drew a
+  debuff table.
+- **"No trash measured".** Ours held 133 and 135 trash lives, and every surveyed reference 116 to 146.
+- **"No reference measured it".** The one boss no side can find is Avatar of Sethraliss. It reads
+  "no boss found" on our side first, and our reason takes the cell.
+- **"Nothing outside boss pulls".** A key always walks between its pulls.
+- **"Too few references" on a debuff cell.** It occurred in the first round. Every case was a
+  stretch where all five references sat at zero, which now reads "no reference applied it". It still
+  occurs on one buff Bosses cell.
+
+**Coverage and reach.**
+- **The four judged debuffs whose Overall gap is widest**, ours against the median:
+
+  | Debuff | Player | Coverage | Reach |
+  | --- | --- | --- | --- |
+  | Insidious Chill | Blood Death Knight | 46.9% against 32.2% | 41.1% against 29.4% |
+  | Grip of the Dead | Blood Death Knight | 40.6% against 50.0% | 73.5% against 86.2% |
+  | Deep Wounds | Arms Warrior | 44.9% against 35.8% | 63.8% against 59.1% |
+  | Heart Strike | Blood Death Knight | 35.1% against 28.2% | 58.9% against 66.8% |
+
+- **The references' Overall medians on the judged rows:**
+  - coverage ran from 10.0% to 95.0%, with a median of 24.0%;
+  - reach ran from 11.0% to 93.1%, with a median of 56.4%;
+  - none reached 99%.
+- **Even the widest-spread debuff stops short of every enemy.** Blood Plague, which a tank spreads to
+  everything, sits about 5 points below full coverage and 7 below full reach.
+
+**The survey of the cache, offline.**
+- **Lives.** 27 fights hold both streams:
+  - 3,532 trash lives and 1,827 add lives;
+  - 145 undebuffed deaths, 2.7% of them, against §3.1's 2.7 to 3.7%;
+  - 177 lives with no death, left out;
+  - no coverage or reach above 100%.
+- **The route check.** 380 keystone fights were routed.
+  - The cache held 969 on 2026-10-08. Expired references have been purged since.
+  - 8 boss pulls listed twice, in 7 fights, were each kept once: 27 listed boss pulls became 19
+    windows.
+  - The buff and debuff boss windows agreed on every fight.
+- **Two changes to the plan's survey were needed to reach that.**
+  - A report without a cached actor list is routed too. A window's span does not depend on the
+    actors.
+  - A fight `build_run` refuses is routed on its pulls alone.
+- **The buff Bosses figure on a duplicated pull stays unproven live.** Every cached boss pull listed
+  twice sits on an unfinished key, which `analyze` refuses because it carries no `keystoneTime`. No
+  `AuraTable` response covers one, and none was bought.
+- **Pairing.** Of 160,581 paired intervals, 1,699 outlive a death of their own copy. 10 of those reach
+  a later death of it.
+
+**End to end.**
+- **`test_uptime_e2e` passed.**
+- **`test_boss_debuffs_e2e` failed in the first round.**
+  - The Restoration Shaman's Flame Shock on Kyrakka, the key's last boss, was left open to the key's
+    end.
+  - At Kyrakka's death the log removed every other debuff on it but wrote no removal for that one,
+    0.27 s before the stream ended.
+  - The figure was unaffected, since the boss's span stops at its death.
+  - The test now excuses an interval on a boss that died within 1.0 s of the stream's end, and it
+    passed in the second round. The wcl-api skill records the oddity.
+- **`tests/e2e/test_compare_e2e.py` was not run.** It is a known gap: the rewrite of it made while
+  building this design shipped without a live run. RwlRwlRwlRwl decided to skip it on 2026-10-13.
+
+**Cost.**
+- `analyze nd6Rz47Gj1ZPxFfm --fight 3`, cold, spent 98.15 points:
+
+  | Operation | Calls | Points |
+  | --- | --- | --- |
+  | `Fights` | 7 | 14.07 |
+  | `EnemyDebuffs` | 14 | 14.00 |
+  | `Talents` | 5 | 10.25 |
+  | `PlayerDetails` | 5 | 10.00 |
+  | `Casts` | 8 | 8.00 |
+  | `Abilities` | 7 | 7.00 |
+  | `Deaths` | 5 | 5.77 |
+  | `EnemyCasts` | 5 | 5.04 |
+  | `Actors` | 5 | 5.00 |
+  | `AuraTable` | 5 | 5.00 |
+  | `EnemyDeaths` | 5 | 5.00 |
+  | `Interrupts` | 5 | 5.00 |
+  | `CharacterRankings` | 1 | 1.01 |
+  | `FightRankings` | 1 | 1.01 |
+  | `Affixes` | 1 | 1.00 |
+  | `RateLimit` | 2 | 1.00 |
+
+- `analyze LyKXYvVZm192TDr6 --fight 9 --all-players`, cold, spent 337.48:
+
+  | Operation | Calls | Points |
+  | --- | --- | --- |
+  | `EnemyDebuffs` | 76 | 80.12 |
+  | `Fights` | 21 | 42.21 |
+  | `Talents` | 20 | 41.00 |
+  | `PlayerDetails` | 20 | 40.00 |
+  | `AuraTable` | 25 | 28.90 |
+  | `Abilities` | 21 | 21.00 |
+  | `Casts` | 21 | 21.00 |
+  | `EnemyDeaths` | 20 | 20.89 |
+  | `Actors` | 20 | 20.00 |
+  | `Deaths` | 5 | 5.30 |
+  | `CharacterRankings` | 5 | 5.05 |
+  | `EnemyCasts` | 5 | 5.00 |
+  | `Interrupts` | 5 | 5.00 |
+  | `FightRankings` | 1 | 1.01 |
+  | `RateLimit` | 2 | 1.00 |
+
+- **Warm, each command spent 1.00**, all of it on `RateLimit`. The first round's two end-to-end tests
+  spent about 29 points.
+- **No operation was new.** `EnemyDebuffs` (1.00 and 1.05 a call), `EnemyDeaths` (1.00 and 1.04) and
+  `Actors` (1.00) sit inside the ranges the wcl-api skill records. The skill's cost paragraphs are
+  left alone.
+- **One reading moved, outside the three this checks.** `AuraTable` cost 1.16 a call on the first
+  key, against 1.00 on 2026-10-08.
+- **So the feature's cost is 0 points**, as §8 estimated.
+
+**Observed, not changed here.** The Blood Death Knight's Death and Decay fills three of the five buff
+gap slots under three names with identical figures. That behaviour predates this design, and became
+visible once `below` occurred live. It is left to a separate task.
+
 ## 9. Documentation, when it ships
 
 - **This design**, with a live amendment.
