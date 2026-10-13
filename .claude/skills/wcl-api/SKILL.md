@@ -549,6 +549,16 @@ Segmentation hangs off `dungeonPulls: [ReportDungeonPull]`, each with `startTime
 `endTime`, `encounterID` (0 means trash), `enemyNPCs[].gameID`, and `x`/`y` giving the map
 position of the first mob damaged.
 
+**A pull can be listed twice, and only on an unfinished key** (measured offline 2026-10-13 over
+the local cache). 21 entries of `dungeonPulls` repeat the entry just before them, with the same
+`encounterID`, `startTime`, `endTime` and `enemyNPCs`: 8 boss pulls and 13 trash pulls. All 21
+sit on keystone fights without `kill` (19 of 213 such fights); none of 178 completed keys and no
+raid fight carries one, and no near-duplicate or overlapping copy appears. `select_keystone_fight`
+refuses a fight without `kill`, so neither our run nor a reference ever loads one, and no
+analyser sees a copy today. The boss windows of buff and debuff uptime still drop one through
+`boss_debuffs.boss_pulls_listed_once`; any other consumer would double-count it, so a completed
+key with a copy is the case to re-measure first.
+
 `npcCountMap` maps NPC IDs to the enemy-forces count each kill awards. Joined against deaths and
 divided by `countRequired`, it yields per-pull trash percentage without any external data source,
 and this project reads those deaths from the API rather than from a raw combat log it never
