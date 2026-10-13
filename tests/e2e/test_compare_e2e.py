@@ -270,15 +270,15 @@ def test_a_real_run_measures_more_than_it_reports(tmp_path: Path) -> None:
     # findings asserts just as hard as eight, because it claims the table found
     # no shortfall either.
     gaps = [f for f in findings if f.id.startswith("compare.uptime.self.")]
-    below = [m for m in measures.auras if m.verdict is Verdict.BELOW]
+    below = [row for row in measures.auras if row.uptime.verdict is Verdict.BELOW]
     assert len(gaps) == min(len(below), MAX_AURAS_REPORTED)
 
-    by_aura = {m.ability_id: m for m in measures.auras}
+    by_aura = {row.uptime.ability_id: row.uptime for row in measures.auras}
     for finding in gaps:
         assert finding.ability_id is not None
         aura = by_aura[finding.ability_id]
         assert finding.ability_name == aura.name
-        assert fact_value(finding, "Ours") == f"{aura.ours:.0%} of boss time"
+        assert fact_value(finding, "Ours") == f"{aura.ours:.0%} of key time"
         assert fact_value(finding, "Reference median") == (
-            f"{aura.their_median:.0%} of boss time"
+            f"{aura.their_median:.0%} of key time"
         )

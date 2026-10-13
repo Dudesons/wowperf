@@ -114,13 +114,14 @@ OUR_RUN = Run(
     players=(SUBJECT,),
     pulls=OUR_PULLS,
     owner_name="emberkin",
+    fight_ms=(0, 1_320_000),
 )
 OURS = LoadedRun(run=OUR_RUN, casts=OUR_CASTS)
 
-# Our own boss pull (OUR_BOSS) spans 1_200_000ms to 1_320_000ms, 120s. 6s of the
-# aura kept up is a 5% fraction -- low enough for every top parse below (80%) to
-# clear UPTIME_GAP_FRACTION against it, and still above zero so the "we never had
-# it at all" carve-out does not swallow the gap.
+# Buffs are judged over the key clock, 0 to 1_320_000ms here, so 6s of the aura
+# kept up is under 1% of it -- low enough for every top parse below (80%) to clear
+# UPTIME_GAP_FRACTION against it, and still above zero so the "we never had it at
+# all" carve-out does not swallow the gap.
 OUR_AURAS = PlayerAuras(
     actor_id=SUBJECT.actor_id,
     on_self=(
@@ -259,7 +260,8 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
                          item_level=400),),
         pulls=(_pull(0, 99, seconds=120.0, boss=True),),
     )
-    # This run's boss pull spans 0ms to 120_000ms; 96s of the aura is 80% of it.
+    # This run's key and its one boss pull both span 0ms to 120_000ms; 96s of the
+    # aura is 80% of either.
     auras = PlayerAuras(
         actor_id=actor_id,
         on_self=(
@@ -282,6 +284,7 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
         auras=auras,
         debuffs=_boss_debuffs(0, 120.0, 0.80),
         pulls=theirs.pulls,
+        fight_ms=(0, 120_000),
     )
 
 

@@ -90,6 +90,11 @@ def a_loaded(
             players=players,
             pulls=pulls,
             owner_name="emberkin",
+            fight_ms=(
+                (min(pull.start_ms for pull in pulls), max(pull.end_ms for pull in pulls))
+                if pulls
+                else None
+            ),
         ),
         casts=casts,
     )
@@ -155,6 +160,7 @@ def a_parse_member(auras: PlayerAuras | None = None) -> ParseMember:
         casts=theirs.casts,
         auras=auras,
         pulls=theirs.run.pulls,
+        fight_ms=theirs.run.fight_ms,
     )
 
 
@@ -181,9 +187,9 @@ def only_ours(
     )
 
 
-# OURS's boss pull in our_run() runs 400_000-460_000ms; the parse reference's runs
-# 0-60_000ms. Both are 60s, so a 90-point uptime gap on the same ability clears
-# UPTIME_GAP_FRACTION regardless of which side's window backs the fraction.
+# Buffs are judged over each side's key clock: ours runs 0-460_000ms and the
+# parse reference's 0-60_000ms. 3s of Arcane Power against 57s of it is a gap of
+# over 90 points, which clears UPTIME_GAP_FRACTION.
 OUR_AURAS = PlayerAuras(
     actor_id=OURS.actor_id,
     on_self=(

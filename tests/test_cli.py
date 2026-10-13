@@ -2020,11 +2020,10 @@ def build_analyze_transport(
     counterpart's aura fetch to fire at all.
 
     `boss_pull_reports` turns a named report's only dungeon pull from trash
-    (encounter id 0) into a boss pull. `compare_uptime` measures only boss-pull
-    time, so with the fixture's default all-trash pull every run reports zero
-    boss seconds and any uptime comparison degrades to
-    `compare.uptime.unavailable` regardless of aura content — this is what a
-    caller needs to get a genuine, populated uptime finding instead.
+    (encounter id 0) into a boss pull. A comparison that reads boss pulls, such
+    as the boss cast rates, needs one: with the fixture's default all-trash pull
+    every run reports zero boss seconds. Buff uptime is judged over the fight's
+    own key clock, so it reads a populated figure without one.
     `aura_rows_by_code` answers `AuraTable` with real aura rows for the report
     codes named (`{"onSelf": [...]}`, a list of
     `{"guid", "name", "totalUptime", "totalUses", "bands"}` rows, the shape
@@ -3339,33 +3338,31 @@ def test_the_findings_json_mirrors_every_field_a_reference_record_carries(
 
 def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: Path) -> None:
     """The defining feature of this task: two `AuraTable` queries, one per player,
-    feeding a real, populated uptime finding — not the `unavailable` fallback a
-    missing counterpart (or a fixture with no boss-pull time at all) would
-    silently produce instead, satisfying `any(id.startswith("compare.uptime."))`
-    either way and hiding the bug.
+    feeding a real, populated uptime finding -- not the `unavailable` fallback a
+    missing counterpart (or a fixture with no key clock at all) would silently
+    produce instead, satisfying `any(id.startswith("compare.uptime."))` either
+    way and hiding the bug.
 
-    The shared fixture's only pull is trash, so both runs need a boss pull
-    (`boss_pull_reports`) before `compare_uptime` measures any boss-pull time at
-    all; `aura_rows_by_code` then gives both sides the same ability at
-    different uptimes, so the gap actually clears the reporting thresholds in
-    `wowperf.domain.comparison.uptime` — and, since Task 10, our own side must
-    carry the ability at all, or `_gap_findings` now drops it as attributed to
+    Both fights run 1,920s by the shared fixture's own clock, and buffs are
+    judged over it. `aura_rows_by_code` gives both sides the same ability, ours
+    for half the key and theirs for all of it, so the gap clears the reporting
+    thresholds in `wowperf.domain.comparison.uptime` -- and our own side must
+    carry the ability at all, or `_gap_findings` drops it as attributed to
     someone else's kit rather than this player's.
     """
     calls: list[str] = []
     result = run_analyze(
         tmp_path,
         calls=calls,
-        boss_pull_reports=("abc123", PARSE_REFERENCE_CODE),
         aura_rows_by_code={
             "abc123": {
                 "onSelf": [
                     {
                         "guid": 999,
                         "name": "Power Infusion",
-                        "totalUptime": 1000,
+                        "totalUptime": 960000,
                         "totalUses": 1,
-                        "bands": [{"startTime": 1000, "endTime": 2000}],
+                        "bands": [{"startTime": 0, "endTime": 960000}],
                     }
                 ],
             },
@@ -3374,9 +3371,9 @@ def test_a_compared_run_fetches_both_players_auras_and_reports_uptime(tmp_path: 
                     {
                         "guid": 999,
                         "name": "Power Infusion",
-                        "totalUptime": 4000,
+                        "totalUptime": 1920000,
                         "totalUses": 1,
-                        "bands": [{"startTime": 1000, "endTime": 5000}],
+                        "bands": [{"startTime": 0, "endTime": 1920000}],
                     }
                 ],
             },

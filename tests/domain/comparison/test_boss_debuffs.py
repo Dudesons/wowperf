@@ -8,6 +8,7 @@ from wowperf.domain.comparison.boss_debuffs import (
     BossTarget,
     BossWindow,
     Withheld,
+    boss_pulls_listed_once,
     boss_windows_of,
     encounter_share,
 )
@@ -853,6 +854,19 @@ def test_a_duplicate_of_a_pull_is_not_the_next_pull_for_a_trash_pull_either() ->
 
     assert [target.end_ms for target in window.targets] == [40_000, 60_000]
     assert window.deathless == 0
+
+
+def test_a_boss_pull_listed_twice_is_kept_once_at_its_own_position() -> None:
+    # The position is the pull's place in the route, which `boss_windows_of`
+    # reads on from to find the next pull. The same boss pulled again later is
+    # a second pull, not a duplicate.
+    first, twin = a_listed_twice(BOSS_PULL)
+    again = a_pull(3, 100_000, 160_000, encounter_id=2001, name=BOSS_NAME)
+
+    assert boss_pulls_listed_once((TRASH_PULL, first, twin, again)) == (
+        (1, first),
+        (3, again),
+    )
 
 
 def test_a_next_pull_starting_inside_this_one_does_not_hide_a_death_inside_it() -> None:

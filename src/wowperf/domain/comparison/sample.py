@@ -67,9 +67,10 @@ class ParseMember(Frozen):
     reports it.
 
     There is deliberately no `comparability`: nothing on the parse axis is
-    shaped like a duration. Casts are compared as rates per minute of boss time
-    and auras as fractions of it, and both mean the same thing at any keystone
-    level, so the rule that gates `compare.duration` has nothing to gate here.
+    shaped like a duration. Casts are compared as rates per minute of boss time,
+    auras as fractions of the key clock and debuffs as fractions of enemy-alive
+    time, and all three mean the same thing at any keystone level, so the rule
+    that gates `compare.duration` has nothing to gate here.
 
     There is deliberately no `Run` either, and no `ParseRow`: the member holds
     the values it is read for, so that one sample type serves both axes. A raid

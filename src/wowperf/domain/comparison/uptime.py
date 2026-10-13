@@ -1,18 +1,18 @@
 # ABOUTME: Compares one player's buff uptime against a top parse or a sample, by one caller's rule.
-# ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
+# ABOUTME: Fractions of the stretch a rule names, never seconds: two runs last different lengths.
 
 # Buffs only, and the titles here say so. The design's other half — what a player
 # kept up on enemies — cannot come from the aura table: no query argument narrows the
 # enemy-debuff table to one caster, so every row it returns belongs to the whole
 # group (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
-# caster"). It is rebuilt from the event stream instead, for bosses, in
-# `debuff_uptime.py` and `boss_debuffs.py` (same skill, "The debuff event stream does
+# caster"). It is rebuilt from the event stream instead, for every enemy of a key, in
+# `debuff_uptime.py` and `key_debuffs.py` (same skill, "The debuff event stream does
 # name the caster").
 
 from collections.abc import Callable, Sequence
 
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
-from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.comparison.boss_debuffs import Span, Withheld, boss_pulls_listed_once
 from wowperf.domain.comparison.measures import AuraUptime, StretchCell, Verdict
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
@@ -20,7 +20,6 @@ from wowperf.domain.comparison.sample import (
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.spells import boss_pulls
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.comparison.wording import Wording
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
@@ -32,7 +31,7 @@ MIN_UPTIME_FRACTION = 0.10
 """Below this the reference barely carried it either, so there is nothing to argue from."""
 
 UPTIME_GAP_FRACTION = 0.15
-"""How much more of the boss fight they must have it up before it is worth reporting."""
+"""How much more of the measured stretch they must have it up before it is worth reporting."""
 
 
 def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
@@ -40,16 +39,21 @@ def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
 
     Takes the route rather than a `Run`, so that a parse reference — which
     carries its pulls and no run — reaches the same rule our own side does.
+
+    A boss pull Warcraft Logs lists twice is one span, by the rule the debuff
+    figure's `boss_windows_of` reads, so a sum over these spans counts its
+    seconds once, as the merge in `auras.uptime_seconds_in` counts the aura's.
     """
-    return tuple((pull.start_ms, pull.end_ms) for pull in boss_pulls(pulls))
+    return tuple((pull.start_ms, pull.end_ms) for _, pull in boss_pulls_listed_once(pulls))
 
 
-UptimeRule = Callable[[Sequence[Pull]], Callable[[Aura], float]]
-"""How long a side's auras count as up, given that side's own route.
+UptimeRule = Callable[[Sequence[Pull], Span | None], Callable[[Aura], float]]
+"""How long a side's auras count as up, given that side's own route and its fight's clock.
 
 The counterpart of `spells.CastRule`, and one rule for both sides for the same
 reason: a fraction is only comparable when the two numerators were measured the
-same way.
+same way. The clock is the fight's own start and end, None where a side has none
+to give; a rule that does not read it ignores it.
 """
 
 
@@ -58,9 +62,33 @@ def seconds_up_in(windows: tuple[tuple[int, int], ...]) -> Callable[[Aura], floa
     return lambda aura: uptime_seconds_in(aura, windows)
 
 
-def boss_pull_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
-    """The Mythic+ rule bound to one route: uptime inside that route's boss pulls."""
-    return seconds_up_in(boss_windows(pulls))
+def fight_seconds(fight_ms: Span | None) -> float:
+    """Seconds of a fight's own clock, zero for a side that carries none."""
+    return 0.0 if fight_ms is None else (fight_ms[1] - fight_ms[0]) / 1000
+
+
+def key_clock_uptime(pulls: Sequence[Pull], fight_ms: Span | None) -> Callable[[Aura], float]:
+    """The Mythic+ rule: uptime over the whole key clock, from the fight's start to its end.
+
+    The walking between pulls is inside it, so a buff only up in combat reads
+    lower the more of the key was spent between pulls, on either side. `pulls`
+    is accepted and ignored. A side with no clock measures nothing, and its
+    seconds read zero, which the comparison states as unavailable.
+    """
+    return seconds_up_in(() if fight_ms is None else (fight_ms,))
+
+
+def without_boss_pulls(fight_ms: Span, pulls: Sequence[Pull]) -> tuple[Span, ...]:
+    """The key clock less its boss pulls: the trash pulls and the walking between them."""
+    windows: list[Span] = []
+    cursor = fight_ms[0]
+    for start, end in sorted(boss_windows(pulls)):
+        if start > cursor:
+            windows.append((cursor, min(start, fight_ms[1])))
+        cursor = max(cursor, end)
+    if cursor < fight_ms[1]:
+        windows.append((cursor, fight_ms[1]))
+    return tuple((start, end) for start, end in windows if end > start)
 
 
 def seconds_up_over_the_fight(aura: Aura) -> float:
@@ -92,15 +120,27 @@ def seconds_up_over_the_fight(aura: Aura) -> float:
     return uptime_seconds_in(aura, (span,))
 
 
-def whole_fight_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
+def whole_fight_uptime(
+    pulls: Sequence[Pull], fight_ms: Span | None
+) -> Callable[[Aura], float]:
     """The raid rule, which has no route to bind to.
 
-    `pulls` is accepted and ignored, exactly as `spells.whole_fight_casts`
+    `pulls` and `fight_ms` are accepted and ignored, exactly as `spells.whole_fight_casts`
     ignores it, and for the same reason: a raid fight carries no pulls, and the
     Mythic+ rule over an empty route would clip every band to nothing and
     report every aura as never present.
     """
     return seconds_up_over_the_fight
+
+
+def boss_seconds_of(member: ParseMember) -> float:
+    """A reference's boss seconds: its denominator under every rule but the key clock."""
+    return member.boss_seconds
+
+
+def fight_seconds_of(member: ParseMember) -> float:
+    """A reference's key clock in seconds: its denominator under the key clock rule."""
+    return fight_seconds(member.fight_ms)
 
 
 def fractions_of(
@@ -236,9 +276,9 @@ def _gap_findings(
                 # keeps up, and this family cannot tell a proc from a button:
                 # the aura table reports that a buff was present, not who or
                 # what put it there. So the aura is the subject and the two
-                # players are only whose stretch it is measured over -- boss
-                # pulls in a dungeon, the fight itself in a raid, which is what
-                # `words.stretch_time` spells out below.
+                # players are only whose stretch it is measured over -- the
+                # key clock in a dungeon, the fight itself in a raid, which is
+                # what `words.stretch_time` spells out below.
                 title=(
                     f"{name} was up for {their_fraction:.0%} of {their_name}'s "
                     f"{words.stretch_time}, {our_fraction:.0%} of {our_name}'s"
@@ -287,8 +327,10 @@ def compare_uptime(
     *,
     measured: UptimeRule,
     words: Wording,
+    our_fight_ms: Span | None = None,
+    over: Callable[[ParseMember], float] = boss_seconds_of,
 ) -> list[Finding]:
-    """Where an aura was up markedly more of the reference's boss fight than of ours.
+    """Where an aura was up markedly more of the reference's measured stretch than of ours.
 
     `our_name` is the roster's disambiguated spelling of the player being
     compared — never `Player.name`, which two roster members can share, and
@@ -305,9 +347,13 @@ def compare_uptime(
     Our own side arrives as the two values this reads — a route and the seconds
     that route was worth — rather than as a run, so that a raid fight, which has
     no run to give, reaches the same comparison through `whole_fight_uptime`.
+
+    `our_fight_ms` is our fight's own clock and `over` reads a reference's
+    denominator, for a rule that reads the clock. Their defaults read boss
+    seconds, as the raid and every rule before the key clock did.
     """
     their_auras = theirs.auras
-    their_seconds = theirs.boss_seconds
+    their_seconds = over(theirs)
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
         return [
@@ -325,8 +371,8 @@ def compare_uptime(
     # same-typed values, and a swap inside either pair would put one player's
     # figure under the other's name without failing a type check.
     return _gap_findings(
-        fractions_of(our_auras.on_self, measured(our_pulls), our_seconds),
-        fractions_of(their_auras.on_self, measured(theirs.pulls), their_seconds),
+        fractions_of(our_auras.on_self, measured(our_pulls, our_fight_ms), our_seconds),
+        fractions_of(their_auras.on_self, measured(theirs.pulls, theirs.fight_ms), their_seconds),
         our_name=our_name,
         their_name=theirs.character_name,
         our_seconds=our_seconds,
@@ -344,8 +390,10 @@ def compare_uptime_sample(
     *,
     measured: UptimeRule,
     words: Wording,
+    our_fight_ms: Span | None = None,
+    over: Callable[[ParseMember], float] = boss_seconds_of,
 ) -> list[Finding]:
-    """Where an aura was up over markedly more of the sample's boss fights than of ours.
+    """Where an aura was up over markedly more of the sample's measured stretches than of ours.
 
     `our_name` is the roster's disambiguated spelling, for the reason
     `compare_uptime` above gives, and our own side arrives as values rather
@@ -394,17 +442,17 @@ def compare_uptime_sample(
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
             our_pulls, our_seconds, our_auras, our_name, first,
-            measured=measured, words=words,
+            measured=measured, words=words, our_fight_ms=our_fight_ms, over=over,
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
 
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
-    our_fractions = fractions_of(our_auras.on_self, measured(our_pulls), our_seconds)
+    our_fractions = fractions_of(our_auras.on_self, measured(our_pulls, our_fight_ms), our_seconds)
     return _gap_findings_sample(
         our_fractions, eligible, our_name, our_seconds, missing_aura_data, total,
-        measured=measured, words=words,
+        measured=measured, words=words, over=over,
     )
 
 
@@ -494,20 +542,23 @@ def _gap_findings_sample(
     *,
     measured: UptimeRule,
     words: Wording,
+    over: Callable[[ParseMember], float],
 ) -> list[Finding]:
-    """Auras up over markedly more of the sample's boss fights than of ours, by median.
+    """Auras up over markedly more of the sample's measured stretches than of ours, by median.
 
     A member's fraction for an ability only counts as "carried" when it is above zero: a
-    band that never overlaps a boss pull reads the same as never having the aura at all, the
-    same reading `aura_fractions` already gives the pairwise comparison.
+    band that never overlaps the stretch its rule measures reads the same as never having the
+    aura at all, the same reading `aura_fractions` already gives the pairwise comparison.
     """
     names: dict[int, str] = {}
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = member.boss_seconds
+        their_seconds = over(member)
         fractions = (
-            fractions_of(member.auras.on_self, measured(member.pulls), their_seconds)
+            fractions_of(
+                member.auras.on_self, measured(member.pulls, member.fight_ms), their_seconds
+            )
             if their_seconds > 0
             else {}
         )

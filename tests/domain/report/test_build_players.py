@@ -7,6 +7,7 @@ from tests.domain.report.test_build_frame import a_pull, a_run
 from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
+    AuraRow,
     AuraUptime,
     BossCell,
     DebuffRow,
@@ -14,6 +15,7 @@ from wowperf.domain.comparison.measures import (
     PlayerMeasures,
     StatShare,
     Stretch,
+    StretchCell,
     Verdict,
 )
 from wowperf.domain.debuffs import PairingTally
@@ -734,10 +736,14 @@ def test_an_uptime_table_is_sorted_by_our_own_uptime_not_by_the_gap() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(ability_id=2, name="Big gap", ours=0.40, their_median=1.0,
-                           their_fractions=(1.0,), verdict=Verdict.BELOW),
-                AuraUptime(ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
-                           their_fractions=(1.0,), verdict=Verdict.LEVEL),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=2, name="Big gap", ours=0.40, their_median=1.0,
+                    their_fractions=(1.0,), verdict=Verdict.BELOW,
+                )),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=1, name="Small gap", ours=0.95, their_median=1.0,
+                    their_fractions=(1.0,), verdict=Verdict.LEVEL,
+                )),
             ),
             boss_seconds=600.0,
         )
@@ -757,8 +763,10 @@ def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(ability_id=3, name="Bone Shield", ours=0.984,
-                           their_median=1.0, their_fractions=(1.0,), verdict=Verdict.LEVEL),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=3, name="Bone Shield", ours=0.984,
+                    their_median=1.0, their_fractions=(1.0,), verdict=Verdict.LEVEL,
+                )),
             ),
             boss_seconds=600.0,
         )
@@ -771,6 +779,35 @@ def test_an_uptime_row_is_spelled_as_a_percentage() -> None:
     auras = next(t for t in card.comparison_tables if "uptime" in t.heading.lower())
     assert auras.rows[0].ours == "98%"
     assert auras.rows[0].theirs == "100%"
+
+
+def test_an_uptime_rows_range_and_sample_state_its_overall_figure() -> None:
+    """The row's own cells hold other medians and other counts. The spread and
+    the sample beside the verdict are the judged Overall figure's references,
+    two parses here, and neither stretch cell's."""
+    measures = {
+        "stonewake-0": PlayerMeasures(
+            auras=(
+                AuraRow(
+                    uptime=AuraUptime(
+                        ability_id=3, name="Bone Shield", ours=0.5, their_median=0.6,
+                        their_fractions=(0.4, 0.8), verdict=Verdict.LEVEL,
+                    ),
+                    without_bosses=StretchCell(ours=0.1, their_median=0.2),
+                    bosses=StretchCell(ours=0.9, their_median=0.95),
+                ),
+            ),
+            boss_seconds=600.0,
+        )
+    }
+    card = build_players(
+        a_loaded(), (), frozenset({"stonewake-0"}), a_player(), {},
+        Defensives(), ThroughputCooldowns(), measures=measures,
+    )[0]
+
+    [row] = next(t for t in card.comparison_tables if "uptime" in t.heading.lower()).rows
+    assert (row.ours, row.theirs) == ("50%", "60%")
+    assert (row.spread, row.sample) == ("40% to 80%", "2 top parses")
 
 
 def a_card_with_all_three_tables() -> PlayerCard:
@@ -795,9 +832,11 @@ def a_card_with_all_three_tables() -> PlayerCard:
                             verdict=Verdict.ABOVE),
             ),
             auras=(
-                AuraUptime(ability_id=195181, name="Bone Shield", ours=0.62,
-                           their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
-                           verdict=Verdict.BELOW),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=195181, name="Bone Shield", ours=0.62,
+                    their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
+                    verdict=Verdict.BELOW,
+                )),
             ),
             boss_seconds=648.0,
             trash_seconds=950.0,
@@ -874,9 +913,11 @@ def test_an_aura_the_comparison_refused_to_judge_keeps_that_verdict() -> None:
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(ability_id=1459, name="Arcane Intellect", ours=0.0,
-                           their_median=0.97, their_fractions=(0.94, 0.97, 0.99),
-                           verdict=Verdict.UNJUDGED),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=1459, name="Arcane Intellect", ours=0.0,
+                    their_median=0.97, their_fractions=(0.94, 0.97, 0.99),
+                    verdict=Verdict.UNJUDGED,
+                )),
             ),
             boss_seconds=648.0,
         )
@@ -920,8 +961,10 @@ def test_each_verdict_reaches_a_row_as_its_own_word() -> None:
             # player's own -- so the fourth branch is asked of the builder that
             # can really produce it.
             auras=(
-                AuraUptime(ability_id=4, name="Someone's buff", ours=0.0, their_median=0.97,
-                           their_fractions=(0.97,), verdict=Verdict.UNJUDGED),
+                AuraRow(uptime=AuraUptime(
+                    ability_id=4, name="Someone's buff", ours=0.0, their_median=0.97,
+                    their_fractions=(0.97,), verdict=Verdict.UNJUDGED,
+                )),
             ),
             boss_seconds=648.0,
         )
@@ -1032,11 +1075,11 @@ def test_the_debuff_table_follows_the_buff_table_with_a_column_per_boss() -> Non
     measures = {
         "stonewake-0": PlayerMeasures(
             auras=(
-                AuraUptime(
+                AuraRow(uptime=AuraUptime(
                     ability_id=195181, name="Bone Shield", ours=0.62,
                     their_median=0.98, their_fractions=(0.95, 0.98, 0.99),
                     verdict=Verdict.BELOW,
-                ),
+                )),
             ),
             boss_seconds=648.0,
             debuffs=DebuffTable(

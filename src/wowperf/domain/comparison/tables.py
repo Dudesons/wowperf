@@ -3,11 +3,12 @@
 
 from collections.abc import Sequence
 
-from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.auras import PlayerAuras, uptime_seconds_in
+from wowperf.domain.comparison.boss_debuffs import Span, Withheld
 from wowperf.domain.comparison.debuff_uptime import debuff_table
 from wowperf.domain.comparison.key_debuffs import KeyDebuffs
 from wowperf.domain.comparison.loadout import loadouts_of, stat_measures
-from wowperf.domain.comparison.measures import AbilityRate, AuraUptime, PlayerMeasures
+from wowperf.domain.comparison.measures import AbilityRate, AuraRow, PlayerMeasures
 from wowperf.domain.comparison.sample import ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject
 from wowperf.domain.comparison.spells import (
@@ -28,9 +29,13 @@ from wowperf.domain.comparison.trash_spells import (
 from wowperf.domain.comparison.uptime import (
     aura_fractions,
     boss_windows,
+    fight_seconds,
+    measured_or,
+    stretch_cell,
     uptime_measures,
+    without_boss_pulls,
 )
-from wowperf.domain.model import LoadedRun, Player
+from wowperf.domain.model import LoadedRun, Player, Pull
 
 
 def comparison_measures(
@@ -68,10 +73,11 @@ def _for_one(
     """One player's sets of measures, each drawn against the whole sample."""
     boss, boss_time = _boss(ours, our_player, parse)
     trash, trash_time, pack_count = _trash(ours, our_player, parse)
+    auras, key_seconds = _auras(ours, our_auras, parse)
     return PlayerMeasures(
         boss=boss,
         trash=trash,
-        auras=_auras(ours, our_auras, parse),
+        auras=auras,
         # Read straight off the loadouts, with no run in it: a stat share is a
         # fact about gear, not about a stretch of the dungeon, so unlike the
         # three above it needs no denominator and no pull alignment.
@@ -80,6 +86,7 @@ def _for_one(
         boss_seconds=boss_time,
         trash_seconds=trash_time,
         pack_count=pack_count,
+        key_seconds=key_seconds,
     )
 
 
@@ -200,42 +207,54 @@ def _trash(
 
 def _auras(
     ours: LoadedRun, our_auras: PlayerAuras | None, parse: ParseSample
-) -> tuple[AuraUptime, ...]:
-    """Buff uptime against the sample's median, as shares of boss time.
+) -> tuple[tuple[AuraRow, ...], float]:
+    """Buff uptime against the sample's median: judged over the key clock, described beside it.
 
     Buffs only, from this table: no query argument narrows the enemy-debuff
     table to one caster, so what a player kept up on enemies cannot come from
-    it. That figure is rebuilt from the event stream instead, for bosses, and
-    sits beside these in `debuffs` (see `comparison/key_debuffs.py` and
+    it. That figure is rebuilt from the event stream instead, and sits beside
+    these in `debuffs` (see `comparison/key_debuffs.py` and
     `.claude/skills/wcl-api/SKILL.md`, "The debuff event stream does name the
     caster").
+
+    The verdict reads each side's whole key clock, from its fight's start to its
+    end, as `compare_uptime_sample` does for the findings. Without bosses and
+    Bosses describe and never judge. The seconds returned are our own key
+    clock's, and zero beside no rows.
     """
     eligible = parse.aura_eligible
     if not eligible:
         # Not one reference returned aura data, which settles it on the
         # reference side alone: there is nothing for ours to be compared against.
-        return ()
+        return (), 0.0
 
-    our_seconds = boss_seconds(ours.run.pulls)
-    if our_auras is None or our_seconds <= 0 or not parse.can_aggregate(eligible):
+    our_fight = ours.run.fight_ms
+    our_seconds = fight_seconds(our_fight)
+    if (
+        our_auras is None
+        or our_fight is None
+        or our_seconds <= 0
+        or not parse.can_aggregate(eligible)
+    ):
         # Below the floor, or our own side has nothing to compute a fraction
         # from either way. The comparison states a single reference here rather
         # than a statistic, and one reference has no median for a table to hold.
-        return ()
+        return (), 0.0
 
     names: dict[int, str] = {}
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = member.boss_seconds
+        fight = member.fight_ms
+        their_seconds = fight_seconds(fight)
         fractions = (
-            aura_fractions(member.auras.on_self, boss_windows(member.pulls), their_seconds)
-            if their_seconds > 0
+            aura_fractions(member.auras.on_self, (fight,), their_seconds)
+            if fight is not None and their_seconds > 0
             else {}
         )
         qualifying: dict[int, float] = {}
         for ability_id, (name, fraction) in fractions.items():
-            # A band that never overlaps a boss pull reads the same as never
+            # A band that never overlaps the key clock reads the same as never
             # having carried the aura at all, the reading `aura_fractions` already
             # gives the pairwise comparison.
             if fraction <= 0.0:
@@ -244,5 +263,48 @@ def _auras(
             qualifying[ability_id] = fraction
         per_member.append(qualifying)
 
-    our_fractions = aura_fractions(our_auras.on_self, boss_windows(ours.run.pulls), our_seconds)
-    return uptime_measures(our_fractions, per_member, names)
+    our_fractions = aura_fractions(our_auras.on_self, (our_fight,), our_seconds)
+    our_away, our_bosses = _beside(our_fight, ours.run.pulls)
+    rows: list[AuraRow] = []
+    for m in uptime_measures(our_fractions, per_member, names):
+        away: list[float | None] = []
+        on_bosses: list[float | None] = []
+        for member in eligible:
+            assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
+            their_away, their_bosses = _beside(member.fight_ms, member.pulls)
+            away.append(_share_in(member.auras, m.ability_id, their_away))
+            on_bosses.append(_share_in(member.auras, m.ability_id, their_bosses))
+        our_away_share = _share_in(our_auras, m.ability_id, our_away)
+        our_boss_share = _share_in(our_auras, m.ability_id, our_bosses)
+        rows.append(
+            AuraRow(
+                uptime=m,
+                without_bosses=stretch_cell(
+                    measured_or(our_away_share, Withheld.NOTHING_OUTSIDE_BOSSES), away
+                ),
+                bosses=stretch_cell(measured_or(our_boss_share, Withheld.NO_BOSS), on_bosses),
+            )
+        )
+    return tuple(rows), our_seconds
+
+
+def _beside(
+    fight_ms: Span | None, pulls: Sequence[Pull]
+) -> tuple[tuple[Span, ...], tuple[Span, ...]]:
+    """A side's two described stretches: the key clock less its boss pulls, and its boss pulls."""
+    away = without_boss_pulls(fight_ms, pulls) if fight_ms is not None else ()
+    return away, boss_windows(pulls)
+
+
+def _share_in(auras: PlayerAuras, ability_id: int, windows: tuple[Span, ...]) -> float | None:
+    """This aura's share of these windows, or None when they hold no time at all.
+
+    The denominator sums the windows as given. Neither caller's windows overlap:
+    `without_boss_pulls` walks past every boss pull, and `boss_windows` lists a
+    boss pull Warcraft Logs lists twice once, so no second is counted twice.
+    """
+    seconds = sum(end - start for start, end in windows) / 1000
+    if seconds <= 0:
+        return None
+    aura = next((one for one in auras.on_self if one.ability_id == ability_id), None)
+    return 0.0 if aura is None else uptime_seconds_in(aura, windows) / seconds

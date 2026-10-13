@@ -40,13 +40,15 @@ below the second.
 class Withheld(StrEnum):
     """Why a boss, one boss's cell, or one stretch's cell carries no figure.
 
-    The first two are read off our own route: a boss pull may hold no enemy
-    `bosses_of` can name, and a key may hold no trash life to measure. The last
-    two are about the sample beside a figure of ours.
+    The first three are read off our own route: a boss pull may hold no enemy
+    `bosses_of` can name, a key may hold no trash life to measure, and a key
+    clock may hold no time outside its boss pulls. The last two are about the
+    sample beside a figure of ours.
     """
 
     NO_BOSS = "no boss found"
     NO_TRASH = "no trash measured"
+    NOTHING_OUTSIDE_BOSSES = "nothing outside boss pulls"
     NOT_REACHED = "no reference measured this boss"
     TOO_FEW = "too few references"
 
@@ -173,6 +175,30 @@ def bosses_of(
     return BossesFound(game_ids=tuple(flagged), council=len(flagged) > 1)
 
 
+def boss_pulls_listed_once(pulls: Sequence[Pull]) -> tuple[tuple[int, Pull], ...]:
+    """Every boss pull of a route with its position in it, a pull listed twice kept once.
+
+    Warcraft Logs sometimes lists one physical boss pull twice, with the same
+    encounter, start and end (measured 2026-10-08: 10 duplicated boss pulls in 5
+    of 969 cached fights, all wipes). A boss pull that repeats the boss pull
+    before it is dropped, so its seconds and what was up during them are
+    counted once wherever they are summed. The same boss pulled again at
+    another time is another pull. The position is the pull's index in `pulls`,
+    for a caller that reads on from it.
+    """
+    kept: list[tuple[int, Pull]] = []
+    previous: tuple[int, int, int] | None = None
+    for position, pull in enumerate(pulls):
+        if not pull.is_boss:
+            continue
+        listed = (pull.encounter_id, pull.start_ms, pull.end_ms)
+        if listed == previous:
+            continue
+        previous = listed
+        kept.append((position, pull))
+    return tuple(kept)
+
+
 def boss_windows_of(
     pulls: Sequence[Pull],
     npc_actors: tuple[NpcActor, ...],
@@ -195,18 +221,12 @@ def boss_windows_of(
     Warcraft Logs sometimes lists one physical boss pull twice, with the same
     encounter, start and end (measured 2026-10-08: 10 duplicated boss pulls in 5
     of 969 cached fights, all wipes). It is measured once, so its seconds and
-    covered time are not counted twice. A duplicate of a pull, trash or boss, is
+    covered time are not counted twice. `boss_pulls_listed_once` holds that rule,
+    and the buff windows read it too. A duplicate of a pull, trash or boss, is
     never the next pull either, since it starts where this one does.
     """
     windows: list[BossWindow] = []
-    previous: tuple[int, int, int] | None = None
-    for position, pull in enumerate(pulls):
-        if not pull.is_boss:
-            continue
-        listed = (pull.encounter_id, pull.start_ms, pull.end_ms)
-        if listed == previous:
-            continue
-        previous = listed
+    for position, pull in boss_pulls_listed_once(pulls):
         horizon = next(
             (
                 later.start_ms

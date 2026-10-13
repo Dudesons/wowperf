@@ -29,8 +29,13 @@ from wowperf.domain.comparison.spells import (
 )
 from wowperf.domain.comparison.tempo import compare_tempo_sample
 from wowperf.domain.comparison.trash_spells import compare_trash_spells_sample
-from wowperf.domain.comparison.uptime import boss_pull_uptime, compare_uptime_sample
-from wowperf.domain.comparison.wording import DUNGEON
+from wowperf.domain.comparison.uptime import (
+    compare_uptime_sample,
+    fight_seconds,
+    fight_seconds_of,
+    key_clock_uptime,
+)
+from wowperf.domain.comparison.wording import DUNGEON, KEY
 from wowperf.domain.findings import Confidence, Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player
 from wowperf.domain.season import ConsumableBuffs, SlotNames
@@ -136,9 +141,11 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
     their_loadouts = loadouts_of(parse.members)
     # Our own side of the two parse comparisons, as the values they read rather
     # than as a run: this axis is a dungeon, so its route decides which casts
-    # and which milliseconds count, on our side and on every reference's alike.
+    # count, on our side and on every reference's alike, and its fight's own
+    # clock decides which milliseconds a buff is measured over.
     our_pulls = ours.run.pulls
     our_boss_seconds = boss_seconds(our_pulls)
+    our_fight_ms = ours.run.fight_ms
     return [
         *compare_spells_sample(
             our_pulls, our_boss_seconds, ours.casts, subject.player, subject.display_name,
@@ -152,8 +159,9 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
             top,
         ),
         *compare_uptime_sample(
-            our_pulls, our_boss_seconds, subject.our_auras, subject.display_name,
-            parse, measured=boss_pull_uptime, words=DUNGEON,
+            our_pulls, fight_seconds(our_fight_ms), subject.our_auras, subject.display_name,
+            parse, measured=key_clock_uptime, words=KEY, our_fight_ms=our_fight_ms,
+            over=fight_seconds_of,
         ),
         *compare_debuffs_sample(subject.our_debuffs, subject.display_name, parse),
         *compare_enchants(

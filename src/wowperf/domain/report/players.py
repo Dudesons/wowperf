@@ -10,7 +10,7 @@ from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.comparison.boss_debuffs import Withheld
 from wowperf.domain.comparison.measures import (
     AbilityRate,
-    AuraUptime,
+    AuraRow,
     BossCell,
     DebuffRow,
     PlayerMeasures,
@@ -415,8 +415,8 @@ def _stat_rows(measures: Sequence[StatShare]) -> tuple[ComparisonRow, ...]:
     return tuple(rows)
 
 
-def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
-    """Aura uptimes, our own highest first, as shares of boss time not seconds.
+def _aura_rows(rows: Sequence[AuraRow]) -> tuple[ComparisonRow, ...]:
+    """Aura uptimes, our own highest first, as shares not seconds.
 
     The two cast tables lead with the widest gap. This one does not, because it
     is read differently: dozens of rows long, it answers "how much of the fight
@@ -424,11 +424,12 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
     top. Sorting by the gap scattered the figures a reader came for and led
     with whatever the player held *least*.
     """
-    ordered = sorted(measures, key=lambda m: m.ours, reverse=True)
-    rows = []
-    for m in ordered:
+    ordered = sorted(rows, key=lambda row: row.uptime.ours, reverse=True)
+    built = []
+    for row in ordered:
+        m = row.uptime
         low, high = observed_range(m.their_fractions)
-        rows.append(
+        built.append(
             ComparisonRow(
                 ability_id=m.ability_id,
                 name=m.name,
@@ -440,7 +441,7 @@ def _aura_rows(measures: Sequence[AuraUptime]) -> tuple[ComparisonRow, ...]:
                 verdict_label=VERDICT_LABELS[m.verdict],
             )
         )
-    return tuple(rows)
+    return tuple(built)
 
 
 WITHHELD_LABELS = {

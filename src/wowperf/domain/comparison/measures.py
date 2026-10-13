@@ -48,7 +48,7 @@ class AbilityRate(Frozen):
 
 
 class AuraUptime(Frozen):
-    """One aura's share of our boss time against the sample's median share.
+    """One aura's share of the stretch its family judges, against the sample's median share.
 
     Fractions, not seconds: two runs fight the same boss for different long.
     """
@@ -87,6 +87,19 @@ class StretchCell(Frozen):
     ours: float | None = None
     their_median: float | None = None
     withheld: Withheld | None = None
+
+
+class AuraRow(Frozen):
+    """One buff: the figure judged over the whole key clock, and two cells that describe.
+
+    `uptime` is the key clock's figure and carries the verdict. `without_bosses`
+    is the key less its boss pulls and `bosses` the boss pulls; neither carries
+    a verdict.
+    """
+
+    uptime: AuraUptime
+    without_bosses: StretchCell = StretchCell()
+    bosses: StretchCell = StretchCell()
 
 
 class DebuffReach(Frozen):
@@ -180,9 +193,12 @@ class PlayerMeasures(Frozen):
 
     boss: tuple[AbilityRate, ...] = ()
     trash: tuple[AbilityRate, ...] = ()
-    auras: tuple[AuraUptime, ...] = ()
+    auras: tuple[AuraRow, ...] = ()
     stats: tuple[StatShare, ...] = ()
     debuffs: DebuffTable = DebuffTable()
     boss_seconds: float = 0.0
     trash_seconds: float = 0.0
     pack_count: int = 0
+    key_seconds: float = 0.0
+    """Our key clock in seconds, from the fight's start to its end: the buff table's
+    denominator."""
