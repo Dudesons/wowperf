@@ -5477,3 +5477,27 @@ def test_one_failed_aura_fetch_does_not_cost_the_others(tmp_path: Path) -> None:
     with_auras = load_encounter_with_auras(runs, "ABC", 1, loaded)
 
     assert {one.actor_id for one in with_auras.auras} == {1, 3}
+
+
+def test_both_sides_of_a_parse_comparison_carry_their_fights_own_clock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Buffs are judged over each side's key clock. A reference's clock is read
+    from the report the cache already holds, so no query is added for it, and
+    the shared fixture's fight runs 0 to 1,920,000ms on both sides."""
+    captured: dict[str, Any] = {}
+
+    def fake_compare(**kwargs: Any) -> list[Any]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("wowperf.cli.compare", fake_compare)
+
+    result = run_analyze(tmp_path, "--player", "Emberkin")
+
+    assert result.exit_code == 0, result.output
+    assert captured["ours"].run.fight_ms == (0, 1_920_000)
+    [subject] = captured["subjects"]
+    assert subject.parse is not None
+    assert subject.parse.members
+    assert {member.fight_ms for member in subject.parse.members} == {(0, 1_920_000)}

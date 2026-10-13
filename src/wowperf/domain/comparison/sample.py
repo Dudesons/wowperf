@@ -102,6 +102,10 @@ class ParseMember(Frozen):
     # `compare.uptime.debuff.unavailable` states rather than reading as "applied
     # nothing".
     debuffs: KeyDebuffs | None = None
+    # This reference's fight from its start to its end: the key clock its buffs
+    # are judged over. Read from the report the cache already holds, so it costs
+    # nothing. None for a raid reference, whose buffs another rule reads.
+    fight_ms: tuple[int, int] | None = None
 
 
 class _Sample(Frozen):

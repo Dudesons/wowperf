@@ -96,6 +96,8 @@ def test_a_parse_member_carries_no_run() -> None:
     else of its run; it is empty for a raid reference, which has no route.
     `debuffs` is here because the debuff comparison reads a reference's own debuffs on
     every enemy of its own key, and nothing else of its event streams.
+    `fight_ms` is here because buffs are judged over a reference's own key clock,
+    which no route can supply.
     """
     assert "run" not in ParseMember.model_fields
     assert set(ParseMember.model_fields) == {
@@ -109,4 +111,5 @@ def test_a_parse_member_carries_no_run() -> None:
         "ability_icons",
         "pulls",
         "debuffs",
+        "fight_ms",
     }

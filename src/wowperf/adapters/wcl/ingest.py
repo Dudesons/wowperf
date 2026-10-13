@@ -224,7 +224,16 @@ def build_run(
         npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
         players=_build_players(fight, actors, talents or {}, loadouts or {}),
         pulls=_build_pulls(fight),
+        fight_ms=_fight_clock(fight),
     )
+
+
+def _fight_clock(fight: dict[str, Any]) -> tuple[int, int] | None:
+    """The fight's own start and end, or None when either of them is missing."""
+    start, end = fight.get("startTime"), fight.get("endTime")
+    if start is None or end is None:
+        return None
+    return (int(start), int(end))
 
 
 def build_raid_roster(

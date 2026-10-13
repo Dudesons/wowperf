@@ -137,6 +137,11 @@ class Run(Frozen):
     npc_counts: tuple[tuple[int, int], ...]
     players: tuple[Player, ...]
     pulls: tuple[Pull, ...]
+    # The fight's own start and end: the key clock, from the timer's start to the
+    # key's end with the walking between pulls included. Not `window_ms`, which
+    # runs from the first pull to the last. None when the fight carried no clock,
+    # which only a hand-built fixture does.
+    fight_ms: tuple[int, int] | None = None
 
     @property
     def npc_count_map(self) -> Mapping[int, int]:

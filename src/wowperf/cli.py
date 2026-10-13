@@ -709,6 +709,7 @@ def _samples(
                     casts=theirs.casts,
                     ability_icons=theirs.ability_icons,
                     pulls=theirs.run.pulls,
+                    fight_ms=theirs.run.fight_ms,
                 )
             )
         parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
