@@ -8,7 +8,7 @@ from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage
-from wowperf.domain.debuffs import DebuffEvent, DebuffLog
+from wowperf.domain.debuffs import DebuffEvent, DebuffLog, EnemyDeathRow
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
@@ -491,6 +491,8 @@ def build_debuff_log(
     """The enemy-debuff stream and the report's actors, as one log a player can be read off.
 
     A death on an actor with no game id is skipped, because it cannot be a boss the figure measures.
+    `death_rows` keeps every death by actor and copy, game id or not: which of them is an enemy
+    is the domain's to decide.
     """
     game_ids = {actor["id"]: actor["gameID"] for actor in actors if actor.get("gameID") is not None}
     return DebuffLog(
@@ -530,6 +532,16 @@ def build_debuff_log(
             for event in death_events
             if event.get("type") == "death" and event.get("targetID") in game_ids
         ),
+        death_rows=tuple(
+            EnemyDeathRow(
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                timestamp_ms=event["timestamp"],
+            )
+            for event in death_events
+            if event.get("type") == "death"
+        ),
+        player_ids=tuple(actor["id"] for actor in actors if actor.get("type") == "Player"),
     )
 
 

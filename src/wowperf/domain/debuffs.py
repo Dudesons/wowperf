@@ -21,6 +21,18 @@ class DebuffEvent(Frozen):
     ability_id: int
 
 
+class EnemyDeathRow(Frozen):
+    """One `death` row of the enemy-deaths stream: which copy of which actor died, and when.
+
+    An absent instance is the actor's only copy, read as 0
+    (`docs/plans/2026-10-13-key-uptime-coverage-design.md` §3.1).
+    """
+
+    target_id: int
+    target_instance: int = 0
+    timestamp_ms: int
+
+
 class DebuffLog(Frozen):
     """One run's enemy-debuff stream, with what reading it per player needs.
 
@@ -38,6 +50,10 @@ class DebuffLog(Frozen):
     ability_names: tuple[tuple[int, str], ...] = ()
     deaths: tuple[tuple[int, int], ...] = ()
     """(game id, timestamp ms) of each enemy death in the fight, for a council boss's span."""
+    death_rows: tuple[EnemyDeathRow, ...] = ()
+    """Every enemy death of the fight by actor and copy, for cutting each enemy into lives."""
+    player_ids: tuple[int, ...] = ()
+    """The report's players, so that a pet a player owns is never read as an enemy."""
     end_ms: int
 
 

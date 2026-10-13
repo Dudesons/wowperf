@@ -5,6 +5,7 @@ from typing import Any
 
 from wowperf.adapters.wcl.ingest import build_debuff_log
 from wowperf.domain.comparison.pace_boss import NpcActor
+from wowperf.domain.debuffs import EnemyDeathRow
 
 ACTORS: list[dict[str, Any]] = [
     {"id": 171, "gameID": 0, "type": "Player", "subType": "DeathKnight", "name": "Stonewake"},
@@ -82,3 +83,32 @@ def test_enemy_deaths_ride_along_by_game_id_and_unknown_actors_are_skipped() -> 
 
 def test_no_death_events_mean_no_deaths() -> None:
     assert a_log().deaths == ()
+
+
+def test_each_enemy_death_keeps_its_actor_and_its_copy() -> None:
+    log = build_debuff_log(
+        EVENTS,
+        ACTORS,
+        {55078: "Blood Plague"},
+        9000,
+        death_events=[
+            {"type": "death", "targetID": 261, "targetInstance": 3, "timestamp": 7000},
+            {"type": "death", "targetID": 279, "timestamp": 8000},
+            {"type": "death", "targetID": 12345, "timestamp": 8100},
+            {"type": "resurrect", "targetID": 279, "timestamp": 8200},
+        ],
+    )
+
+    # Every death row, even one on an actor with no game id: the domain decides
+    # what an enemy is, and an absent copy number is the actor's only copy.
+    assert log.death_rows == (
+        EnemyDeathRow(target_id=261, target_instance=3, timestamp_ms=7000),
+        EnemyDeathRow(target_id=279, target_instance=0, timestamp_ms=8000),
+        EnemyDeathRow(target_id=12345, target_instance=0, timestamp_ms=8100),
+    )
+    # The council rule's own reading is unchanged beside it.
+    assert log.deaths == ((189893, 7000), (999, 8000))
+
+
+def test_the_reports_players_ride_along() -> None:
+    assert a_log().player_ids == (171,)
