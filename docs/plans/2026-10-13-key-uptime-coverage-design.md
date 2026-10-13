@@ -86,6 +86,15 @@ stream.
 
 The spike's full record is not committed; this section is its measured content.
 
+*Amended 2026-10-13, while planning:* the life start was re-measured on the cache as §3.2 states
+it: the first `applydebuff` row on a copy after its previous death, against the spike's first row
+of any kind. On our two full fights, over 269 died trash lives, the first application came a
+median 0.0 s, p90 0.0 s and at most 3.2 s after the first row, and summed alive time moved by
+-0.2%. On the references, over 3156 lives, the same figures were 0.0 s, 0.0 s and 5.2 s, and alive
+time moved by -0.2%. 0 lives on ours and 0 on the references moved by more than 10 s. Lives of zero
+length went from 10 to 11 on ours, and from 85 to 93 on the references. Both sides stay within the
+2% of alive time this plan set as material, so the rule stands.
+
 ### 3.2 Debuffs: coverage and reach
 
 1. **Enemy lives.** Every hostile NPC instance of the key is keyed by (game id, instance). A
