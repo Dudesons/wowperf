@@ -1,12 +1,18 @@
-# ABOUTME: Turns whatever a user pastes into a report code and an optional fight ID.
-# ABOUTME: Accepts a bare code or a full report URL, fight given as a query string or fragment.
+# ABOUTME: Turns whatever a user pastes into a report code and fight ID, or a character.
+# ABOUTME: Accepts a bare code or a report URL, and a character page URL for the character command.
 
 import re
-from urllib.parse import parse_qs, urlsplit
+from typing import NamedTuple
+from urllib.parse import parse_qs, unquote, urlsplit
 
 REPORT_PATTERN = re.compile(
     r"^(?:https?://[^/]*warcraftlogs\.com/reports/)?(?P<code>[A-Za-z0-9]{6,})"
     r"(?P<rest>[/?#].*)?$"
+)
+
+CHARACTER_PATTERN = re.compile(
+    r"^https?://[^/]*warcraftlogs\.com/character/"
+    r"(?P<region>[A-Za-z]+)/(?P<realm>[^/?#]+)/(?P<name>[^/?#]+)/?(?P<rest>[?#].*)?$"
 )
 
 
@@ -32,3 +38,39 @@ def parse_report_url(value: str) -> tuple[str, int | None]:
     if fight is None:
         fight = _fight_param(rest.query)
     return match.group("code"), fight
+
+
+class CharacterRef(NamedTuple):
+    """One character's address on Warcraft Logs, in the form the API's `character` field takes.
+
+    `realm` is the server slug the page's address carries (`argent-dawn`), which
+    is what `serverSlug` wants. `name` is percent-decoded, so an accented name
+    reaches the API as itself.
+    """
+
+    region: str
+    realm: str
+    name: str
+    zone_id: int | None
+
+
+def parse_character_url(value: str) -> CharacterRef:
+    match = CHARACTER_PATTERN.match(value.strip())
+    if match is None:
+        raise ValueError(
+            f"{value!r} is not a Warcraft Logs character URL "
+            "(https://www.warcraftlogs.com/character/<region>/<realm>/<name>)"
+        )
+    rest = urlsplit(match.group("rest") or "")
+    zones = parse_qs(rest.query).get("zone")
+    zone_id = None
+    if zones:
+        if not zones[-1].isdigit():
+            raise ValueError(f"zone={zones[-1]!r} is not a zone id")
+        zone_id = int(zones[-1])
+    return CharacterRef(
+        region=match.group("region").lower(),
+        realm=unquote(match.group("realm")).lower(),
+        name=unquote(match.group("name")),
+        zone_id=zone_id,
+    )

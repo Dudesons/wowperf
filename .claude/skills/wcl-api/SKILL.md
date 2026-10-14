@@ -69,6 +69,15 @@ covers it otherwise.
 | `phases` | `Report` | 2026-09-16 | yes |
 | `separatesWipes` | `EncounterPhases` | 2026-09-16 | yes |
 | `killerID` | `Deaths event` | 2026-09-16 | no |
+| `characterData` | `Query` | 2026-10-14 | yes |
+| `serverSlug` | `characterData.character` argument | 2026-10-14 | yes |
+| `serverRegion` | `characterData.character` argument | 2026-10-14 | yes |
+| `hidden` | `Character` | 2026-10-14 | yes |
+| `encounterRankings` | `Character` | 2026-10-14 | yes |
+| `zoneRankings` | `Character` | 2026-10-14 | no |
+| `recentReports` | `Character` | 2026-10-14 | no |
+| `difficulties` | `Zone` | 2026-10-14 | yes |
+| `encounters` | `Zone` | 2026-10-14 | yes |
 
 `tests/test_skills.py` holds this table against `src/wowperf/adapters/wcl/queries.py`. When it
 rejects a row, correct the row rather than the test: the table is a claim about the code, and the
@@ -1612,6 +1621,60 @@ one id with no roster entry, not identified. No series had a non-integer id othe
 **Cost:** the reference-fight lookup with `friendlyPlayers`, `friendlySpecs` and the player actors
 folded in priced at 2.00 points, against 1.00 without them; the roster read on its own, as a
 separate query, also priced at 2.00. Folding it in costs one point per reference.
+
+## A character's ranked runs (verified 2026-10-14)
+
+Verified 2026-10-14 by live query through `WclClient`, for 5 points, against one character's
+public rankings on the EU region and against a name that does not exist on the same realm. The
+character is deliberately not named here.
+
+- **Zone 55 is a Mythic+ zone with exactly one difficulty.** `worldData { zone(id: 55) { id name
+  difficulties { id name } encounters { id name } } }` answered `"Mythic+ Season 2"`, difficulties
+  `[{"id": 10, "name": "Dungeon"}]`, and eight encounters (the dungeons, each with an id and a
+  name). A raid zone lists other ids: zone 8 listed `[5 Mythic, 4 Heroic, 3 Normal, 1 LFR]` and
+  zone 5 added `2 Flex`. Zone 3 ("Challenge Modes") also lists `[{"id": 10, "name": "Dungeon"}]`,
+  so difficulty 10 identifies a dungeon zone, not the current Mythic+ season: the zone id still
+  comes from the caller. `worldData { zones { id name difficulties { id name } } }` lists them.
+- **`characterData.character(name:, serverSlug:, serverRegion:)` answers `id` and `hidden`, and
+  `encounterRankings(encounterID:)` is a JSON scalar taking one encounter**, so one alias per
+  dungeon (`e<ID>: encounterRankings(encounterID: <ID>)`) asks for all of them in one query. Its
+  top-level keys were `averagePerformance`, `bestAmount`, `difficulty`, `fastestKill`,
+  `medianPerformance`, `metric`, `partition`, `ranks`, `totalKills` and `zone`. Warcraft Logs
+  describes `encounterRankings` as "not considered frozen, and it can change without notice", so
+  `build_ranked_runs` refuses a changed shape rather than reading it as an empty history: it
+  raises when a dungeon's alias is absent from the character, when a block has no `ranks` key, and
+  when a rank has no `report` key. A `null` block, or a `null` `ranks`, is a dungeon with no runs.
+- **`ranks` lists every ranked run, not only the best one**: 16 ranks for one dungeon, several per
+  keystone level. A rank carries `affixes`, `amount`, `bestSpec`, `bracketData`, `class`,
+  `duration`, `faction`, `guild`, `historicalPercent`, `historicalTotalParses`, `leaderboard`,
+  `lockedIn`, `medal`, `rankPercent`, `rankTotalParses`, `report`, `score`, `spec`, `startTime`,
+  `todayPercent` and `todayTotalParses`.
+- **`bracketData` on these ranks is the keystone level itself** (10 through 18 seen). On the
+  `characterRankings` leaderboard the `bracket` argument is the level minus one, and the rows carry
+  the level (`rankings.bracket_for`, confirmed 2026-09-04); the character query passes no bracket. `spec`
+  is the specialisation's name, and `startTime` is the run's own start in epoch milliseconds.
+- **`report` is `{code, fightID, startTime}` for a public log**, with a 16-character `code`, an
+  integer `fightID` and an epoch-millisecond `startTime`. **A rank with no public log carries
+  `report.code == ""`, `report.fightID == null` and `report.startTime == null`** (3 of the 16
+  ranks), while the rank's own `startTime` is still present. A reader must therefore take the start
+  time from the rank, never from its `report`.
+- **A name that does not exist on the realm answers `character: null`**, not an error.
+- **`zoneRankings` and `recentReports` are not used.** The probe never queried either, so the
+  table lists them as unqueried, not as verified: probe one before putting it in `queries.py`.
+- **Both queries go to the one-day cache tier**, because a character's list changes with every key
+  they play: `WclCharacterRepository` caches through whatever cache it is handed, and the
+  command hands it that tier.
+- **The selection queries cost 9.01 points for an eight-dungeon zone** (measured 2026-10-14, cold):
+  the `Zone` query 1.00 point, one call, and the `CharacterRuns` query 8.01 points, one call, for
+  eight aliased `encounterRankings`. Two zones were measured, both with eight dungeons, and each
+  read 1.00 plus 8.01. Whether the cost scales with a zone's dungeon count is unconfirmed: no
+  zone with another count was itemised. A selection-only pre-check over every zone that lists
+  difficulty 10 was run as well, but its cost per zone was not itemised and is not a measurement.
+- **A whole `character` run is dominated by the per-run analyses, not the selection**: 1090.57
+  points for eight dungeons read cold (2026-10-14), about 136 a dungeon, of which 9.01 was selection.
+  An archived report fails its first query with "This report has been archived. Subscribing users can
+  access the report content via the /user API endpoint." (a `WclError`, not a rate-limit); five
+  such loads in a row cost 38.27 points in all, selection included.
 
 ## Terms of service
 

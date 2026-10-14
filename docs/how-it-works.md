@@ -227,7 +227,7 @@ This is the sharpest idea in the repository, and it deserves its own heading.
 - It parses the field table out of `wcl-api` and asserts that every field marked *yes* appears in
   `queries.py`, **and** that every field marked *no* is absent. Both directions.
 - It diffs every `--flag` the workflow tells you to type against each command's real `--help`, for
-  `analyze`, `raid` and `progression` separately.
+  `analyze`, `raid`, `progression`, `night` and `character` separately.
 - It iterates `Finding.model_fields` and asserts each one is enumerated in `mplus-analysis`.
 
 That last test means **adding a field to a Pydantic model fails CI until the prose documents it**.
@@ -345,7 +345,7 @@ absent, instead of guarded at runtime.
 
 ```
 src/wowperf/
-├── cli.py                 driving adapter: wires ports, 4 commands (1,728 lines)
+├── cli.py                 driving adapter: wires ports, 7 commands
 ├── urls.py                a pasted URL or bare code -> (report_code, fight_id)
 ├── domain/
 │   ├── base.py            Frozen — pydantic BaseModel, frozen=True. Everything below inherits it.
@@ -362,6 +362,7 @@ src/wowperf/
 │   ├── slug.py            player_slug — the one place a slug is minted
 │   ├── ports.py           the boundary: 4 Protocols
 │   ├── analysis/          16 modules — the findings
+│   ├── character/         selection and cross-run patterns for `character`
 │   ├── comparison/        22 modules — the two axes
 │   └── report/            19 modules — view model + pure builder
 └── adapters/
@@ -411,7 +412,7 @@ sequenceDiagram
     CLI->>U: quota sentence + cost breakdown (stderr)
 ```
 
-The other three commands are shorter variations:
+The other commands are shorter variations:
 
 | Command | Loads | Analyses | Writes |
 | --- | --- | --- | --- |
@@ -419,9 +420,40 @@ The other three commands are shorter variations:
 | `analyze` | `LoadedRun` + auras | 16 analysers + 2 comparison axes | findings JSON + 6-tab HTML |
 | `raid` | `LoadedEncounter` | the subset a boss fight supports | findings JSON + 7-tab HTML |
 | `progression` | `LoadedProgression` | one analyser | progression JSON only |
+| `character` | one `LoadedRun` per chosen dungeon | `analyze`'s own analysis for each run, then the cross-run counts | `character.json` + 4-tab HTML, plus each run's findings JSON and HTML |
 
 `raid` drops time decomposition, trash efficiency and the activity half of the player analysis — a
 boss fight has no keystone timer, no enemy-forces requirement, and no pull windows.
+
+### `character`, in short
+
+`wowperf character <character-url>` is the one command that starts from a person rather than a
+report. Two small queries list the character's ranked runs per dungeon of a Mythic+ zone
+(`adapters/wcl/character_runs.py`, with the run list cached for a day);
+`domain/character/selection.py`, pure, keeps one run per dungeon for one specialisation — the most
+recent at the character's highest key there or one level below, timed or not — and lists every
+dungeon it left out with its reason. Each chosen run then goes through `analyse_run`, the same
+function `analyze` uses with the one player, and writes its own findings file and page. The
+analysis never leaves `cli.py` for this command; what is new is what reads its results.
+
+`domain/character/patterns.py` counts across the runs and `ledger.py` tallies the four group
+comparisons every run carries. Three kinds of statement come out. Two are findings, each badged:
+repeated judgements (a judgement the per-run analysis made in at least half the loaded runs, and in
+at least three, under the least certain badge among them) and consistent directions (a measure on
+one side of the top parses in every run that judged it, `derived`, from six runs, with two chosen
+floors). The third is a ledger that counts, carries no badge and gives no verdict. Nothing is
+summed. The count reads an allowlist, and `trash.overage` is the one analysis-side family on it.
+Deaths and what each cost, missed interrupts, defensives, healing consumables, throughput cooldowns,
+the heaviest moments of damage, and talents are not counted. The defensive, healing-consumable and
+throughput-cooldown findings carry no player slug a count can read, and talents use one id for
+every outcome, matched or differed. The combat-potion and consumable-buff comparisons are counted.
+Each run's own page still states everything left out.
+
+`domain/report/character_build.py` is the pure builder and `character.html.j2` the template that
+loops and decides nothing. The page is four tabs — Summary, Group, Runs, Provenance — and the Runs
+tab links each run's own report in the same directory, the one new link kind the page invariants
+admit. Everything is written under `<out>/<region>-<realm>-<name>/`. A run that fails for its own
+reason is listed on the page; a spent budget or a disk error stops the command and deletes nothing.
 
 ## The domain model
 

@@ -29,6 +29,8 @@ fetched on demand.
 Out of scope, deferred to later slices: raid encounters, wipe analysis, healer-specific
 analysis, personal run history, and raw combat-log ingestion.
 
+*Amended 2026-10-14:* personal run history is taken up by `2026-10-14-character-command-design.md`.
+
 ### Where this sits
 
 The project decomposes into four slices. Each gets its own design, plan, and implementation

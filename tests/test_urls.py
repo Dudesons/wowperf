@@ -1,9 +1,9 @@
-# ABOUTME: Behaviour tests for turning what a user pastes into a report code and fight ID.
+# ABOUTME: Behaviour tests for reading a pasted report code and fight ID, or a character page.
 # ABOUTME: People paste full URLs with fragments, so bare codes and fragments both parse.
 
 import pytest
 
-from wowperf.urls import parse_report_url
+from wowperf.urls import CharacterRef, parse_character_url, parse_report_url
 
 
 def test_a_bare_report_code_parses_with_no_fight() -> None:
@@ -55,3 +55,30 @@ def test_a_fragment_overrides_a_query_string() -> None:
     assert parse_report_url(
         "https://www.warcraftlogs.com/reports/aBc123XyZ?fight=5#fight=9"
     ) == ("aBc123XyZ", 9)
+
+
+def test_a_character_url_yields_its_region_realm_name_and_zone() -> None:
+    assert parse_character_url(
+        "https://www.warcraftlogs.com/character/eu/argent-dawn/Emberkin?zone=55"
+    ) == CharacterRef(region="eu", realm="argent-dawn", name="Emberkin", zone_id=55)
+
+
+def test_a_character_url_without_a_zone_has_none() -> None:
+    assert parse_character_url(
+        "https://www.warcraftlogs.com/character/us/stormrage/Stonewake"
+    ).zone_id is None
+
+
+def test_an_accented_name_is_decoded() -> None:
+    ref = parse_character_url("https://www.warcraftlogs.com/character/EU/Archimonde/Br%C3%ADala")
+    assert ref == CharacterRef(region="eu", realm="archimonde", name="Bríala", zone_id=None)
+
+
+def test_a_report_url_is_not_a_character_url() -> None:
+    with pytest.raises(ValueError, match="not a Warcraft Logs character URL"):
+        parse_character_url("https://www.warcraftlogs.com/reports/aBc123XyZ")
+
+
+def test_a_zone_that_is_not_a_number_is_refused() -> None:
+    with pytest.raises(ValueError, match="is not a zone id"):
+        parse_character_url("https://www.warcraftlogs.com/character/eu/argent-dawn/Emberkin?zone=x")

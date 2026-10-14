@@ -496,6 +496,72 @@ When a comparison was withheld, the report says why in the tool's own words — 
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not
 invent a better-sounding one.
 
+## Reading a character page
+
+`wowperf character` writes `character.json` and a page that count what the per-run analysis said
+across one character's recent runs, one per dungeon, for one specialisation. Its findings are about
+the character across runs, not about any one run: a figure belongs to the run that produced it, and
+each run's own findings file sits beside `character.json`. There are three kinds of statement, and
+each licenses something different.
+
+**A repeated judgement** (`character.repeat.*`) is a judgement the per-run analysis made in at least
+half of the loaded runs, and in at least three, counted once per run however often that run made it.
+Its badge is the least certain among the findings counted, so one `inferred` run makes it `inferred`
+and you assert it no harder than that. Its `quantifier` is the word for its count — `every`, `most`,
+`about half` — and its title carries the "N of M" it rests on. Say "again and again", or name the
+quantifier; do not say a number. It says the analysis flagged this repeatedly, not that the
+character is wrong to do it, and a spell flagged below the top parses in every run is as likely a
+build or a role as an error.
+
+**A consistent direction** (`character.direction.*`) is a measure — a cast rate on bosses or on
+trash, a buff uptime, a debuff coverage, a stat share — that sat on the same side of the top parses'
+median in every run that judged it. It is `derived`, its `quantifier` is always `every`, and it
+needs at least six judged runs, every one on the same side, with a median gap of at least one tenth
+of the references' rate, a relative gap, for a cast rate or five points for an uptime, a coverage or a share. Those two floors are chosen,
+not measured: they sit well under the single-run thresholds on purpose, so that a gap no single run
+could call can still be seen, and the page says so. A run counts only where its own comparison
+judged the row, so a row a run declined to judge was never counted for or against. A direction
+states a difference from the top parses, not a mistake. A chain of related directions — two abilities
+of one rotation both under — is the useful reading, and it is yours to point at from the titles, not
+a finding the tool made. With fewer than six loaded runs the whole source is withheld and
+`character.direction.withheld` says how many loaded; repeat that, never lower the bar yourself.
+
+**The ledger** is on the Group tab and in `group_ledger`. It counts, for each of completion time,
+deaths, time between packs and kick share, how many runs sat above, below or level with the fast
+runs' median, and in how many runs the character died. It is not a finding: it is counts of logged
+figures, carries no badge and states no verdict. "Above the median in some runs" is a count, not a failure, and a completion time withheld for the keystone
+level gap stays withheld with its reason.
+
+**Nothing is summed.** Seconds in different dungeons, at different keys, on different routes are not
+one quantity, and the page carries the ranked-not-additive warning for it. Do not add a count from
+one kind to a count from another, and do not turn a count into a rate the file does not state.
+
+**Two sets of families are not counted, and the page does not say they were clean.** The count reads
+only an allowlist: the comparison's judgement families about the character, and two families about
+the run, the pack fast runs skipped (`compare.route.skipped`) and the one analysis-side family
+counted, more trash than the key required (`trash.overage`). Every other analysis-side finding is
+outside it: deaths and what each cost, missed interrupts, defensives, healing consumables,
+throughput cooldowns, the group's heaviest moments of damage. The defensive, healing-consumable and
+throughput-cooldown findings could not be counted in any case, since they do not name their player
+in a form the count can read. All of these are absent from a character page, not clear on it. The
+combat-potion and consumable-buff comparisons are counted; only the healing consumables are left
+out. Talent comparisons are left out too: the per-run analysis writes one id for every outcome,
+matched or differed or could not be compared, so it would fire in every run and the count would say
+nothing. Each run's own page still carries all of them. Say so if asked, rather than reading an
+absence as a pass.
+
+**One habit can be counted twice, once per id.** An ability name can own several game ids, and
+nothing in the log says whether two ids are one press or two abilities (`comparison/spells.py`,
+`_one_row_per_sentence`). Repeats and directions are keyed by ability id, so one habit can split
+across ids, and the two halves can even disagree: on 2026-10-14 a live page carried two directions
+for two "Boiling Point" aura ids, one up more of the key than the top parses and one up less. Two
+statements naming one ability are not two observations, and opposite ones are not a contradiction
+in the play; say that the ability is logged under more than one id, and do not add or net them.
+
+**The narrative** states no digits, as for every page. Echo a finding by its `quantifier` and its
+subject, or by a title that holds no "N of M". A repeated judgement and a direction on the same
+ability are one observation told twice; say it once.
+
 ## Reading the file
 
 `out/<code>-<fight>.findings.json` carries the run's metadata (`report_code`, `fight_id`,
