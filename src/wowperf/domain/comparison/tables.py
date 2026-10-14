@@ -222,6 +222,10 @@ def _auras(
     `.claude/skills/wcl-api/SKILL.md`, "The debuff event stream does name the
     caster").
 
+    Each side's auras are read through `aura_groups` first, so an aura that is
+    one cause under several ids is one row, as `compare_uptime_sample` reads
+    them for the findings.
+
     The verdict reads each side's whole key clock, from its fight's start to its
     end, as `compare_uptime_sample` does for the findings. Without bosses and
     Bosses describe and never judge. The seconds returned are our own key

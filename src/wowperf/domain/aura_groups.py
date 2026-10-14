@@ -31,6 +31,8 @@ class AuraGroups(Frozen):
             if len(group) < 2:
                 raise ValueError(f"an aura group needs at least two ids, got {list(group)}")
             for ability_id in group:
+                if group.count(ability_id) > 1:
+                    raise ValueError(f"ability id {ability_id} is listed twice in one aura group")
                 if ability_id in seen:
                     raise ValueError(f"ability id {ability_id} is in more than one aura group")
                 seen.add(ability_id)

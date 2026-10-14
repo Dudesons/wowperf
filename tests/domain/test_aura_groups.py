@@ -252,3 +252,8 @@ def test_a_group_of_one_id_is_refused() -> None:
 def test_an_id_in_two_groups_is_refused() -> None:
     with pytest.raises(ValueError, match="188290"):
         AuraGroups(groups=((DND, SANGUINE_GROUND), (BLOOD_SOAKED_GROUND, DND)))
+
+
+def test_an_id_listed_twice_in_one_group_is_refused_for_what_it_is() -> None:
+    with pytest.raises(ValueError, match="188290 is listed twice in one aura group"):
+        AuraGroups(groups=((DND, DND),))
