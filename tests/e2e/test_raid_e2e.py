@@ -47,7 +47,7 @@ import pytest
 from typer.testing import CliRunner
 
 from wowperf.adapters.cache.disk import DiskCache
-from wowperf.adapters.config.toml import load_consumables, load_defensives
+from wowperf.adapters.config.toml import load_aura_groups, load_consumables, load_defensives
 from wowperf.adapters.wcl.encounter_rankings import WclEncounterRankingRepository
 from wowperf.adapters.wcl.pace import GRIDS_DIFFER_REASON, NO_BOSS_SERIES
 from wowperf.adapters.wcl.repository import WclRunRepository
@@ -222,6 +222,7 @@ def draw_parse_subjects(
         loaded,
         to_compare,
         names,
+        load_aura_groups(),
     )
     return subjects
 

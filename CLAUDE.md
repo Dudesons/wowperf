@@ -366,7 +366,8 @@ consumables, throughput cooldowns spent away from the pulls worth spending them 
 heaviest moments of damage taken and whether a group cooldown answered each, read on a wipe only
 up to its fourth roster death, the recap behind each death card, and what the other healers were
 doing when each player died. The class data they read — cooldowns, teammates' externals,
-self-resurrections, roles — is hand-maintained under `data/`.
+self-resurrections, roles, and which aura ids are one cause (`aura_groups.toml`, read by the
+buff comparison alone) — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
 same dungeon, and top parses of the analysed player's specialisation. Each axis draws a
@@ -376,10 +377,12 @@ Pulls align by the enemy types they contain, and a comparison is withheld rather
 printed when the reference sits more than one keystone level away, or when fewer than half
 the pulls match. The families are the route, the tempo, the cast spells, the talents, the
 buff uptime, and the confounds that would make any of the others misleading. Uptime covers
-buffs only: Warcraft Logs offers no way to scope the enemy-debuff table to one caster, so the
-matching per-player figure for what a player kept up on enemies does not exist. Measured
-2026-09-05 and recorded in `.claude/skills/wcl-api/SKILL.md` under "The debuff half cannot be
-scoped to one caster".
+buffs over the whole key clock and debuffs on every enemy of a Mythic+ key, as coverage of
+their alive time and reach across them. The enemy-debuff *table* cannot be
+scoped to one caster (measured 2026-09-05), but the `Debuffs` event stream names each
+application's caster (measured 2026-10-07), and the figure is rebuilt from it. Both are
+recorded in `.claude/skills/wcl-api/SKILL.md`. Raid pulls are not measured
+yet; `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` §2 says why.
 
 The report is a frozen view model and a pure builder under `src/wowperf/domain/report/`,
 holding every judgement the page makes, and a Jinja2 adapter under

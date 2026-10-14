@@ -431,6 +431,66 @@ instead of adjusting for them, because adjusting would invent a number:
   comparison falls back to a single reference stated pairwise, where a gap can still mean gear
   this player does not own. `compare.talents.<slug>` is the one row still drawn from a single
   reference — the top-ranked parse, whose report its evidence links to.
+- **Buff uptime is judged over the whole key clock**, from the fight's start to its end with the
+  walking between pulls included, on our side and on every reference's. A buff only up in combat
+  reads lower the more of the key was spent between pulls, so a reference that walked less reads
+  higher whatever either player did: say so before reading a narrow gap as play. The card's
+  Without bosses and Bosses columns describe and never judge; its Range and Sample are Overall's.
+  A boss pull Warcraft Logs lists twice counts once in Bosses, as it does for debuffs.
+  `comparison_tables.<slug>.auras` carries each row's `uptime`, the judged figure, beside
+  `without_bosses` and `bosses`.
+  One cause is one row where `data/aura_groups.toml` lists its ids: the aura table names no
+  source, so Death and Decay, Sanguine Ground and Blood-Soaked Ground arrive as three rows of
+  one uptime, and the comparison folds each side's members into one aura under the group's
+  first id before it measures anything. A folded aura's name lists every member that side
+  carried, the row is named as the references spell it, its uptime is the union of the members'
+  bands, and `ability_id` is the main id. A cause the file
+  does not list still reads as one row per id, so several rows with the same figures are
+  one cause the file has not been told about, and not several findings.
+- **Debuff coverage is rebuilt, not read.** `compare.uptime.debuff.<rank>.<slug>` is the share
+  of the enemies' alive time, summed over every enemy of the key, that carried a debuff from the
+  player or their pets, against the median of the parses that applied it, by the buff family's
+  thresholds. It is derived: the intervals come from the log's own applications and removals. A
+  trash mob's life runs from the first debuff anyone applied to it to its death. A boss keeps the
+  boss rule: a single boss over its pull, and a council's bosses each from the pull's start to
+  their own death, or to the pull's end if they did not die there. Overall carries the verdict.
+  Trash (the mobs of trash pulls) and Bosses describe, and adds that spawn during a boss fight
+  count in Overall only, and so do the enemies of a boss pull with no boss found, whose boss
+  figure is withheld as "no boss found". Coverage is not reach. Each row's `reach` is the share of the enemies
+  that carried the debuff at least once, described and never judged; its `overall_fractions` are
+  the references' Overall reaches behind its median. Low coverage with high reach
+  is a debuff spread but not kept up; low coverage with low reach is one kept on too few mobs.
+  Unlike a buff, a debuff names who applied it, so `compare.uptime.debuff.unjudged` is the
+  player's own zero; what it cannot say is whether their build has the ability. A debuff only one
+  copy of which sits on a target is another matter. When at least two of the run's players held
+  it, at least one pair of them on a common target (a boss within one pull, or one enemy's life),
+  and every such pair's copies overlapped by at most a second in total, a teammate's application
+  replaced theirs. Two players who held it only on different targets were never compared. Such a
+  debuff is shown as shared, its row's `shared_with` naming those teammates' actor ids, and is
+  never judged: no gap finding, and not in `unjudged`. In the findings JSON a shared row still
+  carries the `uptime.verdict` its figures reach, "below" for instance, beside the non-empty
+  `shared_with`; read that row as not judged, whatever its verdict says. A zero beside a single
+  teammate who held it stays `unjudged`, because one holder cannot show the copies never coexist.
+  A debuff the references keep under a tenth of the key's enemy life but over it on the bosses
+  keeps a row for its boss figure. Its `uptime.verdict` reads `bosses_only`, which is not
+  `unjudged`: that one says our side showed none of it, this one says the verdict, which reads
+  Overall, was not made. It raises no gap finding and is not named in `unjudged`, and the page
+  reads "Not judged" with a sentence under the table saying why. Its cells are read like any
+  row's, and it follows the judged rows. A cell with no median says why, in its `withheld` value:
+  `no reference measured this boss` when none of the references had that stretch to measure (a
+  Trash, Bosses or reach cell can carry it too, whatever the wording says, and the page words it
+  "no reference measured it"); `no reference applied it` when at least three measured it and every
+  one sat at zero, as where bosses are immune to the debuff; `too few references` when fewer than
+  three carried it. None of the three is a verdict.
+  `comparison_tables.<slug>.debuffs.tally` counts what the pairing met in our own log, and is
+  provenance, not a finding. It is recorded whenever our stream was read, even beside no rows, and
+  is null when it was not: null is "no stream read", while a zero tally is a log that paired
+  cleanly. `comparison_tables.<slug>.debuffs.deathless` is provenance too: how many council
+  bosses of a kill pull had no death in the log and were measured to the pull's end. So are
+  `unmeasured_no_death` and `undebuffed_deaths`. The first counts the enemies debuffed with no
+  death after it in the log, left out of coverage and reach. The second counts the enemies that
+  died with no debuff from anyone since their previous death, which count toward reach only.
+  Neither is judged, and zero is none.
 
 When a comparison was withheld, the report says why in the tool's own words — a
 `compare.*.unavailable` finding, or `compare.confound.keystone_level`. Repeat that reason; do not

@@ -1,0 +1,97 @@
+# ABOUTME: End-to-end boss debuff uptime against the real Warcraft Logs API; no mocks.
+# ABOUTME: Excluded from the default suite because it needs a network and spends API quota.
+
+import os
+from pathlib import Path
+
+import pytest
+
+from wowperf.cli import build_repository
+from wowperf.domain.comparison.boss_debuffs import SHARED_OVERLAP_TOLERANCE_S, boss_windows_of
+from wowperf.domain.comparison.key_debuffs import boss_debuffs, key_debuffs
+from wowperf.domain.debuffs import pair_debuffs
+from wowperf.urls import parse_report_url
+
+REPORT = os.environ.get("WOWPERF_E2E_REPORT", "")
+
+
+@pytest.mark.e2e
+def test_a_real_keys_debuffs_on_its_bosses_close_before_the_key_ends(tmp_path: Path) -> None:
+    if not REPORT:
+        pytest.fail(
+            "Set WOWPERF_E2E_REPORT to a public Warcraft Logs Mythic+ report URL to run this"
+        )
+
+    code, fight = parse_report_url(REPORT)
+    runs = build_repository(tmp_path)
+    run = runs.get(code, fight)
+    log = runs.debuff_log(run.report_code, run.fight_id)
+
+    assert log.events, "a real key applies debuffs to enemies"
+    assert all(event.timestamp_ms <= log.end_ms for event in log.events)
+
+    # A boss pull the log lists twice is measured once.
+    boss_pulls = {
+        (pull.encounter_id, pull.start_ms, pull.end_ms) for pull in run.pulls if pull.is_boss
+    }
+    players = frozenset(player.actor_id for player in run.players)
+    landed = 0
+    for player in run.players:
+        mine = boss_debuffs(log, run.pulls, player.actor_id, players)
+        assert len(mine.windows) == len(boss_pulls)
+        for ability_id, name in mine.names:
+            # A share cannot exceed the boss-alive time it was measured over.
+            assert mine.covered_seconds(ability_id) <= mine.seconds + 1e-9, name
+            landed += 1
+    assert landed, "no player's debuff landed on any measured boss of this key"
+
+    # A boss that died has had its debuffs removed, so one still open on it when
+    # the key ends is a pairing failure. The uptime bound above cannot see it:
+    # clipping to the pull hides an interval that ran on to the fight's end.
+    # The assertion bites only on a key where a pet's application and removal
+    # carry different instance numbers on a measured boss, such as a Mage's
+    # Mirror Image; a key without one passes under any pairing.
+    windows = boss_windows_of(run.pulls, log.npc_actors, log.deaths)
+    measured = [w for w in windows if w.withheld is None]
+    assert measured, "a real key has at least one boss pull with a boss found"
+    # The log stamps a kill's last council death a few ms after the pull closes;
+    # every council kill measured had its deaths found.
+    assert sum(window.deathless for window in windows) == 0
+    boss_ids = {target.game_id for window in measured for target in window.targets}
+    last_end = max(window.end_ms for window in measured)
+    # A boss that dies within a second of the stream's end is the key's last
+    # kill, and there the log cannot tell a removal it never wrote from one it
+    # wrote late: measured 2026-10-13, it can omit one debuff's removal while
+    # writing every other's. An interval that began during such a boss's own
+    # span is left out; one on a boss killed earlier in the key is not.
+    final_kills = [
+        target
+        for window in measured
+        for target in window.targets
+        if target.end_ms >= log.end_ms - SHARED_OVERLAP_TOLERANCE_S * 1000
+    ]
+    names = dict(log.ability_names)
+    intervals, _ = pair_debuffs(log)
+    left_open = [
+        f"{names.get(one.ability_id, one.ability_id)} on game id {one.target_game_id}"
+        for one in intervals
+        if one.target_game_id in boss_ids
+        and one.end_ms == log.end_ms
+        and one.start_ms < last_end
+        and not any(
+            target.game_id == one.target_game_id
+            and target.start_ms <= one.start_ms < target.end_ms
+            for target in final_kills
+        )
+    ]
+    assert not left_open, f"debuffs left open on a measured boss to the key's end: {left_open}"
+
+    # Every stretch's share stays within the alive time and the lives it was
+    # measured over, for every player of the key.
+    for player in run.players:
+        key = key_debuffs(log, run.pulls, player.actor_id, players)
+        for stretch in (key.overall, key.on_bosses, key.trash, key.adds):
+            for ability_id, ms in stretch.covered:
+                assert ms <= stretch.alive_ms, (ability_id, ms, stretch.alive_ms)
+            for ability_id, count in stretch.reached:
+                assert count <= stretch.lives, (ability_id, count, stretch.lives)

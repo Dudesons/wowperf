@@ -41,3 +41,10 @@ def test_a_real_players_auras_come_back_with_usable_bands(tmp_path: Path) -> Non
     for aura in auras.on_self:
         spanned = sum(band.end_ms - band.start_ms for band in aura.bands)
         assert spanned <= aura.total_uptime_ms + 1, aura.name
+
+    # Buffs are judged over the fight's own clock, so every band must sit inside it.
+    assert loaded.run.fight_ms is not None
+    start, end = loaded.run.fight_ms
+    for aura in auras.on_self:
+        for band in aura.bands:
+            assert start <= band.start_ms and band.end_ms <= end, aura.name

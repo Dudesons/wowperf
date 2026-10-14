@@ -1,23 +1,26 @@
 # ABOUTME: Compares one player's buff uptime against a top parse or a sample, by one caller's rule.
-# ABOUTME: Fractions of boss time, never seconds: two runs fight the same boss for different long.
+# ABOUTME: Fractions of the stretch a rule names, never seconds: two runs last different lengths.
 
 # Buffs only, and the titles here say so. The design's other half — what a player
-# kept up on enemies — is not comparable per player: no query argument narrows the
+# kept up on enemies — cannot come from the aura table: no query argument narrows the
 # enemy-debuff table to one caster, so every row it returns belongs to the whole
-# group. See `.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped
-# to one caster".
+# group (`.claude/skills/wcl-api/SKILL.md`, "The debuff half cannot be scoped to one
+# caster"). It is rebuilt from the event stream instead, for every enemy of a key, in
+# `debuff_uptime.py` and `key_debuffs.py` (same skill, "The debuff event stream does
+# name the caster").
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 
+from wowperf.domain.aura_groups import AuraGroups, merge_aura_groups
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
-from wowperf.domain.comparison.measures import AuraUptime, Verdict
+from wowperf.domain.comparison.boss_debuffs import Span, Withheld, boss_pulls_listed_once
+from wowperf.domain.comparison.measures import AuraUptime, StretchCell, Verdict
 from wowperf.domain.comparison.sample import (
     MIN_SAMPLE_FOR_AGGREGATE,
     ParseMember,
     ParseSample,
     too_few,
 )
-from wowperf.domain.comparison.spells import boss_pulls
 from wowperf.domain.comparison.statistics import count_phrase, median, observed_range
 from wowperf.domain.comparison.wording import Wording
 from wowperf.domain.findings import Confidence, Finding, FindingFact, quantity
@@ -29,7 +32,7 @@ MIN_UPTIME_FRACTION = 0.10
 """Below this the reference barely carried it either, so there is nothing to argue from."""
 
 UPTIME_GAP_FRACTION = 0.15
-"""How much more of the boss fight they must have it up before it is worth reporting."""
+"""How much more of the measured stretch they must have it up before it is worth reporting."""
 
 
 def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
@@ -37,16 +40,21 @@ def boss_windows(pulls: Sequence[Pull]) -> tuple[tuple[int, int], ...]:
 
     Takes the route rather than a `Run`, so that a parse reference — which
     carries its pulls and no run — reaches the same rule our own side does.
+
+    A boss pull Warcraft Logs lists twice is one span, by the rule the debuff
+    figure's `boss_windows_of` reads, so a sum over these spans counts its
+    seconds once, as the merge in `auras.uptime_seconds_in` counts the aura's.
     """
-    return tuple((pull.start_ms, pull.end_ms) for pull in boss_pulls(pulls))
+    return tuple((pull.start_ms, pull.end_ms) for _, pull in boss_pulls_listed_once(pulls))
 
 
-UptimeRule = Callable[[Sequence[Pull]], Callable[[Aura], float]]
-"""How long a side's auras count as up, given that side's own route.
+UptimeRule = Callable[[Sequence[Pull], Span | None], Callable[[Aura], float]]
+"""How long a side's auras count as up, given that side's own route and its fight's clock.
 
 The counterpart of `spells.CastRule`, and one rule for both sides for the same
 reason: a fraction is only comparable when the two numerators were measured the
-same way.
+same way. The clock is the fight's own start and end, None where a side has none
+to give; a rule that does not read it ignores it.
 """
 
 
@@ -55,9 +63,33 @@ def seconds_up_in(windows: tuple[tuple[int, int], ...]) -> Callable[[Aura], floa
     return lambda aura: uptime_seconds_in(aura, windows)
 
 
-def boss_pull_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
-    """The Mythic+ rule bound to one route: uptime inside that route's boss pulls."""
-    return seconds_up_in(boss_windows(pulls))
+def fight_seconds(fight_ms: Span | None) -> float:
+    """Seconds of a fight's own clock, zero for a side that carries none."""
+    return 0.0 if fight_ms is None else (fight_ms[1] - fight_ms[0]) / 1000
+
+
+def key_clock_uptime(pulls: Sequence[Pull], fight_ms: Span | None) -> Callable[[Aura], float]:
+    """The Mythic+ rule: uptime over the whole key clock, from the fight's start to its end.
+
+    The walking between pulls is inside it, so a buff only up in combat reads
+    lower the more of the key was spent between pulls, on either side. `pulls`
+    is accepted and ignored. A side with no clock measures nothing, and its
+    seconds read zero, which the comparison states as unavailable.
+    """
+    return seconds_up_in(() if fight_ms is None else (fight_ms,))
+
+
+def without_boss_pulls(fight_ms: Span, pulls: Sequence[Pull]) -> tuple[Span, ...]:
+    """The key clock less its boss pulls: the trash pulls and the walking between them."""
+    windows: list[Span] = []
+    cursor = fight_ms[0]
+    for start, end in sorted(boss_windows(pulls)):
+        if start > cursor:
+            windows.append((cursor, min(start, fight_ms[1])))
+        cursor = max(cursor, end)
+    if cursor < fight_ms[1]:
+        windows.append((cursor, fight_ms[1]))
+    return tuple((start, end) for start, end in windows if end > start)
 
 
 def seconds_up_over_the_fight(aura: Aura) -> float:
@@ -89,15 +121,50 @@ def seconds_up_over_the_fight(aura: Aura) -> float:
     return uptime_seconds_in(aura, (span,))
 
 
-def whole_fight_uptime(pulls: Sequence[Pull]) -> Callable[[Aura], float]:
+def whole_fight_uptime(
+    pulls: Sequence[Pull], fight_ms: Span | None
+) -> Callable[[Aura], float]:
     """The raid rule, which has no route to bind to.
 
-    `pulls` is accepted and ignored, exactly as `spells.whole_fight_casts`
+    `pulls` and `fight_ms` are accepted and ignored, exactly as `spells.whole_fight_casts`
     ignores it, and for the same reason: a raid fight carries no pulls, and the
     Mythic+ rule over an empty route would clip every band to nothing and
     report every aura as never present.
     """
     return seconds_up_over_the_fight
+
+
+def boss_seconds_of(member: ParseMember) -> float:
+    """A reference's boss seconds: its denominator under every rule but the key clock."""
+    return member.boss_seconds
+
+
+def fight_seconds_of(member: ParseMember) -> float:
+    """A reference's key clock in seconds: its denominator under the key clock rule."""
+    return fight_seconds(member.fight_ms)
+
+
+def grouped_auras(auras: PlayerAuras | None, groups: AuraGroups) -> PlayerAuras | None:
+    """One side's auras with each cause read as one aura, or None where there are none.
+
+    Every reader of the buff comparison folds a side through here, ours and each
+    reference's alike: a fraction is only comparable when both numerators were
+    measured the same way, and a cause one side reads as three rows and the other
+    as one is not. Other readers of an aura table -- a death's cover windows, the
+    consumables -- keep the raw list, which is why this is applied where the
+    comparison reads a side and not once at ingest.
+    """
+    return None if auras is None else merge_aura_groups(auras, groups)
+
+
+def grouped_members(
+    members: Sequence[ParseMember], groups: AuraGroups
+) -> tuple[ParseMember, ...]:
+    """These references with their auras folded by `grouped_auras`, in the same order."""
+    return tuple(
+        member.model_copy(update={"auras": grouped_auras(member.auras, groups)})
+        for member in members
+    )
 
 
 def fractions_of(
@@ -157,6 +224,53 @@ def _no_reference_auras(our_name: str, total: int) -> Finding:
     )
 
 
+def pairwise_gaps(
+    ours: dict[int, tuple[str, float]], theirs: dict[int, tuple[str, float]]
+) -> list[tuple[float, int, str, float, float]]:
+    """Where one reference had an aura up markedly more than ours did, widest gap first.
+
+    Each row is (gap, ability id, name, our fraction, their fraction). An aura
+    is a candidate when the reference carried it for at least
+    `MIN_UPTIME_FRACTION`, ours is above zero, and the reference leads by at
+    least `UPTIME_GAP_FRACTION`. A zero on our side is passed over rather than
+    reported: below the aggregate floor there is no sample to say the aura is
+    one this player is meant to carry, so why that is trustworthy to skip is
+    each caller's to state.
+    """
+    gaps = []
+    for ability_id, (name, their_fraction) in theirs.items():
+        if their_fraction < MIN_UPTIME_FRACTION:
+            continue
+        our_fraction = ours.get(ability_id, (name, 0.0))[1]
+        if our_fraction <= 0.0:
+            continue
+        if their_fraction - our_fraction < UPTIME_GAP_FRACTION:
+            continue
+        gaps.append((their_fraction - our_fraction, ability_id, name, our_fraction,
+                     their_fraction))
+    gaps.sort(reverse=True)
+    return gaps
+
+
+def carried_fractions(
+    fractions: dict[int, tuple[str, float]], names: dict[int, str]
+) -> dict[int, float]:
+    """The fractions above zero, by ability id, recording each name in `names`.
+
+    A fraction only counts as carried when it is above zero: a band that never
+    overlaps the measured stretch reads the same as never having the aura at
+    all. `names` is shared across a sample's members and keeps the first
+    spelling seen for each ability.
+    """
+    carried: dict[int, float] = {}
+    for ability_id, (name, fraction) in fractions.items():
+        if fraction <= 0.0:
+            continue
+        names.setdefault(ability_id, name)
+        carried[ability_id] = fraction
+    return carried
+
+
 def _gap_findings(
     ours: dict[int, tuple[str, float]],
     theirs: dict[int, tuple[str, float]],
@@ -166,24 +280,14 @@ def _gap_findings(
     their_seconds: float,
     words: Wording,
 ) -> list[Finding]:
-    gaps = []
-    for ability_id, (name, their_fraction) in theirs.items():
-        if their_fraction < MIN_UPTIME_FRACTION:
-            continue
-        our_fraction = ours.get(ability_id, (name, 0.0))[1]
-        if our_fraction <= 0.0:
-            # `onSelf` carries no source filter, so it returns teammate-cast
-            # buffs, consumables, and gear procs alongside what this player
-            # actually carries. Attributing a 0% on our side to this player is
-            # only trustworthy for an ability they carried at all; the case of
-            # a spell they never cast is already covered by compare_spells's
-            # missing-spell branch, against the caster who actually owns it.
-            continue
-        if their_fraction - our_fraction < UPTIME_GAP_FRACTION:
-            continue
-        gaps.append((their_fraction - our_fraction, ability_id, name, our_fraction,
-                     their_fraction))
-    gaps.sort(reverse=True)
+    # `pairwise_gaps` passes over an aura at zero on our side. `onSelf` carries
+    # no source filter, so it returns teammate-cast buffs, consumables, and gear
+    # procs alongside what this player actually carries. Attributing a 0% on
+    # our side to this player is only trustworthy for an ability they carried
+    # at all; the case of a spell they never cast is already covered by
+    # compare_spells's missing-spell branch, against the caster who actually
+    # owns it.
+    gaps = pairwise_gaps(ours, theirs)
 
     findings = []
     for rank, (_, ability_id, name, our_fraction, their_fraction) in enumerate(
@@ -196,9 +300,9 @@ def _gap_findings(
                 # keeps up, and this family cannot tell a proc from a button:
                 # the aura table reports that a buff was present, not who or
                 # what put it there. So the aura is the subject and the two
-                # players are only whose stretch it is measured over -- boss
-                # pulls in a dungeon, the fight itself in a raid, which is what
-                # `words.stretch_time` spells out below.
+                # players are only whose stretch it is measured over -- the
+                # key clock in a dungeon, the fight itself in a raid, which is
+                # what `words.stretch_time` spells out below.
                 title=(
                     f"{name} was up for {their_fraction:.0%} of {their_name}'s "
                     f"{words.stretch_time}, {our_fraction:.0%} of {our_name}'s"
@@ -247,8 +351,10 @@ def compare_uptime(
     *,
     measured: UptimeRule,
     words: Wording,
+    our_fight_ms: Span | None = None,
+    over: Callable[[ParseMember], float] = boss_seconds_of,
 ) -> list[Finding]:
-    """Where an aura was up markedly more of the reference's boss fight than of ours.
+    """Where an aura was up markedly more of the reference's measured stretch than of ours.
 
     `our_name` is the roster's disambiguated spelling of the player being
     compared — never `Player.name`, which two roster members can share, and
@@ -265,9 +371,13 @@ def compare_uptime(
     Our own side arrives as the two values this reads — a route and the seconds
     that route was worth — rather than as a run, so that a raid fight, which has
     no run to give, reaches the same comparison through `whole_fight_uptime`.
+
+    `our_fight_ms` is our fight's own clock and `over` reads a reference's
+    denominator, for a rule that reads the clock. Their defaults read boss
+    seconds, as the raid and every rule before the key clock did.
     """
     their_auras = theirs.auras
-    their_seconds = theirs.boss_seconds
+    their_seconds = over(theirs)
 
     if our_auras is None or their_auras is None or our_seconds <= 0 or their_seconds <= 0:
         return [
@@ -285,8 +395,8 @@ def compare_uptime(
     # same-typed values, and a swap inside either pair would put one player's
     # figure under the other's name without failing a type check.
     return _gap_findings(
-        fractions_of(our_auras.on_self, measured(our_pulls), our_seconds),
-        fractions_of(their_auras.on_self, measured(theirs.pulls), their_seconds),
+        fractions_of(our_auras.on_self, measured(our_pulls, our_fight_ms), our_seconds),
+        fractions_of(their_auras.on_self, measured(theirs.pulls, theirs.fight_ms), their_seconds),
         our_name=our_name,
         their_name=theirs.character_name,
         our_seconds=our_seconds,
@@ -304,8 +414,11 @@ def compare_uptime_sample(
     *,
     measured: UptimeRule,
     words: Wording,
+    our_fight_ms: Span | None = None,
+    over: Callable[[ParseMember], float] = boss_seconds_of,
+    groups: AuraGroups = AuraGroups(),
 ) -> list[Finding]:
-    """Where an aura was up over markedly more of the sample's boss fights than of ours.
+    """Where an aura was up over markedly more of the sample's measured stretches than of ours.
 
     `our_name` is the roster's disambiguated spelling, for the reason
     `compare_uptime` above gives, and our own side arrives as values rather
@@ -320,6 +433,10 @@ def compare_uptime_sample(
     noise around it. The below-floor fallback delegates to `compare_uptime`, the one place a
     reference name still appears, because there it is honestly one reference's pairwise
     comparison, not a population claim.
+
+    `groups` names the auras that are one cause. Both sides are read through it
+    before anything is measured, so a cause is one row, keyed by its main id,
+    whichever of its ids either side happened to carry.
     """
     # A wholly empty sample means there was nothing to compare against at all;
     # `service.compare()` already says so once, as `compare.parse.unavailable`,
@@ -331,7 +448,8 @@ def compare_uptime_sample(
     if not sample.members:
         return []
 
-    eligible = sample.aura_eligible
+    our_auras = grouped_auras(our_auras, groups)
+    eligible = grouped_members(sample.aura_eligible, groups)
     aggregable = sample.can_aggregate(eligible)
 
     if not eligible:
@@ -354,17 +472,17 @@ def compare_uptime_sample(
         first = eligible[0] if eligible else sample.members[0]
         fallback = compare_uptime(
             our_pulls, our_seconds, our_auras, our_name, first,
-            measured=measured, words=words,
+            measured=measured, words=words, our_fight_ms=our_fight_ms, over=over,
         )
         return fallback if aggregable else too_few(fallback, len(eligible))
 
     total = len(sample.members)
     missing_aura_data = total - len(eligible)
 
-    our_fractions = fractions_of(our_auras.on_self, measured(our_pulls), our_seconds)
+    our_fractions = fractions_of(our_auras.on_self, measured(our_pulls, our_fight_ms), our_seconds)
     return _gap_findings_sample(
         our_fractions, eligible, our_name, our_seconds, missing_aura_data, total,
-        measured=measured, words=words,
+        measured=measured, words=words, over=over,
     )
 
 
@@ -372,6 +490,8 @@ def uptime_measures(
     our_fractions: dict[int, tuple[str, float]],
     per_member: Sequence[dict[int, float]],
     names: dict[int, str],
+    *,
+    kept: Collection[int] = (),
 ) -> tuple[AuraUptime, ...]:
     """Every aura the sample carried often enough to judge, with its verdict.
 
@@ -379,8 +499,16 @@ def uptime_measures(
     `MIN_SAMPLE_FOR_AGGREGATE` carriers or below `MIN_UPTIME_FRACTION` is
     absent entirely rather than carrying a verdict: neither was compared, and
     a table that showed them would claim a judgement nobody made.
+
+    `kept` names abilities another stretch's own admission already vouched for.
+    One of them that falls under `MIN_UPTIME_FRACTION` here is returned after
+    the judged ones with `Verdict.BOSSES_ONLY` instead of being dropped: its
+    figures are stated and none of them is compared. It still needs
+    `MIN_SAMPLE_FOR_AGGREGATE` carriers here, which a stretch it is a part of
+    has already shown.
     """
-    measures: list[AuraUptime] = []
+    judged: list[AuraUptime] = []
+    set_aside: list[AuraUptime] = []
     for ability_id, name in names.items():
         carried = [q[ability_id] for q in per_member if ability_id in q]
         if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
@@ -390,16 +518,27 @@ def uptime_measures(
             # gear.
             continue
         their_median = median(carried)
-        if their_median < MIN_UPTIME_FRACTION:
-            continue
         our_fraction = our_fractions.get(ability_id, (name, 0.0))[1]
+        if their_median < MIN_UPTIME_FRACTION:
+            if ability_id in kept:
+                set_aside.append(
+                    AuraUptime(
+                        ability_id=ability_id,
+                        name=name,
+                        ours=our_fraction,
+                        their_median=their_median,
+                        their_fractions=tuple(carried),
+                        verdict=Verdict.BOSSES_ONLY,
+                    )
+                )
+            continue
         if our_fraction <= 0.0:
             verdict = Verdict.UNJUDGED
         elif their_median - our_fraction >= UPTIME_GAP_FRACTION:
             verdict = Verdict.BELOW
         else:
             verdict = Verdict.LEVEL
-        measures.append(
+        judged.append(
             AuraUptime(
                 ability_id=ability_id,
                 name=name,
@@ -409,7 +548,45 @@ def uptime_measures(
                 verdict=verdict,
             )
         )
-    return tuple(measures)
+    return (*judged, *set_aside)
+
+
+def measured_or(value: float | None, reason: Withheld) -> float | Withheld:
+    """Our own figure over a stretch, or why our side measured nothing over it."""
+    return reason if value is None else value
+
+
+def carried_shares(theirs: Sequence[float | None]) -> tuple[float, ...]:
+    """The references' shares over one stretch that carried it there: measured, above zero.
+
+    These give a stretch cell's median, and the reach table states their range
+    and count beside Overall reach.
+    """
+    return tuple(share for share in theirs if share is not None and share > 0.0)
+
+
+def stretch_cell(ours: float | Withheld, theirs: Sequence[float | None]) -> StretchCell:
+    """One stretch's cell: ours against the median of the references that carried it there.
+
+    Descriptive only: the verdict is the row's. `ours` is a reason when our own
+    side measured nothing over the stretch. A reference that measured nothing
+    there (None) is not counted for it, and a reference at zero there did not
+    carry it; the rest give the median, at the floor the row's own median keeps.
+
+    When none carried it but at least `MIN_SAMPLE_FOR_AGGREGATE` measured the
+    stretch, the cell says no reference applied it, rather than that too few
+    references were there to read: they were, and the answer is zero.
+    """
+    if isinstance(ours, Withheld):
+        return StretchCell(withheld=ours)
+    if all(share is None for share in theirs):
+        return StretchCell(ours=ours, withheld=Withheld.NOT_REACHED)
+    carried = carried_shares(theirs)
+    if not carried and sum(share is not None for share in theirs) >= MIN_SAMPLE_FOR_AGGREGATE:
+        return StretchCell(ours=ours, withheld=Withheld.NOT_APPLIED)
+    if len(carried) < MIN_SAMPLE_FOR_AGGREGATE:
+        return StretchCell(ours=ours, withheld=Withheld.TOO_FEW)
+    return StretchCell(ours=ours, their_median=median(carried))
 
 
 def _gap_findings_sample(
@@ -422,30 +599,27 @@ def _gap_findings_sample(
     *,
     measured: UptimeRule,
     words: Wording,
+    over: Callable[[ParseMember], float],
 ) -> list[Finding]:
-    """Auras up over markedly more of the sample's boss fights than of ours, by median.
+    """Auras up over markedly more of the sample's measured stretches than of ours, by median.
 
     A member's fraction for an ability only counts as "carried" when it is above zero: a
-    band that never overlaps a boss pull reads the same as never having the aura at all, the
-    same reading `aura_fractions` already gives the pairwise comparison.
+    band that never overlaps the stretch its rule measures reads the same as never having the
+    aura at all, the same reading `aura_fractions` already gives the pairwise comparison.
     """
     names: dict[int, str] = {}
     per_member: list[dict[int, float]] = []
     for member in eligible:
         assert member.auras is not None  # aura_eligible guarantees a PlayerAuras
-        their_seconds = member.boss_seconds
+        their_seconds = over(member)
         fractions = (
-            fractions_of(member.auras.on_self, measured(member.pulls), their_seconds)
+            fractions_of(
+                member.auras.on_self, measured(member.pulls, member.fight_ms), their_seconds
+            )
             if their_seconds > 0
             else {}
         )
-        qualifying: dict[int, float] = {}
-        for ability_id, (name, fraction) in fractions.items():
-            if fraction <= 0.0:
-                continue
-            names.setdefault(ability_id, name)
-            qualifying[ability_id] = fraction
-        per_member.append(qualifying)
+        per_member.append(carried_fractions(fractions, names))
 
     measures = uptime_measures(our_fractions, per_member, names)
     gaps = sorted(

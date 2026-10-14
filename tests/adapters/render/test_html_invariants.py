@@ -40,6 +40,7 @@ from wowperf.domain.report.frame import NOT_REQUESTED
 from wowperf.domain.report.model import (
     AvailabilityRow,
     ComparisonRow,
+    ComparisonTable,
     CooldownRow,
     CurveGuide,
     CurvePoint,
@@ -1448,3 +1449,144 @@ def test_a_tooltip_is_markup_the_builder_wrote_and_never_names_a_mitigation_sour
     assert 'class="tip"' not in body
     assert "prevented" not in html.lower()
     assert "damage reduction" not in html.lower()
+
+
+def test_a_comparison_row_without_cells_ends_as_it_always_has() -> None:
+    """A table with no boss columns must render byte for byte as it did before they
+    existed. The row's own line ends in a loop over its cells, and the environment
+    trims the newline after a block tag, so an empty loop is where a byte goes
+    missing: the row's closing tag would glue itself to the Verdict cell. The
+    heading checks above read cells, never the whitespace between them."""
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Buff uptime without boss columns",
+        caption="Derived.",
+        rows=(
+            ComparisonRow(
+                ability_id=55078, name="Blood Plague", ours="70%", theirs="90%",
+                spread="85% to 95%", sample="3 top parses", verdict="below",
+                verdict_label="Below",
+            ),
+        ),
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    html = render(report)
+
+    assert "<td>Below</td>\n    </tr>\n" in html
+    assert '<th scope="col">Verdict</th></tr></thead>\n    <tbody>' in html
+
+
+def test_a_boss_column_lands_under_its_own_heading() -> None:
+    """The per-boss cells are extra columns. Each must sit under the boss it names,
+    and a table without them must render exactly as before, which
+    `test_a_comparison_row_without_cells_ends_as_it_always_has` pins."""
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Debuff coverage",
+        caption="Derived.",
+        cell_headings=("The Test Colossus", "The Fixture Hall"),
+        rows=(
+            ComparisonRow(
+                ability_id=55078, name="Blood Plague", ours="70%", theirs="90%",
+                spread="85% to 95%", sample="3 top parses", verdict="below",
+                verdict_label="Below", cells=("50% against 90%", "no boss found"),
+            ),
+        ),
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    [(headings, rows)] = [
+        rendered for rendered in compared_tables(render(report))
+        if "The Test Colossus" in rendered[0]
+    ]
+
+    assert headings[-2:] == ["The Test Colossus", "The Fixture Hall"]
+    [(_, cells)] = rows
+    assert [MARKUP.sub("", cell) for cell in cells[-2:]] == [
+        "50% against 90%", "no boss found"
+    ]
+
+
+def test_a_table_with_no_figure_columns_and_no_verdict_draws_only_its_cells() -> None:
+    """The reach table judges nothing and states Overall, its Range and Sample, and
+    each stretch in a cell, so its headings are Ability and the cells' own, in
+    that order, and its note and warning follow it."""
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Debuff reach",
+        caption="Derived.",
+        figures=False,
+        judged=False,
+        cell_headings=("Overall", "Range", "Sample", "Trash", "Bosses"),
+        rows=(
+            ComparisonRow(
+                ability_id=55078, name="Blood Plague", verdict="described",
+                cells=(
+                    "40% against 100%", "88% to 100%", "3 top parses", "25% against 100%",
+                    "100% against 100%",
+                ),
+            ),
+        ),
+        note="Coverage: the share of alive time. Reached: the share of enemies.",
+        warning="3 enemies had no death in the log and were not measured.",
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    html = render(report)
+
+    [(headings, rows)] = [
+        rendered for rendered in compared_tables(html) if "Trash" in rendered[0]
+    ]
+    assert headings == ["Ability", "Overall", "Range", "Sample", "Trash", "Bosses"]
+    [(row_class, cells)] = rows
+    assert row_class == "v-described"
+    assert [MARKUP.sub("", cell) for cell in cells[1:]] == [
+        "40% against 100%", "88% to 100%", "3 top parses", "25% against 100%",
+        "100% against 100%",
+    ]
+    [body] = [body for body in COMPARED_TABLE.findall(html) if ">Trash<" in body]
+    headed = _numeric_columns(COMPARED_HEADING_TAG.findall(body))
+    for _, drawn in COMPARED_ROW.findall(body):
+        assert _numeric_columns(COMPARED_CELL_TAG.findall(drawn)) == headed
+    assert f'<p class="sub">{escape(table.note)}</p>' in html
+    assert f'<p class="withheld">{escape(table.warning)}</p>' in html
+
+
+def test_a_judged_table_with_no_figure_columns_keeps_its_verdict() -> None:
+    report = rich_report()
+    table = ComparisonTable(
+        heading="Buff uptime",
+        caption="Derived.",
+        figures=False,
+        cell_headings=("Overall", "Range", "Sample", "Without bosses", "Bosses"),
+        rows=(
+            ComparisonRow(
+                ability_id=195181, name="Bone Shield", verdict="below", verdict_label="Below",
+                cells=(
+                    "62% against 98%", "95% to 99%", "3 top parses", "55% against 97%",
+                    "90%; too few references",
+                ),
+            ),
+        ),
+    )
+    first = report.players[0].model_copy(update={"comparison_tables": (table,)})
+    report = report.model_copy(update={"players": (first, *report.players[1:])})
+
+    [(headings, rows)] = [
+        rendered
+        for rendered in compared_tables(render(report))
+        if "Without bosses" in rendered[0]
+    ]
+
+    assert headings == [
+        "Ability", "Verdict", "Overall", "Range", "Sample", "Without bosses", "Bosses"
+    ]
+    [(_, cells)] = rows
+    assert [MARKUP.sub("", cell) for cell in cells[1:]] == [
+        "Below", "62% against 98%", "95% to 99%", "3 top parses", "55% against 97%",
+        "90%; too few references",
+    ]

@@ -1,0 +1,42 @@
+# Aura ids that are one cause, so the buff comparison reads them as one row.
+# No API exposes this: an aura table row carries a name, an icon, a school, a count and
+# its bands, and no field naming the ability that applied it (measured 2026-10-14 over the
+# 1,332 cached aura tables). Nothing in the rows tells a talent's rider from an unrelated
+# buff either: icon, name, use count, school and id distance each failed as a signal, and
+# band coverage alone grouped ten unrelated always-on passives and a flask together. So the
+# list is kept by hand and dated.
+#
+# Measured 2026-10-14 over the same tables: the ids of a group below carried the same
+# coverage in every table that held them, in at least 14 distinct players' logs. A group
+# earns a place here only on that evidence. The census named stable pairs for other
+# specialisations too (Arcane Mage, Retribution Paladin, Beast Mastery Hunter and more);
+# they are not listed, and a group is added by hand when a comparison shows one crowding.
+#
+# The first id of a group is its main one. A side's members are folded into one aura that
+# always carries the main id, even where that side never carried the main, so both sides
+# of a comparison key the same row. Each id is commented with the name its table row
+# carried; those names are what the merged row's own name is built from.
+verified = "2026-10-14"
+
+# Blood Death Knight. Standing in Death and Decay is reported under three ids with
+# identical uptime. In 73 of 73 Blood tables the three covered the same time, in 17 players.
+[death_and_decay]
+ability_ids = [
+  188290,   # Death and Decay
+  391459,   # Sanguine Ground
+  434034,   # Blood-Soaked Ground
+]
+
+# Blood Death Knight. In 73 of 73 tables, 17 players.
+[dancing_rune_weapon]
+ability_ids = [
+  81256,    # Dancing Rune Weapon
+  1264407,  # Dance of Midnight
+]
+
+# Blood Death Knight. In 15 of 15 tables (Mythic+ only), 14 players.
+[vampiric_blood]
+ability_ids = [
+  55233,    # Vampiric Blood
+  391519,   # Umbilicus Eternus
+]

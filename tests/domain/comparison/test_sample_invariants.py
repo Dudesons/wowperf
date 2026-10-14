@@ -5,7 +5,9 @@ import re
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.alignment import Alignment, align_pulls
+from wowperf.domain.comparison.boss_debuffs import BossDebuffs, BossTarget, BossWindow
 from wowperf.domain.comparison.confounds import declare_confounds_sample
+from wowperf.domain.comparison.key_debuffs import KeyDebuffs
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import ParseMember, ParseSample, SpeedMember, SpeedSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
@@ -31,9 +33,10 @@ AGGREGATE_PREFIXES = (
 )
 
 # Every id whose sample function calls `statistics.median` and must state the
-# observed range beside it. Ranked ids (spells.rate, uptime.self) need a prefix;
-# the rest are single findings, so an exact id behaves the same under
-# `startswith`.
+# observed range beside it. Ranked ids (spells.rate, uptime.self, uptime.debuff) need
+# a prefix; the rest are single findings, so an exact id behaves the same under
+# `startswith`. Only the ranked gap of uptime.debuff states a range: its `.unavailable`
+# and `.unjudged` siblings share the prefix, so the fixture must never fire them.
 MEDIAN_ID_PREFIXES = (
     "compare.downtime",
     "compare.deaths",
@@ -42,6 +45,7 @@ MEDIAN_ID_PREFIXES = (
     "compare.confound.item_level",
     "compare.spells.rate.",
     "compare.uptime.self.",
+    "compare.uptime.debuff.",
 )
 
 DUNGEON_ENCOUNTER_ID = 12825
@@ -52,6 +56,8 @@ MISSING_ABILITY_ID = 90001
 MISSING_ABILITY_NAME = "Meteor"
 UPTIME_SELF_ABILITY_ID = 90003
 UPTIME_SELF_ABILITY_NAME = "Ice Barrier"
+UPTIME_BOSS_ABILITY_ID = 90004
+UPTIME_BOSS_ABILITY_NAME = "Rupture"
 
 
 def _pull(index: int, game_id: int, seconds: float = 60.0, boss: bool = False) -> Pull:
@@ -108,13 +114,14 @@ OUR_RUN = Run(
     players=(SUBJECT,),
     pulls=OUR_PULLS,
     owner_name="emberkin",
+    fight_ms=(0, 1_320_000),
 )
 OURS = LoadedRun(run=OUR_RUN, casts=OUR_CASTS)
 
-# Our own boss pull (OUR_BOSS) spans 1_200_000ms to 1_320_000ms, 120s. 6s of the
-# aura kept up is a 5% fraction -- low enough for every top parse below (80%) to
-# clear UPTIME_GAP_FRACTION against it, and still above zero so the "we never had
-# it at all" carve-out does not swallow the gap.
+# Buffs are judged over the key clock, 0 to 1_320_000ms here, so 6s of the aura
+# kept up is under 1% of it -- low enough for every top parse below (80%) to clear
+# UPTIME_GAP_FRACTION against it, and still above zero so the "we never had it at
+# all" carve-out does not swallow the gap.
 OUR_AURAS = PlayerAuras(
     actor_id=SUBJECT.actor_id,
     on_self=(
@@ -127,6 +134,33 @@ OUR_AURAS = PlayerAuras(
         ),
     ),
 )
+
+
+def _boss_debuffs(start_ms: int, seconds: float, share: float) -> KeyDebuffs:
+    """One measured boss pull and no other enemy, the debuff up for `share` of it."""
+    end_ms = start_ms + int(seconds * 1000)
+    up_ms = int(seconds * 1000 * share)
+    return KeyDebuffs(
+        bosses=BossDebuffs(
+            windows=(
+                BossWindow(
+                    encounter_id=BOSS_ENCOUNTER_ID,
+                    name="Boss",
+                    start_ms=start_ms,
+                    end_ms=end_ms,
+                    targets=(BossTarget(game_id=99, start_ms=start_ms, end_ms=end_ms),),
+                ),
+            ),
+            covered=((BOSS_ENCOUNTER_ID, UPTIME_BOSS_ABILITY_ID, up_ms),),
+            names=((UPTIME_BOSS_ABILITY_ID, UPTIME_BOSS_ABILITY_NAME),),
+            reached=((UPTIME_BOSS_ABILITY_ID, 1),),
+        )
+    )
+
+
+# The debuff the boss carries for 5% of our own boss pull, against 80% of every top
+# parse's: the same gap the aura fixtures draw, so the boss family states a median.
+OUR_BOSS_DEBUFFS = _boss_debuffs(1_200_000, 120.0, 0.05)
 
 
 def _speed_member(
@@ -226,7 +260,8 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
                          item_level=400),),
         pulls=(_pull(0, 99, seconds=120.0, boss=True),),
     )
-    # This run's boss pull spans 0ms to 120_000ms; 96s of the aura is 80% of it.
+    # This run's key and its one boss pull both span 0ms to 120_000ms; 96s of the
+    # aura is 80% of either.
     auras = PlayerAuras(
         actor_id=actor_id,
         on_self=(
@@ -247,7 +282,9 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
         players=theirs.players,
         casts=rate_casts + missing_casts,
         auras=auras,
+        debuffs=_boss_debuffs(0, 120.0, 0.80),
         pulls=theirs.pulls,
+        fight_ms=(0, 120_000),
     )
 
 
@@ -255,7 +292,8 @@ def _parse_member(tag: str, *, casts_missing: bool) -> ParseMember:
 # (compare.spells.rate: a DERIVED median with its range). Four of five also cast
 # an ability we never cast anywhere (compare.spells.missing: "4 of 5", most). All
 # five also keep a buff up for 80% of their boss pull against our own 5%
-# (compare.uptime.self: a DERIVED median with its range).
+# (compare.uptime.self: a DERIVED median with its range), and a debuff on the boss
+# for 80% of their boss pull against our 5% (compare.uptime.debuff: the same).
 PARSE_SAMPLE = ParseSample(
     members=(
         _parse_member("A", casts_missing=True),
@@ -275,6 +313,7 @@ SUBJECT_WITH_AURAS = ComparisonSubject(
     display_name=SUBJECT.name,
     parse=PARSE_SAMPLE,
     our_auras=OUR_AURAS,
+    our_debuffs=OUR_BOSS_DEBUFFS,
 )
 
 

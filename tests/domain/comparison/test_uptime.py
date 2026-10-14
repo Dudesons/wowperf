@@ -1,21 +1,29 @@
-# ABOUTME: Behaviour tests for buff uptime against a top parse or sample, on boss pulls only.
+# ABOUTME: Behaviour tests for buff uptime against a top parse or sample, by each caller's rule.
 # ABOUTME: The interesting cases are a missing reference, a small sample, and a gap below cut-off.
 
+from collections.abc import Callable, Sequence
+
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
-from wowperf.domain.comparison.measures import Verdict
+from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.comparison.measures import StretchCell, Verdict
 from wowperf.domain.comparison.sample import MIN_SAMPLE_FOR_AGGREGATE, ParseMember, ParseSample
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.uptime import (
     UPTIME_GAP_FRACTION,
-    boss_pull_uptime,
     boss_windows,
     compare_uptime,
     compare_uptime_sample,
+    fight_seconds,
+    fight_seconds_of,
+    key_clock_uptime,
+    seconds_up_in,
     seconds_up_over_the_fight,
+    stretch_cell,
     uptime_measures,
     whole_fight_uptime,
+    without_boss_pulls,
 )
-from wowperf.domain.comparison.wording import DUNGEON
+from wowperf.domain.comparison.wording import DUNGEON, KEY
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import Player, Pull, Run
 
@@ -107,6 +115,19 @@ def a_reference(
     )
 
 
+def on_boss_pulls(
+    pulls: Sequence[Pull], fight_ms: tuple[int, int] | None
+) -> Callable[[Aura], float]:
+    """This module's rule: uptime inside a route's boss pulls, the fight's clock ignored.
+
+    The comparison's own branches -- the floor, the gap bar, the fallbacks -- do
+    not depend on which stretch a rule reads, so this module drives them over
+    boss pulls, where its fixtures put their bands. The rule a real key binds
+    is `key_clock_uptime`, pinned below.
+    """
+    return seconds_up_in(boss_windows(pulls))
+
+
 def pairwise_uptime(
     ours: Run,
     our_auras: PlayerAuras | None,
@@ -115,13 +136,13 @@ def pairwise_uptime(
 ) -> list[Finding]:
     """`compare_uptime` for a Mythic+ run, whose route decides which milliseconds count.
 
-    Every run in this module is a dungeon, so every one of them binds
-    `boss_pull_uptime` and our own side is the two values that route produces.
+    Every run in this module is a dungeon, read here over its boss pulls by
+    `on_boss_pulls`, and our own side is the two values that route produces.
     What a raid binds instead is `test_parse_axis`'s subject.
     """
     return compare_uptime(
         ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, theirs,
-        measured=boss_pull_uptime, words=DUNGEON,
+        measured=on_boss_pulls, words=DUNGEON,
     )
 
 
@@ -131,7 +152,7 @@ def sample_uptime(
     """`compare_uptime_sample` for a Mythic+ run, bound the way `pairwise_uptime` is."""
     return compare_uptime_sample(
         ours.pulls, boss_seconds(ours.pulls), our_auras, our_name, sample,
-        measured=boss_pull_uptime, words=DUNGEON,
+        measured=on_boss_pulls, words=DUNGEON,
     )
 
 
@@ -151,19 +172,22 @@ def test_overlapping_bands_over_a_whole_fight_are_counted_once() -> None:
 
     assert aura.total_uptime_ms == 25_000  # the sum of the parts, which is not the union
     assert seconds_up_over_the_fight(aura) == 20.0
-    assert whole_fight_uptime(()) is seconds_up_over_the_fight
+    assert whole_fight_uptime((), None) is seconds_up_over_the_fight
 
 
 def test_an_aura_with_no_bands_is_up_for_no_seconds_over_a_whole_fight() -> None:
     assert seconds_up_over_the_fight(an_aura(391477, "Coagulopathy")) == 0.0
 
 
-def test_the_dungeon_uptime_sentence_measures_boss_pull_time_at_a_keystone_level() -> None:
-    """The Mythic+ rendering of the sentences `Wording` varies, whole and with numbers.
+def test_the_dungeon_wording_over_a_boss_pull_rule_names_boss_pull_time() -> None:
+    """The comparison's pairwise sentences under `DUNGEON`'s words and a boss-pull rule.
 
-    The raid rendering of the same ones is asserted in `test_parse_axis.py`, and
-    the golden report file holds these byte for byte. The two sides' boss time
-    differs, so neither figure below is reproducible from the other's denominator.
+    A Mythic+ run's buffs are bound to `KEY` and the key clock, not to this
+    pairing; their sentences are pinned by the key-clock tests below. This
+    one holds the sentences `DUNGEON` alone words, whole and with numbers. The
+    raid rendering is asserted in `test_parse_axis.py`. The two sides' boss
+    time differs, so neither figure below is reproducible from the other's
+    denominator.
     """
     ours = a_run(BOSS)
     theirs = a_run(a_pull(0, 0, 80_000, encounter_id=12825), player=a_player("Bríala", 3))
@@ -517,12 +541,13 @@ WORDED_SAMPLE = ParseSample(
 30% each on a Siphon Storm our own side never carries."""
 
 
-def test_the_dungeon_sampled_uptime_sentences_name_boss_pulls_and_a_keystone_level() -> None:
-    """The Mythic+ rendering of the two sampled sentences `Wording` varies.
+def test_the_dungeon_wording_over_a_boss_pull_rule_names_boss_pulls_in_a_sample() -> None:
+    """The two sampled sentences under `DUNGEON`'s words and a boss-pull rule.
 
-    The golden report file does not hold these: its fixture carries no reference
-    run, so no comparison family reaches the page it renders. These assertions
-    are what pins them.
+    A Mythic+ run's buffs are bound to `KEY` and the key clock, whose sampled
+    sentences are pinned by `test_the_key_sampled_uptime_sentences_...` below.
+    The golden report file holds neither: its fixture carries no reference
+    run, so no comparison family reaches the page it renders.
     """
     findings = sample_uptime(OUR_RUN, OUR_AURAS, OUR_NAME, WORDED_SAMPLE)
     gap = next(f for f in findings if f.id == "compare.uptime.self.0")
@@ -911,3 +936,307 @@ def test_an_aura_the_sample_barely_carried_is_not_measured() -> None:
     measures = uptime_measures({1: ("Barely up", 0.0)}, per_member, names)
 
     assert measures == ()
+
+
+def test_the_key_clock_rule_reads_the_fight_from_its_start_to_its_end() -> None:
+    aura = an_aura(1, "Fixture Ward", (0, 50_000), (150_000, 250_000))
+
+    assert key_clock_uptime((BOSS, TRASH), (0, 200_000))(aura) == 100.0
+    assert key_clock_uptime((BOSS, TRASH), None)(aura) == 0.0
+
+
+def test_without_boss_pulls_is_the_clock_less_every_boss_pull() -> None:
+    first = a_pull(0, 100_000, 160_000, encounter_id=2001)
+    trash = a_pull(1, 200_000, 260_000, encounter_id=0)
+    second = a_pull(2, 300_000, 360_000, encounter_id=2002)
+
+    assert without_boss_pulls((0, 400_000), (first, trash, second)) == (
+        (0, 100_000),
+        (160_000, 300_000),
+        (360_000, 400_000),
+    )
+    assert without_boss_pulls((0, 100_000), (a_pull(0, 0, 100_000, encounter_id=2001),)) == ()
+
+
+def test_without_boss_pulls_walks_past_overlapping_and_unordered_boss_pulls() -> None:
+    # A boss pull nested inside another leaves no gap behind it, and a route
+    # listed out of order is still walked from the clock's start to its end.
+    wide = a_pull(0, 100_000, 300_000, encounter_id=2001)
+    nested = a_pull(1, 150_000, 200_000, encounter_id=2002)
+    assert without_boss_pulls((0, 400_000), (wide, nested)) == (
+        (0, 100_000),
+        (300_000, 400_000),
+    )
+
+    early = a_pull(0, 100_000, 160_000, encounter_id=2001)
+    late = a_pull(1, 300_000, 360_000, encounter_id=2002)
+    assert without_boss_pulls((0, 400_000), (late, early)) == (
+        (0, 100_000),
+        (160_000, 300_000),
+        (360_000, 400_000),
+    )
+
+
+def test_without_boss_pulls_never_leaves_the_clock() -> None:
+    boss = a_pull(0, 100_000, 160_000, encounter_id=2001)
+    after = a_pull(1, 150_000, 200_000, encounter_id=2002)
+
+    # The clock starts after zero, and a boss pull opens past its end.
+    assert without_boss_pulls((10_000, 400_000), (boss,)) == (
+        (10_000, 100_000),
+        (160_000, 400_000),
+    )
+    assert without_boss_pulls((0, 100_000), (after,)) == ((0, 100_000),)
+
+
+def test_a_fights_seconds_are_its_clock_and_no_clock_reads_zero() -> None:
+    assert fight_seconds((10_000, 1_810_000)) == 1800.0
+    assert fight_seconds(None) == 0.0
+
+
+def test_a_boss_pull_warcraft_logs_lists_twice_is_one_window() -> None:
+    # One encounter, start and end listed twice, as `dungeonPulls` lists some
+    # wipes. Two windows would count its seconds twice in a sum over them while
+    # `uptime_seconds_in` merges the aura's seconds in it once. The same boss
+    # pulled again later is a window of its own.
+    relisted = BOSS.model_copy(update={"index": 2, "pull_id": 2})
+    again = a_pull(3, 300_000, 400_000, encounter_id=12825)
+
+    assert boss_windows((BOSS, relisted, TRASH, again)) == (
+        (0, 100_000),
+        (300_000, 400_000),
+    )
+
+
+def test_a_reference_is_read_over_its_own_clock_when_the_rule_reads_one() -> None:
+    # The reference's key runs 300s and carried the buff for 150s of it; its boss
+    # pull, the default denominator, is 100s. Ours ran the same 300s and carried
+    # it 30s. Over the two clocks that is 50% against 10%. Divided by boss
+    # seconds, the reference would read 150%.
+    theirs = a_reference(
+        a_run(BOSS, TRASH),
+        PlayerAuras(actor_id=11, on_self=(an_aura(1, "Fixture Ward", (0, 150_000)),)),
+    ).model_copy(update={"fight_ms": (0, 300_000)})
+    ours = PlayerAuras(actor_id=7, on_self=(an_aura(1, "Fixture Ward", (0, 30_000)),))
+
+    findings = compare_uptime(
+        (BOSS, TRASH), 300.0, ours, OUR_NAME, theirs,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=(0, 300_000), over=fight_seconds_of,
+    )
+
+    [gap] = [finding for finding in findings if finding.id == "compare.uptime.self.0"]
+    assert gap.title == (
+        "Fixture Ward was up for 50% of Bríala's key time, 10% of Stonewake (actor 7)'s"
+    )
+
+
+KEY_CLOCK_MS = (0, 300_000)
+
+
+def a_key_clock_member(
+    actor_id: int, key_ms: int, coagulopathy_ms: int, siphon_ms: int
+) -> ParseMember:
+    """A reference whose key ran `key_ms`, carrying two auras over its own clock.
+
+    The clocks differ from each other and from `KEY_CLOCK_MS`, so no figure read
+    back below could have come from the wrong denominator and still matched.
+    """
+    return a_worded_member(actor_id, 100_000, coagulopathy_ms, siphon_ms).model_copy(
+        update={"fight_ms": (0, key_ms)}
+    )
+
+
+KEY_CLOCK_SAMPLE = ParseSample(
+    members=(
+        a_key_clock_member(31, 200_000, 160_000, 60_000),
+        a_key_clock_member(32, 250_000, 175_000, 75_000),
+        a_key_clock_member(33, 400_000, 300_000, 120_000),
+    )
+)
+"""Three keys at 80%, 70% and 75% of their own clock on Coagulopathy, and 30% each on a
+Siphon Storm our own side never carries."""
+
+KEY_CLOCK_AURAS = PlayerAuras(
+    actor_id=7, on_self=(an_aura(391477, "Coagulopathy", (0, 60_000)),)
+)
+"""Coagulopathy up for 60s of our 300s key: 20%."""
+
+
+def test_the_key_sampled_uptime_sentences_name_the_key_clock_and_walking_between_pulls() -> None:
+    """The Mythic+ rendering of the sampled sentences, bound the way `service.compare` binds them.
+
+    Every buff finding of a real key reads these words, so the walking caveat
+    that the key clock's decision accepts reaches the reader here, in the
+    finding's own detail, as well as in the page's caption.
+    """
+    findings = compare_uptime_sample(
+        OUR_RUN.pulls, fight_seconds(KEY_CLOCK_MS), KEY_CLOCK_AURAS, OUR_NAME, KEY_CLOCK_SAMPLE,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=KEY_CLOCK_MS, over=fight_seconds_of,
+    )
+    gap = next(f for f in findings if f.id == "compare.uptime.self.0")
+    unjudged = next(f for f in findings if f.id == "compare.uptime.unjudged")
+
+    assert gap.title == (
+        f"Coagulopathy was up a median 75% of key time across 3 top parses; 20% for {OUR_NAME}"
+    )
+    assert gap.detail == (
+        "Both figures are the share of the key's clock the aura was present, which is "
+        "comparable even though the fights ran for different lengths. Key time runs from the "
+        "key's start to its end with the walking between pulls included, so a buff only up "
+        "in combat reads lower the more of the key was spent between pulls, and a reference "
+        "that walked less reads higher whatever either player did. A different keystone "
+        "level still changes what fits, so read a narrow gap as noise. This compares by "
+        "exact ability, so a gap can still mean a different item of the same kind — but the "
+        "gap is stated over several top parses, not one player's build, so a single trinket "
+        "this player happens not to own no longer explains it away."
+    )
+    assert gap.evidence == (
+        "ability 391477",
+        "ours over 300s of the key",
+        "range 70% to 80% across 3 top parses",
+        "0 of 3 references had no aura data",
+    )
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "20% of key time"),
+        ("Reference median", "75% of key time"),
+        ("Observed range", "70% to 80%"),
+        ("Sample", "3 top parses"),
+    ]
+
+    assert unjudged.title == f"1 aura the sample carried is not judged for {OUR_NAME}"
+    assert unjudged.detail == (
+        "Each of these was present over enough of the sample's key time to compare, and "
+        "absent from ours. It is named rather than measured: the aura table cannot say "
+        "whose buff a row was, so a zero here may be a button this player never pressed or "
+        "one a teammate never gave them, and the log does not separate the two. Check "
+        "whether the build produces it before reading anything into it."
+    )
+    assert unjudged.evidence == (
+        "Siphon Storm",
+        "carried by at least 3 top parses each",
+        "absent from our own key",
+    )
+
+
+def test_the_key_pairwise_uptime_sentences_name_the_key_clock_and_walking_between_pulls() -> None:
+    theirs = a_key_clock_member(41, 200_000, 160_000, 60_000)
+
+    findings = compare_uptime(
+        OUR_RUN.pulls, fight_seconds(KEY_CLOCK_MS), KEY_CLOCK_AURAS, OUR_NAME, theirs,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=KEY_CLOCK_MS, over=fight_seconds_of,
+    )
+    [gap] = [finding for finding in findings if finding.id == "compare.uptime.self.0"]
+
+    assert gap.detail == (
+        "Both figures are the share of the key's clock the aura was present, which is "
+        "comparable even though the two fights ran for different lengths. Key time runs from "
+        "the key's start to its end with the walking between pulls included, so a buff only "
+        "up in combat reads lower the more of the key was spent between pulls, and a "
+        "reference that walked less reads higher whatever either player did. A different "
+        "keystone level still changes what fits, so read a narrow gap as noise. This "
+        "compares by exact ability, though, so a gap can also mean a different item of the "
+        "same kind, or gear this player does not own — not that nothing was used at all."
+    )
+    assert gap.evidence == (
+        "ability 391477",
+        "ours over 300s of the key",
+        "theirs over 200s of the key",
+    )
+    assert [(fact.label, fact.value) for fact in gap.facts] == [
+        ("Ours", "20% of key time"),
+        ("Reference", "80% of key time"),
+        ("Sample", "1 reference run"),
+    ]
+
+
+def test_the_key_unavailable_sentence_names_a_key_clock() -> None:
+    """A side with no clock has no key time, and the finding says which clock was missing."""
+    theirs = a_key_clock_member(42, 200_000, 160_000, 60_000)
+
+    [finding] = compare_uptime(
+        OUR_RUN.pulls, fight_seconds(None), KEY_CLOCK_AURAS, OUR_NAME, theirs,
+        measured=key_clock_uptime, words=KEY, our_fight_ms=None, over=fight_seconds_of,
+    )
+
+    assert finding.id == "compare.uptime.unavailable"
+    assert finding.confidence is Confidence.MEASURED
+    assert finding.detail == (
+        "An uptime comparison needs a key clock on both sides and aura data for both "
+        "players. One of those is missing, so no uptime numbers are reported rather than "
+        "numbers from an unlike sample."
+    )
+    assert finding.evidence == (
+        "our key time 0s",
+        "their key time 200s",
+        "our aura data present",
+        "their aura data present",
+    )
+
+
+def test_a_kept_aura_under_the_floor_is_not_judged_and_comes_after_the_judged() -> None:
+    names = {1: "Kept", 2: "Judged"}
+    per_member = [{1: 0.05, 2: 0.6}] * 3
+
+    measures = uptime_measures({1: ("Kept", 0.3), 2: ("Judged", 0.6)}, per_member, names, kept={1})
+
+    assert [(m.name, m.verdict) for m in measures] == [
+        ("Judged", Verdict.LEVEL),
+        ("Kept", Verdict.BOSSES_ONLY),
+    ]
+
+
+def test_a_kept_aura_still_needs_enough_carriers() -> None:
+    names = {1: "Kept"}
+    per_member = [{1: 0.05}, {1: 0.05}, {}]
+
+    assert uptime_measures({1: ("Kept", 0.3)}, per_member, names, kept={1}) == ()
+
+
+def test_an_aura_over_the_floor_is_judged_whether_or_not_it_is_kept() -> None:
+    names = {1: "Both"}
+    per_member = [{1: 0.6}] * 3
+
+    [measure] = uptime_measures({1: ("Both", 0.1)}, per_member, names, kept={1})
+
+    assert measure.verdict is Verdict.BELOW
+
+
+# --- stretch_cell ---------------------------------------------------------------
+
+
+def test_a_stretch_every_reference_measured_and_none_applied_it_in_says_so() -> None:
+    assert stretch_cell(0.4, [0.0] * 5) == StretchCell(ours=0.4, withheld=Withheld.NOT_APPLIED)
+
+
+def test_a_stretch_with_too_few_references_measuring_it_is_too_few_not_unapplied() -> None:
+    assert stretch_cell(0.4, [0.0, 0.0]) == StretchCell(ours=0.4, withheld=Withheld.TOO_FEW)
+
+
+def test_a_stretch_some_references_never_measured_counts_only_those_that_did() -> None:
+    # Two measured it, at zero; the other three had nothing there to measure.
+    assert stretch_cell(0.4, [0.0, 0.0, None, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.TOO_FEW
+    )
+    assert stretch_cell(0.4, [0.0, 0.0, 0.0, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.NOT_APPLIED
+    )
+
+
+def test_a_stretch_no_reference_measured_is_not_reached() -> None:
+    assert stretch_cell(0.4, [None, None, None]) == StretchCell(
+        ours=0.4, withheld=Withheld.NOT_REACHED
+    )
+
+
+def test_a_stretch_three_references_carried_gives_their_median() -> None:
+    assert stretch_cell(0.4, [0.5, 0.7, 0.9, 0.0]) == StretchCell(ours=0.4, their_median=0.7)
+
+
+def test_a_stretch_fewer_than_three_carried_is_too_few_even_if_others_measured_zero() -> None:
+    assert stretch_cell(0.4, [0.5, 0.7, 0.0, 0.0, 0.0]) == StretchCell(
+        ours=0.4, withheld=Withheld.TOO_FEW
+    )
+
+
+def test_a_stretch_our_side_measured_nothing_over_keeps_its_reason() -> None:
+    assert stretch_cell(Withheld.NO_TRASH, [0.0] * 5) == StretchCell(withheld=Withheld.NO_TRASH)

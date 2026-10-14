@@ -149,3 +149,26 @@ RAID = Wording(
     uptime_hedge="A shorter attempt still changes what fits, so read a narrow gap as noise.",
 )
 """A raid boss fight, where the comparable stretch is the fight and there is nothing beside it."""
+
+
+KEY = DUNGEON.model_copy(
+    update={
+        "both_sides": "a key clock",
+        "over": "the key",
+        "absent_from": "our own key",
+        "rate_basis": "the key's clock",
+        "stretch_time": "key time",
+        "uptime_hedge": (
+            "Key time runs from the key's start to its end with the walking between pulls "
+            "included, so a buff only up in combat reads lower the more of the key was spent "
+            "between pulls, and a reference that walked less reads higher whatever either "
+            "player did. A different keystone level still changes what fits, so read a narrow "
+            "gap as noise."
+        ),
+    }
+)
+"""A Mythic+ run's buffs, judged over the whole key clock rather than its boss pulls.
+
+Only the uptime family reads it, so only the slots `uptime.py` fills are changed.
+The others keep `DUNGEON`'s words, which no uptime sentence says.
+"""

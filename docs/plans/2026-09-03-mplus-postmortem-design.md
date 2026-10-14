@@ -592,6 +592,9 @@ Compared, in descending order of signal:
      on-target half is inert. Reviving it means either comparing the two groups' debuff uptime
      rather than the two players' — a different claim, which the finding would have to state —
      or finding a per-source filter this project has not found. Neither is decided.
+     *Amended 2026-10-07:* the per-source route exists. The `Debuffs` event stream names each
+     application's caster, and `docs/plans/2026-10-07-enemy-debuff-uptime-design.md` revives
+     the on-target half for single-boss pulls on that basis. Trash and raid remain open.
 
    Both are restricted to boss pulls by intersecting each aura's `bands` with the boss windows
    (`.claude/skills/wcl-api/SKILL.md`, "Aura tables"), and compared against the same

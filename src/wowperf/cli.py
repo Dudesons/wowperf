@@ -1,10 +1,11 @@
 # ABOUTME: Command-line entry point; the driving adapter that wires ports to implementations.
 # ABOUTME: Holds no analysis logic, only construction, argument handling and output.
 
+import functools
 import json
 import os
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -16,6 +17,7 @@ from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.cache.scan import scan_cache
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
+    load_aura_groups,
     load_consumable_buffs,
     load_consumables,
     load_defensives,
@@ -47,8 +49,10 @@ from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
+from wowperf.domain.comparison.key_debuffs import KeyDebuffs, key_debuffs
 from wowperf.domain.comparison.measures import PlayerMeasures
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
@@ -78,6 +82,7 @@ from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.targets import TargetRow
 from wowperf.domain.data_audit import AuditEntry, audit_lines, never_cast
+from wowperf.domain.debuffs import DebuffLog
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
@@ -706,6 +711,7 @@ def _samples(
                     casts=theirs.casts,
                     ability_icons=theirs.ability_icons,
                     pulls=theirs.run.pulls,
+                    fight_ms=theirs.run.fight_ms,
                 )
             )
         parse_samples[subject.actor_id] = ParseSample(members=tuple(parse_members))
@@ -1154,6 +1160,7 @@ def _parse_samples(
     loaded: LoadedEncounter,
     subjects: Sequence[Player],
     names: Mapping[int, str],
+    aura_groups: AuraGroups,
 ) -> tuple[tuple[ParseSubject, ...], tuple[ReferenceRecord, ...]]:
     """One external frame per subject, and a record of every reference weighed.
 
@@ -1204,6 +1211,7 @@ def _parse_samples(
                     else None
                 ),
                 sample=spec_references.sample if comparable else ParseSample(),
+                aura_groups=aura_groups,
                 board=spec_references.board if comparable else (),
                 boss_board=spec_references.boss_board if comparable else (),
                 our_targets=(
@@ -1357,6 +1365,76 @@ def _fetch_parse_auras(
     return sample.model_copy(update={"members": tuple(updated_members)}), our_auras
 
 
+def _debuff_log(runs: WclRunRepository, code: str, fight_id: int) -> DebuffLog | None:
+    """One fight's enemy-debuff log, or None if it cannot be had.
+
+    Swallowed and re-raised on the same terms as `_auras`: a failed stream must
+    not discard a report already paid for, and `compare.uptime.debuff.unavailable`
+    states the gap. A spent budget alone is re-raised, because it is every
+    later fetch's failure too.
+    """
+    try:
+        return runs.debuff_log(code, fight_id)
+    except RateLimitExceeded:
+        raise
+    except (IngestError, WclError, httpx.HTTPError):
+        return None
+
+
+def _fetch_parse_debuffs(
+    sample: ParseSample,
+    references: WclRunRepository,
+    our_log: Callable[[], DebuffLog | None],
+    our_run: Run,
+    subject: Player,
+) -> tuple[ParseSample, KeyDebuffs | None]:
+    """Every parse member's own debuffs over every enemy of its key, and our subject's.
+
+    The rule is `_fetch_parse_auras`'s. A member whose counterpart cannot be
+    found in its own roster is left without debuff data, unfetched. Our own
+    side is built only once some member's counterpart resolves. `our_log` is
+    shared across every subject of one run, because the stream covers the
+    whole group: the caller memoises it, so our stream is requested once at
+    most. A reference's stream is paid for once, and a later subject drawing
+    the same reference reads it back from the disk cache.
+
+    Our side is read with the run's players, so a debuff a teammate's
+    application replaces is found shared. A reference is read with none:
+    sharing can only lower a reference's share, which moves the median down
+    and so never makes ours read wrongly below.
+    """
+    ours: KeyDebuffs | None = None
+    ours_built = False
+    members: list[ParseMember] = []
+    for member in sample.members:
+        their_player = find_player(member.players, member.character_name)
+        if their_player is None:
+            members.append(member)
+            continue
+        if not ours_built:
+            log = our_log()
+            players = frozenset(player.actor_id for player in our_run.players)
+            ours = (
+                None
+                if log is None
+                else key_debuffs(log, our_run.pulls, subject.actor_id, players)
+            )
+            ours_built = True
+        their_log = _debuff_log(references, member.report_code, member.fight_id)
+        members.append(
+            member.model_copy(
+                update={
+                    "debuffs": None
+                    if their_log is None
+                    else key_debuffs(
+                        their_log, member.pulls, their_player.actor_id, frozenset()
+                    )
+                }
+            )
+        )
+    return sample.model_copy(update={"members": tuple(members)}), ours
+
+
 def _parse_sample_size(subject: ComparisonSubject) -> int:
     """How many parse references this player's comparison actually drew.
 
@@ -1441,6 +1519,7 @@ def analyze(
         defensives = load_defensives()
         consumables = load_consumables()
         consumable_buffs = load_consumable_buffs()
+        aura_groups = load_aura_groups()
         throughput = load_throughput_cooldowns()
         roles = load_roles()
         externals = load_externals()
@@ -1510,6 +1589,13 @@ def analyze(
                 rankings, references, loaded.run, requested
             )
 
+            # One enemy-debuff stream covers the whole group, so every subject
+            # reads the same one: memoised, it is requested once at most (a
+            # failure is not cached on disk, so the memo is what stops a second
+            # request), and only once some member's counterpart resolves.
+            our_debuff_log = functools.cache(
+                lambda: _debuff_log(repository, loaded.run.report_code, loaded.run.fight_id)
+            )
             for player_to_compare, slug, name in requested:
                 sample, our_auras = _fetch_parse_auras(
                     parse_samples[player_to_compare.actor_id],
@@ -1518,6 +1604,9 @@ def analyze(
                     loaded.run,
                     player_to_compare,
                 )
+                sample, our_debuffs = _fetch_parse_debuffs(
+                    sample, references, our_debuff_log, loaded.run, player_to_compare
+                )
                 subjects.append(
                     ComparisonSubject(
                         player=player_to_compare,
@@ -1525,7 +1614,9 @@ def analyze(
                         display_name=name,
                         parse=sample,
                         our_auras=our_auras,
+                        our_debuffs=our_debuffs,
                         consumable_buffs=consumable_buffs,
+                        aura_groups=aura_groups,
                         potion_ids=combat_potion_ids,
                         slot_names=slot_names,
                     )
@@ -1707,6 +1798,7 @@ def raid(
         # `build_raid_report` below, so the per-player pace windows and the
         # death recaps read the same self-resurrection list.
         self_resurrections = load_self_resurrections()
+        aura_groups = load_aura_groups()
 
         encounter = loaded.encounter
         # The roster's own spelling, computed once and read by everything that
@@ -1756,6 +1848,7 @@ def raid(
                 loaded,
                 to_compare,
                 names,
+                aura_groups,
             )
             reference_records += parse_records
 

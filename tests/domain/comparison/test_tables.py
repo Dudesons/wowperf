@@ -1,6 +1,7 @@
 # ABOUTME: The per-player measures the report's comparison table is built from.
 # ABOUTME: One entry per compared player, keyed by the slug the page matches cards on.
 
+from tests.domain.comparison.test_boss_debuffs import a_listed_twice
 from tests.domain.comparison.test_service import (
     ARCANE_BLAST,
     OUR_SLUG,
@@ -12,7 +13,8 @@ from tests.domain.comparison.test_service import (
     only_ours,
 )
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras, uptime_seconds_in
-from wowperf.domain.comparison.measures import Stretch, Verdict
+from wowperf.domain.comparison.boss_debuffs import Withheld
+from wowperf.domain.comparison.measures import Stretch, StretchCell, Verdict
 from wowperf.domain.comparison.sample import ParseMember, ParseSample
 from wowperf.domain.comparison.service import ComparisonSubject, compare
 from wowperf.domain.comparison.spells import MIN_CASTS_TO_COMPARE, boss_casts, boss_seconds
@@ -89,6 +91,7 @@ def a_parse_member(
         casts=theirs.casts,
         auras=auras,
         pulls=theirs.run.pulls,
+        fight_ms=theirs.run.fight_ms,
     )
 
 
@@ -298,10 +301,11 @@ def an_aura_parse_member(
     fought_a_boss: bool = True,
     band_start_ms: int = 0,
 ) -> ParseMember:
-    """A reference carrying Arcane Power for `band_ms` of a boss pull `seconds` long.
+    """A reference carrying Arcane Power for `band_ms` of a pull `seconds` long.
 
-    A boss pull built here always starts at zero, so a `band_start_ms` past the
-    end of one is an aura the reference carried outside every boss pull.
+    That pull is its whole key clock and, unless `fought_a_boss` is False, a
+    boss pull. It always starts at zero, so a `band_start_ms` past its end is an
+    aura the reference carried outside every boss pull and outside its key clock.
     """
     pulls = (
         (a_pull_of(0, (9,), seconds, boss=True),)
@@ -329,24 +333,25 @@ def a_run_with_a_two_minute_boss() -> LoadedRun:
 OUR_UPTIME = PlayerAuras(actor_id=OURS.actor_id, on_self=(an_aura(30_000),))
 
 
-def test_an_aura_row_is_a_share_of_boss_time_on_both_sides() -> None:
-    """Thirty seconds of a two-minute boss pull is a quarter of it, and the
-    sample's three boss-fighting references carried it over 0.75, 0.6 and 0.95 of
-    theirs. Every one of those is a division by a different denominator, so none
-    of them is the band length that produced it."""
+def test_an_aura_row_is_judged_over_the_key_clock_on_both_sides() -> None:
+    """Thirty seconds of a two-minute key is a quarter of it, and the sample's four
+    references with the aura inside their clock carried it over 0.75, 0.6, 0.95
+    and 0.75 of theirs. Every one of those is a division by a different
+    denominator, so none of them is the band length that produced it. Each run
+    here is one pull long, so its clock is that pull."""
     sample = ParseSample(
         members=(
             an_aura_parse_member("REF1", 60.0, 45_000),
             an_aura_parse_member("REF2", 90.0, 54_000),
             an_aura_parse_member("REF3", 60.0, 57_000),
-            # Aura data but no boss pull: there is no boss time to take a share
-            # of, so this reference carries nothing rather than dividing by zero.
+            # No boss pull: its key clock still counts, so it carried the aura
+            # over the key though it has no Bosses figure to give.
             an_aura_parse_member("REF4", 60.0, 45_000, fought_a_boss=False),
             # No aura data at all, so not an eligible member of the sample.
             a_parse_member_without_auras("REF5"),
-            # The aura was up, but never while this reference was on a boss,
-            # which reads the same as never having carried it. Counted as a
-            # zero, it would pull the median down to 0.675.
+            # The aura was up, but never inside this reference's own clock, which
+            # reads the same as never having carried it. Counted as a zero, it
+            # would pull the median down.
             an_aura_parse_member("REF6", 60.0, 30_000, band_start_ms=100_000),
         )
     )
@@ -355,11 +360,18 @@ def test_an_aura_row_is_a_share_of_boss_time_on_both_sides() -> None:
         a_run_with_a_two_minute_boss(), only_ours(sample, our_auras=OUR_UPTIME)
     )[OUR_SLUG]
 
-    auras = {m.name: m for m in measures.auras}
-    assert auras["Arcane Power"].ours == 0.25
-    assert auras["Arcane Power"].their_median == 0.75
-    assert auras["Arcane Power"].their_fractions == (0.75, 0.6, 0.95)
-    assert auras["Arcane Power"].verdict is Verdict.BELOW
+    [row] = measures.auras
+    assert row.uptime.name == "Arcane Power"
+    assert row.uptime.ours == 0.25
+    assert row.uptime.their_median == 0.75
+    assert row.uptime.their_fractions == (0.75, 0.6, 0.95, 0.75)
+    assert row.uptime.verdict is Verdict.BELOW
+    # Bosses describes: four references fought one, and REF6 sat at zero there,
+    # so the other three give the median.
+    assert row.bosses == StretchCell(ours=0.25, their_median=0.75)
+    # This key was all boss pull: nothing of ours lay outside one.
+    assert row.without_bosses == StretchCell(withheld=Withheld.NOTHING_OUTSIDE_BOSSES)
+    assert measures.key_seconds == 120.0
 
 
 def test_no_aura_row_when_our_own_side_returned_none() -> None:
@@ -637,17 +649,17 @@ the band below cannot drift back inside the window it is meant to sit outside.
 
 
 def a_sample_carrying_an_aura_unevenly() -> ParseSample:
-    """Three references carrying an aura across their boss time, and one that did not.
+    """Three references carrying an aura across their key clock, and one that did not.
 
-    The three sit at 0.75, 0.6 and 0.95 of their own boss pulls, each a
-    division by a different denominator, so no fraction is the band length that
-    produced it. Their median is 0.75 against our own 0.25.
+    Each key clock here is one boss pull. The three sit at 0.75, 0.6 and 0.95 of
+    theirs, each a division by a different denominator, so no fraction is
+    the band length that produced it. Their median is 0.75 against our own 0.25.
 
     The fourth is the awkward one, and what makes a change to which members the
     aura table counts visible rather than only a change to how it divides. It
-    carried the aura, but never while it was on a boss, which reads the same as
-    never having carried it at all. Counted as a zero it would drag the median
-    to 0.675.
+    carried the aura, but never inside its own key clock, which reads the same
+    as never having carried it at all. Counted as a zero it would drag the
+    median to 0.675.
     """
     return ParseSample(
         members=(
@@ -717,7 +729,7 @@ def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None
     findings = compare(ours, None, subjects)
     measures = comparison_measures(ours, subjects)[OUR_SLUG]
 
-    by_aura = {m.ability_id: m for m in measures.auras}
+    by_aura = {row.uptime.ability_id: row.uptime for row in measures.auras}
     gaps = [f for f in findings if f.id.startswith("compare.uptime.self.")]
     assert gaps, "no uptime finding to check against"
 
@@ -725,9 +737,94 @@ def test_every_uptime_finding_has_a_table_row_stating_the_same_figures() -> None
         assert finding.ability_id is not None
         measured = by_aura[finding.ability_id]
         assert finding.ability_name == measured.name
-        assert fact_value(finding, "Ours") == f"{measured.ours:.0%} of boss time"
+        assert fact_value(finding, "Ours") == f"{measured.ours:.0%} of key time"
         assert fact_value(finding, "Reference median") == (
-            f"{measured.their_median:.0%} of boss time"
+            f"{measured.their_median:.0%} of key time"
         )
         assert f"{measured.ours:.0%}" in finding.title
         assert f"{measured.their_median:.0%}" in finding.title
+
+
+def a_two_pull_aura_member(code: str, *, boss_listed_twice: bool = False) -> ParseMember:
+    """A reference with a minute of trash, then a minute of boss 140s later, its
+    aura up from the key's start to its end. `boss_listed_twice` lists that boss
+    pull twice, as Warcraft Logs lists some wipes."""
+    trash, boss = a_pull_of(0, (1,), 60.0), a_pull_of(1, (9,), 60.0, boss=True)
+    pulls = (trash, *a_listed_twice(boss)) if boss_listed_twice else (trash, boss)
+    theirs = a_loaded((THEIRS,), pulls)
+    return a_parse_member(
+        code,
+        theirs,
+        auras=PlayerAuras(actor_id=THEIRS.actor_id, on_self=(an_aura(260_000),)),
+    )
+
+
+def test_an_aura_is_described_without_bosses_and_on_bosses_beside_its_verdict() -> None:
+    """Ours ran 250s: 100s of trash, 100s of walking, then a 50s boss pull. The
+    aura was up for the first 100s: 40% of the key, half of the 200s outside the
+    boss pull, and none of the boss. Every reference held it the whole key."""
+    ours = a_loaded(
+        (OURS,), (a_pull_of(0, (1,), 100.0), a_pull_of(1, (9,), 50.0, boss=True))
+    )
+    sample = ParseSample(
+        members=tuple(a_two_pull_aura_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+    our_auras = PlayerAuras(actor_id=OURS.actor_id, on_self=(an_aura(100_000),))
+
+    measures = comparison_measures(ours, only_ours(sample, our_auras=our_auras))[OUR_SLUG]
+
+    [row] = measures.auras
+    assert (row.uptime.ours, row.uptime.their_median) == (0.4, 1.0)
+    assert row.without_bosses == StretchCell(ours=0.5, their_median=1.0)
+    assert row.bosses == StretchCell(ours=0.0, their_median=1.0)
+    assert measures.key_seconds == 250.0
+
+
+def test_a_boss_pull_listed_twice_counts_once_in_the_bosses_cell() -> None:
+    """Warcraft Logs lists some boss pulls twice, with one encounter, start and
+    end. Ours: 100s of trash, then a 50s boss pull listed twice, the aura up over
+    that pull alone. Each reference lists its 60s boss pull twice too, the aura
+    up throughout. Counted twice, a pull's seconds double while the aura's
+    seconds in it merge once, and both sides would read 50% on bosses."""
+    trash, boss = a_pull_of(0, (1,), 100.0), a_pull_of(1, (9,), 50.0, boss=True)
+    ours = a_loaded((OURS,), (trash, *a_listed_twice(boss)))
+    sample = ParseSample(
+        members=tuple(
+            a_two_pull_aura_member(code, boss_listed_twice=True)
+            for code in ("REF1", "REF2", "REF3")
+        )
+    )
+    our_auras = PlayerAuras(
+        actor_id=OURS.actor_id, on_self=(an_aura(50_000, start_ms=200_000),)
+    )
+
+    measures = comparison_measures(ours, only_ours(sample, our_auras=our_auras))[OUR_SLUG]
+
+    [row] = measures.auras
+    assert row.bosses == StretchCell(ours=1.0, their_median=1.0)
+    # The key clock and the key less its boss pulls never counted it twice:
+    # 50s of a 250s key, and none of the 200s outside the boss pull.
+    assert row.uptime.ours == 0.2
+    assert row.without_bosses == StretchCell(ours=0.0, their_median=1.0)
+
+
+def test_two_boss_pulls_that_overlap_count_their_overlap_once_in_the_bosses_cell() -> None:
+    """Two boss pulls that are not one listing repeated, but overlap: 0s to 100s
+    and 50s to 150s. The aura is up for the whole 150s they cover between them.
+    The seconds it is up in merge once, so the seconds they are measured against
+    must too: summed as given they are 200s, and the aura would read 75% of
+    them, a gap against references that held it throughout, which nobody had."""
+    first = a_pull_of(0, (9,), 100.0, boss=True)
+    second = first.model_copy(
+        update={"index": 1, "pull_id": 2, "start_ms": 50_000, "end_ms": 150_000}
+    )
+    ours = a_loaded((OURS,), (first, second))
+    sample = ParseSample(
+        members=tuple(a_two_pull_aura_member(code) for code in ("REF1", "REF2", "REF3"))
+    )
+    our_auras = PlayerAuras(actor_id=OURS.actor_id, on_self=(an_aura(150_000),))
+
+    measures = comparison_measures(ours, only_ours(sample, our_auras=our_auras))[OUR_SLUG]
+
+    [row] = measures.auras
+    assert row.bosses == StretchCell(ours=1.0, their_median=1.0)

@@ -544,3 +544,16 @@ def test_an_encounter_the_report_names_no_phases_for_carries_none() -> None:
     report = {"code": "AbCdEf", "phases": [{"encounterID": 9999, "phases": []}]}
 
     assert _build_encounter_for(report, encounter_id=3492).phases == ()
+
+
+def test_the_fights_own_clock_is_carried_into_the_run() -> None:
+    # The fight's start and end, not the first pull's start and the last pull's end.
+    run = build_run(report(), select_keystone_fight(report()["fights"], None))
+
+    assert run.fight_ms == (10_000, 1_810_000)
+
+
+def test_a_fight_with_no_clock_carries_none() -> None:
+    report = {"code": "abc123", "masterData": {"actors": []}}
+
+    assert build_run(report, a_minimal_fight()).fight_ms is None

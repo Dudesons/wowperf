@@ -1,12 +1,14 @@
 # ABOUTME: Translates Warcraft Logs report JSON into the domain model.
 # ABOUTME: The only module that knows Warcraft Logs field names; everything downstream is clean.
 
+from collections.abc import Sequence
 from typing import Any
 
 from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.pace_boss import NpcActor
 from wowperf.domain.comparison.pace_curve import BossDamage
+from wowperf.domain.debuffs import DebuffEvent, DebuffLog, EnemyDeathRow
 from wowperf.domain.encounter import Encounter
 from wowperf.domain.events import (
     CastEvent,
@@ -222,7 +224,16 @@ def build_run(
         npc_counts=tuple((int(game_id), count) for game_id, count in raw_counts.items()),
         players=_build_players(fight, actors, talents or {}, loadouts or {}),
         pulls=_build_pulls(fight),
+        fight_ms=_fight_clock(fight),
     )
+
+
+def _fight_clock(fight: dict[str, Any]) -> tuple[int, int] | None:
+    """The fight's own start and end, or None when either of them is missing."""
+    start, end = fight.get("startTime"), fight.get("endTime")
+    if start is None or end is None:
+        return None
+    return (int(start), int(end))
 
 
 def build_raid_roster(
@@ -473,6 +484,74 @@ def build_interrupts(
             )
         )
     return tuple(interrupts)
+
+
+DEBUFF_TYPES = ("applydebuff", "removedebuff")
+"""The two rows that change whether a debuff is on. Refreshes and stacks do not."""
+
+
+def build_debuff_log(
+    events: list[dict[str, Any]],
+    actors: list[dict[str, Any]],
+    ability_names: dict[int, str],
+    end_ms: int,
+    death_events: Sequence[dict[str, Any]] = (),
+) -> DebuffLog:
+    """The enemy-debuff stream and the report's actors, as one log a player can be read off.
+
+    A death on an actor with no game id is skipped, because it cannot be a boss the figure measures.
+    `death_rows` keeps every death by actor and copy, game id or not: which of them is an enemy
+    is the domain's to decide.
+    """
+    game_ids = {actor["id"]: actor["gameID"] for actor in actors if actor.get("gameID") is not None}
+    return DebuffLog(
+        events=tuple(
+            DebuffEvent(
+                applied=event["type"] == "applydebuff",
+                timestamp_ms=event["timestamp"],
+                source_id=event["sourceID"],
+                source_instance=event.get("sourceInstance") or 0,
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                ability_id=event["abilityGameID"],
+            )
+            for event in events
+            if event.get("type") in DEBUFF_TYPES
+        ),
+        pet_owners=tuple(
+            (actor["id"], actor["petOwner"])
+            for actor in actors
+            if actor.get("petOwner") is not None
+        ),
+        game_ids=tuple(game_ids.items()),
+        npc_actors=tuple(
+            NpcActor(
+                actor_id=actor["id"],
+                game_id=actor["gameID"],
+                name=actor.get("name") or "",
+                sub_type=actor.get("subType") or "",
+            )
+            for actor in actors
+            if actor.get("type") == "NPC" and actor.get("gameID") is not None
+        ),
+        ability_names=tuple(sorted(ability_names.items())),
+        end_ms=end_ms,
+        deaths=tuple(
+            (game_ids[event["targetID"]], event["timestamp"])
+            for event in death_events
+            if event.get("type") == "death" and event.get("targetID") in game_ids
+        ),
+        death_rows=tuple(
+            EnemyDeathRow(
+                target_id=event["targetID"],
+                target_instance=event.get("targetInstance") or 0,
+                timestamp_ms=event["timestamp"],
+            )
+            for event in death_events
+            if event.get("type") == "death"
+        ),
+        player_ids=tuple(actor["id"] for actor in actors if actor.get("type") == "Player"),
+    )
 
 
 def build_enemy_deaths(

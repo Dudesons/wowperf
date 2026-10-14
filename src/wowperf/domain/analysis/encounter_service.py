@@ -238,6 +238,7 @@ def analyse_encounter(
                 subject.boss_board,
                 subject.our_targets,
                 subject.their_targets,
+                aura_groups=subject.aura_groups,
             ),
             subject.slug,
         )

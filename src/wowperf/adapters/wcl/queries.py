@@ -192,6 +192,30 @@ query EnemyCasts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: F
 }
 """
 
+# Every debuff the group put on enemies, each row naming its caster. The table
+# endpoint cannot be scoped to one caster; this stream can (wcl-api skill, "The
+# debuff event stream does name the caster", verified 2026-10-07). About one
+# point per 10,000-row page.
+ENEMY_DEBUFFS_QUERY = """
+query EnemyDebuffs($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
+  reportData {
+    report(code: $code, allowUnlisted: true) {
+      events(
+        dataType: Debuffs
+        hostilityType: Enemies
+        fightIDs: [$fightId]
+        startTime: $startTime
+        endTime: $endTime
+        limit: 10000
+      ) {
+        data
+        nextPageTimestamp
+      }
+    }
+  }
+}
+"""
+
 INTERRUPTS_QUERY = """
 query Interrupts($code: String!, $fightId: Int!, $startTime: Float!, $endTime: Float!) {
   reportData {
@@ -392,12 +416,17 @@ query Resurrects(
 }
 """
 
+# Every actor in the report, untyped, so a pet or a mechanic modelled as a
+# hostile pet resolves too. `name`, `type` and `subType` let `find_bosses` read
+# a boss off a key's own pulls, and `petOwner` folds a pet's debuffs into its
+# owner's (wcl-api skill, "The debuff event stream does name the caster",
+# 2026-10-07). `translate: true` for the reason `NPC_ACTORS_QUERY` gives.
 ACTORS_QUERY = """
 query Actors($code: String!) {
   reportData {
     report(code: $code, allowUnlisted: true) {
       masterData(translate: true) {
-        actors { id gameID }
+        actors { id gameID name type subType petOwner }
       }
     }
   }
@@ -508,7 +537,8 @@ query ReportRankings($code: String!, $fightId: Int!, $metric: ReportRankingMetri
 # `Buffs` with targetID is what the player carried. The matching enemy-debuff
 # table is not asked for: nothing narrows it to one caster, so every row it returns
 # belongs to the whole group — see `.claude/skills/wcl-api/SKILL.md`, "The debuff
-# half cannot be scoped to one caster", for the arguments measured. The selection
+# half cannot be scoped to one caster", for the arguments measured. What a player
+# kept up on enemies comes from `ENEMY_DEBUFFS_QUERY` above instead. The selection
 # is aliased even though it is now the only one, because
 # `ingest.build_player_auras` reads it by that name and says so when it is missing.
 AURA_TABLE_QUERY = """

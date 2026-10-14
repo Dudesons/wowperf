@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from pydantic import Field
 
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.raid_reference import RaidParseRow, ReportRankings
@@ -84,6 +85,9 @@ class ParseSubject(Frozen):
     display_name: str = Field(min_length=1)
     our_auras: PlayerAuras | None = None
     sample: ParseSample = ParseSample()
+    # Curated data the adapter reads from `data/aura_groups.toml` and hands in, as
+    # `service.ComparisonSubject` carries its own: the domain performs no I/O.
+    aura_groups: AuraGroups = AuraGroups()
     board: tuple[RaidParseRow, ...] = ()
     boss_board: tuple[RaidParseRow, ...] = ()
     our_targets: tuple[TargetRow, ...] = ()
@@ -154,6 +158,7 @@ def compare_parse_axis(
     boss_board: tuple[RaidParseRow, ...],
     our_targets: tuple[TargetRow, ...],
     their_targets: Sequence[tuple[TargetRow, ...]],
+    aura_groups: AuraGroups = AuraGroups(),
 ) -> list[Finding]:
     """Every comparison a raid boss fight draws from outside itself, unranked.
 
@@ -239,7 +244,7 @@ def compare_parse_axis(
         )
         findings += compare_uptime_sample(
             NO_ROUTE, our_seconds, our_auras, our_name, sample,
-            measured=whole_fight_uptime, words=RAID,
+            measured=whole_fight_uptime, words=RAID, groups=aura_groups,
         )
 
     # Last, and not third. Every `compare` finding carries `seconds_lost=None`,

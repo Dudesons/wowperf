@@ -15,7 +15,7 @@ class NpcActor(Frozen):
     sub_type: str
 
 
-def _named_after(name: str, fight_name: str) -> bool:
+def named_after(name: str, fight_name: str) -> bool:
     """The fight's name, or its opening words: "Grimtooth" names "Grimtooth the Vile"."""
     return bool(name) and (name == fight_name or fight_name.startswith(f"{name} "))
 
@@ -37,7 +37,7 @@ def find_bosses(
     candidates = tuple(
         one for one in actors if one.sub_type == BOSS_SUB_TYPE and one.actor_id in enemy_ids
     )
-    named = [one for one in candidates if _named_after(one.name, fight_name)]
+    named = [one for one in candidates if named_after(one.name, fight_name)]
     if len(named) == 1:
         return (named[0],)
     if named:
