@@ -25,14 +25,14 @@ FIELD_ROW = re.compile(
 
 FLAG = re.compile(r"--[a-z][a-z-]+")
 
-# The skill documents three sibling commands, one section each. Checking the
+# The skill documents five commands, one section each. Checking the
 # whole file against one command's `--help` only ever worked for `analyze`
 # by coincidence -- `raid`'s flags happen to be a subset of `analyze`'s -- and
 # stopped working the moment `progression` added flags (`--boss`,
 # `--difficulty`) that are not. Each command's own section is checked against
-# its own `--help` instead, so a fourth command means one more entry here
+# its own `--help` instead, so a further command means one more entry here
 # rather than a moved boundary.
-COMMANDS = ("analyze", "raid", "progression", "night")
+COMMANDS = ("analyze", "raid", "progression", "night", "character")
 
 # Flags a section names while talking about a sibling command rather than its
 # own -- "the same shapes `analyze` offers, minus `--narrative`", or the
@@ -48,16 +48,19 @@ EXPLICITLY_UNSUPPORTED: dict[str, frozenset[str]] = {
     "night": frozenset({
         "--player", "--all-players", "--narrative", "--fight",
     }),
+    "character": frozenset({
+        "--player", "--all-players", "--no-compare", "--fight", "--throughput-ceiling",
+    }),
 }
 
 
 def _section_text(command: str) -> str:
     """The paragraph(s) of `ANALYZING_SKILL` that document one command's flags.
 
-    `analyze`'s own text is everything before its two younger siblings'
-    headings, plus "When it goes wrong" -- which sits after both in the file
-    but is about a Mythic+ run that never completed, `analyze`'s own failure
-    mode, not `raid`'s or `progression`'s.
+    `analyze`'s own text is everything before its younger siblings' first
+    heading, plus "When it goes wrong" -- which sits after all of them in the
+    file but is about a Mythic+ run that never completed, `analyze`'s own
+    failure mode, not any sibling's.
     """
     text = ANALYZING_SKILL.read_text(encoding="utf-8")
     if command == "analyze":
@@ -69,7 +72,9 @@ def _section_text(command: str) -> str:
     if command == "progression":
         return text.split("## The `progression` command")[1].split("## The `night` command")[0]
     if command == "night":
-        return text.split("## The `night` command")[1].split("## When it goes wrong")[0]
+        return text.split("## The `night` command")[1].split("## The `character` command")[0]
+    if command == "character":
+        return text.split("## The `character` command")[1].split("## When it goes wrong")[0]
     raise ValueError(f"no section known for {command!r}")
 
 

@@ -113,6 +113,32 @@ how long the raid held after; a row opens its pull. A wipe's own page opens on w
 a verdict was reached, then on how it started rather than on its death toll; a kill's opens on its
 speed wherever a reference kill was drawn to compare it with.
 
+## Reading one character
+
+```bash
+uv run wowperf character https://www.warcraftlogs.com/character/eu/<realm>/<name>?zone=<id>
+```
+
+takes a Warcraft Logs character page rather than a report, and answers the question one run cannot:
+what repeats. For each dungeon of the zone it reads the character's most recent run at their
+highest key there, or one level below it, timed or not, and analyses each as `analyze` would. The
+page then counts across them: judgements the per-run analysis made again and again, measures that
+sat on the same side of the top parses in every run, and a ledger of the group comparisons that
+carries no verdict. Nothing is summed across runs.
+
+The zone comes from `?zone=` in the URL or from `--zone`; with neither the command stops and says
+where to find the id, since it never guesses the season. The runs are all of one specialisation,
+the one with the most ranked runs unless `--spec NAME` names another. `--narrative FILE`, `--out DIR`
+and `--cache-dir DIR` work as on `analyze`. `--player`, `--all-players`, `--no-compare`, `--fight`
+and `--throughput-ceiling` are not offered: the subject is the character, the comparison is what
+the patterns read, and the runs are chosen by rule.
+
+Everything lands in `out/<region>-<realm>-<name>/`: `character.json` and `character.html`, and
+beside them each run's own findings file and report, which the page links to. A run that fails to
+load is listed with its reason and the page counts what loaded; a spent point budget stops the
+command rather than writing a page the budget shrank. A page needs at least six loaded runs to state
+a consistent direction and says so when it has fewer.
+
 ## Asking Claude to coach you
 
 The tool gives you a report. The skills give you someone to read it with.
@@ -143,6 +169,7 @@ place. Every attempt at one boss gets five — Summary, Attempts, Repeats, Best 
 the night's shape rather than any one pull's anatomy, which stays `raid --fight N`'s work. A whole
 report is one page behind two dropdowns, a boss and then a pull, with a summary for each boss and
 the raid page's seven tabs for each pull.
+A character is four tabs — Summary, Group, Runs, Provenance — with each run's own report beside it.
 
 Each death gets a recap: a health curve, a timeline of what hit you, how you came back, and every
 defensive, consumable and teammate external it lists placed in one of seven states at the moment
@@ -168,6 +195,13 @@ Being clear about this matters more than the features:
   Logs offers no way to scope the enemy-debuff table to a single caster, but its event stream
   names each application's caster, so "what you kept up on enemies" is rebuilt from that stream,
   as coverage of their alive time and reach across them. Raid pulls are not measured yet.
+- **A character page counts; it does not diagnose.** A direction says a measure sat on one side
+  of the top parses in every run, a difference rather than a mistake, and the floors it needs
+  are chosen numbers, not measured ones. The analysis-side findings other than trash overage
+  (deaths, missed interrupts, defensives, healing consumables, throughput cooldowns, heavy moments
+  of damage) and talent comparisons are not counted across runs, so the page being silent on them
+  is not a clean bill.
+  Each run's own page still carries them.
 - **Nothing here is a DPS ranking.** It is about decisions, not throughput.
 
 ## Quota
@@ -187,10 +221,11 @@ depends on the command and on how wide you cast it. Measured, against a cold cac
 | `analyze --all-players`, 2026-10-08 | 298.65 |
 | `night`, a whole report | 705 |
 | `raid --all-players`, a kill | 878 |
+| `character`, eight dungeons, 2026-10-14 | 1090.57 |
 
-Each is one reading of one report on one day rather than a budget; the dates and the conditions
-behind them are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement
-goes.
+Each is one reading on one day rather than a budget: of one report, or for the `character` row,
+of one character's eight runs, each in its own report. The dates and the conditions behind them
+are recorded in `.claude/skills/wcl-api/SKILL.md`, which is where a new measurement goes.
 
 **The two `analyze` rows are the readings of 2026-10-08, taken once boss debuff uptime
 had added its event stream.** Both ran with the references cold and our own run already cached.
@@ -241,7 +276,8 @@ class debuffs without encoding boss knowledge. So the tool states what happened 
 and uses no causal verb. What stays open is a descriptive reading, not a causal one: how far a
 passed debuff spread on one attempt against the night's best.
 
-Deliberately out of scope: personal run history across weeks, and raw combat-log ingestion.
+`character` took up the personal run history the first design deferred: one run per dungeon, read
+as of now. Deliberately out of scope: trends over weeks, and raw combat-log ingestion.
 Everything arrives through the Warcraft Logs API.
 
 ## Feedback

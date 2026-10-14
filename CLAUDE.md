@@ -351,6 +351,9 @@ healing done depends on how much damage the group took.
 **Current state: a fight goes in and a report comes out.** `wowperf fetch` prints a run as
 JSON; `wowperf analyze`, `wowperf raid` and `wowperf progression` each write their findings as
 JSON and as one HTML file.
+`wowperf character` takes a character page rather than a report: it reads one recent high key per
+dungeon for one specialisation, writes each run's own report, and states in one page what repeats
+across them (`2026-10-14-character-command-design.md`).
 
 Everything that touches the network lives in `src/wowperf/adapters/wcl/`: OAuth client
 credentials, the GraphQL client, event pagination, and the ingest that turns a response into
@@ -469,9 +472,11 @@ lines are unreliable, so the code is the record.
 | `uv run wowperf raid <url> [--fight N] [--player NAME]... [--all-players] [--no-compare] [--cache-dir DIR] [--out DIR]` | Analyse a raid boss fight against reference kills and write `<code>-<fight>.findings.json` and `<code>-<fight>.html` under `--out` |
 | `uv run wowperf progression <url> [--boss ID] [--difficulty N] [--cache-dir DIR] [--out DIR]` | Read every attempt at one boss from one report and write `<code>-<encounter>.progression.json` and `<code>-<encounter>.progression.html` under `--out` |
 | `uv run wowperf night <url> [--deep FIGHT]... [--no-deaths] [--no-compare] [--difficulty N] [--cache-dir DIR] [--out DIR]` | Analyse every boss and every pull one report holds and write `<code>.night.json` and `<code>.night.html` under `--out` |
+| `uv run wowperf character <character-url> [--zone ID] [--spec NAME] [--narrative FILE] [--cache-dir DIR] [--out DIR]` | Analyse one recent high key per dungeon for one character and write `character.json` and `character.html` under `--out/<region>-<realm>-<name>/`, beside each run's own findings file and report |
 | `uv run wowperf audit-data [--cache-dir DIR]` | Check the ability ids in `data/defensives.toml`, `data/externals.toml` and `data/throughput_cooldowns.toml` against the ids the cached logs cast, and print the entries never cast with what their name was cast as instead; offline, spends nothing |
 
-The five that read a report take a report URL or a bare report code, and each prints what
+Five commands read a report and take a report URL or a bare report code; `character` takes a
+character page URL instead, with `?zone=` or `--zone` naming the season. Each prints what
 the run spent from the hourly point budget, broken down by operation. `audit-data` reads only
 the local cache and spends nothing.
 `.github/workflows/gate.yml` runs the lint, the type check and the offline suite on every push
