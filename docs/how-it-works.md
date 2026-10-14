@@ -597,7 +597,7 @@ points an hour; a full run fetch costs roughly six.
 
 ## `data/` — what no API exposes
 
-Nine TOML files, read only by `adapters/config/toml.py`. Every one carries a
+Ten TOML files, read only by `adapters/config/toml.py`. Every one carries a
 `verified = "YYYY-MM-DD"` date, because nothing here can be resolved at runtime.
 
 | File | Holds |
@@ -608,6 +608,7 @@ Nine TOML files, read only by `adapters/config/toml.py`. Every one carries a
 | `externals.toml` | cooldowns cast on *someone else* to keep them alive |
 | `consumables.toml` | healing consumables by shared cooldown group |
 | `consumable_buffs.toml` | flask, food, and the rest |
+| `aura_groups.toml` | aura ids that are one cause, the first of each the main one; the buff comparison folds them into one row |
 | `roles.toml` | tank and healer specs; anything absent is damage |
 | `resurrections.toml` | abilities a dead player casts on themselves |
 | `slot_names.toml` | equipment slot index to name |

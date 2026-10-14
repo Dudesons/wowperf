@@ -365,7 +365,8 @@ off cooldown at a death and defensives pressed far below what their cooldown all
 consumables, throughput cooldowns spent away from the pulls worth spending them on, the group's
 heaviest moments of damage taken and whether a group cooldown answered each, the recap
 behind each death card, and what the other healers were doing when each player died. The class data they read — cooldowns, teammates' externals,
-self-resurrections, roles — is hand-maintained under `data/`.
+self-resurrections, roles, and which aura ids are one cause (`aura_groups.toml`, read by the
+buff comparison alone) — is hand-maintained under `data/`.
 
 `src/wowperf/domain/comparison/` measures the run against two axes: fast completions of the
 same dungeon, and top parses of the analysed player's specialisation. Each axis draws a

@@ -434,6 +434,14 @@ instead of adjusting for them, because adjusting would invent a number:
   A boss pull Warcraft Logs lists twice counts once in Bosses, as it does for debuffs.
   `comparison_tables.<slug>.auras` carries each row's `uptime`, the judged figure, beside
   `without_bosses` and `bosses`.
+  One cause is one row where `data/aura_groups.toml` lists its ids: the aura table names no
+  source, so Death and Decay, Sanguine Ground and Blood-Soaked Ground arrive as three rows of
+  one uptime, and the comparison folds each side's members into one aura under the group's
+  first id before it measures anything. A folded aura's name lists every member that side
+  carried, the row is named as the references spell it, its uptime is the union of the members'
+  bands, and `ability_id` is the main id. A cause the file
+  does not list still reads as one row per id, so several rows with the same figures are
+  one cause the file has not been told about, and not several findings.
 - **Debuff coverage is rebuilt, not read.** `compare.uptime.debuff.<rank>.<slug>` is the share
   of the enemies' alive time, summed over every enemy of the key, that carried a debuff from the
   player or their pets, against the median of the parses that applied it, by the buff family's
