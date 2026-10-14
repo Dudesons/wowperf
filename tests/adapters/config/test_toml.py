@@ -461,3 +461,54 @@ def test_every_marked_throughput_cooldown_sits_under_a_healer_spec() -> None:
     for spec, abilities in load_throughput_cooldowns().entries:
         if any(one.group for one in abilities):
             assert spec in healers, f"{spec} is not a healer spec"
+
+
+def test_the_committed_aura_groups_file_carries_the_three_measured_groups() -> None:
+    from wowperf.adapters.config.toml import load_aura_groups
+
+    groups = load_aura_groups().groups
+
+    # The first id of each is the main one, the id the merged row is keyed by.
+    assert groups == (
+        (188290, 391459, 434034),  # Death and Decay, Sanguine Ground, Blood-Soaked Ground
+        (81256, 1264407),  # Dancing Rune Weapon, Dance of Midnight
+        (55233, 391519),  # Vampiric Blood, Umbilicus Eternus
+    )
+
+
+def test_aura_groups_are_read_from_a_toml_file_in_the_order_written(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_aura_groups
+
+    path = tmp_path / "aura_groups.toml"
+    path.write_text(
+        'verified = "2026-10-14"\n'
+        "[second]\n"
+        "ability_ids = [30, 10]\n"
+        "[first]\n"
+        "ability_ids = [20, 40, 50]\n",
+        encoding="utf-8",
+    )
+
+    assert load_aura_groups(path).groups == ((30, 10), (20, 40, 50))
+
+
+def test_an_aura_id_in_two_groups_is_refused(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_aura_groups
+
+    path = tmp_path / "aura_groups.toml"
+    path.write_text(
+        "[one]\nability_ids = [1, 2]\n[two]\nability_ids = [3, 2]\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="ability id 2 is in more than one aura group"):
+        load_aura_groups(path)
+
+
+def test_an_aura_group_of_one_id_is_refused(tmp_path: Path) -> None:
+    from wowperf.adapters.config.toml import load_aura_groups
+
+    path = tmp_path / "aura_groups.toml"
+    path.write_text("[lonely]\nability_ids = [1]\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="at least two ids"):
+        load_aura_groups(path)

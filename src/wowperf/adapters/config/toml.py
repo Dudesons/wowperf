@@ -4,6 +4,7 @@
 import tomllib
 from pathlib import Path
 
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.season import (
     ConsumableBuffs,
     ConsumableCategory,
@@ -25,6 +26,7 @@ DEFAULT_SEASON_PATH = DATA_DIR / "season.toml"
 DEFAULT_DEFENSIVES_PATH = DATA_DIR / "defensives.toml"
 DEFAULT_CONSUMABLES_PATH = DATA_DIR / "consumables.toml"
 DEFAULT_CONSUMABLE_BUFFS_PATH = DATA_DIR / "consumable_buffs.toml"
+DEFAULT_AURA_GROUPS_PATH = DATA_DIR / "aura_groups.toml"
 DEFAULT_THROUGHPUT_PATH = DATA_DIR / "throughput_cooldowns.toml"
 DEFAULT_ROLES_PATH = DATA_DIR / "roles.toml"
 DEFAULT_EXTERNALS_PATH = DATA_DIR / "externals.toml"
@@ -152,6 +154,24 @@ def load_consumable_buffs(
         if isinstance(label, str) and label:
             labels.append((name, label))
     return ConsumableBuffs(entries=tuple(entries), labels=tuple(labels))
+
+
+def load_aura_groups(path: Path = DEFAULT_AURA_GROUPS_PATH) -> AuraGroups:
+    """Aura ids that are one cause, from the committed TOML file.
+
+    Each table is one group and its first id is the main one. `verified` is a
+    date the file carries for a reader, not a field the domain uses, so it is
+    skipped like any other non-table key. An id in two groups, or a group of
+    fewer than two ids, is refused by `AuraGroups` itself.
+    """
+    raw = _read(path)
+    return AuraGroups(
+        groups=tuple(
+            tuple(int(ability_id) for ability_id in block.get("ability_ids", ()))
+            for block in raw.values()
+            if isinstance(block, dict)
+        )
+    )
 
 
 def load_roles(path: Path = DEFAULT_ROLES_PATH) -> Roles:
