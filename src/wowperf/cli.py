@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 import httpx
 import typer
@@ -28,10 +28,17 @@ from wowperf.adapters.config.toml import (
     load_slot_names,
     load_throughput_cooldowns,
 )
-from wowperf.adapters.render.html import render, render_night, render_progression, render_raid
+from wowperf.adapters.render.html import (
+    render,
+    render_character,
+    render_night,
+    render_progression,
+    render_raid,
+)
 from wowperf.adapters.render.icons import CdnIcons
 from wowperf.adapters.wcl.ability_tables import build_ability_taken_rows
 from wowperf.adapters.wcl.auth import TokenProvider
+from wowperf.adapters.wcl.character_repository import WclCharacterRepository
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
 from wowperf.adapters.wcl.damage_tables import build_target_rows
@@ -51,6 +58,23 @@ from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
 from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras
+from wowperf.domain.character.ledger import group_ledger
+from wowperf.domain.character.model import (
+    CharacterRun,
+    CharacterSubject,
+    ChosenRun,
+    FailedRun,
+)
+from wowperf.domain.character.patterns import (
+    CHARACTER_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+    DIRECTION_RATE_FLOOR,
+    DIRECTION_SHARE_FLOOR,
+    MIN_DIRECTION_RUNS,
+    REPEAT_MIN_RUNS,
+    consistent_directions,
+    repeated_judgements,
+)
+from wowperf.domain.character.selection import LEVELS_BELOW_TOP, require_mythic_plus, select_runs
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.key_debuffs import KeyDebuffs, key_debuffs
 from wowperf.domain.comparison.measures import PlayerMeasures
@@ -81,19 +105,22 @@ from wowperf.domain.comparison.service import ComparisonSubject, compare, find_p
 from wowperf.domain.comparison.spells import boss_seconds
 from wowperf.domain.comparison.tables import comparison_measures
 from wowperf.domain.comparison.targets import TargetRow
+from wowperf.domain.comparison.tempo import tempo_measures
 from wowperf.domain.data_audit import AuditEntry, audit_lines, never_cast
 from wowperf.domain.debuffs import DebuffLog
 from wowperf.domain.encounter import Encounter, LoadedEncounter
 from wowperf.domain.findings import Finding, rank_findings
 from wowperf.domain.model import LoadedRun, Player, Run
 from wowperf.domain.report.build import build_report
+from wowperf.domain.report.character_build import build_character_report, run_file
 from wowperf.domain.report.model import ReferenceRecord
 from wowperf.domain.report.narrative import lines_with_digits
 from wowperf.domain.report.night_build import build_night_report
 from wowperf.domain.report.players import slugs_by_actor
 from wowperf.domain.report.progression_build import build_progression_report
 from wowperf.domain.report.raid_build import build_raid_report
-from wowperf.urls import parse_report_url
+from wowperf.domain.season import Consumables, Defensives, Externals, Roles, ThroughputCooldowns
+from wowperf.urls import CharacterRef, parse_character_url, parse_report_url
 
 app = typer.Typer(help="Analyse World of Warcraft logs and report what to improve.")
 
@@ -105,7 +132,9 @@ REFERENCE_CACHE_SECONDS = 24 * 3600.0
 
 Long enough for the narrative re-run the analyzing-a-run skill relies on to be
 served from cache; short enough that no standing store of other players' logs
-accumulates (RPGLogs terms §5d). Our own run's responses never expire.
+accumulates (RPGLogs terms §5d). Our own run's responses never expire. A
+character's list of ranked runs is kept the same day: it changes with every key
+they play, and the permanent tier would freeze it.
 """
 
 FINDINGS_ARE_RANKED_NOT_ADDITIVE = (
@@ -217,11 +246,11 @@ def _aura_icons(auras: PlayerAuras | None) -> dict[int, str]:
     return {aura.ability_id: aura.icon for aura in auras.on_self if aura.icon}
 
 
-def build_icons(
+def icon_names(
     loaded: LoadedRun | LoadedEncounter,
     parse_samples: Sequence[ParseSample],
     our_auras: Sequence[PlayerAuras | None] = (),
-) -> CdnIcons:
+) -> dict[int, str]:
     """Icons for one run: its own ability dictionary and every parse sample's.
 
     Nothing here can fail and nothing here is fetched. An icon is an address the
@@ -245,16 +274,28 @@ def build_icons(
     for auras in our_auras:
         names.update(_aura_icons(auras))
     names.update(loaded.ability_icon_map)
-    return CdnIcons(names)
+    return names
+
+
+def build_icons(
+    loaded: LoadedRun | LoadedEncounter,
+    parse_samples: Sequence[ParseSample],
+    our_auras: Sequence[PlayerAuras | None] = (),
+) -> CdnIcons:
+    """Icons for one run: `icon_names`, resolved behind one CDN."""
+    return CdnIcons(icon_names(loaded, parse_samples, our_auras))
+
+
+def _transient_cache(cache_dir: Path) -> DiskCache:
+    """The one-day tier: leaderboards, reference runs, and a character's ranked runs."""
+    return DiskCache(cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS)
 
 
 def build_reference_repositories(
     client: WclClient, cache_dir: Path
 ) -> tuple[WclRankingRepository, WclRunRepository]:
     """The leaderboards and the reference runs, behind the expiring cache."""
-    transient = DiskCache(
-        cache_dir / REFERENCE_CACHE_SUBDIR, max_age_seconds=REFERENCE_CACHE_SECONDS
-    )
+    transient = _transient_cache(cache_dir)
     return WclRankingRepository(client, transient), WclRunRepository(client, transient)
 
 
@@ -1453,6 +1494,310 @@ def _narrative_digits_message(path: Path, offending: tuple[tuple[int, str], ...]
     )
 
 
+class RunAnalysis(NamedTuple):
+    """Everything one Mythic+ run's analysis produced, before anything is written.
+
+    `analyze` writes it as one findings file and one page; `character` writes it
+    the same way and reads it again across runs. The data files the page builder
+    needs ride along, so the page is built from exactly what the analysers read.
+    """
+
+    loaded: LoadedRun
+    findings: list[Finding]
+    subject: Player
+    subjects: list[ComparisonSubject]
+    speed_sample: SpeedSample | None
+    compared_slugs: frozenset[str] | None
+    reference_records: tuple[ReferenceRecord, ...]
+    tables: dict[str, PlayerMeasures]
+    defensives: Defensives
+    consumables: Consumables
+    externals: Externals
+    throughput: ThroughputCooldowns
+    roles: Roles
+
+
+def _read_narrative(narrative: Path | None) -> str | None:
+    """The narrative's text, refused before anything is fetched if it states a number.
+
+    Read before anything is fetched: a typo in the path must cost nothing, and
+    must never quietly produce a report with no narrative.
+    """
+    if narrative is None:
+        return None
+    try:
+        narrative_text = narrative.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        # UnicodeDecodeError's own message never names the file it came
+        # from, so a bad-encoding narrative would otherwise print a
+        # codec complaint with no way to tell which path caused it.
+        raise ValueError(f"{narrative}: {error}") from error
+
+    offending = lines_with_digits(narrative_text)
+    if offending:
+        raise ValueError(_narrative_digits_message(narrative, offending))
+    return narrative_text
+
+
+def analyse_run(
+    repository: WclRunRepository,
+    cache_dir: Path,
+    code: str,
+    fight_id: int | None,
+    *,
+    players: Sequence[str] = (),
+    all_players: bool = False,
+    no_compare: bool = False,
+    throughput_ceiling: bool = False,
+) -> RunAnalysis:
+    """Analyse one Mythic+ run and compare it, exactly as `analyze` does, writing nothing.
+
+    Raises what `analyze` reports: `ValueError`, `WclError`, `httpx.HTTPError`
+    and `OSError`. The caller decides whether one failed run stops it.
+    """
+    loaded = repository.load(code, fight_id)
+    # Fetched here, once, so the comparison below and the report builder
+    # after it both see the same LoadedRun -- a --no-compare report still
+    # gets its own roster's cover windows.
+    loaded = load_run_with_auras(repository, code, loaded.run.fight_id, loaded)
+    # Loaded once and shared: the analysers and the death cards must read
+    # the same cooldowns, or the page and the findings disagree.
+    defensives = load_defensives()
+    consumables = load_consumables()
+    consumable_buffs = load_consumable_buffs()
+    aura_groups = load_aura_groups()
+    throughput = load_throughput_cooldowns()
+    roles = load_roles()
+    externals = load_externals()
+    slot_names = load_slot_names()
+    # The comparison's combat-potion family reads this one category rather
+    # than all of `consumables`: `for_survival()` excludes it (it shares no
+    # cooldown with a health potion), but `categories` still carries it.
+    combat_potion_ids = next(
+        (category.ability_ids for category in consumables.categories
+         if category.name == "combat potion"),
+        (),
+    )
+    findings = analyse(
+        loaded,
+        load_season_data(),
+        defensives,
+        consumables,
+        throughput,
+        roles=roles,
+        include_cooldown_ceiling=throughput_ceiling,
+        answers=answers_for(loaded.run.players, throughput, externals, roles),
+    )
+
+    # The roster's own spelling, disambiguated where two members share a
+    # name, computed once and read by everything that names a player: the
+    # names `--player` accepts, the roster a refusal lists, and the name
+    # stamped onto every comparison subject below. One mapping rather than
+    # three calls, so a finding's title, a card heading, a provenance row
+    # and the argument that asked for them cannot spell a player
+    # differently.
+    names = display_names(loaded.run.players)
+    subject, to_compare = _resolve_requested(
+        loaded.run.players, loaded.run.owner_name, players, all_players, names
+    )
+    speed_sample: SpeedSample | None = None
+    # Everyone the comparison was asked for: the subject, then the order
+    # the reader named the rest, then whoever `--all-players` swept up.
+    # That is not the order the cards come in -- those are the subject
+    # first and the roster's own order behind -- so nothing may read this
+    # sequence as a card order. It is the one source for *who* was
+    # compared: the slugs stamped onto the findings, the slugs the report
+    # matches cards by, the JSON's own list, the per-player sample sizes
+    # and the page's icons are all read off it, so none of them can drift
+    # from another. Empty means the comparison did not run.
+    subjects: list[ComparisonSubject] = []
+    compared_slugs: frozenset[str] | None = None
+    reference_records: tuple[ReferenceRecord, ...] = ()
+    tables: dict[str, PlayerMeasures] = {}
+    if not no_compare:
+        rankings, references = build_reference_repositories(repository.client, cache_dir)
+        # The only place this command mints a slug: the comparison stamps a
+        # player's slug onto every finding it emits about them, and the report
+        # matches their card by it. The name beside it is `names`' spelling,
+        # so a provenance row naming a player names the same one their card
+        # does -- and the same one `--player` would have to be given.
+        slugs = slugs_by_actor(loaded.run.players)
+        requested: tuple[RequestedPlayer, ...] = tuple(
+            RequestedPlayer(
+                player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
+            )
+            for one in to_compare
+        )
+        # Every candidate `_samples` weighed comes back as `reference_records`,
+        # carried onto both the report's provenance below and the comparison
+        # block of the findings JSON.
+        speed_sample, parse_samples, reference_records = _samples(
+            rankings, references, loaded.run, requested
+        )
+
+        # One enemy-debuff stream covers the whole group, so every subject
+        # reads the same one: memoised, it is requested once at most (a
+        # failure is not cached on disk, so the memo is what stops a second
+        # request), and only once some member's counterpart resolves.
+        our_debuff_log = functools.cache(
+            lambda: _debuff_log(repository, loaded.run.report_code, loaded.run.fight_id)
+        )
+        for player_to_compare, slug, name in requested:
+            sample, our_auras = _fetch_parse_auras(
+                parse_samples[player_to_compare.actor_id],
+                repository,
+                references,
+                loaded.run,
+                player_to_compare,
+            )
+            sample, our_debuffs = _fetch_parse_debuffs(
+                sample, references, our_debuff_log, loaded.run, player_to_compare
+            )
+            subjects.append(
+                ComparisonSubject(
+                    player=player_to_compare,
+                    slug=slug,
+                    display_name=name,
+                    parse=sample,
+                    our_auras=our_auras,
+                    our_debuffs=our_debuffs,
+                    consumable_buffs=consumable_buffs,
+                    aura_groups=aura_groups,
+                    potion_ids=combat_potion_ids,
+                    slot_names=slot_names,
+                )
+            )
+        compared_slugs = frozenset(one.slug for one in subjects)
+
+        findings += compare(ours=loaded, speed=speed_sample, subjects=subjects)
+        tables = comparison_measures(ours=loaded, subjects=subjects)
+        findings = rank_findings(findings)
+    return RunAnalysis(
+        loaded=loaded,
+        findings=findings,
+        subject=subject,
+        subjects=subjects,
+        speed_sample=speed_sample,
+        compared_slugs=compared_slugs,
+        reference_records=reference_records,
+        tables=tables,
+        defensives=defensives,
+        consumables=consumables,
+        externals=externals,
+        throughput=throughput,
+        roles=roles,
+    )
+
+
+def run_payload(analysis: RunAnalysis) -> dict[str, Any]:
+    """The findings file's contents for one analysed run."""
+    run = analysis.loaded.run
+    speed_sample = analysis.speed_sample
+    subjects = analysis.subjects
+    return {
+        "report_code": run.report_code,
+        "fight_id": run.fight_id,
+        "dungeon_name": run.dungeon_name,
+        "keystone_level": run.keystone_level,
+        "keystone_time_seconds": run.keystone_time_seconds,
+        "in_time": run.keystone_bonus >= 1,
+        "player": analysis.subject.name,
+        "comparison": {
+            "compared": bool(
+                (speed_sample and speed_sample.members)
+                or any(_parse_sample_size(one) for one in subjects)
+            ),
+            # Who was compared, subject first. An empty list says nobody was
+            # asked for, which a reader can now tell from a leaderboard that
+            # had nothing to offer without inspecting the findings.
+            "players": [one.slug for one in subjects],
+            "sample_size": {
+                "speed": len(speed_sample.members) if speed_sample else 0,
+                # The parse axis is drawn once per player, so its size is a
+                # figure per player: one number could only ever describe one
+                # of them, and would under-report the rest.
+                "parse": {one.slug: _parse_sample_size(one) for one in subjects},
+            },
+            "references": [
+                {
+                    "axis": record.axis,
+                    "report_code": record.report_code,
+                    "fight_id": record.fight_id,
+                    "keystone_level": record.keystone_level,
+                    "url": record.url,
+                    "loaded": record.loaded,
+                    "reason": record.reason,
+                    "from_cache": record.from_cache,
+                    "player_slug": record.player_slug,
+                    "player_name": record.player_name,
+                }
+                for record in analysis.reference_records
+            ],
+        },
+        "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings": [finding.model_dump(mode="json") for finding in analysis.findings],
+        "comparison_tables": {
+            slug: measured.model_dump(mode="json") for slug, measured in analysis.tables.items()
+        },
+    }
+
+
+def findings_file(report_code: str, fight_id: int) -> str:
+    """The run's findings file name: what `write_findings` writes, and what a
+    character page's own file names for each of its runs."""
+    return f"{report_code}-{fight_id}.findings.json"
+
+
+def write_findings(analysis: RunAnalysis, out: Path) -> Path:
+    """Write the run's findings file under `out`, creating `out`, and return its path."""
+    run = analysis.loaded.run
+    written = out / findings_file(run.report_code, run.fight_id)
+    out.mkdir(parents=True, exist_ok=True)
+    # Real rosters contain non-ASCII names; write_text's default encoding is
+    # locale-dependent (commonly cp1252 on Windows) and would raise on them.
+    written.write_text(
+        json.dumps(run_payload(analysis), indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return written
+
+
+def write_page(
+    analysis: RunAnalysis, out: Path, narrative_text: str | None, fetched_at: str
+) -> Path:
+    """Write the run's report page under `out` and return its path."""
+    loaded = analysis.loaded
+    run = loaded.run
+    report_file = out / f"{run.report_code}-{run.fight_id}.html"
+    report_file.write_text(
+        render(
+            build_report(
+                loaded,
+                analysis.findings,
+                analysis.speed_sample,
+                analysis.compared_slugs,
+                analysis.subject,
+                narrative_text,
+                fetched_at,
+                analysis.defensives,
+                analysis.consumables,
+                externals=analysis.externals,
+                self_resurrections=load_self_resurrections(),
+                throughput=analysis.throughput,
+                reference_records=analysis.reference_records,
+                comparison_measures=analysis.tables,
+                roles=analysis.roles,
+            ),
+            icons=build_icons(
+                loaded,
+                tuple(one.parse for one in analysis.subjects if one.parse is not None),
+                tuple(one.our_auras for one in analysis.subjects),
+            ),
+        ),
+        encoding="utf-8",
+    )
+    return report_file
+
+
 @app.command()
 def analyze(
     report: str = typer.Argument(..., help="Report URL or code"),
@@ -1490,232 +1835,223 @@ def analyze(
         sys.stdout.reconfigure(encoding="utf-8")
 
     try:
-        # Read this before anything is fetched: a typo in the path must cost
-        # nothing, and must never quietly produce a report with no narrative.
-        narrative_text = None
-        if narrative:
-            try:
-                narrative_text = narrative.read_text(encoding="utf-8")
-            except UnicodeDecodeError as error:
-                # UnicodeDecodeError's own message never names the file it came
-                # from, so a bad-encoding narrative would otherwise print a
-                # codec complaint with no way to tell which path caused it.
-                raise ValueError(f"{narrative}: {error}") from error
-
-            offending = lines_with_digits(narrative_text)
-            if offending:
-                raise ValueError(_narrative_digits_message(narrative, offending))
-
+        narrative_text = _read_narrative(narrative)
         code, fight_from_url = parse_report_url(report)
         repository = build_repository(cache_dir)
         before = repository.rate_limit()
-        loaded = repository.load(code, fight if fight is not None else fight_from_url)
-        # Fetched here, once, so the comparison below and the report builder
-        # after it both see the same LoadedRun -- a --no-compare report still
-        # gets its own roster's cover windows.
-        loaded = load_run_with_auras(repository, code, loaded.run.fight_id, loaded)
-        # Loaded once and shared: the analysers and the death cards must read
-        # the same cooldowns, or the page and the findings disagree.
-        defensives = load_defensives()
-        consumables = load_consumables()
-        consumable_buffs = load_consumable_buffs()
-        aura_groups = load_aura_groups()
-        throughput = load_throughput_cooldowns()
-        roles = load_roles()
-        externals = load_externals()
-        slot_names = load_slot_names()
-        # The comparison's combat-potion family reads this one category rather
-        # than all of `consumables`: `for_survival()` excludes it (it shares no
-        # cooldown with a health potion), but `categories` still carries it.
-        combat_potion_ids = next(
-            (category.ability_ids for category in consumables.categories
-             if category.name == "combat potion"),
-            (),
+        analysis = analyse_run(
+            repository,
+            cache_dir,
+            code,
+            fight if fight is not None else fight_from_url,
+            players=player,
+            all_players=all_players,
+            no_compare=no_compare,
+            throughput_ceiling=throughput_ceiling,
         )
-        findings = analyse(
-            loaded,
-            load_season_data(),
-            defensives,
-            consumables,
-            throughput,
-            roles=roles,
-            include_cooldown_ceiling=throughput_ceiling,
-            answers=answers_for(loaded.run.players, throughput, externals, roles),
-        )
-
-        # The roster's own spelling, disambiguated where two members share a
-        # name, computed once and read by everything that names a player: the
-        # names `--player` accepts, the roster a refusal lists, and the name
-        # stamped onto every comparison subject below. One mapping rather than
-        # three calls, so a finding's title, a card heading, a provenance row
-        # and the argument that asked for them cannot spell a player
-        # differently.
-        names = display_names(loaded.run.players)
-        subject, to_compare = _resolve_requested(
-            loaded.run.players, loaded.run.owner_name, player, all_players, names
-        )
-        speed_sample: SpeedSample | None = None
-        # Everyone the comparison was asked for: the subject, then the order
-        # the reader named the rest, then whoever `--all-players` swept up.
-        # That is not the order the cards come in -- those are the subject
-        # first and the roster's own order behind -- so nothing may read this
-        # sequence as a card order. It is the one source for *who* was
-        # compared: the slugs stamped onto the findings, the slugs the report
-        # matches cards by, the JSON's own list, the per-player sample sizes
-        # and the page's icons are all read off it, so none of them can drift
-        # from another. Empty means the comparison did not run.
-        subjects: list[ComparisonSubject] = []
-        compared_slugs: frozenset[str] | None = None
-        reference_records: tuple[ReferenceRecord, ...] = ()
-        tables: dict[str, PlayerMeasures] = {}
-        if not no_compare:
-            rankings, references = build_reference_repositories(repository.client, cache_dir)
-            # The only place this command mints a slug: the comparison stamps a
-            # player's slug onto every finding it emits about them, and the report
-            # matches their card by it. The name beside it is `names`' spelling,
-            # so a provenance row naming a player names the same one their card
-            # does -- and the same one `--player` would have to be given.
-            slugs = slugs_by_actor(loaded.run.players)
-            requested: tuple[RequestedPlayer, ...] = tuple(
-                RequestedPlayer(
-                    player=one, slug=slugs[one.actor_id], name=names[one.actor_id]
-                )
-                for one in to_compare
-            )
-            # Every candidate `_samples` weighed comes back as `reference_records`,
-            # carried onto both the report's provenance below and the comparison
-            # block of the findings JSON.
-            speed_sample, parse_samples, reference_records = _samples(
-                rankings, references, loaded.run, requested
-            )
-
-            # One enemy-debuff stream covers the whole group, so every subject
-            # reads the same one: memoised, it is requested once at most (a
-            # failure is not cached on disk, so the memo is what stops a second
-            # request), and only once some member's counterpart resolves.
-            our_debuff_log = functools.cache(
-                lambda: _debuff_log(repository, loaded.run.report_code, loaded.run.fight_id)
-            )
-            for player_to_compare, slug, name in requested:
-                sample, our_auras = _fetch_parse_auras(
-                    parse_samples[player_to_compare.actor_id],
-                    repository,
-                    references,
-                    loaded.run,
-                    player_to_compare,
-                )
-                sample, our_debuffs = _fetch_parse_debuffs(
-                    sample, references, our_debuff_log, loaded.run, player_to_compare
-                )
-                subjects.append(
-                    ComparisonSubject(
-                        player=player_to_compare,
-                        slug=slug,
-                        display_name=name,
-                        parse=sample,
-                        our_auras=our_auras,
-                        our_debuffs=our_debuffs,
-                        consumable_buffs=consumable_buffs,
-                        aura_groups=aura_groups,
-                        potion_ids=combat_potion_ids,
-                        slot_names=slot_names,
-                    )
-                )
-            compared_slugs = frozenset(one.slug for one in subjects)
-
-            findings += compare(ours=loaded, speed=speed_sample, subjects=subjects)
-            tables = comparison_measures(ours=loaded, subjects=subjects)
-            findings = rank_findings(findings)
         after = repository.rate_limit()
     except (ValueError, WclError, httpx.HTTPError, OSError) as error:
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
 
-    run = loaded.run
-    payload = {
-        "report_code": run.report_code,
-        "fight_id": run.fight_id,
-        "dungeon_name": run.dungeon_name,
-        "keystone_level": run.keystone_level,
-        "keystone_time_seconds": run.keystone_time_seconds,
-        "in_time": run.keystone_bonus >= 1,
-        "player": subject.name,
-        "comparison": {
-            "compared": bool(
-                (speed_sample and speed_sample.members)
-                or any(_parse_sample_size(one) for one in subjects)
-            ),
-            # Who was compared, subject first. An empty list says nobody was
-            # asked for, which a reader can now tell from a leaderboard that
-            # had nothing to offer without inspecting the findings.
-            "players": [one.slug for one in subjects],
-            "sample_size": {
-                "speed": len(speed_sample.members) if speed_sample else 0,
-                # The parse axis is drawn once per player, so its size is a
-                # figure per player: one number could only ever describe one
-                # of them, and would under-report the rest.
-                "parse": {one.slug: _parse_sample_size(one) for one in subjects},
-            },
-            "references": [
-                {
-                    "axis": record.axis,
-                    "report_code": record.report_code,
-                    "fight_id": record.fight_id,
-                    "keystone_level": record.keystone_level,
-                    "url": record.url,
-                    "loaded": record.loaded,
-                    "reason": record.reason,
-                    "from_cache": record.from_cache,
-                    "player_slug": record.player_slug,
-                    "player_name": record.player_name,
-                }
-                for record in reference_records
-            ],
-        },
-        "findings_are_ranked_not_additive": FINDINGS_ARE_RANKED_NOT_ADDITIVE,
-        "findings": [finding.model_dump(mode="json") for finding in findings],
-        "comparison_tables": {
-            slug: measured.model_dump(mode="json") for slug, measured in tables.items()
-        },
-    }
-
-    written = out / f"{run.report_code}-{run.fight_id}.findings.json"
-    report_file = out / f"{run.report_code}-{run.fight_id}.html"
     # A guard of its own, because this phase fails differently from the one
     # above: nothing here can be degraded or retried, and a failure can arrive
     # after the findings have been written and announced. `OSError` alone --
     # the API errors the first block names cannot reach a filesystem write.
     try:
-        out.mkdir(parents=True, exist_ok=True)
-        # Real rosters contain non-ASCII names; write_text's default encoding is
-        # locale-dependent (commonly cp1252 on Windows) and would raise on them.
-        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        typer.echo(f"{len(findings)} findings written to {written}")
+        written = write_findings(analysis, out)
+        typer.echo(f"{len(analysis.findings)} findings written to {written}")
+        report_file = write_page(
+            analysis, out, narrative_text, datetime.now().strftime("%Y-%m-%d %H:%M")
+        )
+    except OSError as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
 
-        report_file.write_text(
-            render(
-                build_report(
-                    loaded,
-                    findings,
-                    speed_sample,
-                    compared_slugs,
-                    subject,
-                    narrative_text,
-                    datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    defensives,
-                    consumables,
-                    externals=externals,
-                    self_resurrections=load_self_resurrections(),
-                    throughput=throughput,
-                    reference_records=reference_records,
-                    comparison_measures=tables,
-                    roles=roles,
+    typer.echo(f"report written to {report_file}")
+    typer.echo(_quota_sentence(before, after), err=True)
+    _echo_cost_breakdown(repository.client.costs)
+
+
+NO_ZONE_MESSAGE = (
+    "No zone given. Add ?zone=<id> to the character URL or pass --zone: the id is the number "
+    "after zone= in the character page's address once a Mythic+ season is selected there."
+)
+
+
+def _character_parts(ref: CharacterRef) -> CharacterRef:
+    """The reference, refused if its realm or name could leave the output directory.
+
+    Both are percent-decoded, so a pasted `%2F` arrives as a separator. Neither
+    a realm slug nor a character name holds one, and each becomes part of one
+    directory name, so a separator is refused before anything is fetched.
+    """
+    for part in (ref.realm, ref.name):
+        if "/" in part or "\\" in part:
+            raise ValueError(f"{part!r} is not a realm or character name")
+    return ref
+
+
+def _character_run(analysis: RunAnalysis, chosen: ChosenRun) -> CharacterRun:
+    """What one analysed run hands to the cross-run reading."""
+    loaded = analysis.loaded
+    run = loaded.run
+    slug = analysis.subjects[0].slug if analysis.subjects else ""
+    return CharacterRun(
+        report_code=run.report_code,
+        fight_id=run.fight_id,
+        dungeon=chosen.dungeon,
+        encounter_id=chosen.encounter_id,
+        keystone_level=run.keystone_level,
+        in_time=run.keystone_bonus >= 1,
+        subject_slug=slug,
+        subject_deaths=sum(
+            1 for death in loaded.deaths if death.actor_id == analysis.subject.actor_id
+        ),
+        findings=tuple(analysis.findings),
+        measures=analysis.tables.get(slug),
+        tempo=(
+            tempo_measures(loaded, analysis.speed_sample)
+            if analysis.speed_sample is not None
+            else None
+        ),
+    )
+
+
+@app.command()
+def character(
+    url: str = typer.Argument(..., help="Warcraft Logs character page URL"),
+    zone: int | None = typer.Option(None, help="Zone id; defaults to the URL's ?zone="),
+    spec: str | None = typer.Option(
+        None, help="Specialisation to read; defaults to the one with the most ranked runs"
+    ),
+    narrative: Path | None = typer.Option(
+        None, help="Plain text notes to render as the page's interpretation section"
+    ),
+    cache_dir: Path = typer.Option(DEFAULT_CACHE_DIR, help="Where to cache API responses"),
+    out: Path = typer.Option(Path("out"), help="Where to write the character's directory"),
+) -> None:
+    """Read one recent high key per dungeon for one character and state what repeats."""
+    # See the matching comment on `fetch`: Windows gives the process a
+    # locale-dependent stdout encoding that cannot hold non-ASCII names.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
+    fetched_at = datetime.now().strftime("%Y-%m-%d %H:%M")
+    try:
+        narrative_text = _read_narrative(narrative)
+        ref = _character_parts(parse_character_url(url))
+        zone_id = zone if zone is not None else ref.zone_id
+        if zone_id is None:
+            raise ValueError(NO_ZONE_MESSAGE)
+        repository = build_repository(cache_dir)
+        before = repository.rate_limit()
+        characters = WclCharacterRepository(repository.client, _transient_cache(cache_dir))
+        found_zone = characters.zone(zone_id)
+        # Before the runs are listed: a raid zone's rankings are not keys, and
+        # listing them would spend points on runs this command cannot read.
+        require_mythic_plus(found_zone)
+        selection = select_runs(
+            found_zone,
+            characters.ranked_runs(ref.name, ref.realm, ref.region, found_zone),
+            spec,
+        )
+        # Not the player slug: it reduces every wholly non-Latin name to one
+        # fallback, and two such characters on a realm would share a directory.
+        # The realm is already a Warcraft Logs slug and a character name is
+        # letters only; `_character_parts` refused a separator in either.
+        directory = out / f"{ref.region}-{ref.realm}-{ref.name.casefold()}"
+        directory.mkdir(parents=True, exist_ok=True)
+
+        runs: list[CharacterRun] = []
+        failed: list[FailedRun] = []
+        # Every loaded run's icon names, merged: a cross-run finding names an
+        # ability, and only a run's own dictionary knows its art.
+        icons: dict[int, str] = {}
+        for chosen in selection.chosen:
+            label = f"{chosen.dungeon} +{chosen.keystone_level}"
+            try:
+                analysis = analyse_run(
+                    repository, cache_dir, chosen.report_code, chosen.fight_id, players=[ref.name]
+                )
+            except RateLimitExceeded:
+                # A spent budget is not one bad run: every run after it would
+                # fail the same way, so the command stops and says so.
+                raise
+            except (ValueError, WclError, httpx.HTTPError) as error:
+                # OSError is left to the guard around the loop: it is the disk
+                # or the cache, not this run, and the next write would fail too.
+                typer.secho(f"{label}: {error}", err=True, fg="yellow")
+                failed.append(FailedRun(
+                    dungeon=chosen.dungeon, keystone_level=chosen.keystone_level,
+                    report_code=chosen.report_code, fight_id=chosen.fight_id, reason=str(error),
+                ))
+                continue
+            # The findings file first: `write_page` expects its directory to exist
+            # and leaves creating it to `write_findings`, so this order is its
+            # precondition, kept even though this directory was made above.
+            written = write_findings(analysis, directory)
+            write_page(analysis, directory, None, fetched_at)
+            typer.echo(f"{label}: {len(analysis.findings)} findings written to {written}")
+            icons.update(icon_names(
+                analysis.loaded,
+                tuple(one.parse for one in analysis.subjects if one.parse is not None),
+                tuple(one.our_auras for one in analysis.subjects),
+            ))
+            runs.append(_character_run(analysis, chosen))
+        after = repository.rate_limit()
+    except (ValueError, WclError, httpx.HTTPError, OSError) as error:
+        typer.secho(str(error), err=True, fg="red")
+        raise typer.Exit(1) from error
+
+    findings = consistent_directions(runs) + repeated_judgements(runs)
+    ledger = group_ledger(runs)
+    subject = CharacterSubject(
+        name=ref.name, realm=ref.realm, region=ref.region, zone_name=found_zone.name
+    )
+    payload = {
+        "character": {
+            "name": ref.name, "realm": ref.realm, "region": ref.region,
+            "zone_id": found_zone.zone_id, "zone_name": found_zone.name, "spec": selection.spec,
+        },
+        "asked_for": {"url": url, "zone": zone, "spec": spec},
+        "runs": [
+            {
+                "dungeon": run.dungeon, "encounter_id": run.encounter_id,
+                "keystone_level": run.keystone_level, "in_time": run.in_time,
+                "report_code": run.report_code, "fight_id": run.fight_id,
+                "findings_file": findings_file(run.report_code, run.fight_id),
+                "report_file": run_file(run.report_code, run.fight_id),
+                "subject_deaths": run.subject_deaths,
+                "tempo": run.tempo.model_dump(mode="json") if run.tempo else None,
+            }
+            for run in runs
+        ],
+        "failed": [one.model_dump(mode="json") for one in failed],
+        "left_out": [one.model_dump(mode="json") for one in selection.left_out],
+        "rules": {
+            "levels_below_top": LEVELS_BELOW_TOP,
+            "repeat_min_runs": REPEAT_MIN_RUNS,
+            "min_direction_runs": MIN_DIRECTION_RUNS,
+            "direction_rate_floor": DIRECTION_RATE_FLOOR,
+            "direction_share_floor": DIRECTION_SHARE_FLOOR,
+        },
+        "findings_are_ranked_not_additive": CHARACTER_FINDINGS_ARE_RANKED_NOT_ADDITIVE,
+        "findings": [finding.model_dump(mode="json") for finding in findings],
+        # `time_withheld_reason` rides along: it says why a run is missing from
+        # the time column when its completion time was withheld.
+        "group_ledger": ledger.model_dump(mode="json"),
+    }
+    try:
+        written = directory / "character.json"
+        written.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        page = directory / "character.html"
+        page.write_text(
+            render_character(
+                build_character_report(
+                    subject, selection, runs, failed, findings, ledger, narrative_text, fetched_at
                 ),
-                icons=build_icons(
-                    loaded,
-                    tuple(one.parse for one in subjects if one.parse is not None),
-                    tuple(one.our_auras for one in subjects),
-                ),
+                icons=CdnIcons(icons),
             ),
             encoding="utf-8",
         )
@@ -1723,7 +2059,8 @@ def analyze(
         typer.secho(str(error), err=True, fg="red")
         raise typer.Exit(1) from error
 
-    typer.echo(f"report written to {report_file}")
+    typer.echo(f"{len(findings)} findings written to {written}")
+    typer.echo(f"page written to {page}")
     typer.echo(_quota_sentence(before, after), err=True)
     _echo_cost_breakdown(repository.client.costs)
 

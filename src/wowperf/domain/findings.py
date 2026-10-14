@@ -106,6 +106,15 @@ def quantity(n: int, singular: str, plural: str) -> str:
     return f"{n} {singular}" if n == 1 else f"{n} {plural}"
 
 
+_CERTAINTY = (Confidence.INFERRED, Confidence.DERIVED, Confidence.MEASURED)
+"""Least certain first, so the lowest index is the weakest claim."""
+
+
+def least_certain(confidences: Iterable[Confidence]) -> Confidence:
+    """The weakest badge among several: a claim built on others is no surer than they are."""
+    return min(confidences, key=_CERTAINTY.index)
+
+
 def rank_findings(findings: Iterable[Finding]) -> list[Finding]:
     """Order findings by time cost, descending. Findings with no time cost come last."""
     return sorted(

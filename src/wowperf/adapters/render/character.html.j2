@@ -1,0 +1,136 @@
+{# ABOUTME: Document skeleton for the character report: a header, four tab panels, and one #}
+{# ABOUTME: inline script that only shows and hides -- one self-contained file. #}
+{% from "_macros.html.j2" import ledger_row with context %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ report.header.name }} &middot; {{ report.header.zone }}</title>
+<style>
+{% include "report.css.j2" %}
+{% for ability_id, uri in icons_by_id.items() %}
+.i-{{ ability_id }} { background-image: url({{ uri }}); }
+{% endfor %}
+</style>
+</head>
+<body>
+{% if icons_by_id %}
+<svg class="icon-defs" aria-hidden="true">
+{% for ability_id, uri in icons_by_id.items() %}
+<symbol id="icon-{{ ability_id }}" viewBox="0 0 1 1"><image href="{{ uri }}" width="1" height="1"/></symbol>
+{% endfor %}
+</svg>
+{% endif %}
+<main>
+
+<h1>{{ report.header.name }}</h1>
+<p class="sub">{{ report.header.realm_line }} &middot; {{ report.header.zone }} &middot; {{ report.header.spec }} &middot; {{ report.header.read_line }}</p>
+
+<nav class="tabs" data-tab-group="main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="tab-group">Group</button>
+  <button type="button" class="tab" data-tab-for="tab-runs">Runs</button>
+  <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
+</nav>
+
+<section class="panel" data-tab-panel="main" id="tab-summary">
+{% if report.narrative %}
+<h2 id="narrative">What these runs say</h2>
+<div class="narrative">{{ report.narrative }}</div>
+{% endif %}
+<h2 id="directions">Every run, the same side</h2>
+{% if report.direction_rows %}
+<div class="findings">
+{% for row in report.direction_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% else %}
+<p class="sub">No measure sat on the same side of the top parses in every run.</p>
+{% endif %}
+<h2 id="repeats">Judged again and again</h2>
+{% if report.repeat_rows %}
+<div class="findings">
+{% for row in report.repeat_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% else %}
+<p class="sub">No judgement repeated in enough runs to count.</p>
+{% endif %}
+{% if report.other_rows %}
+<h2 id="other">Other findings</h2>
+<div class="findings">
+{% for row in report.other_rows %}
+{{ ledger_row(row) }}
+{% endfor %}
+</div>
+{% endif %}
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-group">
+<h2 id="group">The group, run by run</h2>
+<p class="sub">One row per run. Completion time, deaths, time between packs and kick share set ours against the median of that run's fast runs, or say there were too few fast runs to compare; the last column is your own deaths, compared with nothing. These appear in every run whatever happened, so they are counted and never judged.</p>
+<table class="attempts">
+<thead>
+<tr><th>Run</th><th>Completion time</th><th>Deaths</th><th>Time between packs</th><th>Kick share</th><th>Your deaths</th></tr>
+</thead>
+<tbody>
+{% for row in report.group_rows %}
+<tr><td><a href="{{ row.report_file }}">{{ row.label }}</a></td><td>{{ row.time }}{% if row.time_note %} <span class="withheld">{{ row.time_note }}</span>{% endif %}</td><td>{{ row.deaths }}</td><td>{{ row.downtime }}</td><td>{{ row.kick_share }}</td><td>{{ row.your_deaths }}</td></tr>
+{% endfor %}
+</tbody>
+<tfoot>
+<tr><th>Count</th>{% for cell in report.group_counts %}<td>{{ cell }}</td>{% endfor %}</tr>
+</tfoot>
+</table>
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-runs">
+<h2 id="runs">Runs read</h2>
+<table class="attempts">
+<thead>
+<tr><th>Dungeon</th><th>Key</th><th>Outcome</th><th>Report</th></tr>
+</thead>
+<tbody>
+{% for row in report.runs %}
+<tr><td>{{ row.dungeon }}</td><td>{{ row.level }}</td><td>{{ row.outcome }}</td><td><a href="{{ row.report_file }}">{{ row.report_file }}</a></td></tr>
+{% endfor %}
+</tbody>
+</table>
+{% if report.left_out %}
+<h2 id="left-out">Dungeons left out</h2>
+<ul class="evidence">{% for line in report.left_out %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endif %}
+{% if report.failed %}
+<h2 id="failed">Runs that did not load</h2>
+<ul class="evidence">{% for line in report.failed %}<li>{{ line }}</li>{% endfor %}</ul>
+{% endif %}
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-provenance">
+<h2 id="provenance">Provenance</h2>
+<p class="sub">{{ report.provenance.read_line }}, fetched {{ report.provenance.fetched_at }}.</p>
+<p class="sub">The runs were chosen by these queries: {{ report.provenance.queries|join(", ") }}.</p>
+<p class="sub">Each run's own report, linked on the Runs tab, carries its own Provenance: the report and fight it read, and the reference runs it considered, and which it used.</p>
+{% for line in report.provenance.withheld %}
+<p class="withheld">{{ line }}</p>
+{% endfor %}
+<p class="sub">{{ report.provenance.warning }}</p>
+{% for line in report.provenance.methods %}
+<p class="sub">{{ line }}</p>
+{% endfor %}
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+</section>
+
+</main>
+<script>
+{% include "report.js.j2" %}
+</script>
+</body>
+</html>

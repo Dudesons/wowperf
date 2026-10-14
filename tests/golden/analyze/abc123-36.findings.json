@@ -1,0 +1,322 @@
+{
+  "report_code": "abc123",
+  "fight_id": 36,
+  "dungeon_name": "Den of Nalorakk",
+  "keystone_level": 16,
+  "keystone_time_seconds": 1909.0,
+  "in_time": true,
+  "player": "Emberkin",
+  "comparison": {
+    "compared": true,
+    "players": [
+      "emberkin-0"
+    ],
+    "sample_size": {
+      "speed": 1,
+      "parse": {
+        "emberkin-0": 1
+      }
+    },
+    "references": [
+      {
+        "axis": "speed",
+        "report_code": "71cv4MRdNCp8ZFjG",
+        "fight_id": 28,
+        "keystone_level": 16,
+        "url": "https://www.warcraftlogs.com/reports/71cv4MRdNCp8ZFjG?fight=28",
+        "loaded": true,
+        "reason": "",
+        "from_cache": false,
+        "player_slug": "",
+        "player_name": ""
+      },
+      {
+        "axis": "parse",
+        "report_code": "37FzMg9pVPH6fnJT",
+        "fight_id": 41,
+        "keystone_level": 16,
+        "url": "https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41",
+        "loaded": true,
+        "reason": "",
+        "from_cache": false,
+        "player_slug": "emberkin-0",
+        "player_name": "Emberkin"
+      }
+    ]
+  },
+  "findings_are_ranked_not_additive": "findings are ranked by seconds_lost, not additive: compare.duration measures the gap against the median of the sample, while every other seconds_lost figure is priced against a particular run's route, so the two overlap without one containing the other; time.gap.* and compare.downtime both nest inside time.residual; deaths.single.*, deaths.chain.* and deaths.repeat.* all nest inside deaths.total; and compare.route.skipped.* overlaps the waste trash.overage already reports",
+  "findings": [
+    {
+      "id": "time.residual",
+      "title": "Time spent outside pulls",
+      "detail": "1905s of the 1909s timer was neither fighting nor the death penalty. That is travel, run-backs and waiting.",
+      "confidence": "measured",
+      "seconds_lost": 1905.0,
+      "evidence": [
+        "keystone time 1909s",
+        "pull time 4s across 1 pulls",
+        "0 deaths at 15s = 0s"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "trash.overage",
+      "title": "2% more trash than the key required",
+      "detail": "The group killed 744 of 729 required forces. Spread across 4s of trash pulls, the excess is worth roughly 0s.",
+      "confidence": "derived",
+      "seconds_lost": 0.08064516129032288,
+      "evidence": [
+        "744/729 forces = 102%",
+        "4s spent in 1 trash pulls",
+        "seconds are apportioned from the percentage, not measured directly"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "trash.pull.0",
+      "title": "Pull 0 bought 0.0 forces per second",
+      "detail": "0 forces over 4s.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "Trash"
+      ],
+      "facts": [],
+      "pull_index": 0,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "players.activity.Emberkin",
+      "title": "Emberkin cast 0 times inside pulls",
+      "detail": "About 0% of pull time. Counted from casts inside pull windows only, so waiting between packs is not charged to the player.",
+      "confidence": "derived",
+      "seconds_lost": null,
+      "evidence": [
+        "0 casts in 4s of pulls",
+        "cast-based, unlike Warcraft Logs' damage-based Activity figure"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "healing.spikes.unavailable",
+      "title": "Healing cooldowns at the heaviest moments were not judged",
+      "detail": "This run was read without its casts, so no press of any cooldown can be seen.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.route.summary",
+      "title": "Our route was 1 pull, the reference's 1",
+      "detail": "1 of 1 trash pack found a counterpart. Packs are matched by which enemies they contain, not by when either group fought them, so this comparison holds across a keystone-level difference. A stretch fought without a break is one pull to Warcraft Logs, and it matches each of the separate pulls it covers.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "1 pull in common",
+        "0 only ours",
+        "0 only theirs",
+        "0 reordered",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.downtime",
+      "title": "We spent 0s between packs, the reference spent 0s",
+      "detail": "Time between pulls is travel, run-backs and waiting. It does not depend on how much health a mob had, so it compares cleanly even across a keystone-level gap.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "ours 0s",
+        "theirs 0s",
+        "0 gaps on our route",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.deaths",
+      "title": "We died 0 times, the reference died 0",
+      "detail": "A death count compares across keystone levels; what a death costs does not need restating here.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "ours 0",
+        "theirs 0",
+        "seconds for our own deaths are reported by deaths.total",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.interrupts",
+      "title": "We kicked 0 of 0 resolved casts, the reference kicked 0 of 0",
+      "detail": "Outcomes are reconstructed on both sides by the same documented rule, and casts the log does not resolve are excluded rather than counted as missed. Neither side's log records which casts could be interrupted at all.",
+      "confidence": "derived",
+      "seconds_lost": null,
+      "evidence": [
+        "ours 0 kicked, 0 landed",
+        "theirs 0 kicked, 0 landed",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.duration",
+      "title": "We finished in 1909s, the reference in 1909s",
+      "detail": "Both runs are the same keystone level, so the official times mean the same thing and can be compared directly.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "ours 1909s",
+        "theirs 1909s",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": ""
+    },
+    {
+      "id": "compare.spells.unavailable.emberkin-0",
+      "title": "The spell comparison could not be made for Emberkin",
+      "detail": "A spell comparison needs boss pulls on both sides and the reference player present in their own report. One of those is missing, so no ability numbers are reported rather than numbers from an unlike sample.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "our boss time 0s",
+        "their boss time 0s",
+        "reference player 'Bríala' found",
+        "a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": "emberkin-0"
+    },
+    {
+      "id": "compare.spells.trash.unavailable.emberkin-0",
+      "title": "Trash cast rates could not be compared for Emberkin",
+      "detail": "A trash comparison needs packs both routes fought, matched by the enemy types in them, and enough time on them to divide by. No reference in the sample reached that, so no trash rates are reported rather than rates from packs only one group fought. Boss-pull rates are unaffected and are reported above.",
+      "confidence": "derived",
+      "seconds_lost": null,
+      "evidence": [
+        "0 of 1 references shared enough trash to compare",
+        "a side must reach 60s of aligned trash"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": "emberkin-0"
+    },
+    {
+      "id": "compare.talents.emberkin-0",
+      "title": "Emberkin's talent build matches the top-ranked parse",
+      "detail": "Both players imported the same build, so nothing here needs changing. This is one player's build, not the sample's: a talent string has no median, so the row names the top-ranked parse alone.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "identical import strings",
+        "top-ranked parse: https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": "emberkin-0"
+    },
+    {
+      "id": "compare.uptime.debuff.unavailable.emberkin-0",
+      "title": "Debuff coverage could not be compared for Emberkin",
+      "detail": "A debuff comparison needs the enemy-debuff stream, and at least one enemy measured, on our side and on a reference's. Our own side has no figure: its stream could not be read, or no enemy of the key could be measured. No figures are reported rather than figures from one side.",
+      "confidence": "measured",
+      "seconds_lost": null,
+      "evidence": [
+        "our debuff data present",
+        "our measured enemy-alive time 0s"
+      ],
+      "facts": [],
+      "pull_index": null,
+      "ability_id": null,
+      "ability_name": "",
+      "quantifier": "",
+      "player_slug": "emberkin-0"
+    }
+  ],
+  "comparison_tables": {
+    "emberkin-0": {
+      "boss": [],
+      "trash": [],
+      "auras": [],
+      "stats": [],
+      "debuffs": {
+        "rows": [],
+        "seconds": 0.0,
+        "bosses": [],
+        "tally": {
+          "orphan_removes": 0,
+          "closed_at_end": 0,
+          "unresolved_targets": 0
+        },
+        "deathless": 0,
+        "unmeasured_no_death": 0,
+        "undebuffed_deaths": 0
+      },
+      "boss_seconds": 0.0,
+      "trash_seconds": 0.0,
+      "pack_count": 0,
+      "key_seconds": 0.0
+    }
+  }
+}

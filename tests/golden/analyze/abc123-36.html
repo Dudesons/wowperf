@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Den of Nalorakk +16</title>
+<style>
+:root {
+  --ink: #e8e6e3; --ink-dim: #a8a29b; --ink-faint: #8f8a84;
+  --page: #16181c; --card: #1e2126; --line: #2c3038;
+  --ours: #6ba3d6; --theirs: #7d8590; --extra: #d6a55c; --hit: #e07a7a;
+  --cooldown: #6a7280; --done: #b08ad6;
+  --badge-measured: #6fae7e; --badge-derived: #6ba3d6; --badge-inferred: #d6a55c;
+  --class-deathknight: #c41f3b; --class-demonhunter: #a330c9; --class-druid: #ff7d0a;
+  --class-evoker: #33937f; --class-hunter: #abd473; --class-mage: #69ccf0;
+  --class-monk: #00ff96; --class-paladin: #f58cba; --class-priest: #ffffff;
+  --class-rogue: #fff569; --class-shaman: #0070de; --class-warlock: #9482c9;
+  --class-warrior: #c79c6e; --class-unknown: #a8a29b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 64px; background: var(--page); color: var(--ink);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+/* The page takes the screen; running prose does not. A paragraph read at the
+   width of a monitor is harder to follow than one read in a narrow column, so
+   the measure moves off the page and onto the text, and the dense content --
+   cards, tables, drawings -- keeps the whole width. */
+main { max-width: 1400px; margin: 0 auto; }
+.detail, .sub, .legend, .nests, .group-note, .narrative, .withheld { max-width: 68ch; }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px; align-items: start; }
+a { color: var(--ours); }
+h1 { font-size: 24px; font-weight: 600; margin: 0 0 4px; }
+h2 { font-size: 17px; font-weight: 600; margin: 40px 0 10px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line); }
+h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+p { margin: 0 0 10px; }
+.sub { color: var(--ink-dim); font-size: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  padding: 12px 14px; margin: 0 0 10px; }
+.row-head { display: flex; align-items: baseline; gap: 10px; }
+.row-head h3 { flex: 1; }
+.cost { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+.badge { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 3px; white-space: nowrap; color: var(--page);
+  text-decoration: none; }
+.badge-measured { background: var(--badge-measured); }
+.badge-derived { background: var(--badge-derived); }
+.badge-inferred { background: var(--badge-inferred); }
+.detail { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* `.findings` is a grid and this note is one of its direct children, so
+   without a span it would take one card's own column instead of reading as
+   an introduction to the run of cards after it. */
+.group-note { color: var(--ink-dim); font-size: 14px; margin: 0 0 8px; padding-left: 10px;
+  border-left: 2px solid var(--line); grid-column: 1 / -1; }
+.evidence { margin: 6px 0 0; padding: 0; list-style: none; color: var(--ink-faint); font-size: 13px; }
+.evidence li::before { content: "· "; }
+.nests { color: var(--ink-faint); font-size: 13px; margin: 4px 0 0; }
+.pointer { display: flex; align-items: baseline; gap: 10px; padding: 8px 14px; margin: 0 0 6px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--ink); text-decoration: none; }
+.pointer-title { flex: 1; }
+.withheld { color: var(--ink-dim); font-style: italic; }
+.narrative { border-left: 3px solid var(--ours); padding: 2px 0 2px 14px;
+  white-space: pre-wrap; margin: 0 0 10px; }
+.tabs { display: none; }
+.js .tabs { display: flex; flex-wrap: wrap; gap: 2px; margin: 20px 0 0;
+  border-bottom: 1px solid var(--line); }
+.tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--ink-dim);
+  font: inherit; font-size: 14px; padding: 8px 12px; cursor: pointer; }
+.tab.active { color: var(--ink); font-weight: 600; border-bottom-color: var(--ours); }
+.js .panel:not(.active) { display: none; }
+.subtabs { margin: 8px 0 12px; }
+.js .card[data-tab-panel]:not(.active) { display: none; }
+.legend { color: var(--ink-faint); font-size: 13px; }
+.track-label { fill: var(--ink-dim); font-size: 12px; }
+.tick { stroke: var(--ink-faint); stroke-width: 1; }
+.tick-label { fill: var(--ink-faint); font-size: 11px; }
+.block { fill: var(--ours); }
+.block-theirs { fill: var(--theirs); }
+.block-boss { stroke: var(--ink); stroke-width: 1; }
+.block-extra { fill: var(--extra); stroke: var(--ink); stroke-width: 2; }
+.block-skipped { fill: none; stroke: var(--ink-dim); stroke-width: 1; stroke-dasharray: 3 2; }
+.attempt-bar { fill: var(--ours); }
+.attempt-best { stroke: var(--ink); stroke-width: 2; }
+.attempt-kill { fill: var(--badge-measured); }
+.attempts { width: 100%; border-collapse: collapse; font-size: 13px; margin: 12px 0 8px; }
+.attempts th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 4px 0; }
+.attempts td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line);
+  color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.attempts tr.best td { color: var(--ink); font-weight: 600; }
+.death-when { color: var(--ink-dim); font-size: 13px; }
+.recap { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 14px;
+  margin: 8px 0 0; }
+@media (max-width: 640px) { .recap { grid-template-columns: 1fr; } }
+.timeline { width: 100%; border-collapse: collapse; font-size: 13px; }
+.timeline th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 0 8px 3px 0; }
+.timeline td { padding: 3px 8px 3px 0; border-top: 1px solid var(--line); color: var(--ink-dim);
+  vertical-align: top; }
+.timeline tr.hit td:nth-child(2) { color: var(--hit); }
+.timeline tr.absorb td:nth-child(2) { color: var(--ours); }
+.timeline tr.heal td:nth-child(2) { color: var(--badge-measured); }
+.timeline tr.cast td { color: var(--ink-faint); }
+.hp { position: relative; width: 84px; text-align: right; font-variant-numeric: tabular-nums; }
+.hp-bar { position: absolute; left: 0; bottom: 4px; height: 3px; background: var(--badge-measured); }
+/* The curve outlives the table's scroll. A row's hover lights a marker on the
+   curve and a press lights the window its buff covered; both were invisible
+   while the card stood 2007px tall and the curve left the screen at 300.
+   No script: this asks the page's one inline script for nothing.
+   Safe because nothing in this card's ancestry sets `overflow` -- the whole
+   stylesheet sets it once, on `.icon-defs`. */
+.hp-pinned { position: sticky; top: 0; z-index: 4; background: var(--card); }
+.hp-curve { display: block; margin: 10px 0 2px; }
+.hp-guide { stroke: var(--line); stroke-width: 1; }
+.hp-axis { fill: var(--ink-faint); font-size: 11px; }
+.hp-health { text-anchor: end; dominant-baseline: middle; }
+.hp-time { text-anchor: middle; }
+/* The line takes the derived tint and a dashed stroke, because it is
+   arithmetic between readings rather than anything the log stated. The
+   readings take the measured tint and a ring against the page colour, so a
+   stated figure reads as a mark on the drawing rather than as a kink in the
+   line it happens to sit on. */
+.hp-line { fill: none; stroke: var(--badge-derived); stroke-width: 1.5;
+  stroke-linejoin: round; stroke-dasharray: 5 3; }
+.hp-reading { fill: var(--badge-measured); stroke: var(--page); stroke-width: 1.5; }
+/* Placed by the builder, hidden until the row it belongs to is hovered or
+   focused. Hidden by opacity rather than by display so the browser has no
+   layout to recompute when it appears. */
+.hp-marker { stroke: var(--extra); stroke-width: 1.5; opacity: 0; }
+.hp-marker.lit { opacity: 1; }
+/* Behind the line, not over it: the window is context for the curve, and a
+   filled band drawn on top would hide the shape a reader came for. Measured
+   tint, not derived: the window is the aura table's own band, the same claim
+   the run timeline's `.cover` rule paints in the same colour -- `--ours`
+   happens to be byte-identical to `--badge-derived`, which would read this
+   measured window as the curve's own arithmetic. */
+.hp-cover { fill: var(--badge-measured); opacity: 0; }
+.hp-cover.lit { opacity: 0.18; }
+tr[id]:hover td { background: var(--line); }
+details.events > summary { cursor: pointer; color: var(--ink-faint); font-size: 13px;
+  padding: 2px 0; }
+.avail-title { font-size: 13px; color: var(--ink-dim); margin: 0 0 4px; }
+.avail ul { list-style: none; margin: 0 0 10px; padding: 0; font-size: 13px; }
+.avail li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0;
+  border-top: 1px solid var(--line); }
+.avail li.pressed .avail-detail { color: var(--badge-measured); }
+.avail li.held .avail-detail { color: var(--badge-measured); }
+.avail li.faded .avail-detail { color: var(--extra); }
+.avail li.cooldown .avail-detail { color: var(--extra); }
+.avail li.unseen { color: var(--ink-faint); }
+.owner { color: var(--ink-faint); font-size: 12px; }
+/* The pair is one object: it wraps as one, and the name carries the page's
+   full ink weight so the eye lands on the word rather than only on the art. */
+.ability { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  position: relative; }
+.ability .icon { margin-right: 0; vertical-align: baseline; }
+.ability-name { color: var(--ink); font-weight: 500; }
+.player-head { display: flex; align-items: baseline; gap: 8px; }
+.swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.stats { color: var(--ink-dim); font-size: 14px; margin: 4px 0 0; }
+/* The chart's own box, so a row's hover strip can be placed against it. A
+   percentage top resolves against this height, so the margin lives here and
+   not on the svg: a margin inside the wrapper would offset every strip by its
+   own height. */
+.timeline-wrap { position: relative; margin: 10px 0 2px; }
+.player-timeline { display: block; width: 100%; margin: 0; }
+/* A transparent strip over each row, carrying the row's panel. It is what
+   makes a whole row hoverable: the row paints only where something happened,
+   and across the rest the pull band behind it is what a pointer finds, so
+   without this most of most rows answer with the pull's name. */
+.row-hit { position: absolute; left: 0; right: 0; }
+/* Every row is named, and the name is right-aligned into the gutter left of the
+   track so it never crosses the row it labels. Its own size, smaller than the
+   run timeline's captions, is what lets the longest ability name in the data
+   files fit that gutter. */
+.row-label { text-anchor: end; dominant-baseline: middle; font-size: 8.5px; }
+/* Behind every track, so a press reads as landing inside a pull. Faint enough
+   that forty of them do not become the drawing. */
+.pull-band { fill: var(--line); opacity: 0.55; }
+.damage-bar { fill: var(--hit); }
+/* The other direction, in a hue of its own: red is what hit this player,
+   blue is a press, green is the buff up and grey is a cooldown, so the
+   output track takes the one part of the wheel the drawing has left. */
+.damage-done-bar { fill: var(--done); }
+/* Opaque and lighter than the band behind it: this is the layer the inferred
+   badge grades, and a state marker fainter than the background it sits on is
+   a state a screenshot loses. */
+.on-cooldown { fill: var(--cooldown); }
+.not-judged { fill: none; stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 3 2; }
+/* The share of each cycle the ability was doing anything, at true scale. A
+   green head on a grey bar. */
+.cover { fill: var(--badge-measured); }
+.press { fill: var(--ours); }
+/* An open tick, not a filled mark: a press is something the player did and a
+   comeback is something that merely became true, and the two must not read as
+   the same event. */
+.ready-again { fill: none; stroke: var(--ours); stroke-width: 1; }
+/* A swatch takes the same fill as the rectangle it stands for, so the key
+   cannot drift from the track. `.not-judged` is a stroke and no fill, so the
+   swatch shows its dash the way the track does. */
+.state-key { color: var(--ink-dim); font-size: 12px; margin: 2px 0; }
+.state-swatch { display: inline-block; width: 10px; height: 10px; margin-right: 4px;
+  vertical-align: -1px; border-radius: 2px; }
+.state-swatch.press { background: var(--ours); }
+.state-swatch.cover { background: var(--badge-measured); }
+.state-swatch.on-cooldown { background: var(--cooldown); }
+.state-swatch.not-judged { border: 1px dashed var(--ink-faint); }
+.damage-axis { stroke: var(--line); stroke-width: 1; }
+.pull-name { fill: var(--ink-dim); font-size: 8px; }
+/* Revealed by hover and by keyboard focus, and rendered into the page whether
+   or not it is shown: the panel is markup the builder wrote, never text the
+   script fetches or writes. */
+.tip { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 5; display: none;
+  min-width: 220px; max-width: 320px; white-space: normal; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px;
+  font-size: 12px; line-height: 1.5; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45); }
+.ability:hover .tip, .ability:focus-within .tip { display: block; }
+.row-hit:hover .tip, .row-hit:focus-within .tip { display: block; }
+.tip-line { display: flex; justify-content: space-between; gap: 12px; }
+/* Only a panel that opens away from the thing it describes names it: a row's
+   strip is laid over a drawing, so the panel says which row it belongs to. */
+.tip-head { display: block; font-weight: 500; margin-bottom: 4px; color: var(--ink); }
+.tip-label { color: var(--ink-dim); }
+.tip-value { font-variant-numeric: tabular-nums; }
+.tip-note { display: block; margin-top: 6px; color: var(--ink-faint); }
+/* Collapsed by default and opened by the reader: `<details>` is native, so the
+   page's one script stays the only script and still only shows and hides. */
+.compared { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.compared > summary { cursor: pointer; color: var(--ink-dim); font-size: 13px; }
+.compared-rows { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+.compared-rows th { text-align: left; color: var(--ink-faint); font-weight: 500;
+  padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.compared-rows td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.compared-rows .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The verdict is a word in its own column and a tint here, never a colour alone:
+   a reader who cannot separate the tints, or who printed the page, still has
+   the column. Three of the four land on the second cell. On the cast and stat
+   tables that is our own figure, the one the verdict is about. On the judged
+   uptime tables, which draw no figure columns and state Overall in a cell after
+   the verdict, it is the Verdict word itself, which says the same branch. Either
+   way they say two different things. Hue says
+   which side our figure landed on: --theirs mutes it where we sit under the
+   sample's median, --ours picks it out where we sit over it, --ink-dim settles
+   it where the two are level. Weight says whether the comparison found a
+   difference at all, so below and above carry it and level does not. Without
+   both readings the row a reader can act on is the quietest in the table, and
+   a level row left to inherit would keep the body's ink, the brightest on the
+   page. An unjudged row is greyed whole, because none of its figures was read
+   as a shortfall, and so is a row kept only for its boss figure. */
+.compared-rows tr.v-below td:nth-child(2) { color: var(--theirs); font-weight: 500; }
+.compared-rows tr.v-above td:nth-child(2) { color: var(--ours); font-weight: 500; }
+.compared-rows tr.v-level td:nth-child(2) { color: var(--ink-dim); }
+.compared-rows tr.v-unjudged td, .compared-rows tr.v-bosses_only td {
+  color: var(--ink-faint); }
+.damage-grid { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.damage-grid th, .damage-grid td { padding: 4px 8px; text-align: right; }
+.damage-grid th[scope="row"] { text-align: left; font-weight: normal; }
+/* The tint reuses `--hit`, the colour this report already gives damage a
+   player took (`.damage-bar`, and `.timeline tr.hit` for the hit that mattered
+   toward a death), because a tint here states that same fact and not a new one.
+   It marks the figure rather than filling the cell, matching how the timeline
+   uses this colour: a filled block among a hundred plain numbers reads as an
+   alert, and design 7.3 is explicit that a tint is not a mistake -- taking a
+   tankbuster is correct, and soaking is doing the job. One signal is enough to
+   tie the cell to the card that explains it. */
+.damage-grid .cell.tinted { color: var(--hit); font-weight: 600; }
+.damage-grid .multiple { opacity: 0.7; margin-left: 6px; }
+.alive-chart .alive-line { stroke: var(--ours); stroke-width: 2; }
+.pace-chart .pace-band { fill: var(--theirs); fill-opacity: 0.2; stroke: none; }
+.pace-chart .pace-median { stroke: var(--theirs); stroke-width: 1; }
+.pace-chart .pace-ours { stroke: var(--ours); stroke-width: 2; }
+.pace-chart .pace-mark { stroke: var(--hit); stroke-width: 1; stroke-dasharray: 4 3; }
+.pace-chart .pace-cut { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 1 3; }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Den of Nalorakk +16</h1>
+<p class="sub">Timed in 31:49 · Affixes Tyrannical, Fortified, Xal&#39;atath&#39;s Guile</p>
+
+<nav class="tabs" data-tab-group="main" aria-label="Sections">
+  <button type="button" class="tab" data-tab-for="tab-summary">Summary</button>
+  <button type="button" class="tab" data-tab-for="tab-route">Route &amp; tempo</button>
+  <button type="button" class="tab" data-tab-for="tab-deaths">Deaths</button>
+  <button type="button" class="tab" data-tab-for="tab-interrupts">Interrupts</button>
+  <button type="button" class="tab" data-tab-for="tab-players">Players</button>
+  <button type="button" class="tab" data-tab-for="tab-provenance">Provenance</button>
+</nav>
+
+
+
+<section class="panel" data-tab-panel="main" id="tab-summary">
+
+
+<h2 id="ledger">Where the time went</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+<div class="findings">
+<div class="card" id="finding-time.residual">
+  <div class="row-head">
+    <h3>Time spent outside pulls</h3>
+<span class="cost">31:45</span>    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">1905s of the 1909s timer was neither fighting nor the death penalty. That is travel, run-backs and waiting.</p>
+  <ul class="evidence"><li>keystone time 1909s</li><li>pull time 4s across 1 pulls</li><li>0 deaths at 15s = 0s</li></ul>
+</div>
+
+</div>
+
+<h2 id="losses">Biggest losses</h2>
+<p class="sub">Each line opens its card. Ranked, not additive.</p>
+<a class="pointer" href="#finding-trash.overage">
+  <span class="pointer-title">2% more trash than the key required</span>
+<span class="cost">0:00</span>  <span class="badge badge-derived">derived</span>
+</a>
+
+
+<h2 id="timeline">Aligned timeline</h2>
+<p class="sub">Blocks are pulls. The space between them is travel.</p>
+<p class="legend">A thin outline marks a boss pull. A heavier outline marks a pack we pulled that the reference run skipped. A dashed, unfilled block is a pack the reference run pulled that we skipped.</p>
+<svg width="100%" viewBox="0 0 680.0 208.0">
+  <title>Both runs on one elapsed-time axis</title>
+  <line class="tick" x1="46.0" y1="46.0" x2="46.0"
+        y2="176.0"></line>
+  <text class="tick-label" x="46.0" y="192.0"
+        text-anchor="middle">0:00</text>
+  <text class="track-label" x="46.0" y="58.0"
+        dy="-10.0">Ours — 0:04 from first pull to last</text>
+  <rect x="46.0" y="58.0" width="610.0"
+        height="26.0" rx="2" class="block">
+    <title>Trash</title>
+  </rect>
+  <text class="track-label" x="46.0" y="132.0"
+        dy="-10.0">Reference — 0:04 from first pull to last, one of 1 fast runs (report 71cv4MRdNCp8ZFjG, fight 28)</text>
+  <rect x="46.0" y="132.0" width="610.0"
+        height="26.0" rx="2" class="block block-theirs">
+    <title>Trash</title>
+  </rect>
+</svg>
+
+<h2 id="observations">Other findings</h2>
+<p class="sub">Findings no other section claimed.</p>
+<div class="findings">
+<div class="card" id="finding-players.activity.Emberkin">
+  <div class="row-head">
+    <h3>Emberkin cast 0 times inside pulls</h3>
+    <a class="badge badge-derived" href="#provenance">derived</a>
+  </div>
+  <p class="detail">About 0% of pull time. Counted from casts inside pull windows only, so waiting between packs is not charged to the player.</p>
+  <ul class="evidence"><li>0 casts in 4s of pulls</li><li>cast-based, unlike Warcraft Logs&#39; damage-based Activity figure</li></ul>
+</div>
+
+<div class="card" id="finding-compare.duration">
+  <div class="row-head">
+    <h3>We finished in 1909s, the reference in 1909s</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">Both runs are the same keystone level, so the official times mean the same thing and can be compared directly.</p>
+  <ul class="evidence"><li>ours 1909s</li><li>theirs 1909s</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-route">
+
+<h2 id="route">Route and tempo</h2>
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+<div class="findings">
+<div class="card" id="finding-trash.overage">
+  <div class="row-head">
+    <h3>2% more trash than the key required</h3>
+<span class="cost">0:00</span>    <a class="badge badge-derived" href="#provenance">derived</a>
+  </div>
+  <p class="detail">The group killed 744 of 729 required forces. Spread across 4s of trash pulls, the excess is worth roughly 0s.</p>
+  <ul class="evidence"><li>744/729 forces = 102%</li><li>4s spent in 1 trash pulls</li><li>seconds are apportioned from the percentage, not measured directly</li></ul>
+</div>
+
+<div class="card" id="finding-trash.pull.0">
+  <div class="row-head">
+    <h3>Pull 0 bought 0.0 forces per second</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">0 forces over 4s.</p>
+  <ul class="evidence"><li>Trash</li></ul>
+</div>
+
+<div class="card" id="finding-compare.route.summary">
+  <div class="row-head">
+    <h3>Our route was 1 pull, the reference&#39;s 1</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">1 of 1 trash pack found a counterpart. Packs are matched by which enemies they contain, not by when either group fought them, so this comparison holds across a keystone-level difference. A stretch fought without a break is one pull to Warcraft Logs, and it matches each of the separate pulls it covers.</p>
+  <ul class="evidence"><li>1 pull in common</li><li>0 only ours</li><li>0 only theirs</li><li>0 reordered</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+<div class="card" id="finding-compare.downtime">
+  <div class="row-head">
+    <h3>We spent 0s between packs, the reference spent 0s</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">Time between pulls is travel, run-backs and waiting. It does not depend on how much health a mob had, so it compares cleanly even across a keystone-level gap.</p>
+  <p class="nests">Already counted inside Time spent outside pulls.</p>
+  <ul class="evidence"><li>ours 0s</li><li>theirs 0s</li><li>0 gaps on our route</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-deaths">
+
+<h2 id="deaths">Deaths</h2>
+<p class="sub">No deaths.</p>
+
+<p class="sub">Not additive — every figure below can already contain another, so they must
+never be summed.</p>
+<div class="findings">
+<div class="card" id="finding-healing.spikes.unavailable">
+  <div class="row-head">
+    <h3>Healing cooldowns at the heaviest moments were not judged</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">This run was read without its casts, so no press of any cooldown can be seen.</p>
+</div>
+
+<div class="card" id="finding-compare.deaths">
+  <div class="row-head">
+    <h3>We died 0 times, the reference died 0</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">A death count compares across keystone levels; what a death costs does not need restating here.</p>
+  <ul class="evidence"><li>ours 0</li><li>theirs 0</li><li>seconds for our own deaths are reported by deaths.total</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-interrupts">
+
+<h2 id="interrupts">Interrupts</h2>
+<div class="findings">
+<div class="card" id="finding-compare.interrupts">
+  <div class="row-head">
+    <h3>We kicked 0 of 0 resolved casts, the reference kicked 0 of 0</h3>
+    <a class="badge badge-derived" href="#provenance">derived</a>
+  </div>
+  <p class="detail">Outcomes are reconstructed on both sides by the same documented rule, and casts the log does not resolve are excluded rather than counted as missed. Neither side&#39;s log records which casts could be interrupted at all.</p>
+  <ul class="evidence"><li>ours 0 kicked, 0 landed</li><li>theirs 0 kicked, 0 landed</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+</div>
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-players">
+
+<h2 id="players">Players</h2>
+<nav class="tabs subtabs" data-tab-group="players" aria-label="Players">
+  <button type="button" class="tab" data-tab-for="player-emberkin-0">Emberkin</button>
+</nav>
+<div class="card" data-tab-panel="players" id="player-emberkin-0">
+  <div class="player-head">
+    <span class="swatch" style="background: var(--class-mage)"></span>
+    <h3>Emberkin</h3>
+    <span class="sub">Mage Arcane</span>
+  </div>
+  <p class="stats">0 casts in 0:04 of pulls · 0 deaths · 0 interrupts</p>
+  <p class="withheld">This player cast none of the cooldowns tracked for their specialisation, and neither the log nor the run&#39;s graph carried any damage for them inside the window this chart draws, so there is nothing to draw.</p>
+
+  <div class="findings">
+  <div class="card" id="finding-compare.spells.unavailable.emberkin-0">
+  <div class="row-head">
+    <h3>The spell comparison could not be made for Emberkin</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">A spell comparison needs boss pulls on both sides and the reference player present in their own report. One of those is missing, so no ability numbers are reported rather than numbers from an unlike sample.</p>
+  <ul class="evidence"><li>our boss time 0s</li><li>their boss time 0s</li><li>reference player &#39;Bríala&#39; found</li><li>a single reference, not an aggregate: 1 of the sample was comparable, below the floor of 3</li></ul>
+</div>
+
+  <div class="card" id="finding-compare.spells.trash.unavailable.emberkin-0">
+  <div class="row-head">
+    <h3>Trash cast rates could not be compared for Emberkin</h3>
+    <a class="badge badge-derived" href="#provenance">derived</a>
+  </div>
+  <p class="detail">A trash comparison needs packs both routes fought, matched by the enemy types in them, and enough time on them to divide by. No reference in the sample reached that, so no trash rates are reported rather than rates from packs only one group fought. Boss-pull rates are unaffected and are reported above.</p>
+  <ul class="evidence"><li>0 of 1 references shared enough trash to compare</li><li>a side must reach 60s of aligned trash</li></ul>
+</div>
+
+  <div class="card" id="finding-compare.talents.emberkin-0">
+  <div class="row-head">
+    <h3>Emberkin&#39;s talent build matches the top-ranked parse</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">Both players imported the same build, so nothing here needs changing. This is one player&#39;s build, not the sample&#39;s: a talent string has no median, so the row names the top-ranked parse alone.</p>
+  <ul class="evidence"><li>identical import strings</li><li>top-ranked parse: https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41</li></ul>
+</div>
+
+  <div class="card" id="finding-compare.uptime.debuff.unavailable.emberkin-0">
+  <div class="row-head">
+    <h3>Debuff coverage could not be compared for Emberkin</h3>
+    <a class="badge badge-measured" href="#provenance">measured</a>
+  </div>
+  <p class="detail">A debuff comparison needs the enemy-debuff stream, and at least one enemy measured, on our side and on a reference&#39;s. Our own side has no figure: its stream could not be read, or no enemy of the key could be measured. No figures are reported rather than figures from one side.</p>
+  <ul class="evidence"><li>our debuff data present</li><li>our measured enemy-alive time 0s</li></ul>
+</div>
+
+  </div>
+</div>
+
+
+</section>
+
+<section class="panel" data-tab-panel="main" id="tab-provenance">
+
+<h2 id="provenance">Provenance</h2>
+<p class="sub">Report abc123, fight 36,
+fetched 2026-10-14 09:30.</p>
+<p class="sub"><a href="https://www.warcraftlogs.com/reports/71cv4MRdNCp8ZFjG?fight=28">Speed candidate, +16
+(report 71cv4MRdNCp8ZFjG, fight 28)</a></p>
+<p class="sub"><a href="https://www.warcraftlogs.com/reports/37FzMg9pVPH6fnJT?fight=41">Parse candidate for Emberkin, +16
+(report 37FzMg9pVPH6fnJT, fight 41)</a></p>
+<p class="legend">
+<span class="badge badge-measured">measured</span> read from the log, or arithmetic over logged facts.
+<span class="badge badge-derived">derived</span> reconstructed by a documented rule, or a modelling choice that could be wrong.
+<span class="badge badge-inferred">inferred</span> requires an assumption the log cannot confirm.
+</p>
+
+</section>
+
+</main>
+<script>
+(function () {
+  document.documentElement.classList.add("js");
+
+  function show(panel) {
+    var group = panel.getAttribute("data-tab-panel");
+    var panels = document.querySelectorAll('[data-tab-panel="' + group + '"]');
+    var buttons = document.querySelectorAll('[data-tab-group="' + group + '"] [data-tab-for]');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.toggle("active", panels[i] === panel);
+    }
+    for (var j = 0; j < buttons.length; j++) {
+      var on = buttons[j].getAttribute("data-tab-for") === panel.id;
+      buttons[j].classList.toggle("active", on);
+      buttons[j].setAttribute("aria-selected", on ? "true" : "false");
+    }
+  }
+
+  function reveal(target) {
+    var panels = [];
+    for (var node = target; node && node !== document.body; node = node.parentElement) {
+      if (node.hasAttribute("data-tab-panel")) { panels.unshift(node); }
+    }
+    for (var i = 0; i < panels.length; i++) { show(panels[i]); }
+    return panels.length > 0;
+  }
+
+  function resolve() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    var target = id ? document.getElementById(id) : null;
+    if (target && reveal(target) && !target.hasAttribute("data-tab-panel")) {
+      target.scrollIntoView();
+    }
+  }
+
+  var buttons = document.querySelectorAll("[data-tab-for]");
+  for (var b = 0; b < buttons.length; b++) {
+    buttons[b].addEventListener("click", function (event) {
+      var panel = document.getElementById(event.currentTarget.getAttribute("data-tab-for"));
+      if (panel) {
+        show(panel);
+        history.replaceState(null, "", "#" + panel.id);
+      }
+    });
+  }
+
+  var groups = document.querySelectorAll("[data-tab-group]");
+  for (var g = 0; g < groups.length; g++) {
+    var first = groups[g].querySelector("[data-tab-for]");
+    var panel = first ? document.getElementById(first.getAttribute("data-tab-for")) : null;
+    if (panel) { show(panel); }
+  }
+  window.addEventListener("hashchange", resolve);
+  window.addEventListener("load", resolve);
+  resolve();
+
+  // Lighting a marker, and the cover window beside it, that the builder
+  // already placed. No geometry here: the x of every marker and the x and
+  // width of every cover were computed in Python and are already in the
+  // document, so this only decides which of them is visible.
+  var rows = document.querySelectorAll("tr[id]");
+  for (var r = 0; r < rows.length; r++) {
+    rows[r].addEventListener("mouseenter", light);
+    rows[r].addEventListener("mouseleave", darken);
+    rows[r].addEventListener("focus", light);
+    rows[r].addEventListener("blur", darken);
+  }
+
+  function markerOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-mark");
+  }
+
+  function coverOf(row) {
+    return document.getElementById(row.getAttribute("id") + "-cover");
+  }
+
+  function light(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.add("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.add("lit"); }
+  }
+
+  function darken(event) {
+    var mark = markerOf(event.currentTarget);
+    if (mark) { mark.classList.remove("lit"); }
+    var cover = coverOf(event.currentTarget);
+    if (cover) { cover.classList.remove("lit"); }
+  }
+})();
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader
 
 from wowperf.adapters.render.icons import CdnIcons
+from wowperf.domain.report.character_model import CharacterReport, all_character_ledger_rows
 from wowperf.domain.report.model import DeathCard, LedgerRow, PlayerCard, Report, all_ledger_rows
 from wowperf.domain.report.night_model import NightReport, all_night_ledger_rows
 from wowperf.domain.report.progression_model import (
@@ -20,6 +21,7 @@ TEMPLATE_NAME = "report.html.j2"
 RAID_TEMPLATE_NAME = "raid.html.j2"
 PROGRESSION_TEMPLATE_NAME = "progression.html.j2"
 NIGHT_TEMPLATE_NAME = "night.html.j2"
+CHARACTER_TEMPLATE_NAME = "character.html.j2"
 
 
 def _environment() -> Environment:
@@ -259,27 +261,55 @@ def render_night(report: NightReport, icons: CdnIcons | None = None) -> str:
     )
 
 
+def _row_icon_addresses(rows: Iterable[LedgerRow], icons: CdnIcons | None) -> dict[int, str]:
+    """Every ability a page's ledger rows name, resolved once each, in the order met.
+
+    The walk for a page whose only ability-naming surface is its ledger rows --
+    the progression and character pages. `_icon_addresses` is not reused: it
+    walks death cards and player cards, and these pages have neither, so each
+    would be a caller whose other two arguments were every time empty.
+
+    Without an `icons` source nothing resolves, and the page draws exactly as
+    the others do without one.
+    """
+    addresses: dict[int, str] = {}
+    if icons is None:
+        return addresses
+    for row in rows:
+        if row.ability_id is None or row.ability_id in addresses:
+            continue
+        address = icons.url(row.ability_id)
+        if address is not None:
+            addresses[row.ability_id] = address
+    return addresses
+
+
 def render_progression(report: ProgressionReport, icons: CdnIcons | None = None) -> str:
     """`render_raid`'s counterpart for the five-tab progression page.
 
     `_icon_addresses` is not reused: it walks death cards and player cards, and
     this page has neither. Only a ledger row can name an ability here --
     `progression.repeat.ability` and `progression.repeat.killing_blow` are the
-    findings that do -- so the walk is that single loop rather than a third
+    findings that do -- so the walk is `_row_icon_addresses` rather than a third
     caller of a function whose other two arguments would every time be empty.
 
     Without an `icons` source the page draws exactly as the other two do
     without one: every ability id on the view model is inert until something
     can address it, and the `ability` macro renders a bare name.
     """
-    addresses: dict[int, str] = {}
-    if icons is not None:
-        for row in all_progression_ledger_rows(report):
-            if row.ability_id is None or row.ability_id in addresses:
-                continue
-            address = icons.url(row.ability_id)
-            if address is not None:
-                addresses[row.ability_id] = address
+    addresses = _row_icon_addresses(all_progression_ledger_rows(report), icons)
     return _environment().get_template(PROGRESSION_TEMPLATE_NAME).render(
+        report=report, icons_by_id=addresses
+    )
+
+
+def render_character(report: CharacterReport, icons: CdnIcons | None = None) -> str:
+    """The character page: four tabs over cross-run findings, a ledger and run links.
+
+    Only a ledger row can name an ability here, so the icon walk is
+    `_row_icon_addresses`, as `render_progression` does it.
+    """
+    addresses = _row_icon_addresses(all_character_ledger_rows(report), icons)
+    return _environment().get_template(CHARACTER_TEMPLATE_NAME).render(
         report=report, icons_by_id=addresses
     )

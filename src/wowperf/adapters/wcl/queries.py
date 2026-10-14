@@ -640,10 +640,11 @@ def talents_query(actor_ids: Sequence[int]) -> str:
     """One aliased `talentImportCode` per player.
 
     `ReportFight.talentImportCode(actorID: Int!)` takes a single actor, so a
-    roster needs an alias each. This is the only generated query here; the ids
-    are coerced to `int` so nothing but a number ever reaches the string, and
-    sorted so the document is byte-identical for a given set of ids regardless
-    of the order the caller happened to hold them in — the cache key is
+    roster needs an alias each. One of two generated queries here, with
+    `character_runs_query`; the ids are coerced to `int` so nothing but a
+    number ever reaches the string, and sorted so the document is
+    byte-identical for a given set of ids regardless of the order the caller
+    happened to hold them in — the cache key is
     derived from the query text, so an unstable order would miss the cache.
     """
     fields = "\n".join(
@@ -658,6 +659,49 @@ query Talents($code: String!, $fightId: Int!) {{
         id
 {fields}
       }}
+    }}
+  }}
+}}
+"""
+
+
+# `worldData.zone` names a zone's dungeons and the difficulties it is ranked at.
+# A Mythic+ zone lists exactly one, id 10 "Dungeon" (wcl-api skill, "A
+# character's ranked runs", 2026-10-14), which is how the character command
+# refuses a raid zone before it reads anything else.
+ZONE_QUERY = """
+query Zone($zoneId: Int!) {
+  worldData {
+    zone(id: $zoneId) {
+      id
+      name
+      difficulties { id name }
+      encounters { id name }
+    }
+  }
+}
+"""
+
+
+def character_runs_query(encounter_ids: Sequence[int]) -> str:
+    """One aliased `encounterRankings` per dungeon, for one character.
+
+    `Character.encounterRankings(encounterID:)` takes one encounter, so a zone's
+    dungeons need an alias each, as `talents_query` gives each roster member
+    one. The ids are coerced to `int` and sorted for the reason
+    `talents_query` gives: the cache key is the query text.
+    """
+    fields = "\n".join(
+        f"      e{encounter_id}: encounterRankings(encounterID: {encounter_id})"
+        for encounter_id in sorted(int(encounter_id) for encounter_id in encounter_ids)
+    )
+    return f"""
+query CharacterRuns($name: String!, $serverSlug: String!, $serverRegion: String!) {{
+  characterData {{
+    character(name: $name, serverSlug: $serverSlug, serverRegion: $serverRegion) {{
+      id
+      hidden
+{fields}
     }}
   }}
 }}
