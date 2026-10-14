@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pydantic import Field
 
 from wowperf.domain.analysis.trash import forces_by_pull
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.confounds import declare_confounds_sample
@@ -81,9 +82,10 @@ class ComparisonSubject(Frozen):
     # whole group, so `cli.py` fetches it once and builds this per subject from it.
     our_debuffs: KeyDebuffs | None = None
     # Curated data the comparison itself performs no I/O to load: `cli.py` reads
-    # both from the committed TOML files and passes them in. Empty defaults keep
+    # all of it from the committed TOML files and passes them in. Empty defaults keep
     # every test in this module free to build a subject without either.
     consumable_buffs: ConsumableBuffs = ConsumableBuffs()
+    aura_groups: AuraGroups = AuraGroups()
     potion_ids: tuple[int, ...] = ()
     slot_names: SlotNames = SlotNames()
 
@@ -161,7 +163,7 @@ def _compare_player(ours: LoadedRun, subject: ComparisonSubject) -> list[Finding
         *compare_uptime_sample(
             our_pulls, fight_seconds(our_fight_ms), subject.our_auras, subject.display_name,
             parse, measured=key_clock_uptime, words=KEY, our_fight_ms=our_fight_ms,
-            over=fight_seconds_of,
+            over=fight_seconds_of, groups=subject.aura_groups,
         ),
         *compare_debuffs_sample(subject.our_debuffs, subject.display_name, parse),
         *compare_enchants(

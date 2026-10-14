@@ -3,6 +3,7 @@
 
 from collections.abc import Sequence
 
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import Span, Withheld, length_ms, merged_spans
 from wowperf.domain.comparison.debuff_uptime import debuff_table
@@ -30,6 +31,8 @@ from wowperf.domain.comparison.uptime import (
     aura_fractions,
     boss_windows,
     fight_seconds,
+    grouped_auras,
+    grouped_members,
     measured_or,
     stretch_cell,
     uptime_measures,
@@ -58,7 +61,8 @@ def comparison_measures(
         if parse is None or not parse.members:
             continue
         measures[subject.slug] = _for_one(
-            ours, subject.player, subject.our_auras, subject.our_debuffs, parse
+            ours, subject.player, subject.our_auras, subject.our_debuffs, parse,
+            subject.aura_groups,
         )
     return measures
 
@@ -69,11 +73,12 @@ def _for_one(
     our_auras: PlayerAuras | None,
     our_debuffs: KeyDebuffs | None,
     parse: ParseSample,
+    aura_groups: AuraGroups,
 ) -> PlayerMeasures:
     """One player's sets of measures, each drawn against the whole sample."""
     boss, boss_time = _boss(ours, our_player, parse)
     trash, trash_time, pack_count = _trash(ours, our_player, parse)
-    auras, key_seconds = _auras(ours, our_auras, parse)
+    auras, key_seconds = _auras(ours, our_auras, parse, aura_groups)
     return PlayerMeasures(
         boss=boss,
         trash=trash,
@@ -206,7 +211,7 @@ def _trash(
 
 
 def _auras(
-    ours: LoadedRun, our_auras: PlayerAuras | None, parse: ParseSample
+    ours: LoadedRun, our_auras: PlayerAuras | None, parse: ParseSample, aura_groups: AuraGroups
 ) -> tuple[tuple[AuraRow, ...], float]:
     """Buff uptime against the sample's median: judged over the key clock, described beside it.
 
@@ -222,7 +227,10 @@ def _auras(
     Bosses describe and never judge. The seconds returned are our own key
     clock's, and zero beside no rows.
     """
-    eligible = parse.aura_eligible
+    # Folded by the groups on both sides, as `compare_uptime_sample` folds them for the
+    # findings, so a row and the finding above it name one cause the same way.
+    our_auras = grouped_auras(our_auras, aura_groups)
+    eligible = grouped_members(parse.aura_eligible, aura_groups)
     if not eligible:
         # Not one reference returned aura data, which settles it on the
         # reference side alone: there is nothing for ours to be compared against.

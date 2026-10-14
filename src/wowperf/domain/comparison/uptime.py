@@ -11,6 +11,7 @@
 
 from collections.abc import Callable, Collection, Sequence
 
+from wowperf.domain.aura_groups import AuraGroups, merge_aura_groups
 from wowperf.domain.auras import Aura, PlayerAuras, uptime_seconds_in
 from wowperf.domain.comparison.boss_debuffs import Span, Withheld, boss_pulls_listed_once
 from wowperf.domain.comparison.measures import AuraUptime, StretchCell, Verdict
@@ -141,6 +142,29 @@ def boss_seconds_of(member: ParseMember) -> float:
 def fight_seconds_of(member: ParseMember) -> float:
     """A reference's key clock in seconds: its denominator under the key clock rule."""
     return fight_seconds(member.fight_ms)
+
+
+def grouped_auras(auras: PlayerAuras | None, groups: AuraGroups) -> PlayerAuras | None:
+    """One side's auras with each cause read as one aura, or None where there are none.
+
+    Every reader of the buff comparison folds a side through here, ours and each
+    reference's alike: a fraction is only comparable when both numerators were
+    measured the same way, and a cause one side reads as three rows and the other
+    as one is not. Other readers of an aura table -- a death's cover windows, the
+    consumables -- keep the raw list, which is why this is applied where the
+    comparison reads a side and not once at ingest.
+    """
+    return None if auras is None else merge_aura_groups(auras, groups)
+
+
+def grouped_members(
+    members: Sequence[ParseMember], groups: AuraGroups
+) -> tuple[ParseMember, ...]:
+    """These references with their auras folded by `grouped_auras`, in the same order."""
+    return tuple(
+        member.model_copy(update={"auras": grouped_auras(member.auras, groups)})
+        for member in members
+    )
 
 
 def fractions_of(
@@ -392,6 +416,7 @@ def compare_uptime_sample(
     words: Wording,
     our_fight_ms: Span | None = None,
     over: Callable[[ParseMember], float] = boss_seconds_of,
+    groups: AuraGroups = AuraGroups(),
 ) -> list[Finding]:
     """Where an aura was up over markedly more of the sample's measured stretches than of ours.
 
@@ -408,6 +433,10 @@ def compare_uptime_sample(
     noise around it. The below-floor fallback delegates to `compare_uptime`, the one place a
     reference name still appears, because there it is honestly one reference's pairwise
     comparison, not a population claim.
+
+    `groups` names the auras that are one cause. Both sides are read through it
+    before anything is measured, so a cause is one row, keyed by its main id,
+    whichever of its ids either side happened to carry.
     """
     # A wholly empty sample means there was nothing to compare against at all;
     # `service.compare()` already says so once, as `compare.parse.unavailable`,
@@ -419,7 +448,8 @@ def compare_uptime_sample(
     if not sample.members:
         return []
 
-    eligible = sample.aura_eligible
+    our_auras = grouped_auras(our_auras, groups)
+    eligible = grouped_members(sample.aura_eligible, groups)
     aggregable = sample.can_aggregate(eligible)
 
     if not eligible:

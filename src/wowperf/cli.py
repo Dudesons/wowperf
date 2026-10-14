@@ -17,6 +17,7 @@ from wowperf.adapters.cache.disk import DiskCache, cache_key
 from wowperf.adapters.cache.scan import scan_cache
 from wowperf.adapters.config.dotenv import apply_dotenv
 from wowperf.adapters.config.toml import (
+    load_aura_groups,
     load_consumable_buffs,
     load_consumables,
     load_defensives,
@@ -48,6 +49,7 @@ from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.service import analyse
 from wowperf.domain.analysis.severity import rank_raid_findings
 from wowperf.domain.analysis.spikes import answers_for
+from wowperf.domain.aura_groups import AuraGroups
 from wowperf.domain.auras import PlayerAuras
 from wowperf.domain.comparison.alignment import align_pulls
 from wowperf.domain.comparison.key_debuffs import KeyDebuffs, key_debuffs
@@ -1158,6 +1160,7 @@ def _parse_samples(
     loaded: LoadedEncounter,
     subjects: Sequence[Player],
     names: Mapping[int, str],
+    aura_groups: AuraGroups,
 ) -> tuple[tuple[ParseSubject, ...], tuple[ReferenceRecord, ...]]:
     """One external frame per subject, and a record of every reference weighed.
 
@@ -1208,6 +1211,7 @@ def _parse_samples(
                     else None
                 ),
                 sample=spec_references.sample if comparable else ParseSample(),
+                aura_groups=aura_groups,
                 board=spec_references.board if comparable else (),
                 boss_board=spec_references.boss_board if comparable else (),
                 our_targets=(
@@ -1515,6 +1519,7 @@ def analyze(
         defensives = load_defensives()
         consumables = load_consumables()
         consumable_buffs = load_consumable_buffs()
+        aura_groups = load_aura_groups()
         throughput = load_throughput_cooldowns()
         roles = load_roles()
         externals = load_externals()
@@ -1611,6 +1616,7 @@ def analyze(
                         our_auras=our_auras,
                         our_debuffs=our_debuffs,
                         consumable_buffs=consumable_buffs,
+                        aura_groups=aura_groups,
                         potion_ids=combat_potion_ids,
                         slot_names=slot_names,
                     )
@@ -1792,6 +1798,7 @@ def raid(
         # `build_raid_report` below, so the per-player pace windows and the
         # death recaps read the same self-resurrection list.
         self_resurrections = load_self_resurrections()
+        aura_groups = load_aura_groups()
 
         encounter = loaded.encounter
         # The roster's own spelling, computed once and read by everything that
@@ -1841,6 +1848,7 @@ def raid(
                 loaded,
                 to_compare,
                 names,
+                aura_groups,
             )
             reference_records += parse_records
 

@@ -10,6 +10,8 @@ from wowperf.domain.analysis.attempt_shape import (
 )
 from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID, answers_for
+from wowperf.domain.aura_groups import AuraGroups
+from wowperf.domain.auras import Aura, AuraBand, PlayerAuras
 from wowperf.domain.comparison.mechanics import (
     AbilityTakenRow,
     MechanicsMember,
@@ -1027,3 +1029,52 @@ def test_the_defensive_finding_calls_this_stretch_a_fight() -> None:
     assert "cast somewhere in the fight" in finding.detail
     for text in (finding.title, finding.detail, *finding.evidence):
         assert not re.search(r"\brun\b", text), text
+
+
+def test_the_raid_buff_comparison_reads_the_subjects_aura_groups() -> None:
+    """The groups a raid subject carries reach the buff comparison.
+
+    Our side carries Death and Decay for 0-30s and Sanguine Ground for 20-60s of a 374s
+    fight; every reference carries Death and Decay alone. Read as the main id alone ours is
+    8% of the fight, folded it is the 60s union, 16%.
+    """
+
+    def an_aura(ability_id: int, name: str, start_ms: int, end_ms: int) -> Aura:
+        return Aura(
+            ability_id=ability_id, name=name, total_uptime_ms=end_ms - start_ms, uses=1,
+            bands=(AuraBand(start_ms=start_ms, end_ms=end_ms),),
+        )
+
+    ours = PlayerAuras(
+        actor_id=RAID[0].actor_id,
+        on_self=(
+            an_aura(188290, "Death and Decay", 0, 30_000),
+            an_aura(391459, "Sanguine Ground", 20_000, 60_000),
+        ),
+    )
+    carrying = PlayerAuras(
+        actor_id=90, on_self=(an_aura(188290, "Death and Decay", 0, 100_000),)
+    )
+    members = tuple(
+        a_parse_member(f"REF{one}", 14).model_copy(update={"auras": carrying})
+        for one in range(5)
+    )
+    loaded = a_loaded_encounter(
+        casts=OUR_CASTS, standing=a_standing(1_450_000.0, 62),
+        boss_standing=a_standing(1_180_000.0, 48),
+    )
+
+    findings = analyse_encounter(
+        loaded, DEFENSIVES, Consumables(),
+        parse_subjects=(
+            a_parse_subject(
+                our_auras=ours,
+                sample=ParseSample(members=members),
+                aura_groups=AuraGroups(groups=((188290, 391459),)),
+            ),
+        ),
+    )
+
+    [gap] = [one for one in findings if one.id.startswith("compare.uptime.self")]
+    assert gap.ability_id == 188290
+    assert [one.value for one in gap.facts if one.label == "Ours"] == ["16% of fight time"]

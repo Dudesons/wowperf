@@ -14,7 +14,12 @@ from typer.testing import CliRunner
 
 from tests.adapters.render.test_html_invariants import player_cards
 from wowperf.adapters.cache.disk import DiskCache
-from wowperf.adapters.config.toml import load_consumable_buffs, load_consumables, load_slot_names
+from wowperf.adapters.config.toml import (
+    load_aura_groups,
+    load_consumable_buffs,
+    load_consumables,
+    load_slot_names,
+)
 from wowperf.adapters.wcl.auth import TokenProvider
 from wowperf.adapters.wcl.client import RateLimit, RateLimitExceeded, WclClient
 from wowperf.adapters.wcl.cost import CostLedger
@@ -38,6 +43,7 @@ from wowperf.cli import (
     load_encounter_with_auras,
     load_run_with_auras,
 )
+from wowperf.domain.analysis.encounter_service import analyse_encounter
 from wowperf.domain.analysis.roster import display_names
 from wowperf.domain.analysis.spikes import SPIKES_ID, UNAVAILABLE_ID
 from wowperf.domain.auras import Aura, PlayerAuras
@@ -1362,6 +1368,29 @@ def test_raid_writes_a_page_beside_its_findings(tmp_path: Path) -> None:
     assert "Bríala" in html_text
 
 
+def test_the_raid_subjects_carry_the_aura_groups_cli_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ParseSubject.aura_groups` is what the raid's buff comparison folds by; the real
+    analyser runs, wrapped, so the page is still written and only the hand-over is read."""
+    captured: dict[str, Any] = {}
+    real = analyse_encounter
+
+    def spying(*args: Any, **kwargs: Any) -> Any:
+        captured["parse_subjects"] = kwargs["parse_subjects"]
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr("wowperf.cli.analyse_encounter", spying)
+
+    result = run_raid(tmp_path)
+
+    assert result.exit_code == 0, f"{result.stderr}\n{result.exception!r}"
+    subjects = captured["parse_subjects"]
+    assert subjects
+    assert all(one.aura_groups == load_aura_groups() for one in subjects)
+    assert load_aura_groups().groups  # not empty
+
+
 def heavy_moment_readings(findings: list[dict[str, Any]]) -> list[str]:
     """The ids of a findings list's heavy-moment reading: the ranked one or its notice."""
     return [one["id"] for one in findings if one["id"] in (SPIKES_ID, UNAVAILABLE_ID)]
@@ -2499,6 +2528,28 @@ def test_the_subjects_carry_the_curated_consumable_data_cli_loads(
     assert subject.consumable_buffs == load_consumable_buffs()
     assert subject.slot_names == load_slot_names()
     assert subject.slot_names.name_for(7) == "feet"  # not empty either
+
+
+def test_the_analyze_subjects_carry_the_aura_groups_cli_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ComparisonSubject.aura_groups` defaults to empty, so a caller that never filled it
+    in would fold nothing and no finding-level test could tell that from "nothing to
+    fold". `compare` is stubbed, as above, so this only proves what `analyze` hands it."""
+    captured: dict[str, Any] = {}
+
+    def fake_compare(**kwargs: Any) -> list[Any]:
+        captured.update(kwargs)
+        return []
+
+    monkeypatch.setattr("wowperf.cli.compare", fake_compare)
+
+    result = invoke_analyze(tmp_path)
+    assert result.exit_code == 0, result.output
+
+    [subject] = captured["subjects"]
+    assert subject.aura_groups == load_aura_groups()
+    assert subject.aura_groups.groups  # not empty -- an unfilled default would pass the line above
 
 
 def test_analyze_is_a_subcommand_of_its_own() -> None:
