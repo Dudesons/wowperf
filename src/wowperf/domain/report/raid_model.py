@@ -182,6 +182,10 @@ class RaidReport(Frozen):
     # page saying what it read: "No deaths." is then a true reading of the log.
     # See `NO_CARDS_ASKED`.
     deaths_note: str = ""
+    # The line standing for the death cards a lost wipe does not draw, past
+    # its fourth roster death. Empty on a kill, on a wipe short of the call,
+    # and on a run that built no cards, whose `deaths_note` already says why.
+    deaths_folded: str = ""
     death_rows: tuple[LedgerRow, ...] = ()
     interrupts: tuple[LedgerRow, ...]
     players: tuple[PlayerCard, ...]

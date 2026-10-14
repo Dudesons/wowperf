@@ -404,3 +404,33 @@ def test_a_series_handed_an_empty_pace_mapping_is_not_compared() -> None:
     )
 
     assert report.compared is False
+
+
+def a_kill_with_deaths(count: int) -> LoadedEncounter:
+    """A deepened kill whose `count` deaths all fall on `FROST_MAGE`: a raider rezzed each time."""
+    return a_loaded_attempt(
+        3, remaining=0.01, seconds=180.0, players=(FROST_MAGE,), kill=True,
+        deaths_after_ms=tuple(10_000 * (index + 1) for index in range(count)),
+    )
+
+
+def test_a_kill_past_the_wipe_call_reads_as_a_dirty_kill() -> None:
+    [row] = build_attempt_rows(a_loaded_series(a_kill_with_deaths(4)))
+
+    assert row.verdict == "dirty kill"
+    assert row.is_kill is True
+
+
+def test_a_kill_short_of_the_wipe_call_reads_as_a_kill() -> None:
+    [row] = build_attempt_rows(a_loaded_series(a_kill_with_deaths(3)))
+
+    assert row.verdict == "kill"
+
+
+def test_a_kill_nobody_deepened_reads_as_a_kill() -> None:
+    """With no deaths fetched the row cannot tell, and does not guess."""
+    progression = a_series(an_attempt(3, 0.01, 180.0, kill=True))
+
+    [row] = build_attempt_rows(LoadedProgression(progression=progression))
+
+    assert row.verdict == "kill"

@@ -19,6 +19,8 @@ nest inside.
 
 
 RAID_PLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("wipe.lost", "death_rows"),
+    ("raid.dirty_kill", "death_rows"),
     ("defensives.unused.", "death_rows"),
     ("consumables.", "death_rows"),
     ("deaths.", "death_rows"),

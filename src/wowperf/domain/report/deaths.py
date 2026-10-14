@@ -1,6 +1,8 @@
 # ABOUTME: One recap card per death: what killed the player, what was up, how they came back.
 # ABOUTME: States what was pressed and what was ready, never what should have been pressed.
 
+from collections.abc import Sequence
+
 from wowperf.domain.analysis.cooldown_reading import Reading
 from wowperf.domain.analysis.defensives import RUN_UP_SECONDS
 from wowperf.domain.analysis.healer_side import HealerCooldown, HealerSide, healer_side
@@ -30,6 +32,7 @@ from wowperf.domain.analysis.recap import (
     window_start,
 )
 from wowperf.domain.analysis.roster import display_names
+from wowperf.domain.analysis.wipe_call import CALL_ORDINAL, death_order, deaths_after
 from wowperf.domain.auras import PlayerAuras, band_holding, resolve_aura
 from wowperf.domain.comparison.pace import clock_text
 from wowperf.domain.comparison.pace_player import pair_label
@@ -158,6 +161,17 @@ run declined to build a card's insides, this one says it declined to build the
 card. Both deny the reading a reader would otherwise take, because the two
 sentences sit in the same place and mean opposite things.
 """
+
+
+def folded_deaths_line(deaths: Sequence[Death], lost: Death | None) -> str:
+    """The line standing for the cards a lost wipe does not draw, or "" where none were left out."""
+    if lost is None:
+        return ""
+    after = len(deaths_after(deaths, lost))
+    if not after:
+        return ""
+    return f"{quantity(after, 'more death', 'more deaths')} after the {CALL_ORDINAL} — not carded"
+
 
 NO_TEAMMATE_EXTERNALS = "No teammate's specialisation has externals listed."
 
@@ -543,6 +557,7 @@ def build_deaths(
     trimmed: bool = False,
     roles: Roles | None = None,
     throughput: ThroughputCooldowns = ThroughputCooldowns(),
+    stop_after: Death | None = None,
 ) -> tuple[DeathCard, ...]:
     """One recap per death, oldest first.
 
@@ -561,13 +576,23 @@ def build_deaths(
     `roles` draws the Healers group: without it nothing says who heals, so no
     card carries the group. `throughput` names each healer's group healing
     cooldowns, read by the same rule the heavy-moment finding reads them.
+
+    `stop_after` is a lost wipe's call (`wipe_call.lost_at`): no card is drawn
+    for a death after it in `death_order`, and `folded_deaths_line` says how
+    many that left out. None cards every death, as every kill and every
+    Mythic+ run does.
     """
     players_by_id = {player.actor_id: player for player in loaded.players}
     names = display_names(loaded.players)
     start_ms = loaded.window_ms[0]
     setting = "run" if loaded.has_pulls else "fight"
     cards = []
-    for index, death in enumerate(sorted(loaded.deaths, key=lambda d: d.timestamp_ms)):
+    carded = [
+        death
+        for death in sorted(loaded.deaths, key=lambda d: d.timestamp_ms)
+        if stop_after is None or death_order(death) <= death_order(stop_after)
+    ]
+    for index, death in enumerate(carded):
         player = players_by_id.get(death.actor_id)
         slug = f"death-{index}"
         auras = loaded.auras_by_actor.get(death.actor_id)

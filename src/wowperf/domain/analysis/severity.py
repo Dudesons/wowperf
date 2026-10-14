@@ -7,6 +7,7 @@ from wowperf.domain.findings import Finding
 
 SEVERITY_BY_FAMILY = {
     "wipe": 0,
+    "raid": 0,
     "deaths": 1,
     "progression": 2,
     "mechanics": 3,
@@ -40,6 +41,9 @@ Deaths next because a death ends a player's contribution outright. Mechanics
 after that because it is the one finding that says what to do differently.
 `compare` last because a confound explains the others rather than standing
 beside them.
+
+`raid` shares `wipe`'s rank: `raid.dirty_kill` says how a kill ended, as `wipe.*` says how a
+wipe did.
 """
 
 UNKNOWN_SEVERITY = max(SEVERITY_BY_FAMILY.values()) + 1

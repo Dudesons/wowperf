@@ -51,6 +51,7 @@ RAID_FAMILIES = (
     "compare.spells.above.0.emberkin-0", "compare.spells.level.emberkin-0",
     "compare.talents.emberkin-0", "compare.uptime.self.0.emberkin-0",
     "compare.uptime.unjudged.emberkin-0",
+    "raid.dirty_kill",
 )
 """Every family `analyse_encounter` can emit from a kill without phases.
 One healing id is here; the other two are pinned in `test_raid_build`'s placement test.
@@ -92,6 +93,7 @@ _FAMILY_PREFIXES = (
     "compare.talents.",
     "compare.uptime.self.",
     "compare.uptime.unjudged.",
+    "raid.dirty_kill",
 )
 """The fixed stem of every entry in `RAID_FAMILIES`, in the same order.
 
@@ -510,3 +512,9 @@ def test_the_rich_fixture_mints_a_withheld_ceiling_notice() -> None:
     notices = [finding for finding in findings if finding.id == "defensives.ceiling.withheld"]
     assert len(notices) == 1, findings
     assert "Ice Block" in notices[0].evidence[0]
+
+
+def test_the_wipe_call_findings_land_on_the_deaths_tab() -> None:
+    """Beside the cards the call folds, not in Summary's catch-all."""
+    assert _raid_field_for("wipe.lost") == "death_rows"
+    assert _raid_field_for("raid.dirty_kill") == "death_rows"

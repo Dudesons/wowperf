@@ -159,6 +159,9 @@
   </div>
 </div>
 {% endfor %}
+{% if report.deaths_folded %}
+<p class="sub">{{ report.deaths_folded }}</p>
+{% endif %}
 
 {% if report.death_rows %}
 <p class="sub">Not additive — every figure below can already contain another, so they must
