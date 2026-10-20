@@ -13,6 +13,7 @@ from wowperf.domain.findings import (
     Confidence,
     Finding,
     fight_ranges,
+    least_certain,
     quantifier_for,
     quantity,
 )
@@ -74,14 +75,6 @@ OVERLANDING_DETAIL = (
     "something the log records."
 )
 
-_CERTAINTY = (Confidence.INFERRED, Confidence.DERIVED, Confidence.MEASURED)
-"""Least certain first, so the lowest index is the weakest claim."""
-
-
-def _least_certain(confidences: Iterable[Confidence]) -> Confidence:
-    return min(confidences, key=_CERTAINTY.index)
-
-
 def _kill_speed(
     attempts: Sequence[Encounter], pull_findings: Mapping[int, Sequence[Finding]]
 ) -> Finding | None:
@@ -113,7 +106,7 @@ def _kill_speed(
         id=KILL_SPEED_ID,
         title=lead.title,
         detail=KILL_SPEED_DETAIL,
-        confidence=_least_certain(one.confidence for one in (kill_time, pace) if one is not None),
+        confidence=least_certain(one.confidence for one in (kill_time, pace) if one is not None),
         evidence=tuple(evidence),
     )
 

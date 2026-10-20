@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from wowperf.domain.analysis.interrupts import reconstruct_enemy_casts
 from wowperf.domain.analysis.timeline import gaps_between_pulls
+from wowperf.domain.base import Frozen
 from wowperf.domain.comparison.reference import Comparability
 from wowperf.domain.comparison.sample import SpeedMember, SpeedSample, too_few
 from wowperf.domain.comparison.statistics import median, observed_range
@@ -48,6 +49,71 @@ def _kick_counts(loaded: LoadedRun | SpeedMember) -> tuple[int, int]:
     kicked = sum(1 for cast in casts if cast.was_kicked)
     landed = sum(1 for cast in casts if cast.landed)
     return kicked, landed
+
+
+def _kick_shares(members: Sequence[SpeedMember]) -> list[float]:
+    """Each member's own kicked share; a member that resolved nothing contributes 0.0.
+
+    Dropping such a member would let the denominator drift from the number of
+    members the median was drawn from.
+    """
+    shares: list[float] = []
+    for member in members:
+        kicked, landed = _kick_counts(member)
+        resolved = kicked + landed
+        shares.append(kicked / resolved if resolved > 0 else 0.0)
+    return shares
+
+
+class TempoMeasures(Frozen):
+    """The four group figures the sample's tempo findings state, as numbers.
+
+    The findings carry them as display strings, which nothing may parse back,
+    so anything else that needs the figures -- the character page's group
+    ledger -- reads them here, from the computation the findings read too.
+    `their_time` is None when fewer than `MIN_SAMPLE_FOR_AGGREGATE` members
+    shared our keystone level, where the completion time is withheld.
+    `our_kick_share` is None when the log resolved none of our enemy casts.
+    """
+
+    members: int
+    our_time: float
+    their_time: float | None
+    our_deaths: int
+    their_deaths: float
+    our_downtime: float
+    their_downtime: float
+    our_kick_share: float | None
+    their_kick_share: float
+
+
+def tempo_measures(ours: LoadedRun, sample: SpeedSample) -> TempoMeasures | None:
+    """Our figures beside the sample's medians, or None below the aggregate floor.
+
+    Below the floor the tempo findings fall back to one reference, which is a
+    pairwise statement and not a median, so there is no sample figure to give.
+    """
+    members = sample.members
+    if not members or not sample.can_aggregate(members):
+        return None
+    eligible = sample.duration_eligible
+    our_kicked, our_landed = _kick_counts(ours)
+    our_resolved = our_kicked + our_landed
+    return TempoMeasures(
+        members=len(members),
+        our_time=ours.run.keystone_time_seconds,
+        their_time=(
+            median([member.run.keystone_time_seconds for member in eligible])
+            if sample.can_aggregate(eligible)
+            else None
+        ),
+        our_deaths=len(ours.deaths),
+        their_deaths=median([float(len(member.deaths)) for member in members]),
+        our_downtime=_downtime_seconds(ours),
+        their_downtime=median([_downtime_seconds(member) for member in members]),
+        our_kick_share=our_kicked / our_resolved if our_resolved > 0 else None,
+        their_kick_share=median(_kick_shares(members)),
+    )
 
 
 def compare_tempo(ours: LoadedRun, theirs: SpeedMember, rule: Comparability) -> list[Finding]:
@@ -179,24 +245,27 @@ def compare_tempo_sample(ours: LoadedRun, sample: SpeedSample) -> list[Finding]:
         # crash or a repeat.
         return []
 
-    if not sample.can_aggregate(sample.members):
+    measures = tempo_measures(ours, sample)
+    if measures is None:
         first = sample.members[0]
         return too_few(compare_tempo(ours, first, first.comparability), len(sample.members))
 
     members = sample.members
     return [
-        _downtime_finding(ours, members),
-        _deaths_finding(ours, members),
-        _interrupts_finding(ours, members),
-        _duration_finding(ours, sample),
+        _downtime_finding(ours, members, measures),
+        _deaths_finding(members, measures),
+        _interrupts_finding(ours, members, measures),
+        _duration_finding(ours, sample, measures),
     ]
 
 
-def _downtime_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Finding:
+def _downtime_finding(
+    ours: LoadedRun, members: Sequence[SpeedMember], measures: TempoMeasures
+) -> Finding:
     """Time between pulls, ours against the median of the sample's own downtimes."""
-    our_downtime = _downtime_seconds(ours)
+    our_downtime = measures.our_downtime
     theirs = [_downtime_seconds(member) for member in members]
-    their_median = median(theirs)
+    their_median = measures.their_downtime
     low, high = observed_range(theirs)
     excess = our_downtime - their_median
     return Finding(
@@ -221,11 +290,11 @@ def _downtime_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Findin
     )
 
 
-def _deaths_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Finding:
+def _deaths_finding(members: Sequence[SpeedMember], measures: TempoMeasures) -> Finding:
     """Death counts, ours against the median of the sample's own death counts."""
-    our_deaths = len(ours.deaths)
+    our_deaths = measures.our_deaths
     theirs = [float(len(member.deaths)) for member in members]
-    their_median = median(theirs)
+    their_median = measures.their_deaths
     low, high = observed_range(theirs)
     return Finding(
         id="compare.deaths",
@@ -249,20 +318,13 @@ def _deaths_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Finding:
     )
 
 
-def _interrupts_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Finding:
-    """Kick share, ours against the median of each member's own share.
-
-    A member with no resolved casts at all contributes a share of 0.0 rather
-    than being dropped from the sample: dropping it would let the title's
-    denominator drift from the number of members the median was drawn from.
-    """
+def _interrupts_finding(
+    ours: LoadedRun, members: Sequence[SpeedMember], measures: TempoMeasures
+) -> Finding:
+    """Kick share, ours against the median of each member's own share."""
     our_kicked, our_landed = _kick_counts(ours)
-    shares: list[float] = []
-    for member in members:
-        kicked, landed = _kick_counts(member)
-        resolved = kicked + landed
-        shares.append(kicked / resolved if resolved > 0 else 0.0)
-    their_median = median(shares)
+    shares = _kick_shares(members)
+    their_median = measures.their_kick_share
     low, high = observed_range(shares)
     return Finding(
         id="compare.interrupts",
@@ -287,7 +349,9 @@ def _interrupts_finding(ours: LoadedRun, members: Sequence[SpeedMember]) -> Find
     )
 
 
-def _duration_finding(ours: LoadedRun, sample: SpeedSample) -> Finding:
+def _duration_finding(
+    ours: LoadedRun, sample: SpeedSample, measures: TempoMeasures
+) -> Finding:
     """Completion time, against the median of only the members at our keystone level.
 
     A duration means something different at a different keystone level, so a
@@ -295,7 +359,7 @@ def _duration_finding(ours: LoadedRun, sample: SpeedSample) -> Finding:
     """
     eligible = sample.duration_eligible
     total_members = len(sample.members)
-    if not sample.can_aggregate(eligible):
+    if measures.their_time is None:
         off_level = total_members - len(eligible)
         return Finding(
             id="compare.duration",
@@ -311,7 +375,7 @@ def _duration_finding(ours: LoadedRun, sample: SpeedSample) -> Finding:
 
     our_time = ours.run.keystone_time_seconds
     theirs = [member.run.keystone_time_seconds for member in eligible]
-    their_median = median(theirs)
+    their_median = measures.their_time
     low, high = observed_range(theirs)
     behind = our_time - their_median
     total = len(eligible)

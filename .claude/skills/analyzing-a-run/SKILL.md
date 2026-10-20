@@ -1,6 +1,6 @@
 ---
 name: analyzing-a-run
-description: Use when given a Warcraft Logs URL to analyse — a Mythic+ key, a raid boss fight, or every attempt at one boss — runs the tool, interprets the findings, and hands back a finished report
+description: Use when given a Warcraft Logs URL to analyse — a Mythic+ key, a raid boss fight, every attempt at one boss, or a character's recent keys — runs the tool, interprets the findings, and hands back a finished report
 ---
 
 # Analysing a run
@@ -262,6 +262,76 @@ pull's own Provenance.
 A pull drawn at less than the
 deep tier still has its full death anatomy on hand elsewhere: `--deep` buys it back here for a
 named pull, or `wowperf raid --fight N` draws it for that one pull on its own.
+
+## The `character` command
+
+One character's recent Mythic+ runs, read together, is `wowperf character <character-url> [--zone ID]
+[--spec NAME] [--narrative FILE] [--cache-dir DIR] [--out DIR]`, the fifth sibling of `analyze`,
+`raid`, `progression` and `night`. The URL is a Warcraft Logs character page,
+`https://www.warcraftlogs.com/character/<region>/<realm>/<name>`, not a report. It writes one page
+stating what repeats across the character's runs, and every run it read also gets the findings file
+and page `analyze` would have written.
+
+**The zone.** It comes from the URL's `?zone=<id>`, or from `--zone`, which wins. With neither the
+command stops before any request and says where the id is: the number after `zone=` in the
+character page's address once a Mythic+ season is selected there. It never guesses the season. A
+raid zone is refused, since its rankings are not keys, and a character Warcraft Logs does not know,
+or one who has hidden their rankings, stops it the same way, naming the cause.
+
+**Which runs.** One per dungeon of the zone, for one specialisation: the most recent ranked run
+with a public log at the character's highest keystone level in that dungeon or one below it, timed
+or not. A dungeon with no such run is left out and listed with the reason on the page and in
+`character.json`. The specialisation is the one with the most ranked runs; `--spec NAME` names
+another, and a name the character has no runs for stops the command and lists the ones it has.
+`--spec` swaps the specialisation; it never adds one, since a direction counted across two
+specialisations would compare one rotation with another. A second run with another `--spec` replaces
+`character.json` and `character.html` in the same directory, while the run pages survive, being named
+by report code.
+
+**Not offered.** `--player`, `--all-players`, `--no-compare`, `--fight` and `--throughput-ceiling`
+do not exist here. The subject is the character, so there is no one else to name. The comparison is
+what the patterns read, so it cannot be skipped. The runs are chosen by the rule above, so no fight
+is picked. The throughput ceiling is a per-run question the character page does not ask.
+
+**What it writes.** Everything goes under `<out>/<region>-<realm>-<name>/`, the region and
+realm lower-cased and percent-decoded from the URL, the name case-folded: `character.json` and `character.html`, and beside them each
+run's `<code>-<fight>.findings.json` and `<code>-<fight>.html`, which the page's Runs tab links to.
+Read `character.json`, never the HTML, as with every other command. It holds the character, what
+was asked for, the chosen runs, the dungeons left out, the runs that failed with their reasons, the
+chosen numbers the patterns use, the findings and the group ledger.
+
+**Three kinds of statement.** The page opens, after any narrative, on the consistent directions: a
+measure that sat on the same side of the top parses in every run that judged it. Then the repeated
+judgements: a judgement the per-run analysis made in at least half the loaded runs, and in at least
+three. Then, on its own Group tab, a ledger of the four group comparisons every run carries,
+counted and given no verdict. `mplus-analysis`, "Reading a character page", says what each one
+licenses. Fewer than six loaded runs withholds the directions, and the file says so in a finding
+rather than lowering the bar.
+
+**The narrative.** The same two steps as `analyze`, with a different file:
+
+1. Run the command once without `--narrative`, then read `<out>/<region>-<realm>-<name>/character.json`
+   and `mplus-analysis`.
+2. Write the narrative with no digits to `<out>/<region>-<realm>-<name>/character.narrative.md`, then
+   repeat the same command with the same `--zone` and `--spec` if you used them, and add only
+   `--narrative`. A narrative containing a digit is refused before anything is fetched. Name an
+   aggregate finding by its `quantifier` and its subject, never by the "N of M" in its title.
+
+The second run is served from the cache: each run's own data is kept for good and the run list and
+reference runs live a day.
+
+**Cost.** Measured 2026-10-14: 1090.57 points for eight dungeons read cold, about 136 for each
+dungeon, of which the two selection queries are 9.01 in all. A warm run is served from the cache.
+That is nearly a third of the hourly 3600, so say so before reading a second character in the same
+hour. The command closes with the usual breakdown by operation.
+
+**When runs fail.** A run that fails to load for a reason of its own is listed on the Runs tab with
+its reason, printed as a warning, and the page counts only what loaded; fewer runs shrink the page
+and can withhold the directions. A spent budget is not a run's failure: it stops the command with
+the cause and writes no character page, because every later run would fail the same way and a page
+shrunk by it would describe the budget, not the character. A disk or cache error stops it likewise.
+Nothing is deleted by a stop, so what was fetched stays cached and a second run resumes almost
+free.
 
 ## When it goes wrong
 

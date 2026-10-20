@@ -9,6 +9,7 @@ from wowperf.domain.findings import (
     Finding,
     FindingFact,
     fight_ranges,
+    least_certain,
     quantifier_for,
     rank_findings,
 )
@@ -113,3 +114,9 @@ def test_two_apart_fights_are_two_names_not_a_range() -> None:
 
 def test_a_repeated_id_is_named_once() -> None:
     assert fight_ranges([4, 4, 5]) == "Fights 4–5"
+
+
+def test_the_least_certain_badge_wins() -> None:
+    assert least_certain([Confidence.MEASURED, Confidence.DERIVED]) is Confidence.DERIVED
+    assert least_certain([Confidence.DERIVED, Confidence.INFERRED]) is Confidence.INFERRED
+    assert least_certain([Confidence.MEASURED]) is Confidence.MEASURED

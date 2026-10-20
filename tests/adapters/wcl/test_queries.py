@@ -7,9 +7,12 @@ from wowperf.adapters.wcl.queries import (
     FIGHTS_QUERY,
     PLAYER_DETAILS_QUERY,
     RATE_LIMIT_QUERY,
+    ZONE_QUERY,
+    character_runs_query,
     operation_name,
     with_rate_limit,
 )
+from wowperf.domain.report.character_build import SELECTION_QUERIES
 
 BLOCK = "rateLimitData { limitPerHour pointsSpentThisHour pointsResetIn }"
 
@@ -42,13 +45,14 @@ def test_an_operation_the_splice_cannot_recognise_goes_out_untouched() -> None:
 
 
 def _every_query() -> dict[str, str]:
-    """Every operation this module can send, the generated one included."""
+    """Every operation this module can send, the generated ones included."""
     named = {
         name: value
         for name, value in vars(queries).items()
         if name.endswith("_QUERY") and isinstance(value, str)
     }
     named["talents_query"] = queries.talents_query([12, 7])
+    named["character_runs_query"] = queries.character_runs_query([102, 101])
     return named
 
 
@@ -104,3 +108,20 @@ def test_the_player_details_query_structure_is_correct() -> None:
     # variable names declared here, so both are runtime failures against a
     # quota-limited API if they slip past tests.
     assert "playerDetails(fightIDs: [$fightId], includeCombatantInfo: true)" in PLAYER_DETAILS_QUERY
+
+
+def test_the_character_runs_query_aliases_one_ranking_per_dungeon_in_id_order() -> None:
+    query = character_runs_query([102, 101])
+    assert query.index("e101: encounterRankings(encounterID: 101)") < query.index(
+        "e102: encounterRankings(encounterID: 102)"
+    )
+    assert operation_name(query) == "CharacterRuns"
+
+
+def test_the_character_page_names_its_selection_queries_as_the_client_does() -> None:
+    """The domain may not import this module, so it spells the two names itself;
+    this is what keeps that spelling the one the cost printout uses."""
+    assert SELECTION_QUERIES == (
+        operation_name(ZONE_QUERY),
+        operation_name(character_runs_query([101])),
+    )

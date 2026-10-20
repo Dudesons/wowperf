@@ -4,7 +4,12 @@
 from wowperf.domain.comparison.alignment import Alignment
 from wowperf.domain.comparison.reference import Comparability, SpeedRow
 from wowperf.domain.comparison.sample import SpeedMember, SpeedSample
-from wowperf.domain.comparison.tempo import compare_tempo, compare_tempo_sample
+from wowperf.domain.comparison.tempo import (
+    TempoMeasures,
+    compare_tempo,
+    compare_tempo_sample,
+    tempo_measures,
+)
 from wowperf.domain.events import Death, EnemyCastRow, InterruptEvent
 from wowperf.domain.findings import Confidence, Finding
 from wowperf.domain.model import LoadedRun, Pull, Run
@@ -394,3 +399,81 @@ def test_every_finding_id_is_unique_over_the_sample() -> None:
     ids = [f.id for f in compare_tempo_sample(ours, sample)]
 
     assert len(ids) == len(set(ids))
+
+
+# --- tempo_measures ----------------------------------------------------------
+
+
+def test_tempo_measures_state_ours_beside_each_sample_median() -> None:
+    ours = a_loaded(
+        level=16, time_s=1300.0, deaths=4, kicked=1, landed=1,
+        pulls=(a_pull(0, 0, 60), a_pull(1, 240, 60)),  # 180s of downtime
+    )
+    sample = SpeedSample(
+        members=(
+            a_member(time_s=1200.0, deaths=0, kicked=1, landed=1,
+                     pulls=(a_pull(0, 0, 60), a_pull(1, 160, 60))),  # 100s
+            a_member(time_s=1250.0, deaths=1, kicked=8, landed=2,
+                     pulls=(a_pull(0, 0, 60), a_pull(1, 180, 60))),  # 120s
+            a_member(time_s=1300.0, deaths=2, kicked=0, landed=2,
+                     pulls=(a_pull(0, 0, 60), a_pull(1, 210, 60))),  # 150s
+        )
+    )
+
+    measures = tempo_measures(ours, sample)
+
+    assert measures == TempoMeasures(
+        members=3,
+        our_time=1300.0,
+        their_time=1250.0,
+        our_deaths=4,
+        their_deaths=1.0,
+        our_downtime=180.0,
+        their_downtime=120.0,
+        our_kick_share=0.5,
+        their_kick_share=0.5,
+    )
+
+
+def test_tempo_measures_withhold_the_time_when_too_few_share_our_level() -> None:
+    sample = SpeedSample(
+        members=(a_member(level=16), a_member(level=16), a_member(level=17), a_member(level=15))
+    )
+
+    measures = tempo_measures(a_loaded(level=16), sample)
+
+    assert measures is not None
+    assert measures.their_time is None
+
+
+def test_tempo_measures_name_no_share_when_none_of_our_casts_resolved() -> None:
+    sample = SpeedSample(members=(a_member(), a_member(), a_member()))
+
+    measures = tempo_measures(a_loaded(kicked=0, landed=0), sample)
+
+    assert measures is not None
+    assert measures.our_kick_share is None
+
+
+def test_below_the_floor_there_are_no_sample_measures() -> None:
+    assert tempo_measures(a_loaded(), SpeedSample(members=(a_member(), a_member()))) is None
+    assert tempo_measures(a_loaded(), SpeedSample()) is None
+
+
+def test_the_tempo_findings_state_the_figures_the_measures_carry() -> None:
+    ours = a_loaded(deaths=4, pulls=(a_pull(0, 0, 60), a_pull(1, 240, 60)))
+    sample = SpeedSample(
+        members=(
+            a_member(deaths=0, pulls=(a_pull(0, 0, 60), a_pull(1, 160, 60))),
+            a_member(deaths=1, pulls=(a_pull(0, 0, 60), a_pull(1, 180, 60))),
+            a_member(deaths=2, pulls=(a_pull(0, 0, 60), a_pull(1, 210, 60))),
+        )
+    )
+
+    measures = tempo_measures(ours, sample)
+    findings = compare_tempo_sample(ours, sample)
+
+    assert measures is not None
+    downtime = one(findings, "compare.downtime")
+    assert f"median of 3 fast runs is {measures.their_downtime:.0f}s" in downtime.title
+    assert f"died {measures.their_deaths:.0f} times" in one(findings, "compare.deaths").title
